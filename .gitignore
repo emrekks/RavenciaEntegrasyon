@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/TestResults/
+**/playwright-report/
+**/test-results/
+src/MarketplaceHub.Web/dist/
+.env
+.env.*
+!.env.example
+tmp/
+secrets/
+data/
+*.user
+*.log

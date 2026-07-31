@@ -1,0 +1,28 @@
+services:
+  migrate:
+    image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
+    build: null
+    environment: &production_environment
+      MARKETPLACEHUB_ENVIRONMENT: PRODUCTION
+      DataProtection__CertificatePath: /run/secrets/dp_certificate
+      DataProtection__CertificatePassword_FILE: /run/secrets/dp_certificate_password
+    secrets: &production_secrets [app_db_connection, credential_key, bootstrap_owner_password, dp_certificate, dp_certificate_password]
+  api:
+    image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
+    build: null
+    environment: *production_environment
+    secrets: *production_secrets
+  worker:
+    image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
+    build: null
+    environment: *production_environment
+    secrets: *production_secrets
+  caddy:
+    image: ${MARKETPLACEHUB_EDGE_IMAGE:?set immutable edge image with digest}
+    build: null
+    environment:
+      MARKETPLACEHUB_SITE_ADDRESS: ${MARKETPLACEHUB_SITE_ADDRESS:?set production https address}
+
+secrets:
+  dp_certificate: { file: ../secrets/dp_certificate.pfx }
+  dp_certificate_password: { file: ../secrets/dp_certificate_password.txt }

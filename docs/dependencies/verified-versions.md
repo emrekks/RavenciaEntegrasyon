@@ -32,6 +32,10 @@ Doğrulama tarihi: 2026-07-31. Yetkili şartnamedeki major/minor kararları değ
 | HTTP Resilience | 10 | `10.8.0` | <https://www.nuget.org/packages/Microsoft.Extensions.Http.Resilience/10.8.0> | Şartname hattı | F0 NuGet central manifest + lock | VERIFIED_LOCK |
 | xUnit v3 | 3 | `3.2.2` | <https://www.nuget.org/packages/xunit.v3/3.2.2> | Test hattı | F0 NuGet central manifest + lock | VERIFIED_LOCK |
 | Testcontainers PostgreSQL | 4 | `4.13.0` | <https://www.nuget.org/packages/Testcontainers.PostgreSql/4.13.0> | Test hattı | F0 NuGet central manifest + lock | VERIFIED_LOCK |
+| ASP.NET Identity EF | 10 | `10.0.10` | <https://www.nuget.org/packages/Microsoft.AspNetCore.Identity.EntityFrameworkCore/10.0.10> | F1 IAM persistence | Root central manifest + project lock | VERIFIED_F1_LOCK |
+| EF Design / dotnet-ef | 10 | `10.0.10` | <https://www.nuget.org/packages/Microsoft.EntityFrameworkCore.Design/10.0.10> | Migration design/tool zinciri | Root central manifest + tool manifest + lock | VERIFIED_F1_LOCK |
+| QRCoder | 1 | `1.8.0` | <https://www.nuget.org/packages/QRCoder/1.8.0> | Google Authenticator uyumlu QR SVG | Root central manifest + lock | VERIFIED_F1_LOCK |
+| Serilog Console / Compact | 6 / 3 | `6.1.1` / `3.0.0` | <https://www.nuget.org/packages/Serilog.Sinks.Console/6.1.1> / <https://www.nuget.org/packages/Serilog.Formatting.Compact/3.0.0> | JSON console log | Root central manifest + lock | VERIFIED_F1_LOCK |
 
 ## Web ve test araçları
 
@@ -48,6 +52,8 @@ Doğrulama tarihi: 2026-07-31. Yetkili şartnamedeki major/minor kararları değ
 | Zod | 4 | `4.4.3` | <https://www.npmjs.com/package/zod/v/4.4.3> | F0 npm lock + integrity | VERIFIED_LOCK |
 | Tailwind CSS / Vite plugin | 4.3 | `4.3.3` | <https://www.npmjs.com/package/tailwindcss/v/4.3.3> / <https://www.npmjs.com/package/@tailwindcss/vite/v/4.3.3> | F0 npm lock + integrity | VERIFIED_LOCK |
 | Playwright | 1 | `1.62.1` | <https://www.npmjs.com/package/@playwright/test/v/1.62.1> | F0 npm lock + integrity | VERIFIED_LOCK |
+| Vitest / Testing Library / jsdom | 4 / 16 / 30 | `4.1.10` / `16.3.2` / `30.0.1` | Resmî npm package kayıtları | F1 web component test | VERIFIED_F1_LOCK |
+| React/Vite types and plugin | 19 / 6 | `@types/react 19.2.18`, `@types/react-dom 19.2.4`, `@vitejs/plugin-react 6.0.5` | Resmî npm package kayıtları | F1 web build | VERIFIED_F1_LOCK |
 
 ## Uyumluluk, destek/EOL ve bakım kaydı
 

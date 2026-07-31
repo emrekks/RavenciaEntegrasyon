@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1.7
+FROM mcr.microsoft.com/dotnet/sdk:10.0.302@sha256:ed034a8bf0b24ded0cbbac07e17825d8e9ebfe21e308191d0f7421eaf5ad4664 AS build
+WORKDIR /src
+COPY global.json Directory.Build.props Directory.Packages.props MarketplaceHub.sln ./
+COPY src/ src/
+COPY tests/ tests/
+RUN dotnet restore MarketplaceHub.sln --locked-mode
+RUN dotnet publish src/MarketplaceHub.Api/MarketplaceHub.Api.csproj -c Release --no-restore -o /out/api \
+ && dotnet publish src/MarketplaceHub.Worker/MarketplaceHub.Worker.csproj -c Release --no-restore -o /out/worker
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.10@sha256:1fa23fc4872d95fd71c2833ebe65d7e84a43b2d51a31d119516852f13d9505a7
+WORKDIR /app
+RUN mkdir -p /var/lib/marketplacehub/files /var/lib/marketplacehub/dp-keys \
+ && chown -R ${APP_UID}:${APP_UID} /var/lib/marketplacehub
+COPY --from=build --chown=${APP_UID}:${APP_UID} /out/api ./api
+COPY --from=build --chown=${APP_UID}:${APP_UID} /out/worker ./worker
+USER ${APP_UID}
+ENV ASPNETCORE_URLS=http://+:8080 DOTNET_EnableDiagnostics=0
+EXPOSE 8080
+ENTRYPOINT ["dotnet"]
+CMD ["api/MarketplaceHub.Api.dll"]

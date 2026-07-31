@@ -1,0 +1,152 @@
+name: marketplacehub
+
+x-app: &app
+  build:
+    context: ../..
+    dockerfile: Dockerfile
+  image: marketplacehub-app:f1-local
+  restart: unless-stopped
+  init: true
+  networks: [backend]
+  environment:
+    ASPNETCORE_ENVIRONMENT: Production
+    MARKETPLACEHUB_ENVIRONMENT: PILOT_LOCAL
+    ConnectionStrings__AppDb_FILE: /run/secrets/app_db_connection
+    Security__CredentialKey_FILE: /run/secrets/credential_key
+    Bootstrap__OwnerPassword_FILE: /run/secrets/bootstrap_owner_password
+    Bootstrap__Enabled: "false"
+    Bootstrap__TenantCode: ${MARKETPLACEHUB_BOOTSTRAP_TENANT_CODE:-ravencia}
+    Bootstrap__TenantDisplayName: ${MARKETPLACEHUB_BOOTSTRAP_TENANT_NAME:-Ravencia}
+    Bootstrap__OwnerEmail: ${MARKETPLACEHUB_BOOTSTRAP_OWNER_EMAIL:-owner@example.invalid}
+    Bootstrap__OwnerDisplayName: ${MARKETPLACEHUB_BOOTSTRAP_OWNER_NAME:-Ravencia Admin}
+    FeatureFlags__ExternalWrites: "false"
+    Storage__Root: /var/lib/marketplacehub/files
+    DataProtection__KeysRoot: /var/lib/marketplacehub/dp-keys
+  secrets:
+    - app_db_connection
+    - credential_key
+    - bootstrap_owner_password
+  volumes:
+    - app_files:/var/lib/marketplacehub/files
+    - dp_keys:/var/lib/marketplacehub/dp-keys
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+  deploy:
+    resources:
+      limits: { memory: 768M, cpus: "1.50" }
+
+services:
+  postgres:
+    image: postgres:18.4@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
+    restart: unless-stopped
+    init: true
+    networks: [backend]
+    environment:
+      POSTGRES_DB: marketplacehub
+      POSTGRES_USER: marketplacehub
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [pg_data:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marketplacehub -d marketplacehub"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+    deploy:
+      resources:
+        limits: { memory: 1024M, cpus: "1.50" }
+
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["api/MarketplaceHub.Api.dll", "migrate"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *app
+    command: ["api/MarketplaceHub.Api.dll"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD-SHELL", "test -r /proc/1/cmdline"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  worker:
+    <<: *app
+    command: ["worker/MarketplaceHub.Worker.dll"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  caddy:
+    build:
+      context: ../..
+      dockerfile: deploy/caddy/Dockerfile
+    image: marketplacehub-edge:f1-local
+    restart: unless-stopped
+    init: true
+    networks: [edge, backend]
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment: { MARKETPLACEHUB_SITE_ADDRESS: "https://localhost" }
+    volumes: [caddy_data:/data, caddy_config:/config]
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+    deploy:
+      resources:
+        limits: { memory: 256M, cpus: "0.50" }
+
+  backup:
+    image: postgres:18.4@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
+    profiles: ["operations"]
+    restart: "no"
+    networks: [backend]
+    environment:
+      PGHOST: postgres
+      PGDATABASE: marketplacehub
+      PGUSER: marketplacehub
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - backup_staging:/backup
+      - ../backup/backup.sh:/opt/marketplacehub/backup.sh:ro
+      - app_files:/source/files:ro
+      - dp_keys:/source/dp-keys:ro
+    entrypoint: ["/bin/sh", "/opt/marketplacehub/backup.sh"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+networks:
+  edge: {}
+  backend:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.10.0/24
+volumes:
+  pg_data: {}
+  app_files: {}
+  dp_keys: {}
+  caddy_data: {}
+  caddy_config: {}
+  backup_staging: {}
+secrets:
+  postgres_password: { file: ../secrets/postgres_password.txt }
+  app_db_connection: { file: ../secrets/app_db_connection.txt }
+  credential_key: { file: ../secrets/credential_key.txt }
+  bootstrap_owner_password: { file: ../secrets/bootstrap_owner_password.txt }
