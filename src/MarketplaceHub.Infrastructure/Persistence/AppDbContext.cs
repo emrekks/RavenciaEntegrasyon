@@ -24,6 +24,49 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<OperationalIssue> OperationalIssues => Set<OperationalIssue>();
     public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
     public DbSet<FileAsset> FileAssets => Set<FileAsset>();
+    public DbSet<ApiIdempotencyRecord> ApiIdempotencyRecords => Set<ApiIdempotencyRecord>();
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Brand> Brands => Set<Brand>();
+    public DbSet<AttributeDefinition> AttributeDefinitions => Set<AttributeDefinition>();
+    public DbSet<AttributeValue> AttributeValues => Set<AttributeValue>();
+    public DbSet<CategoryAttributeRequirement> CategoryAttributeRequirements => Set<CategoryAttributeRequirement>();
+    public DbSet<ProductAttributeAssignment> ProductAttributeAssignments => Set<ProductAttributeAssignment>();
+    public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
+    public DbSet<ProductOption> ProductOptions => Set<ProductOption>();
+    public DbSet<ProductOptionValue> ProductOptionValues => Set<ProductOptionValue>();
+    public DbSet<VariantOptionValue> VariantOptionValues => Set<VariantOptionValue>();
+    public DbSet<ProductMedia> ProductMedia => Set<ProductMedia>();
+    public DbSet<PlatformConnection> PlatformConnections => Set<PlatformConnection>();
+    public DbSet<ReferenceSnapshot> ReferenceSnapshots => Set<ReferenceSnapshot>();
+    public DbSet<ReferenceItem> ReferenceItems => Set<ReferenceItem>();
+    public DbSet<CategoryMapping> CategoryMappings => Set<CategoryMapping>();
+    public DbSet<BrandMapping> BrandMappings => Set<BrandMapping>();
+    public DbSet<AttributeMapping> AttributeMappings => Set<AttributeMapping>();
+    public DbSet<AttributeValueMapping> AttributeValueMappings => Set<AttributeValueMapping>();
+    public DbSet<MarketplaceProductLink> MarketplaceProductLinks => Set<MarketplaceProductLink>();
+    public DbSet<MarketplaceVariantLink> MarketplaceVariantLinks => Set<MarketplaceVariantLink>();
+    public DbSet<MarketplaceListingState> MarketplaceListingStates => Set<MarketplaceListingState>();
+    public DbSet<ExternalIdentifierAlias> ExternalIdentifierAliases => Set<ExternalIdentifierAlias>();
+    public DbSet<ChannelListingProfile> ChannelListingProfiles => Set<ChannelListingProfile>();
+    public DbSet<ChannelListingVariant> ChannelListingVariants => Set<ChannelListingVariant>();
+    public DbSet<ChannelListingAttribute> ChannelListingAttributes => Set<ChannelListingAttribute>();
+    public DbSet<ChannelMediaOrder> ChannelMediaOrders => Set<ChannelMediaOrder>();
+    public DbSet<ImportSession> ImportSessions => Set<ImportSession>();
+    public DbSet<ImportColumnProfile> ImportColumnProfiles => Set<ImportColumnProfile>();
+    public DbSet<ImportColumnMapping> ImportColumnMappings => Set<ImportColumnMapping>();
+    public DbSet<ImportStagingRecord> ImportStagingRecords => Set<ImportStagingRecord>();
+    public DbSet<ImportMatchCandidate> ImportMatchCandidates => Set<ImportMatchCandidate>();
+    public DbSet<ImportDecision> ImportDecisions => Set<ImportDecision>();
+    public DbSet<FieldProvenance> FieldProvenance => Set<FieldProvenance>();
+    public DbSet<ConnectionInventoryPolicy> ConnectionInventoryPolicies => Set<ConnectionInventoryPolicy>();
+    public DbSet<InventoryLocation> InventoryLocations => Set<InventoryLocation>();
+    public DbSet<ConnectionLocationMapping> ConnectionLocationMappings => Set<ConnectionLocationMapping>();
+    public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
+    public DbSet<StockLedgerEntry> StockLedgerEntries => Set<StockLedgerEntry>();
+    public DbSet<StockReservation> StockReservations => Set<StockReservation>();
+    public DbSet<ChannelOffer> ChannelOffers => Set<ChannelOffer>();
+    public DbSet<ChannelPriceHistory> ChannelPriceHistory => Set<ChannelPriceHistory>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -31,6 +74,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         ConfigureIdentity(builder);
         ConfigureIntegration(builder);
         ConfigureOperations(builder);
+        builder.ConfigureF2Models();
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess) { GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
@@ -152,8 +196,17 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.Entity<FileAsset>(entity =>
         {
             entity.ToTable("file_assets", "ops"); entity.HasKey(x => x.Id);
-            entity.Property(x => x.RelativePath).HasMaxLength(512); entity.Property(x => x.MimeType).HasMaxLength(128);
+            entity.Property(x => x.Classification).HasMaxLength(48); entity.Property(x => x.RelativePath).HasMaxLength(512); entity.Property(x => x.OriginalNameSafe).HasMaxLength(256); entity.Property(x => x.MimeType).HasMaxLength(128); entity.Property(x => x.Status).HasMaxLength(24);
             entity.HasIndex(x => new { x.TenantId, x.RelativePath }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.Sha256, x.Classification });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<ApiIdempotencyRecord>(entity =>
+        {
+            entity.ToTable("api_idempotency_records", "ops"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.RouteTemplate).HasMaxLength(256); entity.Property(x => x.IdempotencyKey).HasMaxLength(256);
+            entity.Property(x => x.RequestHash).HasMaxLength(128); entity.Property(x => x.State).HasMaxLength(24);
+            entity.HasIndex(x => new { x.TenantId, x.RouteTemplate, x.IdempotencyKey }).IsUnique(); entity.HasIndex(x => x.ExpiresAt);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
     }

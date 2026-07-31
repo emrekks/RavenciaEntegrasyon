@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Worker;
@@ -17,8 +18,18 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 var job = await jobs.TryLeaseAsync(TimeSpan.FromMinutes(2), stoppingToken);
                 if (job is not null)
                 {
-                    logger.LogWarning("Failing unsupported F1 job type {JobType} with correlation-safe metadata", job.JobType);
-                    await jobs.CompleteAsync(job.Id, job.LeaseToken, false, "UNSUPPORTED_JOB_TYPE", stoppingToken);
+                    if (job.JobType is "IMPORT_PREVIEW" or "IMPORT_APPLY")
+                    {
+                        var payload = JsonSerializer.Deserialize<ImportJobPayload>(job.PayloadJson);
+                        var processor = scope.ServiceProvider.GetRequiredService<IImportJobProcessor>();
+                        var succeeded = payload is not null && await processor.ProcessAsync(job.TenantId, payload.SessionId, payload.Operation, stoppingToken);
+                        await jobs.CompleteAsync(job.Id, job.LeaseToken, succeeded, succeeded ? null : "IMPORT_JOB_REJECTED", stoppingToken);
+                    }
+                    else
+                    {
+                        logger.LogWarning("Failing unsupported job type {JobType} with correlation-safe metadata", job.JobType);
+                        await jobs.CompleteAsync(job.Id, job.LeaseToken, false, "UNSUPPORTED_JOB_TYPE", stoppingToken);
+                    }
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
@@ -26,4 +37,6 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
         }
     }
+
+    private sealed record ImportJobPayload(Guid SessionId, string Operation);
 }

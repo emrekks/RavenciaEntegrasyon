@@ -7,7 +7,7 @@ public sealed class PrivateFileStorage(string root) : IPrivateFileStorage
 {
     private readonly string _root = Path.GetFullPath(root);
     private static readonly HashSet<string> AllowedMimeTypes = new(StringComparer.OrdinalIgnoreCase)
-        { "application/pdf", "text/csv", "application/json", "image/jpeg", "image/png" };
+        { "application/pdf", "text/csv", "application/json", "image/jpeg", "image/png", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
 
     public async Task<string> SaveAsync(Guid tenantId, string relativeName, string mimeType, Stream content, long maximumBytes, CancellationToken cancellationToken)
     {

@@ -45,4 +45,19 @@ F1 ayrıntılı kabul ve kanıt eşlemesi [F1-plan.md](F1-plan.md) ve [F1-eviden
 | `F1-REQ-016–017` | React auth/security kabuğu ve operasyon runbook'ları | Strict TS, component, bundle, Playwright Chromium; runbook incelemesi | DONE_LOCAL |
 | `F1-EXIT-001–006` | Yerel F1 çıkış seti | `F1-EV-001–017` | READY_LOCAL |
 
-Hedef VPS runtime/reboot/volume/RTO, production PFX/off-host hedef ve registry-pushed image digest'i dış bağımlılıktır; production kabulü `BLOCKED_EXTERNAL`dır. F2 açılmamıştır.
+Hedef VPS runtime/reboot/volume/RTO, production PFX/off-host hedef ve registry-pushed image digest'i dış bağımlılıktır; production kabulü `BLOCKED_EXTERNAL`dır. Bu F1 kayıt anında F2 henüz açılmamıştı.
+
+## F2 uygulama izi
+
+F2 ayrıntılı kabul ve kanıt eşlemesi [F2-plan.md](F2-plan.md) ve [F2-evidence-log.md](F2-evidence-log.md) içindedir.
+
+| Aralık | Uygulama | Kanıt | Sonuç |
+| --- | --- | --- | --- |
+| `F2-REQ-001–004` | Product/Variant/katalog/typed attribute/reference mapping/listing override fiziksel modeli | PostgreSQL 18.4 fresh migration, metadata ve constraint testleri | DONE_LOCAL |
+| `F2-REQ-005–007` | CSV/XLSX staging, deterministik matching, review/decision/apply ve provenance | Import repeat testi; macro/formula/malformed/CSV-neutralization fixture'ları | DONE_LOCAL |
+| `F2-REQ-008–010` | MAIN inventory projection, ledger/idempotency/reservation, ChannelOffer/Money/history | Domain ve PostgreSQL duplicate/history testleri | DONE_LOCAL |
+| `F2-REQ-011–012` | F2 API, cursor/ETag/ProblemDetails/idempotency ve capability fail-closed kapıları | Route guard; 1.000 ürün cursor testi; no-job kanıtı | DONE_LOCAL |
+| `F2-REQ-013–014` | Onaylı F2 web yolları ve bounded hacim | Strict TS/Vite/Vitest/Playwright; 10.000 satır import testi | DONE_LOCAL |
+| `F2-EXIT-001–005` | Yerel F2 çıkış seti | `F2-EV-001–015` | READY_LOCAL |
+
+Gerçek platform capability/test hesapları, hedef VPS runtime, registry digest, production PFX, off-host backup ve ölçülmüş RTO dış bağımlılıktır. Production kabulü `BLOCKED_EXTERNAL`; F3 açılmamıştır.

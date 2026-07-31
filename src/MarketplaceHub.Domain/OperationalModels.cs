@@ -101,9 +101,28 @@ public sealed class FileAsset
 {
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
+    public required string Classification { get; set; }
     public required string RelativePath { get; set; }
+    public string? OriginalNameSafe { get; set; }
     public required string MimeType { get; set; }
     public long SizeBytes { get; set; }
     public required string Sha256 { get; set; }
+    public required string Status { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? ArchivedAt { get; set; }
+}
+
+public sealed class ApiIdempotencyRecord
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public required string RouteTemplate { get; set; }
+    public required string IdempotencyKey { get; set; }
+    public required string RequestHash { get; set; }
+    public required string State { get; set; }
+    public int? ResponseStatus { get; set; }
+    public Guid? ResourceId { get; set; }
+    public Guid? JobId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
 }

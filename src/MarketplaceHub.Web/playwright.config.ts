@@ -4,5 +4,6 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   retries: 0,
-  use: { baseURL: 'https://localhost', ignoreHTTPSErrors: true, trace: 'retain-on-failure' }
+  webServer: { command: 'node ./node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173', url: 'http://127.0.0.1:4173', reuseExistingServer: false },
+  use: { baseURL: 'http://127.0.0.1:4173', trace: 'retain-on-failure' }
 })
