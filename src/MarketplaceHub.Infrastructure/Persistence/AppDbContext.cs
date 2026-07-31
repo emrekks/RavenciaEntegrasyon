@@ -88,6 +88,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<ReturnDecision> ReturnDecisions => Set<ReturnDecision>();
     public DbSet<ReturnEvidence> ReturnEvidence => Set<ReturnEvidence>();
     public DbSet<ReturnStockDisposition> ReturnStockDispositions => Set<ReturnStockDisposition>();
+    public DbSet<LegalEntityProfile> LegalEntityProfiles => Set<LegalEntityProfile>();
+    public DbSet<InvoicePolicy> InvoicePolicies => Set<InvoicePolicy>();
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<InvoiceLine> InvoiceLines => Set<InvoiceLine>();
+    public DbSet<InvoicePartySnapshot> InvoicePartySnapshots => Set<InvoicePartySnapshot>();
+    public DbSet<InvoiceDocument> InvoiceDocuments => Set<InvoiceDocument>();
+    public DbSet<InvoiceSubmissionAttempt> InvoiceSubmissionAttempts => Set<InvoiceSubmissionAttempt>();
+    public DbSet<MarketplaceDelivery> MarketplaceDeliveries => Set<MarketplaceDelivery>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -97,6 +105,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         ConfigureOperations(builder);
         builder.ConfigureF2Models();
         builder.ConfigureF3Models();
+        builder.ConfigureF4Models();
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess) { GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
@@ -110,6 +119,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             throw new InvalidOperationException("Order status history is append-only.");
         if (ChangeTracker.Entries<ReturnDecision>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Return decisions are append-only.");
+        if (ChangeTracker.Entries<InvoiceLine>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Invoice lines are immutable snapshots.");
+        if (ChangeTracker.Entries<InvoicePartySnapshot>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Invoice party snapshots are immutable.");
+        if (ChangeTracker.Entries<InvoiceDocument>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Invoice documents are immutable.");
+        if (ChangeTracker.Entries<InvoiceSubmissionAttempt>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Invoice submission attempts are append-only.");
+        if (ChangeTracker.Entries<MarketplaceDelivery>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Marketplace delivery attempts are append-only.");
     }
 
     private static void ConfigureIdentity(ModelBuilder builder)

@@ -38,3 +38,11 @@ Komut advisory lock alır; Tenant, Owner, OWNER membership, UserSecurity, kapal�
 ## Yerel sınır
 
 PILOT_LOCAL self-signed Caddy CA ve dosya izinleriyle kalıcı Data Protection volume'u kullanabilir. Production, PFX certificate ile key-at-rest encryption yoksa başlangıçta fail-closed olur. Yerel sonuç hedef VPS kabulü değildir.
+
+## Docker olmadan Windows localhost
+
+Docker Desktop bulunmayan geliştirme bilgisayarında PostgreSQL 18'in ayrı bir local cluster'ı kullanılabilir. Mevcut Windows PostgreSQL service/data dizinine müdahale etme; proje cluster'ını ignore edilen `tmp/local-panel/pgdata` altında farklı bir portta çalıştır. Secret dosyaları repository dışında `%LOCALAPPDATA%\Ravencia\local-panel-secrets` altında tutulur.
+
+API için `MARKETPLACEHUB_ENVIRONMENT=PILOT_LOCAL`, file-backed credential key, ayrı DB connection, Data Protection ve private-file köklerini ayarla; migration ve explicit Owner bootstrap komutlarını çalıştır. API'yi yalnız `http://127.0.0.1:5080`, Vite'ı `VITE_API_PROXY=http://127.0.0.1:5080 npm.cmd run dev -- --host 127.0.0.1 --port 5173` ile başlat. Panel `http://localhost:5173` adresindedir.
+
+PILOT_LOCAL HTTP'de session/CSRF cookie geliştirme amacıyla Secure olmadan yazılabilir; başka her environment'ta Secure zorunludur. Bu çalışma biçimi VPS/production TLS, container, reboot, volume, backup veya restore kanıtı değildir.

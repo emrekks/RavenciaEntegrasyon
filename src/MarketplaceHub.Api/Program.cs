@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using MarketplaceHub.Api.F2;
 using MarketplaceHub.Api.F3;
+using MarketplaceHub.Api.F4;
 using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
@@ -58,6 +59,7 @@ app.UseRateLimiter();
 app.MapAuthEndpoints();
 app.MapF2Endpoints();
 app.MapF3Endpoints();
+app.MapF4Endpoints();
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 app.Run();

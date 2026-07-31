@@ -74,4 +74,16 @@ F3 ayrıntılı kabul ve kanıt eşlemesi [F3-plan.md](F3-plan.md) ve [F3-eviden
 | `F3-REQ-014–019` | Local dry reconciliation, kill switch, F3 API/UI, adapter fixtures ve resilience | Route/repository/secret scan; .NET/Web build ve test seti | READY_LOCAL_CORE; PERFORMANCE/STAGE BLOCKED_EXTERNAL |
 | `F3-EXIT-001–006` | F3 çıkış seti | `F3-EV-001–019` | BLOCKED_EXTERNAL |
 
-F4 production kodu, route, menü veya placeholder oluşturulmamıştır.
+## F4 uygulama izi
+
+F4 ayrıntılı kabul ve kanıt eşlemesi [F4-plan.md](F4-plan.md) ve [F4-evidence-log.md](F4-evidence-log.md) içindedir.
+
+| Aralık | Uygulama | Kanıt | Sonuç |
+| --- | --- | --- | --- |
+| `F4-REQ-001–004` | LegalEntity/Policy, invoice/line/party snapshot ve allow-list mali state modeli | PostgreSQL 18.4 fresh migration, metadata/state testleri; onaysız mali otorite fail-closed | DONE_LOCAL_CORE / POLICY BLOCKED_DECISION |
+| `F4-REQ-005–010` | Provider/marketplace portları, E-Faturam sınırı, attempt/unknown/document/delivery modeli | Resmî source guard, anonim taxpayer fixture, private checksum/no-store ve job ayrımı | DONE_LOCAL_CORE / PROVIDER-STAGE BLOCKED_EXTERNAL |
+| `F4-REQ-011–015` | Cancellation/adjustment fallback, due issue, korumalı API, F4 UI ve reconciliation | API/repository guard, Web build/test, local dry reconciliation | PARTIAL_LOCAL / POLICY-STAGE BLOCKED_EXTERNAL |
+| `F4-REQ-016–018` | Credential/PII koruması, tek F4 migration, DB+file restore sınırı | Secret masking/protection, PostgreSQL integration; hedef restore açık | DONE_LOCAL_CORE / RESTORE BLOCKED_EXTERNAL |
+| `F4-EXIT-001–004` | F4 yerel çıkış seti | `F4-EV-001–017` | READY_LOCAL_CORE; BLOCKED_EXTERNAL |
+
+F5 production kodu, route, menü veya placeholder oluşturulmamıştır.

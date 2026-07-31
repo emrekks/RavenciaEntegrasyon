@@ -65,3 +65,11 @@ Platform credential, webhook secret ve mağaza/merchant scope alanlarının envi
 - Webhook `API_KEY` veya `BASIC_AUTHENTICATION` verifier değeri Data Protection purpose `MarketplaceHub.WebhookVerifier.v1` ile şifreli tutulur. Opaque route token'ın yalnız HMAC-SHA256 özeti saklanır ve açık token yalnız oluşturma yanıtında bir kez döner.
 - Trendyol base URL'leri resmî production/stage sabitleridir. Credential environment'a bağlıdır; production/stage credential birbirinin yerine kullanılmaz.
 - Global `FeatureFlags__ExternalWrites=false` korunur. Connection içi `ExternalWritesEnabled=false` ikinci kill switch'tir ve F3'te bunu açan kullanıcı API'si yoktur.
+
+## F4 E-Faturam somutlaştırması
+
+- Provider firma/partner kapsamı connection kaydıdır; secret environment değişkeni değildir.
+- Resmî sign-in sözleşmesindeki e-posta + parola, UI/API üzerinden write-only alınır ve aynı Data Protection purpose ile şifreli `EMAIL_PASSWORD` credential kaydında tutulur. E-posta yalnız maskeli hint olarak kalır; parola, access token ve refresh token API/log/fixture'da gösterilmez.
+- API `1.0.0`, environment ve connection scope değişirse bütün F4 capability kanıtları `UNKNOWN`a döner.
+- `AUTO_INVOICE_ENABLED=false`, global external-writes, connection external-writes ve capability kapıları birlikte uygulanır. F4'te auto/write anahtarlarını açan kullanıcı API'si yoktur.
+- Legal entity tax identity ve invoice party snapshot'ları ayrı Data Protection purpose'larıyla korunur; API yalnız maskeli tax identity döndürür. Invoice XML/PDF private FileAsset sınırındadır.

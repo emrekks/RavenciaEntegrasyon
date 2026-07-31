@@ -31,6 +31,12 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                         var succeeded = await processor.ProcessAsync(job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.Id.ToString("N"), stoppingToken);
                         await jobs.CompleteAsync(job.Id, job.LeaseToken, succeeded, succeeded ? null : "F3_JOB_REJECTED", stoppingToken);
                     }
+                    else if (job.JobType is F4JobTypes.ConnectionTest or F4JobTypes.InvoiceSubmit or F4JobTypes.InvoiceReconcile or F4JobTypes.InvoiceDocumentFetch or F4JobTypes.MarketplaceDelivery or F4JobTypes.InvoiceCancellation or F4JobTypes.InvoiceDueScan)
+                    {
+                        var processor = scope.ServiceProvider.GetRequiredService<IF4JobProcessor>();
+                        var succeeded = await processor.ProcessAsync(job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.Id.ToString("N"), stoppingToken);
+                        await jobs.CompleteAsync(job.Id, job.LeaseToken, succeeded, succeeded ? null : "F4_JOB_REJECTED", stoppingToken);
+                    }
                     else
                     {
                         logger.LogWarning("Failing unsupported job type {JobType} with correlation-safe metadata", job.JobType);

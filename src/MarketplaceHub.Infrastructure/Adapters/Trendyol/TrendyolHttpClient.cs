@@ -11,7 +11,7 @@ using Microsoft.Extensions.Configuration;
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
 public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthenticationHandler authentication, IConfiguration configuration, TimeProvider timeProvider)
-    : IConnectionPort, IReferenceDataPort, IProductPort, IInventoryPricePort, IOrderPort, IReturnPort
+    : IConnectionPort, IReferenceDataPort, IProductPort, IInventoryPricePort, IOrderPort, IReturnPort, IInvoiceMarketplacePort
 {
     private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
 
@@ -96,6 +96,21 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
 
     Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<RemoteReturnClaim>.Failure(TrendyolErrorMapper.Unsupported("Claim kimliği tekil lookup biçimi Stage kanıtı bekliyor.")));
     public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.Unsupported("Return write capability ve exact endpoint Stage kanıtı bekleniyor.")));
+
+    public async Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized)) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.WriteClosed());
+        if (!string.Equals(command.DeliveryType, "LINK", StringComparison.Ordinal)) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Unsupported("Yalnız resmî link delivery sözleşmesi doğrulandı; file delivery ayrı content akışı kanıtı bekliyor."));
+        JsonDocument payload; try { payload = JsonDocument.Parse(command.PayloadJson); } catch (JsonException) { return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Contract()); }
+        using (payload)
+        {
+            if (!payload.RootElement.TryGetProperty("invoiceLink", out var link) || link.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(link.GetString()) || !payload.RootElement.TryGetProperty("shipmentPackageId", out var packageId) || packageId.ValueKind is not (JsonValueKind.String or JsonValueKind.Number)) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Unsupported("Public invoice link ve package payload'ı doğrulanmadan delivery HTTP çağrısı yapılmaz."));
+            var response = await SendAsync(authorized, HttpMethod.Post, TrendyolEndpoints.InvoiceLinks(authorized.Connection.ExternalStoreId), JsonContent.Create(payload.RootElement), cancellationToken); if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(response.Error!, response.RateLimit);
+            return AdapterResult<InvoiceDeliveryResult>.Success(new(command.ExternalPackageId, "DELIVERED"), response.RateLimit);
+        }
+    }
+
+    public Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<InvoiceDeliveryStatus>.Failure(TrendyolErrorMapper.Unsupported("Invoice delivery status query endpoint’i doğrulanmadı; 409 sahte başarı sayılmaz.")));
 
     private bool CanWrite(TrendyolRequestContext context) => GlobalWritesEnabled && context.ExternalWritesEnabled;
     private static int Page(string? value) => int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var page) && page >= 0 ? page : 0;

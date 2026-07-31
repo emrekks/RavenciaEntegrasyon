@@ -21,3 +21,7 @@ Bu sıra değiştirilmez ve bir platformun belge/test erişimi diğerini üretim
 | Stitch arayüz dosyası | İlgili UI fazı | 2026-07-31 tarihinde sağlandı; ZIP SHA-256 `3B51EBF78D7653933451E2B41D627A5281E14298844F7B7AFFAFC0B8198CE0A9`; F3 planında faz filtresiyle incelendi | Yalnız ilgili faz ekranları görsel referans alınır; demo değerler ve ileri faz menüleri uygulanmaz | Hayır |
 
 Platform doküman URL'leri capability matrisinde tutulur. Test hesabı olmadan `SUPPORTED` kullanılmaz.
+
+## F4 güncellemesi
+
+E-Faturam entegrasyon dokümanı ve sign-in kaynağı doğrulandı; test firma/credential, API kullanıcısı-pazaryeri entegratörü hesabı, legal entity girdisi ve mali policy kararları henüz sağlanmadı. Trendyol invoice link/file kaynakları doğrulandı ancak Stage package/delivery kanıtı yok. Bu girdiler F4 yerel çekirdeğini durdurmaz; taxpayer→submit→status→document ve marketplace delivery SIT/production kabulünü durdurur. VPS/domain yokluğu private localhost panelini durdurmaz, public document link ve production smoke'u durdurur.

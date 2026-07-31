@@ -1,6 +1,7 @@
 using System.Security.Cryptography.X509Certificates;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
+using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
 using MarketplaceHub.Infrastructure.Bootstrap;
 using MarketplaceHub.Infrastructure.Files;
 using MarketplaceHub.Infrastructure.Identity;
@@ -71,6 +72,15 @@ public static class DependencyInjection
         services.AddScoped<IF3WebhookService, F3WebhookService>();
         services.AddScoped<IF3JobProcessor, F3JobProcessor>();
         services.AddScoped<IF3ReconciliationService, F3ReconciliationService>();
+        services.Configure<TrendyolEFaturamOptions>(configuration.GetSection(TrendyolEFaturamOptions.SectionName));
+        services.AddHttpClient("TrendyolEFaturam", client => client.Timeout = Timeout.InfiniteTimeSpan).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
+        services.AddScoped<TrendyolEFaturamAuthenticationHandler>();
+        services.AddScoped<TrendyolEFaturamHttpClient>();
+        services.AddScoped<IInvoiceProviderPort>(provider => provider.GetRequiredService<TrendyolEFaturamHttpClient>());
+        services.AddScoped<IInvoiceMarketplacePort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
+        services.AddScoped<IF4BillingService, F4BillingService>();
+        services.AddScoped<IF4JobProcessor, F4JobProcessor>();
+        services.AddScoped<IF4ReconciliationService, F4ReconciliationService>();
         services.AddSingleton<IPrivateFileStorage>(new PrivateFileStorage(filesRoot));
         services.Configure<BootstrapOptions>(configuration.GetSection("Bootstrap"));
         services.AddScoped<BootstrapService>();

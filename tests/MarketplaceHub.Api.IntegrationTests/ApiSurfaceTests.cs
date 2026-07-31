@@ -12,5 +12,14 @@ public sealed class ApiSurfaceTests
         foreach (var required in new[] { "/connections", "/orders", "/shipments", "/returns", "/hooks/{connectionPublicId:guid}/{routeToken}" }) Assert.Contains(required, f3, StringComparison.Ordinal);
         foreach (var forbidden in new[] { "/invoices", "/billing", "/reports", "/tenants", "/users", "Shopify", "Hepsiburada", "N11", "Pazarama" }) Assert.DoesNotContain(forbidden, f3, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void F4_surface_contains_only_invoice_and_billing_families_with_write_guards()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Api", "F4", "F4Endpoints.cs"));
+        foreach (var required in new[] { "/billing/legal-entity-profile", "/billing/invoice-policies/", "/invoices", "/submit-jobs", "/reconcile-jobs", "/marketplace-delivery-jobs", "/cancellation-jobs", "/documents/{documentId:guid}/content" }) Assert.Contains(required, source, StringComparison.Ordinal);
+        foreach (var guard in new[] { "Idempotency-Key", "If-Match", "REAUTHENTICATION_FAILED", "EXPLICIT_CONFIRMATION_REQUIRED", "no-store" }) Assert.Contains(guard, source, StringComparison.Ordinal);
+        foreach (var forbidden in new[] { "/reports", "/accounting", "/erp", "/tenants", "/users", "Shopify", "Hepsiburada", "N11", "Pazarama" }) Assert.DoesNotContain(forbidden, source, StringComparison.OrdinalIgnoreCase);
+    }
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }
 }

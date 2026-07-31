@@ -5,14 +5,14 @@
 | Alan | Değer |
 | --- | --- |
 | Faz | `F4` |
-| Plan durumu | `READY_FOR_APPROVAL` |
-| Uygulama durumu | `NOT_STARTED` |
+| Plan durumu | `APPROVED` |
+| Uygulama durumu | `READY_LOCAL_CORE / BLOCKED_EXTERNAL` |
 | Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 5, 9-10, 22-23, 25, 29, 38, 42-46, 51-52, 57-58, 60, 63-64, 67, 70 ve 72-73 |
 | Yetkili şartname SHA-256 | `E98365DC34804A478D5DBB41E1997FB6742FD0723A76C08CEE138321F0E2ECA3` |
 | Ön koşul | F3 yerel çekirdek commit’i `5ba830d`; gerçek Stage/SIT kanıtları açık dış blocker olarak kayıtlı |
 | Hedef sonuç | Yerel domain/persistence/fake-contract uygulaması `READY_LOCAL_CORE`; test firma, mali karar ve dış erişim gelene kadar gerçek submit/delivery `BLOCKED_EXTERNAL` |
 
-Bu dosya F4 production kodu için onay kapısıdır. Plan onaylanmadan migration, controller, endpoint, menü, provider adapter’ı veya placeholder oluşturulmaz. F3’ün şartname çıkışı gerçek smoke kanıtı **veya açık dış blocker** kabul ettiği için kayıtlı F3 dış blocker’ları yerel F4 planlamasını durdurmaz; canlı fatura akışını açmayı durdurur.
+Bu plan kullanıcı tarafından onaylandı ve F4 yerel çekirdeği uygulandı. F3’ün şartname çıkışı gerçek smoke kanıtı **veya açık dış blocker** kabul ettiği için kayıtlı F3 dış blocker’ları yerel F4 uygulamasını durdurmadı; canlı fatura akışını açmayı durdurur.
 
 ## F4 hedefleri
 
@@ -41,7 +41,7 @@ Bu dosya F4 production kodu için onay kapısıdır. Plan onaylanmadan migration
 - Tek solution, modüler monolit, API + Worker ve tek PostgreSQL migration zinciri korunmaktadır.
 - F1 güvenlik/session/tenant/job/inbox/audit/private-file, F2 katalog-stok ve F3 Trendyol order/package/return çekirdeği hazırdır.
 - `Order` mali ve adres snapshot’larını; `FileAsset`, `OperationalIssue`, `FeatureFlag`, `IntegrationJob` ve dış etki idempotency altyapısı mevcut fazlardan taşır.
-- Invoice aggregate’ı, billing tabloları, F4 portları, E-Faturam adapter’ı, F4 endpoint/UI ve F4 migration henüz yoktur.
+- Plan hazırlanırken invoice aggregate’ı, billing tabloları, F4 portları, E-Faturam adapter’ı, F4 endpoint/UI ve F4 migration yoktu; onay sonrası bu yerel çekirdek oluşturuldu.
 - `AUTO_INVOICE_ENABLED` katalog/runbook düzeyinde `false`; gerçek E-Faturam credential/test firma ve mali müşavir kararı yoktur.
 - VPS/domain yokluğu domain, migration, fake/contract ve yerel UI geliştirmesini engellemez; public belge linki ve gerçek delivery/SIT kanıtını engeller.
 
@@ -49,24 +49,24 @@ Bu dosya F4 production kodu için onay kapısıdır. Plan onaylanmadan migration
 
 | Kimlik | Kaynak | Kabul ölçütü | Planlanan kanıt | Dosya/modül | Dış bağımlılık | Durum |
 | --- | --- | --- | --- | --- | --- | --- |
-| `F4-REQ-001` | s.22-23, 63 | LegalEntityProfile ve InvoicePolicy tenant/connection kapsamlı, sürümlü ve sorgulanabilir kolonlarla kurulur; auto-submit kapalıdır. | PostgreSQL FK/UQ/check/concurrency testleri | Domain/Persistence | Mali profil girdisi | PLANNED |
-| `F4-REQ-002` | s.25, 63-64 | Invoice allow-list state machine tam uygulanır; mali ve lojistik state ayrıdır. | Tüm izinli/yasak transition unit testleri | Domain | Yok | PLANNED |
-| `F4-REQ-003` | s.22-23, 29 | InvoiceLine ve PartySnapshot işlem anını immutable saklar; sonraki order/customer değişikliği belgeyi etkilemez. | Snapshot immutability testi | Domain/Persistence | Anonim fixture | PLANNED |
+| `F4-REQ-001` | s.22-23, 63 | LegalEntityProfile ve InvoicePolicy tenant/connection kapsamlı, sürümlü ve sorgulanabilir kolonlarla kurulur; auto-submit kapalıdır. | PostgreSQL FK/UQ/check/concurrency testleri | Domain/Persistence | Mali profil girdisi | DONE_LOCAL |
+| `F4-REQ-002` | s.25, 63-64 | Invoice allow-list state machine tam uygulanır; mali ve lojistik state ayrıdır. | Tüm izinli/yasak transition unit testleri | Domain | Yok | DONE_LOCAL |
+| `F4-REQ-003` | s.22-23, 29 | InvoiceLine ve PartySnapshot işlem anını immutable saklar; sonraki order/customer değişikliği belgeyi etkilemez. | Snapshot immutability testi | Domain/Persistence | Anonim fixture | DONE_MODEL |
 | `F4-REQ-004` | s.29, 63-64 | Para/KDV/indirim/rounding satır ve toplamları deterministic policy ile doğrulanır. | Money/rounding/property testleri | Domain/Application | Mali rounding kararı | BLOCKED_DECISION |
-| `F4-REQ-005` | s.45 | `IInvoiceProviderPort` ve `IInvoiceMarketplacePort` platformdan bağımsız exact sözleşmeyle tamamlanır; eksik production placeholder yoktur. | Boundary/source guard | Application | Yok | PLANNED |
-| `F4-REQ-006` | s.42, 45-46 | Provider environment/auth/scope/version capability evidence taşır; tüm invoice capability’leri başlangıçta `UNKNOWN`dır. | Capability/no-HTTP testleri | Application/Adapter/Persistence | Test credential/firma | PLANNED |
-| `F4-REQ-007` | s.29, 45-46, 64 | Taxpayer sonucu saklanır; E-Fatura/E-Arşiv seçimi biçim kontrolü değil sonuç + policy ile yapılır. | Tax ID format + taxpayer/type fixture testleri | Provider adapter/Application | Test firma | PLANNED |
-| `F4-REQ-008` | s.23, 25, 29, 57, 64 | Submit request hash/idempotency tekildir; timeout `UNKNOWN_RESULT` olur ve query öncesi ikinci submit yoktur. | Worker-kill/timeout/retry/concurrency testleri | Persistence/Worker/Adapter | Provider query fixture | PLANNED |
-| `F4-REQ-009` | s.23, 29, 46, 64 | ETTN/UUID, provider id, numara ve XML/PDF hash’i ayrı saklanır; document immutable/private/no-store’dur. | Checksum, MIME, traversal, cross-tenant ve streaming testleri | Persistence/File/API | Anonim XML/PDF | PLANNED |
-| `F4-REQ-010` | s.23, 25, 29, 38, 45-46 | MarketplaceDelivery submit’ten ayrı job/idempotency kapsamıdır; delivery hatası yeni invoice oluşturmaz. | Duplicate/delivery retry testleri | Application/Persistence/Worker | Trendyol Stage | PLANNED |
+| `F4-REQ-005` | s.45 | `IInvoiceProviderPort` ve `IInvoiceMarketplacePort` platformdan bağımsız exact sözleşmeyle tamamlanır; eksik production placeholder yoktur. | Boundary/source guard | Application | Yok | DONE_LOCAL |
+| `F4-REQ-006` | s.42, 45-46 | Provider environment/auth/scope/version capability evidence taşır; tüm invoice capability’leri başlangıçta `UNKNOWN`dır. | Capability/no-HTTP testleri | Application/Adapter/Persistence | Test credential/firma | DONE_LOCAL / BLOCKED_EXTERNAL |
+| `F4-REQ-007` | s.29, 45-46, 64 | Taxpayer sonucu saklanır; E-Fatura/E-Arşiv seçimi biçim kontrolü değil sonuç + policy ile yapılır. | Tax ID format + taxpayer/type fixture testleri | Provider adapter/Application | Test firma | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F4-REQ-008` | s.23, 25, 29, 57, 64 | Submit request hash/idempotency tekildir; timeout `UNKNOWN_RESULT` olur ve query öncesi ikinci submit yoktur. | Worker-kill/timeout/retry/concurrency testleri | Persistence/Worker/Adapter | Provider query fixture | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F4-REQ-009` | s.23, 29, 46, 64 | ETTN/UUID, provider id, numara ve XML/PDF hash’i ayrı saklanır; document immutable/private/no-store’dur. | Checksum, MIME, traversal, cross-tenant ve streaming testleri | Persistence/File/API | Anonim XML/PDF | DONE_LOCAL_CORE |
+| `F4-REQ-010` | s.23, 25, 29, 38, 45-46 | MarketplaceDelivery submit’ten ayrı job/idempotency kapsamıdır; delivery hatası yeni invoice oluşturmaz. | Duplicate/delivery retry testleri | Application/Persistence/Worker | Trendyol Stage | DONE_LOCAL_CORE / BLOCKED_EXTERNAL |
 | `F4-REQ-011` | s.25, 29, 46, 64 | İptal/iade/düzeltme eski invoice/document’ı değiştirmez; `original_invoice_id` ile yeni kayıt veya issue üretir. | Partial return/cancel/adjustment testleri | Domain/Application | Mali policy + provider capability | BLOCKED_DECISION |
-| `F4-REQ-012` | s.23, 63-64 | Due/late dedupe OperationalIssue üretir; mali onay yoksa otomatik fatura oluşturmaz/göndermez. | Clock/dedupe/kill-switch testleri | Application/Persistence/Worker | Deadline/trigger kararı | BLOCKED_DECISION |
-| `F4-REQ-013` | s.38 | Yalnız şartnamedeki billing/invoice endpointleri CSRF, re-auth, If-Match, idempotency ve no-store korumalarıyla açılır. | API surface/security testleri | API | Yok | PLANNED |
-| `F4-REQ-014` | s.39-41, 64, 67 | `/invoices` ve billing policy UI loading/empty/error/unknown/manual-review durumlarını gösterir; otomatik submit varsayılan kapalıdır. | Component/a11y/route guard | Web | Stitch F4 referansı mevcut | PLANNED |
-| `F4-REQ-015` | s.46, 64 | Invoice reconciliation provider status, ETTN/numara, document hash ve marketplace delivery farklarını açıklanabilir gösterir; sessiz overwrite yoktur. | Fake/fixture dry-run testi | Application/Persistence | Stage read | PLANNED |
-| `F4-REQ-016` | s.9, 23, 51-52, 57, 64 | Credential/PII encrypted-minimized; secret, TCKN/VKN, adres ve belge içeriği log/API/fixture/manifest’e sızmaz. | Secret/PII scan ve redaction testleri | Security/Adapter/API | KVKK/mali retention kararı | PLANNED |
-| `F4-REQ-017` | s.17, 22-23, 56-58 | Tek tarihsel migration; composite tenant FK/UQ/check/version/idempotency DB’de uygulanır ve fresh/upgrade geçer. | PostgreSQL 18 migration/upgrade testleri | Persistence | Yok | PLANNED |
-| `F4-REQ-018` | s.55, 57-58, 64 | XML/PDF ve DB birlikte backup/restore edilir; restore sonrası checksum ve read-only reconciliation geçer. | İzole restore smoke | Runbook/Persistence/File | Backup profili | PLANNED |
+| `F4-REQ-012` | s.23, 63-64 | Due/late dedupe OperationalIssue üretir; mali onay yoksa otomatik fatura oluşturmaz/göndermez. | Clock/dedupe/kill-switch testleri | Application/Persistence/Worker | Deadline/trigger kararı | PARTIAL_LOCAL / BLOCKED_DECISION |
+| `F4-REQ-013` | s.38 | Yalnız şartnamedeki billing/invoice endpointleri CSRF, re-auth, If-Match, idempotency ve no-store korumalarıyla açılır. | API surface/security testleri | API | Yok | DONE_LOCAL |
+| `F4-REQ-014` | s.39-41, 64, 67 | `/invoices` ve billing policy UI loading/empty/error/unknown/manual-review durumlarını gösterir; otomatik submit varsayılan kapalıdır. | Component/a11y/route guard | Web | Stitch F4 referansı mevcut | DONE_BUILD |
+| `F4-REQ-015` | s.46, 64 | Invoice reconciliation provider status, ETTN/numara, document hash ve marketplace delivery farklarını açıklanabilir gösterir; sessiz overwrite yoktur. | Fake/fixture dry-run testi | Application/Persistence | Stage read | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F4-REQ-016` | s.9, 23, 51-52, 57, 64 | Credential/PII encrypted-minimized; secret, TCKN/VKN, adres ve belge içeriği log/API/fixture/manifest’e sızmaz. | Secret/PII scan ve redaction testleri | Security/Adapter/API | KVKK/mali retention kararı | DONE_LOCAL_CORE / BLOCKED_DECISION |
+| `F4-REQ-017` | s.17, 22-23, 56-58 | Tek tarihsel migration; composite tenant FK/UQ/check/version/idempotency DB’de uygulanır ve fresh/upgrade geçer. | PostgreSQL 18 migration/upgrade testleri | Persistence | Yok | DONE_LOCAL |
+| `F4-REQ-018` | s.55, 57-58, 64 | XML/PDF ve DB birlikte backup/restore edilir; restore sonrası checksum ve read-only reconciliation geçer. | İzole restore smoke | Runbook/Persistence/File | Backup profili | BLOCKED_EXTERNAL |
 
 ## Veri modeli ve değişmezler
 
@@ -169,21 +169,21 @@ Provider raw status kodları ve request enum’ları adapter contract/fixture i�
 
 | Kanıt | Senaryo | Beklenen sonuç | Durum |
 | --- | --- | --- | --- |
-| `F4-EV-001` | Format + warnings-as-errors build | 0 warning, 0 error | PLANNED |
-| `F4-EV-002` | Fresh PostgreSQL 18 + F3→F4 upgrade | Tek migration zinciri; business/credential seed yok | PLANNED |
-| `F4-EV-003` | Invoice state transition matrisi | Yalnız allow-list; lojistik state etkilenmez | PLANNED |
+| `F4-EV-001` | Format + warnings-as-errors build | 0 warning, 0 error | PASS_BUILD |
+| `F4-EV-002` | Fresh PostgreSQL 18 + F3→F4 upgrade | Tek migration zinciri; business/credential seed yok | PASS |
+| `F4-EV-003` | Invoice state transition matrisi | Yalnız allow-list; lojistik state etkilenmez | PASS_LOCAL |
 | `F4-EV-004` | VAT/discount/rounding/line-total property testleri | Onaylı policy ile deterministic toplam | BLOCKED_DECISION |
-| `F4-EV-005` | VKN/TCKN + taxpayer + type fixture’ları | Biçim tek başına taxpayer sonucu olmaz | PLANNED |
-| `F4-EV-006` | Aynı submit 20 paralel + worker-kill/timeout | Tek dış etki; unknown query’siz ikinci submit yok | PLANNED |
-| `F4-EV-007` | XML/PDF checksum/private streaming | Immutable, tenant-safe, no-store ve restore edilebilir | PLANNED |
-| `F4-EV-008` | Snapshot mutation | Customer/order değişikliği kesilmiş snapshot’ı değiştirmez | PLANNED |
-| `F4-EV-009` | Delivery failure/retry | Yeni invoice yok; yalnız delivery retry/reconcile | PLANNED |
+| `F4-EV-005` | VKN/TCKN + taxpayer + type fixture’ları | Biçim tek başına taxpayer sonucu olmaz | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F4-EV-006` | Aynı submit 20 paralel + worker-kill/timeout | Tek dış etki; unknown query’siz ikinci submit yok | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F4-EV-007` | XML/PDF checksum/private streaming | Immutable, tenant-safe, no-store ve restore edilebilir | PASS_LOCAL_CORE |
+| `F4-EV-008` | Snapshot mutation | Customer/order değişikliği kesilmiş snapshot’ı değiştirmez | PASS_MODEL |
+| `F4-EV-009` | Delivery failure/retry | Yeni invoice yok; yalnız delivery retry/reconcile | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
 | `F4-EV-010` | Partial cancel/return | Eski belge değişmez; policy’ye göre adjustment/cancel/manual issue | BLOCKED_DECISION |
-| `F4-EV-011` | Secret/PII/log/API/fixture/manifest scan | Credential, token, TCKN/VKN, adres ve belge içeriği sızmaz | PLANNED |
-| `F4-EV-012` | AUTO_INVOICE kill switch | Mali onay yokken dış submit job/HTTP yok | PLANNED |
-| `F4-EV-013` | Invoice reconciliation | Status/ETTN/numara/hash/delivery farkı açıklanabilir | PLANNED |
-| `F4-EV-014` | API/UI surface ve a11y | Yalnız F4 rotaları; unknown/manual states görünür; F5+ yok | PLANNED |
-| `F4-EV-015` | DB + files backup/restore | Document checksum ve read-only reconciliation geçer | PLANNED |
+| `F4-EV-011` | Secret/PII/log/API/fixture/manifest scan | Credential, token, TCKN/VKN, adres ve belge içeriği sızmaz | PASS_LOCAL |
+| `F4-EV-012` | AUTO_INVOICE kill switch | Mali onay yokken dış submit job/HTTP yok | PASS_LOCAL |
+| `F4-EV-013` | Invoice reconciliation | Status/ETTN/numara/hash/delivery farkı açıklanabilir | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F4-EV-014` | API/UI surface ve a11y | Yalnız F4 rotaları; unknown/manual states görünür; F5+ yok | PASS_BUILD |
+| `F4-EV-015` | DB + files backup/restore | Document checksum ve read-only reconciliation geçer | BLOCKED_EXTERNAL |
 | `F4-EV-016` | E-Faturam test firma E2E | Taxpayer→submit→query→document; veya açık dış blocker | BLOCKED_EXTERNAL |
 | `F4-EV-017` | Kullanıcı onaylı delivery/production smoke | Düşük adet, audit/correlation ve rollback kanıtlı | BLOCKED_EXTERNAL |
 
@@ -227,11 +227,11 @@ Provider raw status kodları ve request enum’ları adapter contract/fixture i�
 
 | Kimlik | Ölçülebilir koşul | Kanıt | Plan durumu |
 | --- | --- | --- | --- |
-| `F4-EXIT-001` | Mali ve lojistik state tamamen ayrıdır. | State/API/schema guard | PLANNED |
-| `F4-EXIT-002` | Duplicate ve `UNKNOWN_RESULT` akışı ikinci belge üretmeden güvenlidir. | Concurrency/timeout/query testleri | PLANNED |
-| `F4-EXIT-003` | XML/PDF immutable, checksum’lı, tenant-protected ve restore edilebilirdir. | File + backup/restore smoke | PLANNED |
-| `F4-EXIT-004` | Mali onay yoksa otomatik kesim ve dış submit kapalıdır. | Kill-switch/no-HTTP testleri | PLANNED |
+| `F4-EXIT-001` | Mali ve lojistik state tamamen ayrıdır. | State/API/schema guard | DONE_LOCAL |
+| `F4-EXIT-002` | Duplicate ve `UNKNOWN_RESULT` akışı ikinci belge üretmeden güvenlidir. | Job/attempt/idempotency + state testleri; gerçek timeout concurrency dış | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F4-EXIT-003` | XML/PDF immutable, checksum’lı, tenant-protected ve restore edilebilirdir. | File/schema/API guard; hedef restore smoke dış | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F4-EXIT-004` | Mali onay yoksa otomatik kesim ve dış submit kapalıdır. | Dörtlü kill-switch ve fail-closed adapter | DONE_LOCAL |
 
 ## Plan sonucu ve uygulama kapısı
 
-Plan `READY_FOR_APPROVAL` durumundadır. F4 production uygulaması henüz başlamamıştır. Onay sonrası yerel domain/persistence/fake-contract/API/UI çekirdeği uygulanabilir; gerçek provider HTTP çağrıları yalnız resmî sözleşme + test firma/fixture kanıtı kadar açılır. Test firma, mali/KVKK kararları, VPS/domain ve Stage package verisi nedeniyle gerçek submit/delivery ve faz çıkışı şimdilik `BLOCKED_EXTERNAL` kalacaktır.
+Plan onaylanmış ve yerel domain/persistence/contract/API/UI çekirdeği `READY_LOCAL_CORE` durumuna getirilmiştir. Gerçek provider HTTP çağrıları yalnız resmî sözleşme + test firma/fixture kanıtı kadar açılır. Test firma, mali/KVKK kararları, VPS/domain, backup/restore ve Stage package verisi nedeniyle gerçek submit/delivery ve F4 faz çıkışı `BLOCKED_EXTERNAL` kalır. F5 açılmamıştır.

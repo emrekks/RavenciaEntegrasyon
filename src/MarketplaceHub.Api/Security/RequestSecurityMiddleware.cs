@@ -30,7 +30,8 @@ public sealed class RequestSecurityMiddleware(RequestDelegate next)
     public static string IssueCsrf(HttpResponse response)
     {
         var token = TokenHasher.NewToken();
-        response.Cookies.Append(CsrfCookie, token, new CookieOptions { HttpOnly = true, Secure = true, SameSite = SameSiteMode.Lax, Path = "/", MaxAge = TimeSpan.FromMinutes(30) });
+        var secure = !string.Equals(response.HttpContext.RequestServices.GetRequiredService<IConfiguration>()["MARKETPLACEHUB_ENVIRONMENT"], "PILOT_LOCAL", StringComparison.OrdinalIgnoreCase) || response.HttpContext.Request.IsHttps;
+        response.Cookies.Append(CsrfCookie, token, new CookieOptions { HttpOnly = true, Secure = secure, SameSite = SameSiteMode.Lax, Path = "/", MaxAge = TimeSpan.FromMinutes(30) });
         return token;
     }
 

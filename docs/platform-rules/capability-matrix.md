@@ -4,7 +4,7 @@
 
 Support level yalnız `SUPPORTED`, `NOT_SUPPORTED`, `UNKNOWN`, `TEMPORARILY_UNAVAILABLE` olabilir. Başlangıç değeri `UNKNOWN`dur. `SUPPORTED` için birlikte şunlar zorunludur: güncel resmî kaynak, test hesabı veya secret/PII içermeyen anonim fixture, doğrulama tarihi, kaynak sürümü, gerekli scope, tenant+connection+environment+API version+store scope ve evidence note. Read desteği write desteği değildir.
 
-F0 başlangıcında hiçbir platform için test hesabı/anonim davranış kanıtı sağlanmamıştı. F3'te Trendyol parser contract fixture'ları eklendi; bunlar gerçek connection/store capability kanıtı değildir. Bu nedenle gerçek connection capability'leri varsayılan `UNKNOWN`, tüm dış yazmalar kapalıdır.
+F0 başlangıcında hiçbir platform için test hesabı/anonim davranış kanıtı sağlanmamıştı. F3'te Trendyol, F4'te E-Faturam taxpayer parser contract fixture'ı eklendi; bunlar gerçek connection/store capability kanıtı değildir. Bu nedenle gerçek connection capability'leri varsayılan `UNKNOWN`, tüm dış yazmalar kapalıdır.
 
 ## Capability kodları
 
@@ -30,14 +30,14 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 | Trendyol | Stok/fiyat | UNKNOWN | Birleşik endpoint ve partial batch doğrulandı | Partial fixture; Stage safe-write yok | off |
 | Trendyol | Sipariş/teslimat | UNKNOWN | Cursor stream ve webhook auth doğrulandı | Anonim order fixture; Stage/public HTTPS yok | off |
 | Trendyol | İade | UNKNOWN | Claims read dokümanı doğrulandı | Anonim claim fixture; Stage action yok | off |
-| Trendyol | Fatura | UNKNOWN | Fatura bağlantı dokümanı erişilebilir | Yok | off |
-| E-Faturam | Bağlantı | UNKNOWN | Doküman erişilebilir | Yok | off |
+| Trendyol | Fatura | UNKNOWN | Invoice link/file resmî yolları doğrulandı | Stage package/delivery yok | off |
+| E-Faturam | Bağlantı | UNKNOWN | API `1.0.0`, Stage/production ve sign-in sözleşmesi doğrulandı | Test credential yok | off |
 | E-Faturam | Katalog referansı | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
 | E-Faturam | Ürün | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
 | E-Faturam | Stok/fiyat | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
 | E-Faturam | Sipariş/teslimat | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
 | E-Faturam | İade | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
-| E-Faturam | Fatura | UNKNOWN | Doküman erişilebilir | Yok | off |
+| E-Faturam | Fatura | UNKNOWN | Taxpayer, submit, status, document ve cancel kaynakları doğrulandı | Anonim taxpayer parser fixture; test firma yok | off |
 | Shopify | Bağlantı | UNKNOWN | Doküman erişilebilir | Yok | off |
 | Shopify | Katalog referansı | UNKNOWN | Kapsam kanıtlanmadı | Yok | off |
 | Shopify | Ürün | UNKNOWN | Bulk/product delete dokümanı erişilebilir | Yok | off |
@@ -71,8 +71,8 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 
 Doğrulama tarihi: 2026-07-31. URL erişimi capability desteği anlamına gelmez.
 
-- Trendyol: <https://developers.trendyol.com/v3.0/docs/product-v2-api-endpoint>, <https://developers.trendyol.com/v3.0/docs/category-attribute-list-v2>, <https://developers.trendyol.com/v3.0/docs/1-webhook-model>, <https://developers.trendyol.com/v2.0/docs/product-create-v2>, <https://developers.trendyol.com/v3.0/docs/2-delete-invoice-link>
-- E-Faturam: <https://developers.trendyolefaturam.com/docs>
+- Trendyol: <https://developers.trendyol.com/v3.0/docs/product-v2-api-endpoint>, <https://developers.trendyol.com/v3.0/docs/category-attribute-list-v2>, <https://developers.trendyol.com/v3.0/docs/1-webhook-model>, <https://developers.trendyol.com/v2.0/docs/product-create-v2>, <https://developers.trendyol.com/reference/sendinvoicelink>, <https://developers.trendyol.com/reference/uploadinvoicefile>
+- E-Faturam: <https://developers.trendyolefaturam.com/OpenApi/trendyol-e-faturam-entegrasyon-dokumani>, <https://developers.trendyolefaturam.com/OpenApi/Auth/sign-in>, <https://developers.trendyolefaturam.com/OpenApi/Diğer/get-application-status-by-tax-id>, <https://developers.trendyolefaturam.com/OpenApi/Giden%20eFatura/create-outgoing-e-invoice>, <https://developers.trendyolefaturam.com/OpenApi/eArşiv/get-e-archive-status>, <https://developers.trendyolefaturam.com/OpenApi/Diğer/get-temporary-document-download-url>, <https://developers.trendyolefaturam.com/OpenApi/eArşiv/cancel-e-archive>
 - Shopify: <https://shopify.dev/docs/api/usage/bulk-operations/queries>, <https://shopify.dev/docs/apps/build/webhooks/verify-deliveries>, <https://shopify.dev/docs/api/admin-graphql/latest/mutations/productDelete>
 - Hepsiburada: <https://developers.hepsiburada.com>
 - N11: <https://magazadestek.n11.com/faydali-dokumanlar>

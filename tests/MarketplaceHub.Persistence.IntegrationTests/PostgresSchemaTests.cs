@@ -45,7 +45,7 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Migration_creates_the_F1_F2_and_F3_schemas_without_bootstrap_data()
+    public async Task Migration_creates_the_F1_through_F4_schemas_without_bootstrap_data()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options);
@@ -54,8 +54,9 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
         Assert.Empty(await db.Users.ToListAsync(cancellationToken));
         Assert.Empty(await db.Tenants.ToListAsync(cancellationToken));
         Assert.Empty(await db.Orders.ToListAsync(cancellationToken)); Assert.Empty(await db.PlatformCredentials.ToListAsync(cancellationToken));
-        var schemas = await db.Database.SqlQueryRaw<string>("SELECT schema_name AS \"Value\" FROM information_schema.schemata WHERE schema_name IN ('iam','ops','integration','catalog','inventory','sales') ORDER BY schema_name").ToListAsync(cancellationToken);
-        Assert.Equal(new[] { "catalog", "iam", "integration", "inventory", "ops", "sales" }, schemas);
+        Assert.Empty(await db.Invoices.ToListAsync(cancellationToken)); Assert.Empty(await db.InvoiceDocuments.ToListAsync(cancellationToken));
+        var schemas = await db.Database.SqlQueryRaw<string>("SELECT schema_name AS \"Value\" FROM information_schema.schemata WHERE schema_name IN ('iam','ops','integration','catalog','inventory','sales','billing') ORDER BY schema_name").ToListAsync(cancellationToken);
+        Assert.Equal(new[] { "billing", "catalog", "iam", "integration", "inventory", "ops", "sales" }, schemas);
     }
 
     [Fact]

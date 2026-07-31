@@ -57,7 +57,7 @@ public static class AuthEndpoints
     private static async Task<IResult> LogoutAsync(HttpContext context, AppDbContext db, TimeProvider time)
     {
         if (CurrentSession(context) is { } session) { session.State = SessionState.Revoked; session.RevokedAt = time.GetUtcNow(); await db.SaveChangesAsync(context.RequestAborted); }
-        context.Response.Cookies.Delete(SessionAuthMiddleware.CookieName, new CookieOptions { Secure = true, Path = "/" });
+        context.Response.Cookies.Delete(SessionAuthMiddleware.CookieName, new CookieOptions { Secure = SecureCookie(context), Path = "/" });
         return Results.NoContent();
     }
 
@@ -204,7 +204,8 @@ public static class AuthEndpoints
     private static UserSession? RequireRecentActive(HttpContext context, TimeProvider time) => RequireSession(context, SessionState.Active) is { } session && session.IssuedAt >= time.GetUtcNow().AddMinutes(-10) ? session : null;
     private static IResult Forbidden() => Results.Problem(statusCode: 403, title: "Session state does not permit this operation");
     private static string NormalizeRecovery(string code) => code.Replace("-", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
-    private static void SetSessionCookie(HttpResponse response, string token, DateTimeOffset expires) => response.Cookies.Append(SessionAuthMiddleware.CookieName, token, new CookieOptions { HttpOnly = true, Secure = true, SameSite = SameSiteMode.Lax, Path = "/", Expires = expires });
+    private static void SetSessionCookie(HttpResponse response, string token, DateTimeOffset expires) => response.Cookies.Append(SessionAuthMiddleware.CookieName, token, new CookieOptions { HttpOnly = true, Secure = SecureCookie(response.HttpContext), SameSite = SameSiteMode.Lax, Path = "/", Expires = expires });
+    private static bool SecureCookie(HttpContext context) => !string.Equals(context.RequestServices.GetRequiredService<IConfiguration>()["MARKETPLACEHUB_ENVIRONMENT"], "PILOT_LOCAL", StringComparison.OrdinalIgnoreCase) || context.Request.IsHttps;
     private static string Base32(byte[] data) { const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; var output = new StringBuilder(); var buffer = 0; var bits = 0; foreach (var b in data) { buffer = (buffer << 8) | b; bits += 8; while (bits >= 5) { output.Append(alphabet[(buffer >> (bits - 5)) & 31]); bits -= 5; } } if (bits > 0) output.Append(alphabet[(buffer << (5 - bits)) & 31]); return output.ToString(); }
     private static string SessionStateWire(SessionState state) => state switch { SessionState.PasswordChangeRequired => "PASSWORD_CHANGE_REQUIRED", SessionState.MfaChallenge => "MFA_CHALLENGE", SessionState.Active => "ACTIVE", _ => "REVOKED" };
     private static readonly HashSet<string> WeakPasswords = new(StringComparer.Ordinal) { "Password123456!", "MarketplaceHub1!" };
