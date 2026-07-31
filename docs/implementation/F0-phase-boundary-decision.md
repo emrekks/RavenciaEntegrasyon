@@ -23,4 +23,6 @@ Bu kanıtlar F1 production scaffold'u değildir. `MarketplaceHub.sln`, root buil
 
 `BLOCK-VERSION-001`, F0 adaylarının locked restore ile çözümlenmesi, image index digest'lerinin doğrulanması ve bu kayıtların Git commit'ine alınmasıyla kapanabilir. F1 başladığında root production lockfile'ları ve application image digest'leri yeniden üretilip F0 kanıtlarıyla karşılaştırılacaktır; uyumsuzluk fail-closed kabul edilir.
 
+F0 verification seti baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e` ile Git'e alınmış ve `BLOCK-VERSION-001` kapanmıştır.
+
 Hedef mimariye özgü child image digest'i ve Docker Engine/Compose kurulum kanıtı `BLOCK-HOST-001` kapsamındadır; F0 dependency çözümleme blocker'ını yeniden açmaz.

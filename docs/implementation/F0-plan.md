@@ -75,9 +75,9 @@ F0 boyunca aşağıdakiler oluşturulmaz veya değiştirilmez:
 | --- | --- |
 | Repository başlangıç içeriği | `.git` dışında dosya yoktu; F0 ile `docs/` ve canonical şartname PDF'si oluşturuldu |
 | Git dalı | `master`, unborn branch |
-| Commit sayısı | 0 |
+| Commit sayısı | 2 F0 commit'i (baseline kanıtı + çıkış durumu) |
 | Git remote | Yok |
-| Çalışma ağacı | F0 belgeleri ve canonical şartname untracked; production yolu yok |
+| Çalışma ağacı | F0 belgeleri ve canonical şartname tracked; kapanış commit'i sonrası temiz; production yolu yok |
 | Canonical kök PDF | Mevcut; 73 sayfa; SHA-256 şartname kaydıyla eşit |
 | `MarketplaceHub.sln` ve proje yapısı | Yok |
 | `global.json`, central package ve lock dosyaları | Yok |
@@ -137,7 +137,7 @@ Bu bilgisayar hedef Windows VPS olarak kabul edilmez. Hedef host kanıtı ayrıc
 | `F0-EXIT-001` | F1'i durduran mimari belirsizlik kalmamıştır. | ADR-001-010 kabulü; açık kararların kayıtlı güvenli fallback'i | DONE |
 | `F0-EXIT-002` | Dış bağımlılıklar blocker ve güvenli fallback ile kayıtlıdır. | External dependency ve risk kayıtları | DONE |
 | `F0-EXIT-003` | Runtime, volume ve backup hedefinin uygulanabilirliği doğrulanmıştır. | Hedef Windows VPS Linux-container, reboot, volume ve restore kanıtı | BLOCKED_EXTERNAL |
-| `F0-EXIT-004` | `docs/dependencies/verified-versions.md` commit edilmiştir ve lockfile/image digest'leriyle tutarlıdır. | Kullanıcı onaylı F0 verification seti, locked çözüm ve registry digest kanıtı | READY_TO_COMMIT |
+| `F0-EXIT-004` | `docs/dependencies/verified-versions.md` commit edilmiştir ve lockfile/image digest'leriyle tutarlıdır. | F0 verification seti; NuGet/npm lock hash'leri; registry index digest'leri; baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e` | DONE_F0 |
 
 ## Oluşturulacak veya değiştirilecek dosyalar
 
@@ -307,7 +307,7 @@ Bu ilk görev tamamlandığında `git status --short` ve dosya listesiyle yalnı
 | `BLOCK-HOST-001` | Dış ortam | VPS daha sonra kiralanacak; hedef erişim, özellikler ve Linux container production desteği henüz bilinmiyor. | `F0-REQ-009` ve `F0-EXIT-003` kanıtlanamaz. | Kiralama sonrası hedef hostta doğrulama runbook'unu çalıştır; destek yoksa kullanıcıdan dağıtım ortamı kararı iste. |
 | `BLOCK-CAPACITY-001` | İş girdisi | Başlangıçta gerçek hacim ve pik değerleri yoktu. | Kapasite onayı gerçek veriye dayandırılamıyordu. | Kullanıcı `1.000` ürün ve `15.000` sipariş/yıl sağladı; x5 profil kaydedildi. CLOSED. |
 | `BLOCK-DR-001` | Operasyon | `PILOT_LOCAL` ve en fazla 6 saat pilot RPO tanımlı; hedef volume, gerçek restore ve ölçülmüş RTO kanıtı yok. | Recovery uygulanabilirliği ve F0 çıkışı tamamlanamaz. | Aynı fiziksel diskse `RISK-DR-001`; hedefte checksum ve restore smoke olmadan geçme. Off-host yalnız resilient profilde zorunludur. |
-| `BLOCK-VERSION-001` | Faz sınırı | F0 çıkışı lockfile/image digest tutarlılığı isterken production lock'ları F1 teslimatıdır. | Faz sırası gerilimi vardı. | Kullanıcı onayıyla yalnız `docs/dependencies/verification/` altında F0 lock/digest kanıtı üretildi; F1 production scaffold'u oluşturulmadı. Commit sonrası CLOSED. |
+| `BLOCK-VERSION-001` | Faz sınırı | F0 çıkışı lockfile/image digest tutarlılığı isterken production lock'ları F1 teslimatıdır. | Faz sırası gerilimi vardı. | Kullanıcı onayıyla yalnız `docs/dependencies/verification/` altında F0 lock/digest kanıtı üretildi; baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e`. CLOSED. |
 | `RISK-CAP-001` | Dış platform | Platform credential/test hesabı ve anonim fixture sağlanmadı. | Hiçbir platform capability'si `SUPPORTED` olarak kanıtlanamaz. | Capability'leri `UNKNOWN`, write flag'lerini kapalı tut; Fake adapter standardıyla F1 local hazırlığını sürdür. |
 | `RISK-SUPPLY-001` | Tedarik zinciri | F1 production lock/image'ları henüz yok. | Aktarımda resolved tree veya image drift riski. | F0 lock ve index digest kanıtı tamamlandı; F1 aktarımı fail-closed karşılaştırılacak. MITIGATED_F0. |
 | `DEP-STITCH-001` | Tasarım | Stitch dosyası daha sonra sağlanacak. | Marka fidelity doğrulaması ertelenir. | İşlevsel ve erişilebilir varsayılan UI planı ileride devam eder; F0/F1'i durdurmaz. |
@@ -334,7 +334,7 @@ ADR-001 ile ADR-010 yeni seçenek seçmek için değil, şartnamenin yürürlük
 | Kimlik | Açık karar | Varsayılan / karar gelene kadar davranış | F0 etkisi |
 | --- | --- | --- | --- |
 | `OPEN-F0-001` | Sağlanan PDF'nin canonical kök kopyasıyla hash eşitliği | Her iki kopya 73 sayfa ve SHA-256 `E98365DC34804A478D5DBB41E1997FB6742FD0723A76C08CEE138321F0E2ECA3`; karar kapandı. | CLOSED |
-| `OPEN-F0-002` | F0 lock/digest çıkış kriteri ile F1 lockfile teslimatı arasındaki faz sınırı | Kullanıcı onayıyla non-production F0 verification lock/digest seti oluşturuldu; F1 scaffold'u üretilmedi. | CLOSED_ON_COMMIT |
+| `OPEN-F0-002` | F0 lock/digest çıkış kriteri ile F1 lockfile teslimatı arasındaki faz sınırı | Kullanıcı onayıyla non-production F0 verification lock/digest seti oluşturuldu ve commit edildi; F1 scaffold'u üretilmedi. | CLOSED |
 | `OPEN-F0-003` | Hedef Windows VPS sağlayıcısı, sürümü, sanallaştırma/runtime desteği ve erişim yöntemi | VPS daha sonra kiralanacak; hedef kanıt gelene kadar yerel host production kanıtı sayılmaz. | F0 çıkış blocker'ı |
 | `OPEN-F0-004` | Gerçek veri hacmi ve pik değerleri | `1.000` ürün ve `15.000` sipariş/yıl baz; x5 profil `5.000` ürün ve `75.000` sipariş/yıl. İkincil metrikler F1+ izlenir. | CLOSED_FOR_F0 |
 | `OPEN-F0-005` | Hedef volume, restore süresi ve RTO | Profil `PILOT_LOCAL`, pilot RPO en fazla 6 saat; off-host bu profilde zorunlu değildir. Hedef restore ölçülmeden RTO uydurulmaz. | F0 çıkış blocker'ı |
@@ -361,9 +361,9 @@ Mevcut değerlendirme:
 
 - **Bu ilk planlama görevi: READY.**
 - **F0 dokümantasyon uygulaması: COMPLETE.** İzlenebilirlik, capability, iş otoritesi, güvenlik/operasyon, dependency/sürüm kayıtları ve ADR-001–010 oluşturuldu.
-- **F0 çıkış kapısı: BLOCKED.** `BLOCK-HOST-001` ve `BLOCK-DR-001` kapanmadan `PASSED` raporlanamaz. `BLOCK-CAPACITY-001` kapanmıştır; `BLOCK-VERSION-001` verification kanıtı tamamlanmış olup Git commit'iyle kapanacaktır.
+- **F0 çıkış kapısı: BLOCKED_EXTERNAL.** `BLOCK-HOST-001` ve buna bağlı `BLOCK-DR-001`, VPS kiralanıp hedef runbook çalışana kadar kapatılamaz. `BLOCK-CAPACITY-001` ve `BLOCK-VERSION-001` kapanmıştır.
 - Platform test hesaplarının yokluğu capability'leri `UNKNOWN` bırakır; şartnameye göre bu durum tek başına F1 local geliştirmesini engellemez.
 
 ## Sonraki güvenli adım
 
-Production artefaktı oluşturulmamıştır. Sonraki adım F0 kanıt setini commit etmek, ardından VPS kiralandığında hedef runtime/volume/restore-RTO runbook'unu çalıştırmaktır. Kullanıcının ayrıca F1 faz başlatma talebi olmadan F1 production koduna geçilmez.
+Production artefaktı oluşturulmamıştır. Sonraki adım VPS kiralandığında hedef runtime/volume/restore-RTO runbook'unu çalıştırmaktır. Kullanıcının ayrıca F1 faz başlatma talebi olmadan F1 production koduna geçilmez.

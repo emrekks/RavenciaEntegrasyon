@@ -16,6 +16,7 @@ Doğrulama tarihi: 2026-07-31. Sonuçlar gerçek komut çıktılarından kaydedi
 | Capability matrisi | Satır ve support-level taraması | 42 platform/grup satırı; 0 `SUPPORTED` veri satırı | PASSED |
 | F0 kimlikleri | Traceability completeness taraması | 21/21 kimlik mevcut | PASSED |
 | Production kapsamı | Repository-root dizin/uzantı taraması | `src`, `tests`, `deploy`, solution, migration, endpoint veya UI yok | PASSED |
+| F0 Git baseline | `git commit` | `00c7b78591f158babb040070bf0aa0f04acace8e` | PASSED |
 | Hedef Windows VPS | Hedef runbook | VPS henüz kiralanmadı | NOT_RUN / BLOCKED_EXTERNAL |
 | Restore/RTO | Hedef PostgreSQL + files restore | Hedef VPS/volume yok | NOT_RUN / BLOCKED_EXTERNAL |
 

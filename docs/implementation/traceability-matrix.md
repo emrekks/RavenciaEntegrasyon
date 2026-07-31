@@ -26,7 +26,7 @@ Bu matris yalnız F0 dokümantasyon teslimatlarını izler. Gelecek kod ve test 
 | `F0-EXIT-001` | F0 | F1'i durduran mimari belirsizlik yoktur. | ADR-001–010 | Yok | Kullanıcı kabulü | DONE |
 | `F0-EXIT-002` | F0 | Dış bağımlılık, blocker ve güvenli fallback kayıtlıdır. | Dependency/risk kayıtları | Yok | Dış sağlayıcılar | DONE |
 | `F0-EXIT-003` | F0 | Runtime, volume ve backup uygulanabilirliği hedefte kanıtlıdır. | Runbook ve recovery profilinde kanıt yuvaları | Runtime testleri F1 öncesi | Hedef VPS | BLOCKED_EXTERNAL |
-| `F0-EXIT-004` | F0 | Sürüm belgesi commitli; lock/digest tutarlıdır. | F0 verification lock/digest seti ve kullanıcı onaylı faz sınırı kararı | Production aktarımı F1 | Git commit | READY_TO_COMMIT |
+| `F0-EXIT-004` | F0 | Sürüm belgesi commitli; lock/digest tutarlıdır. | F0 verification lock/digest seti; baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e` | Production aktarımı F1 | Yok | DONE_F0 |
 
 ## F0 sonucu
 

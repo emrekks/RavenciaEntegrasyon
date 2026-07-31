@@ -66,4 +66,4 @@ Doğrulama tarihi: 2026-07-31. Yetkili şartnamedeki major/minor kararları değ
 
 ## Sonuç
 
-Kullanıcı faz sınırı onayıyla non-production F0 doğrulama lock'ları oluşturulmuş, NuGet locked restore ve npm locked dry-run başarıyla çalışmış, resmî image index digest'leri ile Compose checksum'ları kaydedilmiştir. Bu belge ve kanıtlar Git commit'ine alındığında `BLOCK-VERSION-001` ile `F0-EXIT-004` F0 kapsamı için kapanır. Production root lock'ları ve application image digest'i F1 release kanıtı olmaya devam eder.
+Kullanıcı faz sınırı onayıyla non-production F0 doğrulama lock'ları oluşturulmuş, NuGet locked restore ve npm locked dry-run başarıyla çalışmış, resmî image index digest'leri ile Compose checksum'ları kaydedilmiştir. Bu belge ve kanıtlar baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e` ile Git'e alınmıştır; `BLOCK-VERSION-001` ve `F0-EXIT-004` F0 kapsamı için kapanmıştır. Production root lock'ları ve application image digest'i F1 release kanıtı olmaya devam eder.

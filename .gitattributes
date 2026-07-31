@@ -1,0 +1,5 @@
+*.pdf binary
+*.md text eol=lf
+*.json text eol=lf
+*.props text eol=lf
+*.csproj text eol=lf
