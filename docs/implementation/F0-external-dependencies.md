@@ -18,6 +18,6 @@ Bu sıra değiştirilmez ve bir platformun belge/test erişimi diğerini üretim
 | Gerçek iş hacmi | Kapasite/x5 | `1.000` ürün ve `15.000` sipariş/yıl kullanıcı tarafından sağlandı; x5 profil `5.000` ürün ve `75.000` sipariş/yıl | Bilinmeyen varyant/sipariş satırı/seasonality metrikleri izlenir; limit uydurulmaz | Hayır; F0 baz girdisi tamamlandı |
 | Hedef volume, restore süresi ve RTO | DR kanıtı | Yerel PostgreSQL 18.4 sentetik dump/temiz volume restore geçti (`0,147 sn`); hedef VPS restore çalıştırılmadı | Yerel süre hedef RTO ilan edilmez; `RISK-DR-001` hedef için açık; off-host yalnız resilient profilde zorunlu | Hayır, yerel geliştirme için; evet, hedef F0 çıkışı için |
 | F1 production manifest/lock/image | F1 build/release | F0 non-production lock/index digest kanıtı kullanıcı onayıyla tamamlandı | F1 root lock ve application image üretiminde yeniden karşılaştır; uyumsuzluk fail-closed | Hayır; F0 version blocker kapandı |
-| Stitch arayüz dosyası | İlgili UI fazı | Sağlanmadı | Markalı fidelity ertelenir | Hayır |
+| Stitch arayüz dosyası | İlgili UI fazı | 2026-07-31 tarihinde sağlandı; ZIP SHA-256 `3B51EBF78D7653933451E2B41D627A5281E14298844F7B7AFFAFC0B8198CE0A9`; F3 planında faz filtresiyle incelendi | Yalnız ilgili faz ekranları görsel referans alınır; demo değerler ve ileri faz menüleri uygulanmaz | Hayır |
 
 Platform doküman URL'leri capability matrisinde tutulur. Test hesabı olmadan `SUPPORTED` kullanılmaz.

@@ -1,0 +1,16 @@
+{
+  "totalElements": 1,
+  "totalPages": 1,
+  "page": 0,
+  "size": 1,
+  "nextPageToken": null,
+  "content": [
+    {
+      "contentId": 800001,
+      "productMainId": "PRODUCT-ANON-001",
+      "variants": [
+        { "variantId": 810001, "barcode": "BARCODE-ANON-001", "stockCode": "SKU-ANON-001" }
+      ]
+    }
+  ]
+}

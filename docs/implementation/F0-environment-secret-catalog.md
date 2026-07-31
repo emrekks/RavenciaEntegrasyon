@@ -57,3 +57,11 @@
 ## Henüz adlandırılmayan secret'lar
 
 Platform credential, webhook secret ve mağaza/merchant scope alanlarının environment adları F0'da `UNKNOWN`dur. İlgili adapter fazında güncel resmî platform kaynağı ve test hesabıyla doğrulanmadan değişken adı veya auth alanı oluşturulmaz.
+
+## F3 Trendyol somutlaştırması
+
+- Trendyol seller/store kimliği connection kaydıdır; secret environment değişkeni değildir.
+- API key + API secret, UI/API üzerinden yalnız write-only alınır ve Data Protection purpose `MarketplaceHub.PlatformCredential.v1` ile şifreli `integration.platform_credentials` kaydında tutulur. API/log/fixture geri göstermez; yalnız son dört karakter maskesi saklanır.
+- Webhook `API_KEY` veya `BASIC_AUTHENTICATION` verifier değeri Data Protection purpose `MarketplaceHub.WebhookVerifier.v1` ile şifreli tutulur. Opaque route token'ın yalnız HMAC-SHA256 özeti saklanır ve açık token yalnız oluşturma yanıtında bir kez döner.
+- Trendyol base URL'leri resmî production/stage sabitleridir. Credential environment'a bağlıdır; production/stage credential birbirinin yerine kullanılmaz.
+- Global `FeatureFlags__ExternalWrites=false` korunur. Connection içi `ExternalWritesEnabled=false` ikinci kill switch'tir ve F3'te bunu açan kullanıcı API'si yoktur.

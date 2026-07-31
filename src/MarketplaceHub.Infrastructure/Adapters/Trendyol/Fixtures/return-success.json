@@ -1,0 +1,22 @@
+{
+  "totalElements": 1,
+  "totalPages": 1,
+  "page": 0,
+  "size": 1,
+  "content": [
+    {
+      "id": "CLAIM-ANON-001",
+      "orderNumber": "ORDER-ANON-001",
+      "lastModifiedDate": 1762253993685,
+      "items": [
+        {
+          "id": "CLAIM-LINE-ANON-001",
+          "orderLineItemId": "700001",
+          "quantity": 1,
+          "claimItemStatus": { "name": "Created" },
+          "customerClaimItemReason": { "name": "ANON-REASON", "code": "ANON" }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+# F3 Trendyol Dikey Dilim Kanıt Kaydı
+
+Doğrulama tarihi: `2026-07-31`. Ortam: Windows 10 geliştirme makinesi, .NET SDK `10.0.302`, Node `24.15.0`, npm `11.12.1`, PostgreSQL `18.4`. Gerçek Trendyol credential, Stage IP yetkisi, public HTTPS callback ve production write kullanılmadı.
+
+## Sonuç özeti
+
+| Kanıt | Sonuç | Yerel kanıt / açık sınır |
+| --- | --- | --- |
+| `F3-EV-001` build/format | PASS | `dotnet format --verify-no-changes`; solution build `0 warning / 0 error` |
+| `F3-EV-002` migration | PASS | Fresh PostgreSQL 18.4; F1→F2→F3 tek zincir; `sales` + mevcut şemalar; seed yok; migration SHA-256 `3DF8E760B46B659EA88CA9727A6B97F390D8647EAB8854E37D91E29A5DF09938` |
+| `F3-EV-003` connection/capability | PASS_LOCAL | STAGE/PRODUCTION allow-list, yalnız V2, şifreli credential rotasyonu, evidence scope, `UNKNOWN` başlangıcı ve çift write kill switch kod/test incelemesi geçti; gerçek identity testi `BLOCKED_EXTERNAL` |
+| `F3-EV-004` Product/reference fixtures | PASS_LOCAL | Approved product, category/attribute/value/brand mapping sınırı ve Product V2 exact path; gerçek Stage read `BLOCKED_EXTERNAL` |
+| `F3-EV-005` stock/price/batch | PARTIAL_LOCAL | Item-level partial batch fixture geçti; ayrık stock/price portunun resmî birleşik payload'ı uydurması engellendi; safe-write `BLOCKED_EXTERNAL` |
+| `F3-EV-006` webhook duplicate | PARTIAL_LOCAL | Route-token HMAC hash, constant-time auth, Inbox UQ ve job dedup uygulandı; 20 paralel PostgreSQL ölçümü henüz çalıştırılmadı |
+| `F3-EV-007` out-of-order/overlap | PASS_LOCAL_CORE | State machine regression testleri, status event UQ, last-modified/cursor overlap ve webhook/poll ortak ingestion hattı mevcut |
+| `F3-EV-008` split/partial cancel | PASS_DOMAIN | Quantity invariant ve regression testleri geçti; gerçek split fixture `BLOCKED_EXTERNAL` |
+| `F3-EV-009` webhook security/ACK | PARTIAL_LOCAL | Basic/API-key auth, raw JSON contract, body bound, durable Inbox-before-ACK uygulandı; public HTTPS ve p95 ölçümü `BLOCKED_EXTERNAL` |
+| `F3-EV-010` resilience | PASS_LOCAL_CORE | 401/403/429/5xx/timeout sınıfları, Retry-After, worker allow-list/lease/reaper; gerçek platform 429/5xx `BLOCKED_EXTERNAL` |
+| `F3-EV-011` shipment document | MODEL_READY | Private FileAsset FK, versioned document/attempt ve capability-driven format UI; Stage label/cargo + public/private delivery `BLOCKED_EXTERNAL` |
+| `F3-EV-012` return/disposition | PASS_LOCAL_CORE | Append-only decision, evidence FK, idempotency key ve yalnız `PASS` ledger artışı production kodunda; gerçek return action `BLOCKED_EXTERNAL` |
+| `F3-EV-013` reconciliation/kill switch | PASS_LOCAL_DRY | Hash'li/açıklanabilir local dry-run differences; global + connection writes varsayılan kapalı; remote comparison ve restart `BLOCKED_EXTERNAL` |
+| `F3-EV-014` API surface | PASS | Route guard F3 connection/order/shipment/return/opaque hook yollarını doğruladı; F4+ yasaklı yüzey yok |
+| `F3-EV-015` UI | PASS_BUILD | Strict TypeScript, Vitest ve Vite build geçti; Teal Precision F3 ekranları faz filtreli; otomatik localhost görsel kontrolü browser güvenlik politikası nedeniyle çalıştırılamadı |
+| `F3-EV-016` 5x/performance | OPEN | F2 temel hacim kanıtı korunuyor; gerçek F3 order/webhook p95 ölçümü Stage verisi olmadan kapanmadı |
+| `F3-EV-017` secret/PII scan | PASS | F3 source/fixture taramasında gerçek Basic token, 11 haneli kimlik veya e-posta eşleşmesi yok; demo ileri-faz route taraması yalnız guard testlerinde bulundu |
+| `F3-EV-018` Stage/SIT | BLOCKED_EXTERNAL | Credential, IP allow-list, test mağaza/verisi ve public HTTPS yok |
+| `F3-EV-019` production smoke | BLOCKED_EXTERNAL | VPS/domain/credential ve işlem başına etki onayı yok; dış yazma kapalı |
+
+## Fixture checksum'ları
+
+| Fixture | SHA-256 |
+| --- | --- |
+| `batch-partial.json` | `EF8E38ABFCEAFF7FECCE45CB108AA8F349EDD2C31F76200D7A3570B210E50536` |
+| `order-success.json` | `6791DC669CFE5434A31FBD480E199865957BDF0BDCA339EBA5B84407566E35EC` |
+| `product-approved.json` | `565AE2EE9C50BCDAA6B0B8EF1F3F846443CF3614F9C395A6BA3E43EAF727E8CA` |
+| `remote-error-empty.json` | `CA3D163BAB055381827226140568F3BEF7EAAC187CEBD76878E0B63E9E442356` |
+| `return-success.json` | `ADC1BBB7849D117F7195E7F75BA71BCF608CA7E9485A7B69F6D65A5EE3749779` |
+
+## Test sayımı
+
+- Domain: `10/10`
+- Application/model metadata: `16/16`
+- Adapter contract: `4/4`
+- API surface: `1/1`
+- End-to-end repository guards: `2/2`
+- PostgreSQL integration: `7/7`
+- Web component: `1/1`
+- Toplam: `40` .NET + `1` Web testi başarılı.
+
+## Faz durumu
+
+F3 çekirdek yerel uygulaması `READY_LOCAL_CORE` durumundadır. `F3-EV-016`, gerçek Stage/SIT capability kanıtları, public HTTPS webhook/medya, label/cargo ve safe-write/smoke kanıtları tamamlanmadığından şartname F3 çıkışı `BLOCKED_EXTERNAL` kalır. F4 açılmamıştır.

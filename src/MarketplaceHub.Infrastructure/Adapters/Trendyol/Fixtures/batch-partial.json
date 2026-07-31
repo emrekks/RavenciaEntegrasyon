@@ -1,0 +1,10 @@
+{
+  "batchRequestId": "BATCH-ANON-001",
+  "status": "COMPLETED",
+  "itemCount": 2,
+  "failedItemCount": 1,
+  "items": [
+    { "requestItem": { "barcode": "BARCODE-ANON-001" }, "status": "SUCCESS", "failureReasons": [] },
+    { "requestItem": { "barcode": "BARCODE-ANON-002" }, "status": "FAILED", "failureReasons": ["ANONYMIZED_REMOTE_VALIDATION"] }
+  ]
+}

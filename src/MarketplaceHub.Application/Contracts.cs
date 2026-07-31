@@ -21,4 +21,4 @@ public interface IJobLeaseService
     Task<int> ReapExpiredAsync(CancellationToken cancellationToken);
 }
 
-public sealed record LeasedJob(Guid Id, Guid TenantId, string JobType, string PayloadJson, string LeaseToken);
+public sealed record LeasedJob(Guid Id, Guid TenantId, Guid? ConnectionId, string JobType, string PayloadJson, string LeaseToken);

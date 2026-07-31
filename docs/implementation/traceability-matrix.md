@@ -61,3 +61,17 @@ F2 ayrıntılı kabul ve kanıt eşlemesi [F2-plan.md](F2-plan.md) ve [F2-eviden
 | `F2-EXIT-001–005` | Yerel F2 çıkış seti | `F2-EV-001–015` | READY_LOCAL |
 
 Gerçek platform capability/test hesapları, hedef VPS runtime, registry digest, production PFX, off-host backup ve ölçülmüş RTO dış bağımlılıktır. Production kabulü `BLOCKED_EXTERNAL`; F3 açılmamıştır.
+
+## F3 uygulama izi
+
+F3 ayrıntılı kabul ve kanıt eşlemesi [F3-plan.md](F3-plan.md) ve [F3-evidence-log.md](F3-evidence-log.md) içindedir.
+
+| Aralık | Uygulama | Kanıt | Sonuç |
+| --- | --- | --- | --- |
+| `F3-REQ-001–004` | Trendyol connection/credential/capability, Product V2 ve reference adapter sınırı | V2 route/source guard, encrypted credential, fixture parser testleri | DONE_LOCAL_CORE |
+| `F3-REQ-005–009` | Product/batch fail-closed, webhook Basic/API-key + Inbox, cursor/overlap polling | Partial batch, raw webhook guard, worker job/dedup kodu | DONE_LOCAL_CORE / WRITE BLOCKED_EXTERNAL |
+| `F3-REQ-010–013` | Order/Line/Package/history, ShipmentDocument, Return/Decision/Evidence/Disposition | PostgreSQL 18.4 migration, domain invariant ve metadata testleri | DONE_LOCAL_CORE |
+| `F3-REQ-014–019` | Local dry reconciliation, kill switch, F3 API/UI, adapter fixtures ve resilience | Route/repository/secret scan; .NET/Web build ve test seti | READY_LOCAL_CORE; PERFORMANCE/STAGE BLOCKED_EXTERNAL |
+| `F3-EXIT-001–006` | F3 çıkış seti | `F3-EV-001–019` | BLOCKED_EXTERNAL |
+
+F4 production kodu, route, menü veya placeholder oluşturulmamıştır.

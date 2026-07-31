@@ -15,7 +15,7 @@ public sealed class RequestSecurityMiddleware(RequestDelegate next)
         context.Response.Headers["Referrer-Policy"] = "no-referrer";
         context.Response.Headers["X-Frame-Options"] = "DENY";
         context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; base-uri 'self'";
-        if (!SafeMethods.Contains(context.Request.Method) && context.Request.Path.StartsWithSegments("/api"))
+        if (!SafeMethods.Contains(context.Request.Method) && context.Request.Path.StartsWithSegments("/api") && !context.Request.Path.StartsWithSegments("/api/v1/hooks"))
         {
             if (!SameOrigin(context) || !ValidCsrf(context))
             {

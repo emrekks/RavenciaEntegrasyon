@@ -67,6 +67,27 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<StockReservation> StockReservations => Set<StockReservation>();
     public DbSet<ChannelOffer> ChannelOffers => Set<ChannelOffer>();
     public DbSet<ChannelPriceHistory> ChannelPriceHistory => Set<ChannelPriceHistory>();
+    public DbSet<PlatformCredential> PlatformCredentials => Set<PlatformCredential>();
+    public DbSet<PlatformCapability> PlatformCapabilities => Set<PlatformCapability>();
+    public DbSet<WebhookSubscription> WebhookSubscriptions => Set<WebhookSubscription>();
+    public DbSet<SyncCursor> SyncCursors => Set<SyncCursor>();
+    public DbSet<ConnectionSyncPolicy> ConnectionSyncPolicies => Set<ConnectionSyncPolicy>();
+    public DbSet<ReconciliationRun> ReconciliationRuns => Set<ReconciliationRun>();
+    public DbSet<ReconciliationDifference> ReconciliationDifferences => Set<ReconciliationDifference>();
+    public DbSet<Order> Orders => Set<Order>();
+    public DbSet<OrderLine> OrderLines => Set<OrderLine>();
+    public DbSet<OrderFinancialAllocation> OrderFinancialAllocations => Set<OrderFinancialAllocation>();
+    public DbSet<ShipmentPackage> ShipmentPackages => Set<ShipmentPackage>();
+    public DbSet<PackageLineAllocation> PackageLineAllocations => Set<PackageLineAllocation>();
+    public DbSet<OrderStatusHistory> OrderStatusHistory => Set<OrderStatusHistory>();
+    public DbSet<ShipmentDocument> ShipmentDocuments => Set<ShipmentDocument>();
+    public DbSet<ShipmentDocumentAttempt> ShipmentDocumentAttempts => Set<ShipmentDocumentAttempt>();
+    public DbSet<CargoProviderMapping> CargoProviderMappings => Set<CargoProviderMapping>();
+    public DbSet<ReturnClaim> ReturnClaims => Set<ReturnClaim>();
+    public DbSet<ReturnLine> ReturnLines => Set<ReturnLine>();
+    public DbSet<ReturnDecision> ReturnDecisions => Set<ReturnDecision>();
+    public DbSet<ReturnEvidence> ReturnEvidence => Set<ReturnEvidence>();
+    public DbSet<ReturnStockDisposition> ReturnStockDispositions => Set<ReturnStockDisposition>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -75,6 +96,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         ConfigureIntegration(builder);
         ConfigureOperations(builder);
         builder.ConfigureF2Models();
+        builder.ConfigureF3Models();
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess) { GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
@@ -84,6 +106,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     {
         if (ChangeTracker.Entries<AuditLog>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Audit log is append-only.");
+        if (ChangeTracker.Entries<OrderStatusHistory>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Order status history is append-only.");
+        if (ChangeTracker.Entries<ReturnDecision>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Return decisions are append-only.");
     }
 
     private static void ConfigureIdentity(ModelBuilder builder)

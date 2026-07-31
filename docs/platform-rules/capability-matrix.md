@@ -4,7 +4,7 @@
 
 Support level yalnız `SUPPORTED`, `NOT_SUPPORTED`, `UNKNOWN`, `TEMPORARILY_UNAVAILABLE` olabilir. Başlangıç değeri `UNKNOWN`dur. `SUPPORTED` için birlikte şunlar zorunludur: güncel resmî kaynak, test hesabı veya secret/PII içermeyen anonim fixture, doğrulama tarihi, kaynak sürümü, gerekli scope, tenant+connection+environment+API version+store scope ve evidence note. Read desteği write desteği değildir.
 
-Bu F0 incelemesinde resmî sayfa erişimi bazı platformlarda doğrulanmış, fakat hiçbir platform için test hesabı/anonim davranış kanıtı sağlanmamıştır. Bu nedenle bütün capability'ler `UNKNOWN`, tüm dış yazmalar kapalıdır.
+F0 başlangıcında hiçbir platform için test hesabı/anonim davranış kanıtı sağlanmamıştı. F3'te Trendyol parser contract fixture'ları eklendi; bunlar gerçek connection/store capability kanıtı değildir. Bu nedenle gerçek connection capability'leri varsayılan `UNKNOWN`, tüm dış yazmalar kapalıdır.
 
 ## Capability kodları
 
@@ -24,12 +24,12 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 
 | Platform | Grup | Support level | Resmî kaynak durumu | Test/fixture kanıtı | Write switch |
 | --- | --- | --- | --- | --- | --- |
-| Trendyol | Bağlantı | UNKNOWN | Doküman erişilebilir | Yok | off |
-| Trendyol | Katalog referansı | UNKNOWN | Doküman erişilebilir | Yok | off |
-| Trendyol | Ürün | UNKNOWN | Doküman erişilebilir | Yok | off |
-| Trendyol | Stok/fiyat | UNKNOWN | Kapsam kanıtlanmadı | Yok | off |
-| Trendyol | Sipariş/teslimat | UNKNOWN | Webhook dokümanı erişilebilir | Yok | off |
-| Trendyol | İade | UNKNOWN | Kapsam kanıtlanmadı | Yok | off |
+| Trendyol | Bağlantı | UNKNOWN | Auth/environment dokümanı doğrulandı | Stage identity yok | off |
+| Trendyol | Katalog referansı | UNKNOWN | V2 attribute/value/brand/category yolları doğrulandı | Anonim parser fixture; Stage read yok | off |
+| Trendyol | Ürün | UNKNOWN | Product V2 create/read/batch yolları doğrulandı | Anonim product/partial fixture; Stage write yok | off |
+| Trendyol | Stok/fiyat | UNKNOWN | Birleşik endpoint ve partial batch doğrulandı | Partial fixture; Stage safe-write yok | off |
+| Trendyol | Sipariş/teslimat | UNKNOWN | Cursor stream ve webhook auth doğrulandı | Anonim order fixture; Stage/public HTTPS yok | off |
+| Trendyol | İade | UNKNOWN | Claims read dokümanı doğrulandı | Anonim claim fixture; Stage action yok | off |
 | Trendyol | Fatura | UNKNOWN | Fatura bağlantı dokümanı erişilebilir | Yok | off |
 | E-Faturam | Bağlantı | UNKNOWN | Doküman erişilebilir | Yok | off |
 | E-Faturam | Katalog referansı | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |

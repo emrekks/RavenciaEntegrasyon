@@ -25,7 +25,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         db.JobAttempts.Add(new JobAttempt { Id = Guid.NewGuid(), TenantId = job.TenantId, JobId = job.Id, AttemptNumber = job.AttemptCount, StartedAt = now });
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new LeasedJob(job.Id, job.TenantId, job.JobType, job.PayloadJson, token);
+        return new LeasedJob(job.Id, job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, token);
     }
 
     public async Task<bool> CompleteAsync(Guid jobId, string leaseToken, bool succeeded, string? errorCode, CancellationToken cancellationToken)

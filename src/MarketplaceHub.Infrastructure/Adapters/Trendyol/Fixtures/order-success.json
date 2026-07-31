@@ -1,0 +1,32 @@
+{
+  "hasMore": false,
+  "nextCursor": null,
+  "size": 1,
+  "content": [
+    {
+      "shipmentPackageId": 900001,
+      "orderNumber": "ORDER-ANON-001",
+      "orderDate": 1762253333685,
+      "lastModifiedDate": 1762253393685,
+      "currencyCode": "TRY",
+      "packageTotalPrice": 125.50,
+      "shipmentPackageStatus": "Created",
+      "cargoProviderName": "ANON-CARGO",
+      "cargoTrackingNumber": "TRACK-ANON-001",
+      "shipmentAddress": { "city": "ANON" },
+      "invoiceAddress": { "city": "ANON" },
+      "lines": [
+        {
+          "id": 700001,
+          "merchantSku": "SKU-ANON-001",
+          "barcode": "BARCODE-ANON-001",
+          "productName": "Anonim Ürün",
+          "quantity": 1,
+          "price": 125.50,
+          "vatBaseAmount": 20,
+          "orderLineItemStatusName": "Created"
+        }
+      ]
+    }
+  ]
+}

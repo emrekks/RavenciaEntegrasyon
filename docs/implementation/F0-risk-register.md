@@ -11,7 +11,7 @@
 | `RISK-VOLUME-001` | Ürün/sipariş baz hacmi bilinse de varyant, sipariş satırı ve dönemsel pikler henüz ölçülmedi. | Büyümenin baz profili aşması | `1.000` ürün ve `15.000` sipariş/yıl bazına x5 uygula; ikincil metrikleri F1+ gözlemle | x5 yük sonucu ve üretim gözlem kaydı | MITIGATED_MONITOR |
 | `RISK-SUPPLY-001` | F1 production manifestleri henüz yok. | Production aktarımında resolved tree/image drift | F0 verification lock ve index digest'leri oluşturuldu; F1 aktarımı fail-closed karşılaştırılacak | F0 lock hash ve registry digest kanıtı | MITIGATED_F0 |
 | `RISK-COMPOSE-001` | Docker Desktop `4.84.0` bundled Compose `v5.3.1` getiriyor ve başlangıçta kullanıcı plugin konumunu yeniden yazıyor; şartname v2 hattını sabitliyor. | Yanlış major seçimi ve yerel/hedef drift | Bundled v5 kabul kanıtı sayılmadı; resmî Windows x86_64 `v2.40.2` binary'si kayıtlı SHA-256 ile doğrulanıp Ravencia'ya ayrılmış sabit araç konumuna kuruldu. Hedef VPS'te yeniden doğrulanır. | `C:\Users\emrek\AppData\Local\Ravencia\tools\docker-compose-v2.40.2.exe version`; kayıtlı SHA-256 eşit | MITIGATED_LOCAL |
-| `RISK-STITCH-001` | Stitch arayüz dosyası henüz sağlanmadı. | İleri UI görünüm uyumsuzluğu | Markalı fideliği ertele; F1 yerel iskeletini bloklama | Dosya checksum'u ve ilgili faz kabulü | OPEN_NON_BLOCKING |
+| `RISK-STITCH-001` | Stitch arayüz dosyası başlangıçta sağlanmamıştı. | İleri UI görünüm uyumsuzluğu | Dosya faz filtresiyle incelendi; yalnız F3 Teal Precision token/layout girdisi kullanıldı. | ZIP SHA-256 `3B51EBF78D7653933451E2B41D627A5281E14298844F7B7AFFAFC0B8198CE0A9`; F3 route guard | CLOSED_F3 |
 
 ## Blocker özeti
 
