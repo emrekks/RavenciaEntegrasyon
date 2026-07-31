@@ -1,0 +1,26 @@
+{
+  "name": "ravencia-f0-dependency-verification",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Non-production F0 lock verification manifest; not an application package.",
+  "engines": {
+    "node": ">=24.18.1 <25"
+  },
+  "packageManager": "npm@11.12.1",
+  "dependencies": {
+    "@tanstack/react-query": "5.101.4",
+    "@tanstack/react-table": "8.21.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-hook-form": "7.83.0",
+    "react-router": "7.18.2",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@tailwindcss/vite": "4.3.3",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3",
+    "vite": "8.1.5"
+  }
+}
