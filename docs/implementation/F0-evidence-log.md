@@ -17,6 +17,15 @@ Doğrulama tarihi: 2026-07-31. Sonuçlar gerçek komut çıktılarından kaydedi
 | F0 kimlikleri | Traceability completeness taraması | 21/21 kimlik mevcut | PASSED |
 | Production kapsamı | Repository-root dizin/uzantı taraması | `src`, `tests`, `deploy`, solution, migration, endpoint veya UI yok | PASSED |
 | F0 Git baseline | `git commit` | `00c7b78591f158babb040070bf0aa0f04acace8e` | PASSED |
+| Yerel host kapasitesi | Windows/CIM incelemesi | Windows 11 Pro build `26200`, 64-bit, `31,1 GiB` RAM; firmware sanallaştırma açık | PASSED_FOR_LOCAL |
+| Yerel Docker Desktop | Winget metadata + `docker version` | Docker Desktop `4.84.0` (`234817`), Engine/CLI `29.6.2`; server `linux/amd64`, driver `overlayfs`, context `desktop-linux` | PASSED_FOR_LOCAL |
+| Yerel Compose drift kontrolü | Bundled ve exact binary sürümleri | Bundled `v5.3.1` şartname hattı dışı ve kullanıcı plugin'ini yeniden yazıyor; kabul kanıtı sayılmadı | DETECTED_AND_MITIGATED |
+| Yerel Compose v2 pin | Resmî release binary + SHA-256 + `version` + `ls` | `v2.40.2`; SHA-256 `1f7f20b91e0564147dc58b3a58a22a8f64a787e060ce3c25789f408beacc0c4d`; `C:\Users\emrek\AppData\Local\Ravencia\tools\docker-compose-v2.40.2.exe`; engine bağlantısı geçti | PASSED_FOR_LOCAL |
+| Yerel WSL2 | Windows özellikleri + Microsoft paketi + `wsl --version/status` | WSL `2.7.11.0`, kernel `6.18.33.2-2`, varsayılan sürüm `2`; Windows build `26200.8875` | PASSED_FOR_LOCAL |
+| Linux image smoke | Digest-pinned Caddy 2.11.3 | `linux/amd64`; index digest `sha256:ec18...c7d9`; `caddy version` = `v2.11.3` | PASSED_FOR_LOCAL |
+| Named-volume kalıcılığı | İki container + Docker/WSL restart | `ravencia-f0-local-volume`; marker SHA-256 `8301a7bc232ece67bfb630ae783ba883148bc2f9a87ca9b3356a693ef2ac7289` restart öncesi/sonrası eşit; `unless-stopped` container yeniden başladı | PASSED_FOR_LOCAL |
+| PostgreSQL 18 mount guard | İlk source container logu | Eski `/var/lib/postgresql/data` mount'u 18+ imaj tarafından exit `1` ile reddedildi; `/var/lib/postgresql` kök mount'u kullanıldı | FAILED_SAFE_THEN_CORRECTED |
+| PostgreSQL dump/restore | Digest-pinned PostgreSQL 18.4, ayrı source/restore/backup volume'ları | Dump SHA-256 `51a6a9df0065b7e346e137cac77aa6208e7989b380fe885d7282a7f5c165fd3f`; source/restore `2|fb4200bade7730f8239ef795f97ee6fc`; restore `0,147 sn` | PASSED_FOR_LOCAL |
 | Hedef Windows VPS | Hedef runbook | VPS henüz kiralanmadı | NOT_RUN / BLOCKED_EXTERNAL |
 | Restore/RTO | Hedef PostgreSQL + files restore | Hedef VPS/volume yok | NOT_RUN / BLOCKED_EXTERNAL |
 

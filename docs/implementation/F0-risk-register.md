@@ -3,17 +3,19 @@
 | Kimlik | Risk | Etki | Güvenli azaltım | Kapanış kanıtı | Durum |
 | --- | --- | --- | --- | --- | --- |
 | `RISK-SPEC-001` | Canonical adlı PDF repository kökünde değildi. | Kaynak taşınabilirliği/yanlış kopya | Sağlanan dosya canonical ada byte-for-byte kopyalandı. | Kök PDF: 73 sayfa; SHA-256 `E98365DC34804A478D5DBB41E1997FB6742FD0723A76C08CEE138321F0E2ECA3` | CLOSED |
-| `RISK-DR-001` | `PILOT_LOCAL` yedek aynı fiziksel diskte olabilir. | Tek arızada veri+yedek kaybı | Production için şifreli off-host ve restore testi | Off-host checksum ve başarılı restore | OPEN |
+| `RISK-DR-001` | `PILOT_LOCAL` yedek aynı fiziksel diskte olabilir. | Tek arızada veri+yedek kaybı | Yerel dump/restore kanıtı tamamlandı; production için hedef-host restore ve seçilirse şifreli off-host gerekir | Yerel restore geçti; hedef/off-host kanıtı bekliyor | OPEN_TARGET_ONLY |
 | `RISK-CAP-001` | Platform test hesapları/fixture'ları yok. | Yanlış mapping/yazma riski | Tümü `UNKNOWN`; write off; fake adapter | Resmî kaynak + anonim test kanıtı | OPEN |
-| `RISK-HOST-001` | Hedef VPS henüz kiralanmadı; runtime/volume özellikleri bilinmiyor. | Deployment/kalıcılık başarısızlığı | Kiralama sonrası runbook'u hedefte uygulamadan production kabul etme | Tarihli runbook çıktısı | OPEN_DEFERRED |
+| `RISK-HOST-001` | Hedef VPS henüz kiralanmadı; runtime/volume özellikleri bilinmiyor. | Deployment/kalıcılık başarısızlığı | Kullanıcı onaylı yerel-makine-önce doğrulamasını uygula; kiralama sonrası runbook'u hedefte tekrarlamadan production kabul etme | Yerel ön kanıt + tarihli hedef runbook çıktısı | OPEN_DEFERRED_NONBLOCKING_LOCAL |
+| `RISK-LOCAL-RUNTIME-001` | Yerel WSL2 Windows özellikleri ilk restart sonrasında uygulama paketi eksikliği nedeniyle çalışmadı. | Yerel Linux-container doğrulaması başlayamadı | Microsoft WSL `2.7.11` paketi doğrulandı; engine, Linux image, restart ve volume testleri çalıştırıldı | Tarihli yerel runtime, restart ve volume checksum kanıtı | CLOSED |
+| `RISK-PG18-MOUNT-001` | PostgreSQL 18 resmî imajı eski `/var/lib/postgresql/data` volume mount'unu fail-closed reddetti. | Veritabanı container'ı başlatılamaz | 18+ için volume `/var/lib/postgresql` köküne bağlandı; yeni izole volume'da dump/restore geçti | PostgreSQL 18.4 source/restore container'ları ve eşit mantıksal checksum | CLOSED |
 | `RISK-VOLUME-001` | Ürün/sipariş baz hacmi bilinse de varyant, sipariş satırı ve dönemsel pikler henüz ölçülmedi. | Büyümenin baz profili aşması | `1.000` ürün ve `15.000` sipariş/yıl bazına x5 uygula; ikincil metrikleri F1+ gözlemle | x5 yük sonucu ve üretim gözlem kaydı | MITIGATED_MONITOR |
 | `RISK-SUPPLY-001` | F1 production manifestleri henüz yok. | Production aktarımında resolved tree/image drift | F0 verification lock ve index digest'leri oluşturuldu; F1 aktarımı fail-closed karşılaştırılacak | F0 lock hash ve registry digest kanıtı | MITIGATED_F0 |
-| `RISK-COMPOSE-001` | Compose v2 ile güncel major hattı arasında destek gerilimi olabileceği düşünüldü. | Yanlış major seçimi | Resmî Docker kaynağı v2 ve v5'in birlikte desteklendiğini doğruladı; şartname gereği v2.40.2 exact aday seçildi. | <https://docs.docker.com/compose/intro/history/>; <https://github.com/docker/compose/releases/tag/v2.40.2> | CLOSED |
+| `RISK-COMPOSE-001` | Docker Desktop `4.84.0` bundled Compose `v5.3.1` getiriyor ve başlangıçta kullanıcı plugin konumunu yeniden yazıyor; şartname v2 hattını sabitliyor. | Yanlış major seçimi ve yerel/hedef drift | Bundled v5 kabul kanıtı sayılmadı; resmî Windows x86_64 `v2.40.2` binary'si kayıtlı SHA-256 ile doğrulanıp Ravencia'ya ayrılmış sabit araç konumuna kuruldu. Hedef VPS'te yeniden doğrulanır. | `C:\Users\emrek\AppData\Local\Ravencia\tools\docker-compose-v2.40.2.exe version`; kayıtlı SHA-256 eşit | MITIGATED_LOCAL |
 | `RISK-STITCH-001` | Stitch arayüz dosyası henüz sağlanmadı. | İleri UI görünüm uyumsuzluğu | Markalı fideliği ertele; F1 yerel iskeletini bloklama | Dosya checksum'u ve ilgili faz kabulü | OPEN_NON_BLOCKING |
 
 ## Blocker özeti
 
-- `BLOCK-HOST-001`: VPS daha sonra kiralanacak; hedef erişim ve özellik kanıtı yok.
-- `BLOCK-DR-001`: `PILOT_LOCAL` ve en fazla 6 saat pilot RPO tanımlı; hedef volume, gerçek restore ve ölçülmüş RTO kanıtı yok.
+- `BLOCK-HOST-001`: VPS daha sonra kiralanacak; hedef erişim ve özellik kanıtı yok. Yerel geliştirmeyi durdurmaz, production kabulünü durdurur.
+- `BLOCK-DR-001`: Yerel sentetik restore ve süre ölçümü tamamlandı; hedef VPS volume/restore ve hedef RTO kanıtı henüz yok.
 
 Bu blockerlar kapanmadan F0 çıkışı `PASSED` yapılamaz.

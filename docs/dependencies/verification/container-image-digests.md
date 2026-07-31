@@ -21,7 +21,9 @@ Kaynak: <https://github.com/docker/compose/releases/download/v2.40.2/checksums.t
 | `docker-compose-linux-x86_64` | `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88` |
 | `docker-compose-linux-aarch64` | `20e30dda8d0133895b7991bcfec1eb2c02f9d38c8de9e73669daf9fb83df49e6` |
 
-Hedef mimari bilinmediği için bir binary seçilmemiştir. Runbook, kiralanan VPS'te kullanılan artefaktı bu resmî checksum'lardan biriyle eşleştirecektir.
+Yerel Windows x86_64 ön doğrulaması için `docker-compose-windows-x86_64.exe` seçilmiş, kayıtlı SHA-256 eşleşmesi doğrulanmış ve `C:\Users\emrek\AppData\Local\Ravencia\tools\docker-compose-v2.40.2.exe` konumuna kurulmuştur. Docker Desktop'ın bundled `v5.3.1` binary'si şartname kanıtı olarak kullanılmaz. Hedef mimari henüz bilinmediğinden runbook, kiralanan VPS'te kullanılan artefaktı bu resmî checksum'lardan biriyle ayrıca eşleştirecektir.
+
+Yerel runtime kanıtında Caddy `2.11.3` ve PostgreSQL `18.4` index digest'leri Linux/amd64 Docker engine üzerinde başarıyla çekilip çalıştırılmıştır. Platform-specific target child digest'i VPS kiralandığında ayrıca kaydedilecektir.
 
 ## Sınırlar
 

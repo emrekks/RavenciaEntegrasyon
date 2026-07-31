@@ -74,8 +74,8 @@ F0 boyunca aşağıdakiler oluşturulmaz veya değiştirilmez:
 | Kontrol | Sonuç |
 | --- | --- |
 | Repository başlangıç içeriği | `.git` dışında dosya yoktu; F0 ile `docs/` ve canonical şartname PDF'si oluşturuldu |
-| Git dalı | `master`, unborn branch |
-| Commit sayısı | 2 F0 commit'i (baseline kanıtı + çıkış durumu) |
+| Git dalı | `master` |
+| Commit sayısı | 3 F0 commit'i (uygulama sözleşmesi + dependency kanıtı + yerel runtime kanıtı) |
 | Git remote | Yok |
 | Çalışma ağacı | F0 belgeleri ve canonical şartname tracked; kapanış commit'i sonrası temiz; production yolu yok |
 | Canonical kök PDF | Mevcut; 73 sayfa; SHA-256 şartname kaydıyla eşit |
@@ -94,12 +94,14 @@ Boş repository F0 dokümantasyonunun başlatılmasına engel değildir. Şartna
 | .NET runtime | `10.0.10` | .NET 10 tabanıyla uyumlu |
 | Node.js | `v24.15.0` | Node.js 24 LTS tabanıyla uyumlu |
 | npm | `11.12.1` | F0 verification lock üretildi; production Web lockfile'ı F1'de |
-| Docker | Bulunamadı | Yerel Compose/runtime kanıtı üretilemiyor |
+| İşletim sistemi / kapasite | Windows 11 Pro, build `26200`, 64-bit; `31,1 GiB` RAM | Yerel geliştirme ve ön doğrulama için yeterli; hedef VPS kanıtı değildir |
+| Firmware sanallaştırma | Açık | WSL2 için gerekli taban mevcut; Windows özellikleri ve runtime ayrıca doğrulanır |
+| Docker Desktop | `4.84.0` (`234817`); Engine/CLI `29.6.2`; Compose `v2.40.2` | Linux/amd64 engine, `overlayfs`, digest-pinned smoke, restart ve named-volume kalıcılığı yerelde geçti; bundled Compose `v5.3.1` kabul kanıtı sayılmadı |
 | Caddy | Bulunamadı | Container/digest doğrulaması gerekiyor |
 | psql | Bulunamadı | PostgreSQL 18 yerel istemci/runtime kanıtı yok |
-| WSL | `wsl.exe` mevcut, WSL dağıtımı/altyapısı kurulu değil | Linux container doğrulaması yapılamıyor |
+| WSL | `2.7.11.0`; kernel `6.18.33.2-2`; varsayılan sürüm `2` | Windows restart sonrası çalıştığı ve Docker Linux engine'i taşıdığı doğrulandı |
 
-Bu bilgisayar hedef Windows VPS olarak kabul edilmez. Hedef host kanıtı ayrıca üretilmelidir.
+Kullanıcı 2026-07-31 tarihinde yerel-makine-önce akışını onayladı. Geliştirme ve ön container doğrulamaları bu bilgisayarda yapılacak, taşınabilir artefaktlar daha sonra kiralanacak hedef Windows VPS'e aktarılacaktır. Bu bilgisayar hedef Windows VPS olarak kabul edilmez; hedef hostta runtime, restart, volume ve restore kanıtı ayrıca üretilmeden production onayı verilmez.
 
 ## Gereksinim kimlikleri ve izlenebilirlik
 
@@ -335,9 +337,9 @@ ADR-001 ile ADR-010 yeni seçenek seçmek için değil, şartnamenin yürürlük
 | --- | --- | --- | --- |
 | `OPEN-F0-001` | Sağlanan PDF'nin canonical kök kopyasıyla hash eşitliği | Her iki kopya 73 sayfa ve SHA-256 `E98365DC34804A478D5DBB41E1997FB6742FD0723A76C08CEE138321F0E2ECA3`; karar kapandı. | CLOSED |
 | `OPEN-F0-002` | F0 lock/digest çıkış kriteri ile F1 lockfile teslimatı arasındaki faz sınırı | Kullanıcı onayıyla non-production F0 verification lock/digest seti oluşturuldu ve commit edildi; F1 scaffold'u üretilmedi. | CLOSED |
-| `OPEN-F0-003` | Hedef Windows VPS sağlayıcısı, sürümü, sanallaştırma/runtime desteği ve erişim yöntemi | VPS daha sonra kiralanacak; hedef kanıt gelene kadar yerel host production kanıtı sayılmaz. | F0 çıkış blocker'ı |
+| `OPEN-F0-003` | Hedef Windows VPS sağlayıcısı, sürümü, sanallaştırma/runtime desteği ve erişim yöntemi | Kullanıcı yerel-makine-önce akışını onayladı. VPS daha sonra kiralanacak; yerel ön doğrulama F1 yerel çalışmasını açar fakat hedef host production kanıtı sayılmaz. | Hedef production/F0 çıkış blocker'ı; yerel geliştirme blocker'ı değil |
 | `OPEN-F0-004` | Gerçek veri hacmi ve pik değerleri | `1.000` ürün ve `15.000` sipariş/yıl baz; x5 profil `5.000` ürün ve `75.000` sipariş/yıl. İkincil metrikler F1+ izlenir. | CLOSED_FOR_F0 |
-| `OPEN-F0-005` | Hedef volume, restore süresi ve RTO | Profil `PILOT_LOCAL`, pilot RPO en fazla 6 saat; off-host bu profilde zorunlu değildir. Hedef restore ölçülmeden RTO uydurulmaz. | F0 çıkış blocker'ı |
+| `OPEN-F0-005` | Hedef volume, restore süresi ve RTO | Yerel PostgreSQL 18.4 dump/restore `0,147 sn` ve mantıksal checksum eşitliğiyle geçti. Profil `PILOT_LOCAL`, pilot RPO en fazla 6 saat; off-host bu profilde zorunlu değildir. Yerel ölçüm hedef VPS RTO'su ilan edilmez. | Yerel kapı CLOSED; hedef F0 çıkış blocker'ı |
 | `OPEN-F0-006` | Platform test hesabı/credential/fixture erişim durumu | Tümü `UNKNOWN`; Fake adapter; dış write kapalı. | F1 local için engel değil |
 
 Güvenli varsayılanı şartnamede bulunan iş kararları açık karar sayılmaz; ADR-006'ya aynen kaydedilir ve uygulama sırasında ayrıca soru sorulmadan korunur.
@@ -361,9 +363,10 @@ Mevcut değerlendirme:
 
 - **Bu ilk planlama görevi: READY.**
 - **F0 dokümantasyon uygulaması: COMPLETE.** İzlenebilirlik, capability, iş otoritesi, güvenlik/operasyon, dependency/sürüm kayıtları ve ADR-001–010 oluşturuldu.
-- **F0 çıkış kapısı: BLOCKED_EXTERNAL.** `BLOCK-HOST-001` ve buna bağlı `BLOCK-DR-001`, VPS kiralanıp hedef runbook çalışana kadar kapatılamaz. `BLOCK-CAPACITY-001` ve `BLOCK-VERSION-001` kapanmıştır.
+- **F0 çıkış kapısı: BLOCKED_EXTERNAL.** `BLOCK-HOST-001` ve buna bağlı hedef `BLOCK-DR-001`, VPS kiralanıp hedef runbook çalışana kadar kapatılamaz. Kullanıcı onaylı yerel-makine-önce akışı bu blocker'ların F1 yerel geliştirmesini durdurmadığını kaydeder; production kabul kapısı değişmez. `BLOCK-CAPACITY-001` ve `BLOCK-VERSION-001` kapanmıştır.
+- **Yerel runtime kapısı: READY.** WSL2, Docker Linux engine, exact Compose v2.40.2, digest-pinned Linux image, restart/volume ve PostgreSQL dump/restore ön kanıtları geçmiştir.
 - Platform test hesaplarının yokluğu capability'leri `UNKNOWN` bırakır; şartnameye göre bu durum tek başına F1 local geliştirmesini engellemez.
 
 ## Sonraki güvenli adım
 
-Production artefaktı oluşturulmamıştır. Sonraki adım VPS kiralandığında hedef runtime/volume/restore-RTO runbook'unu çalıştırmaktır. Kullanıcının ayrıca F1 faz başlatma talebi olmadan F1 production koduna geçilmez.
+Production artefaktı oluşturulmamıştır. Yerel WSL2/Docker/volume/restore ön doğrulaması tamamlanmıştır. VPS kiralandığında aynı kanıt seti hedef hostta yeniden çalıştırılacak; yerel sonuç hedef production kanıtı yerine geçmeyecektir. Kullanıcının ayrıca F1 faz başlatma talebi olmadan F1 production koduna geçilmez.

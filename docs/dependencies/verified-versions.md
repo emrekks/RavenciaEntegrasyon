@@ -10,8 +10,11 @@ Doğrulama tarihi: 2026-07-31. Yetkili şartnamedeki major/minor kararları değ
 | .NET / ASP.NET Core runtime | `10.0.10` | INSTALLED |
 | Node.js | `24.15.0` | INSTALLED; current LTS patch adayıyla aynı değil |
 | npm | `11.12.1` | INSTALLED |
-| Docker / Caddy / psql | Bulunamadı | BLOCKED_EXTERNAL |
-| WSL | Launcher mevcut, WSL kurulu değil | BLOCKED_EXTERNAL |
+| Docker Desktop / Engine / CLI | Desktop `4.84.0` (`234817`), Engine/CLI `29.6.2`; Linux/amd64, `overlayfs`, `desktop-linux` | VERIFIED_LOCAL_RECHECK_TARGET |
+| Docker Compose | Bundled `v5.3.1` kabul edilmedi; sabit araç konumunda checksum doğrulanmış `v2.40.2` engine bağlantısıyla geçti | VERIFIED_LOCAL_RECHECK_TARGET |
+| Caddy | Digest-pinned `2.11.3`, Linux/amd64 smoke geçti | VERIFIED_LOCAL_RECHECK_TARGET |
+| PostgreSQL / psql | Digest-pinned `18.4`; psql, dump ve temiz-volume restore geçti | VERIFIED_LOCAL_RECHECK_TARGET |
+| WSL | `2.7.11.0`, kernel `6.18.33.2-2`, varsayılan sürüm `2` | VERIFIED_LOCAL_RECHECK_TARGET |
 
 ## Backend ve altyapı
 
