@@ -8,11 +8,12 @@ namespace MarketplaceHub.Api.Security;
 
 public sealed class SessionAuthMiddleware(RequestDelegate next)
 {
-    public const string CookieName = "__Host-MarketplaceHub";
+    public const string ProductionCookieName = "__Host-MarketplaceHub";
+    public const string PilotLocalCookieName = "MarketplaceHub-Session-PILOT-LOCAL";
 
     public async Task InvokeAsync(HttpContext context, AppDbContext db, TokenHasher hasher, TimeProvider timeProvider)
     {
-        if (context.Request.Cookies.TryGetValue(CookieName, out var token))
+        if (context.Request.Cookies.TryGetValue(CookieName(context), out var token))
         {
             var hash = hasher.Hash(token);
             var session = await db.UserSessions.SingleOrDefaultAsync(x => x.TokenHash == hash, context.RequestAborted);
@@ -42,4 +43,9 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
     }
 
     private static DateTimeOffset Min(DateTimeOffset left, DateTimeOffset right) => left < right ? left : right;
+
+    public static string CookieName(HttpContext context) =>
+        string.Equals(context.RequestServices.GetRequiredService<IConfiguration>()["MARKETPLACEHUB_ENVIRONMENT"], "PILOT_LOCAL", StringComparison.OrdinalIgnoreCase) && !context.Request.IsHttps
+            ? PilotLocalCookieName
+            : ProductionCookieName;
 }

@@ -45,4 +45,4 @@ Docker Desktop bulunmayan geliştirme bilgisayarında PostgreSQL 18'in ayrı bir
 
 API için `MARKETPLACEHUB_ENVIRONMENT=PILOT_LOCAL`, file-backed credential key, ayrı DB connection, Data Protection ve private-file köklerini ayarla; migration ve explicit Owner bootstrap komutlarını çalıştır. API'yi yalnız `http://127.0.0.1:5080`, Vite'ı `VITE_API_PROXY=http://127.0.0.1:5080 npm.cmd run dev -- --host 127.0.0.1 --port 5173` ile başlat. Panel `http://localhost:5173` adresindedir.
 
-PILOT_LOCAL HTTP'de session/CSRF cookie geliştirme amacıyla Secure olmadan yazılabilir; başka her environment'ta Secure zorunludur. Bu çalışma biçimi VPS/production TLS, container, reboot, volume, backup veya restore kanıtı değildir.
+PILOT_LOCAL HTTP'de session/CSRF cookie geliştirme amacıyla Secure olmadan ve `__Host-` ön eki olmadan yazılır; Vite proxy için yalnız `http://localhost:5173` ve `http://127.0.0.1:5173` originleri kabul edilir. Başka her environment'ta Secure ve `__Host-` zorunludur. Bu çalışma biçimi VPS/production TLS, container, reboot, volume, backup veya restore kanıtı değildir.
