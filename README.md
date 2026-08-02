@@ -44,7 +44,7 @@ Persistence integration testleri varsayılan olarak Testcontainers kullanır. Do
 & "$env:LOCALAPPDATA\Ravencia\tools\docker-compose-v2.40.2.exe" -f deploy/compose/compose.yaml up -d
 ```
 
-Yalnız Caddy `80/443` host portlarını açar. API, Worker ve PostgreSQL internal backend ağındadır. Production işlemleri için [deployment-and-rollback.md](docs/runbooks/deployment-and-rollback.md), kimlik işlemleri için [identity-operations.md](docs/runbooks/identity-operations.md), fatura işlemleri için [invoice-operations.md](docs/runbooks/invoice-operations.md) ve kurtarma için [backup-and-restore.md](docs/runbooks/backup-and-restore.md) kullanılır.
+Yalnız Caddy `80/443` host portlarını açar. API, Worker ve PostgreSQL internal backend ağındadır. PILOT_LOCAL edge ayrı internal CA kullanır; production edge public DNS için otomatik HTTPS kullanır. Production işlemleri için [immutable image release](docs/runbooks/image-release.md), [deployment-and-rollback.md](docs/runbooks/deployment-and-rollback.md), kimlik işlemleri için [identity-operations.md](docs/runbooks/identity-operations.md), fatura işlemleri için [invoice-operations.md](docs/runbooks/invoice-operations.md) ve kurtarma için [backup-and-restore.md](docs/runbooks/backup-and-restore.md) kullanılır.
 
 ## Faz ve güvenlik sınırı
 
@@ -56,5 +56,7 @@ Aktif ve onaylanmış son yerel uygulama alt fazı F6A’dır. F6B N11, F6C Paza
 - Hepsiburada auth modeli partner hesabında doğrulanana kadar credential, bağlantı testi ve bütün dış read/write çağrıları fail-closed’dur.
 - Fatura otomasyonu mali kararlar ve test firma kanıtı olmadan kapalıdır.
 - Hedef VPS kiralanana kadar yerel sonuç production runtime/RTO kabulü sayılmaz.
+
+VPS kurulumu ve Stage/SIT hesap kanıtları ertelenmiş olsa da production aday imajlarını GitHub Container Registry'ye digest ile üreten manuel ve fail-closed yayın akışı repository'dedir. Bu hazırlık faz kapılarını açmaz: F6B/F6C/F7+ üretim kodu, gerçek platform write ve canlı deploy hâlâ ilgili dış kanıt ve ayrı onayları bekler.
 
 Güncel faz durumu [F6A planında](docs/implementation/F6A-plan.md), kanıtlar [F6A evidence logunda](docs/implementation/F6A-evidence-log.md), bütün faz izi ise [traceability matrixte](docs/implementation/traceability-matrix.md) tutulur.

@@ -1,0 +1,112 @@
+name: Publish immutable release images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-release-images-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the approved commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Install exact .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Install exact Node.js runtime
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.18.1
+          package-manager-cache: false
+
+      - name: Verify locked .NET solution
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore MarketplaceHub.sln --locked-mode
+          dotnet build MarketplaceHub.sln --no-restore
+          dotnet test MarketplaceHub.sln --no-build --no-restore
+          dotnet format MarketplaceHub.sln --verify-no-changes --no-restore
+
+      - name: Verify locked web application
+        shell: bash
+        working-directory: src/MarketplaceHub.Web
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm run typecheck
+          npm test -- --run
+          npm run build
+
+      - name: Create exact Buildx builder
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          version: v0.34.1
+          name: marketplacehub-release
+          driver: docker-container
+
+      - name: Authenticate to GitHub Container Registry
+        shell: bash
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Build and publish application image
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          image="ghcr.io/${owner}/marketplacehub-app"
+          docker buildx build \
+            --file Dockerfile \
+            --platform linux/amd64 \
+            --provenance=mode=max \
+            --sbom=true \
+            --tag "${image}:sha-${GITHUB_SHA}" \
+            --metadata-file app-metadata.json \
+            --push .
+
+      - name: Build and publish production edge image
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          image="ghcr.io/${owner}/marketplacehub-edge"
+          docker buildx build \
+            --file deploy/caddy/Dockerfile.production \
+            --platform linux/amd64 \
+            --provenance=mode=max \
+            --sbom=true \
+            --tag "${image}:sha-${GITHUB_SHA}" \
+            --metadata-file edge-metadata.json \
+            --push .
+
+      - name: Verify digests and write release record
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          app_digest="$(jq -r '."containerimage.digest"' app-metadata.json)"
+          edge_digest="$(jq -r '."containerimage.digest"' edge-metadata.json)"
+          digest_pattern='^sha256:[0-9a-f]{64}$'
+          [[ "${app_digest}" =~ ${digest_pattern} ]]
+          [[ "${edge_digest}" =~ ${digest_pattern} ]]
+          {
+            echo '## Immutable release images'
+            echo
+            echo "- Git commit: \`${GITHUB_SHA}\`"
+            echo "- MARKETPLACEHUB_APP_IMAGE=ghcr.io/${owner}/marketplacehub-app@${app_digest}"
+            echo "- MARKETPLACEHUB_EDGE_IMAGE=ghcr.io/${owner}/marketplacehub-edge@${edge_digest}"
+            echo
+            echo 'Copy these exact `name@sha256:...` values into the approved deployment record. Do not deploy the mutable `sha-*` tags.'
+          } >> "${GITHUB_STEP_SUMMARY}"

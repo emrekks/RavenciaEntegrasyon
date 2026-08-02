@@ -3,6 +3,7 @@
 ## Production kapıları
 
 - Hedef Windows VPS üzerinde WSL2/Linux container, nested virtualization, kalıcı volume ve reboot kanıtı tamamlanmış olmalı.
+- Production domaininin DNS A/AAAA kaydı hedef VPS'yi göstermeli; dışarıdan `80/443` erişimi ve kalıcı Caddy data volume'u doğrulanmalı. Production edge public ACME sertifikası ve HTTP→HTTPS yönlendirmesi kullanır; `tls internal` yalnız PILOT_LOCAL içindir.
 - `MARKETPLACEHUB_APP_IMAGE` ve `MARKETPLACEHUB_EDGE_IMAGE` registry tag değil `name@sha256:...` olmalı.
 - Production site address HTTPS olmalı; yalnız Caddy host `80/443` açmalı.
 - Data Protection PFX ve parolası read-only secret olarak mount edilmeli; yoksa uygulama fail-closed olmalı.
@@ -11,7 +12,7 @@
 
 ## Deploy sırası
 
-1. Image digest, Git commit, migration listesi ve backup manifestini release kaydına yaz.
+1. [Immutable image release runbook'u](image-release.md) ile app/edge imajlarını üret; image digest, Git commit, migration listesi ve backup manifestini release kaydına yaz.
 2. `compose.production.yaml` ile `config` çıktısını incele; floating/latest ve doğrudan API/DB portu olmadığını doğrula.
 3. Backup al ve off-host aktarımını doğrula.
 4. `migrate` one-shot servisini çalıştır; exit `0` olmadan API/Worker başlatma.

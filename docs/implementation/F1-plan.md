@@ -5,7 +5,7 @@
 | Alan | Değer |
 | --- | --- |
 | Faz | `F1` |
-| Durum | `READY_LOCAL`; production/VPS kabulü `BLOCKED_EXTERNAL` |
+| Durum | `READY_LOCAL_DEPLOY_PREPARED`; production/VPS kabulü `BLOCKED_EXTERNAL` |
 | Yetkili şartname | Repository kökü `Ravencia_Entegrasyon_v3_2_Nihai_Uygulama_Surumu.pdf`, v3.2, 73 sayfa |
 | Şartname SHA-256 | `E98365DC34804A478D5DBB41E1997FB6742FD0723A76C08CEE138321F0E2ECA3` |
 | Kaynak sayfalar | 5-6, 11-19, 23-24, 34-36, 39-41, 48-59, 61-62 |
@@ -42,7 +42,7 @@ F1'in hedefi migration uygulanabilir, gözlemlenebilir, yedeklenebilir ve doküm
 | Kimlik | Kaynak bölümü | Kabul ölçütü | Planlanan kanıt | Dosya/modül | Dış bağımlılık | Durum |
 | --- | --- | --- | --- | --- | --- | --- |
 | `F1-REQ-001` | Tablo 06-09; F1 teslimatlar | Yetkili solution/proje/test/deploy yapısı ve bağımlılık yönleri vardır; nullable ve warnings-as-errors açıktır. | Restore/build, project-reference guard testi | Root, `src/`, `tests/`, `deploy/` | Yok | DONE |
-| `F1-REQ-002` | Tablo 06; F1 teslimatlar | Exact SDK/NuGet/NPM/container seçimleri production lock/digest konumlarına aktarılmıştır; floating/latest yoktur. | Locked restore, npm ci, digest/config kontrolü | Root lock/config dosyaları | Registry push digest'i production deploy'da | DONE_LOCAL |
+| `F1-REQ-002` | Tablo 06; F1 teslimatlar | Exact SDK/NuGet/NPM/container seçimleri production lock/digest konumlarına aktarılmıştır; floating/latest yoktur. | Locked restore, npm ci, digest/config kontrolü | Root lock/config dosyaları, manuel GHCR yayın workflow'u | Workflow çalıştırması ve registry digest'i production release'te | DONE_LOCAL_DEPLOY_PREPARED |
 | `F1-REQ-003` | Tablo 12; Tablo 37; F1 teslimatlar | Migration gerçek kullanıcı/parola üretmez; bootstrap tek Tenant, RavenciaAdmin, OWNER membership ve marker'ı tek transaction'da oluşturur. | Fresh DB, repeat ve concurrent bootstrap integration testleri | IAM, Persistence, bootstrap CLI | PostgreSQL 18 | DONE |
 | `F1-REQ-004` | Sayfa 49-50; Tablo 38 | Read-only secret file, PILOT_LOCAL/public ayrımı, PasswordChangeOnly allowlist, zorunlu parola değişimi ve session rotation uygulanır. | Auth/API integration testleri | Identity/Application/Api | Secret file test fixture | DONE_LOCAL |
 | `F1-REQ-005` | Tablo 12, 26, 39; sayfa 50-51 | TOTP varsayılan kapalı; 10 dk pending; setup/confirm/challenge/disable ve ±1 skew/replay kuralları uygulanır. | Unit + PostgreSQL/API integration testleri | IAM security + auth endpoints | Yok | DONE_LOCAL |
@@ -108,7 +108,7 @@ F2+ modül klasörlerine production entity/use-case/endpoint/route veya placehol
 | `F1-RISK-STITCH-001` | Stitch tasarımı yoktur. | İşlevsel/erişilebilir varsayılan F1 UI; markalı fidelity ertelenir. |
 | `F1-RISK-PLATFORM-001` | Platform test hesabı/fixture yoktur. | Capability `UNKNOWN`, dış HTTP ve write kapalı; F1 blocker'ı değildir. |
 | `F1-RISK-DR-001` | Hedef DB/files/key-ring restore kanıtı VPS'e bağlıdır. | Yerel clean restore yapılır; target RTO ilan edilmez. |
-| `RISK-F1-SEC-001` | React Router 7.18.2 için client uygulamanın kullanmadığı RSC action yüzeyinde yüksek advisory vardır. | RSC/SSR/server action yok; API same-origin+CSRF kapılı. Major 8'e izinsiz geçilmez; güvenli 7.x release izlenir. |
+| `RISK-F1-SEC-001` | React Router 7.18.2 için client uygulamanın kullanmadığı RSC action yüzeyinde `GHSA-qwww-vcr4-c8h2` yüksek advisory'si vardır; 2026-08-02 registry düzeltmesi breaking 8.3.0'dır. | RSC/SSR/server action yok; API same-origin+CSRF kapılı. Major 8'e izinsiz geçilmez; güvenli 7.x release veya yetkili mimari karar izlenir. |
 
 ## ADR etkisi
 
@@ -127,4 +127,4 @@ F1, ADR-001-010 kararlarını uygular; alternatif mimari seçmez. Yalnız şartn
 
 ## Sonuç
 
-F1 uygulaması ve yerel kanıt seti tamamlanmıştır: sonuç `READY_LOCAL`dır. Hedef VPS runtime/reboot/volume/RTO, production PFX secret, off-host backup hedefi ve registry-pushed immutable application/edge digest'i VPS kiralandığında kanıtlanacağından production kabulü `BLOCKED_EXTERNAL` kalır. Bu ayrım F2'yi açmaz; yeni faz için ayrıca kullanıcı onayı gerekir.
+F1 uygulaması, yerel kanıt seti, ayrı production public-TLS edge tanımı ve immutable image yayın otomasyonu tamamlanmıştır: sonuç `READY_LOCAL_DEPLOY_PREPARED`dır. Hedef VPS runtime/reboot/volume/RTO, production PFX secret, off-host backup hedefi ve workflow çalıştırmasıyla oluşacak registry-pushed immutable application/edge digest'i hedef ortam/release hazır olduğunda kanıtlanacağından production kabulü `BLOCKED_EXTERNAL` kalır. Bu ayrım sonraki faz kapılarını kendiliğinden açmaz.

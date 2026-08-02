@@ -22,13 +22,15 @@ Doğrulama tarihi: 2026-07-31. Ortam: Windows geliştirme makinesi üzerinde Doc
 | `F1-EV-016` auth/MFA HTTPS zinciri | PASS_LOCAL | `PASSWORD_CHANGE_REQUIRED`, allowlist 403, 10 recovery code, replay 400, TOTP challenge, 3 session, revoke-others 204, disable 204 |
 | `F1-EV-017` break-glass | PASS_LOCAL | OS authorization environment + reason ile CLI exit 0; append-only audit count 1 |
 | `F1-EV-018` job retry contract amendment (`2026-08-02`) | PASS_POSTGRES_LOCAL | Şartname s.30–32 state/max-attempt/backoff/expired-attempt sözleşmesi ile lease süresinin dörtte birinde ayrı scope heartbeat, lease-loss iptali, completion fencing ve correlation aktarımı tamamlandı; worker-kill/retry/dead-letter/heartbeat/stale-token zinciri izole PostgreSQL 18.4 üzerinde geçti |
+| `F1-EV-019` production image/TLS release hazırlığı (`2026-08-02`) | PASS_LOCAL_BUILD / PUBLISH_DEFERRED | PILOT_LOCAL internal CA'dan ayrı public automatic HTTPS Caddyfile'ı, production edge Dockerfile'ı ve exact action/Buildx pinli manuel GHCR app/edge yayın akışı eklendi; exact Compose v2.40.2 production config, `3/3` repository guard, local app/edge image build, app `linux/amd64` non-root user `1654`, `caddy fmt` ve `caddy validate` geçti. Gerçek registry digest'i workflow çalıştırılana, VPS/DNS kanıtı hedef kuruluma kadar ertelendi |
 
 ## Güvenlik bulguları
 
 - Transitive `Microsoft.OpenApi 2.0.0` yüksek önem advisory'si restore sırasında fail-closed yakalandı; şartname F1'de OpenAPI artefaktını zorunlu kılmadığından ilgili package ve runtime yüzeyi kaldırıldı.
-- npm audit, şartnamenin bağladığı React Router `7.18.2` için RSC action CSRF advisory'si bildirir. Bu F1 web image'ı yalnız client-side `BrowserRouter` kullanır; RSC/server action/SSR yoktur ve bütün değiştiren API istekleri same-origin + custom CSRF doğrulamasından geçer. Major 8'e geçmek şartname teknoloji kararını değiştireceği için yapılmadı. Risk `RISK-F1-SEC-001` olarak açık ve upgrade kapısı yeni güvenli 7.x release veya yetkili mimari karardır.
+- 2026-08-02 production `npm audit`, şartnamenin bağladığı React Router `7.18.2` için `GHSA-qwww-vcr4-c8h2` RSC action CSRF advisory'sini tek yüksek bulgu olarak bildirir; registry yalnız breaking `8.3.0` düzeltmesi önerir. Bu web image'ı yalnız client-side `BrowserRouter` kullanır; RSC/server action/SSR yoktur ve bütün değiştiren API istekleri same-origin + custom CSRF doğrulamasından geçer. Major 8'e geçmek şartname teknoloji kararını değiştireceği için yapılmadı. Risk `RISK-F1-SEC-001` olarak açık ve upgrade kapısı yeni güvenli 7.x release veya yetkili mimari karardır.
+- 2026-08-02 NuGet transitive vulnerability taraması 11/11 projede temiz geçti.
 - PILOT_LOCAL key ring persistent fakat PFX ile at-rest encrypted değildir. Production mode certificate/path/password yoksa uygulama fail-closed olur.
 
 ## Yerel/production ayrımı
 
-F1 yerel uygulama ve kanıt sonucu `READY_LOCAL`dır. Hedef VPS reboot/volume/RTO, registry-pushed immutable app/edge digest, production PFX secret ve off-host hedef kanıtı VPS kiralandığında tamamlanır; production çıkışı o zamana kadar `BLOCKED_EXTERNAL`dır.
+F1 yerel uygulama, public-TLS production edge tanımı ve immutable image yayın otomasyonu sonucu `READY_LOCAL_DEPLOY_PREPARED`dır. Hedef VPS reboot/volume/RTO, workflow'dan üretilecek registry-pushed immutable app/edge digest, production PFX secret ve off-host hedef kanıtı hedef ortam hazır olduğunda tamamlanır; production çıkışı o zamana kadar `BLOCKED_EXTERNAL`dır.

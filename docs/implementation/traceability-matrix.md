@@ -38,14 +38,14 @@ F1 ayrıntılı kabul ve kanıt eşlemesi [F1-plan.md](F1-plan.md) ve [F1-eviden
 
 | Aralık | Uygulama | Kanıt | Sonuç |
 | --- | --- | --- | --- |
-| `F1-REQ-001–003` | Root solution/locks, tek AppDbContext/migration, advisory-lock bootstrap | Zero-warning build, fresh/concurrent/repeat PostgreSQL test | DONE_LOCAL |
+| `F1-REQ-001–003` | Root solution/locks, tek AppDbContext/migration, advisory-lock bootstrap, manual GHCR digest workflow | Zero-warning build, fresh/concurrent/repeat PostgreSQL test, production TLS/digest repository guard | DONE_LOCAL_DEPLOY_PREPARED |
 | `F1-REQ-004–008` | Identity, custom session, CSRF, password-only, TOTP/recovery, revoke ve break-glass | HTTPS auth zinciri, parallel recovery test, audit doğrulaması | DONE_LOCAL |
 | `F1-REQ-009–012` | Server-side tenant context, job/inbox/effect, append-only audit, private file | Tenant/file guards; dedup/lease/heartbeat/stale/reaper testleri | DONE_LOCAL |
 | `F1-REQ-013–015` | `_FILE` secret, DP volume/PFX gate, JSON health/log, Caddy/Compose/backup | Container smoke, port/non-root/header/cookie ve restore kanıtı | DONE_LOCAL |
-| `F1-REQ-016–017` | React auth/security kabuğu ve operasyon runbook'ları | Strict TS, component, bundle, Playwright Chromium; runbook incelemesi | DONE_LOCAL |
-| `F1-EXIT-001–006` | Yerel F1 çıkış seti | `F1-EV-001–017` | READY_LOCAL |
+| `F1-REQ-016–017` | React auth/security kabuğu ve operasyon/image-release runbook'ları | Strict TS, component, bundle, Playwright Chromium; runbook incelemesi | DONE_LOCAL_DEPLOY_PREPARED |
+| `F1-EXIT-001–006` | Yerel F1 çıkış seti | `F1-EV-001–019` | READY_LOCAL_DEPLOY_PREPARED |
 
-Hedef VPS runtime/reboot/volume/RTO, production PFX/off-host hedef ve registry-pushed image digest'i dış bağımlılıktır; production kabulü `BLOCKED_EXTERNAL`dır. Bu F1 kayıt anında F2 henüz açılmamıştı.
+Hedef VPS runtime/reboot/volume/RTO, production PFX/off-host hedef ve manuel workflow çalıştırmasıyla üretilecek registry-pushed image digest'i dış bağımlılıktır; production kabulü `BLOCKED_EXTERNAL`dır. Bu F1 kayıt anında F2 henüz açılmamıştı.
 
 ## F2 uygulama izi
 
