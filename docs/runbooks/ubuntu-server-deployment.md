@@ -40,6 +40,8 @@ sudo -H ./deploy/scripts/install-marketplacehub.sh --deploy --bootstrap
 
 Sonraki release'lerde `deploy/secrets/production.env` içindeki iki digest'i onaylı değerlerle değiştir ve yalnız `--deploy` kullan. Bootstrap tekrarı varsayılan değildir.
 
+Immutable release imajları GitHub Actions ekranından elle veya yalnız onaylı commit üzerinde `release-*` etiketi gönderilerek üretilebilir. Normal branch push'ları imaj yayımlamaz. İş akışı özetindeki iki `name@sha256:...` değeri değişmeden production kaydına alınır.
+
 ## Secret ve backup zorunluluğu
 
 `deploy/secrets/` Git tarafından ignore edilir ve dosyalar `0600`, dizin `0700` izinleriyle hazırlanır. Otomatik üretilen `dp_certificate.pfx`, `dp_certificate_password.txt` ve `dp_certificate_metadata.txt` dosyalarını kurulumdan hemen sonra repository dışında şifreli, erişim kontrollü off-host secret hedefine kopyala.

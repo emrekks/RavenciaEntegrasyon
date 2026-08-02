@@ -2,6 +2,9 @@ name: Publish immutable release images
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "release-*"
 
 permissions:
   contents: read
