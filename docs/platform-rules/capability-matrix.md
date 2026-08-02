@@ -45,11 +45,11 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 | Shopify | Sipariş/teslimat | UNKNOWN | Webhook dokümanı erişilebilir | Yok | off |
 | Shopify | İade | UNKNOWN | Kapsam kanıtlanmadı | Yok | off |
 | Shopify | Fatura | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
-| Hepsiburada | Bağlantı | UNKNOWN | F6A draft/no-HTTP guard hazır; partner auth ve SIT hesabı yok | Yerel fail-closed contract | off |
+| Hepsiburada | Bağlantı | SUPPORTED | Sipariş SIT Basic Auth + User-Agent; resmî v1.0 kaynak 2026-06-04 | AWS üzerinden HTTP 200; anonim boş zarf SHA-256 `0bece67384a38e350bf3b162f702bcfbbcdb5d5ec7e289f839c643b7ae61ffe9` | off |
 | Hepsiburada | Katalog referansı | UNKNOWN | Güncel guide erişilebilir; partner fixture yok | Yerel generic port/no-HTTP | off |
 | Hepsiburada | Ürün | UNKNOWN | Async katalog guide erişilebilir; mapping fixture yok | Yerel generic port/no-write | off |
 | Hepsiburada | Stok/fiyat | UNKNOWN | Listing capability/SIT kanıtı yok | Yerel generic port/no-write | off |
-| Hepsiburada | Sipariş/teslimat | UNKNOWN | Sipariş/package guide erişilebilir; SIT fixture yok | Yerel generic port/no-write | off |
+| Hepsiburada | Sipariş/teslimat | UNKNOWN | Salt-okunur SIT endpoint/auth doğrulandı; yanıt `items: []` olduğu için alan/status eşlemesi kanıtlanmadı | Boş zarf + yerel generic port/no-write | off |
 | Hepsiburada | İade | UNKNOWN | Talep guide erişilebilir; enum/action fixture yok | Yerel generic port/no-write | off |
 | Hepsiburada | Fatura | UNKNOWN | Portal yönlendirme/login nedeniyle kısmi | Yok | off |
 | N11 | Bağlantı | UNKNOWN | Destek sayfası erişilebilir | Yok | off |

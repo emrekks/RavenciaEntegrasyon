@@ -1,11 +1,52 @@
+using System.Text.Json;
 using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 
 public sealed class HepsiburadaAdapter : IConnectionPort, IReferenceDataPort, IProductPort, IInventoryPricePort, IOrderPort, IReturnPort
 {
-    public Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken) => Blocked<ConnectionIdentity>(AuthMessage);
-    public Task<AdapterResult<IReadOnlyList<CapabilityEvidence>>> DiscoverCapabilitiesAsync(AdapterContext context, CancellationToken cancellationToken) => Blocked<IReadOnlyList<CapabilityEvidence>>(AuthMessage);
+    private readonly HepsiburadaConnectionProbe? _probe;
+    private HepsiburadaProbeEvidence? _lastEvidence;
+    private Guid? _lastConnectionId;
+
+    public HepsiburadaAdapter() { }
+    public HepsiburadaAdapter(HepsiburadaConnectionProbe probe) => _probe = probe;
+
+    public async Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken)
+    {
+        if (_probe is null) return await Blocked<ConnectionIdentity>(AuthMessage);
+        var result = await _probe.TestAsync(context, cancellationToken);
+        if (!result.IsSuccess) return AdapterResult<ConnectionIdentity>.Failure(result.Error!, result.RateLimit);
+        _lastEvidence = result.Value;
+        _lastConnectionId = context.ConnectionId;
+        return AdapterResult<ConnectionIdentity>.Success(result.Value!.Identity, result.RateLimit);
+    }
+
+    public async Task<AdapterResult<IReadOnlyList<CapabilityEvidence>>> DiscoverCapabilitiesAsync(AdapterContext context, CancellationToken cancellationToken)
+    {
+        if (_probe is null) return await Blocked<IReadOnlyList<CapabilityEvidence>>(AuthMessage);
+        var result = _lastEvidence is null || _lastConnectionId != context.ConnectionId ? await _probe.TestAsync(context, cancellationToken) : AdapterResult<HepsiburadaProbeEvidence>.Success(_lastEvidence);
+        if (!result.IsSuccess) return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Failure(result.Error!, result.RateLimit);
+        var evidence = result.Value!;
+        IReadOnlyList<CapabilityEvidence> capabilities =
+        [
+            new(
+                F3Capabilities.ConnectionTest,
+                "SUPPORTED",
+                HepsiburadaContract.DocumentedApiVersion,
+                evidence.Identity.Environment,
+                evidence.Identity.ExternalStoreId,
+                HepsiburadaContract.OrderSitSource,
+                "2026-06-04",
+                null,
+                JsonSerializer.Serialize(new { readOnly = true, productFamily = "ORDER", externalWritesEnabled = false, responseItemCount = evidence.ItemCount }),
+                "Hepsiburada Sipariş SIT Basic Auth bağlantısı ve anonim yanıt zarfı doğrulandı; sipariş alan eşlemesi doğrulanmadı.",
+                evidence.ResponseSha256,
+                evidence.VerifiedAt)
+        ];
+        return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(capabilities, result.RateLimit);
+    }
+
     public Task<AdapterResult<AdapterPageResult<RemoteReferenceItem>>> ReadAsync(AdapterContext context, ReferenceResource resource, AdapterPageRequest page, CancellationToken cancellationToken) => Blocked<AdapterPageResult<RemoteReferenceItem>>(ReadMessage);
     public Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) => Blocked<AdapterPageResult<RemoteProduct>>(ReadMessage);
     public Task<AdapterResult<RemoteOperationRef>> UpsertAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) => WriteBlocked<RemoteOperationRef>();
@@ -20,8 +61,8 @@ public sealed class HepsiburadaAdapter : IConnectionPort, IReferenceDataPort, IP
     Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) => Blocked<RemoteReturnClaim>(ReadMessage);
     public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) => WriteBlocked<ReturnActionResult>();
 
-    private const string AuthMessage = "Hepsiburada partner hesabında auth modeli, environment ve merchant scope doğrulanmadan dış bağlantı testi yapılmaz.";
-    private const string ReadMessage = "Hepsiburada SIT fixture ve capability kanıtı olmadan dış read çağrısı yapılmaz.";
+    private const string AuthMessage = "Hepsiburada SIT bağlantı kanıtı enjekte edilmeden dış bağlantı testi yapılmaz.";
+    private const string ReadMessage = "Hepsiburada sipariş alan eşlemesi anonim, dolu SIT fixture ile doğrulanmadan dış veri okuması yapılmaz.";
     private static Task<AdapterResult<T>> Blocked<T>(string message) => Task.FromResult(AdapterResult<T>.Failure(new(AdapterErrorClass.NotSupported, "HEPSIBURADA_CAPABILITY_UNVERIFIED", message, 422, null, null)));
     private static Task<AdapterResult<T>> WriteBlocked<T>() => Task.FromResult(AdapterResult<T>.Failure(new(AdapterErrorClass.NotSupported, "EXTERNAL_WRITE_DISABLED", "Hepsiburada dış yazmaları SIT capability ve iş otoritesi kanıtı olmadan çalışmaz.", 422, null, null)));
 }

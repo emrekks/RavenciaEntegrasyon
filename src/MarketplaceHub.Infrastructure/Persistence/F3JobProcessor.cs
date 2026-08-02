@@ -1,13 +1,14 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections, IOrderPort orders, IReturnPort returns, ShopifyGraphQlClient shopify, TimeProvider timeProvider) : IF3JobProcessor
+public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections, IOrderPort orders, IReturnPort returns, ShopifyGraphQlClient shopify, TimeProvider timeProvider, HepsiburadaAdapter? hepsiburada = null) : IF3JobProcessor
 {
     public async Task<bool> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
@@ -16,6 +17,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         {
             F3JobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
             ShopifyContract.ConnectionTestJob => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
+            HepsiburadaContract.ConnectionTestJob => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
             ShopifyContract.WebhookIngestJob => await MarkShopifyWebhookProcessed(tenantId, payloadJson, cancellationToken),
             ShopifyContract.OrderSyncJob => await SyncOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
             F3JobTypes.OrderSync => await SyncOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -29,8 +31,8 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
 
     private async Task<bool> TestConnection(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == ShopifyContract.PlatformCode), cancellationToken); if (connection is null) return false; var now = timeProvider.GetUtcNow(); connection.LastTestedAt = now;
-        IConnectionPort port = connection.PlatformCode == ShopifyContract.PlatformCode ? shopify : connections;
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == ShopifyContract.PlatformCode || x.PlatformCode == HepsiburadaContract.PlatformCode), cancellationToken); if (connection is null) return false; var now = timeProvider.GetUtcNow(); connection.LastTestedAt = now;
+        IConnectionPort port = connection.PlatformCode == ShopifyContract.PlatformCode ? shopify : connection.PlatformCode == HepsiburadaContract.PlatformCode ? hepsiburada ?? new HepsiburadaAdapter() : connections;
         var context = Context(tenantId, connectionId, correlationId, "connection-test"); var result = await port.TestAsync(context, cancellationToken); if (!result.IsSuccess) { connection.LastErrorCode = result.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); return false; }
         var discovery = await port.DiscoverCapabilitiesAsync(context, cancellationToken); if (!discovery.IsSuccess) { connection.LastErrorCode = discovery.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); return false; }
         foreach (var evidence in discovery.Value!)

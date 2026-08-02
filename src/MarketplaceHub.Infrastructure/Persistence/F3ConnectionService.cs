@@ -115,14 +115,22 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     public async Task<ServiceResult<ConnectionView>> RotateCredentialAsync(Guid tenantId, Guid id, long expectedVersion, CredentialCommand command, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == ShopifyContract.PlatformCode || x.PlatformCode == HepsiburadaContract.PlatformCode), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
-        if (connection.PlatformCode == HepsiburadaContract.PlatformCode) return ServiceResult<ConnectionView>.Fail("HEPSIBURADA_AUTH_MODEL_UNVERIFIED", "Partner hesabındaki güncel auth modeli doğrulanmadan Hepsiburada credential kaydedilmez.", 422);
+        if (connection.PlatformCode == HepsiburadaContract.PlatformCode && connection.Environment != "STAGE") return ServiceResult<ConnectionView>.Fail("HEPSIBURADA_PRODUCTION_AUTH_UNVERIFIED", "Hepsiburada credential yalnız doğrulanmış STAGE/SIT bağlantısında kaydedilebilir.", 422);
+        if (connection.PlatformCode == HepsiburadaContract.PlatformCode && (string.IsNullOrWhiteSpace(command.Username) || string.IsNullOrWhiteSpace(command.Password))) return Invalid<ConnectionView>("credential", "Hepsiburada STAGE için Merchant ID ve Secret Key zorunludur.");
+        if (connection.PlatformCode == HepsiburadaContract.PlatformCode && !string.Equals(command.Username!.Trim(), connection.ExternalStoreId, StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("username", "Merchant ID, bağlantının merchant kapsam kimliğiyle aynı olmalıdır.");
         if (connection.PlatformCode == "TRENDYOL" && (string.IsNullOrWhiteSpace(command.ApiKey) || string.IsNullOrWhiteSpace(command.ApiSecret))) return Invalid<ConnectionView>("credential", "Trendyol için API key ve secret zorunludur.");
         if (connection.PlatformCode == "TRENDYOL_EFATURAM" && (string.IsNullOrWhiteSpace(command.Email) || string.IsNullOrWhiteSpace(command.Password))) return Invalid<ConnectionView>("credential", "E-Faturam için e-posta ve parola zorunludur.");
         if (connection.PlatformCode == ShopifyContract.PlatformCode && (string.IsNullOrWhiteSpace(command.AccessToken) || string.IsNullOrWhiteSpace(command.ClientSecret))) return Invalid<ConnectionView>("credential", "Shopify için access token ve webhook HMAC doğrulamasında kullanılan app client secret zorunludur.");
         var now = timeProvider.GetUtcNow(); var current = await db.PlatformCredentials.Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.RevokedAt == null).ToListAsync(cancellationToken); foreach (var item in current) { item.RevokedAt = now; item.Version++; }
-        var payload = connection.PlatformCode == "TRENDYOL" ? JsonSerializer.Serialize(new CredentialPayload(command.ApiKey!, command.ApiSecret!)) : connection.PlatformCode == "TRENDYOL_EFATURAM" ? JsonSerializer.Serialize(new EfaturamCredentialPayload(command.Email!, command.Password!)) : JsonSerializer.Serialize(new ShopifyCredentialPayload(command.AccessToken!, command.ClientSecret!));
-        var hint = connection.PlatformCode == "TRENDYOL" ? Mask(command.ApiKey!) : connection.PlatformCode == "TRENDYOL_EFATURAM" ? MaskEmail(command.Email!) : Mask(command.AccessToken!);
-        var credentialType = connection.PlatformCode == "TRENDYOL" ? "BASIC" : connection.PlatformCode == "TRENDYOL_EFATURAM" ? "EMAIL_PASSWORD" : "ACCESS_TOKEN";
+        var payload = connection.PlatformCode switch
+        {
+            "TRENDYOL" => JsonSerializer.Serialize(new CredentialPayload(command.ApiKey!, command.ApiSecret!)),
+            "TRENDYOL_EFATURAM" => JsonSerializer.Serialize(new EfaturamCredentialPayload(command.Email!, command.Password!)),
+            ShopifyContract.PlatformCode => JsonSerializer.Serialize(new ShopifyCredentialPayload(command.AccessToken!, command.ClientSecret!)),
+            _ => JsonSerializer.Serialize(new HepsiburadaCredentialPayload(command.Username!.Trim(), command.Password!))
+        };
+        var hint = connection.PlatformCode switch { "TRENDYOL" => Mask(command.ApiKey!), "TRENDYOL_EFATURAM" => MaskEmail(command.Email!), ShopifyContract.PlatformCode => Mask(command.AccessToken!), _ => Mask(command.Username!) };
+        var credentialType = connection.PlatformCode switch { "TRENDYOL" => "BASIC", "TRENDYOL_EFATURAM" => "EMAIL_PASSWORD", ShopifyContract.PlatformCode => "ACCESS_TOKEN", _ => "BASIC" };
         db.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, CredentialType = credentialType, ProtectedPayload = _credentialProtector.Protect(payload), MaskedHint = hint, CreatedAt = now, Version = 1 });
         connection.LastTestedAt = null; connection.LastSuccessAt = null; connection.LastErrorCode = null; connection.Status = "DRAFT"; connection.Version++;
         foreach (var capability in await db.PlatformCapabilities.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken)) { capability.SupportLevel = CapabilitySupportLevel.Unknown; capability.VerifiedAt = null; capability.EvidenceNote = "Credential rotasyonu sonrası yeniden doğrulama gerekiyor."; capability.Version++; }
@@ -131,8 +139,8 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
 
     public async Task<ServiceResult<Guid>> EnqueueTestAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await Find(tenantId, id, cancellationToken); if (connection is null) return NotFound<Guid>(); if (connection.PlatformCode == HepsiburadaContract.PlatformCode) return ServiceResult<Guid>.Fail("HEPSIBURADA_AUTH_MODEL_UNVERIFIED", "Partner hesabındaki güncel auth modeli doğrulanmadan bağlantı testi kuyruğa alınmaz.", 422); if (!await HasCredential(tenantId, id, cancellationToken)) return ServiceResult<Guid>.Fail("CREDENTIAL_REQUIRED", "Bağlantı testi için şifreli credential gerekir.", 422);
-        var jobType = connection.PlatformCode == "TRENDYOL" ? F3JobTypes.ConnectionTest : connection.PlatformCode == "TRENDYOL_EFATURAM" ? F4JobTypes.ConnectionTest : ShopifyContract.ConnectionTestJob;
+        var connection = await Find(tenantId, id, cancellationToken); if (connection is null) return NotFound<Guid>(); if (!await HasCredential(tenantId, id, cancellationToken)) return ServiceResult<Guid>.Fail("CREDENTIAL_REQUIRED", "Bağlantı testi için şifreli credential gerekir.", 422);
+        var jobType = connection.PlatformCode == "TRENDYOL" ? F3JobTypes.ConnectionTest : connection.PlatformCode == "TRENDYOL_EFATURAM" ? F4JobTypes.ConnectionTest : connection.PlatformCode == ShopifyContract.PlatformCode ? ShopifyContract.ConnectionTestJob : HepsiburadaContract.ConnectionTestJob;
         var dedup = $"connection-test:{connection.Id}:v{connection.Version}"; var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var payload = JsonSerializer.Serialize(new { connectionId = id }); var job = NewJob(tenantId, id, jobType, dedup, payload, correlationId); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
     }
@@ -220,6 +228,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     private sealed record CredentialPayload(string ApiKey, string ApiSecret);
     private sealed record EfaturamCredentialPayload(string Email, string Password);
     private sealed record ShopifyCredentialPayload(string AccessToken, string ClientSecret);
+    private sealed record HepsiburadaCredentialPayload(string Username, string Password);
     private sealed record ConnectionSettings(string UserAgentIdentity, bool ExternalWritesEnabled);
     private sealed record EfaturamConnectionSettings(string IntegrationModel, bool ExternalWritesEnabled);
     private sealed record ShopifyConnectionSettings(bool ExternalWritesEnabled);

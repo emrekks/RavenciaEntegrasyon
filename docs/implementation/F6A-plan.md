@@ -6,7 +6,7 @@
 | --- | --- |
 | Faz | `F6A` |
 | Plan durumu | `APPROVED` (2026-08-02) |
-| Uygulama durumu | `READY_LOCAL_FAIL_CLOSED / BLOCKED_EXTERNAL / BLOCKED_PHASE_GATE` |
+| Uygulama durumu | `READY_CONNECTION_TEST / BLOCKED_MAPPING_WRITE / BLOCKED_PHASE_GATE` |
 | Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 12, 42-47, 51-58, 60, 64-65, 67-70 ve 72-73 |
 | Yetkili şartname SHA-256 | v3.4 `5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51` |
 | Zorunlu sıra | `F6A Hepsiburada → F6B N11 → F6C Pazarama`; aynı anda uygulanmaz veya ilk kez canlıya alınmaz |
@@ -57,7 +57,7 @@ Bu belge yalnız F6A planıdır. Kullanıcı uygulama onayıyla Hepsiburada fail
 | Kimlik | Kaynak | Kabul ölçütü | Planlanan kanıt | Gelecek dosya/alan | Dış bağımlılık | Durum |
 | --- | --- | --- | --- | --- | --- | --- |
 | `F6A-REQ-001` | s.60, 64-65 | Yalnız F6A açılır; F6B/F6C yüzeyi yoktur. | Repository guard | Plan/guard | Kullanıcı uygulama onayı | DONE_LOCAL |
-| `F6A-REQ-002` | s.42-45, 65, 73 | Current partner docs, auth modeli, environment, merchant scope ve version tarihli kaydedilir. | Source snapshot + SIT connection | Adapter README/capability matrix | Partner hesabı ve SIT credential | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F6A-REQ-002` | s.42-45, 65, 73 | Current partner docs, auth modeli, environment, merchant scope ve version tarihli kaydedilir. | Source snapshot + SIT connection | Adapter README/capability matrix | Partner hesabı ve SIT credential | PASS_ORDER_SIT / OTHER_FAMILIES BLOCKED_EXTERNAL |
 | `F6A-REQ-003` | s.42-44, 65 | Reference/category/attribute/brand verisi generic reference porttan geçer; mapping scope/version taşır. | Anonim fixture contract testi | Adapter mapping | SIT reference payload | PLANNED / BLOCKED_EXTERNAL |
 | `F6A-REQ-004` | s.21-22, 42-44, 65 | Product/variant/media ile listing/offer ayrıdır; async tracking sonucu idempotent işlenir. | Upload/task/partial fixture testleri | Product port + mapper | SIT katalog ürünü | PLANNED / BLOCKED_EXTERNAL |
 | `F6A-REQ-005` | s.24-25, 42-44, 65 | Price ve stock ayrı yetenek/otorite; partial satır sonucu sessiz başarı değildir. | Mixed-result/no-write testleri | InventoryPrice port | Listing/offer SIT fixture | PLANNED / BLOCKED_EXTERNAL |
@@ -117,7 +117,7 @@ Portal başlangıç yüzeyindeki client-credentials örneği ile marketplace gui
 
 - Domain/Application sınır testi: Hepsiburada’ya özel tip, status veya DTO generic katmanlara sızmaz.
 - Contract fixture: reference, product/listing task, mixed/partial result, order/package, cancelled/delivered ve return/claim.
-- Auth: yanlış/expired credential; environment/merchant mismatch; token/Basic kararı kanıtlanana kadar no-HTTP.
+- Auth: yanlış/expired credential ve environment/merchant mismatch; yalnız doğrulanmış Sipariş SIT Basic Auth testi HTTP kullanır, diğer ürün aileleri fail-closed kalır.
 - Resilience: 429 header, 5xx, timeout, malformed JSON, validation ve business conflict ayrı sonuç.
 - Idempotency: aynı product task, order event, webhook ve action tekrarı tek yerel/dış etki.
 - State: out-of-order paket/iade olayı mevcut canonical state’i geriye götürmez.
@@ -142,8 +142,8 @@ Portal başlangıç yüzeyindeki client-credentials örneği ile marketplace gui
 
 | Kimlik | Gerekli karar/girdi | Güvenli fallback | Etki |
 | --- | --- | --- | --- |
-| `BLOCK-F6A-001` | Hepsiburada partner/SIT hesabı, merchant ID ve ürün aileleri | Capability `UNKNOWN`, write off | Contract E2E ve bütün dış çağrılar |
-| `BLOCK-F6A-002` | Güncel auth modeli: servis anahtarlı Basic mi, client credentials mı, ürün ailesine göre ikisi mi | Endpoint/auth kodlama yok | Connection test ve credential payload |
+| `BLOCK-F6A-001` | Sipariş SIT hesabı/merchant sağlandı; diğer ürün aileleri ve dolu anonim payload yok | Yalnız connection capability `SUPPORTED`, write off | Sipariş mapping ve diğer ürün aileleri |
+| `BLOCK-F6A-002` | Sipariş SIT Basic Auth doğrulandı; diğer ürün aileleri/production auth modeli bilinmiyor | Doğrulanmış auth başka aileye taşınmaz | Diğer capability ve production |
 | `BLOCK-F6A-003` | Granted scope/permission ve SIT/production host/version kaydı | Yalnız fixture | Capability evidence |
 | `BLOCK-F6A-004` | Anonim reference/product/listing/order/package/return payload’ları | Sentetik contract shape yazılmaz | Mapping testleri |
 | `BLOCK-F6A-005` | Stok/fiyat/product/package/return iş otoriteleri ve rollback yöntemi | Tüm write off | Safe-write |
@@ -172,6 +172,6 @@ Portal başlangıç yüzeyindeki client-credentials örneği ile marketplace gui
 
 ## Plan sonucu ve uygulama kapısı
 
-F6A planı kullanıcı tarafından 2026-08-02 tarihinde onaylandı. Endpoint/auth/payload uydurmadan generic portları uygulayan no-HTTP/no-write adapter çekirdeği, draft connection/capability kaydı ve integrations UI durumu tamamlandı: sonuç `READY_LOCAL_FAIL_CLOSED`dır. Gerçek auth/endpoint mapping, SIT safe-write ve production çıkışı `BLOCKED_EXTERNAL`, F5 production reconciliation/rollback nedeniyle tam faz çıkışı ayrıca `BLOCKED_PHASE_GATE`dir.
+F6A planı kullanıcı tarafından 2026-08-02 tarihinde onaylandı. Sipariş SIT Basic Auth + User-Agent ve resmî salt-okunur endpoint AWS’den HTTP 200 ile doğrulandı; panelde şifreli credential ve bağlantı testi açıldı: sonuç `READY_CONNECTION_TEST`tir. Yanıt 0 item olduğu için sipariş mapping, SIT safe-write ve production çıkışı `BLOCKED_EXTERNAL`, F5 production reconciliation/rollback nedeniyle tam faz çıkışı ayrıca `BLOCKED_PHASE_GATE`dir.
 
-F6B N11 ve F6C Pazarama açılmamıştır. Hepsiburada partner/SIT kanıtı gelmeden fail-closed sınırın ötesinde HTTP veya credential implementasyonu yapılmaz.
+F6B N11 ve F6C Pazarama açılmamıştır. Doğrulanan Sipariş SIT bağlantı testi dışında kanıtsız HTTP, DTO, enum veya dış yazma implementasyonu yapılmaz.

@@ -73,6 +73,10 @@ public static class DependencyInjection
         services.AddScoped<ShopifyAuthenticationHandler>();
         services.AddScoped<ShopifyGraphQlClient>();
         services.AddScoped<ShopifyWebhookVerifier>();
+        services.Configure<HepsiburadaOptions>(configuration.GetSection(HepsiburadaOptions.SectionName));
+        services.AddHttpClient("Hepsiburada", client => client.Timeout = Timeout.InfiniteTimeSpan).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
+        services.AddScoped<HepsiburadaAuthenticationHandler>();
+        services.AddScoped<HepsiburadaConnectionProbe>();
         services.AddScoped<HepsiburadaAdapter>();
         services.AddScoped<IF3ConnectionService, F3ConnectionService>();
         services.AddScoped<IF3SalesService, F3SalesService>();

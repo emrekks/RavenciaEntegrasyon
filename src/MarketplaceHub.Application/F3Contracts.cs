@@ -128,7 +128,7 @@ public sealed record ConnectionView(Guid Id, Guid PublicId, string PlatformCode,
 public sealed record CapabilityView(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string? SourceUrl, DateTimeOffset? VerifiedAt, string? ConstraintsJson);
 public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null);
 public sealed record UpdateConnectionCommand(string DisplayName, string? UserAgentIdentity);
-public sealed record CredentialCommand(string? ApiKey, string? ApiSecret, string? Email = null, string? Password = null, string? AccessToken = null, string? ClientSecret = null);
+public sealed record CredentialCommand(string? ApiKey, string? ApiSecret, string? Email = null, string? Password = null, string? AccessToken = null, string? ClientSecret = null, string? Username = null);
 public sealed record SyncPolicyView(Guid Id, string ResourceType, int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled, long Version);
 public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);

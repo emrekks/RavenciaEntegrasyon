@@ -9,7 +9,7 @@ Ravencia MarketplaceHub, yetkili v3.4 şartnamesine göre geliştirilen modüler
 - F3: Trendyol V2 adapter sınırı, bağlantı/capability yönetimi, sipariş, paket, gönderi, iade, webhook ve reconciliation.
 - F4: fatura/mali belge çekirdeği, E-Faturam adapter sınırı, private belge saklama ve marketplace delivery ayrımı.
 - F5: Shopify Admin GraphQL `2026-07` adapter çekirdeği, HMAC webhook ve streaming bulk JSONL sözleşmesi.
-- F6A: Hepsiburada draft bağlantısı ve generic portları kullanan no-HTTP/no-write güvenlik çekirdeği; partner/SIT kanıtı bekleniyor.
+- F6A: Hepsiburada Sipariş SIT Basic Auth bağlantı testi doğrulandı; sipariş alan eşlemesi ve bütün dış yazmalar kanıt beklediği için kapalı.
 
 Yerel çekirdek durumu `READY_LOCAL_CORE`dır. Gerçek platform test hesapları, granted capability/scope kanıtları, hedef Ubuntu Server, public HTTPS, backup/restore hedefi ve iş otoritesi kararları tamamlanmadığından production kabulü `BLOCKED_EXTERNAL`dır. Bütün dış yazma anahtarları varsayılan olarak kapalıdır.
 
@@ -62,7 +62,7 @@ Aktif ve onaylanmış son yerel uygulama alt fazı F6A’dır. F6B N11, F6C Paza
 - Capability’ler bağlantı/environment/store/API-version kapsamında başta `UNKNOWN`dır.
 - Token ve secret değerleri şifreli saklanır, API/UI/log çıktısında geri gösterilmez.
 - Shopify ürün, stok, fiyat ve fulfillment yazmaları development-store kanıtları tamamlanana kadar fail-closed’dur.
-- Hepsiburada auth modeli partner hesabında doğrulanana kadar credential, bağlantı testi ve bütün dış read/write çağrıları fail-closed’dur.
+- Hepsiburada credential ve salt-okunur Sipariş SIT bağlantı testi açıktır. Boş yanıt zarfı doğrulandı; dolu anonim fixture olmadan sipariş aktarımı yapılmaz ve bütün dış yazmalar kapalıdır.
 - Fatura otomasyonu mali kararlar ve test firma kanıtı olmadan kapalıdır.
 - AWS Ubuntu Server host profili, Docker Engine, systemd reboot ve named-volume kalıcılığı doğrulanmıştır; restore, domain/TLS ve RTO kanıtları tamamlanana kadar sonuç production kabulü sayılmaz.
 

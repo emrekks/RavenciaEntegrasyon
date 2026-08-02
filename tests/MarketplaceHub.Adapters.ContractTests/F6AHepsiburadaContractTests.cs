@@ -95,7 +95,7 @@ public sealed class F6AHepsiburadaContractTests
     }
 
     [Fact]
-    public void Hepsiburada_adapter_has_no_auth_network_or_secret_implementation()
+    public void Hepsiburada_probe_is_pinned_to_the_verified_read_only_SIT_contract()
     {
         var root = FindRoot();
         var adapterRoot = Path.Combine(root, "src", "MarketplaceHub.Infrastructure", "Adapters", "Hepsiburada");
@@ -103,21 +103,39 @@ public sealed class F6AHepsiburadaContractTests
         var source = string.Join(Environment.NewLine, sourceFiles.Select(File.ReadAllText));
 
         Assert.NotEmpty(sourceFiles);
-        foreach (var forbidden in new[] { "HttpClient", "Authorization", "AuthenticationHeaderValue", "IDataProtector", "ProtectedPayload", "ApiKey", "ApiSecret", "ClientSecret", "AccessToken", "Password" })
-            Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
+        Assert.Contains("https://oms-external-sit.hepsiburada.com/", source, StringComparison.Ordinal);
+        Assert.Contains("orders/merchantid/", source, StringComparison.Ordinal);
+        Assert.Contains("HttpMethod.Get", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("HttpMethod.Post", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("HttpMethod.Put", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("HttpMethod.Delete", source, StringComparison.Ordinal);
         Assert.All(Directory.GetFiles(adapterRoot, "*", SearchOption.AllDirectories), path => Assert.Contains(Path.GetExtension(path), new[] { ".cs", ".md" }));
     }
 
     [Fact]
-    public void Hepsiburada_credential_and_connection_test_gates_remain_closed()
+    public void Hepsiburada_SIT_credential_and_connection_test_gate_is_open_but_writes_remain_closed()
     {
         var root = FindRoot();
         var service = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Infrastructure", "Persistence", "F3ConnectionService.cs"));
         var page = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Web", "src", "F3Pages.tsx"));
 
-        Assert.Equal(2, Regex.Matches(service, "HEPSIBURADA_AUTH_MODEL_UNVERIFIED", RegexOptions.CultureInvariant).Count);
+        Assert.DoesNotContain("HEPSIBURADA_AUTH_MODEL_UNVERIFIED", service, StringComparison.Ordinal);
+        Assert.Contains("HEPSIBURADA_PRODUCTION_AUTH_UNVERIFIED", service, StringComparison.Ordinal);
+        Assert.Contains("HepsiburadaContract.ConnectionTestJob", service, StringComparison.Ordinal);
         Assert.Contains("item.platformCode === 'HEPSIBURADA'", page, StringComparison.Ordinal);
-        Assert.Contains("disabled={item.platformCode === 'HEPSIBURADA'}", page, StringComparison.Ordinal);
+        Assert.Contains("username: data.get('username')", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("disabled={item.platformCode === 'HEPSIBURADA'}", page, StringComparison.Ordinal);
+        Assert.Contains("Sipariş aktarımı ve tüm dış yazmalar kapalıdır.", page, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Verified_anonymous_SIT_envelope_is_accepted_without_inventing_order_fields()
+    {
+        var body = """{"items":[],"limit":1,"offset":0,"pageCount":0,"totalCount":0}"""u8;
+
+        Assert.True(HepsiburadaSitEnvelope.TryValidate(body, out var itemCount));
+        Assert.Equal(0, itemCount);
+        Assert.False(HepsiburadaSitEnvelope.TryValidate("""{"items":[]}"""u8, out _));
     }
 
     [Fact]

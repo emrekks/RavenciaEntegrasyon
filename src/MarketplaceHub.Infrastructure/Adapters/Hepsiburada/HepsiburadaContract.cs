@@ -7,6 +7,8 @@ public static class HepsiburadaContract
     public const string PlatformCode = "HEPSIBURADA";
     public const string DocumentedApiVersion = "v1.0";
     public const string PortalSource = "https://developers.hepsiburada.com/tr/companies/hepsiburada";
+    public const string OrderSitSource = "https://developers.hepsiburada.com/tr/companies/hepsiburada?category=siparis-yonetimi&op=Get__orders_merchantid_merchantId&product=siparis-olusturma-entegrasyonu&version=v1.0&view=endpoint";
+    public const string ConnectionTestJob = "HEPSIBURADA_CONNECTION_TEST";
 }
 
 public static class HepsiburadaErrorClassifier
