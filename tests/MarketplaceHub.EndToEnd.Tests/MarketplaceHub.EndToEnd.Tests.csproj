@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><IsTestProject>true</IsTestProject><IsPackable>false</IsPackable></PropertyGroup>
-  <ItemGroup><ProjectReference Include="..\..\src\MarketplaceHub.Application\MarketplaceHub.Application.csproj" /><ProjectReference Include="..\..\src\MarketplaceHub.Infrastructure\MarketplaceHub.Infrastructure.csproj" /></ItemGroup>
-  <ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" /><PackageReference Include="Testcontainers.PostgreSql" /><PackageReference Include="xunit.v3" /><PackageReference Include="xunit.runner.visualstudio"><PrivateAssets>all</PrivateAssets></PackageReference></ItemGroup>
+  <ItemGroup><ProjectReference Include="..\..\src\MarketplaceHub.Api\MarketplaceHub.Api.csproj" Aliases="global,MarketplaceHubApi" /><ProjectReference Include="..\..\src\MarketplaceHub.Application\MarketplaceHub.Application.csproj" /><ProjectReference Include="..\..\src\MarketplaceHub.Infrastructure\MarketplaceHub.Infrastructure.csproj" /><ProjectReference Include="..\..\src\MarketplaceHub.Worker\MarketplaceHub.Worker.csproj" /></ItemGroup>
+  <ItemGroup><PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" /><PackageReference Include="Microsoft.NET.Test.Sdk" /><PackageReference Include="Testcontainers.PostgreSql" /><PackageReference Include="xunit.v3" /><PackageReference Include="xunit.runner.visualstudio"><PrivateAssets>all</PrivateAssets></PackageReference></ItemGroup>
 </Project>

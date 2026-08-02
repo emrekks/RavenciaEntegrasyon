@@ -25,7 +25,7 @@
 | `F3-EV-017` secret/PII scan | PASS | F3 source/fixture taramasında gerçek Basic token, 11 haneli kimlik veya e-posta eşleşmesi yok; demo ileri-faz route taraması yalnız guard testlerinde bulundu |
 | `F3-EV-018` Stage/SIT | BLOCKED_EXTERNAL | Credential, IP allow-list, test mağaza/verisi ve public HTTPS yok |
 | `F3-EV-019` production smoke | BLOCKED_EXTERNAL | VPS/domain/credential ve işlem başına etki onayı yok; dış yazma kapalı |
-| `F3-EV-020` deterministic Fake adapter | PASS_POSTGRES_DB_JOB_HARNESS / BROWSER RC E2E OPEN | Test-only adapter bütün generic portları uygular; success/empty/partial/auth/429/5xx/timeout/validation/contract senaryoları, deterministic clock, varsayılan write-off ve replay’de tek etki test edildi. PostgreSQL job→lease→processor→worker-kill/reaper→retry→completion zinciri tek Order/OrderLine/cursor üretti. Production DI/ağ/auth/secret bağımlılığı yok; Browser→API→UI ve sandbox bölümü henüz çalıştırılmadı |
+| `F3-EV-020` deterministic Fake adapter | PASS_FULL_LOCAL_FAKE_RC / SANDBOX OPEN | Test-only adapter bütün generic portları uygular; success/empty/partial/auth/429/5xx/timeout/validation/contract senaryoları, deterministic clock, varsayılan write-off ve replay’de tek etki test edildi. PostgreSQL job→lease→processor→worker-kill/reaper→retry→completion zinciri tek Order/OrderLine/cursor üretti. Ayrı RC testi gerçek Chromium oturumu→API→PostgreSQL job→gerçek Worker→Fake adapter→sipariş listesi ve detay UI zincirini tamamladı. Production DI/ağ/auth/secret bağımlılığı yok; gerçek platform sandbox/SIT bölümü açıktır |
 
 ## Fixture checksum'ları
 
@@ -43,11 +43,11 @@
 - Application/model metadata: `19/19`
 - Adapter contract: `45/45`
 - API surface: `2/2`
-- End-to-end guard/Fake/PostgreSQL worker-kill senaryoları: `14/14`
+- End-to-end guard/Fake/PostgreSQL worker-kill/full-stack browser senaryoları: `15/15`
 - PostgreSQL integration: `7/7`
-- Toplam: `107/107` .NET testi başarılı; Web component/typecheck/build ayrıca geçmiştir.
+- Toplam: `108/108` .NET testi başarılı; Web component/typecheck/build ayrıca geçmiştir.
 - Solution `dotnet format --verify-no-changes` ve `dotnet restore --locked-mode` geçti; doğrudan ve transitive NuGet vulnerability taramasında 11 projenin hiçbirinde bilinen advisory bulunmadı.
 
 ## Faz durumu
 
-F3 çekirdek yerel uygulaması `READY_LOCAL_CORE` durumundadır. `F3-EV-016`, gerçek Stage/SIT capability kanıtları, public HTTPS webhook/medya, label/cargo, tam release-candidate E2E ve safe-write/smoke kanıtları tamamlanmadığından şartname F3 çıkışı `BLOCKED_EXTERNAL` kalır. Sonraki yerel fazların uygulanmış olması bu tarihsel F3 production kapısını kendiliğinden kapatmaz.
+F3 çekirdek yerel uygulaması `READY_LOCAL_CORE` durumundadır. Tam yerel Fake release-candidate E2E geçmiştir. `F3-EV-016`, gerçek Stage/SIT capability kanıtları, public HTTPS webhook/medya, label/cargo ve safe-write/smoke kanıtları tamamlanmadığından şartname F3 çıkışı `BLOCKED_EXTERNAL` kalır. Sonraki yerel fazların uygulanmış olması bu tarihsel F3 production kapısını kendiliğinden kapatmaz.

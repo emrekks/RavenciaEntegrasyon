@@ -187,7 +187,7 @@ Resmî belgede farklı tarihler için farklı limitler bulunduğundan değerler 
 | `F3-EV-017` | Secret/PII/fixture/repository scan | Credential, TCKN/VKN, adres ve raw PII sızıntısı yok | Scan log | PASS |
 | `F3-EV-018` | Stage/SIT read + safe-write | Ürün, stok/fiyat, order/package ve return akışı kanıtlı | Redacted SIT record | BLOCKED_EXTERNAL |
 | `F3-EV-019` | Kullanıcı onaylı düşük adet production smoke | Etki/rollback kayıtlı veya açık dış blocker | Smoke record | BLOCKED_EXTERNAL |
-| `F3-EV-020` | Test-only deterministik Fake adapter senaryoları | Generic portlar; success/empty/partial/error/replay; PostgreSQL job/worker-kill/retry; no-network/no-secret | EndToEnd test log | PASS_DB_JOB_TEST_HARNESS / BROWSER RC E2E OPEN |
+| `F3-EV-020` | Test-only deterministik Fake adapter senaryoları | Generic portlar; success/empty/partial/error/replay; PostgreSQL job/worker-kill/retry ve Chromium→API→job→gerçek Worker→Fake→UI; no-network/no-secret | EndToEnd test log | PASS_FULL_LOCAL_FAKE_RC / SANDBOX OPEN |
 
 ## Dış bağımlılıklar, riskler ve blockerlar
 

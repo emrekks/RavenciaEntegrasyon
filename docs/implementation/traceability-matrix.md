@@ -21,7 +21,7 @@ Bu matris yalnız F0 dokümantasyon teslimatlarını izler. Gelecek kod ve test 
 | `F0-VAL-002` | F0 | Kanıtsız capability `UNKNOWN`; uydurma sözleşme yoktur. | Capability matrisi incelemesi | Adapter sözleşmeleri F4+ | Test hesapları | DONE |
 | `F0-VAL-003` | F0 | Fixture standardı secret/PII yasaklar. | Fixture standardı | Tarama testi F1+ | Fixture erişimi | DONE |
 | `F0-VAL-004` | F0 | ADR'ler şartname ve birbirleriyle çelişmez. | ADR karar özeti ve çapraz bağlantılar | Yok | Yok | DONE |
-| `F0-VAL-005` | F0 | F1 gerçek platform secret'ı olmadan başlayabilir. | Fake adapter standardı; test-only deterministic Fake adapter; tüm write anahtarları kapalı | EndToEnd Fake senaryo testleri | Yok | DONE_WITH_TEST_HARNESS |
+| `F0-VAL-005` | F0 | F1 gerçek platform secret'ı olmadan başlayabilir. | Fake adapter standardı; test-only deterministic Fake adapter; tüm write anahtarları kapalı | EndToEnd Fake senaryo ve full-stack browser testleri | Yok | DONE_WITH_LOCAL_FAKE_RC |
 | `F0-VAL-006` | F0 | Exact sürüm + kaynak + lock/digest eksiksizdir. | F0 locked restore/dry-run, index digest ve Compose checksum kanıtı | Production aktarımı F1 | Hedef child digest host runbook'una bağlı | DONE_F0 |
 | `F0-EXIT-001` | F0 | F1'i durduran mimari belirsizlik yoktur. | ADR-001–010 | Yok | Kullanıcı kabulü | DONE |
 | `F0-EXIT-002` | F0 | Dış bağımlılık, blocker ve güvenli fallback kayıtlıdır. | Dependency/risk kayıtları | Yok | Dış sağlayıcılar | DONE |
@@ -71,7 +71,7 @@ F3 ayrıntılı kabul ve kanıt eşlemesi [F3-plan.md](F3-plan.md) ve [F3-eviden
 | `F3-REQ-001–004` | Trendyol connection/credential/capability, Product V2 ve reference adapter sınırı | V2 route/source guard, encrypted credential, fixture parser testleri | DONE_LOCAL_CORE |
 | `F3-REQ-005–009` | Product/batch fail-closed, webhook Basic/API-key + Inbox, cursor/overlap polling | Partial batch, raw webhook guard, worker job/dedup kodu | DONE_LOCAL_CORE / WRITE BLOCKED_EXTERNAL |
 | `F3-REQ-010–013` | Order/Line/Package/history, ShipmentDocument, Return/Decision/Evidence/Disposition | PostgreSQL 18.4 migration, domain invariant ve metadata testleri | DONE_LOCAL_CORE |
-| `F3-REQ-014–019` | Local dry reconciliation, kill switch, F3 API/UI, adapter fixtures, resilience ve test-only deterministic Fake adapter | Route/repository/secret scan; Fake success/empty/partial/error/replay ile PostgreSQL job/worker-kill/retry senaryosu; .NET/Web build ve test seti | READY_LOCAL_CORE; BROWSER RC E2E/PERFORMANCE/STAGE BLOCKED_EXTERNAL |
+| `F3-REQ-014–019` | Local dry reconciliation, kill switch, F3 API/UI, adapter fixtures, resilience ve test-only deterministic Fake adapter | Route/repository/secret scan; Fake success/empty/partial/error/replay, PostgreSQL job/worker-kill/retry ve Chromium→API→gerçek Worker→Fake→UI senaryosu; .NET/Web build ve test seti | READY_LOCAL_CORE; FULL_LOCAL_FAKE_RC PASS; PERFORMANCE/STAGE BLOCKED_EXTERNAL |
 | `F3-EXIT-001–006` | F3 çıkış seti | `F3-EV-001–020` | BLOCKED_EXTERNAL |
 
 ## F4 uygulama izi
