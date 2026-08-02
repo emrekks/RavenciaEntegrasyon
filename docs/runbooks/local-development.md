@@ -1,4 +1,4 @@
-# F1–F5 Yerel Geliştirme Runbook'u
+# F1–F6A Yerel Geliştirme Runbook'u
 
 ## Secret hazırlığı
 
@@ -46,3 +46,15 @@ Docker Desktop bulunmayan geliştirme bilgisayarında PostgreSQL 18'in ayrı bir
 API için `MARKETPLACEHUB_ENVIRONMENT=PILOT_LOCAL`, file-backed credential key, ayrı DB connection, Data Protection ve private-file köklerini ayarla; migration ve explicit Owner bootstrap komutlarını çalıştır. API'yi yalnız `http://127.0.0.1:5080`, Vite'ı `VITE_API_PROXY=http://127.0.0.1:5080 npm.cmd run dev -- --host 127.0.0.1 --port 5173` ile başlat. Panel `http://localhost:5173` adresindedir.
 
 PILOT_LOCAL HTTP'de session/CSRF cookie geliştirme amacıyla Secure olmadan ve `__Host-` ön eki olmadan yazılır; Vite proxy için yalnız `http://localhost:5173` ve `http://127.0.0.1:5173` originleri kabul edilir. Başka her environment'ta Secure ve `__Host-` zorunludur. Bu çalışma biçimi VPS/production TLS, container, reboot, volume, backup veya restore kanıtı değildir.
+
+## Docker olmadan PostgreSQL entegrasyon testleri
+
+Test projesi varsayılan olarak Testcontainers kullanır. Docker yoksa yalnız test amacıyla ayrılmış, geçici veritabanı oluşturma ve silme yetkisi bulunan PostgreSQL 18 yönetici bağlantısı repository dışındaki bir secret dosyasından alınabilir:
+
+```powershell
+$env:MARKETPLACEHUB_TEST_POSTGRES = (Get-Content -LiteralPath '<repository-dışındaki-admin-connection-secret>' -Raw).Trim()
+dotnet test tests/MarketplaceHub.Persistence.IntegrationTests/MarketplaceHub.Persistence.IntegrationTests.csproj --no-build --no-restore
+Remove-Item Env:MARKETPLACEHUB_TEST_POSTGRES
+```
+
+Runner benzersiz isimli bir test veritabanı oluşturur, migration ve entegrasyon testlerini orada çalıştırır ve test sonunda veritabanını `WITH (FORCE)` ile siler. Production veya panel veritabanı bu değişkene verilmez. Yerel doğrulamada loopback-only PostgreSQL `18.4` cluster’ı kullanılmış ve `7/7` test geçmiştir.

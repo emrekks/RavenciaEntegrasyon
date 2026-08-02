@@ -23,13 +23,23 @@ public sealed class F6AHepsiburadaContractTests
     }
 
     [Fact]
-    public async Task Connection_and_read_are_fail_closed_without_partner_evidence()
+    public async Task Connection_capability_and_every_read_are_fail_closed_without_partner_evidence()
     {
         var adapter = new HepsiburadaAdapter();
+        var returns = (IReturnPort)adapter;
         var connection = await adapter.TestAsync(Context, TestContext.Current.CancellationToken);
+        var capabilities = await adapter.DiscoverCapabilitiesAsync(Context, TestContext.Current.CancellationToken);
+        var references = await adapter.ReadAsync(Context, new("UNVERIFIED", null), new(null, 1), TestContext.Current.CancellationToken);
         var products = await adapter.ListAsync(Context, new(null, 1), new(null), TestContext.Current.CancellationToken);
-        Assert.Equal("HEPSIBURADA_CAPABILITY_UNVERIFIED", connection.Error?.Code);
-        Assert.Equal("HEPSIBURADA_CAPABILITY_UNVERIFIED", products.Error?.Code);
+        var operation = await adapter.GetOperationAsync(Context, "unverified", TestContext.Current.CancellationToken);
+        var orders = await adapter.PollAsync(Context, new(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow), new(null, 1), TestContext.Current.CancellationToken);
+        var order = await adapter.GetAsync(Context, "unverified", TestContext.Current.CancellationToken);
+        var claims = await returns.PollAsync(Context, new(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow), new(null, 1), TestContext.Current.CancellationToken);
+        var claim = await returns.GetAsync(Context, "unverified", TestContext.Current.CancellationToken);
+
+        Assert.All(
+            new[] { connection.Error, capabilities.Error, references.Error, products.Error, operation.Error, orders.Error, order.Error, claims.Error, claim.Error },
+            error => Assert.Equal("HEPSIBURADA_CAPABILITY_UNVERIFIED", error?.Code));
     }
 
     [Fact]
@@ -37,20 +47,33 @@ public sealed class F6AHepsiburadaContractTests
     {
         var adapter = new HepsiburadaAdapter();
         var product = await adapter.UpsertAsync(Context, new(Guid.NewGuid(), "hash", "{}"), TestContext.Current.CancellationToken);
+        var archive = await adapter.ArchiveAsync(Context, new("unverified", null), TestContext.Current.CancellationToken);
         var stock = await adapter.PushStockAsync(Context, [], TestContext.Current.CancellationToken);
         var price = await adapter.PushPricesAsync(Context, [], TestContext.Current.CancellationToken);
         var package = await adapter.ExecutePackageActionAsync(Context, new("external", "action", "{}"), TestContext.Current.CancellationToken);
         var claim = await adapter.ExecuteAsync(Context, new("external", "action", null, null, []), TestContext.Current.CancellationToken);
-        Assert.All(new[] { product.Error?.Code, stock.Error?.Code, price.Error?.Code, package.Error?.Code, claim.Error?.Code }, code => Assert.Equal("EXTERNAL_WRITE_DISABLED", code));
+        Assert.All(new[] { product.Error?.Code, archive.Error?.Code, stock.Error?.Code, price.Error?.Code, package.Error?.Code, claim.Error?.Code }, code => Assert.Equal("EXTERNAL_WRITE_DISABLED", code));
     }
 
     [Theory]
     [InlineData(401, AdapterErrorClass.Authentication)]
+    [InlineData(403, AdapterErrorClass.Authentication)]
+    [InlineData(404, AdapterErrorClass.NotFound)]
     [InlineData(409, AdapterErrorClass.BusinessConflict)]
     [InlineData(429, AdapterErrorClass.RateLimit)]
     [InlineData(500, AdapterErrorClass.Remote5xx)]
     [InlineData(422, AdapterErrorClass.Validation)]
     public void Http_error_classes_remain_distinct(int status, AdapterErrorClass expected) => Assert.Equal(expected, HepsiburadaErrorClassifier.FromHttpStatus(status).Class);
+
+    [Fact]
+    public void Timeout_remains_a_retryable_transient_network_error()
+    {
+        var error = HepsiburadaErrorClassifier.Timeout();
+
+        Assert.Equal(AdapterErrorClass.TransientNetwork, error.Class);
+        Assert.Equal("HEPSIBURADA_TIMEOUT", error.Code);
+        Assert.NotNull(error.RetryAfter);
+    }
 
     [Fact]
     public void N11_and_Pazarama_adapters_are_not_created_in_F6A()

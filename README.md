@@ -34,7 +34,7 @@ npm test
 npm run build
 ```
 
-Persistence integration testleri Testcontainers kullanır ve çalışan Docker engine gerektirir. Docker’sız Windows geliştirme seçeneği [local-development.md](docs/runbooks/local-development.md) içinde açıklanmıştır.
+Persistence integration testleri varsayılan olarak Testcontainers kullanır. Docker yoksa `MARKETPLACEHUB_TEST_POSTGRES` ile verilen, geçici veritabanı oluşturma/silme yetkili ayrı bir yerel PostgreSQL yönetici bağlantısını kullanabilir; test runner benzersiz test veritabanını kendisi oluşturur ve sonunda siler. Docker’sız Windows geliştirme seçeneği [local-development.md](docs/runbooks/local-development.md) içinde açıklanmıştır.
 
 ## Yerel container çalıştırma
 

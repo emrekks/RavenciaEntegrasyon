@@ -104,8 +104,8 @@ F6A ayrıntılı kabul ve kanıt eşlemesi [F6A-plan.md](F6A-plan.md) ve [F6A-ev
 | Aralık | Uygulama | Kanıt | Sonuç |
 | --- | --- | --- | --- |
 | `F6A-REQ-001–002` | Yalnız Hepsiburada draft bağlantısı; guide version/User-Agent/merchant scope, auth kanıtına kadar credential yok | Faz guard, connection validation | DONE_LOCAL_FAIL_CLOSED / BLOCKED_EXTERNAL |
-| `F6A-REQ-003–010` | Generic reference/product/inventory/order/return portları, atomik package güvenliği, durable retry state/backoff/max-attempt, worker heartbeat/fencing ve kesin no-HTTP/no-write adapter | F6A contract/property tests, worker build/policy, EF model/SQL; PostgreSQL runtime ve partner fixture yok | PACKAGE SAFETY PASS_LOCAL_PROPERTY / RETRY+HEARTBEAT PASS_MODEL_BUILD / POSTGRES+CONTRACT BLOCKED |
-| `F6A-REQ-011–015` | HTTP hata sınıfları, capability/kill-switch, secret/auth sınırı, yerel kuru mutabakat/rollback rehberi ve mevcut integrations UI | Adapter tests, secret/source guard, local policy tests, runbook review, Web build, repository guard | DONE_LOCAL_FAIL_CLOSED / RECONCILIATION PASS_LOCAL_DRY |
+| `F6A-REQ-003–010` | Generic reference/product/inventory/order/return portları, atomik package güvenliği, durable retry state/backoff/max-attempt, worker heartbeat/fencing ve kesin no-HTTP/no-write adapter | F6A contract/property tests, worker build/policy, EF model/SQL ve PostgreSQL 18.4 worker-kill/retry testi; partner fixture yok | PACKAGE SAFETY PASS_LOCAL_PROPERTY / RETRY+HEARTBEAT PASS_POSTGRES_LOCAL / CONTRACT BLOCKED_EXTERNAL |
+| `F6A-REQ-011–015` | HTTP hata sınıfları, capability/kill-switch, secret/auth sınırı, yerel kuru mutabakat/rollback rehberi ve mevcut integrations UI | Bütün read/write portları ve hata sınıfları için adapter tests, secret/source guard, local policy tests, runbook review, Web build, repository guard | DONE_LOCAL_FAIL_CLOSED / RECONCILIATION PASS_LOCAL_DRY |
 | `F6A-REQ-016`, `F6A-EXIT-001–006` | SIT safe-write, reconciliation, rollback ve önceki platform kapısı | Dış kanıt bekleniyor | BLOCKED_EXTERNAL / BLOCKED_PHASE_GATE |
 
 F6B N11, F6C Pazarama ve F7+ production kodu, route, menü veya placeholder oluşturulmamıştır.

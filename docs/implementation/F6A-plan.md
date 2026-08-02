@@ -63,10 +63,10 @@ Bu belge yalnız F6A planıdır. Kullanıcı uygulama onayıyla Hepsiburada fail
 | `F6A-REQ-005` | s.24-25, 42-44, 65 | Price ve stock ayrı yetenek/otorite; partial satır sonucu sessiz başarı değildir. | Mixed-result/no-write testleri | InventoryPrice port | Listing/offer SIT fixture | PLANNED / BLOCKED_EXTERNAL |
 | `F6A-REQ-006` | s.25-27, 43-44, 65 | Order/package polling cursor/overlap ile generic order modeline map edilir. | Duplicate/out-of-order fixture | Order port/worker | SIT order fixture | PLANNED / BLOCKED_EXTERNAL |
 | `F6A-REQ-007` | s.26-28, 43-44, 65 | Package quantity invariant korunur; izin verilmeyen state/action dış etki üretmez. | State/property testleri | Existing package model | SIT package action kanıtı | PASS_LOCAL_PROPERTY / ACTION BLOCKED_EXTERNAL |
-| `F6A-REQ-008` | s.27-28, 43-44, 65 | Return/claim read ve action ayrı capability’dir; karar enum’u kanıtsız kodlanmaz. | Read/action fail-closed testleri | Return port | SIT claim fixture ve otorite | PLANNED / BLOCKED_EXTERNAL |
+| `F6A-REQ-008` | s.27-28, 43-44, 65 | Return/claim read ve action ayrı capability’dir; karar enum’u kanıtsız kodlanmaz. | Read/action fail-closed testleri | Return port | SIT claim fixture ve otorite | PASS_LOCAL_FAIL_CLOSED / CONTRACT BLOCKED_EXTERNAL |
 | `F6A-REQ-009` | s.30-31, 43, 65 | Polling/webhook duplicate ve out-of-order aynı Inbox/state hattında güvenlidir. | Auth/raw-body/dedupe testleri | Webhook verifier/job | Public SIT callback/credential | PARTIAL_LOCAL_STATE / WEBHOOK BLOCKED_EXTERNAL |
-| `F6A-REQ-010` | s.31-33, 43-44, 65 | Async task/batch/polling retry aynı dış etkiyi tekrar üretmez; reconciliation açıklanabilirdir. | Worker-kill/retry/checkpoint testi | Job/cursor/reconciliation | SIT task result fixture | PARTIAL_LOCAL_RETRY_HEARTBEAT / POSTGRES BLOCKED_RUNTIME / TASK BLOCKED_EXTERNAL |
-| `F6A-REQ-011` | s.43, 51-54, 65 | Auth expiry, 429, 5xx, timeout, validation ve business conflict ayrıdır. | Error mapper matrix | Adapter error mapping | Tarihli gerçek response | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F6A-REQ-010` | s.31-33, 43-44, 65 | Async task/batch/polling retry aynı dış etkiyi tekrar üretmez; reconciliation açıklanabilirdir. | Worker-kill/retry/checkpoint testi | Job/cursor/reconciliation | SIT task result fixture | PASS_LOCAL_POSTGRES_RETRY_HEARTBEAT / TASK BLOCKED_EXTERNAL |
+| `F6A-REQ-011` | s.43, 51-54, 65 | Auth expiry, 429, 5xx, timeout, validation ve business conflict ayrıdır. | Error mapper matrix | Adapter error mapping | Tarihli gerçek response | PASS_LOCAL_CLASSIFIER / CONTRACT BLOCKED_EXTERNAL |
 | `F6A-REQ-012` | s.51-54, 65, 67 | Credential encrypted/masked; secret/PII log/API/fixture/manifest’e sızmaz. | Secret/PII scan | Security/adapter | Credential türü kararı | DONE_LOCAL_FAIL_CLOSED / CREDENTIAL BLOCKED_EXTERNAL |
 | `F6A-REQ-013` | s.43, 55-58, 65 | Global + connection + capability + business-authority kapıları olmadan write job/HTTP yoktur. | No-HTTP/kill-switch testleri | Existing controls | Safe-write onayı | DONE_LOCAL_FAIL_CLOSED |
 | `F6A-REQ-014` | s.43, 58, 65 | Read-only reconciliation ve rollback runbook’u açıklanmıştır. | Local dry-run + runbook review | Reconciliation/README | Önceki platform prod kanıtı | PARTIAL_LOCAL / BLOCKED_PHASE_GATE |
@@ -164,7 +164,7 @@ Portal başlangıç yüzeyindeki client-credentials örneği ile marketplace gui
 | Kimlik | Ölçülebilir koşul | Kanıt | Plan durumu |
 | --- | --- | --- | --- |
 | `F6A-EXIT-001` | F6B/F6C yoktur; Hepsiburada adapterı generic portlar ve ayrı capability kaydı kullanır. | Boundary/repository guard | PASS_LOCAL |
-| `F6A-EXIT-002` | Contract/auth-expiry/429/5xx/timeout/validation ve partial-result testleri geçer. | Contract/resilience suite | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F6A-EXIT-002` | Contract/auth-expiry/429/5xx/timeout/validation ve partial-result testleri geçer. | Contract/resilience suite | PASS_LOCAL_CLASSIFIER / PARTIAL_RESULT BLOCKED_EXTERNAL |
 | `F6A-EXIT-003` | Duplicate/out-of-order ve package quantity invariant güvenlidir. | Property/integration testleri | PASS_LOCAL_PROPERTY / SIT BLOCKED_EXTERNAL |
 | `F6A-EXIT-004` | SIT safe-write düşük adet kullanıcı onayıyla; read-only reconciliation ve rollback kanıtlıdır. | Tarihli E2E/evidence log | BLOCKED_EXTERNAL |
 | `F6A-EXIT-005` | Önceki Shopify production reconciliation/rollback tamamdır; açıklanamayan kritik fark yoktur. | F5 production evidence | BLOCKED_PHASE_GATE |
