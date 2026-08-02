@@ -2,8 +2,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
-using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 

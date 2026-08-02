@@ -1,6 +1,6 @@
 # F3 Trendyol Dikey Dilim Kanıt Kaydı
 
-Doğrulama tarihi: `2026-07-31`. Ortam: Windows 10 geliştirme makinesi, .NET SDK `10.0.302`, Node `24.15.0`, npm `11.12.1`, PostgreSQL `18.4`. Gerçek Trendyol credential, Stage IP yetkisi, public HTTPS callback ve production write kullanılmadı.
+İlk doğrulama tarihi: `2026-07-31`; Fake adapter/regresyon ek doğrulaması: `2026-08-02`. Ortam: Windows geliştirme makinesi, .NET SDK `10.0.302`, Node `24.15.0`, npm `11.12.1`, PostgreSQL `18.4`. Gerçek Trendyol credential, Stage IP yetkisi, public HTTPS callback ve production write kullanılmadı.
 
 ## Sonuç özeti
 
@@ -25,6 +25,7 @@ Doğrulama tarihi: `2026-07-31`. Ortam: Windows 10 geliştirme makinesi, .NET SD
 | `F3-EV-017` secret/PII scan | PASS | F3 source/fixture taramasında gerçek Basic token, 11 haneli kimlik veya e-posta eşleşmesi yok; demo ileri-faz route taraması yalnız guard testlerinde bulundu |
 | `F3-EV-018` Stage/SIT | BLOCKED_EXTERNAL | Credential, IP allow-list, test mağaza/verisi ve public HTTPS yok |
 | `F3-EV-019` production smoke | BLOCKED_EXTERNAL | VPS/domain/credential ve işlem başına etki onayı yok; dış yazma kapalı |
+| `F3-EV-020` deterministic Fake adapter | PASS_POSTGRES_DB_JOB_HARNESS / BROWSER RC E2E OPEN | Test-only adapter bütün generic portları uygular; success/empty/partial/auth/429/5xx/timeout/validation/contract senaryoları, deterministic clock, varsayılan write-off ve replay’de tek etki test edildi. PostgreSQL job→lease→processor→worker-kill/reaper→retry→completion zinciri tek Order/OrderLine/cursor üretti. Production DI/ağ/auth/secret bağımlılığı yok; Browser→API→UI ve sandbox bölümü henüz çalıştırılmadı |
 
 ## Fixture checksum'ları
 
@@ -36,17 +37,17 @@ Doğrulama tarihi: `2026-07-31`. Ortam: Windows 10 geliştirme makinesi, .NET SD
 | `remote-error-empty.json` | `CA3D163BAB055381827226140568F3BEF7EAAC187CEBD76878E0B63E9E442356` |
 | `return-success.json` | `ADC1BBB7849D117F7195E7F75BA71BCF608CA7E9485A7B69F6D65A5EE3749779` |
 
-## Test sayımı
+## Güncel regresyon sayımı
 
-- Domain: `10/10`
-- Application/model metadata: `16/16`
-- Adapter contract: `4/4`
-- API surface: `1/1`
-- End-to-end repository guards: `2/2`
+- Domain: `20/20`
+- Application/model metadata: `19/19`
+- Adapter contract: `45/45`
+- API surface: `2/2`
+- End-to-end guard/Fake/PostgreSQL worker-kill senaryoları: `14/14`
 - PostgreSQL integration: `7/7`
-- Web component: `1/1`
-- Toplam: `40` .NET + `1` Web testi başarılı.
+- Toplam: `107/107` .NET testi başarılı; Web component/typecheck/build ayrıca geçmiştir.
+- Solution `dotnet format --verify-no-changes` ve `dotnet restore --locked-mode` geçti; doğrudan ve transitive NuGet vulnerability taramasında 11 projenin hiçbirinde bilinen advisory bulunmadı.
 
 ## Faz durumu
 
-F3 çekirdek yerel uygulaması `READY_LOCAL_CORE` durumundadır. `F3-EV-016`, gerçek Stage/SIT capability kanıtları, public HTTPS webhook/medya, label/cargo ve safe-write/smoke kanıtları tamamlanmadığından şartname F3 çıkışı `BLOCKED_EXTERNAL` kalır. F4 açılmamıştır.
+F3 çekirdek yerel uygulaması `READY_LOCAL_CORE` durumundadır. `F3-EV-016`, gerçek Stage/SIT capability kanıtları, public HTTPS webhook/medya, label/cargo, tam release-candidate E2E ve safe-write/smoke kanıtları tamamlanmadığından şartname F3 çıkışı `BLOCKED_EXTERNAL` kalır. Sonraki yerel fazların uygulanmış olması bu tarihsel F3 production kapısını kendiliğinden kapatmaz.

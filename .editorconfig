@@ -15,3 +15,9 @@ csharp_style_namespace_declarations = file_scoped:warning
 [*.{json,yml,yaml,md}]
 indent_style = space
 indent_size = 2
+
+[src/MarketplaceHub.Infrastructure/Persistence/Migrations/*.cs]
+generated_code = true
+charset = unset
+end_of_line = unset
+csharp_style_namespace_declarations = unset

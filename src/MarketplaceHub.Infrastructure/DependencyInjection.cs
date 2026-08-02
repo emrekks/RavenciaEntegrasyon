@@ -1,9 +1,9 @@
 using System.Security.Cryptography.X509Certificates;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
+using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
-using MarketplaceHub.Infrastructure.Adapters.Shopify;
-using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Bootstrap;
 using MarketplaceHub.Infrastructure.Files;
 using MarketplaceHub.Infrastructure.Identity;

@@ -187,6 +187,7 @@ Resmî belgede farklı tarihler için farklı limitler bulunduğundan değerler 
 | `F3-EV-017` | Secret/PII/fixture/repository scan | Credential, TCKN/VKN, adres ve raw PII sızıntısı yok | Scan log | PASS |
 | `F3-EV-018` | Stage/SIT read + safe-write | Ürün, stok/fiyat, order/package ve return akışı kanıtlı | Redacted SIT record | BLOCKED_EXTERNAL |
 | `F3-EV-019` | Kullanıcı onaylı düşük adet production smoke | Etki/rollback kayıtlı veya açık dış blocker | Smoke record | BLOCKED_EXTERNAL |
+| `F3-EV-020` | Test-only deterministik Fake adapter senaryoları | Generic portlar; success/empty/partial/error/replay; PostgreSQL job/worker-kill/retry; no-network/no-secret | EndToEnd test log | PASS_DB_JOB_TEST_HARNESS / BROWSER RC E2E OPEN |
 
 ## Dış bağımlılıklar, riskler ve blockerlar
 
@@ -226,7 +227,7 @@ Resmî belgede farklı tarihler için farklı limitler bulunduğundan değerler 
 | `F3-EXIT-002` | Reconciliation ürün-listing, inventory-price ve order-package-return için açıklanabilir fark raporu üretir. | `F3-EV-013` | PASS_LOCAL_DRY / REMOTE BLOCKED_EXTERNAL |
 | `F3-EXIT-003` | Connection kill switch ve rollback senaryosu dış yazmayı durdurur ve güvenli tekrar başlatmayı kanıtlar. | `F3-EV-013` | PASS_LOCAL_FAIL_CLOSED / RESTART BLOCKED_EXTERNAL |
 | `F3-EXIT-004` | Production smoke kanıtı vardır veya erişim/onay eksikliği açık dış blocker olarak kayıtlıdır. | `F3-EV-019` | BLOCKED_EXTERNAL |
-| `F3-EXIT-005` | Contract, duplicate/out-of-order/split, webhook, partial-result, resilience, security ve performans kanıtları geçer. | `F3-EV-001–017` | PARTIAL_LOCAL / PERFORMANCE BLOCKED_EXTERNAL |
+| `F3-EXIT-005` | Contract, duplicate/out-of-order/split, webhook, partial-result, resilience, security ve performans kanıtları geçer. | `F3-EV-001–017`, `F3-EV-020` | PARTIAL_LOCAL / PERFORMANCE BLOCKED_EXTERNAL |
 | `F3-EXIT-006` | Yalnız F3 API/UI/adapter yüzeyi vardır; F4+ production kodu, route, menü veya placeholder yoktur. | Surface/repository guard | PASS |
 
 ## Sonuç

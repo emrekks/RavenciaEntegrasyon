@@ -23,3 +23,9 @@ F1 yerel geliştirmesinin gerçek platform secret'ı veya canlı dış çağrı 
 ## Kabul kanıtı
 
 İlgili fazda secret/PII pattern taraması, schema/mapping testi, checksum doğrulaması, çevrimdışı çalışma ve ağ çıkışının engellendiği test kanıtı üretilir. F0'da gerçek fixture oluşturulmamıştır.
+
+## Uygulama durumu
+
+Release-candidate E2E hazırlığı için test-only `DeterministicFakeAdapter`, `tests/MarketplaceHub.EndToEnd.Tests` içinde generic connection/reference/product/inventory-price/order/return portlarının tamamını uygular. Production DI veya platform registry’sine eklenmez. Success, empty, partial, authentication, rate-limit, 5xx, timeout, validation ve contract-violation senaryoları deterministiktir; clock enjekte edilir, yazmalar varsayılan kapalıdır ve aynı effect idempotency anahtarının replay’i ikinci etki üretmez. Kaynak guard’ı ağ/auth/secret bağımlılığı bulunmadığını doğrular. PostgreSQL E2E testi job lease, işlem, worker-kill/reaper, retry ve completion zincirinde Order/OrderLine/cursor tekrar üretmediğini kanıtlar.
+
+Bu test harness gerçek platform fixture’ı, sandbox/SIT kanıtı veya tam Browser → API → DB/job → Worker → UI release-candidate E2E sonucu değildir. DB/job/worker-kill alt zinciri geçmiştir; browser/API/UI ve sandbox bölümü ilgili runtime ve dış hesap hazır olduğunda ayrıca çalıştırılır.

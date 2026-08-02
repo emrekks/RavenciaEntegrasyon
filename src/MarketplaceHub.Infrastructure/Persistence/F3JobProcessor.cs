@@ -1,8 +1,8 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
-using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
+using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;

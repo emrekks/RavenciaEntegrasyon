@@ -50,8 +50,8 @@ public sealed class F5ShopifyContractTests
     {
         var root = FindRoot();
         foreach (var area in new[] { "MarketplaceHub.Domain", "MarketplaceHub.Application" })
-        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "src", area), "*.cs", SearchOption.AllDirectories))
-            Assert.DoesNotContain("Shopify", File.ReadAllText(file), StringComparison.OrdinalIgnoreCase);
+            foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "src", area), "*.cs", SearchOption.AllDirectories))
+                Assert.DoesNotContain("Shopify", File.ReadAllText(file), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }
