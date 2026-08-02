@@ -10,7 +10,7 @@
 | `RISK-PG18-MOUNT-001` | PostgreSQL 18 resmî imajı eski `/var/lib/postgresql/data` volume mount'unu fail-closed reddetti. | Veritabanı container'ı başlatılamaz | 18+ için volume `/var/lib/postgresql` köküne bağlandı; yeni izole volume'da dump/restore geçti | PostgreSQL 18.4 source/restore container'ları ve eşit mantıksal checksum | CLOSED |
 | `RISK-VOLUME-001` | Ürün/sipariş baz hacmi bilinse de varyant, sipariş satırı ve dönemsel pikler henüz ölçülmedi. | Büyümenin baz profili aşması | `1.000` ürün ve `15.000` sipariş/yıl bazına x5 uygula; ikincil metrikleri F1+ gözlemle | x5 yük sonucu ve üretim gözlem kaydı | MITIGATED_MONITOR |
 | `RISK-SUPPLY-001` | F1 production manifestleri henüz yok. | Production aktarımında resolved tree/image drift | F0 verification lock ve index digest'leri oluşturuldu; F1 aktarımı fail-closed karşılaştırılacak | F0 lock hash ve registry digest kanıtı | MITIGATED_F0 |
-| `RISK-COMPOSE-001` | Hedef Docker repository plugin sürümü v3.4'ün exact Compose v2.40.2 kararından sapabilir. | Yanlış major/patch ve çözümleme drift'i | Ubuntu installer yalnız resmî Linux x86_64 v2.40.2 binary'sini sabit SHA-256 ile kullanıcı plugin dizinine alır; farklı mevcut binary overwrite edilmez | `docker compose version --short = 2.40.2`; SHA-256 `6c964d...62b88` | MITIGATED_CODE / TARGET_NOT_RUN |
+| `RISK-COMPOSE-001` | Hedef Docker repository plugin sürümü v3.4'ün exact Compose v2.40.2 kararından sapabilir. | Yanlış major/patch ve çözümleme drift'i | Ubuntu installer resmî Linux x86_64 v2.40.2 binary'sini root plugin dizinine sabit SHA-256 ile alır; paket plugin'i yerine proje pinini seçer | Hedefte `docker compose version --short = 2.40.2`; SHA-256 `6c964d...62b88` | CLOSED_TARGET |
 | `RISK-STITCH-001` | Stitch arayüz dosyası başlangıçta sağlanmamıştı. | İleri UI görünüm uyumsuzluğu | Dosya faz filtresiyle incelendi; yalnız F3 Teal Precision token/layout girdisi kullanıldı. | ZIP SHA-256 `3B51EBF78D7653933451E2B41D627A5281E14298844F7B7AFFAFC0B8198CE0A9`; F3 route guard | CLOSED_F3 |
 | `RISK-F4-FISCAL-001` | Rounding, due, trigger, package scope ve adjustment mali otoriteleri onaylanmadı. | Hatalı veya mükerrer mali belge | Policy yalnız `UNAPPROVED`; invoice type `UNDETERMINED`; auto-submit ve dış write kapalı | ADR-011 Accepted + mali onay + test firma E2E | OPEN_BLOCKING_EXTERNAL |
 | `RISK-F4-PROVIDER-001` | E-Faturam hesap modeli/test firma ve Trendyol Stage invoice delivery kanıtı yok. | Yanlış firma scope'u, contract veya delivery | Sign-in dışındaki provider işlemleri ve public-link delivery fail-closed; capability `UNKNOWN` | Anonim fixture + tarihli Stage/SIT kanıtı | OPEN_BLOCKING_EXTERNAL |
@@ -24,7 +24,7 @@
 
 ## Blocker özeti
 
-- `BLOCK-HOST-001`: Ubuntu Server daha sonra kiralanacak; hedef erişim, kapasite ve runtime kanıtı yok. Yerel geliştirmeyi durdurmaz, production kabulünü durdurur.
+- `BLOCK-HOST-001`: AWS host erişimi, kapasitesi, Docker Engine/systemd ve exact Compose doğrulandı. Reboot/volume, x5 yük, disk doluluk, DNS/TLS ve production image kanıtları bekler; production kabulünü durdurur.
 - `BLOCK-DR-001`: Yerel sentetik restore ve süre ölçümü tamamlandı; hedef Ubuntu Server volume/restore ve hedef RTO kanıtı henüz yok.
 
 Bu blockerlar kapanmadan F0 çıkışı `PASSED` yapılamaz.

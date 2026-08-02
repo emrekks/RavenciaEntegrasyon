@@ -11,7 +11,7 @@ Doğrulama tarihi: 2026-07-31. Durum gözden geçirme tarihi: 2026-08-02. v3.4 i
 | Node.js | `24.15.0` | INSTALLED; current LTS patch adayıyla aynı değil |
 | npm | `11.12.1` | INSTALLED |
 | Docker Desktop / Engine / CLI | Desktop `4.84.0` (`234817`), Engine/CLI `29.6.2`; Linux/amd64, `overlayfs`, `desktop-linux` | VERIFIED_LOCAL_HISTORICAL; TARGET_SUPERSEDED |
-| Docker Compose | Yerel Windows ön kanıtında sabit `v2.40.2` geçti; Ubuntu hedef için Linux x86_64 checksum'u installer/guard içinde sabit | VERIFIED_LOCAL / TARGET_INSTALLER_PENDING |
+| Docker Compose | Hedefte root plugin `v2.40.2`; SHA-256 `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88` | VERIFIED_TARGET_2026_08_02 |
 | Caddy | Digest-pinned `2.11.3`, Linux/amd64 smoke geçti | VERIFIED_LOCAL_RECHECK_TARGET |
 | PostgreSQL / psql | Digest-pinned `18.4`; psql, dump ve temiz-volume restore geçti | VERIFIED_LOCAL_RECHECK_TARGET |
 | WSL | `2.7.11.0`, kernel `6.18.33.2-2`, varsayılan sürüm `2` | VERIFIED_LOCAL_HISTORICAL; NOT_APPLICABLE_TARGET |
@@ -23,7 +23,7 @@ Doğrulama tarihi: 2026-07-31. Durum gözden geçirme tarihi: 2026-08-02. v3.4 i
 | İşletim sistemi | Ubuntu Server 26.04 LTS (Resolute) x86_64 | VERIFIED_TARGET_HOST |
 | Kapasite | 2 vCPU; 8.153.141.248 byte RAM; 80.530.636.800 byte NVMe | VERIFIED_TARGET_HOST / PERFORMANCE_PENDING |
 | Container runtime | Docker Engine/CLI `29.7.1`; containerd `2.2.6`; Buildx `0.36.0`; Linux/x86_64 `overlayfs`; systemd enabled/active | VERIFIED_TARGET_2026_08_02 |
-| Compose | Docker paket bağımlılığı `5.3.1`; proje tarafından seçilecek exact kullanıcı/root plugin `v2.40.2`, Linux x86_64 SHA-256 `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88` | VERIFIED_CHECKSUM / TARGET_INSTALLER_PENDING |
+| Compose | Docker paket bağımlılığı `5.3.1`; proje tarafından seçilen exact root plugin `v2.40.2`, Linux x86_64 SHA-256 `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88` | VERIFIED_TARGET_2026_08_02 |
 | Host yönetimi | SSH anahtarı + yönetici IP/VPN allow-list | SSH_KEY_VERIFIED / AWS_SECURITY_GROUP_REVIEW_PENDING |
 
 ## Backend ve altyapı
@@ -77,7 +77,7 @@ Doğrulama tarihi: 2026-07-31. Durum gözden geçirme tarihi: 2026-08-02. v3.4 i
 | Npgsql / PostgreSQL | Npgsql/EF provider 10 ve EF 10.0.10 aralığı locked restore ile uyumlu; PostgreSQL 18 index pinli | PostgreSQL 18 resmî dokümanda supported; bu kayıtta exact EOL kanıtı yok | NuGet content hash ve image digest kayıtlı | VERIFIED_F0 |
 | Node / Vite / Playwright | NPM locked dry-run geçti; Node 24.18.1 engine pinli | Node 24 LTS takvimi resmî release sayfasında; bağımsız npm paketleri formal EOL yayımlamıyor | Lock license/integrity alanları mevcut; hedef runtime bekliyor | VERIFIED_F0 |
 | React ekosistemi | React 19.2 ve şartnamedeki package hatları aynı npm lock'ta çözümlendi | Cited package kaynaklarında formal EOL yok: `UNKNOWN` | Peer dependency, license ve integrity resolved tree'de | VERIFIED_F0 |
-| Caddy / Compose / container images | Caddy index digest ve Compose v2.40.2 dört platform checksum'u kayıtlı | Caddy release ve Compose v2 desteği doğrulandı | Hedef child digest/runtime testi `BLOCK-HOST-001` kapsamı | VERIFIED_F0 |
+| Caddy / Compose / container images | Caddy index digest ve Compose v2.40.2 dört platform checksum'u kayıtlı; hedef Compose doğrulandı | Caddy release ve Compose v2 desteği doğrulandı | Production app/edge child digest testi `BLOCK-HOST-001` kapsamında | VERIFIED_F0_TARGET_COMPOSE |
 
 ## F0 kanıt konumları ve repository-root aktarımı
 
@@ -89,4 +89,4 @@ Doğrulama tarihi: 2026-07-31. Durum gözden geçirme tarihi: 2026-08-02. v3.4 i
 
 ## Sonuç
 
-Kullanıcı faz sınırı onayıyla non-production F0 doğrulama lock'ları oluşturulmuş, NuGet locked restore ve npm locked dry-run başarıyla çalışmış, resmî image index digest'leri ile Compose checksum'ları kaydedilmiştir. Bu belge ve kanıtlar baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e` ile Git'e alınmış; repository-root lock ve yerel application image kanıtları F1 ile eklenmiştir. `BLOCK-VERSION-001` ve `F0-EXIT-004` F0 kapsamında kapalıdır; registry-pushed production digest ve hedef Ubuntu Server doğrulaması `BLOCKED_EXTERNAL` kalır.
+Kullanıcı faz sınırı onayıyla non-production F0 doğrulama lock'ları oluşturulmuş, NuGet locked restore ve npm locked dry-run başarıyla çalışmış, resmî image index digest'leri ile Compose checksum'ları kaydedilmiştir. Bu belge ve kanıtlar baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e` ile Git'e alınmış; repository-root lock ve yerel application image kanıtları F1 ile eklenmiştir. AWS Ubuntu hostunda Docker Engine/systemd ve exact Compose doğrulanmıştır. `BLOCK-VERSION-001` ve `F0-EXIT-004` F0 kapsamında kapalıdır; registry-pushed production digest ile reboot/volume/restore/DNS-TLS kanıtları `BLOCKED_EXTERNAL` kalır.

@@ -24,7 +24,7 @@ Resmî doğrulama kaynakları: [GitHub Container Registry image yayınlama](http
 
 ## Deploy öncesi bağımsız doğrulama
 
-Ubuntu sunucu erişimi sağlandığında digest'leri registry'den çek ve `docker image inspect` ile platformun `linux/amd64` olduğunu doğrula. Ardından production Compose çözümlemesini yalnız secret içeriklerini ekrana basmadan incele. `compose.production.yaml`, digest değişkenlerinden biri yoksa fail-closed olur.
+AWS Ubuntu sunucusunda digest'leri registry'den çek ve `sudo docker image inspect` ile platformun `linux/amd64` olduğunu doğrula. Ardından production Compose çözümlemesini yalnız secret içeriklerini ekrana basmadan incele. `compose.production.yaml`, digest değişkenlerinden biri yoksa fail-closed olur.
 
 Production edge imajındaki Caddy yapılandırması public DNS adı için otomatik HTTPS ve HTTP→HTTPS yönlendirmesi kullanır. DNS A/AAAA kayıtları hedef sunucuya yönelmeden, dışarıdan 80/443 erişimi olmadan ve kalıcı `caddy_data` volume'u hazır olmadan production Caddy başlatılmaz.
 

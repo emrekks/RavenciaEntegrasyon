@@ -28,7 +28,7 @@ Doğrulama tarihi: 2026-07-31. Sonuçlar gerçek komut çıktılarından kaydedi
 | PostgreSQL dump/restore | Digest-pinned PostgreSQL 18.4, ayrı source/restore/backup volume'ları | Dump SHA-256 `51a6a9df0065b7e346e137cac77aa6208e7989b380fe885d7282a7f5c165fd3f`; source/restore `2|fb4200bade7730f8239ef795f97ee6fc`; restore `0,147 sn` | PASSED_FOR_LOCAL |
 | Hedef AWS Ubuntu Server 26.04 LTS | SSH + hedef runbook salt-okunur kontrolleri | x86_64; 2 vCPU; 8.153.141.248 byte RAM; 80.530.636.800 byte NVMe; root filesystem 76.878.503.936 byte; SSH aktif; repository `main`/`6fd049b` temiz | HOST_PROFILE_PASSED / RUNTIME_PENDING |
 | Hedef Docker Engine | Resmî Docker apt repository, exact paket kurulumu, `systemctl`, `docker version/info` | Engine/CLI `29.7.1`; containerd `2.2.6`; Buildx `0.36.0`; Linux/x86_64 `overlayfs`; Docker enabled/active. `ubuntu` hesabı root-eşdeğeri Docker grubuna eklenmedi. | PASSED_TARGET |
-| Hedef Compose | Installer checksum ve `docker compose version --short` | Dağıtım paketi `5.3.1` kurulu; proje exact `2.40.2` root plugin'i host-only çalışmasında indirip doğrulayacak | INSTALLER_PENDING |
+| Hedef Compose | `sudo -H install-marketplacehub.sh --host-only`, checksum ve `docker compose version` | Dağıtım paketi `5.3.1`; proje root plugin'i `v2.40.2`; SHA-256 `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88`; host-only exit 0 | PASSED_TARGET |
 | Restore/RTO | Hedef PostgreSQL + files restore | Hedef volume/restore henüz çalıştırılmadı | NOT_RUN / BLOCKED_EXTERNAL |
 
 ## Lock içeriği notları

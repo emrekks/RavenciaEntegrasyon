@@ -56,4 +56,4 @@ Beklenen minimumlar:
 
 ## Sonuç durumu
 
-AWS host profili salt-okunur olarak doğrulanmıştır: Ubuntu 26.04, x86_64, 2 vCPU, 8.153.141.248 byte RAM ve 80.530.636.800 byte NVMe. Docker Engine/CLI `29.7.1`, containerd `2.2.6`, Buildx `0.36.0`, systemd enabled/active olarak doğrulanmıştır. Exact project Compose `2.40.2`, reboot/volume/restore, domain/TLS ve kapasite kanıtları tamamlanmadan production kabulü verilmez; bu durum F6A fail-closed çekirdeğini durdurmaz.
+AWS host profili salt-okunur olarak doğrulanmıştır: Ubuntu 26.04, x86_64, 2 vCPU, 8.153.141.248 byte RAM ve 80.530.636.800 byte NVMe. Docker Engine/CLI `29.7.1`, containerd `2.2.6`, Buildx `0.36.0`, systemd enabled/active ve exact project Compose `2.40.2` checksum kapısı doğrulanmıştır. Reboot/volume/restore, domain/TLS, production image ve kapasite kanıtları tamamlanmadan production kabulü verilmez; bu durum F6A fail-closed çekirdeğini durdurmaz.

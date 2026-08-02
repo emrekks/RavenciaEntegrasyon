@@ -306,7 +306,7 @@ Bu ilk görev tamamlandığında `git status --short` ve dosya listesiyle yalnı
 | Kimlik | Tür | Risk / blocker | Etki | Güvenli davranış / sonraki adım |
 | --- | --- | --- | --- | --- |
 | `RISK-SPEC-001` | Kaynak | v3.3 host hedefi gerçek AWS sunucusundan farklıydı. | Kurulum fail-closed reddediliyor ve bağlayıcı hedef karşılanmıyordu. | v3.4, 77 sayfa ve SHA-256 `5A652A...0EC51` ile mevcut AWS hostunu bağlar; v3.3/v3.2 tarihsel tutulur. CLOSED. |
-| `BLOCK-HOST-001` | Dış ortam | AWS host profili doğrulandı; Docker/Compose, domain/DNS, reboot, volume, restore ve x5 kapasite kanıtı henüz tamamlanmadı. | `F0-REQ-009` ve `F0-EXIT-003` kısmi kalır. | Hedef runbook'u mevcut hostta tamamla; 2 vCPU/80 GB nedeniyle performans ve disk doluluğunu ölç. |
+| `BLOCK-HOST-001` | Dış ortam | AWS host profili, SSH, Docker Engine/systemd ve exact Compose doğrulandı; domain/DNS, reboot, volume, restore, production image ve x5 kapasite kanıtı henüz tamamlanmadı. | `F0-REQ-009` ve `F0-EXIT-003` kısmi kalır. | Hedef runbook'un operasyon adımlarını tamamla; 2 vCPU/80 GB nedeniyle performans ve disk doluluğunu ölç. |
 | `BLOCK-CAPACITY-001` | İş girdisi | Başlangıçta gerçek hacim ve pik değerleri yoktu. | Kapasite onayı gerçek veriye dayandırılamıyordu. | Kullanıcı `1.000` ürün ve `15.000` sipariş/yıl sağladı; x5 profil kaydedildi. CLOSED. |
 | `BLOCK-DR-001` | Operasyon | `PILOT_LOCAL` ve en fazla 6 saat pilot RPO tanımlı; hedef volume, gerçek restore ve ölçülmüş RTO kanıtı yok. | Recovery uygulanabilirliği ve F0 çıkışı tamamlanamaz. | Aynı fiziksel diskse `RISK-DR-001`; hedefte checksum ve restore smoke olmadan geçme. Off-host yalnız resilient profilde zorunludur. |
 | `BLOCK-VERSION-001` | Faz sınırı | F0 çıkışı lockfile/image digest tutarlılığı isterken production lock'ları F1 teslimatıdır. | Faz sırası gerilimi vardı. | Kullanıcı onayıyla yalnız `docs/dependencies/verification/` altında F0 lock/digest kanıtı üretildi; baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e`. CLOSED. |
@@ -363,7 +363,7 @@ Mevcut değerlendirme:
 
 - **Bu ilk planlama görevi: READY.**
 - **F0 dokümantasyon uygulaması: COMPLETE.** İzlenebilirlik, capability, iş otoritesi, güvenlik/operasyon, dependency/sürüm kayıtları ve ADR-001–010 oluşturuldu.
-- **F0 çıkış kapısı: BLOCKED_EXTERNAL.** `BLOCK-HOST-001` ve buna bağlı hedef `BLOCK-DR-001`, Ubuntu sunucu kiralanıp hedef runbook çalışana kadar kapatılamaz. Kullanıcı onaylı yerel-makine-önce akışı bu blocker'ların yerel geliştirmeyi durdurmadığını kaydeder; production kabul kapısı değişmez. `BLOCK-CAPACITY-001` ve `BLOCK-VERSION-001` kapanmıştır.
+- **F0 çıkış kapısı: BLOCKED_EXTERNAL.** `BLOCK-HOST-001` host/runtime bölümü kısmen kapanmış, fakat reboot/volume/yük/DNS/TLS/production image adımları ve buna bağlı hedef `BLOCK-DR-001` tamamlanmamıştır. Bunlar yerel geliştirmeyi durdurmaz; production kabul kapısını korur. `BLOCK-CAPACITY-001` ve `BLOCK-VERSION-001` kapanmıştır.
 - **Yerel runtime kapısı: READY_HISTORICAL.** Windows/WSL2 üzerinde Linux engine, exact Compose v2.40.2, digest-pinned Linux image, restart/volume ve PostgreSQL dump/restore ön kanıtları geçmiştir; bunlar Ubuntu hedef kanıtı değildir.
 - Platform test hesaplarının yokluğu capability'leri `UNKNOWN` bırakır; şartnameye göre bu durum tek başına F1 local geliştirmesini engellemez.
 
