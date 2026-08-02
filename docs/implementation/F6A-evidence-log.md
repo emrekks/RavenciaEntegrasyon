@@ -21,11 +21,12 @@ Doğrulama tarihi: `2026-08-02`. Ortam: Windows geliştirme makinesi. Hepsiburad
 | `F6A-EV-013` secret/auth boundary | PASS_LOCAL_FAIL_CLOSED | Adapterda HTTP/auth/credential implementasyonu ve fixture dosyası yok; credential/test-job kapıları kapalı; source/docs secret signature taraması temiz |
 | `F6A-EV-014` package event safety | PASS_LOCAL_PROPERTY | Sipariş satırları ve miktar zinciri persistence öncesi doğrulanır; fazla/negatif/duplicate/bilinmeyen satır olayı atomik reddedilir; canonical ilerleme yalnız kabul edilen yerel paketlerden türetilir; eski zaman veya geriye durum geçişi uygulanmaz; event kimliği deterministiktir |
 | `F6A-EV-015` durable job retry | PASS_MODEL_SQL / POSTGRES BLOCKED_RUNTIME | Bağlayıcı `PENDING/LEASED/RETRY_SCHEDULED/BLOCKED/DEAD/CANCELLED`, max-attempt, 15s/1m/5m/20m/1h + %10–20 deterministik jitter, expired-attempt kapanışı ve fencing uygulandı; idempotent migration SQL üretildi; Docker engine yok |
+| `F6A-EV-016` worker heartbeat fencing | PASS_BUILD_POLICY / POSTGRES BLOCKED_RUNTIME | İki dakikalık lease için 30 saniyelik heartbeat ayrı ve kısa DbContext scope’larında çalışır; lease kaybı yerel yürütmeyi iptal eder, completion yeni scope ile token/expiry fencing’den geçer ve kayıtlı correlation korunur |
 
 ## Test sonucu
 
 - .NET build: başarılı, `0` uyarı / `0` hata.
-- Docker gerektirmeyen testler: `83/83` başarılı (Domain 18, Application 19, Adapter 42, API 2, Repository guard 2).
+- Docker gerektirmeyen testler: `85/85` başarılı (Domain 20, Application 19, Adapter 42, API 2, Repository guard 2).
 - PostgreSQL Testcontainers: `0/7` assertion çalıştı; Docker engine bulunmadığı için test sınıfı başlangıçta `BLOCKED_RUNTIME` oldu. Bu sonuç kod başarısızlığı olarak PASS’e çevrilmedi.
 - EF migration: modelde bekleyen değişiklik yok; F4 → F6A idempotent SQL üretimi başarılı. Migration yerel kullanıcı veritabanına uygulanmadı.
 - Web: strict TypeScript/Vite production build ve component testi.

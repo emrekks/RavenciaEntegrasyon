@@ -27,4 +27,19 @@ public sealed class JobRetryPolicyTests
         Assert.InRange(actual, TimeSpan.FromSeconds(baseSeconds * 1.10), TimeSpan.FromSeconds(baseSeconds * 1.20));
         Assert.Equal(actual, JobRetryPolicy.DelayAfterAttempt(attempt, jobId));
     }
+
+    [Fact]
+    public void Heartbeat_interval_is_within_one_third_of_the_lease()
+    {
+        var interval = JobRetryPolicy.HeartbeatInterval(JobRetryPolicy.DefaultLeaseDuration);
+
+        Assert.Equal(TimeSpan.FromSeconds(30), interval);
+        Assert.True(interval <= JobRetryPolicy.DefaultLeaseDuration / 3);
+    }
+
+    [Fact]
+    public void Heartbeat_interval_rejects_a_non_positive_lease()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => JobRetryPolicy.HeartbeatInterval(TimeSpan.Zero));
+    }
 }

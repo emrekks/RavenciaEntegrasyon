@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Worker">
   <ItemGroup>
     <ProjectReference Include="..\MarketplaceHub.Application\MarketplaceHub.Application.csproj" />
+    <ProjectReference Include="..\MarketplaceHub.Domain\MarketplaceHub.Domain.csproj" />
     <ProjectReference Include="..\MarketplaceHub.Infrastructure\MarketplaceHub.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>

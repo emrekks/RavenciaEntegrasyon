@@ -12,8 +12,15 @@ public static class JobRetryPolicy
     ];
 
     public const int DefaultMaxAttempts = 6;
+    public static readonly TimeSpan DefaultLeaseDuration = TimeSpan.FromMinutes(2);
 
     public static IReadOnlyList<TimeSpan> DefaultSchedule => DefaultRetryDelays;
+
+    public static TimeSpan HeartbeatInterval(TimeSpan leaseDuration)
+    {
+        if (leaseDuration <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(leaseDuration));
+        return TimeSpan.FromTicks(leaseDuration.Ticks / 4);
+    }
 
     public static TimeSpan DelayAfterAttempt(int attemptCount, Guid jobId)
     {

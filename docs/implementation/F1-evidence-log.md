@@ -21,7 +21,7 @@ Doğrulama tarihi: 2026-07-31. Ortam: Windows geliştirme makinesi üzerinde Doc
 | `F1-EV-015` capability/write guard | PASS | gerçek platform adapter/secret yok; `external-writes=false`; capability matrisi `UNKNOWN` |
 | `F1-EV-016` auth/MFA HTTPS zinciri | PASS_LOCAL | `PASSWORD_CHANGE_REQUIRED`, allowlist 403, 10 recovery code, replay 400, TOTP challenge, 3 session, revoke-others 204, disable 204 |
 | `F1-EV-017` break-glass | PASS_LOCAL | OS authorization environment + reason ile CLI exit 0; append-only audit count 1 |
-| `F1-EV-018` job retry contract amendment (`2026-08-02`) | PASS_MODEL_SQL / POSTGRES BLOCKED_RUNTIME | Şartname s.30–32 state/max-attempt/backoff/expired-attempt sözleşmesi migration ve unit/metadata testleriyle tamamlandı; güncel Testcontainers koşusu Docker engine yokluğunda assertion öncesi durdu |
+| `F1-EV-018` job retry contract amendment (`2026-08-02`) | PASS_MODEL_BUILD / POSTGRES BLOCKED_RUNTIME | Şartname s.30–32 state/max-attempt/backoff/expired-attempt sözleşmesi ile lease süresinin dörtte birinde ayrı scope heartbeat, lease-loss iptali, completion fencing ve correlation aktarımı tamamlandı; güncel Testcontainers koşusu Docker engine yokluğunda assertion öncesi durdu |
 
 ## Güvenlik bulguları
 
