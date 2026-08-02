@@ -123,12 +123,12 @@ public sealed class FullStackFakeBrowserTests : IAsyncLifetime
         await browser.WaitForExitAsync(cancellationToken);
         var output = await outputTask;
         var error = await errorTask;
+        Assert.True(browser.ExitCode == 0, $"Browser proof failed. stdout: {output} stderr: {error}");
 
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var job = await db.IntegrationJobs.SingleAsync(x => x.ConnectionId == connectionId && x.JobType == F3JobTypes.OrderSync, cancellationToken);
         var orderCount = await db.Orders.CountAsync(x => x.ConnectionId == connectionId, cancellationToken);
-        Assert.True(browser.ExitCode == 0, $"Browser proof failed. job={job.Status} attempts={job.AttemptCount} error={job.LastErrorCode ?? "none"} orders={orderCount} stdout: {output} stderr: {error}");
         Assert.Contains("FULL_STACK_FAKE_E2E_PASS", output, StringComparison.Ordinal);
         Assert.Equal(1, orderCount);
         Assert.Equal(JobStatus.Succeeded, job.Status);

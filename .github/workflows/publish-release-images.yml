@@ -37,7 +37,10 @@ jobs:
       - name: Install locked web dependencies
         shell: bash
         working-directory: src/MarketplaceHub.Web
-        run: npm ci --ignore-scripts
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
 
       - name: Verify locked .NET solution
         shell: bash
