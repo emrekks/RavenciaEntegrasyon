@@ -4,7 +4,7 @@
 
 Support level yalnız `SUPPORTED`, `NOT_SUPPORTED`, `UNKNOWN`, `TEMPORARILY_UNAVAILABLE` olabilir. Başlangıç değeri `UNKNOWN`dur. `SUPPORTED` için birlikte şunlar zorunludur: güncel resmî kaynak, test hesabı veya secret/PII içermeyen anonim fixture, doğrulama tarihi, kaynak sürümü, gerekli scope, tenant+connection+environment+API version+store scope ve evidence note. Read desteği write desteği değildir.
 
-F0 başlangıcında hiçbir platform için test hesabı/anonim davranış kanıtı sağlanmamıştı. F3'te Trendyol, F4'te E-Faturam ve F5'te Shopify yerel adapter/contract kanıtları eklendi; bunlar gerçek connection/store capability kanıtı değildir. Bu nedenle gerçek connection capability'leri varsayılan `UNKNOWN`, tüm dış yazmalar kapalıdır.
+F0 başlangıcında hiçbir platform için test hesabı/anonim davranış kanıtı sağlanmamıştı. Yerel adapter/contract kanıtlarına ek olarak 2026-08-03 tarihinde üretim panelinden salt-okunur Stage bağlantı testleri çalıştırıldı: Trendyol bağlantı ve sipariş okuma, E-Faturam bağlantı kanıtı `SUPPORTED` oldu. Aynı tarihte kayıtlı Hepsiburada bağlantısı platforma ulaştı ancak kimlik doğrulaması başarısız olduğu için bu bağlantının güncel capability durumu `UNKNOWN` kaldı. Tüm dış yazmalar kapalıdır.
 
 ## Capability kodları
 
@@ -24,14 +24,14 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 
 | Platform | Grup | Support level | Resmî kaynak durumu | Test/fixture kanıtı | Write switch |
 | --- | --- | --- | --- | --- | --- |
-| Trendyol | Bağlantı | UNKNOWN | Auth/environment dokümanı doğrulandı | Stage identity yok | off |
+| Trendyol | Bağlantı | SUPPORTED | Auth/environment dokümanı doğrulandı | 2026-08-03 üretim paneli Stage testi; connection `VERIFIED` | off |
 | Trendyol | Katalog referansı | UNKNOWN | V2 attribute/value/brand/category yolları doğrulandı | Anonim parser fixture; Stage read yok | off |
 | Trendyol | Ürün | UNKNOWN | Product V2 create/read/batch yolları doğrulandı | Anonim product/partial fixture; Stage write yok | off |
 | Trendyol | Stok/fiyat | UNKNOWN | Birleşik endpoint ve partial batch doğrulandı | Partial fixture; Stage safe-write yok | off |
-| Trendyol | Sipariş/teslimat | UNKNOWN | Cursor stream ve webhook auth doğrulandı | Anonim order fixture; Stage/public HTTPS yok | off |
+| Trendyol | Sipariş/teslimat | SUPPORTED | Cursor stream ve webhook auth doğrulandı | 2026-08-03 Stage connection testi `OrderRead=SUPPORTED`; webhook ve yazma capability'leri `UNKNOWN` | off |
 | Trendyol | İade | UNKNOWN | Claims read dokümanı doğrulandı | Anonim claim fixture; Stage action yok | off |
 | Trendyol | Fatura | UNKNOWN | Invoice link/file resmî yolları doğrulandı | Stage package/delivery yok | off |
-| E-Faturam | Bağlantı | UNKNOWN | API `1.0.0`, Stage/production ve sign-in sözleşmesi doğrulandı | Test credential yok | off |
+| E-Faturam | Bağlantı | SUPPORTED | API `1.0.0`, Stage/production ve sign-in sözleşmesi doğrulandı | 2026-08-03 üretim paneli Stage testi; connection `VERIFIED` | off |
 | E-Faturam | Katalog referansı | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
 | E-Faturam | Ürün | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
 | E-Faturam | Stok/fiyat | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
@@ -45,7 +45,7 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 | Shopify | Sipariş/teslimat | UNKNOWN | Webhook dokümanı erişilebilir | Yok | off |
 | Shopify | İade | UNKNOWN | Kapsam kanıtlanmadı | Yok | off |
 | Shopify | Fatura | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
-| Hepsiburada | Bağlantı | SUPPORTED | Sipariş SIT Basic Auth + User-Agent; resmî v1.0 kaynak 2026-06-04 | AWS üzerinden HTTP 200; anonim boş zarf SHA-256 `0bece67384a38e350bf3b162f702bcfbbcdb5d5ec7e289f839c643b7ae61ffe9` | off |
+| Hepsiburada | Bağlantı | UNKNOWN | Sipariş SIT Basic Auth + User-Agent; resmî v1.0 kaynak 2026-06-04 | Tarihsel AWS testi HTTP 200; 2026-08-03 üretim panelindeki kayıtlı credential `HEPSIBURADA_AUTHENTICATION_FAILED` | off |
 | Hepsiburada | Katalog referansı | UNKNOWN | Güncel guide erişilebilir; partner fixture yok | Yerel generic port/no-HTTP | off |
 | Hepsiburada | Ürün | UNKNOWN | Async katalog guide erişilebilir; mapping fixture yok | Yerel generic port/no-write | off |
 | Hepsiburada | Stok/fiyat | UNKNOWN | Listing capability/SIT kanıtı yok | Yerel generic port/no-write | off |

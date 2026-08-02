@@ -1,6 +1,6 @@
 # F6A Hepsiburada Adapter Kanıt Kaydı
 
-Doğrulama tarihi: `2026-08-02`. Ortamlar: Windows geliştirme makinesi ve AWS Ubuntu Server. Hepsiburada Sipariş SIT credential yalnız bellek/geçici dosya kanalıyla salt-okunur bağlantı testinde kullanıldı; geçici dosya otomatik silindi, secret log/repository/kanıta yazılmadı. Public callback veya dış yazma kullanılmadı.
+İlk doğrulama tarihi: `2026-08-02`; üretim paneli yeniden doğrulaması: `2026-08-03`. Ortamlar: Windows geliştirme makinesi ve AWS Ubuntu Server. Credential yalnız salt-okunur bağlantı testinde kullanıldı; secret log/repository/kanıta yazılmadı. Public callback veya dış yazma kullanılmadı.
 
 ## Sonuç özeti
 
@@ -15,7 +15,7 @@ Doğrulama tarihi: `2026-08-02`. Ortamlar: Windows geliştirme makinesi ve AWS U
 | `F6A-EV-007` error classes | PASS_LOCAL | 401/403 authentication, 409 business conflict, 429 rate limit, 5xx remote ve diğer 4xx validation olarak ayrı test edildi |
 | `F6A-EV-008` connection model | PASS_LOCAL | Draft merchant scope, `v1.0` guide kaydı, User-Agent ve capability UNKNOWN mevcut generic tablolarda tutulur; migration yok |
 | `F6A-EV-009` UI | PASS_LOCAL | Mevcut integrations formunda Merchant ID/Secret Key girişi ve salt-okunur bağlantı testi açıktır; sipariş aktarımı/write sınırı görünür |
-| `F6A-EV-010` contract/SIT | PARTIAL_PASS_CONNECTION / BLOCKED_MAPPING | AWS’den resmî Sipariş SIT GET çağrısı HTTP 200; 63 bayt anonim boş zarf, 0 item, SHA-256 `0bece67384a38e350bf3b162f702bcfbbcdb5d5ec7e289f839c643b7ae61ffe9`. Dolu payload olmadığı için mapping/status enum üretilmedi |
+| `F6A-EV-010` contract/SIT | HISTORICAL_PASS / CURRENT_CREDENTIAL_BLOCKED | 2026-08-02 AWS çağrısı HTTP 200 ve anonim boş zarf döndürdü. 2026-08-03 üretim paneli testi ağ katmanını geçti ancak kayıtlı credential `HEPSIBURADA_AUTHENTICATION_FAILED` verdi; güncel connection capability `UNKNOWN`, mapping ve bütün write kapalı |
 | `F6A-EV-011` previous-platform gate | BLOCKED_PHASE_GATE | F5 production reconciliation/rollback kanıtı yok |
 | `F6A-EV-012` local reconciliation/rollback | PASS_LOCAL_DRY | Ortak servis Hepsiburada bağlantısını no-write kuru kontrolde kabul eder; N11/Pazarama reddedilir; geri dönüş rehberi kayıt koruma ve yeniden açma kapılarını tanımlar |
 | `F6A-EV-013` secret/auth boundary | PASS_LOCAL | Basic Auth yalnız istek anında oluşturulur; credential Data Protection ile şifrelenir ve API’de maskelenir; source/docs secret signature taraması temiz; production/write kapıları kapalı |
