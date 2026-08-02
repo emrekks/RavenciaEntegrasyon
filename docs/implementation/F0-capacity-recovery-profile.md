@@ -32,9 +32,10 @@ Baz değerler işletme sahibinin 2026-07-31 tarihli beyanıdır. x5 değerleri �
 | RTO | Yerel sentetik DB restore ölçümü `0,147 sn`; bu değer hedef Ubuntu Server veya iş RTO'su değildir. | LOCAL_MEASURED_TARGET_BLOCKED |
 | Off-host | `PILOT_LOCAL` için zorunlu değil ve tam DR sayılmaz; `PRODUCTION_RESILIENT` seçilirse şifreli, ayrı failure domain zorunlu. | NOT_APPLICABLE_PILOT |
 | Restore testi | PostgreSQL sentetik veri ayrı temiz volume'a restore edildi ve mantıksal checksum eşleşti; private app files ve hedef host bekliyor. | DB_LOCAL_PASSED_TARGET_PENDING |
+| Hedef volume kalıcılığı | Digest-pinned ayrı test container/volume kontrollü AWS reboot sonrası otomatik başladı; marker SHA-256 değişmedi; test kaynakları temizlendi. | TARGET_PASSED |
 
 `PILOT_LOCAL` yedekleri aynı fiziksel diskteyse `RISK-DR-001` açıktır; yerel başarılı restore üretim dayanıklılığı veya hedef RTO kanıtı değildir.
 
 ## Çıkış kanıtı
 
-Mevcut AWS sunucusunda OS, mimari, 2 vCPU, 8 GB sınıfı RAM, 80 GB NVMe aygıt ve root filesystem kapasitesi ölçülmüştür. Direct Docker Engine/Compose, systemd yeniden başlatma, kalıcı volume ve restore kanıtları ayrıca tamamlanmalıdır. F1+ yük testinde yukarıdaki x5 profilinin sonucu; recovery testinde dump checksum'u ve ölçülmüş restore süresi kanıtlanmalıdır. Off-host kanıtı yalnız `PRODUCTION_RESILIENT` seçilirse zorunludur.
+Mevcut AWS sunucusunda OS, mimari, 2 vCPU, 8 GB sınıfı RAM, 80 GB NVMe aygıt ve root filesystem kapasitesi ölçülmüştür. Direct Docker Engine/Compose, systemd yeniden başlatma ve kalıcı volume checksum kanıtı tamamlanmıştır. Hedef PostgreSQL/private-file restore kanıtı ayrıca tamamlanmalıdır. F1+ yük testinde yukarıdaki x5 profilinin sonucu; recovery testinde dump checksum'u ve ölçülmüş restore süresi kanıtlanmalıdır. Off-host kanıtı yalnız `PRODUCTION_RESILIENT` seçilirse zorunludur.

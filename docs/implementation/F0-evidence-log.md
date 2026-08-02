@@ -29,6 +29,7 @@ Doğrulama tarihi: 2026-07-31. Sonuçlar gerçek komut çıktılarından kaydedi
 | Hedef AWS Ubuntu Server 26.04 LTS | SSH + hedef runbook salt-okunur kontrolleri | x86_64; 2 vCPU; 8.153.141.248 byte RAM; 80.530.636.800 byte NVMe; root filesystem 76.878.503.936 byte; SSH aktif; repository `main`/`6fd049b` temiz | HOST_PROFILE_PASSED / RUNTIME_PENDING |
 | Hedef Docker Engine | Resmî Docker apt repository, exact paket kurulumu, `systemctl`, `docker version/info` | Engine/CLI `29.7.1`; containerd `2.2.6`; Buildx `0.36.0`; Linux/x86_64 `overlayfs`; Docker enabled/active. `ubuntu` hesabı root-eşdeğeri Docker grubuna eklenmedi. | PASSED_TARGET |
 | Hedef Compose | `sudo -H install-marketplacehub.sh --host-only`, checksum ve `docker compose version` | Dağıtım paketi `5.3.1`; proje root plugin'i `v2.40.2`; SHA-256 `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88`; host-only exit 0 | PASSED_TARGET |
+| Hedef reboot/volume | Digest-pinned Alpine `sha256:eafc...e43f`, `unless-stopped` container, named volume, kontrollü host reboot | Reboot öncesi/sonrası container `running`; Docker enabled/active; marker SHA-256 iki ölçümde `5d6ae21f91767db55954ed04f084e68974a8cc80ebad47199c37b3bb39801e49`; test kaynakları sonrasında kaldırıldı | PASSED_TARGET_CLEANED |
 | Restore/RTO | Hedef PostgreSQL + files restore | Hedef volume/restore henüz çalıştırılmadı | NOT_RUN / BLOCKED_EXTERNAL |
 
 ## Lock içeriği notları

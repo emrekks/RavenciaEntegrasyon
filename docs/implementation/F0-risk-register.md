@@ -5,7 +5,7 @@
 | `RISK-SPEC-001` | Dağıtım hedefi gerçek AWS hostundan farklıydı. | Yanlış host gate'i ve kurulum reddi | v3.3 tabanı korundu; kullanıcı onaylı mevcut AWS hedefi iki üstünlük sayfasıyla v3.4 canonical PDF'e işlendi. | v3.4 kök PDF: 77 sayfa; SHA-256 `5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51` | CLOSED_V3_4 |
 | `RISK-DR-001` | `PILOT_LOCAL` yedek aynı fiziksel diskte olabilir. | Tek arızada veri+yedek kaybı | Yerel dump/restore kanıtı tamamlandı; production için hedef-host restore ve seçilirse şifreli off-host gerekir | Yerel restore geçti; hedef/off-host kanıtı bekliyor | OPEN_TARGET_ONLY |
 | `RISK-CAP-001` | Platform test hesapları/fixture'ları yok. | Yanlış mapping/yazma riski | Tümü `UNKNOWN`; write off; fake adapter | Resmî kaynak + anonim test kanıtı | OPEN |
-| `RISK-HOST-001` | Mevcut AWS hostu 2 vCPU ve 80 GB diskle önceki v3.3 hedefinden küçüktü. | x5 yükte CPU veya disk baskısı | v3.4 ile host profili kabul edildi; x5 performans, disk doluluk, backup staging ve restore kanıtı production kapısında tutulur | Ubuntu 26.04/x86_64/2 vCPU/8 GB/80 GB ölçümü geçti; yük/reboot/volume/restore bekliyor | HOST_PROFILE_CLOSED / OPERATIONS_OPEN |
+| `RISK-HOST-001` | Mevcut AWS hostu 2 vCPU ve 80 GB diskle önceki v3.3 hedefinden küçüktü. | x5 yükte CPU veya disk baskısı | v3.4 ile host profili kabul edildi; x5 performans, disk doluluk, backup staging ve restore kanıtı production kapısında tutulur | Ubuntu 26.04/x86_64/2 vCPU/8 GB/80 GB, Docker/systemd ve reboot/volume checksum geçti; yük/restore bekliyor | RUNTIME_CLOSED / CAPACITY_DR_OPEN |
 | `RISK-LOCAL-RUNTIME-001` | Yerel WSL2 Windows özellikleri ilk restart sonrasında uygulama paketi eksikliği nedeniyle çalışmadı. | Yerel Linux-container doğrulaması başlayamadı | Microsoft WSL `2.7.11` paketi doğrulandı; engine, Linux image, restart ve volume testleri çalıştırıldı | Tarihli yerel runtime, restart ve volume checksum kanıtı | CLOSED |
 | `RISK-PG18-MOUNT-001` | PostgreSQL 18 resmî imajı eski `/var/lib/postgresql/data` volume mount'unu fail-closed reddetti. | Veritabanı container'ı başlatılamaz | 18+ için volume `/var/lib/postgresql` köküne bağlandı; yeni izole volume'da dump/restore geçti | PostgreSQL 18.4 source/restore container'ları ve eşit mantıksal checksum | CLOSED |
 | `RISK-VOLUME-001` | Ürün/sipariş baz hacmi bilinse de varyant, sipariş satırı ve dönemsel pikler henüz ölçülmedi. | Büyümenin baz profili aşması | `1.000` ürün ve `15.000` sipariş/yıl bazına x5 uygula; ikincil metrikleri F1+ gözlemle | x5 yük sonucu ve üretim gözlem kaydı | MITIGATED_MONITOR |
@@ -24,7 +24,7 @@
 
 ## Blocker özeti
 
-- `BLOCK-HOST-001`: AWS host erişimi, kapasitesi, Docker Engine/systemd ve exact Compose doğrulandı. Reboot/volume, x5 yük, disk doluluk, DNS/TLS ve production image kanıtları bekler; production kabulünü durdurur.
+- `BLOCK-HOST-001`: AWS host erişimi, kapasitesi, Docker Engine/systemd, exact Compose ve reboot/volume kalıcılığı doğrulandı. x5 yük, disk doluluk, DNS/TLS ve production image kanıtları bekler; production kabulünü durdurur.
 - `BLOCK-DR-001`: Yerel sentetik restore ve süre ölçümü tamamlandı; hedef Ubuntu Server volume/restore ve hedef RTO kanıtı henüz yok.
 
 Bu blockerlar kapanmadan F0 çıkışı `PASSED` yapılamaz.

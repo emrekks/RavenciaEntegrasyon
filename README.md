@@ -64,7 +64,7 @@ Aktif ve onaylanmış son yerel uygulama alt fazı F6A’dır. F6B N11, F6C Paza
 - Shopify ürün, stok, fiyat ve fulfillment yazmaları development-store kanıtları tamamlanana kadar fail-closed’dur.
 - Hepsiburada auth modeli partner hesabında doğrulanana kadar credential, bağlantı testi ve bütün dış read/write çağrıları fail-closed’dur.
 - Fatura otomasyonu mali kararlar ve test firma kanıtı olmadan kapalıdır.
-- AWS Ubuntu Server host profili ve Docker Engine doğrulanmıştır; reboot/volume/restore, domain/TLS ve RTO kanıtları tamamlanana kadar sonuç production kabulü sayılmaz.
+- AWS Ubuntu Server host profili, Docker Engine, systemd reboot ve named-volume kalıcılığı doğrulanmıştır; restore, domain/TLS ve RTO kanıtları tamamlanana kadar sonuç production kabulü sayılmaz.
 
 Ubuntu Server kurulumu ve Stage/SIT hesap kanıtları ertelenmiş olsa da production aday imajlarını GitHub Container Registry'ye digest ile üreten manuel ve fail-closed yayın akışı repository'dedir. Bu hazırlık faz kapılarını açmaz: F6B/F6C/F7+ üretim kodu, gerçek platform write ve canlı deploy hâlâ ilgili dış kanıt ve ayrı onayları bekler.
 

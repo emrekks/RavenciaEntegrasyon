@@ -14,7 +14,7 @@ Bu matris yalnız F0 dokümantasyon teslimatlarını izler. Gelecek kod ve test 
 | `F0-REQ-006` | F0 | Hacim, pik x5, RPO/RTO ve backup profili kayıtlıdır. | `F0-capacity-recovery-profile.md`; ADR-010 | Load/restore testleri F1+ | Hacim baz/x5 tamamlandı; hedef restore ve RTO bekliyor | BLOCKED_EXTERNAL |
 | `F0-REQ-007` | F0 | Environment/secret, threat, risk, kill switch ve rollback kayıtlıdır. | İlgili beş F0 belgesi; ADR-007 | Uygulama kontrolleri F1+ | Secret store ve hedef ortam | DONE |
 | `F0-REQ-008` | F0 | Fake adapter/anonim fixture standardı tanımlıdır. | `fake-adapter-fixture-standard.md` | Fixture/test uygulaması F1+ | Test hesabı fixture'ları | DONE |
-| `F0-REQ-009` | F0 | Mevcut AWS Ubuntu Server 26.04 LTS üzerinde direct Docker Engine, Linux/amd64, systemd/reboot, volume ve restore kanıtı vardır. | `ubuntu-server-runtime-validation.md`; ADR-013 | Dağıtım F1+ | Reboot/volume/restore, domain/DNS ve production image testleri | PARTIAL_RUNTIME_VERIFIED |
+| `F0-REQ-009` | F0 | Mevcut AWS Ubuntu Server 26.04 LTS üzerinde direct Docker Engine, Linux/amd64, systemd/reboot, volume ve restore kanıtı vardır. | `ubuntu-server-runtime-validation.md`; ADR-013 | Dağıtım F1+ | Restore, domain/DNS ve production image testleri | PARTIAL_REBOOT_VOLUME_VERIFIED |
 | `F0-REQ-010` | F0 | Stitch ileri tarihli, engelleyici olmayan bağımlılıktır. | `F0-external-dependencies.md` | UI uygulaması ilgili faz | Stitch dosyası | DONE |
 | `F0-REQ-011` | F0 | Exact sürüm, resmî kaynak, tarih, lock ve digest kayıtlıdır. | `verified-versions.md`; F0 verification lock/digest kanıtları | Production lock/image F1 | Hedef child digest host runbook'una bağlı | DONE_F0 |
 | `F0-VAL-001` | F0 | Her gereksinim tek faz ve ölçülebilir kabule bağlıdır. | Bu matris | Yok | Yok | DONE |
@@ -45,7 +45,7 @@ F1 ayrıntılı kabul ve kanıt eşlemesi [F1-plan.md](F1-plan.md) ve [F1-eviden
 | `F1-REQ-016–017` | React auth/security kabuğu ve operasyon/image-release runbook'ları | Strict TS, component, bundle, Playwright Chromium; runbook incelemesi | DONE_LOCAL_DEPLOY_PREPARED |
 | `F1-EXIT-001–006` | Yerel F1 çıkış seti | `F1-EV-001–019` | READY_LOCAL_DEPLOY_PREPARED |
 
-Hedef Ubuntu Server runtime/systemd/reboot/volume/RTO, production PFX/off-host hedef ve manuel workflow çalıştırmasıyla üretilecek registry-pushed image digest'i dış bağımlılıktır; production kabulü `BLOCKED_EXTERNAL`dır. Bu F1 kayıt anında F2 henüz açılmamıştı.
+Hedef Ubuntu Server runtime/systemd/reboot/volume kanıtı tamamlanmıştır. RTO/restore, production PFX/off-host hedef ve manuel workflow çalıştırmasıyla üretilecek registry-pushed image digest'i dış bağımlılıktır; production kabulü `BLOCKED_EXTERNAL`dır. Bu F1 kayıt anında F2 henüz açılmamıştı.
 
 ## F2 uygulama izi
 

@@ -103,7 +103,7 @@ F2+ modül klasörlerine production entity/use-case/endpoint/route veya placehol
 
 | Kimlik | Kayıt | Güvenli davranış / kapanış |
 | --- | --- | --- |
-| `F1-RISK-HOST-001` | Mevcut AWS Ubuntu 26.04 LTS host profili (2 vCPU, 8 GB RAM sınıfı, 80 GB NVMe sınıfı) doğrulandı; Docker/Compose, x5 yük, reboot/volume/restore kanıtları henüz tamamlanmadı. | Host-only kurulum ve runtime runbook'u yürütülür; production kabulü operasyon kanıtları olmadan verilmez. |
+| `F1-RISK-HOST-001` | Mevcut AWS Ubuntu 26.04 LTS host profili, Docker/Compose ve reboot/named-volume kalıcılığı doğrulandı; x5 yük ve restore kanıtları henüz tamamlanmadı. | Runtime runbook'un kalan yük/restore/DNS-TLS adımları yürütülür; production kabulü operasyon kanıtları olmadan verilmez. |
 | `F1-RISK-SECRET-001` | Gerçek production bootstrap/certificate/DB secret'ları yoktur. | Yalnız secret-file contract ve sentetik test secret'ı; repo/image/Compose içinde gerçek veya sabit production secret yoktur. |
 | `F1-RISK-STITCH-001` | Stitch tasarımı yoktur. | İşlevsel/erişilebilir varsayılan F1 UI; markalı fidelity ertelenir. |
 | `F1-RISK-PLATFORM-001` | Platform test hesabı/fixture yoktur. | Capability `UNKNOWN`, dış HTTP ve write kapalı; F1 blocker'ı değildir. |
@@ -127,4 +127,4 @@ F1, ADR-001-010 kararlarını uygular; alternatif mimari seçmez. Yalnız şartn
 
 ## Sonuç
 
-F1 uygulaması, yerel kanıt seti, ayrı production public-TLS edge tanımı ve immutable image yayın otomasyonu tamamlanmıştır: sonuç `READY_LOCAL_DEPLOY_PREPARED`dır. Hedef Ubuntu Server runtime/systemd/reboot/volume/RTO, production PFX secret, off-host backup hedefi ve workflow çalıştırmasıyla oluşacak registry-pushed immutable application/edge digest'i hedef ortam/release hazır olduğunda kanıtlanacağından production kabulü `BLOCKED_EXTERNAL` kalır. Bu ayrım sonraki faz kapılarını kendiliğinden açmaz.
+F1 uygulaması, yerel kanıt seti, ayrı production public-TLS edge tanımı ve immutable image yayın otomasyonu tamamlanmıştır: sonuç `READY_LOCAL_DEPLOY_PREPARED`dır. Hedef Ubuntu Server runtime/systemd/reboot/volume kanıtı geçmiştir. RTO/restore, production PFX secret, off-host backup hedefi ve workflow çalıştırmasıyla oluşacak registry-pushed immutable application/edge digest'i hazır olmadığından production kabulü `BLOCKED_EXTERNAL` kalır. Bu ayrım sonraki faz kapılarını kendiliğinden açmaz.
