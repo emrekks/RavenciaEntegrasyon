@@ -38,7 +38,7 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 | E-Faturam | Sipariş/teslimat | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
 | E-Faturam | İade | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
 | E-Faturam | Fatura | UNKNOWN | Taxpayer, submit, status, document ve cancel kaynakları doğrulandı | Anonim taxpayer parser fixture; test firma yok | off |
-| Shopify | Bağlantı | UNKNOWN | Doküman erişilebilir | Yok | off |
+| Shopify | Bağlantı | UNKNOWN | 2026-07 pin ve yerel response-version guard hazır; development-store testi yok | Yok | off |
 | Shopify | Katalog referansı | UNKNOWN | Kapsam kanıtlanmadı | Yok | off |
 | Shopify | Ürün | UNKNOWN | Bulk/product delete dokümanı erişilebilir | Yok | off |
 | Shopify | Stok/fiyat | UNKNOWN | Kapsam kanıtlanmadı | Yok | off |
@@ -73,7 +73,7 @@ Doğrulama tarihi: 2026-07-31. URL erişimi capability desteği anlamına gelmez
 
 - Trendyol: <https://developers.trendyol.com/v3.0/docs/product-v2-api-endpoint>, <https://developers.trendyol.com/v3.0/docs/category-attribute-list-v2>, <https://developers.trendyol.com/v3.0/docs/1-webhook-model>, <https://developers.trendyol.com/v2.0/docs/product-create-v2>, <https://developers.trendyol.com/reference/sendinvoicelink>, <https://developers.trendyol.com/reference/uploadinvoicefile>
 - E-Faturam: <https://developers.trendyolefaturam.com/OpenApi/trendyol-e-faturam-entegrasyon-dokumani>, <https://developers.trendyolefaturam.com/OpenApi/Auth/sign-in>, <https://developers.trendyolefaturam.com/OpenApi/Diğer/get-application-status-by-tax-id>, <https://developers.trendyolefaturam.com/OpenApi/Giden%20eFatura/create-outgoing-e-invoice>, <https://developers.trendyolefaturam.com/OpenApi/eArşiv/get-e-archive-status>, <https://developers.trendyolefaturam.com/OpenApi/Diğer/get-temporary-document-download-url>, <https://developers.trendyolefaturam.com/OpenApi/eArşiv/cancel-e-archive>
-- Shopify: <https://shopify.dev/docs/api/usage/bulk-operations/queries>, <https://shopify.dev/docs/apps/build/webhooks/verify-deliveries>, <https://shopify.dev/docs/api/admin-graphql/latest/mutations/productDelete>
+- Shopify: <https://shopify.dev/docs/api/usage/versioning>, <https://shopify.dev/docs/api/usage/bulk-operations/queries>, <https://shopify.dev/docs/api/usage/bulk-operations/imports>, <https://shopify.dev/docs/apps/build/webhooks/verify-deliveries>, <https://shopify.dev/docs/api/admin-graphql/2026-07>
 - Hepsiburada: <https://developers.hepsiburada.com>
 - N11: <https://magazadestek.n11.com/faydali-dokumanlar>
 - Pazarama: <https://isortagim.pazarama.com/auth/integration>

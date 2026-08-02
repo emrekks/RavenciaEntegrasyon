@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.Shopify;
 
 namespace MarketplaceHub.Worker;
 
@@ -25,7 +26,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                         var succeeded = payload is not null && await processor.ProcessAsync(job.TenantId, payload.SessionId, payload.Operation, stoppingToken);
                         await jobs.CompleteAsync(job.Id, job.LeaseToken, succeeded, succeeded ? null : "IMPORT_JOB_REJECTED", stoppingToken);
                     }
-                    else if (job.JobType is F3JobTypes.ConnectionTest or F3JobTypes.OrderSync or F3JobTypes.ShipmentAction or F3JobTypes.ReturnSync or F3JobTypes.ReturnAction or F3JobTypes.WebhookIngest)
+                    else if (job.JobType is F3JobTypes.ConnectionTest or F3JobTypes.OrderSync or F3JobTypes.ShipmentAction or F3JobTypes.ReturnSync or F3JobTypes.ReturnAction or F3JobTypes.WebhookIngest or ShopifyContract.ConnectionTestJob or ShopifyContract.OrderSyncJob or ShopifyContract.WebhookIngestJob)
                     {
                         var processor = scope.ServiceProvider.GetRequiredService<IF3JobProcessor>();
                         var succeeded = await processor.ProcessAsync(job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.Id.ToString("N"), stoppingToken);

@@ -86,4 +86,15 @@ F4 ayrıntılı kabul ve kanıt eşlemesi [F4-plan.md](F4-plan.md) ve [F4-eviden
 | `F4-REQ-016–018` | Credential/PII koruması, tek F4 migration, DB+file restore sınırı | Secret masking/protection, PostgreSQL integration; hedef restore açık | DONE_LOCAL_CORE / RESTORE BLOCKED_EXTERNAL |
 | `F4-EXIT-001–004` | F4 yerel çıkış seti | `F4-EV-001–017` | READY_LOCAL_CORE; BLOCKED_EXTERNAL |
 
-F5 production kodu, route, menü veya placeholder oluşturulmamıştır.
+## F5 uygulama izi
+
+F5 ayrıntılı kabul ve kanıt eşlemesi [F5-plan.md](F5-plan.md) ve [F5-evidence-log.md](F5-evidence-log.md) içindedir.
+
+| Aralık | Uygulama | Kanıt | Sonuç |
+| --- | --- | --- | --- |
+| `F5-REQ-001–004` | Pinned Admin GraphQL 2026-07, canonical shop scope, encrypted token/client-secret ve capability UNKNOWN başlangıcı | Build, boundary ve adapter contract testleri | DONE_LOCAL_CORE |
+| `F5-REQ-005–009` | Generic product/inventory/order portları, JSONL checkpoint, GraphQL error ayrımı ve fail-closed writes | `F5ShopifyContractTests`; development-store yok | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F5-REQ-010–014` | Raw-body HMAC, Inbox dedupe, worker dispatch, mevcut integrations UI ve no-migration reuse | HMAC testleri, source guard, Web build | DONE_LOCAL_CORE / PUBLIC_WEBHOOK BLOCKED_EXTERNAL |
+| `F5-EXIT-001–004` | F5 çıkış seti | `F5-EV-001–010` | READY_LOCAL_CORE; BLOCKED_EXTERNAL |
+
+F6 production kodu, route, menü veya placeholder oluşturulmamıştır.

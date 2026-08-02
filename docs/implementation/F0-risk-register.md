@@ -15,6 +15,9 @@
 | `RISK-F4-FISCAL-001` | Rounding, due, trigger, package scope ve adjustment mali otoriteleri onaylanmadı. | Hatalı veya mükerrer mali belge | Policy yalnız `UNAPPROVED`; invoice type `UNDETERMINED`; auto-submit ve dış write kapalı | ADR-011 Accepted + mali onay + test firma E2E | OPEN_BLOCKING_EXTERNAL |
 | `RISK-F4-PROVIDER-001` | E-Faturam hesap modeli/test firma ve Trendyol Stage invoice delivery kanıtı yok. | Yanlış firma scope'u, contract veya delivery | Sign-in dışındaki provider işlemleri ve public-link delivery fail-closed; capability `UNKNOWN` | Anonim fixture + tarihli Stage/SIT kanıtı | OPEN_BLOCKING_EXTERNAL |
 | `RISK-F4-PRIVACY-001` | Mali/KVKK retention ve hedef backup erişimi kararlaştırılmadı. | Belge/PII sızıntısı veya mevzuata aykırı saklama | Protected snapshot, private immutable file, no-store; hard delete yok | Onaylı retention + hedef restore/access testi | OPEN_BLOCKING_EXTERNAL |
+| `RISK-F5-AUTH-001` | Shopify app/auth modeli, development store ve granted scopes henüz sağlanmadı. | Yanlış store scope veya aşırı yetkili credential | Canonical shop domain, şifreli token/secret, capability `UNKNOWN`, write off | Tarihli development-store connection/scope kanıtı | OPEN_BLOCKING_EXTERNAL |
+| `RISK-F5-WRITE-001` | Location mapping ile product/fulfillment iş otoriteleri onaylanmadı. | Yanlış stok, fiyat, yayın veya fulfillment etkisi | Tüm Shopify write portları `EXTERNAL_WRITE_DISABLED`; endpoint/mutation varsayımı yok | Anonim fixture + Location + açık safe-write onayı | OPEN_BLOCKING_EXTERNAL |
+| `RISK-F5-WEBHOOK-001` | Public HTTPS webhook adresi ve gerçek teslim kanıtı yok. | Olay kaçırma, duplicate veya spoofing | Raw HMAC, route token, Inbox dedupe ve reconciliation sınırı yerelde hazır | Public endpoint üzerinden signed duplicate/out-of-order E2E | OPEN_BLOCKING_EXTERNAL |
 
 ## Blocker özeti
 

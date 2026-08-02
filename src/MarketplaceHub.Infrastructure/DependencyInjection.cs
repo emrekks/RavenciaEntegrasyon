@@ -2,6 +2,7 @@ using System.Security.Cryptography.X509Certificates;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
+using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Bootstrap;
 using MarketplaceHub.Infrastructure.Files;
 using MarketplaceHub.Infrastructure.Identity;
@@ -67,6 +68,10 @@ public static class DependencyInjection
         services.AddScoped<IOrderPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IReturnPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IWebhookVerifier, TrendyolWebhookVerifier>();
+        services.AddHttpClient("Shopify", client => client.Timeout = TimeSpan.FromSeconds(30)).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
+        services.AddScoped<ShopifyAuthenticationHandler>();
+        services.AddScoped<ShopifyGraphQlClient>();
+        services.AddScoped<ShopifyWebhookVerifier>();
         services.AddScoped<IF3ConnectionService, F3ConnectionService>();
         services.AddScoped<IF3SalesService, F3SalesService>();
         services.AddScoped<IF3WebhookService, F3WebhookService>();

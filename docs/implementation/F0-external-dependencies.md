@@ -10,7 +10,7 @@ Bu sıra değiştirilmez ve bir platformun belge/test erişimi diğerini üretim
 | --- | --- | --- | --- | --- |
 | Trendyol resmî dokümanı | Capability inceleme | Erişilebilir; test hesabı yok | `UNKNOWN`, write off, fake adapter | Hayır |
 | E-Faturam resmî dokümanı | Fatura capability inceleme | Erişilebilir; test firması/credential yok | `UNKNOWN`, submit off | Hayır |
-| Shopify resmî dokümanı | Capability inceleme | Erişilebilir; test store yok | `UNKNOWN`, write off | Hayır |
+| Shopify resmî dokümanı ve development store | F5 capability/SIT | 2026-07 pinli yerel adapter çekirdeği hazır; app/auth, test store, granted scope, Location ve public HTTPS yok | `UNKNOWN`, bütün write off, anonim contract fixture | Hayır, yerel çekirdek için; evet, F5 tam çıkışı için |
 | Hepsiburada portalı | Capability inceleme | Login/erişim doğrulaması eksik | `UNKNOWN`, endpoint uydurma yok | Hayır |
 | N11 resmî dokümanı | Capability inceleme | Sayfa erişilebilir; test hesabı yok | `UNKNOWN`, write off | Hayır |
 | Pazarama portalı | Capability inceleme | Login gerekli | `UNKNOWN`, endpoint uydurma yok | Hayır |

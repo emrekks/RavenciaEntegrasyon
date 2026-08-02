@@ -5,8 +5,8 @@
 | Alan | Değer |
 | --- | --- |
 | Faz | `F5` |
-| Plan durumu | `READY_FOR_APPROVAL` |
-| Uygulama durumu | `NOT_STARTED` |
+| Plan durumu | `APPROVED` (2026-08-02) |
+| Uygulama durumu | `READY_LOCAL_CORE / BLOCKED_EXTERNAL` |
 | Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 12, 23, 25, 29, 38, 42-47, 51-58, 60, 64, 66-70 ve 72-73 |
 | Yetkili şartname SHA-256 | `E98365DC34804A478D5DBB41E1997FB6742FD0723A76C08CEE138321F0E2ECA3` |
 | Ön koşul | F4 yerel çekirdeği `5a1be44`; localhost giriş düzeltmesi `237c15d`; F4 dış kanıtları açık blocker olarak kayıtlı |
@@ -193,11 +193,11 @@ Exact access scope listesi tahmin edilmez. Seçilen `2026-07` query/mutation fie
 
 | Kimlik | Ölçülebilir koşul | Kanıt | Plan durumu |
 | --- | --- | --- | --- |
-| `F5-EXIT-001` | Domain/Application'da Shopify tipi yoktur. | Source/boundary guard | PLANNED |
-| `F5-EXIT-002` | Bulk/product/inventory/order/fulfillment generic portlardan geçer. | Unit/contract/integration + development-store E2E veya açık blocker | PLANNED / BLOCKED_EXTERNAL |
-| `F5-EXIT-003` | GraphQL `userErrors`, JSONL restart, HMAC duplicate/out-of-order ve missing-location güvenlidir. | `F5-EV-005–010` | PLANNED |
-| `F5-EXIT-004` | Pinned version, granted scope, capability ve upgrade notu kanıtlıdır. | `F5-EV-003`, capability matrix, README/runbook | PLANNED / BLOCKED_EXTERNAL |
+| `F5-EXIT-001` | Domain/Application'da Shopify tipi yoktur. | Source/boundary guard | PASS_LOCAL |
+| `F5-EXIT-002` | Bulk/product/inventory/order/fulfillment generic portlardan geçer. | Contract core; development-store E2E açık blocker | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F5-EXIT-003` | GraphQL `userErrors`, JSONL restart, HMAC duplicate/out-of-order ve missing-location güvenlidir. | `F5-EV-005–010`; yazmalar kapalı | PASS_LOCAL_FAIL_CLOSED / BLOCKED_EXTERNAL |
+| `F5-EXIT-004` | Pinned version, granted scope, capability ve upgrade notu kanıtlıdır. | `F5-EV-003`, capability matrix, README/runbook | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
 
 ## Plan sonucu ve uygulama kapısı
 
-F5 planı `READY_FOR_APPROVAL` durumundadır. Yerel adapter/fake/contract uygulamasına başlanabilirlik sonucu `READY`; development-store E2E, gerçek webhook ve write capability sonucu dış girdiler gelene kadar `BLOCKED_EXTERNAL`dır. Kullanıcı onayı alınmadan F5 production koduna geçilmez. F6 açılmamıştır.
+F5 planı kullanıcı tarafından 2026-08-02 tarihinde onaylandı. Yerel adapter/contract çekirdeği `READY_LOCAL_CORE`; development-store E2E, granted scope, gerçek location, public webhook ve write authority kanıtları gelene kadar faz çıkışı `BLOCKED_EXTERNAL`dır. F6 açılmamıştır.
