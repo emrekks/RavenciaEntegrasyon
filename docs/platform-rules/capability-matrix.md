@@ -4,7 +4,7 @@
 
 Support level yalnız `SUPPORTED`, `NOT_SUPPORTED`, `UNKNOWN`, `TEMPORARILY_UNAVAILABLE` olabilir. Başlangıç değeri `UNKNOWN`dur. `SUPPORTED` için birlikte şunlar zorunludur: güncel resmî kaynak, test hesabı veya secret/PII içermeyen anonim fixture, doğrulama tarihi, kaynak sürümü, gerekli scope, tenant+connection+environment+API version+store scope ve evidence note. Read desteği write desteği değildir.
 
-F0 başlangıcında hiçbir platform için test hesabı/anonim davranış kanıtı sağlanmamıştı. Yerel adapter/contract kanıtlarına ek olarak 2026-08-03 tarihinde üretim panelinden salt-okunur Stage bağlantı testleri çalıştırıldı: Trendyol bağlantı ve sipariş okuma, E-Faturam bağlantı kanıtı `SUPPORTED` oldu. Aynı tarihte kayıtlı Hepsiburada bağlantısı platforma ulaştı ancak kimlik doğrulaması başarısız olduğu için bu bağlantının güncel capability durumu `UNKNOWN` kaldı. Tüm dış yazmalar kapalıdır.
+F0 başlangıcında hiçbir platform için test hesabı/anonim davranış kanıtı sağlanmamıştı. Yerel adapter/contract kanıtlarına ek olarak 2026-08-03 tarihinde üretim panelinden salt-okunur Stage bağlantı testleri çalıştırıldı: Trendyol bağlantı ve sipariş okuma, E-Faturam bağlantı ve Hepsiburada bağlantı kanıtı `SUPPORTED` oldu. Tüm dış yazmalar kapalıdır.
 
 ## Capability kodları
 
@@ -45,7 +45,7 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 | Shopify | Sipariş/teslimat | UNKNOWN | Webhook dokümanı erişilebilir | Yok | off |
 | Shopify | İade | UNKNOWN | Kapsam kanıtlanmadı | Yok | off |
 | Shopify | Fatura | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
-| Hepsiburada | Bağlantı | UNKNOWN | Sipariş SIT Basic Auth + User-Agent; resmî v1.0 kaynak 2026-06-04 | Tarihsel AWS testi HTTP 200; 2026-08-03 üretim panelindeki kayıtlı credential `HEPSIBURADA_AUTHENTICATION_FAILED` | off |
+| Hepsiburada | Bağlantı | SUPPORTED | Sipariş SIT Basic Auth + User-Agent; resmî v1.0 kaynak 2026-06-04 | 2026-08-03 üretim paneli Stage testi; connection `VERIFIED` | off |
 | Hepsiburada | Katalog referansı | UNKNOWN | Güncel guide erişilebilir; partner fixture yok | Yerel generic port/no-HTTP | off |
 | Hepsiburada | Ürün | UNKNOWN | Async katalog guide erişilebilir; mapping fixture yok | Yerel generic port/no-write | off |
 | Hepsiburada | Stok/fiyat | UNKNOWN | Listing capability/SIT kanıtı yok | Yerel generic port/no-write | off |
