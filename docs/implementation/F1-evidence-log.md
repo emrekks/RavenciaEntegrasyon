@@ -23,6 +23,7 @@ Doğrulama tarihi: 2026-07-31. Ortam: Windows geliştirme makinesi üzerinde Doc
 | `F1-EV-017` break-glass | PASS_LOCAL | OS authorization environment + reason ile CLI exit 0; append-only audit count 1 |
 | `F1-EV-018` job retry contract amendment (`2026-08-02`) | PASS_POSTGRES_LOCAL | Şartname s.30–32 state/max-attempt/backoff/expired-attempt sözleşmesi ile lease süresinin dörtte birinde ayrı scope heartbeat, lease-loss iptali, completion fencing ve correlation aktarımı tamamlandı; worker-kill/retry/dead-letter/heartbeat/stale-token zinciri izole PostgreSQL 18.4 üzerinde geçti |
 | `F1-EV-019` production image/TLS release hazırlığı (`2026-08-02`) | PASS_LOCAL_BUILD / PUBLISH_DEFERRED | PILOT_LOCAL internal CA'dan ayrı public automatic HTTPS Caddyfile'ı, production edge Dockerfile'ı ve exact action/Buildx pinli manuel GHCR app/edge yayın akışı eklendi; exact Compose v2.40.2 production config, `3/3` repository guard, local app/edge image build, app `linux/amd64` non-root user `1654`, `caddy fmt` ve `caddy validate` geçti. Gerçek registry digest'i workflow çalıştırılana, VPS/DNS kanıtı hedef kuruluma kadar ertelendi |
+| `F1-EV-020` Windows VPS taşınabilir kurulum (`2026-08-02`) | PASS_LOCAL_CONFIG / TARGET_DEFERRED | Immutable app/edge digest, HTTPS origin, PFX/private-key ve bootstrap girdilerini fail-closed doğrulayan; secret değerlerini yazdırmadan ayrı dosyalara hazırlayan initializer ile exact Compose v2.40.2 validate/pull/migrate/bootstrap/readiness akışı eklendi. PowerShell parser, production `config --quiet`, `4/4` repository guard, toplam `110/110` .NET ve `1/1` Web testi geçti; hedef runtime/reboot/restore hâlâ VPS'te tekrarlanacak |
 
 ## Güvenlik bulguları
 
@@ -33,4 +34,4 @@ Doğrulama tarihi: 2026-07-31. Ortam: Windows geliştirme makinesi üzerinde Doc
 
 ## Yerel/production ayrımı
 
-F1 yerel uygulama, public-TLS production edge tanımı ve immutable image yayın otomasyonu sonucu `READY_LOCAL_DEPLOY_PREPARED`dır. Hedef VPS reboot/volume/RTO, workflow'dan üretilecek registry-pushed immutable app/edge digest, production PFX secret ve off-host hedef kanıtı hedef ortam hazır olduğunda tamamlanır; production çıkışı o zamana kadar `BLOCKED_EXTERNAL`dır.
+F1 yerel uygulama, public-TLS production edge tanımı, immutable image yayın otomasyonu ve fail-closed VPS kurulum scriptleri sonucu `READY_LOCAL_DEPLOY_PREPARED`dır. Hedef VPS reboot/volume/RTO, workflow'dan üretilecek registry-pushed immutable app/edge digest, production PFX secret ve off-host hedef kanıtı hedef ortam hazır olduğunda tamamlanır; production çıkışı o zamana kadar `BLOCKED_EXTERNAL`dır.

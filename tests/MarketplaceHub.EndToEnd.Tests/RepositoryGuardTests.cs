@@ -47,5 +47,25 @@ public sealed class RepositoryGuardTests
         Assert.DoesNotContain("ubuntu-latest", workflow, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Vps_transfer_scripts_are_fail_closed_and_do_not_delete_volumes()
+    {
+        var root = FindRoot();
+        var initializer = File.ReadAllText(Path.Combine(root, "deploy", "scripts", "Initialize-VpsDeployment.ps1"));
+        var deployment = File.ReadAllText(Path.Combine(root, "deploy", "scripts", "Invoke-VpsDeployment.ps1"));
+        var runbook = File.ReadAllText(Path.Combine(root, "docs", "runbooks", "vps-transfer.md"));
+
+        Assert.Contains("@sha256:[0-9a-f]{64}", initializer, StringComparison.Ordinal);
+        Assert.Contains("never overwrites or rotates existing secrets", initializer, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("config --quiet", deployment, StringComparison.Ordinal);
+        Assert.Contains("pull postgres migrate api worker caddy", deployment, StringComparison.Ordinal);
+        Assert.Contains("Bootstrap__Enabled=true", deployment, StringComparison.Ordinal);
+        Assert.Contains("-ValidateOnly", runbook, StringComparison.Ordinal);
+        Assert.DoesNotContain("down -v", initializer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("down -v", deployment, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(":latest", initializer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(":latest", deployment, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }
 }

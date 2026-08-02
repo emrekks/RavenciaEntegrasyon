@@ -44,7 +44,7 @@ Persistence integration testleri varsayılan olarak Testcontainers kullanır. Do
 & "$env:LOCALAPPDATA\Ravencia\tools\docker-compose-v2.40.2.exe" -f deploy/compose/compose.yaml up -d
 ```
 
-Yalnız Caddy `80/443` host portlarını açar. API, Worker ve PostgreSQL internal backend ağındadır. PILOT_LOCAL edge ayrı internal CA kullanır; production edge public DNS için otomatik HTTPS kullanır. Production işlemleri için [immutable image release](docs/runbooks/image-release.md), [deployment-and-rollback.md](docs/runbooks/deployment-and-rollback.md), kimlik işlemleri için [identity-operations.md](docs/runbooks/identity-operations.md), fatura işlemleri için [invoice-operations.md](docs/runbooks/invoice-operations.md) ve kurtarma için [backup-and-restore.md](docs/runbooks/backup-and-restore.md) kullanılır.
+Yalnız Caddy `80/443` host portlarını açar. API, Worker ve PostgreSQL internal backend ağındadır. PILOT_LOCAL edge ayrı internal CA kullanır; production edge public DNS için otomatik HTTPS kullanır. Windows VPS'e ilk kurulum veya mevcut veriyi taşıma için [VPS taşıma runbook'u](docs/runbooks/vps-transfer.md), production işlemleri için [immutable image release](docs/runbooks/image-release.md), [deployment-and-rollback.md](docs/runbooks/deployment-and-rollback.md), kimlik işlemleri için [identity-operations.md](docs/runbooks/identity-operations.md), fatura işlemleri için [invoice-operations.md](docs/runbooks/invoice-operations.md) ve kurtarma için [backup-and-restore.md](docs/runbooks/backup-and-restore.md) kullanılır.
 
 ## Faz ve güvenlik sınırı
 
