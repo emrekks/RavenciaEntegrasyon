@@ -103,7 +103,7 @@ F2+ modül klasörlerine production entity/use-case/endpoint/route veya placehol
 
 | Kimlik | Kayıt | Güvenli davranış / kapanış |
 | --- | --- | --- |
-| `F1-RISK-HOST-001` | Mevcut AWS Ubuntu 26.04 LTS host profili, Docker/Compose ve reboot/named-volume kalıcılığı doğrulandı; x5 yük ve restore kanıtları henüz tamamlanmadı. | Runtime runbook'un kalan yük/restore/DNS-TLS adımları yürütülür; production kabulü operasyon kanıtları olmadan verilmez. |
+| `F1-RISK-HOST-001` | Mevcut AWS Ubuntu 26.04 LTS host profili, Docker/Compose, reboot/named-volume, public TLS ve hedef restore doğrulandı; x5 yük ve şifreli off-host kopya henüz tamamlanmadı. | Runtime runbook'un kalan x5 kapasite ve off-host adımları yürütülür; tam production kabulü bu operasyon kanıtları olmadan verilmez. |
 | `F1-RISK-SECRET-001` | Gerçek production bootstrap/certificate/DB secret'ları yoktur. | Yalnız secret-file contract ve sentetik test secret'ı; repo/image/Compose içinde gerçek veya sabit production secret yoktur. |
 | `F1-RISK-STITCH-001` | Stitch tasarımı yoktur. | İşlevsel/erişilebilir varsayılan F1 UI; markalı fidelity ertelenir. |
 | `F1-RISK-PLATFORM-001` | Platform test hesabı/fixture yoktur. | Capability `UNKNOWN`, dış HTTP ve write kapalı; F1 blocker'ı değildir. |

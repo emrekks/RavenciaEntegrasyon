@@ -11,7 +11,7 @@ Bu matris yalnız F0 dokümantasyon teslimatlarını izler. Gelecek kod ve test 
 | `F0-REQ-003` | F0 | Platform sırası değişmeden kaydedilmiştir. | `F0-external-dependencies.md`; capability matrisi | Adapterlar F4+ | Test hesapları | DONE |
 | `F0-REQ-004` | F0 | Her platform/capability kanıt alanlarıyla kayıtlıdır. | `docs/platform-rules/capability-matrix.md` | Adapter testleri F4+ | Resmî kaynak ve test hesabı | DONE |
 | `F0-REQ-005` | F0 | Güvenli iş otoriteleri açık ve çelişkisizdir. | `F0-business-authorities.md`; ADR-006 | Domain uygulaması F2+ | Yok | DONE |
-| `F0-REQ-006` | F0 | Hacim, pik x5, RPO/RTO ve backup profili kayıtlıdır. | `F0-capacity-recovery-profile.md`; ADR-010 | Load/restore testleri F1+ | Hacim baz/x5 tamamlandı; hedef restore ve RTO bekliyor | BLOCKED_EXTERNAL |
+| `F0-REQ-006` | F0 | Hacim, pik x5, RPO/RTO ve backup profili kayıtlıdır. | `F0-capacity-recovery-profile.md`; ADR-010 | Load/restore testleri F1+ | Hedef restore/RTO geçti; x5 yük ve şifreli off-host kopya bekliyor | BLOCKED_EXTERNAL |
 | `F0-REQ-007` | F0 | Environment/secret, threat, risk, kill switch ve rollback kayıtlıdır. | İlgili beş F0 belgesi; ADR-007 | Uygulama kontrolleri F1+ | Secret store ve hedef ortam | DONE |
 | `F0-REQ-008` | F0 | Fake adapter/anonim fixture standardı tanımlıdır. | `fake-adapter-fixture-standard.md` | Fixture/test uygulaması F1+ | Test hesabı fixture'ları | DONE |
 | `F0-REQ-009` | F0 | Mevcut AWS Ubuntu Server 26.04 LTS üzerinde direct Docker Engine, Linux/amd64, systemd/reboot, volume ve restore kanıtı vardır. | `ubuntu-server-runtime-validation.md`; ADR-013 | Dağıtım F1+ | Restore, domain/DNS ve production image testleri | PARTIAL_REBOOT_VOLUME_VERIFIED |

@@ -38,4 +38,4 @@ Baz değerler işletme sahibinin 2026-07-31 tarihli beyanıdır. x5 değerleri �
 
 ## Çıkış kanıtı
 
-Mevcut AWS sunucusunda OS, mimari, 2 vCPU, 8 GB sınıfı RAM, 80 GB NVMe aygıt ve root filesystem kapasitesi ölçülmüştür. Direct Docker Engine/Compose, systemd yeniden başlatma ve kalıcı volume checksum kanıtı tamamlanmıştır. Hedef PostgreSQL/private-file restore kanıtı ayrıca tamamlanmalıdır. F1+ yük testinde yukarıdaki x5 profilinin sonucu; recovery testinde dump checksum'u ve ölçülmüş restore süresi kanıtlanmalıdır. Off-host kanıtı yalnız `PRODUCTION_RESILIENT` seçilirse zorunludur.
+Mevcut AWS sunucusunda OS, mimari, 2 vCPU, 8 GB sınıfı RAM, 80 GB NVMe aygıt ve root filesystem kapasitesi ölçülmüştür. Direct Docker Engine/Compose, systemd yeniden başlatma ve kalıcı volume checksum kanıtı tamamlanmıştır. Production PostgreSQL/private-file/Data Protection restore seti `20260802T223309Z` ile `3 sn` içinde doğrulanmıştır. F1+ yük testinde yukarıdaki x5 profilinin sonucu ayrıca ölçülmelidir. Production staging tek host/disk üzerinde kaldığı için onaylı şifreli off-host kopya hâlâ zorunludur.
