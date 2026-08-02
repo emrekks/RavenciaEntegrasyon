@@ -6,7 +6,7 @@
 
 Bu sıra değiştirilmez ve bir platformun belge/test erişimi diğerini üretim koduyla öne aldırmaz.
 
-| Bağımlılık | Gerekli kapı | Mevcut durum | Güvenli fallback | F1 yerel blocker? |
+| Bağımlılık | Gerekli kapı | Mevcut durum | Güvenli fallback | Yerel geliştirme blocker? |
 | --- | --- | --- | --- | --- |
 | Trendyol resmî dokümanı | Capability inceleme | Erişilebilir; test hesabı yok | `UNKNOWN`, write off, fake adapter | Hayır |
 | E-Faturam resmî dokümanı | Fatura capability inceleme | Erişilebilir; test firması/credential yok | `UNKNOWN`, submit off | Hayır |
@@ -25,3 +25,7 @@ Platform doküman URL'leri capability matrisinde tutulur. Test hesabı olmadan `
 ## F4 güncellemesi
 
 E-Faturam entegrasyon dokümanı ve sign-in kaynağı doğrulandı; test firma/credential, API kullanıcısı-pazaryeri entegratörü hesabı, legal entity girdisi ve mali policy kararları henüz sağlanmadı. Trendyol invoice link/file kaynakları doğrulandı ancak Stage package/delivery kanıtı yok. Bu girdiler F4 yerel çekirdeğini durdurmaz; taxpayer→submit→status→document ve marketplace delivery SIT/production kabulünü durdurur. VPS/domain yokluğu private localhost panelini durdurmaz, public document link ve production smoke'u durdurur.
+
+## F5 güncellemesi
+
+Shopify Admin GraphQL `2026-07` yerel adapter çekirdeği, canonical shop-domain kontrolü, şifreli token/client-secret, raw-body HMAC, Inbox dedupe ve streaming JSONL contract kanıtları tamamlandı. Development store, gerçek auth/token edinim kanıtı, granted scopes, Location GID, public HTTPS ve ürün/fulfillment otoritesi bulunmadığından bütün Shopify write işlemleri kapalı, capability’ler `UNKNOWN` kalır. Bu girdiler F5 yerel çekirdeğini durdurmaz; development-store ve production kabulünü durdurur.

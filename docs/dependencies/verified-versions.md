@@ -1,6 +1,6 @@
 # Doğrulanmış Teknoloji Sürümleri
 
-Doğrulama tarihi: 2026-07-31. Yetkili şartnamedeki major/minor kararları değiştirilmemiştir. Exact patch değerleri F0 doğrulama lock'ları ve resmî registry index digest'leriyle sabitlenmiştir. Bunlar F1 production manifestlerinin yerine geçmez; F1'de yeniden karşılaştırılır. `latest` ve floating image kabul edilmez.
+Doğrulama tarihi: 2026-07-31. Durum gözden geçirme tarihi: 2026-08-02. Yetkili şartnamedeki major/minor kararları değiştirilmemiştir. Exact patch değerleri F0 doğrulama lock'ları, repository-root F1+ lock'ları ve resmî registry index digest'leriyle sabitlenmiştir. `latest` ve floating image kabul edilmez; hedef production registry digest'leri VPS/release kabulünde ayrıca doğrulanır.
 
 ## Yerel araç kanıtı
 
@@ -65,14 +65,14 @@ Doğrulama tarihi: 2026-07-31. Yetkili şartnamedeki major/minor kararları değ
 | React ekosistemi | React 19.2 ve şartnamedeki package hatları aynı npm lock'ta çözümlendi | Cited package kaynaklarında formal EOL yok: `UNKNOWN` | Peer dependency, license ve integrity resolved tree'de | VERIFIED_F0 |
 | Caddy / Compose / container images | Caddy index digest ve Compose v2.40.2 dört platform checksum'u kayıtlı | Caddy release ve Compose v2 desteği doğrulandı | Hedef child digest/runtime testi `BLOCK-HOST-001` kapsamı | VERIFIED_F0 |
 
-## F0 kanıt konumları ve F1 aktarımı
+## F0 kanıt konumları ve repository-root aktarımı
 
 - SDK: `docs/dependencies/verification/global.json`.
 - NuGet: `docs/dependencies/verification/nuget/Directory.Packages.props` ve `packages.lock.json`; locked restore geçti.
 - NPM: `docs/dependencies/verification/npm/package.json` ve `package-lock.json`; locked dry-run geçti.
 - Images/Compose: `docs/dependencies/verification/container-image-digests.md`.
-- F1 başladığında aynı seçimler repository-root ve production proje konumlarına aktarılır, yeniden lock edilir ve fark varsa fail-closed durulur.
+- Aynı seçimler F1 ile repository-root ve production proje konumlarına aktarılmış, yeniden lock edilmiştir; sonraki fazlarda fark varsa fail-closed durulur.
 
 ## Sonuç
 
-Kullanıcı faz sınırı onayıyla non-production F0 doğrulama lock'ları oluşturulmuş, NuGet locked restore ve npm locked dry-run başarıyla çalışmış, resmî image index digest'leri ile Compose checksum'ları kaydedilmiştir. Bu belge ve kanıtlar baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e` ile Git'e alınmıştır; `BLOCK-VERSION-001` ve `F0-EXIT-004` F0 kapsamı için kapanmıştır. Production root lock'ları ve application image digest'i F1 release kanıtı olmaya devam eder.
+Kullanıcı faz sınırı onayıyla non-production F0 doğrulama lock'ları oluşturulmuş, NuGet locked restore ve npm locked dry-run başarıyla çalışmış, resmî image index digest'leri ile Compose checksum'ları kaydedilmiştir. Bu belge ve kanıtlar baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e` ile Git'e alınmış; repository-root lock ve yerel application image kanıtları F1 ile eklenmiştir. `BLOCK-VERSION-001` ve `F0-EXIT-004` F0 kapsamında kapalıdır; registry-pushed production digest ve hedef VPS doğrulaması `BLOCKED_EXTERNAL` kalır.

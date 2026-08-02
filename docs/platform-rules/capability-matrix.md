@@ -4,7 +4,7 @@
 
 Support level yalnız `SUPPORTED`, `NOT_SUPPORTED`, `UNKNOWN`, `TEMPORARILY_UNAVAILABLE` olabilir. Başlangıç değeri `UNKNOWN`dur. `SUPPORTED` için birlikte şunlar zorunludur: güncel resmî kaynak, test hesabı veya secret/PII içermeyen anonim fixture, doğrulama tarihi, kaynak sürümü, gerekli scope, tenant+connection+environment+API version+store scope ve evidence note. Read desteği write desteği değildir.
 
-F0 başlangıcında hiçbir platform için test hesabı/anonim davranış kanıtı sağlanmamıştı. F3'te Trendyol, F4'te E-Faturam taxpayer parser contract fixture'ı eklendi; bunlar gerçek connection/store capability kanıtı değildir. Bu nedenle gerçek connection capability'leri varsayılan `UNKNOWN`, tüm dış yazmalar kapalıdır.
+F0 başlangıcında hiçbir platform için test hesabı/anonim davranış kanıtı sağlanmamıştı. F3'te Trendyol, F4'te E-Faturam ve F5'te Shopify yerel adapter/contract kanıtları eklendi; bunlar gerçek connection/store capability kanıtı değildir. Bu nedenle gerçek connection capability'leri varsayılan `UNKNOWN`, tüm dış yazmalar kapalıdır.
 
 ## Capability kodları
 
