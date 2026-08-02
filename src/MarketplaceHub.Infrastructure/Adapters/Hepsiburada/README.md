@@ -8,6 +8,7 @@
 - Adapter generic connection/reference/product/inventory-price/order/return portlarını uygular fakat dış HTTP çağrılarını capability kanıtına kadar fail-closed tutar.
 - Bütün write yöntemleri `EXTERNAL_WRITE_DISABLED` döndürür. Katalog create, listing, stok, fiyat, package veya return action isteği üretilmez.
 - F6B N11 ve F6C Pazarama bu adapterın parçası değildir.
+- F6A repository guard; adapter kaynaklarında HTTP/auth/credential implementasyonu veya fixture dosyası bulunmadığını ve production kaynaklarıyla dokümanlarda yüksek güvenli secret imzası olmadığını doğrular.
 
 ## Dış kabul girdileri
 

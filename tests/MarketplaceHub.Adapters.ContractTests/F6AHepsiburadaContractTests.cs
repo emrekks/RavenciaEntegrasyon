@@ -1,6 +1,7 @@
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Persistence;
+using System.Text.RegularExpressions;
 
 namespace MarketplaceHub.Adapters.ContractTests;
 
@@ -67,6 +68,60 @@ public sealed class F6AHepsiburadaContractTests
         Assert.True(LocalReconciliationPolicy.Supports(platformCode));
         Assert.False(LocalReconciliationPolicy.Supports("N11"));
         Assert.False(LocalReconciliationPolicy.Supports("PAZARAMA"));
+    }
+
+    [Fact]
+    public void Hepsiburada_adapter_has_no_auth_network_or_secret_implementation()
+    {
+        var root = FindRoot();
+        var adapterRoot = Path.Combine(root, "src", "MarketplaceHub.Infrastructure", "Adapters", "Hepsiburada");
+        var sourceFiles = Directory.GetFiles(adapterRoot, "*.cs", SearchOption.AllDirectories);
+        var source = string.Join(Environment.NewLine, sourceFiles.Select(File.ReadAllText));
+
+        Assert.NotEmpty(sourceFiles);
+        foreach (var forbidden in new[] { "HttpClient", "Authorization", "AuthenticationHeaderValue", "IDataProtector", "ProtectedPayload", "ApiKey", "ApiSecret", "ClientSecret", "AccessToken", "Password" })
+            Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
+        Assert.All(Directory.GetFiles(adapterRoot, "*", SearchOption.AllDirectories), path => Assert.Contains(Path.GetExtension(path), new[] { ".cs", ".md" }));
+    }
+
+    [Fact]
+    public void Hepsiburada_credential_and_connection_test_gates_remain_closed()
+    {
+        var root = FindRoot();
+        var service = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Infrastructure", "Persistence", "F3ConnectionService.cs"));
+        var page = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Web", "src", "F3Pages.tsx"));
+
+        Assert.Equal(2, Regex.Matches(service, "HEPSIBURADA_AUTH_MODEL_UNVERIFIED", RegexOptions.CultureInvariant).Count);
+        Assert.Contains("item.platformCode === 'HEPSIBURADA'", page, StringComparison.Ordinal);
+        Assert.Contains("disabled={item.platformCode === 'HEPSIBURADA'}", page, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Production_sources_and_docs_contain_no_high_confidence_secret_signatures()
+    {
+        var root = FindRoot();
+        var patterns = new[]
+        {
+            new Regex("-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", RegexOptions.CultureInvariant),
+            new Regex("AKIA[0-9A-Z]{16}", RegexOptions.CultureInvariant),
+            new Regex("gh[pousr]_[A-Za-z0-9]{20,}", RegexOptions.CultureInvariant),
+            new Regex("xox[baprs]-[A-Za-z0-9-]{10,}", RegexOptions.CultureInvariant),
+            new Regex("sk_(?:live|test)_[A-Za-z0-9]{16,}", RegexOptions.CultureInvariant)
+        };
+        var extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".cs", ".json", ".md", ".ts", ".tsx", ".yml", ".yaml" };
+        var files = new[] { Path.Combine(root, "src"), Path.Combine(root, "docs") }
+            .SelectMany(path => Directory.GetFiles(path, "*", SearchOption.AllDirectories))
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}node_modules{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+            .Where(path => extensions.Contains(Path.GetExtension(path)))
+            .Append(Path.Combine(root, ".env.example"));
+
+        foreach (var file in files)
+        {
+            var content = File.ReadAllText(file);
+            Assert.All(patterns, pattern => Assert.False(pattern.IsMatch(content), $"Potential secret signature in {Path.GetRelativePath(root, file)}"));
+        }
     }
 
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }

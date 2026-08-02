@@ -18,11 +18,12 @@ Doğrulama tarihi: `2026-08-02`. Ortam: Windows geliştirme makinesi. Hepsiburad
 | `F6A-EV-010` contract/SIT | BLOCKED_EXTERNAL | Gerçek payload olmadığı için mapping/status enum/endpoint oluşturulmadı |
 | `F6A-EV-011` previous-platform gate | BLOCKED_PHASE_GATE | F5 production reconciliation/rollback kanıtı yok |
 | `F6A-EV-012` local reconciliation/rollback | PASS_LOCAL_DRY | Ortak servis Hepsiburada bağlantısını no-HTTP/no-write kuru kontrolde kabul eder; N11/Pazarama reddedilir; geri dönüş rehberi kayıt koruma ve yeniden açma kapılarını tanımlar |
+| `F6A-EV-013` secret/auth boundary | PASS_LOCAL_FAIL_CLOSED | Adapterda HTTP/auth/credential implementasyonu ve fixture dosyası yok; credential/test-job kapıları kapalı; source/docs secret signature taraması temiz |
 
 ## Test sonucu
 
 - .NET build: başarılı, `0` uyarı / `0` hata.
-- Docker gerektirmeyen testler: `60/60` başarılı (Domain 12, Application 18, Adapter 26, API 2, Repository guard 2).
+- Docker gerektirmeyen testler: `63/63` başarılı (Domain 12, Application 18, Adapter 29, API 2, Repository guard 2).
 - Web: strict TypeScript/Vite production build ve component testi.
 - Yeni migration oluşturulmadı.
 

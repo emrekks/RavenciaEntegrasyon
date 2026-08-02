@@ -105,7 +105,7 @@ F6A ayrıntılı kabul ve kanıt eşlemesi [F6A-plan.md](F6A-plan.md) ve [F6A-ev
 | --- | --- | --- | --- |
 | `F6A-REQ-001–002` | Yalnız Hepsiburada draft bağlantısı; guide version/User-Agent/merchant scope, auth kanıtına kadar credential yok | Faz guard, connection validation | DONE_LOCAL_FAIL_CLOSED / BLOCKED_EXTERNAL |
 | `F6A-REQ-003–010` | Generic reference/product/inventory/order/return portları ve kesin no-HTTP/no-write adapter | F6A contract tests; partner fixture yok | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
-| `F6A-REQ-011–015` | HTTP hata sınıfları, capability/kill-switch, yerel kuru mutabakat/rollback rehberi ve mevcut integrations UI | Adapter tests, local policy tests, runbook review, Web build, repository guard | DONE_LOCAL_FAIL_CLOSED / RECONCILIATION PASS_LOCAL_DRY |
+| `F6A-REQ-011–015` | HTTP hata sınıfları, capability/kill-switch, secret/auth sınırı, yerel kuru mutabakat/rollback rehberi ve mevcut integrations UI | Adapter tests, secret/source guard, local policy tests, runbook review, Web build, repository guard | DONE_LOCAL_FAIL_CLOSED / RECONCILIATION PASS_LOCAL_DRY |
 | `F6A-REQ-016`, `F6A-EXIT-001–006` | SIT safe-write, reconciliation, rollback ve önceki platform kapısı | Dış kanıt bekleniyor | BLOCKED_EXTERNAL / BLOCKED_PHASE_GATE |
 
 F6B N11, F6C Pazarama ve F7+ production kodu, route, menü veya placeholder oluşturulmamıştır.
