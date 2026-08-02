@@ -53,6 +53,7 @@ public sealed class RepositoryGuardTests
         var root = FindRoot();
         var initializer = File.ReadAllText(Path.Combine(root, "deploy", "scripts", "Initialize-VpsDeployment.ps1"));
         var deployment = File.ReadAllText(Path.Combine(root, "deploy", "scripts", "Invoke-VpsDeployment.ps1"));
+        var installer = File.ReadAllText(Path.Combine(root, "deploy", "scripts", "Install-MarketplaceHub.ps1"));
         var runbook = File.ReadAllText(Path.Combine(root, "docs", "runbooks", "vps-transfer.md"));
 
         Assert.Contains("@sha256:[0-9a-f]{64}", initializer, StringComparison.Ordinal);
@@ -60,11 +61,17 @@ public sealed class RepositoryGuardTests
         Assert.Contains("config --quiet", deployment, StringComparison.Ordinal);
         Assert.Contains("pull postgres migrate api worker caddy", deployment, StringComparison.Ordinal);
         Assert.Contains("Bootstrap__Enabled=true", deployment, StringComparison.Ordinal);
+        Assert.Contains("GenerateDataProtectionCertificate", installer, StringComparison.Ordinal);
+        Assert.Contains("docker-compose-windows-x86_64.exe", installer, StringComparison.Ordinal);
+        Assert.Contains("1f7f20b91e0564147dc58b3a58a22a8f64a787e060ce3c25789f408beacc0c4d", installer, StringComparison.Ordinal);
+        Assert.Contains("linux/amd64", installer, StringComparison.Ordinal);
         Assert.Contains("-ValidateOnly", runbook, StringComparison.Ordinal);
         Assert.DoesNotContain("down -v", initializer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("down -v", deployment, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("down -v", installer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(":latest", initializer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(":latest", deployment, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(":latest", installer, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }

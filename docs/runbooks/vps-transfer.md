@@ -16,11 +16,36 @@ Bu akış mevcut modüler monolit, Docker Compose, PostgreSQL, API/Worker ve Cad
 2. Repository'yi VPS'e clone et ve onaylı commit'e geç.
 3. GHCR paketleri private ise read-only package token ile VPS'te registry oturumu aç. Token'ı komut satırı geçmişine veya repository'ye yazma.
 4. Production domaininin DNS kaydını VPS'e yönlendir; dışarıdan yalnız `80/443` aç. API, Worker veya PostgreSQL portu yayınlama.
-5. Data Protection key encryption için private key içeren, parolalı PFX'i VPS'e güvenli kanalla aktar.
+5. Otomatik oluşturulan Data Protection PFX, parolası ve metadata kaydını kurulumdan hemen sonra onaylı şifreli secret/yedek hedefine kopyala. Bu PFX Caddy'nin public TLS sertifikası değildir; yalnız kalıcı Data Protection key ring'i şifreler.
 
-## İlk secret ve release kaydı
+## En kolay kurulum
 
-GitHub Actions yayın özetindeki iki digest'li imaj adını kullan:
+Repository kökünde aşağıdaki tek komutu çalıştır:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy\scripts\Install-MarketplaceHub.ps1
+```
+
+Sihirbaz eksikse exact Compose `v2.40.2` binary'sini resmî GitHub release adresinden indirip kayıtlı SHA-256 ile doğrular. Ardından yalnız şu dört bilgiyi sorar:
+
+- GitHub Actions özetindeki uygulama `name@sha256:...` değeri.
+- GitHub Actions özetindeki edge `name@sha256:...` değeri.
+- Panelin `https://...` adresi.
+- İlk Owner e-posta adresi.
+
+Owner parolası ekranda görünmeden iki kez alınır. PostgreSQL parolası, credential key, PFX ve PFX parolası kriptografik olarak ayrı üretilir; secret içerikleri ekrana basılmaz. İlk çalıştırma yalnız hazırlık ve doğrulama yapar, servisleri değiştirmez.
+
+Doğrulama başarılı olduktan sonra ilk boş kurulumu tek komutla başlat:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy\scripts\Install-MarketplaceHub.ps1 -Deploy -Bootstrap
+```
+
+Sonraki sürümlerde `-Bootstrap` kullanma. Var olan `deploy/secrets/production.env` ve secret dosyaları korunur.
+
+## Gelişmiş: hazır PFX ile kurulum
+
+Kuruma ait hazır bir Data Protection PFX kullanılacaksa düşük seviyeli initializer doğrudan çağrılabilir:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy\scripts\Initialize-VpsDeployment.ps1 `
@@ -64,5 +89,6 @@ Sonraki immutable sürümlerde `deploy/secrets/production.env` içindeki iki dig
 - Migration uyumluysa yalnız önceki onaylı app/edge digest çiftine dön.
 - Şema uyumsuzsa write kapalı kalır ve onaylı backup yeni boş hedefe restore edilir; tahmini in-place downgrade yapılmaz.
 - Secret rotasyonu bu ilk kurulum scriptinin işi değildir. Mevcut secret dosyalarını silip initializer'ı yeniden çalıştırma.
+- Otomatik üretilen `dp_certificate.pfx`, `dp_certificate_password.txt` ve `dp_certificate_metadata.txt` dosyalarını repository dışında şifreli ve erişim kontrollü hedefte sakla; kaybolmaları restore edilen key ring'in açılamamasına yol açar.
 - `down -v`, prune, floating tag, `latest`, public DB/API portu veya native Windows container dönüşümü yasaktır.
 - Bu hazırlık F6B/F6C/F7 faz kapılarını, platform capability'lerini ya da production onayını kendiliğinden açmaz.

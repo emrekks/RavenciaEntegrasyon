@@ -12,8 +12,11 @@ param(
     [Parameter(Mandatory)]
     [string] $OwnerEmail,
 
-    [Parameter(Mandatory)]
-    [string] $DataProtectionCertificatePath
+    [string] $DataProtectionCertificatePath,
+
+    [switch] $GenerateDataProtectionCertificate,
+
+    [string] $OwnerPasswordFile
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,9 +65,17 @@ if (-not [Uri]::TryCreate($SiteAddress, [UriKind]::Absolute, [ref] $siteUri) -or
     throw 'SiteAddress must be an HTTPS origin without a path or query, for example https://panel.example.com.'
 }
 
-$certificate = (Resolve-Path -LiteralPath $DataProtectionCertificatePath).Path
-if ([IO.Path]::GetExtension($certificate) -ne '.pfx') {
-    throw 'DataProtectionCertificatePath must point to a .pfx file.'
+$hasCertificatePath = -not [string]::IsNullOrWhiteSpace($DataProtectionCertificatePath)
+if ($hasCertificatePath -eq $GenerateDataProtectionCertificate.IsPresent) {
+    throw 'Choose exactly one Data Protection certificate source: -DataProtectionCertificatePath or -GenerateDataProtectionCertificate.'
+}
+
+$certificate = $null
+if ($hasCertificatePath) {
+    $certificate = (Resolve-Path -LiteralPath $DataProtectionCertificatePath).Path
+    if ([IO.Path]::GetExtension($certificate) -ne '.pfx') {
+        throw 'DataProtectionCertificatePath must point to a .pfx file.'
+    }
 }
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -76,6 +87,7 @@ $targets = @(
     'bootstrap_owner_password.txt',
     'dp_certificate.pfx',
     'dp_certificate_password.txt',
+    'dp_certificate_metadata.txt',
     'production.env'
 ) | ForEach-Object { Join-Path $secretsRoot $_ }
 
@@ -84,12 +96,22 @@ if ($existing.Count -gt 0) {
     throw 'Deployment secrets already exist. This initializer never overwrites or rotates existing secrets.'
 }
 
-$ownerPasswordSecure = Read-Host 'Temporary Owner password (15-64 characters; upper/lower/digit/symbol)' -AsSecureString
-$ownerPasswordConfirm = Read-Host 'Repeat temporary Owner password' -AsSecureString
-$certificatePasswordSecure = Read-Host 'Data Protection PFX password' -AsSecureString
-$ownerPassword = ConvertTo-PlainText $ownerPasswordSecure
-$ownerPasswordAgain = ConvertTo-PlainText $ownerPasswordConfirm
-$certificatePassword = ConvertTo-PlainText $certificatePasswordSecure
+if ([string]::IsNullOrWhiteSpace($OwnerPasswordFile)) {
+    $ownerPasswordSecure = Read-Host 'Temporary Owner password (15-64 characters; upper/lower/digit/symbol)' -AsSecureString
+    $ownerPasswordConfirm = Read-Host 'Repeat temporary Owner password' -AsSecureString
+    $ownerPassword = ConvertTo-PlainText $ownerPasswordSecure
+    $ownerPasswordAgain = ConvertTo-PlainText $ownerPasswordConfirm
+}
+else {
+    $ownerPasswordSource = (Resolve-Path -LiteralPath $OwnerPasswordFile).Path
+    $ownerPassword = [IO.File]::ReadAllText($ownerPasswordSource).Trim()
+    $ownerPasswordAgain = $ownerPassword
+}
+$certificatePassword = if ($GenerateDataProtectionCertificate) {
+    New-RandomBase64 32
+} else {
+    ConvertTo-PlainText (Read-Host 'Data Protection PFX password' -AsSecureString)
+}
 
 try {
     if ($ownerPassword -cne $ownerPasswordAgain) { throw 'Owner passwords do not match.' }
@@ -100,16 +122,6 @@ try {
     }
     if ([string]::IsNullOrEmpty($certificatePassword)) { throw 'PFX password cannot be empty.' }
 
-    $testCertificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
-        $certificate,
-        $certificatePassword,
-        [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
-    try {
-        if (-not $testCertificate.HasPrivateKey) { throw 'The Data Protection PFX does not contain a private key.' }
-        if ($testCertificate.NotAfter.ToUniversalTime() -le [DateTime]::UtcNow) { throw 'The Data Protection PFX is expired.' }
-    }
-    finally { $testCertificate.Dispose() }
-
     New-Item -ItemType Directory -Path $secretsRoot | Out-Null
     $postgresPassword = New-RandomBase64 32
     $credentialKey = New-RandomBase64 32
@@ -119,8 +131,49 @@ try {
     Write-Secret (Join-Path $secretsRoot 'app_db_connection.txt') $connection
     Write-Secret (Join-Path $secretsRoot 'credential_key.txt') $credentialKey
     Write-Secret (Join-Path $secretsRoot 'bootstrap_owner_password.txt') $ownerPassword
-    Copy-Item -LiteralPath $certificate -Destination (Join-Path $secretsRoot 'dp_certificate.pfx')
+    $certificateTarget = Join-Path $secretsRoot 'dp_certificate.pfx'
+    if ($GenerateDataProtectionCertificate) {
+        $rsa = [Security.Cryptography.RSA]::Create(3072)
+        try {
+            $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
+                'CN=MarketplaceHub Data Protection',
+                $rsa,
+                [Security.Cryptography.HashAlgorithmName]::SHA256,
+                [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+            $notBefore = [DateTimeOffset]::UtcNow.AddMinutes(-5)
+            $notAfter = [DateTimeOffset]::UtcNow.AddYears(3)
+            $generatedCertificate = $request.CreateSelfSigned($notBefore, $notAfter)
+            try {
+                [IO.File]::WriteAllBytes(
+                    $certificateTarget,
+                    $generatedCertificate.Export(
+                        [Security.Cryptography.X509Certificates.X509ContentType]::Pfx,
+                        $certificatePassword))
+                $metadata = @(
+                    "subject=$($generatedCertificate.Subject)",
+                    "thumbprint=$($generatedCertificate.Thumbprint)",
+                    "notAfterUtc=$($generatedCertificate.NotAfter.ToUniversalTime().ToString('O'))"
+                ) -join "`n"
+                Write-Secret (Join-Path $secretsRoot 'dp_certificate_metadata.txt') ($metadata + "`n")
+            }
+            finally { $generatedCertificate.Dispose() }
+        }
+        finally { $rsa.Dispose() }
+    }
+    else {
+        Copy-Item -LiteralPath $certificate -Destination $certificateTarget
+    }
     Write-Secret (Join-Path $secretsRoot 'dp_certificate_password.txt') $certificatePassword
+
+    $testCertificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+        $certificateTarget,
+        $certificatePassword,
+        [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+    try {
+        if (-not $testCertificate.HasPrivateKey) { throw 'The Data Protection PFX does not contain a private key.' }
+        if ($testCertificate.NotAfter.ToUniversalTime() -le [DateTime]::UtcNow) { throw 'The Data Protection PFX is expired.' }
+    }
+    finally { $testCertificate.Dispose() }
 
     $environment = @(
         "MARKETPLACEHUB_APP_IMAGE=$ApplicationImage",

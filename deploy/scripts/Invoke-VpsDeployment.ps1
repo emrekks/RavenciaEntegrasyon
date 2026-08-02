@@ -64,8 +64,9 @@ foreach ($requiredPart in @('Host=postgres', 'Database=marketplacehub', 'Usernam
 }
 
 $composeArguments = @('--env-file', $environmentFile, '-f', $baseCompose, '-f', $productionCompose)
-& $ComposeExecutable @composeArguments version --short
+$composeVersion = (& $ComposeExecutable @composeArguments version --short).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Compose version check failed.' }
+if ($composeVersion -ne '2.40.2') { throw "Exact Compose 2.40.2 is required; detected $composeVersion." }
 & $ComposeExecutable @composeArguments config --quiet
 if ($LASTEXITCODE -ne 0) { throw 'Production Compose validation failed.' }
 

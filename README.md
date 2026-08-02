@@ -46,6 +46,12 @@ Persistence integration testleri varsayılan olarak Testcontainers kullanır. Do
 
 Yalnız Caddy `80/443` host portlarını açar. API, Worker ve PostgreSQL internal backend ağındadır. PILOT_LOCAL edge ayrı internal CA kullanır; production edge public DNS için otomatik HTTPS kullanır. Windows VPS'e ilk kurulum veya mevcut veriyi taşıma için [VPS taşıma runbook'u](docs/runbooks/vps-transfer.md), production işlemleri için [immutable image release](docs/runbooks/image-release.md), [deployment-and-rollback.md](docs/runbooks/deployment-and-rollback.md), kimlik işlemleri için [identity-operations.md](docs/runbooks/identity-operations.md), fatura işlemleri için [invoice-operations.md](docs/runbooks/invoice-operations.md) ve kurtarma için [backup-and-restore.md](docs/runbooks/backup-and-restore.md) kullanılır.
 
+VPS üzerinde etkileşimli hazırlık ve fail-closed doğrulama tek komuttur:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy\scripts\Install-MarketplaceHub.ps1
+```
+
 ## Faz ve güvenlik sınırı
 
 Aktif ve onaylanmış son yerel uygulama alt fazı F6A’dır. F6B N11, F6C Pazarama veya F7+ route, menü, migration ya da placeholder bulunmaz. Trendyol, E-Faturam, Shopify ve Hepsiburada adapter kodlarının bulunması gerçek mağaza capability’sinin kanıtlandığı anlamına gelmez:
