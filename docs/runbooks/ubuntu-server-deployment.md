@@ -44,7 +44,7 @@ Immutable release imajları GitHub Actions ekranından elle veya yalnız onaylı
 
 ## Secret ve backup zorunluluğu
 
-`deploy/secrets/` Git tarafından ignore edilir ve dosyalar `0600`, dizin `0700` izinleriyle hazırlanır. Otomatik üretilen `dp_certificate.pfx`, `dp_certificate_password.txt` ve `dp_certificate_metadata.txt` dosyalarını kurulumdan hemen sonra repository dışında şifreli, erişim kontrollü off-host secret hedefine kopyala.
+`deploy/secrets/` Git tarafından ignore edilir ve dizin `0700` hazırlanır. Host-only deployment kayıtları `0600` kalır; yalnız root olmayan, pinli ASP.NET runtime GID `1654` tarafından okunması gereken uygulama secret'ları `root:1654 / 0640` olur. Bu grup host üzerinde oturum yetkisi taşımaz. Otomatik üretilen `dp_certificate.pfx`, `dp_certificate_password.txt` ve `dp_certificate_metadata.txt` dosyalarını kurulumdan hemen sonra repository dışında şifreli, erişim kontrollü off-host secret hedefine kopyala.
 
 Mevcut veri taşınacaksa:
 

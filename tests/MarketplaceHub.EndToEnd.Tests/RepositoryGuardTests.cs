@@ -58,6 +58,8 @@ public sealed class RepositoryGuardTests
 
         Assert.Contains("@sha256:[0-9a-f]{64}", initializer, StringComparison.Ordinal);
         Assert.Contains("will not overwrite", initializer, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("app_secret_gid=1654", initializer, StringComparison.Ordinal);
+        Assert.Contains("chmod 0640", initializer, StringComparison.Ordinal);
         Assert.Contains("config --quiet", deployment, StringComparison.Ordinal);
         Assert.Contains("pull postgres migrate api worker caddy", deployment, StringComparison.Ordinal);
         Assert.Contains("Bootstrap__Enabled=true", deployment, StringComparison.Ordinal);

@@ -123,5 +123,19 @@ for name in "${targets[@]}"; do
   mv -- "$staging_root/$name" "$secrets_root/$name"
 done
 
+# The pinned ASP.NET runtime runs as APP_UID/APP_GID 1654. Compose file-backed
+# secrets preserve host ownership, so only container-consumed application
+# secrets receive group-read permission for that numeric runtime identity.
+app_secret_gid=1654
+app_readable=(
+  app_db_connection.txt
+  credential_key.txt
+  bootstrap_owner_password.txt
+  dp_certificate.pfx
+  dp_certificate_password.txt
+)
+chown root:"$app_secret_gid" -- "${app_readable[@]/#/$secrets_root/}"
+chmod 0640 -- "${app_readable[@]/#/$secrets_root/}"
+
 echo "Ubuntu deployment secrets and Data Protection PFX were created without printing secret values."
 echo "Back up the PFX, its password and metadata to the approved encrypted off-host secret target."
