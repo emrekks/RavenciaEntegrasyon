@@ -24,11 +24,12 @@ Baz değerler işletme sahibinin 2026-07-31 tarihli beyanıdır. x5 değerleri �
 | Alan | F0 kararı | Durum |
 | --- | --- | --- |
 | `BACKUP_PROFILE` | F0 başlangıç profili `PILOT_LOCAL`; production resilient geçişi ayrı kapıdır. | SELECTED_FOR_PILOT |
+| Hedef host | Ubuntu Server 24.04 LTS x86_64; 4 vCPU, 8 GB RAM, 100–120 GB NVMe. | USER_CONFIRMED_TARGET_NOT_TESTED |
 | PostgreSQL dump | Pilot varsayımı: 6 saatte bir, 7 günlük saklama. Yerel sentetik PostgreSQL 18.4 dump checksum'u doğrulandı. | LOCAL_TESTED_TARGET_PENDING |
 | Haftalık / aylık | Pilot varsayımı: 4 haftalık ve 3 aylık kopya. | TARGET_NOT_TESTED |
 | Private app files | Günlük yedek. | TARGET_NOT_TESTED |
 | RPO | 6 saatlik dump programına göre pilot hedefi en fazla 6 saat; hedef operasyon programı bekliyor. | DEFINED_TARGET_NOT_TESTED |
-| RTO | Yerel sentetik DB restore ölçümü `0,147 sn`; bu değer hedef VPS veya iş RTO'su değildir. | LOCAL_MEASURED_TARGET_BLOCKED |
+| RTO | Yerel sentetik DB restore ölçümü `0,147 sn`; bu değer hedef Ubuntu Server veya iş RTO'su değildir. | LOCAL_MEASURED_TARGET_BLOCKED |
 | Off-host | `PILOT_LOCAL` için zorunlu değil ve tam DR sayılmaz; `PRODUCTION_RESILIENT` seçilirse şifreli, ayrı failure domain zorunlu. | NOT_APPLICABLE_PILOT |
 | Restore testi | PostgreSQL sentetik veri ayrı temiz volume'a restore edildi ve mantıksal checksum eşleşti; private app files ve hedef host bekliyor. | DB_LOCAL_PASSED_TARGET_PENDING |
 
@@ -36,4 +37,4 @@ Baz değerler işletme sahibinin 2026-07-31 tarihli beyanıdır. x5 değerleri �
 
 ## Çıkış kanıtı
 
-Hedef VPS kiralandıktan sonra CPU/RAM/disk/IOPS, container runtime ve volume yolları kaydedilmelidir. F1+ yük testinde yukarıdaki x5 profilinin sonucu; recovery testinde dump checksum'u ve ölçülmüş restore süresi kanıtlanmalıdır. Off-host kanıtı yalnız `PRODUCTION_RESILIENT` seçilirse zorunludur.
+Hedef Ubuntu Server kiralandıktan sonra 4 vCPU, 8 GB RAM, 100–120 GB NVMe kapasitesi; CPU/RAM/disk/IOPS, direct Docker Engine, systemd ve volume yollarıyla birlikte kaydedilmelidir. F1+ yük testinde yukarıdaki x5 profilinin sonucu; recovery testinde dump checksum'u ve ölçülmüş restore süresi kanıtlanmalıdır. Off-host kanıtı yalnız `PRODUCTION_RESILIENT` seçilirse zorunludur.

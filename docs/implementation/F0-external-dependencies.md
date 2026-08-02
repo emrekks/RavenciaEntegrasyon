@@ -14,9 +14,9 @@ Bu sıra değiştirilmez ve bir platformun belge/test erişimi diğerini üretim
 | Hepsiburada partner/SIT hesabı | F6A auth/capability/SIT | Halka açık güncel guide’lar erişilebilir; auth anlatımı çelişkili, partner credential/merchant/fixture yok | Draft connection, `UNKNOWN`, no-HTTP/no-write adapter | Hayır, yerel güvenlik çekirdeği için; evet, mapping/SIT/çıkış için |
 | N11 resmî dokümanı | Capability inceleme | Sayfa erişilebilir; test hesabı yok | `UNKNOWN`, write off | Hayır |
 | Pazarama portalı | Capability inceleme | Login gerekli | `UNKNOWN`, endpoint uydurma yok | Hayır |
-| Hedef Windows VPS | F0 runtime/volume/backup çıkışı | Kullanıcı yerel bilgisayarda başlayıp VPS'i daha sonra kiralama kararını onayladı; hedef erişim ve özellikler henüz yok | Yerelde ön doğrulama; kiralama sonrası aynı runbook hedefte yeniden çalıştırılır; öncesinde production onayı yok | Hayır, yerel geliştirme için; evet, hedef production/F0 çıkışı için |
+| Hedef Ubuntu Server 24.04 LTS | F0 runtime/volume/backup çıkışı | Kullanıcı 4 vCPU, 8 GB RAM, 100-120 GB NVMe x86_64 hedefini onayladı; sunucu henüz kiralanmadı | `ubuntu-server-runtime-validation.md` hedefte çalıştırılır; öncesinde production onayı yok | Hayır, yerel geliştirme için; evet, hedef production/F0 çıkışı için |
 | Gerçek iş hacmi | Kapasite/x5 | `1.000` ürün ve `15.000` sipariş/yıl kullanıcı tarafından sağlandı; x5 profil `5.000` ürün ve `75.000` sipariş/yıl | Bilinmeyen varyant/sipariş satırı/seasonality metrikleri izlenir; limit uydurulmaz | Hayır; F0 baz girdisi tamamlandı |
-| Hedef volume, restore süresi ve RTO | DR kanıtı | Yerel PostgreSQL 18.4 sentetik dump/temiz volume restore geçti (`0,147 sn`); hedef VPS restore çalıştırılmadı | Yerel süre hedef RTO ilan edilmez; `RISK-DR-001` hedef için açık; off-host yalnız resilient profilde zorunlu | Hayır, yerel geliştirme için; evet, hedef F0 çıkışı için |
+| Hedef volume, restore süresi ve RTO | DR kanıtı | Yerel PostgreSQL 18.4 sentetik dump/temiz volume restore geçti (`0,147 sn`); hedef Ubuntu Server restore çalıştırılmadı | Yerel süre hedef RTO ilan edilmez; `RISK-DR-001` hedef için açık; off-host yalnız resilient profilde zorunlu | Hayır, yerel geliştirme için; evet, hedef F0 çıkışı için |
 | F1 production manifest/lock/image | F1 build/release | F0 non-production lock/index digest kanıtı kullanıcı onayıyla tamamlandı | F1 root lock ve application image üretiminde yeniden karşılaştır; uyumsuzluk fail-closed | Hayır; F0 version blocker kapandı |
 | Stitch arayüz dosyası | İlgili UI fazı | 2026-07-31 tarihinde sağlandı; ZIP SHA-256 `3B51EBF78D7653933451E2B41D627A5281E14298844F7B7AFFAFC0B8198CE0A9`; F3 planında faz filtresiyle incelendi | Yalnız ilgili faz ekranları görsel referans alınır; demo değerler ve ileri faz menüleri uygulanmaz | Hayır |
 
@@ -24,7 +24,7 @@ Platform doküman URL'leri capability matrisinde tutulur. Test hesabı olmadan `
 
 ## F4 güncellemesi
 
-E-Faturam entegrasyon dokümanı ve sign-in kaynağı doğrulandı; test firma/credential, API kullanıcısı-pazaryeri entegratörü hesabı, legal entity girdisi ve mali policy kararları henüz sağlanmadı. Trendyol invoice link/file kaynakları doğrulandı ancak Stage package/delivery kanıtı yok. Bu girdiler F4 yerel çekirdeğini durdurmaz; taxpayer→submit→status→document ve marketplace delivery SIT/production kabulünü durdurur. VPS/domain yokluğu private localhost panelini durdurmaz, public document link ve production smoke'u durdurur.
+E-Faturam entegrasyon dokümanı ve sign-in kaynağı doğrulandı; test firma/credential, API kullanıcısı-pazaryeri entegratörü hesabı, legal entity girdisi ve mali policy kararları henüz sağlanmadı. Trendyol invoice link/file kaynakları doğrulandı ancak Stage package/delivery kanıtı yok. Bu girdiler F4 yerel çekirdeğini durdurmaz; taxpayer→submit→status→document ve marketplace delivery SIT/production kabulünü durdurur. Ubuntu sunucu/domain yokluğu private localhost panelini durdurmaz, public document link ve production smoke'u durdurur.
 
 ## F5 güncellemesi
 

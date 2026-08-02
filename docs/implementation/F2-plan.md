@@ -78,8 +78,8 @@
 - Gerçek platform reference snapshot/capability verisi F3 bağımlılığıdır; F2 bunu anonim fixture ve doğrudan persistence testleriyle doğrular.
 - Stitch dosyası yoktur; erişilebilir varsayılan UI bağlayıcı fallback'tir.
 - Ürün sayısı başlangıçta yaklaşık 1.000, yıllık sipariş 15.000'dir; ürün büyümesine karşı cursor/index ve 10.000 satır import hedefi korunur.
-- F2 yerel uygulaması VPS gerektirmez. Hedef VPS/registry/PFX/off-host/RTO kanıtları production kapısında `BLOCKED_EXTERNAL` kalır.
+- F2 yerel uygulaması Ubuntu sunucu gerektirmez. Hedef Ubuntu Server/registry/PFX/off-host/RTO kanıtları production kapısında `BLOCKED_EXTERNAL` kalır.
 
 ## Uygulama sonucu
 
-F2 uygulama ve yerel PostgreSQL 18 doğrulama sonucu `READY_LOCAL`dır. Güncel kanıtlar `F2-evidence-log.md` dosyasındadır. Gerçek platform capability'leri `UNKNOWN`, dış yazmalar kapalı ve hedef VPS/registry/PFX/off-host/RTO kanıtları `BLOCKED_EXTERNAL` kalır; bu durum F3'ü otomatik açmaz.
+F2 uygulama ve yerel PostgreSQL 18 doğrulama sonucu `READY_LOCAL`dır. Güncel kanıtlar `F2-evidence-log.md` dosyasındadır. Gerçek platform capability'leri `UNKNOWN`, dış yazmalar kapalı ve hedef Ubuntu Server/registry/PFX/off-host/RTO kanıtları `BLOCKED_EXTERNAL` kalır; bu durum F3'ü otomatik açmaz.

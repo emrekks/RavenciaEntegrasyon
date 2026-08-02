@@ -1,6 +1,6 @@
 # Doğrulanmış Teknoloji Sürümleri
 
-Doğrulama tarihi: 2026-07-31. Durum gözden geçirme tarihi: 2026-08-02. Yetkili şartnamedeki major/minor kararları değiştirilmemiştir. Exact patch değerleri F0 doğrulama lock'ları, repository-root F1+ lock'ları ve resmî registry index digest'leriyle sabitlenmiştir. `latest` ve floating image kabul edilmez; hedef production registry digest'leri VPS/release kabulünde ayrıca doğrulanır.
+Doğrulama tarihi: 2026-07-31. Durum gözden geçirme tarihi: 2026-08-02. v3.3 ile dağıtım hedefi Ubuntu Server 24.04 LTS x86_64 ve doğrudan Docker Engine olarak revize edilmiştir; uygulama major/minor kararları değiştirilmemiştir. Exact patch değerleri F0 doğrulama lock'ları, repository-root F1+ lock'ları ve resmî registry index digest'leriyle sabitlenmiştir. `latest` ve floating image kabul edilmez; hedef production registry digest'leri sunucu/release kabulünde ayrıca doğrulanır.
 
 ## Yerel araç kanıtı
 
@@ -10,11 +10,21 @@ Doğrulama tarihi: 2026-07-31. Durum gözden geçirme tarihi: 2026-08-02. Yetkil
 | .NET / ASP.NET Core runtime | `10.0.10` | INSTALLED |
 | Node.js | `24.15.0` | INSTALLED; current LTS patch adayıyla aynı değil |
 | npm | `11.12.1` | INSTALLED |
-| Docker Desktop / Engine / CLI | Desktop `4.84.0` (`234817`), Engine/CLI `29.6.2`; Linux/amd64, `overlayfs`, `desktop-linux` | VERIFIED_LOCAL_RECHECK_TARGET |
-| Docker Compose | Bundled `v5.3.1` kabul edilmedi; sabit araç konumunda checksum doğrulanmış `v2.40.2` engine bağlantısıyla geçti | VERIFIED_LOCAL_RECHECK_TARGET |
+| Docker Desktop / Engine / CLI | Desktop `4.84.0` (`234817`), Engine/CLI `29.6.2`; Linux/amd64, `overlayfs`, `desktop-linux` | VERIFIED_LOCAL_HISTORICAL; TARGET_SUPERSEDED |
+| Docker Compose | Yerel Windows ön kanıtında sabit `v2.40.2` geçti; Ubuntu hedef için Linux x86_64 checksum'u installer/guard içinde sabit | VERIFIED_LOCAL / TARGET_NOT_RUN |
 | Caddy | Digest-pinned `2.11.3`, Linux/amd64 smoke geçti | VERIFIED_LOCAL_RECHECK_TARGET |
 | PostgreSQL / psql | Digest-pinned `18.4`; psql, dump ve temiz-volume restore geçti | VERIFIED_LOCAL_RECHECK_TARGET |
-| WSL | `2.7.11.0`, kernel `6.18.33.2-2`, varsayılan sürüm `2` | VERIFIED_LOCAL_RECHECK_TARGET |
+| WSL | `2.7.11.0`, kernel `6.18.33.2-2`, varsayılan sürüm `2` | VERIFIED_LOCAL_HISTORICAL; NOT_APPLICABLE_TARGET |
+
+## Ubuntu production hedefi
+
+| Bileşen | Bağlayıcı hedef | Durum |
+| --- | --- | --- |
+| İşletim sistemi | Ubuntu Server 24.04 LTS x86_64 | TARGET_NOT_RUN |
+| Kapasite | 4 vCPU, 8 GB RAM, 100-120 GB NVMe | TARGET_NOT_RUN |
+| Container runtime | Doğrudan Linux/amd64 Docker Engine/CLI; systemd enabled/active | TARGET_NOT_RUN |
+| Compose | Exact `v2.40.2`; Linux x86_64 SHA-256 `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88` | VERIFIED_CHECKSUM / TARGET_NOT_RUN |
+| Host yönetimi | SSH anahtarı + yönetici IP/VPN allow-list | TARGET_NOT_RUN |
 
 ## Backend ve altyapı
 
@@ -79,4 +89,4 @@ Doğrulama tarihi: 2026-07-31. Durum gözden geçirme tarihi: 2026-08-02. Yetkil
 
 ## Sonuç
 
-Kullanıcı faz sınırı onayıyla non-production F0 doğrulama lock'ları oluşturulmuş, NuGet locked restore ve npm locked dry-run başarıyla çalışmış, resmî image index digest'leri ile Compose checksum'ları kaydedilmiştir. Bu belge ve kanıtlar baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e` ile Git'e alınmış; repository-root lock ve yerel application image kanıtları F1 ile eklenmiştir. `BLOCK-VERSION-001` ve `F0-EXIT-004` F0 kapsamında kapalıdır; registry-pushed production digest ve hedef VPS doğrulaması `BLOCKED_EXTERNAL` kalır.
+Kullanıcı faz sınırı onayıyla non-production F0 doğrulama lock'ları oluşturulmuş, NuGet locked restore ve npm locked dry-run başarıyla çalışmış, resmî image index digest'leri ile Compose checksum'ları kaydedilmiştir. Bu belge ve kanıtlar baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e` ile Git'e alınmış; repository-root lock ve yerel application image kanıtları F1 ile eklenmiştir. `BLOCK-VERSION-001` ve `F0-EXIT-004` F0 kapsamında kapalıdır; registry-pushed production digest ve hedef Ubuntu Server doğrulaması `BLOCKED_EXTERNAL` kalır.

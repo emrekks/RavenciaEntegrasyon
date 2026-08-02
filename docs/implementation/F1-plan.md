@@ -5,12 +5,12 @@
 | Alan | Değer |
 | --- | --- |
 | Faz | `F1` |
-| Durum | `READY_LOCAL_DEPLOY_PREPARED`; production/VPS kabulü `BLOCKED_EXTERNAL` |
-| Yetkili şartname | Repository kökü `Ravencia_Entegrasyon_v3_2_Nihai_Uygulama_Surumu.pdf`, v3.2, 73 sayfa |
-| Şartname SHA-256 | `E98365DC34804A478D5DBB41E1997FB6742FD0723A76C08CEE138321F0E2ECA3` |
+| Durum | `READY_LOCAL_DEPLOY_PREPARED`; production/Ubuntu Server kabulü `BLOCKED_EXTERNAL` |
+| Yetkili şartname | Repository kökü `Ravencia_Entegrasyon_v3_3_Nihai_Uygulama_Surumu.pdf`, v3.3, 75 sayfa; v3.2 tarihsel |
+| Şartname SHA-256 | v3.3 `AB7E5D26497EDC6D24E8CE0E7111CF44BB782819CD047C93DCBEE7E401BE3F94` |
 | Kaynak sayfalar | 5-6, 11-19, 23-24, 34-36, 39-41, 48-59, 61-62 |
 | Onay kaydı | Kullanıcı 2026-07-31 tarihinde F1 başlangıcını açıkça onayladı. |
-| F0 yerel runtime kapısı | `READY`; hedef VPS kanıtı production kapısına ertelendi. |
+| F0 yerel runtime kapısı | `READY_HISTORICAL`; hedef Ubuntu Server kanıtı production kapısına ertelendi. |
 
 ## Hedefler
 
@@ -35,7 +35,7 @@ F1'in hedefi migration uygulanabilir, gözlemlenebilir, yedeklenebilir ve doküm
 - F7B kullanıcı/RBAC/impersonation; F8 aktif multi-tenant, tenant CRUD/switcher/kota/RLS.
 - `/products`, `/catalog`, `/imports`, `/inventory`, `/orders`, `/shipments`, `/returns`, `/invoices`, `/integrations`, `/mappings`, `/reports`, `/tenants`, `/users` veya `/roles` için placeholder route/controller/menü.
 - Mikroservis, Redis, RabbitMQ, Kafka, Kubernetes, ikinci ORM, generic repository, MediatR veya AutoMapper.
-- Production deploy, gerçek secret rotasyonu, gerçek platform yazması veya hedef VPS kabulü.
+- Production deploy, gerçek secret rotasyonu, gerçek platform yazması veya hedef Ubuntu Server kabulü.
 
 ## Gereksinim matrisi
 
@@ -57,7 +57,7 @@ F1'in hedefi migration uygulanabilir, gözlemlenebilir, yedeklenebilir ve doküm
 | `F1-REQ-014` | Tablo 25-26, 40 | ProblemDetails, correlation, JSON log, secure headers, same-origin cookie, CSRF, Origin, lockout ve rate limit tabanı uygulanır. | API integration/security tests | Api middleware/endpoints | Yok | DONE_LOCAL |
 | `F1-REQ-015` | Tablo 41-43 | Caddy/API/Worker/PostgreSQL/migrate/backup servisleri; explicit health/restart/volume/log politikaları ve yalnız Caddy host portları vardır. | Exact Compose v2 config + container smoke | `deploy/` | Docker runtime | DONE_LOCAL |
 | `F1-REQ-016` | Tablo 31; F1 teslimatlar | Auth/security paneli loading/error/locked/password-only/MFA/recovery/session durumlarıyla işlevsel ve erişilebilirdir. | Typecheck, unit/component, production build, Playwright smoke | `MarketplaceHub.Web` | Stitch engelleyici değil | DONE_LOCAL |
-| `F1-REQ-017` | Sayfa 55-56; F1 teslimatlar | Backup/restore/deploy/rollback ve break-glass runbook'ları gerçek komut/sınırlarla vardır. | Doküman ve script guard testleri | `docs/runbooks/`, `deploy/backup/` | Hedef VPS production kanıtı sonra | DONE_LOCAL |
+| `F1-REQ-017` | Sayfa 55-56; F1 teslimatlar | Backup/restore/deploy/rollback ve break-glass runbook'ları gerçek komut/sınırlarla vardır. | Doküman ve script guard testleri | `docs/runbooks/`, `deploy/backup/` | Hedef Ubuntu Server production kanıtı sonra | DONE_LOCAL |
 
 ## Dosya etkisi
 
@@ -103,11 +103,11 @@ F2+ modül klasörlerine production entity/use-case/endpoint/route veya placehol
 
 | Kimlik | Kayıt | Güvenli davranış / kapanış |
 | --- | --- | --- |
-| `F1-RISK-HOST-001` | Hedef Windows VPS daha sonra kiralanacak. | Yerel compose kanıtı F1 geliştirmesini açar; production kabulü hedef runbook olmadan verilmez. |
+| `F1-RISK-HOST-001` | Hedef Ubuntu Server 24.04 LTS (4 vCPU, 8 GB RAM, 100–120 GB NVMe) daha sonra kiralanacak. | Yerel compose kanıtı F1 geliştirmesini açar; production kabulü Ubuntu runtime runbook'u olmadan verilmez. |
 | `F1-RISK-SECRET-001` | Gerçek production bootstrap/certificate/DB secret'ları yoktur. | Yalnız secret-file contract ve sentetik test secret'ı; repo/image/Compose içinde gerçek veya sabit production secret yoktur. |
 | `F1-RISK-STITCH-001` | Stitch tasarımı yoktur. | İşlevsel/erişilebilir varsayılan F1 UI; markalı fidelity ertelenir. |
 | `F1-RISK-PLATFORM-001` | Platform test hesabı/fixture yoktur. | Capability `UNKNOWN`, dış HTTP ve write kapalı; F1 blocker'ı değildir. |
-| `F1-RISK-DR-001` | Hedef DB/files/key-ring restore kanıtı VPS'e bağlıdır. | Yerel clean restore yapılır; target RTO ilan edilmez. |
+| `F1-RISK-DR-001` | Hedef DB/files/key-ring restore kanıtı Ubuntu Server'a bağlıdır. | Yerel clean restore yapılır; target RTO ilan edilmez. |
 | `RISK-F1-SEC-001` | React Router 7.18.2 için client uygulamanın kullanmadığı RSC action yüzeyinde `GHSA-qwww-vcr4-c8h2` yüksek advisory'si vardır; 2026-08-02 registry düzeltmesi breaking 8.3.0'dır. | RSC/SSR/server action yok; API same-origin+CSRF kapılı. Major 8'e izinsiz geçilmez; güvenli 7.x release veya yetkili mimari karar izlenir. |
 
 ## ADR etkisi
@@ -127,4 +127,4 @@ F1, ADR-001-010 kararlarını uygular; alternatif mimari seçmez. Yalnız şartn
 
 ## Sonuç
 
-F1 uygulaması, yerel kanıt seti, ayrı production public-TLS edge tanımı ve immutable image yayın otomasyonu tamamlanmıştır: sonuç `READY_LOCAL_DEPLOY_PREPARED`dır. Hedef VPS runtime/reboot/volume/RTO, production PFX secret, off-host backup hedefi ve workflow çalıştırmasıyla oluşacak registry-pushed immutable application/edge digest'i hedef ortam/release hazır olduğunda kanıtlanacağından production kabulü `BLOCKED_EXTERNAL` kalır. Bu ayrım sonraki faz kapılarını kendiliğinden açmaz.
+F1 uygulaması, yerel kanıt seti, ayrı production public-TLS edge tanımı ve immutable image yayın otomasyonu tamamlanmıştır: sonuç `READY_LOCAL_DEPLOY_PREPARED`dır. Hedef Ubuntu Server runtime/systemd/reboot/volume/RTO, production PFX secret, off-host backup hedefi ve workflow çalıştırmasıyla oluşacak registry-pushed immutable application/edge digest'i hedef ortam/release hazır olduğunda kanıtlanacağından production kabulü `BLOCKED_EXTERNAL` kalır. Bu ayrım sonraki faz kapılarını kendiliğinden açmaz.

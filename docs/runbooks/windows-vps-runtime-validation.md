@@ -1,4 +1,6 @@
-# Windows VPS Üzerinde Linux Container Doğrulama Runbook'u
+# Windows VPS Üzerinde Linux Container Doğrulama Runbook'u (Tarihsel / Superseded)
+
+Bu runbook v3.2 tarihsel kanıtıdır ve 2026-08-02 tarihli v3.3/ADR-012 kararıyla production hedefi olmaktan çıkmıştır. Güncel hedef doğrulaması [ubuntu-server-runtime-validation.md](ubuntu-server-runtime-validation.md) ile yapılır.
 
 ## Amaç ve sınır
 

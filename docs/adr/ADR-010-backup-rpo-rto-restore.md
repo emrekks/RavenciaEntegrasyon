@@ -18,7 +18,7 @@ RPO için pilot hedefi en fazla 6 saattir; kesin iş RPO/RTO'su kullanıcı gird
 
 Backup varlığı restore başarısı sayılmaz. PostgreSQL ve private dosyalar uyumlu recovery point'e alınır; checksum ve iş/veri bütünlüğü test edilir.
 
-Yerel ön doğrulamada digest-pinned PostgreSQL 18.4 ile sentetik dump ayrı temiz volume'a restore edilmiş; dump SHA-256 `51a6a9df0065b7e346e137cac77aa6208e7989b380fe885d7282a7f5c165fd3f`, source/restore mantıksal kanıtı `2|fb4200bade7730f8239ef795f97ee6fc` ve ölçülen restore süresi `0,147 sn` olmuştur. Bu sentetik yerel süre hedef VPS veya iş RTO'su değildir.
+Yerel ön doğrulamada digest-pinned PostgreSQL 18.4 ile sentetik dump ayrı temiz volume'a restore edilmiş; dump SHA-256 `51a6a9df0065b7e346e137cac77aa6208e7989b380fe885d7282a7f5c165fd3f`, source/restore mantıksal kanıtı `2|fb4200bade7730f8239ef795f97ee6fc` ve ölçülen restore süresi `0,147 sn` olmuştur. Bu sentetik yerel süre hedef Ubuntu Server veya iş RTO'su değildir.
 
 ## Açık kanıt ve değişiklik kapısı
 

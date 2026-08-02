@@ -4,7 +4,7 @@ Doğrulama tarihi: 2026-07-31. Sonuçlar gerçek komut çıktılarından kaydedi
 
 | Kanıt | Komut / yöntem | Gerçek sonuç | Durum |
 | --- | --- | --- | --- |
-| Canonical şartname | SHA-256 ve pypdf sayfa sayısı karşılaştırması | Kaynak ve kök kopya aynı hash; 73/73 sayfa | PASSED |
+| Canonical şartname | SHA-256, pypdf ve görsel render | v3.3 iki bağlayıcı revizyon sayfası + eksiksiz 73 sayfalık v3.2 tabanı; toplam 75 sayfa; SHA-256 `AB7E5D26497EDC6D24E8CE0E7111CF44BB782819CD047C93DCBEE7E401BE3F94` | PASSED_V3_3 |
 | NPM lock üretimi | `npm install --package-lock-only --ignore-scripts --no-audit --no-fund` | Exit 0; local Node 24.15.0 hedef engine 24.18.1'den eski olduğu için beklenen `EBADENGINE` uyarısı | PASSED_WITH_ENV_WARNING |
 | NPM locked çözüm | `npm ci --ignore-scripts --dry-run --no-audit --no-fund` | Exit 0; 46 resolved package; `node_modules` oluşmadı | PASSED_WITH_ENV_WARNING |
 | NPM lock checksum | SHA-256 | `B3D19C0F1D64A6CE2236EB52F2CC48A483729565B002FD7B16535AD24EF3A923` | PASSED |
@@ -26,8 +26,8 @@ Doğrulama tarihi: 2026-07-31. Sonuçlar gerçek komut çıktılarından kaydedi
 | Named-volume kalıcılığı | İki container + Docker/WSL restart | `ravencia-f0-local-volume`; marker SHA-256 `8301a7bc232ece67bfb630ae783ba883148bc2f9a87ca9b3356a693ef2ac7289` restart öncesi/sonrası eşit; `unless-stopped` container yeniden başladı | PASSED_FOR_LOCAL |
 | PostgreSQL 18 mount guard | İlk source container logu | Eski `/var/lib/postgresql/data` mount'u 18+ imaj tarafından exit `1` ile reddedildi; `/var/lib/postgresql` kök mount'u kullanıldı | FAILED_SAFE_THEN_CORRECTED |
 | PostgreSQL dump/restore | Digest-pinned PostgreSQL 18.4, ayrı source/restore/backup volume'ları | Dump SHA-256 `51a6a9df0065b7e346e137cac77aa6208e7989b380fe885d7282a7f5c165fd3f`; source/restore `2|fb4200bade7730f8239ef795f97ee6fc`; restore `0,147 sn` | PASSED_FOR_LOCAL |
-| Hedef Windows VPS | Hedef runbook | VPS henüz kiralanmadı | NOT_RUN / BLOCKED_EXTERNAL |
-| Restore/RTO | Hedef PostgreSQL + files restore | Hedef VPS/volume yok | NOT_RUN / BLOCKED_EXTERNAL |
+| Hedef Ubuntu Server 24.04 LTS | Hedef runbook | 4 vCPU, 8 GB RAM, 100-120 GB NVMe kararı onaylı; sunucu henüz kiralanmadı | NOT_RUN / BLOCKED_EXTERNAL |
+| Restore/RTO | Hedef PostgreSQL + files restore | Hedef Ubuntu Server/volume yok | NOT_RUN / BLOCKED_EXTERNAL |
 
 ## Lock içeriği notları
 

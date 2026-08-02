@@ -1,6 +1,6 @@
 # F4 Fatura ve Mali Belge Kanıt Kaydı
 
-Doğrulama tarihi: `2026-07-31`. Ortam: Windows 10 geliştirme makinesi, .NET SDK `10.0.302`, Node `24.15.0`, npm `11.12.1`, izole yerel PostgreSQL `18.4`. Gerçek E-Faturam/Trendyol credential, test firma, Stage write, VPS veya production işlemi kullanılmadı.
+Doğrulama tarihi: `2026-07-31`. Ortam: Windows 10 geliştirme makinesi, .NET SDK `10.0.302`, Node `24.15.0`, npm `11.12.1`, izole yerel PostgreSQL `18.4`. Gerçek E-Faturam/Trendyol credential, test firma, Stage write, Ubuntu sunucu veya production işlemi kullanılmadı.
 
 ## Sonuç özeti
 
@@ -22,7 +22,7 @@ Doğrulama tarihi: `2026-07-31`. Ortam: Windows 10 geliştirme makinesi, .NET SD
 | `F4-EV-014` API/UI | PASS | Şartnamedeki F4 route aileleri, CSRF/re-auth/confirmation/ETag/idempotency/no-store guard; loading/empty/error/UNKNOWN UI |
 | `F4-EV-015` backup/restore | BLOCKED_EXTERNAL | DB + private file modeli hazır; hedef backup/off-host/RTO ve belge checksum restore kanıtı yok |
 | `F4-EV-016` provider E2E | BLOCKED_EXTERNAL | Test firma, credential ve entegrasyon modeli yok; sign-in dışı adapter çağrıları fail-closed |
-| `F4-EV-017` production smoke | BLOCKED_EXTERNAL | VPS/domain/production credential ve işlem bazlı etki onayı yok |
+| `F4-EV-017` production smoke | BLOCKED_EXTERNAL | Ubuntu sunucu/domain/production credential ve işlem bazlı etki onayı yok |
 
 ## Fixture checksum
 

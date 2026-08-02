@@ -8,7 +8,7 @@
 | Plan durumu | `APPROVED` (2026-08-02) |
 | Uygulama durumu | `READY_LOCAL_CORE / BLOCKED_EXTERNAL` |
 | Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 12, 23, 25, 29, 38, 42-47, 51-58, 60, 64, 66-70 ve 72-73 |
-| Yetkili şartname SHA-256 | `E98365DC34804A478D5DBB41E1997FB6742FD0723A76C08CEE138321F0E2ECA3` |
+| Yetkili şartname SHA-256 | v3.3 `AB7E5D26497EDC6D24E8CE0E7111CF44BB782819CD047C93DCBEE7E401BE3F94` |
 | Ön koşul | F4 yerel çekirdeği `5a1be44`; localhost giriş düzeltmesi `237c15d`; F4 dış kanıtları açık blocker olarak kayıtlı |
 | Hedef sonuç | Generic Domain/Application portlarının Shopify üzerinde yeniden kullanılabildiğini kanıtlayan, development-store odaklı ve dış yazmaları kapalı başlayan F5 adaptörü |
 
@@ -180,7 +180,7 @@ Exact access scope listesi tahmin edilmez. Seçilen `2026-07` query/mutation fie
 - `DEC-F5-004`: Yerel `MAIN` depo hangi Shopify Location GID'sine eşlenecek; missing/inactive location operasyon kararı nedir?
 - `DEC-F5-005`: Ürün yayınlama, arşivleme ve silme otoritesi nedir? F5 başlangıç fallback'i delete/write off'tur.
 - `DEC-F5-006`: Fulfillment oluşturma otoritesi MarketplaceHub mı, Shopify/başka fulfillment service mi? Kanıtlanana kadar write off'tur.
-- `DEC-F5-007`: Development webhook E2E için VPS beklenmeden geçici güvenli tunnel kullanılacak mı, yoksa public HTTPS gelene kadar fixture ile mi kalınacak?
+- `DEC-F5-007`: Development webhook E2E için Ubuntu sunucu beklenmeden geçici güvenli tunnel kullanılacak mı, yoksa public HTTPS gelene kadar fixture ile mi kalınacak?
 
 ## ADR etkisi
 

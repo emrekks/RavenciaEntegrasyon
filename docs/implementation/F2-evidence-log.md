@@ -22,6 +22,6 @@ Doğrulama tarihi: 2026-07-31. Ortam: Windows 10 geliştirme makinesi, .NET 10 v
 
 ## Yerel ve production ayrımı
 
-F2 uygulama sonucu `READY_LOCAL`dır. Bu makinede Docker CLI/engine güncel oturumda bulunmadığından F2 image/Compose smoke tekrarlanmadı; F2 migration ve tüm persistence testleri doğrudan PostgreSQL 18.4 üzerinde geçti. F1'in mevcut container/backup kanıtı değiştirilmedi. Hedef Windows VPS, registry-pushed immutable digest, production PFX, off-host backup ve ölçülmüş RTO kanıtları VPS kiralandığında tamamlanacaktır; production sonucu `BLOCKED_EXTERNAL`dır.
+F2 uygulama sonucu `READY_LOCAL`dır. Bu makinede Docker CLI/engine güncel oturumda bulunmadığından F2 image/Compose smoke tekrarlanmadı; F2 migration ve tüm persistence testleri doğrudan PostgreSQL 18.4 üzerinde geçti. F1'in mevcut container/backup kanıtı değiştirilmedi. Hedef Ubuntu Server, registry-pushed immutable digest, production PFX, off-host backup ve ölçülmüş RTO kanıtları sunucu kiralandığında tamamlanacaktır; production sonucu `BLOCKED_EXTERNAL`dır.
 
 Gerçek platform test hesapları ve resmî capability kanıtları gelene kadar capability `UNKNOWN`, `FeatureFlags__ExternalWrites=false`; publication, stock-sync ve price-sync dış etki üretmez. F3 ve sonrası açılmamıştır.

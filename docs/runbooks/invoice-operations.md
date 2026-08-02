@@ -23,4 +23,4 @@
 
 ## Dış blocker
 
-Test firma/credential, hesap modeli, mali policy, KVKK/retention, Trendyol Stage package ve VPS/domain/public HTTPS yokken gerçek submit/delivery/production smoke çalıştırılmaz.
+Test firma/credential, hesap modeli, mali policy, KVKK/retention, Trendyol Stage package ve Ubuntu sunucu/domain/public HTTPS yokken gerçek submit/delivery/production smoke çalıştırılmaz.

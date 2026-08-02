@@ -1,4 +1,9 @@
-# ADR-009: Windows VPS Üzerinde Linux Container Runtime
+# ADR-009: Windows VPS Üzerinde Linux Container Runtime (Superseded)
+
+- Güncel durum: Superseded by ADR-012 ve v3.3 Ubuntu Server revizyonu
+- Supersede tarihi: 2026-08-02
+
+Bu kayıt tarihsel F0 kararını ve yerel Windows ön kanıtını korur. Production hedefi olarak artık uygulanmaz; güncel bağlayıcı hedef [ADR-012](ADR-012-ubuntu-server-container-runtime.md) içindedir.
 
 - Durum: Accepted; hedef kanıtı bekliyor
 - Tarih: 2026-07-31

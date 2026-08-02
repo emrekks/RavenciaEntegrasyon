@@ -14,7 +14,7 @@ Bu matris yalnız F0 dokümantasyon teslimatlarını izler. Gelecek kod ve test 
 | `F0-REQ-006` | F0 | Hacim, pik x5, RPO/RTO ve backup profili kayıtlıdır. | `F0-capacity-recovery-profile.md`; ADR-010 | Load/restore testleri F1+ | Hacim baz/x5 tamamlandı; hedef restore ve RTO bekliyor | BLOCKED_EXTERNAL |
 | `F0-REQ-007` | F0 | Environment/secret, threat, risk, kill switch ve rollback kayıtlıdır. | İlgili beş F0 belgesi; ADR-007 | Uygulama kontrolleri F1+ | Secret store ve hedef ortam | DONE |
 | `F0-REQ-008` | F0 | Fake adapter/anonim fixture standardı tanımlıdır. | `fake-adapter-fixture-standard.md` | Fixture/test uygulaması F1+ | Test hesabı fixture'ları | DONE |
-| `F0-REQ-009` | F0 | Hedef Windows VPS Linux container kanıtı vardır. | `windows-vps-runtime-validation.md` | Dağıtım F1+ | VPS erişimi/özellikleri | BLOCKED_EXTERNAL |
+| `F0-REQ-009` | F0 | Hedef Ubuntu Server 24.04 LTS üzerinde direct Docker Engine, Linux/amd64, systemd/reboot, volume ve restore kanıtı vardır. | `ubuntu-server-runtime-validation.md`; ADR-012 | Dağıtım F1+ | Ubuntu sunucu erişimi/IP/domain | BLOCKED_EXTERNAL |
 | `F0-REQ-010` | F0 | Stitch ileri tarihli, engelleyici olmayan bağımlılıktır. | `F0-external-dependencies.md` | UI uygulaması ilgili faz | Stitch dosyası | DONE |
 | `F0-REQ-011` | F0 | Exact sürüm, resmî kaynak, tarih, lock ve digest kayıtlıdır. | `verified-versions.md`; F0 verification lock/digest kanıtları | Production lock/image F1 | Hedef child digest host runbook'una bağlı | DONE_F0 |
 | `F0-VAL-001` | F0 | Her gereksinim tek faz ve ölçülebilir kabule bağlıdır. | Bu matris | Yok | Yok | DONE |
@@ -25,12 +25,12 @@ Bu matris yalnız F0 dokümantasyon teslimatlarını izler. Gelecek kod ve test 
 | `F0-VAL-006` | F0 | Exact sürüm + kaynak + lock/digest eksiksizdir. | F0 locked restore/dry-run, index digest ve Compose checksum kanıtı | Production aktarımı F1 | Hedef child digest host runbook'una bağlı | DONE_F0 |
 | `F0-EXIT-001` | F0 | F1'i durduran mimari belirsizlik yoktur. | ADR-001–010 | Yok | Kullanıcı kabulü | DONE |
 | `F0-EXIT-002` | F0 | Dış bağımlılık, blocker ve güvenli fallback kayıtlıdır. | Dependency/risk kayıtları | Yok | Dış sağlayıcılar | DONE |
-| `F0-EXIT-003` | F0 | Runtime, volume ve backup uygulanabilirliği hedefte kanıtlıdır. | Runbook ve recovery profilinde kanıt yuvaları | Runtime testleri F1 öncesi | Hedef VPS | BLOCKED_EXTERNAL |
+| `F0-EXIT-003` | F0 | Runtime, volume ve backup uygulanabilirliği hedefte kanıtlıdır. | Ubuntu runbook ve recovery profilinde kanıt yuvaları | Runtime testleri production öncesi | Hedef Ubuntu Server | BLOCKED_EXTERNAL |
 | `F0-EXIT-004` | F0 | Sürüm belgesi commitli; lock/digest tutarlıdır. | F0 verification lock/digest seti; baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e` | Production aktarımı F1 | Yok | DONE_F0 |
 
 ## F0 sonucu
 
-Dokümantasyon ve dependency kanıt kapsamı tamamlanmıştır. `F0-REQ-006`, `F0-REQ-009` ve `F0-EXIT-003` hedef VPS/restore kanıtı nedeniyle açıktır; F0 çıkışı `BLOCKED`dır.
+Dokümantasyon ve dependency kanıt kapsamı tamamlanmıştır. `F0-REQ-006`, `F0-REQ-009` ve `F0-EXIT-003` hedef Ubuntu Server/restore kanıtı nedeniyle açıktır; F0 çıkışı `BLOCKED`dır.
 
 ## F1 uygulama izi
 
@@ -45,7 +45,7 @@ F1 ayrıntılı kabul ve kanıt eşlemesi [F1-plan.md](F1-plan.md) ve [F1-eviden
 | `F1-REQ-016–017` | React auth/security kabuğu ve operasyon/image-release runbook'ları | Strict TS, component, bundle, Playwright Chromium; runbook incelemesi | DONE_LOCAL_DEPLOY_PREPARED |
 | `F1-EXIT-001–006` | Yerel F1 çıkış seti | `F1-EV-001–019` | READY_LOCAL_DEPLOY_PREPARED |
 
-Hedef VPS runtime/reboot/volume/RTO, production PFX/off-host hedef ve manuel workflow çalıştırmasıyla üretilecek registry-pushed image digest'i dış bağımlılıktır; production kabulü `BLOCKED_EXTERNAL`dır. Bu F1 kayıt anında F2 henüz açılmamıştı.
+Hedef Ubuntu Server runtime/systemd/reboot/volume/RTO, production PFX/off-host hedef ve manuel workflow çalıştırmasıyla üretilecek registry-pushed image digest'i dış bağımlılıktır; production kabulü `BLOCKED_EXTERNAL`dır. Bu F1 kayıt anında F2 henüz açılmamıştı.
 
 ## F2 uygulama izi
 
@@ -60,7 +60,7 @@ F2 ayrıntılı kabul ve kanıt eşlemesi [F2-plan.md](F2-plan.md) ve [F2-eviden
 | `F2-REQ-013–014` | Onaylı F2 web yolları ve bounded hacim | Strict TS/Vite/Vitest/Playwright; 10.000 satır import testi | DONE_LOCAL |
 | `F2-EXIT-001–005` | Yerel F2 çıkış seti | `F2-EV-001–015` | READY_LOCAL |
 
-Gerçek platform capability/test hesapları, hedef VPS runtime, registry digest, production PFX, off-host backup ve ölçülmüş RTO dış bağımlılıktır. Production kabulü `BLOCKED_EXTERNAL`; F3 açılmamıştır.
+Gerçek platform capability/test hesapları, hedef Ubuntu runtime, registry digest, production PFX, off-host backup ve ölçülmüş RTO dış bağımlılıktır. Production kabulü `BLOCKED_EXTERNAL`; F3 açılmamıştır.
 
 ## F3 uygulama izi
 

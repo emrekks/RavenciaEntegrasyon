@@ -8,7 +8,7 @@
 | Plan durumu | `APPROVED` |
 | Uygulama durumu | `READY_LOCAL_CORE / BLOCKED_EXTERNAL` |
 | Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 24-29, 34-47, 52, 57-58, 60 ve 63 |
-| Yetkili şartname SHA-256 | `E98365DC34804A478D5DBB41E1997FB6742FD0723A76C08CEE138321F0E2ECA3` |
+| Yetkili şartname SHA-256 | v3.3 `AB7E5D26497EDC6D24E8CE0E7111CF44BB782819CD047C93DCBEE7E401BE3F94` |
 | Ön koşul | F2 `READY_LOCAL`, commit `8cbf1b9` |
 | Faz başlatma kaydı | Kullanıcı 2026-07-31 tarihinde “Projeye devam edelim.” diyerek F3 planlamasını açtı. |
 | Hedef sonuç | Yerel/fixture uygulaması `READY_LOCAL`; gerçek Stage/SIT ve production kanıtları tamamlanana kadar faz çıkışı `BLOCKED_EXTERNAL` |
@@ -47,7 +47,7 @@ Kullanıcı planı onayladı ve F3 yerel çekirdek uygulaması tamamlandı. Ger�
 - F2’de gerçek platform HTTP adapter’ı yoktur; bütün gerçek capability’ler `UNKNOWN`, `FeatureFlags__ExternalWrites=false` kalır.
 - Test projeleri Domain, Application, Persistence, API, Adapter Contract ve EndToEnd sınırlarıyla hazırdır.
 - Yerel makinede .NET 10/Node 24 ve PostgreSQL 18 doğrulaması yapılmıştır; güncel oturumda Docker CLI/engine yoktur.
-- Hedef Windows VPS henüz kiralanmamıştır. Bu, yerel contract/fake-adapter geliştirmesini durdurmaz; public HTTPS webhook/media ve production kanıtını durdurur.
+- Hedef Ubuntu Server 24.04 LTS (4 vCPU, 8 GB RAM, 100–120 GB NVMe) henüz kiralanmamıştır. Bu, yerel contract/fake-adapter geliştirmesini durdurmaz; public HTTPS webhook/media ve production kanıtını durdurur.
 
 ## Stitch değerlendirmesi
 
@@ -194,9 +194,9 @@ Resmî belgede farklı tarihler için farklı limitler bulunduğundan değerler 
 | Kimlik | Kayıt | Güvenli fallback | Kapanış kanıtı | Yerel uygulama blocker? |
 | --- | --- | --- | --- | --- |
 | `BLOCK-F3-001` | Trendyol Stage seller/supplier ID, API key ve secret henüz yok. | Fixture/Fake adapter; bütün external write off | Secret sızdırmadan Stage connection test | Hayır; Stage/SIT için evet |
-| `BLOCK-F3-002` | Stage IP yetkilendirmesi yapılmadı; yerel public IP kalıcı olmayabilir. | Contract test; VPS veya onaylı sabit IP geldiğinde Stage | Trendyol Stage başarılı 2xx identity/read | Hayır; Stage/SIT için evet |
+| `BLOCK-F3-002` | Stage IP yetkilendirmesi yapılmadı; yerel public IP kalıcı olmayabilir. | Contract test; Ubuntu sunucunun statik IP'si veya onaylı sabit IP geldiğinde Stage | Trendyol Stage başarılı 2xx identity/read | Hayır; Stage/SIT için evet |
 | `BLOCK-F3-003` | SelfIntegration mı kayıtlı entegratör kimliği mi kullanılacağı kesinleşmedi. | User-Agent gönderilmez ve gerçek çağrı yapılmaz | Kullanıcı/Trendyol tarafından onaylı kimlik değeri | Gerçek çağrı için evet |
-| `BLOCK-F3-004` | Public HTTPS webhook ve imzalı media callback domain’i yok; VPS daha sonra kiralanacak. | Yerel raw webhook/expiry contract testleri | Caddy arkasında public HTTPS Stage callback | Hayır; webhook/media SIT için evet |
+| `BLOCK-F3-004` | Public HTTPS webhook ve imzalı media callback domain’i yok; Ubuntu sunucu daha sonra kiralanacak. | Yerel raw webhook/expiry contract testleri | Caddy arkasında public HTTPS Stage callback | Hayır; webhook/media SIT için evet |
 | `BLOCK-F3-005` | Mağazaya ait güvenli test ürün/kategori/marka/order/return kayıtları yok. | Resmî örnekten anonim fixture | Redacted Stage fixture/checksum | Hayır; E2E SIT için evet |
 | `BLOCK-F3-006` | Label/cargo kapsamı mağaza ve kargo modelinde doğrulanmadı. | `LabelRead=UNKNOWN`; manuel upload sahte dış başarı üretmez | Stage label/cargo capability record | Hayır |
 | `BLOCK-F3-007` | Production smoke için kayıt/adet/etki onayı henüz verilmedi. | Production writes off | Operasyon başına açık kullanıcı onayı + rollback | Hayır; F3 çıkışı için açık blocker kabul edilebilir |
@@ -208,13 +208,13 @@ Resmî belgede farklı tarihler için farklı limitler bulunduğundan değerler 
 ## Açık kullanıcı kararları
 
 - `DEC-F3-001`: Trendyol User-Agent kimliği `SelfIntegration` mı yoksa kayıtlı entegratör adı mı olacak? Credential edinilirken kesinleşmelidir.
-- `DEC-F3-002`: Stage IP yetkisi yerel sabit IP ile mi, daha sonra kiralanacak VPS IP’siyle mi alınacak? Yerel contract geliştirmesi bu kararı beklemez.
-- `DEC-F3-003`: Public HTTPS webhook/media Stage testi VPS sonrasına mı bırakılacak, yoksa ayrıca onaylanan kontrollü geçici test ingress’i mi kullanılacak? Varsayılan VPS’i beklemektir.
+- `DEC-F3-002`: Stage IP yetkisi yerel sabit IP ile mi, daha sonra kiralanacak Ubuntu sunucunun statik IP’siyle mi alınacak? Yerel contract geliştirmesi bu kararı beklemez.
+- `DEC-F3-003`: Public HTTPS webhook/media Stage testi Ubuntu sunucu sonrasına mı bırakılacak, yoksa ayrıca onaylanan kontrollü geçici test ingress’i mi kullanılacak? Varsayılan Ubuntu sunucuyu beklemektir.
 - `DEC-F3-004`: Her production smoke işlemi; platform, kayıt, adet, beklenen etki ve rollback özetiyle ayrıca onaylanacaktır. Bu plan genel production-write onayı değildir.
 
 ## ADR etkisi
 
-- Yeni mimari ADR gerekmiyor. F3; ADR-001 modüler monolit, ADR-003 tek PostgreSQL/migration zinciri, ADR-004 job/inbox/idempotency, ADR-005 capability kanıtı, ADR-006 güvenli iş otoriteleri, ADR-007 secret güvenliği, ADR-008 private file, ADR-009 runtime ve ADR-010 backup/restore kararlarına uyar.
+- Yeni mimari ADR gerekmiyor. F3; ADR-001 modüler monolit, ADR-003 tek PostgreSQL/migration zinciri, ADR-004 job/inbox/idempotency, ADR-005 capability kanıtı, ADR-006 güvenli iş otoriteleri, ADR-007 secret güvenliği, ADR-008 private file, ADR-010 backup/restore ve ADR-012 Ubuntu runtime kararlarına uyar.
 - Trendyol limit tarihçesi adapter configuration/evidence kaydıdır; yeni altyapı kararı değildir.
 - Resmî/test davranışı mevcut port sözleşmesiyle çelişirse production kodu uydurulmaz; değişiklik kapısı ve gerekirse yeni ADR kullanıcıya sunulur.
 - Birden çok physical inventory location, broker/cache/mikroservis veya farklı deployment topolojisi gözlenmiş ihtiyaç ve ayrı ADR olmadan açılmaz.

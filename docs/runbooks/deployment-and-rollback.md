@@ -2,8 +2,8 @@
 
 ## Production kapıları
 
-- Hedef Windows VPS üzerinde WSL2/Linux container, nested virtualization, kalıcı volume ve reboot kanıtı tamamlanmış olmalı.
-- Production domaininin DNS A/AAAA kaydı hedef VPS'yi göstermeli; dışarıdan `80/443` erişimi ve kalıcı Caddy data volume'u doğrulanmalı. Production edge public ACME sertifikası ve HTTP→HTTPS yönlendirmesi kullanır; `tls internal` yalnız PILOT_LOCAL içindir.
+- Hedef Ubuntu Server 24.04 LTS üzerinde doğrudan Linux/amd64 Docker Engine, exact Compose v2.40.2, systemd reboot, kalıcı volume ve restore kanıtı tamamlanmış olmalı.
+- Production domaininin DNS A/AAAA kaydı hedef Ubuntu sunucuyu göstermeli; dışarıdan yalnız `80/443` erişimi ve kalıcı Caddy data volume'u doğrulanmalı. Production edge public ACME sertifikası ve HTTP→HTTPS yönlendirmesi kullanır; `tls internal` yalnız PILOT_LOCAL içindir.
 - `MARKETPLACEHUB_APP_IMAGE` ve `MARKETPLACEHUB_EDGE_IMAGE` registry tag değil `name@sha256:...` olmalı.
 - Production site address HTTPS olmalı; yalnız Caddy host `80/443` açmalı.
 - Data Protection PFX ve parolası read-only secret olarak mount edilmeli; yoksa uygulama fail-closed olmalı.

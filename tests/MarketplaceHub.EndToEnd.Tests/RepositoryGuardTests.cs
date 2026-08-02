@@ -48,30 +48,42 @@ public sealed class RepositoryGuardTests
     }
 
     [Fact]
-    public void Vps_transfer_scripts_are_fail_closed_and_do_not_delete_volumes()
+    public void Ubuntu_transfer_scripts_are_fail_closed_and_do_not_delete_volumes()
     {
         var root = FindRoot();
-        var initializer = File.ReadAllText(Path.Combine(root, "deploy", "scripts", "Initialize-VpsDeployment.ps1"));
-        var deployment = File.ReadAllText(Path.Combine(root, "deploy", "scripts", "Invoke-VpsDeployment.ps1"));
-        var installer = File.ReadAllText(Path.Combine(root, "deploy", "scripts", "Install-MarketplaceHub.ps1"));
-        var runbook = File.ReadAllText(Path.Combine(root, "docs", "runbooks", "vps-transfer.md"));
+        var initializer = File.ReadAllText(Path.Combine(root, "deploy", "scripts", "initialize-deployment.sh"));
+        var deployment = File.ReadAllText(Path.Combine(root, "deploy", "scripts", "deploy.sh"));
+        var installer = File.ReadAllText(Path.Combine(root, "deploy", "scripts", "install-marketplacehub.sh"));
+        var runbook = File.ReadAllText(Path.Combine(root, "docs", "runbooks", "ubuntu-server-deployment.md"));
 
         Assert.Contains("@sha256:[0-9a-f]{64}", initializer, StringComparison.Ordinal);
-        Assert.Contains("never overwrites or rotates existing secrets", initializer, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("will not overwrite", initializer, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("config --quiet", deployment, StringComparison.Ordinal);
         Assert.Contains("pull postgres migrate api worker caddy", deployment, StringComparison.Ordinal);
         Assert.Contains("Bootstrap__Enabled=true", deployment, StringComparison.Ordinal);
-        Assert.Contains("GenerateDataProtectionCertificate", installer, StringComparison.Ordinal);
-        Assert.Contains("docker-compose-windows-x86_64.exe", installer, StringComparison.Ordinal);
-        Assert.Contains("1f7f20b91e0564147dc58b3a58a22a8f64a787e060ce3c25789f408beacc0c4d", installer, StringComparison.Ordinal);
+        Assert.Contains("Ubuntu Server 24.04 LTS", installer, StringComparison.Ordinal);
+        Assert.Contains("docker-compose-linux-x86_64", installer, StringComparison.Ordinal);
+        Assert.Contains("6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88", installer, StringComparison.Ordinal);
         Assert.Contains("linux/amd64", installer, StringComparison.Ordinal);
-        Assert.Contains("-ValidateOnly", runbook, StringComparison.Ordinal);
+        Assert.Contains("systemctl is-enabled --quiet docker", installer, StringComparison.Ordinal);
+        Assert.Contains("systemctl is-active --quiet docker", installer, StringComparison.Ordinal);
+        Assert.Contains("--deploy --bootstrap", runbook, StringComparison.Ordinal);
+        var specification = Path.Combine(root, "Ravencia_Entegrasyon_v3_3_Nihai_Uygulama_Surumu.pdf");
+        Assert.True(File.Exists(specification));
+        Assert.Equal("AB7E5D26497EDC6D24E8CE0E7111CF44BB782819CD047C93DCBEE7E401BE3F94", Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(specification))));
+        Assert.True(File.Exists(Path.Combine(root, "docs", "adr", "ADR-012-ubuntu-server-container-runtime.md")));
+        Assert.False(File.Exists(Path.Combine(root, "deploy", "scripts", "Install-MarketplaceHub.ps1")));
+        Assert.False(File.Exists(Path.Combine(root, "deploy", "scripts", "Initialize-VpsDeployment.ps1")));
+        Assert.False(File.Exists(Path.Combine(root, "deploy", "scripts", "Invoke-VpsDeployment.ps1")));
+        Assert.False(File.Exists(Path.Combine(root, "docs", "runbooks", "vps-transfer.md")));
         Assert.DoesNotContain("down -v", initializer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("down -v", deployment, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("down -v", installer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(":latest", initializer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(":latest", deployment, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(":latest", installer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("WSL", installer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Docker Desktop", installer, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }

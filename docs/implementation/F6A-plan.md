@@ -8,7 +8,7 @@
 | Plan durumu | `APPROVED` (2026-08-02) |
 | Uygulama durumu | `READY_LOCAL_FAIL_CLOSED / BLOCKED_EXTERNAL / BLOCKED_PHASE_GATE` |
 | Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 12, 42-47, 51-58, 60, 64-65, 67-70 ve 72-73 |
-| Yetkili şartname SHA-256 | `E98365DC34804A478D5DBB41E1997FB6742FD0723A76C08CEE138321F0E2ECA3` |
+| Yetkili şartname SHA-256 | v3.3 `AB7E5D26497EDC6D24E8CE0E7111CF44BB782819CD047C93DCBEE7E401BE3F94` |
 | Zorunlu sıra | `F6A Hepsiburada → F6B N11 → F6C Pazarama`; aynı anda uygulanmaz veya ilk kez canlıya alınmaz |
 | Önceki platform kapısı | F5 yerel çekirdeği `8bc29f3`; development-store production reconciliation/rollback kanıtı henüz `BLOCKED_EXTERNAL` |
 | Hedef sonuç | Mevcut generic portları kullanan, Hepsiburada’ya özel sözleşmeleri yalnız Infrastructure adapter sınırında tutan, SIT odaklı ve bütün dış yazmaları kapalı başlayan F6A yerel çekirdeği |

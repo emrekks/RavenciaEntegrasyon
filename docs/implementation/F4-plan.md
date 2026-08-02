@@ -8,7 +8,7 @@
 | Plan durumu | `APPROVED` |
 | Uygulama durumu | `READY_LOCAL_CORE / BLOCKED_EXTERNAL` |
 | Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 5, 9-10, 22-23, 25, 29, 38, 42-46, 51-52, 57-58, 60, 63-64, 67, 70 ve 72-73 |
-| Yetkili şartname SHA-256 | `E98365DC34804A478D5DBB41E1997FB6742FD0723A76C08CEE138321F0E2ECA3` |
+| Yetkili şartname SHA-256 | v3.3 `AB7E5D26497EDC6D24E8CE0E7111CF44BB782819CD047C93DCBEE7E401BE3F94` |
 | Ön koşul | F3 yerel çekirdek commit’i `5ba830d`; gerçek Stage/SIT kanıtları açık dış blocker olarak kayıtlı |
 | Hedef sonuç | Yerel domain/persistence/fake-contract uygulaması `READY_LOCAL_CORE`; test firma, mali karar ve dış erişim gelene kadar gerçek submit/delivery `BLOCKED_EXTERNAL` |
 
@@ -43,7 +43,7 @@ Bu plan kullanıcı tarafından onaylandı ve F4 yerel çekirdeği uygulandı. F
 - `Order` mali ve adres snapshot’larını; `FileAsset`, `OperationalIssue`, `FeatureFlag`, `IntegrationJob` ve dış etki idempotency altyapısı mevcut fazlardan taşır.
 - Plan hazırlanırken invoice aggregate’ı, billing tabloları, F4 portları, E-Faturam adapter’ı, F4 endpoint/UI ve F4 migration yoktu; onay sonrası bu yerel çekirdek oluşturuldu.
 - `AUTO_INVOICE_ENABLED` katalog/runbook düzeyinde `false`; gerçek E-Faturam credential/test firma ve mali müşavir kararı yoktur.
-- VPS/domain yokluğu domain, migration, fake/contract ve yerel UI geliştirmesini engellemez; public belge linki ve gerçek delivery/SIT kanıtını engeller.
+- Ubuntu sunucu/domain yokluğu domain, migration, fake/contract ve yerel UI geliştirmesini engellemez; public belge linki ve gerçek delivery/SIT kanıtını engeller.
 
 ## Gereksinim matrisi
 
@@ -196,7 +196,7 @@ Provider raw status kodları ve request enum’ları adapter contract/fixture i�
 | `BLOCK-F4-003` | Legal entity mali profilinin doğrulanmış girdileri sağlanmadı. | Şemasal model + masked validation; gerçek belge yok | Gerçek submit için evet |
 | `BLOCK-F4-004` | Rounding, trigger, package scope, due başlangıcı/süresi, cancel/adjustment policy’si mali müşavirce onaylanmadı. | Auto-submit false; manuel mali issue | Otomatik mali işlem için evet |
 | `BLOCK-F4-005` | KVKK/mali retention ve belge erişim politikası kesinleşmedi. | Minimum veri, private/immutable, hard-delete yok | Production yaşam döngüsü için evet |
-| `BLOCK-F4-006` | VPS/domain/public HTTPS yok. | Yerel private document; link delivery kapalı | Link delivery/SIT için evet |
+| `BLOCK-F4-006` | Ubuntu sunucu/domain/public HTTPS yok. | Yerel private document; link delivery kapalı | Link delivery/SIT için evet |
 | `BLOCK-F4-007` | Trendyol Stage package/test order ve invoice-delivery capability kanıtı yok. | Fixture; `InvoiceDeliver=UNKNOWN` | Delivery SIT için evet |
 
 ## Riskler
@@ -234,4 +234,4 @@ Provider raw status kodları ve request enum’ları adapter contract/fixture i�
 
 ## Plan sonucu ve uygulama kapısı
 
-Plan onaylanmış ve yerel domain/persistence/contract/API/UI çekirdeği `READY_LOCAL_CORE` durumuna getirilmiştir. Gerçek provider HTTP çağrıları yalnız resmî sözleşme + test firma/fixture kanıtı kadar açılır. Test firma, mali/KVKK kararları, VPS/domain, backup/restore ve Stage package verisi nedeniyle gerçek submit/delivery ve F4 faz çıkışı `BLOCKED_EXTERNAL` kalır. F5 açılmamıştır.
+Plan onaylanmış ve yerel domain/persistence/contract/API/UI çekirdeği `READY_LOCAL_CORE` durumuna getirilmiştir. Gerçek provider HTTP çağrıları yalnız resmî sözleşme + test firma/fixture kanıtı kadar açılır. Test firma, mali/KVKK kararları, Ubuntu sunucu/domain, backup/restore ve Stage package verisi nedeniyle gerçek submit/delivery ve F4 faz çıkışı `BLOCKED_EXTERNAL` kalır. F5 açılmamıştır.

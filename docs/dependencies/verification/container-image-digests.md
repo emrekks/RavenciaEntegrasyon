@@ -1,6 +1,6 @@
 # F0 Container Image Digest Kanıtı
 
-Doğrulama tarihi: 2026-07-31. Aşağıdaki SHA-256 değerleri resmî registry manifest endpoint'lerinden `Docker-Content-Digest` başlığıyla okunmuş multi-platform image index digest'leridir. Tag değişse bile index digest immutable pin sağlar. Hedef VPS kiralandığında platforma özgü child manifest digest'i ayrıca kaydedilecektir.
+Doğrulama tarihi: 2026-07-31. Aşağıdaki SHA-256 değerleri resmî registry manifest endpoint'lerinden `Docker-Content-Digest` başlığıyla okunmuş multi-platform image index digest'leridir. Tag değişse bile index digest immutable pin sağlar. Hedef Ubuntu Server kiralandığında Linux/amd64 child manifest digest'i ayrıca kaydedilecektir.
 
 | Rol | Exact tag | Multi-platform index digest | Resmî registry kaynağı | Durum |
 | --- | --- | --- | --- | --- |
@@ -22,9 +22,9 @@ Kaynak: <https://github.com/docker/compose/releases/download/v2.40.2/checksums.t
 | `docker-compose-linux-x86_64` | `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88` |
 | `docker-compose-linux-aarch64` | `20e30dda8d0133895b7991bcfec1eb2c02f9d38c8de9e73669daf9fb83df49e6` |
 
-Yerel Windows x86_64 ön doğrulaması için `docker-compose-windows-x86_64.exe` seçilmiş, kayıtlı SHA-256 eşleşmesi doğrulanmış ve `C:\Users\emrek\AppData\Local\Ravencia\tools\docker-compose-v2.40.2.exe` konumuna kurulmuştur. Docker Desktop'ın bundled `v5.3.1` binary'si şartname kanıtı olarak kullanılmaz. Hedef mimari henüz bilinmediğinden runbook, kiralanan VPS'te kullanılan artefaktı bu resmî checksum'lardan biriyle ayrıca eşleştirecektir.
+Yerel Windows x86_64 ön doğrulaması tarihsel F0 kanıtı olarak korunur. v3.3 hedefi Ubuntu Server 24.04 LTS x86_64 olduğundan production installer yalnız `docker-compose-linux-x86_64` artefaktını ve `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88` SHA-256 değerini kabul eder. Hedefte exact `v2.40.2` seçim ve engine bağlantısı ayrıca kanıtlanacaktır.
 
-Yerel runtime kanıtında Caddy `2.11.3` ve PostgreSQL `18.4` index digest'leri Linux/amd64 Docker engine üzerinde başarıyla çekilip çalıştırılmıştır. Platform-specific target child digest'i VPS kiralandığında ayrıca kaydedilecektir.
+Yerel runtime kanıtında Caddy `2.11.3` ve PostgreSQL `18.4` index digest'leri Linux/amd64 Docker engine üzerinde başarıyla çekilip çalıştırılmıştır. Platform-specific target child digest'i Ubuntu sunucu kiralandığında ayrıca kaydedilecektir.
 
 ## F1 yerel application image kayıtları
 
@@ -37,6 +37,6 @@ Bu ID'ler yerel ve içerik adreslidir; registry-pushed production digest'i deği
 
 ## Sınırlar
 
-- Bu kayıt image pull veya Windows VPS runtime testi değildir.
+- Bu kayıt image pull veya Ubuntu Server runtime testi değildir.
 - API/Worker application image digest'i production image build edilmeden oluşamaz ve F1 release kanıtıdır; F0'da base image index'i pinlenmiştir.
 - Backup service `PILOT_LOCAL` profilde PostgreSQL araçları ve uygulama backup akışıyla tanımlanacaktır; ayrı, doğrulanmamış restic image seçilmemiştir.
