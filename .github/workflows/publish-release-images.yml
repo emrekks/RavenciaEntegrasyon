@@ -34,6 +34,11 @@ jobs:
           node-version: 24.18.1
           package-manager-cache: false
 
+      - name: Install locked web dependencies
+        shell: bash
+        working-directory: src/MarketplaceHub.Web
+        run: npm ci --ignore-scripts
+
       - name: Verify locked .NET solution
         shell: bash
         run: |
@@ -48,7 +53,6 @@ jobs:
         working-directory: src/MarketplaceHub.Web
         run: |
           set -euo pipefail
-          npm ci --ignore-scripts
           npm run typecheck
           npm test -- --run
           npm run build
