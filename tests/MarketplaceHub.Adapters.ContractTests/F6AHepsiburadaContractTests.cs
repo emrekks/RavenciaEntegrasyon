@@ -1,5 +1,6 @@
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
+using MarketplaceHub.Infrastructure.Persistence;
 
 namespace MarketplaceHub.Adapters.ContractTests;
 
@@ -55,6 +56,17 @@ public sealed class F6AHepsiburadaContractTests
         var root = FindRoot(); var adapters = Path.Combine(root, "src", "MarketplaceHub.Infrastructure", "Adapters");
         Assert.False(Directory.Exists(Path.Combine(adapters, "N11")));
         Assert.False(Directory.Exists(Path.Combine(adapters, "Pazarama")));
+    }
+
+    [Theory]
+    [InlineData("TRENDYOL")]
+    [InlineData("SHOPIFY")]
+    [InlineData("HEPSIBURADA")]
+    public void Local_dry_reconciliation_accepts_only_released_platforms(string platformCode)
+    {
+        Assert.True(LocalReconciliationPolicy.Supports(platformCode));
+        Assert.False(LocalReconciliationPolicy.Supports("N11"));
+        Assert.False(LocalReconciliationPolicy.Supports("PAZARAMA"));
     }
 
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }

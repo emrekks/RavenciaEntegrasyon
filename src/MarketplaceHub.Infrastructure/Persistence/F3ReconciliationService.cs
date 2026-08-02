@@ -13,7 +13,12 @@ public sealed class F3ReconciliationService(AppDbContext db, TimeProvider timePr
     public async Task<ServiceResult<ReconciliationRunView>> RunLocalDryAsync(Guid tenantId, Guid connectionId, string scope, CancellationToken cancellationToken)
     {
         var normalized = scope.Trim().ToUpperInvariant(); if (!Scopes.Contains(normalized)) return ServiceResult<ReconciliationRunView>.Fail("VALIDATION_FAILED", "Reconciliation scope PRODUCT_LISTING, ORDER_PACKAGE_RETURN veya ALL_LOCAL olmalıdır.", 422);
-        if (!await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken)) return NotFound();
+        var connection = await db.PlatformConnections
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => new { x.PlatformCode })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (connection is null || !LocalReconciliationPolicy.Supports(connection.PlatformCode)) return NotFound();
         var now = timeProvider.GetUtcNow(); var run = new ReconciliationRun { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, Scope = normalized, Status = "RUNNING_LOCAL_DRY", StartedAt = now }; db.ReconciliationRuns.Add(run); var differences = new List<ReconciliationDifference>(); var compared = 0;
         if (normalized is "PRODUCT_LISTING" or "ALL_LOCAL")
         {

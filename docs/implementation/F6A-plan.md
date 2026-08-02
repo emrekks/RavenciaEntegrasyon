@@ -69,7 +69,7 @@ Bu belge yalnız F6A planıdır. Kullanıcı uygulama onayıyla Hepsiburada fail
 | `F6A-REQ-011` | s.43, 51-54, 65 | Auth expiry, 429, 5xx, timeout, validation ve business conflict ayrıdır. | Error mapper matrix | Adapter error mapping | Tarihli gerçek response | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
 | `F6A-REQ-012` | s.51-54, 65, 67 | Credential encrypted/masked; secret/PII log/API/fixture/manifest’e sızmaz. | Secret/PII scan | Security/adapter | Credential türü kararı | PLANNED |
 | `F6A-REQ-013` | s.43, 55-58, 65 | Global + connection + capability + business-authority kapıları olmadan write job/HTTP yoktur. | No-HTTP/kill-switch testleri | Existing controls | Safe-write onayı | DONE_LOCAL_FAIL_CLOSED |
-| `F6A-REQ-014` | s.43, 58, 65 | Read-only reconciliation ve rollback runbook’u açıklanmıştır. | Local dry-run + runbook review | Reconciliation/README | Önceki platform prod kanıtı | BLOCKED_PHASE_GATE |
+| `F6A-REQ-014` | s.43, 58, 65 | Read-only reconciliation ve rollback runbook’u açıklanmıştır. | Local dry-run + runbook review | Reconciliation/README | Önceki platform prod kanıtı | PARTIAL_LOCAL / BLOCKED_PHASE_GATE |
 | `F6A-REQ-015` | s.39-41, 65 | Mevcut integrations UI loading/empty/error/UNKNOWN gösterir; yalnız kanıtlı action görünür. | Component/a11y/route guard | Existing Web surface | Stitch F6 referansı yok | DONE_BUILD |
 | `F6A-REQ-016` | s.65, 67-70 | SIT safe-write ve kullanıcı onaylı düşük adet smoke audit/correlation/rollback ile yapılır. | E2E evidence log | Runbook/evidence | Test hesabı + işlem bazlı onay | BLOCKED_EXTERNAL |
 
