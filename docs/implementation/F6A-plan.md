@@ -5,15 +5,15 @@
 | Alan | Değer |
 | --- | --- |
 | Faz | `F6A` |
-| Plan durumu | `READY_FOR_APPROVAL` |
-| Uygulama durumu | `NOT_STARTED` |
+| Plan durumu | `APPROVED` (2026-08-02) |
+| Uygulama durumu | `READY_LOCAL_FAIL_CLOSED / BLOCKED_EXTERNAL / BLOCKED_PHASE_GATE` |
 | Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 12, 42-47, 51-58, 60, 64-65, 67-70 ve 72-73 |
 | Yetkili şartname SHA-256 | `E98365DC34804A478D5DBB41E1997FB6742FD0723A76C08CEE138321F0E2ECA3` |
 | Zorunlu sıra | `F6A Hepsiburada → F6B N11 → F6C Pazarama`; aynı anda uygulanmaz veya ilk kez canlıya alınmaz |
 | Önceki platform kapısı | F5 yerel çekirdeği `8bc29f3`; development-store production reconciliation/rollback kanıtı henüz `BLOCKED_EXTERNAL` |
 | Hedef sonuç | Mevcut generic portları kullanan, Hepsiburada’ya özel sözleşmeleri yalnız Infrastructure adapter sınırında tutan, SIT odaklı ve bütün dış yazmaları kapalı başlayan F6A yerel çekirdeği |
 
-Bu belge yalnız F6A planıdır. Kullanıcı ayrıca uygulama onayı vermeden Hepsiburada production kodu, worker dispatch, route, menü, migration veya placeholder oluşturulmaz. F6B N11, F6C Pazarama ve F7+ açılmamıştır.
+Bu belge yalnız F6A planıdır. Kullanıcı uygulama onayıyla Hepsiburada fail-closed yerel çekirdeği oluşturulmuştur; partner kanıtı olmadan HTTP/credential/mapping genişletilmez. F6B N11, F6C Pazarama ve F7+ açılmamıştır.
 
 ## Yetkili faz yorumu
 
@@ -56,8 +56,8 @@ Bu belge yalnız F6A planıdır. Kullanıcı ayrıca uygulama onayı vermeden He
 
 | Kimlik | Kaynak | Kabul ölçütü | Planlanan kanıt | Gelecek dosya/alan | Dış bağımlılık | Durum |
 | --- | --- | --- | --- | --- | --- | --- |
-| `F6A-REQ-001` | s.60, 64-65 | Yalnız F6A açılır; F6B/F6C yüzeyi yoktur. | Repository guard | Plan/guard | Kullanıcı uygulama onayı | PLANNED |
-| `F6A-REQ-002` | s.42-45, 65, 73 | Current partner docs, auth modeli, environment, merchant scope ve version tarihli kaydedilir. | Source snapshot + SIT connection | Adapter README/capability matrix | Partner hesabı ve SIT credential | BLOCKED_EXTERNAL |
+| `F6A-REQ-001` | s.60, 64-65 | Yalnız F6A açılır; F6B/F6C yüzeyi yoktur. | Repository guard | Plan/guard | Kullanıcı uygulama onayı | DONE_LOCAL |
+| `F6A-REQ-002` | s.42-45, 65, 73 | Current partner docs, auth modeli, environment, merchant scope ve version tarihli kaydedilir. | Source snapshot + SIT connection | Adapter README/capability matrix | Partner hesabı ve SIT credential | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
 | `F6A-REQ-003` | s.42-44, 65 | Reference/category/attribute/brand verisi generic reference porttan geçer; mapping scope/version taşır. | Anonim fixture contract testi | Adapter mapping | SIT reference payload | PLANNED / BLOCKED_EXTERNAL |
 | `F6A-REQ-004` | s.21-22, 42-44, 65 | Product/variant/media ile listing/offer ayrıdır; async tracking sonucu idempotent işlenir. | Upload/task/partial fixture testleri | Product port + mapper | SIT katalog ürünü | PLANNED / BLOCKED_EXTERNAL |
 | `F6A-REQ-005` | s.24-25, 42-44, 65 | Price ve stock ayrı yetenek/otorite; partial satır sonucu sessiz başarı değildir. | Mixed-result/no-write testleri | InventoryPrice port | Listing/offer SIT fixture | PLANNED / BLOCKED_EXTERNAL |
@@ -66,11 +66,11 @@ Bu belge yalnız F6A planıdır. Kullanıcı ayrıca uygulama onayı vermeden He
 | `F6A-REQ-008` | s.27-28, 43-44, 65 | Return/claim read ve action ayrı capability’dir; karar enum’u kanıtsız kodlanmaz. | Read/action fail-closed testleri | Return port | SIT claim fixture ve otorite | PLANNED / BLOCKED_EXTERNAL |
 | `F6A-REQ-009` | s.30-31, 43, 65 | Polling/webhook duplicate ve out-of-order aynı Inbox/state hattında güvenlidir. | Auth/raw-body/dedupe testleri | Webhook verifier/job | Public SIT callback/credential | PLANNED / BLOCKED_EXTERNAL |
 | `F6A-REQ-010` | s.31-33, 43-44, 65 | Async task/batch/polling retry aynı dış etkiyi tekrar üretmez; reconciliation açıklanabilirdir. | Worker-kill/retry/checkpoint testi | Job/cursor/reconciliation | SIT task result fixture | PLANNED |
-| `F6A-REQ-011` | s.43, 51-54, 65 | Auth expiry, 429, 5xx, timeout, validation ve business conflict ayrıdır. | Error mapper matrix | Adapter error mapping | Tarihli gerçek response | PLANNED / BLOCKED_EXTERNAL |
+| `F6A-REQ-011` | s.43, 51-54, 65 | Auth expiry, 429, 5xx, timeout, validation ve business conflict ayrıdır. | Error mapper matrix | Adapter error mapping | Tarihli gerçek response | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
 | `F6A-REQ-012` | s.51-54, 65, 67 | Credential encrypted/masked; secret/PII log/API/fixture/manifest’e sızmaz. | Secret/PII scan | Security/adapter | Credential türü kararı | PLANNED |
-| `F6A-REQ-013` | s.43, 55-58, 65 | Global + connection + capability + business-authority kapıları olmadan write job/HTTP yoktur. | No-HTTP/kill-switch testleri | Existing controls | Safe-write onayı | PLANNED |
+| `F6A-REQ-013` | s.43, 55-58, 65 | Global + connection + capability + business-authority kapıları olmadan write job/HTTP yoktur. | No-HTTP/kill-switch testleri | Existing controls | Safe-write onayı | DONE_LOCAL_FAIL_CLOSED |
 | `F6A-REQ-014` | s.43, 58, 65 | Read-only reconciliation ve rollback runbook’u açıklanmıştır. | Local dry-run + runbook review | Reconciliation/README | Önceki platform prod kanıtı | BLOCKED_PHASE_GATE |
-| `F6A-REQ-015` | s.39-41, 65 | Mevcut integrations UI loading/empty/error/UNKNOWN gösterir; yalnız kanıtlı action görünür. | Component/a11y/route guard | Existing Web surface | Stitch F6 referansı yok | PLANNED |
+| `F6A-REQ-015` | s.39-41, 65 | Mevcut integrations UI loading/empty/error/UNKNOWN gösterir; yalnız kanıtlı action görünür. | Component/a11y/route guard | Existing Web surface | Stitch F6 referansı yok | DONE_BUILD |
 | `F6A-REQ-016` | s.65, 67-70 | SIT safe-write ve kullanıcı onaylı düşük adet smoke audit/correlation/rollback ile yapılır. | E2E evidence log | Runbook/evidence | Test hesabı + işlem bazlı onay | BLOCKED_EXTERNAL |
 
 ## Resmî kaynak doğrulaması
@@ -162,8 +162,8 @@ Portal başlangıç yüzeyindeki client-credentials örneği ile marketplace gui
 
 | Kimlik | Ölçülebilir koşul | Kanıt | Plan durumu |
 | --- | --- | --- | --- |
-| `F6A-EXIT-001` | F6B/F6C yoktur; Hepsiburada adapterı generic portlar ve ayrı capability kaydı kullanır. | Boundary/repository guard | PLANNED |
-| `F6A-EXIT-002` | Contract/auth-expiry/429/5xx/timeout/validation ve partial-result testleri geçer. | Contract/resilience suite | PLANNED / BLOCKED_EXTERNAL |
+| `F6A-EXIT-001` | F6B/F6C yoktur; Hepsiburada adapterı generic portlar ve ayrı capability kaydı kullanır. | Boundary/repository guard | PASS_LOCAL |
+| `F6A-EXIT-002` | Contract/auth-expiry/429/5xx/timeout/validation ve partial-result testleri geçer. | Contract/resilience suite | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
 | `F6A-EXIT-003` | Duplicate/out-of-order ve package quantity invariant güvenlidir. | Property/integration testleri | PLANNED |
 | `F6A-EXIT-004` | SIT safe-write düşük adet kullanıcı onayıyla; read-only reconciliation ve rollback kanıtlıdır. | Tarihli E2E/evidence log | BLOCKED_EXTERNAL |
 | `F6A-EXIT-005` | Önceki Shopify production reconciliation/rollback tamamdır; açıklanamayan kritik fark yoktur. | F5 production evidence | BLOCKED_PHASE_GATE |
@@ -171,6 +171,6 @@ Portal başlangıç yüzeyindeki client-credentials örneği ile marketplace gui
 
 ## Plan sonucu ve uygulama kapısı
 
-F6A planı `READY_FOR_APPROVAL` durumundadır. Repository/şartname sırası plan hazırlamaya uygundur. Fail-closed yerel adapter/fixture çekirdeği için sonuç `READY_WITH_BLOCKERS`; gerçek auth/endpoint mapping, SIT safe-write ve production çıkışı `BLOCKED_EXTERNAL`, F5 production reconciliation/rollback nedeniyle tam faz çıkışı ayrıca `BLOCKED_PHASE_GATE`dir.
+F6A planı kullanıcı tarafından 2026-08-02 tarihinde onaylandı. Endpoint/auth/payload uydurmadan generic portları uygulayan no-HTTP/no-write adapter çekirdeği, draft connection/capability kaydı ve integrations UI durumu tamamlandı: sonuç `READY_LOCAL_FAIL_CLOSED`dır. Gerçek auth/endpoint mapping, SIT safe-write ve production çıkışı `BLOCKED_EXTERNAL`, F5 production reconciliation/rollback nedeniyle tam faz çıkışı ayrıca `BLOCKED_PHASE_GATE`dir.
 
-Kullanıcı açık uygulama onayı vermeden F6A production koduna geçilmez. F6B N11 ve F6C Pazarama açılmamıştır.
+F6B N11 ve F6C Pazarama açılmamıştır. Hepsiburada partner/SIT kanıtı gelmeden fail-closed sınırın ötesinde HTTP veya credential implementasyonu yapılmaz.

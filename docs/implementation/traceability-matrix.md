@@ -97,4 +97,15 @@ F5 ayrıntılı kabul ve kanıt eşlemesi [F5-plan.md](F5-plan.md) ve [F5-eviden
 | `F5-REQ-010–014` | Raw-body HMAC, Inbox dedupe, worker dispatch, mevcut integrations UI ve no-migration reuse | HMAC testleri, source guard, Web build | DONE_LOCAL_CORE / PUBLIC_WEBHOOK BLOCKED_EXTERNAL |
 | `F5-EXIT-001–004` | F5 çıkış seti | `F5-EV-001–010` | READY_LOCAL_CORE; BLOCKED_EXTERNAL |
 
-F6 production kodu, route, menü veya placeholder oluşturulmamıştır.
+## F6A uygulama izi
+
+F6A ayrıntılı kabul ve kanıt eşlemesi [F6A-plan.md](F6A-plan.md) ve [F6A-evidence-log.md](F6A-evidence-log.md) içindedir.
+
+| Aralık | Uygulama | Kanıt | Sonuç |
+| --- | --- | --- | --- |
+| `F6A-REQ-001–002` | Yalnız Hepsiburada draft bağlantısı; guide version/User-Agent/merchant scope, auth kanıtına kadar credential yok | Faz guard, connection validation | DONE_LOCAL_FAIL_CLOSED / BLOCKED_EXTERNAL |
+| `F6A-REQ-003–010` | Generic reference/product/inventory/order/return portları ve kesin no-HTTP/no-write adapter | F6A contract tests; partner fixture yok | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
+| `F6A-REQ-011–015` | HTTP hata sınıfları, capability/kill-switch ve mevcut integrations UI | Adapter tests, Web build, repository guard | DONE_LOCAL_FAIL_CLOSED |
+| `F6A-REQ-016`, `F6A-EXIT-001–006` | SIT safe-write, reconciliation, rollback ve önceki platform kapısı | Dış kanıt bekleniyor | BLOCKED_EXTERNAL / BLOCKED_PHASE_GATE |
+
+F6B N11, F6C Pazarama ve F7+ production kodu, route, menü veya placeholder oluşturulmamıştır.

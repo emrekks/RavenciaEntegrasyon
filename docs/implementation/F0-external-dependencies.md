@@ -11,7 +11,7 @@ Bu sıra değiştirilmez ve bir platformun belge/test erişimi diğerini üretim
 | Trendyol resmî dokümanı | Capability inceleme | Erişilebilir; test hesabı yok | `UNKNOWN`, write off, fake adapter | Hayır |
 | E-Faturam resmî dokümanı | Fatura capability inceleme | Erişilebilir; test firması/credential yok | `UNKNOWN`, submit off | Hayır |
 | Shopify resmî dokümanı ve development store | F5 capability/SIT | 2026-07 pinli yerel adapter çekirdeği hazır; app/auth, test store, granted scope, Location ve public HTTPS yok | `UNKNOWN`, bütün write off, anonim contract fixture | Hayır, yerel çekirdek için; evet, F5 tam çıkışı için |
-| Hepsiburada portalı | Capability inceleme | Login/erişim doğrulaması eksik | `UNKNOWN`, endpoint uydurma yok | Hayır |
+| Hepsiburada partner/SIT hesabı | F6A auth/capability/SIT | Halka açık güncel guide’lar erişilebilir; auth anlatımı çelişkili, partner credential/merchant/fixture yok | Draft connection, `UNKNOWN`, no-HTTP/no-write adapter | Hayır, yerel güvenlik çekirdeği için; evet, mapping/SIT/çıkış için |
 | N11 resmî dokümanı | Capability inceleme | Sayfa erişilebilir; test hesabı yok | `UNKNOWN`, write off | Hayır |
 | Pazarama portalı | Capability inceleme | Login gerekli | `UNKNOWN`, endpoint uydurma yok | Hayır |
 | Hedef Windows VPS | F0 runtime/volume/backup çıkışı | Kullanıcı yerel bilgisayarda başlayıp VPS'i daha sonra kiralama kararını onayladı; hedef erişim ve özellikler henüz yok | Yerelde ön doğrulama; kiralama sonrası aynı runbook hedefte yeniden çalıştırılır; öncesinde production onayı yok | Hayır, yerel geliştirme için; evet, hedef production/F0 çıkışı için |
@@ -29,3 +29,7 @@ E-Faturam entegrasyon dokümanı ve sign-in kaynağı doğrulandı; test firma/c
 ## F5 güncellemesi
 
 Shopify Admin GraphQL `2026-07` yerel adapter çekirdeği, canonical shop-domain kontrolü, şifreli token/client-secret, raw-body HMAC, Inbox dedupe ve streaming JSONL contract kanıtları tamamlandı. Development store, gerçek auth/token edinim kanıtı, granted scopes, Location GID, public HTTPS ve ürün/fulfillment otoritesi bulunmadığından bütün Shopify write işlemleri kapalı, capability’ler `UNKNOWN` kalır. Bu girdiler F5 yerel çekirdeğini durdurmaz; development-store ve production kabulünü durdurur.
+
+## F6A güncellemesi
+
+Hepsiburada generic-port adapterı, draft merchant connection/capability kaydı, route-independent hata sınıfları ve integrations UI blocker görünümü tamamlandı. Partner hesabındaki auth modeli doğrulanmadığı için credential alınmaz; gerçek payload olmadığı için endpoint, DTO, enum veya mapping üretilmez. Bütün dış read/write işlemleri no-HTTP/fail-closed’dur. F5 production reconciliation/rollback tamamlanmadan F6A production çıkışı ayrıca faz kapısında kalır.

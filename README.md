@@ -1,12 +1,13 @@
 # MarketplaceHub
 
-Ravencia MarketplaceHub, yetkili v3.2 şartnamesine göre geliştirilen modüler monolit e-ticaret yönetim sistemidir. Repository’de F1–F5 yerel çekirdekleri bulunur:
+Ravencia MarketplaceHub, yetkili v3.2 şartnamesine göre geliştirilen modüler monolit e-ticaret yönetim sistemidir. Repository’de F1–F6A yerel çekirdekleri bulunur:
 
 - F1: kimlik, güvenli oturum, tenant sınırı, job/inbox/idempotency, private file ve operasyon altyapısı.
 - F2: ürün, varyant, katalog referansları, CSV/XLSX içe aktarım, stok projection/ledger ve fiyat geçmişi.
 - F3: Trendyol V2 adapter sınırı, bağlantı/capability yönetimi, sipariş, paket, gönderi, iade, webhook ve reconciliation.
 - F4: fatura/mali belge çekirdeği, E-Faturam adapter sınırı, private belge saklama ve marketplace delivery ayrımı.
 - F5: Shopify Admin GraphQL `2026-07` adapter çekirdeği, HMAC webhook ve streaming bulk JSONL sözleşmesi.
+- F6A: Hepsiburada draft bağlantısı ve generic portları kullanan no-HTTP/no-write güvenlik çekirdeği; partner/SIT kanıtı bekleniyor.
 
 Yerel çekirdek durumu `READY_LOCAL_CORE`dır. Gerçek platform test hesapları, granted capability/scope kanıtları, hedef VPS, public HTTPS, backup/restore hedefi ve iş otoritesi kararları tamamlanmadığından production kabulü `BLOCKED_EXTERNAL`dır. Bütün dış yazma anahtarları varsayılan olarak kapalıdır.
 
@@ -47,12 +48,13 @@ Yalnız Caddy `80/443` host portlarını açar. API, Worker ve PostgreSQL intern
 
 ## Faz ve güvenlik sınırı
 
-Aktif ve onaylanmış son yerel uygulama fazı F5’tir. F6 veya sonrası platform, route, menü, migration ya da placeholder bulunmaz. Trendyol, E-Faturam ve Shopify adapter kodlarının bulunması gerçek mağaza capability’sinin kanıtlandığı anlamına gelmez:
+Aktif ve onaylanmış son yerel uygulama alt fazı F6A’dır. F6B N11, F6C Pazarama veya F7+ route, menü, migration ya da placeholder bulunmaz. Trendyol, E-Faturam, Shopify ve Hepsiburada adapter kodlarının bulunması gerçek mağaza capability’sinin kanıtlandığı anlamına gelmez:
 
 - Capability’ler bağlantı/environment/store/API-version kapsamında başta `UNKNOWN`dır.
 - Token ve secret değerleri şifreli saklanır, API/UI/log çıktısında geri gösterilmez.
 - Shopify ürün, stok, fiyat ve fulfillment yazmaları development-store kanıtları tamamlanana kadar fail-closed’dur.
+- Hepsiburada auth modeli partner hesabında doğrulanana kadar credential, bağlantı testi ve bütün dış read/write çağrıları fail-closed’dur.
 - Fatura otomasyonu mali kararlar ve test firma kanıtı olmadan kapalıdır.
 - Hedef VPS kiralanana kadar yerel sonuç production runtime/RTO kabulü sayılmaz.
 
-Güncel faz durumu [F5 planında](docs/implementation/F5-plan.md), kanıtlar [F5 evidence logunda](docs/implementation/F5-evidence-log.md), bütün faz izi ise [traceability matrixte](docs/implementation/traceability-matrix.md) tutulur.
+Güncel faz durumu [F6A planında](docs/implementation/F6A-plan.md), kanıtlar [F6A evidence logunda](docs/implementation/F6A-evidence-log.md), bütün faz izi ise [traceability matrixte](docs/implementation/traceability-matrix.md) tutulur.

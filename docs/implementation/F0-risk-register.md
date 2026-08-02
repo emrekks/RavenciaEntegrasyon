@@ -18,6 +18,9 @@
 | `RISK-F5-AUTH-001` | Shopify app/auth modeli, development store ve granted scopes henüz sağlanmadı. | Yanlış store scope veya aşırı yetkili credential | Canonical shop domain, şifreli token/secret, capability `UNKNOWN`, write off | Tarihli development-store connection/scope kanıtı | OPEN_BLOCKING_EXTERNAL |
 | `RISK-F5-WRITE-001` | Location mapping ile product/fulfillment iş otoriteleri onaylanmadı. | Yanlış stok, fiyat, yayın veya fulfillment etkisi | Tüm Shopify write portları `EXTERNAL_WRITE_DISABLED`; endpoint/mutation varsayımı yok | Anonim fixture + Location + açık safe-write onayı | OPEN_BLOCKING_EXTERNAL |
 | `RISK-F5-WEBHOOK-001` | Public HTTPS webhook adresi ve gerçek teslim kanıtı yok. | Olay kaçırma, duplicate veya spoofing | Raw HMAC, route token, Inbox dedupe ve reconciliation sınırı yerelde hazır | Public endpoint üzerinden signed duplicate/out-of-order E2E | OPEN_BLOCKING_EXTERNAL |
+| `RISK-F6A-AUTH-001` | Hepsiburada portal başlangıç ve marketplace guide auth anlatımları partner kanıtı olmadan tek sözleşme sayılamaz. | Yanlış credential/token akışı veya secret sızıntısı | Credential/test/no-HTTP fail-closed; partner servis anahtarı kanıtı beklenir | Tarihli SIT auth + merchant scope | OPEN_BLOCKING_EXTERNAL |
+| `RISK-F6A-CONTRACT-001` | Gerçek anonim reference/product/listing/order/package/return payload’ları yok. | Uydurma DTO, enum veya yanlış mapping | Generic port iskeleti no-HTTP; mapping kodlanmadı | Redacted SIT fixture + checksum | OPEN_BLOCKING_EXTERNAL |
+| `RISK-F6A-PHASE-001` | F5 production reconciliation/rollback tamamlanmadı. | Ardışık iki adapterın kanıtsız canlıya alınması | F6A production çıkışı kapalı; F6B/F6C yok | F5 production evidence | OPEN_BLOCKING_PHASE_GATE |
 
 ## Blocker özeti
 

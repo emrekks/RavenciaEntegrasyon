@@ -10,7 +10,8 @@ public sealed class AdapterBoundaryTests
         Assert.True(Directory.Exists(Path.Combine(adapterRoot, "Trendyol")));
         Assert.True(Directory.Exists(Path.Combine(adapterRoot, "TrendyolEFaturam")));
         Assert.True(Directory.Exists(Path.Combine(adapterRoot, "Shopify")));
-        Assert.DoesNotContain(Directory.GetDirectories(adapterRoot), path => Path.GetFileName(path) is not ("Trendyol" or "TrendyolEFaturam" or "Shopify"));
+        Assert.True(Directory.Exists(Path.Combine(adapterRoot, "Hepsiburada")));
+        Assert.DoesNotContain(Directory.GetDirectories(adapterRoot), path => Path.GetFileName(path) is not ("Trendyol" or "TrendyolEFaturam" or "Shopify" or "Hepsiburada"));
     }
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }
 }

@@ -3,6 +3,7 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
+using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Bootstrap;
 using MarketplaceHub.Infrastructure.Files;
 using MarketplaceHub.Infrastructure.Identity;
@@ -72,6 +73,7 @@ public static class DependencyInjection
         services.AddScoped<ShopifyAuthenticationHandler>();
         services.AddScoped<ShopifyGraphQlClient>();
         services.AddScoped<ShopifyWebhookVerifier>();
+        services.AddScoped<HepsiburadaAdapter>();
         services.AddScoped<IF3ConnectionService, F3ConnectionService>();
         services.AddScoped<IF3SalesService, F3SalesService>();
         services.AddScoped<IF3WebhookService, F3WebhookService>();

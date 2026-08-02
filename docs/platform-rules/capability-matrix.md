@@ -45,12 +45,12 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 | Shopify | Sipariş/teslimat | UNKNOWN | Webhook dokümanı erişilebilir | Yok | off |
 | Shopify | İade | UNKNOWN | Kapsam kanıtlanmadı | Yok | off |
 | Shopify | Fatura | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
-| Hepsiburada | Bağlantı | UNKNOWN | Portal yönlendirme/login nedeniyle kısmi | Yok | off |
-| Hepsiburada | Katalog referansı | UNKNOWN | Portal yönlendirme/login nedeniyle kısmi | Yok | off |
-| Hepsiburada | Ürün | UNKNOWN | Portal yönlendirme/login nedeniyle kısmi | Yok | off |
-| Hepsiburada | Stok/fiyat | UNKNOWN | Portal yönlendirme/login nedeniyle kısmi | Yok | off |
-| Hepsiburada | Sipariş/teslimat | UNKNOWN | Portal yönlendirme/login nedeniyle kısmi | Yok | off |
-| Hepsiburada | İade | UNKNOWN | Portal yönlendirme/login nedeniyle kısmi | Yok | off |
+| Hepsiburada | Bağlantı | UNKNOWN | F6A draft/no-HTTP guard hazır; partner auth ve SIT hesabı yok | Yerel fail-closed contract | off |
+| Hepsiburada | Katalog referansı | UNKNOWN | Güncel guide erişilebilir; partner fixture yok | Yerel generic port/no-HTTP | off |
+| Hepsiburada | Ürün | UNKNOWN | Async katalog guide erişilebilir; mapping fixture yok | Yerel generic port/no-write | off |
+| Hepsiburada | Stok/fiyat | UNKNOWN | Listing capability/SIT kanıtı yok | Yerel generic port/no-write | off |
+| Hepsiburada | Sipariş/teslimat | UNKNOWN | Sipariş/package guide erişilebilir; SIT fixture yok | Yerel generic port/no-write | off |
+| Hepsiburada | İade | UNKNOWN | Talep guide erişilebilir; enum/action fixture yok | Yerel generic port/no-write | off |
 | Hepsiburada | Fatura | UNKNOWN | Portal yönlendirme/login nedeniyle kısmi | Yok | off |
 | N11 | Bağlantı | UNKNOWN | Destek sayfası erişilebilir | Yok | off |
 | N11 | Katalog referansı | UNKNOWN | Sözleşme kanıtlanmadı | Yok | off |
