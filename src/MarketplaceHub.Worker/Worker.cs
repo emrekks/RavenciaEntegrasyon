@@ -1,7 +1,7 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
-using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
 
 namespace MarketplaceHub.Worker;
