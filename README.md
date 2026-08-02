@@ -1,8 +1,8 @@
 # MarketplaceHub
 
-Bağlayıcı uygulama şartnamesi [v3.3 Nihai Uygulama Sürümü](Ravencia_Entegrasyon_v3_3_Nihai_Uygulama_Surumu.pdf)'dür. v3.2 yalnız tarihsel taban olarak korunur; v3.3 Ubuntu Server hedef revizyonu dağıtım-host hükümlerinde üstündür.
+Bağlayıcı uygulama şartnamesi [v3.4 Nihai Uygulama Sürümü](Ravencia_Entegrasyon_v3_4_Nihai_Uygulama_Surumu.pdf)'dür. v3.3 ve v3.2 tarihsel taban olarak korunur; v3.4 mevcut AWS Ubuntu Server hedef revizyonu dağıtım-host hükümlerinde üstündür.
 
-Ravencia MarketplaceHub, yetkili v3.3 şartnamesine göre geliştirilen modüler monolit e-ticaret yönetim sistemidir. Repository’de F1–F6A yerel çekirdekleri bulunur:
+Ravencia MarketplaceHub, yetkili v3.4 şartnamesine göre geliştirilen modüler monolit e-ticaret yönetim sistemidir. Repository’de F1–F6A yerel çekirdekleri bulunur:
 
 - F1: kimlik, güvenli oturum, tenant sınırı, job/inbox/idempotency, private file ve operasyon altyapısı.
 - F2: ürün, varyant, katalog referansları, CSV/XLSX içe aktarım, stok projection/ledger ve fiyat geçmişi.
@@ -52,7 +52,7 @@ Ubuntu Server üzerinde etkileşimli hazırlık ve fail-closed doğrulama:
 
 ```bash
 chmod +x deploy/scripts/*.sh
-./deploy/scripts/install-marketplacehub.sh
+sudo -H ./deploy/scripts/install-marketplacehub.sh --host-only
 ```
 
 ## Faz ve güvenlik sınırı
@@ -64,7 +64,7 @@ Aktif ve onaylanmış son yerel uygulama alt fazı F6A’dır. F6B N11, F6C Paza
 - Shopify ürün, stok, fiyat ve fulfillment yazmaları development-store kanıtları tamamlanana kadar fail-closed’dur.
 - Hepsiburada auth modeli partner hesabında doğrulanana kadar credential, bağlantı testi ve bütün dış read/write çağrıları fail-closed’dur.
 - Fatura otomasyonu mali kararlar ve test firma kanıtı olmadan kapalıdır.
-- Hedef Ubuntu Server kiralanıp runtime runbook'u tamamlanana kadar yerel sonuç production runtime/RTO kabulü sayılmaz.
+- AWS Ubuntu Server host profili ve Docker Engine doğrulanmıştır; reboot/volume/restore, domain/TLS ve RTO kanıtları tamamlanana kadar sonuç production kabulü sayılmaz.
 
 Ubuntu Server kurulumu ve Stage/SIT hesap kanıtları ertelenmiş olsa da production aday imajlarını GitHub Container Registry'ye digest ile üreten manuel ve fail-closed yayın akışı repository'dedir. Bu hazırlık faz kapılarını açmaz: F6B/F6C/F7+ üretim kodu, gerçek platform write ve canlı deploy hâlâ ilgili dış kanıt ve ayrı onayları bekler.
 

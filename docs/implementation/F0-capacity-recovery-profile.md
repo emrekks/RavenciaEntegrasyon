@@ -24,7 +24,7 @@ Baz değerler işletme sahibinin 2026-07-31 tarihli beyanıdır. x5 değerleri �
 | Alan | F0 kararı | Durum |
 | --- | --- | --- |
 | `BACKUP_PROFILE` | F0 başlangıç profili `PILOT_LOCAL`; production resilient geçişi ayrı kapıdır. | SELECTED_FOR_PILOT |
-| Hedef host | Ubuntu Server 24.04 LTS x86_64; 4 vCPU, 8 GB RAM, 100–120 GB NVMe. | USER_CONFIRMED_TARGET_NOT_TESTED |
+| Hedef host | Mevcut AWS Ubuntu Server 26.04 LTS x86_64; ölçülen 2 vCPU, 8.153.141.248 byte RAM ve 80.530.636.800 byte NVMe aygıt. | HOST_PROFILE_VERIFIED_RUNTIME_PENDING |
 | PostgreSQL dump | Pilot varsayımı: 6 saatte bir, 7 günlük saklama. Yerel sentetik PostgreSQL 18.4 dump checksum'u doğrulandı. | LOCAL_TESTED_TARGET_PENDING |
 | Haftalık / aylık | Pilot varsayımı: 4 haftalık ve 3 aylık kopya. | TARGET_NOT_TESTED |
 | Private app files | Günlük yedek. | TARGET_NOT_TESTED |
@@ -37,4 +37,4 @@ Baz değerler işletme sahibinin 2026-07-31 tarihli beyanıdır. x5 değerleri �
 
 ## Çıkış kanıtı
 
-Hedef Ubuntu Server kiralandıktan sonra 4 vCPU, 8 GB RAM, 100–120 GB NVMe kapasitesi; CPU/RAM/disk/IOPS, direct Docker Engine, systemd ve volume yollarıyla birlikte kaydedilmelidir. F1+ yük testinde yukarıdaki x5 profilinin sonucu; recovery testinde dump checksum'u ve ölçülmüş restore süresi kanıtlanmalıdır. Off-host kanıtı yalnız `PRODUCTION_RESILIENT` seçilirse zorunludur.
+Mevcut AWS sunucusunda OS, mimari, 2 vCPU, 8 GB sınıfı RAM, 80 GB NVMe aygıt ve root filesystem kapasitesi ölçülmüştür. Direct Docker Engine/Compose, systemd yeniden başlatma, kalıcı volume ve restore kanıtları ayrıca tamamlanmalıdır. F1+ yük testinde yukarıdaki x5 profilinin sonucu; recovery testinde dump checksum'u ve ölçülmüş restore süresi kanıtlanmalıdır. Off-host kanıtı yalnız `PRODUCTION_RESILIENT` seçilirse zorunludur.

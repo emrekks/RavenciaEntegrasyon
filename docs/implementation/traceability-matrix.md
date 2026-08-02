@@ -14,7 +14,7 @@ Bu matris yalnız F0 dokümantasyon teslimatlarını izler. Gelecek kod ve test 
 | `F0-REQ-006` | F0 | Hacim, pik x5, RPO/RTO ve backup profili kayıtlıdır. | `F0-capacity-recovery-profile.md`; ADR-010 | Load/restore testleri F1+ | Hacim baz/x5 tamamlandı; hedef restore ve RTO bekliyor | BLOCKED_EXTERNAL |
 | `F0-REQ-007` | F0 | Environment/secret, threat, risk, kill switch ve rollback kayıtlıdır. | İlgili beş F0 belgesi; ADR-007 | Uygulama kontrolleri F1+ | Secret store ve hedef ortam | DONE |
 | `F0-REQ-008` | F0 | Fake adapter/anonim fixture standardı tanımlıdır. | `fake-adapter-fixture-standard.md` | Fixture/test uygulaması F1+ | Test hesabı fixture'ları | DONE |
-| `F0-REQ-009` | F0 | Hedef Ubuntu Server 24.04 LTS üzerinde direct Docker Engine, Linux/amd64, systemd/reboot, volume ve restore kanıtı vardır. | `ubuntu-server-runtime-validation.md`; ADR-012 | Dağıtım F1+ | Ubuntu sunucu erişimi/IP/domain | BLOCKED_EXTERNAL |
+| `F0-REQ-009` | F0 | Mevcut AWS Ubuntu Server 26.04 LTS üzerinde direct Docker Engine, Linux/amd64, systemd/reboot, volume ve restore kanıtı vardır. | `ubuntu-server-runtime-validation.md`; ADR-013 | Dağıtım F1+ | Docker/Compose, domain/DNS ve operasyon testleri | PARTIAL_HOST_VERIFIED |
 | `F0-REQ-010` | F0 | Stitch ileri tarihli, engelleyici olmayan bağımlılıktır. | `F0-external-dependencies.md` | UI uygulaması ilgili faz | Stitch dosyası | DONE |
 | `F0-REQ-011` | F0 | Exact sürüm, resmî kaynak, tarih, lock ve digest kayıtlıdır. | `verified-versions.md`; F0 verification lock/digest kanıtları | Production lock/image F1 | Hedef child digest host runbook'una bağlı | DONE_F0 |
 | `F0-VAL-001` | F0 | Her gereksinim tek faz ve ölçülebilir kabule bağlıdır. | Bu matris | Yok | Yok | DONE |

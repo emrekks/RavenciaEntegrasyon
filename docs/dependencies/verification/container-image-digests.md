@@ -22,7 +22,7 @@ Kaynak: <https://github.com/docker/compose/releases/download/v2.40.2/checksums.t
 | `docker-compose-linux-x86_64` | `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88` |
 | `docker-compose-linux-aarch64` | `20e30dda8d0133895b7991bcfec1eb2c02f9d38c8de9e73669daf9fb83df49e6` |
 
-Yerel Windows x86_64 ön doğrulaması tarihsel F0 kanıtı olarak korunur. v3.3 hedefi Ubuntu Server 24.04 LTS x86_64 olduğundan production installer yalnız `docker-compose-linux-x86_64` artefaktını ve `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88` SHA-256 değerini kabul eder. Hedefte exact `v2.40.2` seçim ve engine bağlantısı ayrıca kanıtlanacaktır.
+Yerel Windows x86_64 ön doğrulaması tarihsel F0 kanıtı olarak korunur. v3.4 hedefi AWS Ubuntu Server 26.04 LTS x86_64 olduğundan production installer yalnız `docker-compose-linux-x86_64` artefaktını ve `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88` SHA-256 değerini kabul eder. Hedefte exact `v2.40.2` seçim ve engine bağlantısı ayrıca kanıtlanacaktır.
 
 Yerel runtime kanıtında Caddy `2.11.3` ve PostgreSQL `18.4` index digest'leri Linux/amd64 Docker engine üzerinde başarıyla çekilip çalıştırılmıştır. Platform-specific target child digest'i Ubuntu sunucu kiralandığında ayrıca kaydedilecektir.
 

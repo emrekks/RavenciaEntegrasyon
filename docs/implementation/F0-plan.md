@@ -10,8 +10,8 @@
 | F0 çıkış durumu | BLOCKED |
 | Hazırlanma tarihi | 2026-07-31 |
 | Yetkili ürün / çözüm | Ravencia Entegrasyon / MarketplaceHub |
-| Yetkili şartname | Repository kökü `Ravencia_Entegrasyon_v3_3_Nihai_Uygulama_Surumu.pdf`, v3.3, 75 sayfa |
-| Şartname SHA-256 | `AB7E5D26497EDC6D24E8CE0E7111CF44BB782819CD047C93DCBEE7E401BE3F94` |
+| Yetkili şartname | Repository kökü `Ravencia_Entegrasyon_v3_4_Nihai_Uygulama_Surumu.pdf`, v3.4, 77 sayfa |
+| Şartname SHA-256 | `5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51` |
 
 Bu dosya yalnız F0 uygulamasını planlar ve gerçekleşen F0 dokümantasyon durumunu kaydeder. Kullanıcı onayı 2026-07-31 tarihinde verilmiş, F0 belgeleri oluşturulmuştur. Bu durum F0 çıkış kapısının geçildiği anlamına gelmez.
 
@@ -19,9 +19,9 @@ Bu dosya yalnız F0 uygulamasını planlar ve gerçekleşen F0 dokümantasyon du
 
 Repository kökündeki canonical şartname aşağıdaki dosyadır:
 
-`Ravencia_Entegrasyon_v3_3_Nihai_Uygulama_Surumu.pdf`
+`Ravencia_Entegrasyon_v3_4_Nihai_Uygulama_Surumu.pdf`
 
-v3.3, kullanıcı tarafından 2026-08-02 tarihinde onaylanan iki sayfalık bağlayıcı dağıtım hedefi revizyonu ile v3.2'nin değiştirilmemiş 73 sayfalık tabanını birlikte içerir. Revizyon; Windows VPS/Hyper-V/WSL2/Docker Desktop hedefini Ubuntu Server 24.04 LTS, 4 vCPU, 8 GB RAM, 100–120 GB NVMe ve doğrudan Linux container runtime ile değiştirir. Eski v3.2 PDF tarihsel kaynak olarak korunur; dağıtım hedefi konusunda v3.3 üstündür. Mimari, modül, veri, teknoloji ve faz kararları değişmemiştir.
+v3.4, kullanıcı tarafından 2026-08-02 tarihinde onaylanan iki sayfalık mevcut AWS host revizyonu ile v3.3'ün değiştirilmemiş 75 sayfalık tabanını birlikte içerir. Revizyon; Ubuntu 24.04/4 vCPU/100–120 GB hedefini ölçülen Ubuntu 26.04 LTS, 2 vCPU, 8 GB sınıfı RAM ve 80 GB NVMe sınıfı hostla değiştirir. v3.3 ve v3.2 PDF'leri tarihsel kaynak olarak korunur; dağıtım hostu konusunda v3.4 üstündür. Mimari, modül, veri, teknoloji ve faz kararları değişmemiştir.
 
 F0 sırasında kaynak önceliği aşağıdaki sırada uygulanacaktır:
 
@@ -47,7 +47,7 @@ F0 aşağıdaki sonuçları hedefler:
 - Gerçek hacim ile pik x5 kapasite profilini, RPO/RTO'yu, `BACKUP_PROFILE` değerini ve off-host hedefini belirlemek.
 - Environment/secret kataloğunu, threat modelini, risk kaydını, kill switch'leri ve rollback yaklaşımını tanımlamak.
 - Fake adapter ve secret/PII içermeyen anonim fixture standardını hazırlamak.
-- Hedef Ubuntu Server 24.04 LTS üzerinde doğrudan Docker Engine, systemd restart, volume ve backup uygulanabilirliğini kanıtlamak.
+- Hedef AWS Ubuntu Server 26.04 LTS üzerinde doğrudan Docker Engine, systemd restart, volume ve backup uygulanabilirliğini kanıtlamak.
 - Stitch arayüz dosyasını ileri tarihli ve engelleyici olmayan UI bağımlılığı olarak kaydetmek.
 - Exact teknoloji sürümlerini, resmi kaynaklarını, destek/EOL durumlarını, digest ve lock kanıtlarını kaydetmek.
 
@@ -77,8 +77,8 @@ F0 boyunca aşağıdakiler oluşturulmaz veya değiştirilmez:
 | Git dalı | F0 başlangıcında `master`; güncel ana dal `main` |
 | Commit sayısı | F0 başlangıcında 3 F0 commit'i; sonraki onaylı fazlarla tarihçe ilerledi |
 | Git remote | F0 başlangıcında yoktu; güncel `origin` GitHub repository'sidir |
-| Çalışma ağacı | F0 belgeleri, v3.2 tarihsel PDF ve v3.3 canonical PDF tracked; onaylı F1–F6A yerel çekirdekleri vardır |
-| Canonical kök PDF | v3.3 mevcut; 75 sayfa; SHA-256 şartname kaydıyla eşit |
+| Çalışma ağacı | F0 belgeleri, v3.2/v3.3 tarihsel PDF'ler ve v3.4 canonical PDF tracked; onaylı F1–F6A yerel çekirdekleri vardır |
+| Canonical kök PDF | v3.4 mevcut; 77 sayfa; SHA-256 şartname kaydıyla eşit |
 | `MarketplaceHub.sln` ve proje yapısı | F1 ve sonraki onaylı fazlarda oluşturuldu; şartnamedeki modüler monolit sınırı korunur |
 | `global.json`, central package ve lock dosyaları | F1 ile oluşturuldu ve exact sürüm zincirinde tutulur |
 | F0 verification lock/digest dosyaları | Mevcut; production Compose/Dockerfile ve immutable release akışı sonraki onaylı fazlarda eklendi |
@@ -101,7 +101,7 @@ Boş repository F0 dokümantasyonunun başlatılmasına engel değildir. Şartna
 | psql | Bulunamadı | PostgreSQL 18 yerel istemci/runtime kanıtı yok |
 | WSL | `2.7.11.0`; kernel `6.18.33.2-2`; varsayılan sürüm `2` | Windows restart sonrası çalıştığı ve Docker Linux engine'i taşıdığı doğrulandı |
 
-Kullanıcı 2026-07-31 tarihinde yerel-makine-önce akışını, 2026-08-02 tarihinde ise hedef sunucunun Ubuntu Server 24.04 LTS, 4 vCPU, 8 GB RAM ve 100–120 GB NVMe olmasını onayladı. Yerel Windows/WSL/Docker sonuçları tarihsel ön kanıttır. Taşınabilir Linux/amd64 artefaktları kiralanacak Ubuntu sunucuya aktarılacaktır; hedefte doğrudan Docker Engine, systemd, reboot, volume ve restore kanıtı üretilmeden production onayı verilmez.
+Kullanıcı 2026-07-31 tarihinde yerel-makine-önce akışını, 2026-08-02 tarihinde ise mevcut AWS hostunun Ubuntu Server 26.04 LTS, 2 vCPU, 8 GB sınıfı RAM ve 80 GB NVMe sınıfıyla bağlayıcı hedef olmasını onayladı. SSH üzerinden OS/mimari/CPU/RAM/disk ve repository ölçümü tamamlandı. Hedefte Docker Engine/Compose, reboot, volume, restore ve x5 kapasite kanıtı üretilmeden production onayı verilmez.
 
 ## Gereksinim kimlikleri ve izlenebilirlik
 
@@ -117,7 +117,7 @@ Kullanıcı 2026-07-31 tarihinde yerel-makine-önce akışını, 2026-08-02 tari
 | `F0-REQ-006` | F0 Teslimatlar; Yedekleme Profili Kararı; Tablo 48 | Gerçek hacim ve pik x5 profilinin yanı sıra RPO/RTO, `BACKUP_PROFILE` ve varsa off-host hedef kayıtlıdır. | `docs/implementation/F0-capacity-recovery-profile.md`; risk ve restore kanıtı | Hacim baz/x5 tamamlandı; hedef disk/volume ve restore-RTO bekliyor | BLOCKED_EXTERNAL |
 | `F0-REQ-007` | Güvenlik, Dağıtım ve Operasyon; F0 Teslimatlar | Environment/secret kataloğu, threat model, risk kaydı, global/platform kill switch başlangıçta kapalı davranışı ve rollback yaklaşımı yazılıdır. | `docs/implementation/F0-environment-secret-catalog.md`; `F0-threat-model.md`; `F0-risk-register.md`; `F0-operational-controls.md` | Hedef ortam ve backup tercihi | DONE; ortam kanıtı açık |
 | `F0-REQ-008` | F0 Teslimatlar; Test Verisi ve Fixture Kuralları | Fake adapter standardı deterministik senaryoları tanımlar; fixture secret veya doğrudan PII içermez, kaynak/checksum ve doğruladığı mapping kaydedilir. | `docs/platform-rules/fake-adapter-fixture-standard.md`; fixture tarama kanıtı | Anonim platform fixture'ları ileri adaptör fazlarında gerekir | DONE; fixture uygulaması F1+ |
-| `F0-REQ-009` | Docker Runtime Önkoşulu; v3.3 dağıtım revizyonu | Hedef Ubuntu Server 24.04 LTS x86_64 üzerinde doğrudan Docker Engine Linux/amd64, exact Compose v2.40.2, systemd otomatik restart, disk/volume kalıcılığı ve backup hedefi doğrulanır. | `docs/runbooks/ubuntu-server-runtime-validation.md`; komut çıktısı ve reboot/volume/restore kanıtı | Hedef Ubuntu sunucu erişimi, statik IP/domain ve sağlayıcı bilgisi | BLOCKED_EXTERNAL |
+| `F0-REQ-009` | Docker Runtime Önkoşulu; v3.4 dağıtım revizyonu | Hedef AWS Ubuntu Server 26.04 LTS x86_64 üzerinde doğrudan Docker Engine Linux/amd64, exact Compose v2.40.2, systemd otomatik restart, disk/volume kalıcılığı ve backup hedefi doğrulanır. | `docs/runbooks/ubuntu-server-runtime-validation.md`; komut çıktısı ve reboot/volume/restore kanıtı | Domain/DNS, image digest ve operasyon kanıtı | PARTIAL_TARGET / BLOCKED_EXTERNAL |
 | `F0-REQ-010` | F0 Teslimatlar; Tablo 48 | Stitch dosyası planlı, ileri tarihli ve markalı görsel fidelity bağımlılığı olarak kaydedilir; yokluğu F1'in işlevsel yerel geliştirmesini engellemez. | `docs/implementation/F0-external-dependencies.md` | Stitch dosyası daha sonra | DONE; engelleyici değil |
 | `F0-REQ-011` | Teknoloji ve Sürüm Sözleşmesi; F0 Teslimatlar | Her bileşen için hedef major/minor, seçilen exact sürüm, resmi URL, tarih, destek/EOL, uyumluluk, digest veya N/A gerekçesi ve lock konumu bulunur; floating/latest kullanılmaz. | `docs/dependencies/verified-versions.md`; F0 verification lock, registry index digest ve Compose checksum kanıtı | Production aktarımı F1; host child digest'i runtime runbook'unda | DONE_F0 |
 
@@ -179,7 +179,7 @@ Bu görevde başka dosya oluşturulmaz veya değiştirilmez.
 | `docs/adr/ADR-006-business-authorities-safe-defaults.md` | Bağlayıcı iş otoriteleri ve güvenli varsayılanlar |
 | `docs/adr/ADR-007-identity-and-secret-security.md` | Bootstrap, identity, TOTP, credential ve Data Protection kararları |
 | `docs/adr/ADR-008-private-file-storage.md` | Yerel private volume, `IFileStorage` ve tenant kapsamlı yollar |
-| `docs/adr/ADR-012-ubuntu-server-container-runtime.md` | v3.3 uyarınca Ubuntu Server üzerinde doğrudan Docker Engine ve Compose dağıtımı; ADR-009 hedef-host kararını supersede eder |
+| `docs/adr/ADR-013-aws-ubuntu-26-04-host-profile.md` | v3.4 uyarınca mevcut AWS Ubuntu 26.04 host profili; ADR-012 içindeki OS/CPU/disk hedeflerini supersede eder |
 | `docs/adr/ADR-010-backup-rpo-rto-restore.md` | Backup profili, RPO/RTO, off-host ve restore yaklaşımı |
 
 ADR dosya adları kayıt konularını gösterir; içerikleri yeni mimari seçenek üretmeyecek, şartnamenin bağlayıcı kararını ve yalnız izin verilen değiştirme kapısını kaydedecektir.
@@ -201,7 +201,7 @@ ADR dosya adları kayıt konularını gösterir; içerikleri yeni mimari seçene
 | Proxy | Caddy 2.11; Compose sözleşmesinde 2.11.3 | Aynı dalın seçilen exact patch'i ve image digest'i |
 | Log/dayanıklılık | Serilog JSON, `Microsoft.Extensions.Http.Resilience` | Exact NuGet sürümleri, lisans ve bakım durumu |
 | Test | xUnit v3, Testcontainers PostgreSQL, Playwright | Exact sürüm, PostgreSQL 18/Chromium uyumluluğu |
-| Dağıtım | Ubuntu Server 24.04 LTS + Docker Compose v2 | x86_64, 4 vCPU, 8 GB RAM, 100–120 GB NVMe; exact Compose `2.40.2` Linux binary/checksum ve doğrudan Docker Engine desteği hedefte doğrulanır |
+| Dağıtım | AWS Ubuntu Server 26.04 LTS + Docker Compose v2 | x86_64, 2 vCPU, 8 GB sınıfı RAM, 80 GB NVMe sınıfı; exact Compose `2.40.2` Linux binary/checksum ve doğrudan Docker Engine desteği hedefte doğrulanır |
 
 ### Doğrulama yöntemi
 
@@ -267,7 +267,7 @@ Her capability kaydı aşağıdaki şartname alanlarını taşıyacaktır:
 
 | Kanıt kimliği | Kontrol | Beklenen sonuç / kanıt |
 | --- | --- | --- |
-| `F0-EV-001` | Yetkili PDF kimliği | v3.3, 75 sayfa, başlık/sürüm ve SHA-256 kayıtla eşleşir; v3.2 tarihsel olarak korunur |
+| `F0-EV-001` | Yetkili PDF kimliği | v3.4, 77 sayfa, başlık/sürüm ve SHA-256 kayıtla eşleşir; v3.3/v3.2 tarihsel olarak korunur |
 | `F0-EV-002` | Repository baseline | Başlangıç dosya listesi, dal, commit ve remote durumu kaydedilir |
 | `F0-EV-003` | Gereksinim kapsamı | `F0-REQ-001-011`, `F0-VAL-001-006` ve `F0-EXIT-001-004` eksiksiz ve tekil bulunur |
 | `F0-EV-004` | İzlenebilirlik | Her gereksinimin fazı, kabul kriteri, kaynak, gelecek dosya ve kanıtı vardır |
@@ -277,7 +277,7 @@ Her capability kaydı aşağıdaki şartname alanlarını taşıyacaktır:
 | `F0-EV-008` | Fixture güvenliği | Secret/PII taraması temizdir; anonimleştirme ve checksum kayıtlıdır |
 | `F0-EV-009` | ADR tutarlılığı | ADR-001-010 şartnameye ve birbirlerine karşı çapraz incelenmiştir |
 | `F0-EV-010` | F1 secretsiz başlangıç | Fake adapter standardı ve kapalı write flag'leri gerçek platform secret'ı olmadan geliştirmeyi mümkün kılar |
-| `F0-EV-011` | Ubuntu Server runtime | Ubuntu 24.04 LTS/x86_64, 4 vCPU, 8 GB RAM, 100–120 GB NVMe, doğrudan Docker Engine/Compose, systemd ve reboot/restart gerçek hedef hostta doğrulanır |
+| `F0-EV-011` | AWS Ubuntu Server runtime | Ubuntu 26.04 LTS/x86_64, 2 vCPU, 8 GB sınıfı RAM, 80 GB NVMe sınıfı, doğrudan Docker Engine/Compose, systemd ve reboot/restart gerçek hedef hostta doğrulanır |
 | `F0-EV-012` | Volume ve restore | DB/app-files/key ring/backup volume sınırları, checksum ve boş ortama restore smoke kanıtlanır |
 | `F0-EV-013` | Kapsam koruması | Git diff yalnız onaylı F0 dokümanlarını gösterir; production dosyası, migration veya placeholder yoktur |
 | `F0-EV-014` | Faz sonu raporu | Değişen dosyalar, komutlar, testler, riskler, ADR'ler ve `PASSED/BLOCKED/FAILED` kararı gerçek sonuçlarla yazılır |
@@ -305,8 +305,8 @@ Bu ilk görev tamamlandığında `git status --short` ve dosya listesiyle yalnı
 
 | Kimlik | Tür | Risk / blocker | Etki | Güvenli davranış / sonraki adım |
 | --- | --- | --- | --- | --- |
-| `RISK-SPEC-001` | Kaynak | Dağıtım hedefi v3.2'de Windows VPS olarak bağlıydı. | Kullanıcının yeni Ubuntu kararıyla şartname çelişkisi oluşabilirdi. | v3.3, 75 sayfa ve SHA-256 `AB7E...3F94` ile bağlayıcı revizyonu içerir; v3.2 tarihsel tutulur. CLOSED. |
-| `BLOCK-HOST-001` | Dış ortam | Ubuntu sunucu daha sonra kiralanacak; gerçek CPU/RAM/NVMe, Docker Engine, systemd, IP/domain, reboot ve volume davranışı henüz ölçülmedi. | `F0-REQ-009` ve `F0-EXIT-003` hedef kanıtı tamamlanamaz. | Kiralama sonrası Ubuntu runtime runbook'unu çalıştır; 4 vCPU, 8 GB RAM ve 100–120 GB NVMe altına inme. |
+| `RISK-SPEC-001` | Kaynak | v3.3 host hedefi gerçek AWS sunucusundan farklıydı. | Kurulum fail-closed reddediliyor ve bağlayıcı hedef karşılanmıyordu. | v3.4, 77 sayfa ve SHA-256 `5A652A...0EC51` ile mevcut AWS hostunu bağlar; v3.3/v3.2 tarihsel tutulur. CLOSED. |
+| `BLOCK-HOST-001` | Dış ortam | AWS host profili doğrulandı; Docker/Compose, domain/DNS, reboot, volume, restore ve x5 kapasite kanıtı henüz tamamlanmadı. | `F0-REQ-009` ve `F0-EXIT-003` kısmi kalır. | Hedef runbook'u mevcut hostta tamamla; 2 vCPU/80 GB nedeniyle performans ve disk doluluğunu ölç. |
 | `BLOCK-CAPACITY-001` | İş girdisi | Başlangıçta gerçek hacim ve pik değerleri yoktu. | Kapasite onayı gerçek veriye dayandırılamıyordu. | Kullanıcı `1.000` ürün ve `15.000` sipariş/yıl sağladı; x5 profil kaydedildi. CLOSED. |
 | `BLOCK-DR-001` | Operasyon | `PILOT_LOCAL` ve en fazla 6 saat pilot RPO tanımlı; hedef volume, gerçek restore ve ölçülmüş RTO kanıtı yok. | Recovery uygulanabilirliği ve F0 çıkışı tamamlanamaz. | Aynı fiziksel diskse `RISK-DR-001`; hedefte checksum ve restore smoke olmadan geçme. Off-host yalnız resilient profilde zorunludur. |
 | `BLOCK-VERSION-001` | Faz sınırı | F0 çıkışı lockfile/image digest tutarlılığı isterken production lock'ları F1 teslimatıdır. | Faz sırası gerilimi vardı. | Kullanıcı onayıyla yalnız `docs/dependencies/verification/` altında F0 lock/digest kanıtı üretildi; baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e`. CLOSED. |
@@ -328,16 +328,16 @@ ADR-001 ile ADR-010 yeni seçenek seçmek için değil, şartnamenin yürürlük
 | `ADR-006` | Merkezi StockLedger/fiyat, tek `MAIN`, safety stock `0`, yalnız `PASS` restock, otomatik fatura kapalı | İş sahibi veya mali onay ve ilgili test kanıtı |
 | `ADR-007` | Secret koruması, `_FILE` kaynakları, persistent Data Protection key ring, tek Owner bootstrap ve TOTP başlangıçta kapalı | Şartnamenin güvenlik kapılarını azaltmayan yazılı karar |
 | `ADR-008` | Yerel private volume ve `IFileStorage`; tenant kapsamlı göreli yollar; public kalıcı dosya yok | Kapasite/DR gereğiyle depolama adapter kararı |
-| `ADR-012` | Docker Compose ile aynı Caddy/API/Worker/PostgreSQL/backup topolojisi; hedef Ubuntu Server 24.04 LTS üzerinde doğrudan Linux container | Host ölçülebilir gereksinimleri karşılamazsa kullanıcı dağıtım ortamı kararı; topoloji sessizce değiştirilmez |
+| `ADR-013` | Docker Compose ile aynı Caddy/API/Worker/PostgreSQL/backup topolojisi; hedef AWS Ubuntu Server 26.04 LTS, 2 vCPU/8 GB/80 GB üzerinde doğrudan Linux container | Ölçülmüş x5 yük veya disk/restore hedefi karşılanmazsa AWS instance/volume büyütme kararı; topoloji sessizce değiştirilmez |
 | `ADR-010` | Profil bazlı backup, checksum, restore smoke, RPO/RTO ve gerektiğinde off-host hedef | RPO 6 saat yetersizse WAL archiving için ayrı ADR |
 
 ## Açık kararlar
 
 | Kimlik | Açık karar | Varsayılan / karar gelene kadar davranış | F0 etkisi |
 | --- | --- | --- | --- |
-| `OPEN-F0-001` | Yetkili şartnamenin dağıtım hedefi revizyonu | v3.3, 75 sayfa ve SHA-256 `AB7E5D26497EDC6D24E8CE0E7111CF44BB782819CD047C93DCBEE7E401BE3F94`; v3.2 yalnız tarihsel. | CLOSED |
+| `OPEN-F0-001` | Yetkili şartnamenin dağıtım hedefi revizyonu | v3.4, 77 sayfa ve SHA-256 `5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51`; v3.3/v3.2 yalnız tarihsel. | CLOSED |
 | `OPEN-F0-002` | F0 lock/digest çıkış kriteri ile F1 lockfile teslimatı arasındaki faz sınırı | Kullanıcı onayıyla non-production F0 verification lock/digest seti oluşturuldu ve commit edildi; F1 scaffold'u üretilmedi. | CLOSED |
-| `OPEN-F0-003` | Hedef Ubuntu sağlayıcısı, statik IPv4/domain, SSH erişimi ve gerçek runtime kapasite kanıtı | OS ve minimum profil kapandı: Ubuntu Server 24.04 LTS, x86_64, 4 vCPU, 8 GB RAM, 100–120 GB NVMe. Sunucu kiralandığında doğrudan Docker Engine/systemd/runbook kanıtı alınır. | Hedef production/F0 çıkış blocker'ı; yerel geliştirme blocker'ı değil |
+| `OPEN-F0-003` | Hedef AWS statik IPv4/domain, runtime ve kapasite kanıtı | OS/host profili ve SSH kapandı: Ubuntu Server 26.04 LTS, x86_64, 2 vCPU, 8 GB sınıfı RAM, 80 GB NVMe sınıfı. Docker/systemd/Compose ve operasyon kanıtı mevcut hostta tamamlanır. | PARTIAL; production/F0 çıkış blocker'ı |
 | `OPEN-F0-004` | Gerçek veri hacmi ve pik değerleri | `1.000` ürün ve `15.000` sipariş/yıl baz; x5 profil `5.000` ürün ve `75.000` sipariş/yıl. İkincil metrikler F1+ izlenir. | CLOSED_FOR_F0 |
 | `OPEN-F0-005` | Hedef volume, restore süresi ve RTO | Yerel PostgreSQL 18.4 dump/restore `0,147 sn` ve mantıksal checksum eşitliğiyle geçti. Profil `PILOT_LOCAL`, pilot RPO en fazla 6 saat; off-host bu profilde zorunlu değildir. Yerel ölçüm hedef Ubuntu Server RTO'su ilan edilmez. | Yerel kapı CLOSED; hedef F0 çıkış blocker'ı |
 | `OPEN-F0-006` | Platform test hesabı/credential/fixture erişim durumu | Tümü `UNKNOWN`; Fake adapter; dış write kapalı. | F1 local için engel değil |
@@ -369,4 +369,4 @@ Mevcut değerlendirme:
 
 ## Sonraki güvenli adım
 
-Yerel Windows/WSL/Docker/volume/restore ön doğrulaması tarihsel olarak tamamlanmıştır. Ubuntu Server kiralandığında `docs/runbooks/ubuntu-server-runtime-validation.md` hedef hostta çalıştırılacak; yerel sonuç hedef production kanıtı yerine geçmeyecektir. v3.3 değişikliği yalnız dağıtım hedefini yeniler; faz kapılarını veya dış platform write izinlerini açmaz.
+Yerel Windows/WSL/Docker/volume/restore ön doğrulaması tarihsel olarak tamamlanmıştır. Mevcut AWS Ubuntu 26.04 hostuna SSH erişimi ve kapasite ölçümü tamamlanmıştır; `docs/runbooks/ubuntu-server-runtime-validation.md` üzerindeki Docker/Compose, reboot, volume, restore ve kapasite kanıtları sıradaki iştir. v3.4 değişikliği yalnız dağıtım hedefini yeniler; faz kapılarını veya dış platform write izinlerini açmaz.

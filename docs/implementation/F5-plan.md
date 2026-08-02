@@ -8,7 +8,7 @@
 | Plan durumu | `APPROVED` (2026-08-02) |
 | Uygulama durumu | `READY_LOCAL_CORE / BLOCKED_EXTERNAL` |
 | Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 12, 23, 25, 29, 38, 42-47, 51-58, 60, 64, 66-70 ve 72-73 |
-| Yetkili şartname SHA-256 | v3.3 `AB7E5D26497EDC6D24E8CE0E7111CF44BB782819CD047C93DCBEE7E401BE3F94` |
+| Yetkili şartname SHA-256 | v3.4 `5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51` |
 | Ön koşul | F4 yerel çekirdeği `5a1be44`; localhost giriş düzeltmesi `237c15d`; F4 dış kanıtları açık blocker olarak kayıtlı |
 | Hedef sonuç | Generic Domain/Application portlarının Shopify üzerinde yeniden kullanılabildiğini kanıtlayan, development-store odaklı ve dış yazmaları kapalı başlayan F5 adaptörü |
 

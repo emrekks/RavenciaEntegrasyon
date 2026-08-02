@@ -8,7 +8,7 @@
 | Plan durumu | `APPROVED` |
 | Uygulama durumu | `READY_LOCAL_CORE / BLOCKED_EXTERNAL` |
 | Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 24-29, 34-47, 52, 57-58, 60 ve 63 |
-| Yetkili şartname SHA-256 | v3.3 `AB7E5D26497EDC6D24E8CE0E7111CF44BB782819CD047C93DCBEE7E401BE3F94` |
+| Yetkili şartname SHA-256 | v3.4 `5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51` |
 | Ön koşul | F2 `READY_LOCAL`, commit `8cbf1b9` |
 | Faz başlatma kaydı | Kullanıcı 2026-07-31 tarihinde “Projeye devam edelim.” diyerek F3 planlamasını açtı. |
 | Hedef sonuç | Yerel/fixture uygulaması `READY_LOCAL`; gerçek Stage/SIT ve production kanıtları tamamlanana kadar faz çıkışı `BLOCKED_EXTERNAL` |
@@ -47,7 +47,7 @@ Kullanıcı planı onayladı ve F3 yerel çekirdek uygulaması tamamlandı. Ger�
 - F2’de gerçek platform HTTP adapter’ı yoktur; bütün gerçek capability’ler `UNKNOWN`, `FeatureFlags__ExternalWrites=false` kalır.
 - Test projeleri Domain, Application, Persistence, API, Adapter Contract ve EndToEnd sınırlarıyla hazırdır.
 - Yerel makinede .NET 10/Node 24 ve PostgreSQL 18 doğrulaması yapılmıştır; güncel oturumda Docker CLI/engine yoktur.
-- Hedef Ubuntu Server 24.04 LTS (4 vCPU, 8 GB RAM, 100–120 GB NVMe) henüz kiralanmamıştır. Bu, yerel contract/fake-adapter geliştirmesini durdurmaz; public HTTPS webhook/media ve production kanıtını durdurur.
+- Mevcut AWS Ubuntu Server 26.04 LTS host profili (2 vCPU, 8 GB RAM sınıfı, 80 GB NVMe sınıfı) ve SSH erişimi doğrulanmıştır. Docker/Compose, DNS/public HTTPS webhook-media, x5 yük ve operasyon kanıtları production kapısıdır.
 
 ## Stitch değerlendirmesi
 
@@ -214,7 +214,7 @@ Resmî belgede farklı tarihler için farklı limitler bulunduğundan değerler 
 
 ## ADR etkisi
 
-- Yeni mimari ADR gerekmiyor. F3; ADR-001 modüler monolit, ADR-003 tek PostgreSQL/migration zinciri, ADR-004 job/inbox/idempotency, ADR-005 capability kanıtı, ADR-006 güvenli iş otoriteleri, ADR-007 secret güvenliği, ADR-008 private file, ADR-010 backup/restore ve ADR-012 Ubuntu runtime kararlarına uyar.
+- Yeni mimari ADR gerekmiyor. F3; ADR-001 modüler monolit, ADR-003 tek PostgreSQL/migration zinciri, ADR-004 job/inbox/idempotency, ADR-005 capability kanıtı, ADR-006 güvenli iş otoriteleri, ADR-007 secret güvenliği, ADR-008 private file, ADR-010 backup/restore, ADR-012 Linux container runtime ve ADR-013 AWS Ubuntu host profili kararlarına uyar.
 - Trendyol limit tarihçesi adapter configuration/evidence kaydıdır; yeni altyapı kararı değildir.
 - Resmî/test davranışı mevcut port sözleşmesiyle çelişirse production kodu uydurulmaz; değişiklik kapısı ve gerekirse yeni ADR kullanıcıya sunulur.
 - Birden çok physical inventory location, broker/cache/mikroservis veya farklı deployment topolojisi gözlenmiş ihtiyaç ve ayrı ADR olmadan açılmaz.

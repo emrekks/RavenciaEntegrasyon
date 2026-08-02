@@ -1,13 +1,13 @@
 # Ubuntu Server Kurulum ve Taşıma Runbook'u
 
-Bu akış modüler monolit, Docker Compose, PostgreSQL, API/Worker ve Caddy sınırlarını değiştirmez. GitHub'da üretilen aynı immutable Linux/amd64 imajlarını Ubuntu Server 24.04 LTS üzerinde doğrudan Docker Engine ile çalıştırır.
+Bu akış modüler monolit, Docker Compose, PostgreSQL, API/Worker ve Caddy sınırlarını değiştirmez. GitHub'da üretilen aynı immutable Linux/amd64 imajlarını v3.4 hedefi Ubuntu Server 26.04 LTS üzerinde doğrudan Docker Engine ile çalıştırır.
 
 ## Sunucu önkoşulları
 
-- Ubuntu Server 24.04 LTS x86_64, 4 vCPU, 8 GB RAM ve 100-120 GB NVMe.
+- Ubuntu Server 26.04 LTS x86_64, 2 vCPU, 8 GB sınıfı RAM ve 80 GB NVMe sınıfı disk.
 - Statik public IPv4; domain A/AAAA kaydı hedef sunucuya yönelmiş.
 - SSH yalnız yönetici IP allow-list veya VPN üzerinden anahtar tabanlı.
-- Docker Engine/CLI kurulu, systemd üzerinde enabled/active ve kullanıcı Docker daemon'a yetkili.
+- Docker Engine/CLI kurulu ve systemd üzerinde enabled/active; daemon komutları `sudo` ile yürütülür. `ubuntu` hesabı root-eşdeğeri `docker` grubuna eklenmez.
 - GHCR package private ise read-only package token ile registry oturumu açık.
 - Yalnız 80/443 public uygulama portu; API/Worker/PostgreSQL host portu yok.
 
@@ -19,12 +19,12 @@ Repository'yi sunucuya clone et, onaylı commit'e geç ve kökten çalıştır:
 
 ```bash
 chmod +x deploy/scripts/*.sh
-./deploy/scripts/install-marketplacehub.sh
+sudo -H ./deploy/scripts/install-marketplacehub.sh --host-only
 ```
 
 Hazırlık sihirbazı:
 
-- Ubuntu 24.04, x86_64, 4 vCPU, 8 GB RAM ve hedef disk kapasitesini doğrular.
+- Ubuntu 26.04, x86_64, en az 2 vCPU, 8 GB sınıfı RAM ve en az 70.000.000.000 byte kullanılabilir root filesystem kapasitesini doğrular.
 - Linux/amd64 Docker Engine erişimini doğrular.
 - Exact Compose v2.40.2 eksikse resmî binary'yi kullanıcı plugin dizinine indirip sabit SHA-256 ile doğrular.
 - Uygulama/edge digest'i, HTTPS panel adresi ve ilk Owner e-postasını sorar.
@@ -34,7 +34,8 @@ Hazırlık sihirbazı:
 İlk çalıştırma servisleri değiştirmez. Doğrulama geçince ilk boş kurulumu çalıştır:
 
 ```bash
-./deploy/scripts/install-marketplacehub.sh --deploy --bootstrap
+sudo -H ./deploy/scripts/install-marketplacehub.sh --host-only
+sudo -H ./deploy/scripts/install-marketplacehub.sh --deploy --bootstrap
 ```
 
 Sonraki release'lerde `deploy/secrets/production.env` içindeki iki digest'i onaylı değerlerle değiştir ve yalnız `--deploy` kullan. Bootstrap tekrarı varsayılan değildir.

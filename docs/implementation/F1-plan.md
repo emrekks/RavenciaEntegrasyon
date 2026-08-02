@@ -6,8 +6,8 @@
 | --- | --- |
 | Faz | `F1` |
 | Durum | `READY_LOCAL_DEPLOY_PREPARED`; production/Ubuntu Server kabulü `BLOCKED_EXTERNAL` |
-| Yetkili şartname | Repository kökü `Ravencia_Entegrasyon_v3_3_Nihai_Uygulama_Surumu.pdf`, v3.3, 75 sayfa; v3.2 tarihsel |
-| Şartname SHA-256 | v3.3 `AB7E5D26497EDC6D24E8CE0E7111CF44BB782819CD047C93DCBEE7E401BE3F94` |
+| Yetkili şartname | Repository kökü `Ravencia_Entegrasyon_v3_4_Nihai_Uygulama_Surumu.pdf`, v3.4, 77 sayfa; v3.3/v3.2 tarihsel |
+| Şartname SHA-256 | v3.4 `5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51` |
 | Kaynak sayfalar | 5-6, 11-19, 23-24, 34-36, 39-41, 48-59, 61-62 |
 | Onay kaydı | Kullanıcı 2026-07-31 tarihinde F1 başlangıcını açıkça onayladı. |
 | F0 yerel runtime kapısı | `READY_HISTORICAL`; hedef Ubuntu Server kanıtı production kapısına ertelendi. |
@@ -103,7 +103,7 @@ F2+ modül klasörlerine production entity/use-case/endpoint/route veya placehol
 
 | Kimlik | Kayıt | Güvenli davranış / kapanış |
 | --- | --- | --- |
-| `F1-RISK-HOST-001` | Hedef Ubuntu Server 24.04 LTS (4 vCPU, 8 GB RAM, 100–120 GB NVMe) daha sonra kiralanacak. | Yerel compose kanıtı F1 geliştirmesini açar; production kabulü Ubuntu runtime runbook'u olmadan verilmez. |
+| `F1-RISK-HOST-001` | Mevcut AWS Ubuntu 26.04 LTS host profili (2 vCPU, 8 GB RAM sınıfı, 80 GB NVMe sınıfı) doğrulandı; Docker/Compose, x5 yük, reboot/volume/restore kanıtları henüz tamamlanmadı. | Host-only kurulum ve runtime runbook'u yürütülür; production kabulü operasyon kanıtları olmadan verilmez. |
 | `F1-RISK-SECRET-001` | Gerçek production bootstrap/certificate/DB secret'ları yoktur. | Yalnız secret-file contract ve sentetik test secret'ı; repo/image/Compose içinde gerçek veya sabit production secret yoktur. |
 | `F1-RISK-STITCH-001` | Stitch tasarımı yoktur. | İşlevsel/erişilebilir varsayılan F1 UI; markalı fidelity ertelenir. |
 | `F1-RISK-PLATFORM-001` | Platform test hesabı/fixture yoktur. | Capability `UNKNOWN`, dış HTTP ve write kapalı; F1 blocker'ı değildir. |

@@ -1,6 +1,6 @@
 # Immutable Image Release Runbook'u
 
-Bu runbook, onaylı bir Git commit'inden production adayına ait Linux/amd64 uygulama ve edge imajlarını üretir. İmaj yayınlamak deploy değildir; hedef Ubuntu Server 24.04 LTS, production secret, DNS, backup/restore ve Go/No-Go kapıları ayrıca tamamlanır.
+Bu runbook, onaylı bir Git commit'inden production adayına ait Linux/amd64 uygulama ve edge imajlarını üretir. İmaj yayınlamak deploy değildir; hedef Ubuntu Server 26.04 LTS, production secret, DNS, backup/restore ve Go/No-Go kapıları ayrıca tamamlanır.
 
 ## Ön koşullar
 

@@ -1,6 +1,6 @@
 # Doğrulanmış Teknoloji Sürümleri
 
-Doğrulama tarihi: 2026-07-31. Durum gözden geçirme tarihi: 2026-08-02. v3.3 ile dağıtım hedefi Ubuntu Server 24.04 LTS x86_64 ve doğrudan Docker Engine olarak revize edilmiştir; uygulama major/minor kararları değiştirilmemiştir. Exact patch değerleri F0 doğrulama lock'ları, repository-root F1+ lock'ları ve resmî registry index digest'leriyle sabitlenmiştir. `latest` ve floating image kabul edilmez; hedef production registry digest'leri sunucu/release kabulünde ayrıca doğrulanır.
+Doğrulama tarihi: 2026-07-31. Durum gözden geçirme tarihi: 2026-08-02. v3.4 ile dağıtım hedefi ölçülen AWS Ubuntu Server 26.04 LTS x86_64 hostuna revize edilmiştir; uygulama major/minor kararları değiştirilmemiştir. Docker'ın resmî Ubuntu belgesi Resolute 26.04 LTS'yi desteklenen hedef olarak listeler. Exact patch değerleri F0 doğrulama lock'ları, repository-root F1+ lock'ları ve resmî registry index digest'leriyle sabitlenir; `latest` ve floating image kabul edilmez.
 
 ## Yerel araç kanıtı
 
@@ -11,20 +11,20 @@ Doğrulama tarihi: 2026-07-31. Durum gözden geçirme tarihi: 2026-08-02. v3.3 i
 | Node.js | `24.15.0` | INSTALLED; current LTS patch adayıyla aynı değil |
 | npm | `11.12.1` | INSTALLED |
 | Docker Desktop / Engine / CLI | Desktop `4.84.0` (`234817`), Engine/CLI `29.6.2`; Linux/amd64, `overlayfs`, `desktop-linux` | VERIFIED_LOCAL_HISTORICAL; TARGET_SUPERSEDED |
-| Docker Compose | Yerel Windows ön kanıtında sabit `v2.40.2` geçti; Ubuntu hedef için Linux x86_64 checksum'u installer/guard içinde sabit | VERIFIED_LOCAL / TARGET_NOT_RUN |
+| Docker Compose | Yerel Windows ön kanıtında sabit `v2.40.2` geçti; Ubuntu hedef için Linux x86_64 checksum'u installer/guard içinde sabit | VERIFIED_LOCAL / TARGET_INSTALLER_PENDING |
 | Caddy | Digest-pinned `2.11.3`, Linux/amd64 smoke geçti | VERIFIED_LOCAL_RECHECK_TARGET |
 | PostgreSQL / psql | Digest-pinned `18.4`; psql, dump ve temiz-volume restore geçti | VERIFIED_LOCAL_RECHECK_TARGET |
 | WSL | `2.7.11.0`, kernel `6.18.33.2-2`, varsayılan sürüm `2` | VERIFIED_LOCAL_HISTORICAL; NOT_APPLICABLE_TARGET |
 
-## Ubuntu production hedefi
+## AWS Ubuntu production hedefi
 
 | Bileşen | Bağlayıcı hedef | Durum |
 | --- | --- | --- |
-| İşletim sistemi | Ubuntu Server 24.04 LTS x86_64 | TARGET_NOT_RUN |
-| Kapasite | 4 vCPU, 8 GB RAM, 100-120 GB NVMe | TARGET_NOT_RUN |
-| Container runtime | Doğrudan Linux/amd64 Docker Engine/CLI; systemd enabled/active | TARGET_NOT_RUN |
-| Compose | Exact `v2.40.2`; Linux x86_64 SHA-256 `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88` | VERIFIED_CHECKSUM / TARGET_NOT_RUN |
-| Host yönetimi | SSH anahtarı + yönetici IP/VPN allow-list | TARGET_NOT_RUN |
+| İşletim sistemi | Ubuntu Server 26.04 LTS (Resolute) x86_64 | VERIFIED_TARGET_HOST |
+| Kapasite | 2 vCPU; 8.153.141.248 byte RAM; 80.530.636.800 byte NVMe | VERIFIED_TARGET_HOST / PERFORMANCE_PENDING |
+| Container runtime | Docker Engine/CLI `29.7.1`; containerd `2.2.6`; Buildx `0.36.0`; Linux/x86_64 `overlayfs`; systemd enabled/active | VERIFIED_TARGET_2026_08_02 |
+| Compose | Docker paket bağımlılığı `5.3.1`; proje tarafından seçilecek exact kullanıcı/root plugin `v2.40.2`, Linux x86_64 SHA-256 `6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88` | VERIFIED_CHECKSUM / TARGET_INSTALLER_PENDING |
+| Host yönetimi | SSH anahtarı + yönetici IP/VPN allow-list | SSH_KEY_VERIFIED / AWS_SECURITY_GROUP_REVIEW_PENDING |
 
 ## Backend ve altyapı
 

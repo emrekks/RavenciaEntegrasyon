@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 deploy=false
 bootstrap=false
+host_only=false
 app_image=""
 edge_image=""
 site_address=""
@@ -13,6 +14,7 @@ while (($#)); do
   case "$1" in
     --deploy) deploy=true; shift ;;
     --bootstrap) bootstrap=true; shift ;;
+    --host-only) host_only=true; shift ;;
     --app-image) app_image="${2:?missing --app-image value}"; shift 2 ;;
     --edge-image) edge_image="${2:?missing --edge-image value}"; shift 2 ;;
     --site-address) site_address="${2:?missing --site-address value}"; shift 2 ;;
@@ -22,6 +24,7 @@ while (($#)); do
   esac
 done
 [[ "$bootstrap" == false || "$deploy" == true ]] || { echo "--bootstrap requires --deploy." >&2; exit 2; }
+[[ "$host_only" == false || ("$deploy" == false && "$bootstrap" == false) ]] || { echo "--host-only cannot be combined with --deploy or --bootstrap." >&2; exit 2; }
 
 for command in bash curl openssl sha256sum base64 awk docker systemctl; do
   command -v "$command" >/dev/null 2>&1 || { echo "Required command is missing: $command" >&2; exit 1; }
@@ -30,16 +33,16 @@ done
 [[ -r /etc/os-release ]] || { echo "Ubuntu identity cannot be verified." >&2; exit 1; }
 # shellcheck disable=SC1091
 source /etc/os-release
-[[ "${ID:-}" == "ubuntu" && "${VERSION_ID:-}" == "24.04" ]] || { echo "Ubuntu Server 24.04 LTS is required." >&2; exit 1; }
+[[ "${ID:-}" == "ubuntu" && "${VERSION_ID:-}" == "26.04" ]] || { echo "Ubuntu Server 26.04 LTS is required." >&2; exit 1; }
 architecture="$(uname -m)"
 [[ "$architecture" == "x86_64" ]] || { echo "x86_64 host is required; detected $architecture." >&2; exit 1; }
 
 cpu_count="$(nproc)"
 memory_kib="$(awk '/MemTotal/ { print $2 }' /proc/meminfo)"
 filesystem_bytes="$(df -B1 --output=size "$(pwd -P)" | tail -1 | tr -d ' ')"
-(( cpu_count >= 4 )) || { echo "At least 4 vCPU are required; detected $cpu_count." >&2; exit 1; }
+(( cpu_count >= 2 )) || { echo "At least 2 vCPU are required; detected $cpu_count." >&2; exit 1; }
 (( memory_kib >= 7500000 )) || { echo "At least 8 GB RAM are required." >&2; exit 1; }
-(( filesystem_bytes >= 90000000000 )) || { echo "A 100-120 GB NVMe target filesystem is required." >&2; exit 1; }
+(( filesystem_bytes >= 70000000000 )) || { echo "An 80 GB NVMe-class target filesystem is required." >&2; exit 1; }
 
 systemctl is-enabled --quiet docker || { echo "Docker Engine must be enabled in systemd." >&2; exit 1; }
 systemctl is-active --quiet docker || { echo "Docker Engine must be active in systemd." >&2; exit 1; }
@@ -64,6 +67,11 @@ else
   trap - EXIT
 fi
 [[ "$(docker compose version --short)" == "2.40.2" ]] || { echo "Docker CLI did not select exact Compose 2.40.2." >&2; exit 1; }
+
+if [[ "$host_only" == true ]]; then
+  echo "Host validation is complete: Ubuntu 26.04, linux/amd64 Docker Engine, systemd and exact Compose 2.40.2 are ready."
+  exit 0
+fi
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repository_root="$(cd -- "$script_dir/../.." && pwd -P)"
