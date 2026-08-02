@@ -25,6 +25,7 @@ public sealed class RepositoryGuardTests
     {
         var root = FindRoot();
         var caddy = File.ReadAllText(Path.Combine(root, "deploy", "caddy", "Caddyfile.production"));
+        var baseCompose = File.ReadAllText(Path.Combine(root, "deploy", "compose", "compose.yaml"));
         var compose = File.ReadAllText(Path.Combine(root, "deploy", "compose", "compose.production.yaml"));
         var workflow = File.ReadAllText(Path.Combine(root, ".github", "workflows", "publish-release-images.yml"));
 
@@ -33,6 +34,9 @@ public sealed class RepositoryGuardTests
         Assert.DoesNotContain("disable_redirects", caddy, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest", compose, StringComparison.Ordinal);
         Assert.Contains("MARKETPLACEHUB_EDGE_IMAGE:?set immutable edge image with digest", compose, StringComparison.Ordinal);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(baseCompose, @"networks: \[backend, egress\]").Count);
+        Assert.Contains("egress: {}", baseCompose, StringComparison.Ordinal);
+        Assert.Contains("internal: true", baseCompose, StringComparison.Ordinal);
         Assert.Contains("Dockerfile.production", workflow, StringComparison.Ordinal);
         Assert.Contains("name@sha256", workflow, StringComparison.Ordinal);
         Assert.Contains("runs-on: ubuntu-24.04", workflow, StringComparison.Ordinal);

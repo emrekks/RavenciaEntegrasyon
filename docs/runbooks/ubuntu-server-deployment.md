@@ -9,7 +9,7 @@ Bu akış modüler monolit, Docker Compose, PostgreSQL, API/Worker ve Caddy sın
 - SSH yalnız yönetici IP allow-list veya VPN üzerinden anahtar tabanlı.
 - Docker Engine/CLI kurulu ve systemd üzerinde enabled/active; daemon komutları `sudo` ile yürütülür. `ubuntu` hesabı root-eşdeğeri `docker` grubuna eklenmez.
 - GHCR package private ise read-only package token ile registry oturumu açık.
-- Yalnız 80/443 public uygulama portu; API/Worker/PostgreSQL host portu yok.
+- Yalnız 80/443 public uygulama portu; API/Worker/PostgreSQL host portu yok. API ve Worker dış platform çağrıları için ayrı outbound `egress` ağına bağlanır; PostgreSQL ve backup yalnız `internal` backend ağında kalır.
 
 Docker Engine kurulumu hedefte resmî Docker Ubuntu repository yöntemiyle yapılır. Convenience script production için kullanılmaz. Exact Docker Engine/CLI paketi hedef doğrulama kaydına yazılmadan production kabul edilmez.
 

@@ -71,6 +71,7 @@ services:
   api:
     <<: *app
     command: ["api/MarketplaceHub.Api.dll"]
+    networks: [backend, egress]
     depends_on:
       migrate: { condition: service_completed_successfully }
     healthcheck:
@@ -83,6 +84,7 @@ services:
   worker:
     <<: *app
     command: ["worker/MarketplaceHub.Worker.dll"]
+    networks: [backend, egress]
     depends_on:
       migrate: { condition: service_completed_successfully }
 
@@ -133,6 +135,7 @@ services:
 
 networks:
   edge: {}
+  egress: {}
   backend:
     internal: true
     ipam:

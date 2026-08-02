@@ -5,7 +5,7 @@
 - Hedef Ubuntu Server 26.04 LTS üzerinde doğrudan Linux/amd64 Docker Engine, exact Compose v2.40.2, systemd reboot, kalıcı volume ve restore kanıtı tamamlanmış olmalı.
 - Production domaininin DNS A/AAAA kaydı hedef Ubuntu sunucuyu göstermeli; dışarıdan yalnız `80/443` erişimi ve kalıcı Caddy data volume'u doğrulanmalı. Production edge public ACME sertifikası ve HTTP→HTTPS yönlendirmesi kullanır; `tls internal` yalnız PILOT_LOCAL içindir.
 - `MARKETPLACEHUB_APP_IMAGE` ve `MARKETPLACEHUB_EDGE_IMAGE` registry tag değil `name@sha256:...` olmalı.
-- Production site address HTTPS olmalı; yalnız Caddy host `80/443` açmalı.
+- Production site address HTTPS olmalı; yalnız Caddy host `80/443` açmalı. API/Worker'ın host portu olmadan outbound `egress` ağı bulunmalı; PostgreSQL/backup bu ağa bağlanmamalı.
 - Data Protection PFX ve parolası read-only secret olarak mount edilmeli; yoksa uygulama fail-closed olmalı.
 - `external-writes=false`; gerçek platform capability'leri `UNKNOWN` kalmalı.
 - Deploy öncesi doğrulanmış backup ve restore kanıtı bulunmalı.
