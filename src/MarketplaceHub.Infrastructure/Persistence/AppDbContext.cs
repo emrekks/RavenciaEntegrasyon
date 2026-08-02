@@ -192,12 +192,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     {
         builder.Entity<IntegrationJob>(entity =>
         {
-            entity.ToTable("jobs", "integration"); entity.HasKey(x => x.Id);
+            entity.ToTable("jobs", "integration", table => table.HasCheckConstraint("ck_job_attempt_bounds", "\"AttemptCount\" >= 0 AND \"MaxAttempts\" > 0 AND \"AttemptCount\" <= \"MaxAttempts\"")); entity.HasKey(x => x.Id);
             entity.Property(x => x.JobType).HasMaxLength(96); entity.Property(x => x.JobDedupKey).HasMaxLength(256);
             entity.Property(x => x.EffectIdempotencyKey).HasMaxLength(256); entity.Property(x => x.PayloadHash).HasMaxLength(128);
-            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.Status).HasConversion(value => value == JobStatus.RetryScheduled ? "RETRY_SCHEDULED" : value.ToString().ToUpperInvariant(), value => value == "RETRY_SCHEDULED" ? JobStatus.RetryScheduled : Enum.Parse<JobStatus>(value, true)).HasMaxLength(24); entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()").ValueGeneratedOnAdd(); entity.Property(x => x.MaxAttempts).HasDefaultValue(JobRetryPolicy.DefaultMaxAttempts); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.JobType, x.JobDedupKey }).IsUnique();
-            entity.HasIndex(x => new { x.Status, x.AvailableAt, x.Priority });
+            entity.HasIndex(x => new { x.Status, x.Priority, x.AvailableAt, x.CreatedAt });
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<JobAttempt>(entity =>

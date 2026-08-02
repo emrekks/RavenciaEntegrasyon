@@ -20,13 +20,16 @@ Doğrulama tarihi: `2026-08-02`. Ortam: Windows geliştirme makinesi. Hepsiburad
 | `F6A-EV-012` local reconciliation/rollback | PASS_LOCAL_DRY | Ortak servis Hepsiburada bağlantısını no-HTTP/no-write kuru kontrolde kabul eder; N11/Pazarama reddedilir; geri dönüş rehberi kayıt koruma ve yeniden açma kapılarını tanımlar |
 | `F6A-EV-013` secret/auth boundary | PASS_LOCAL_FAIL_CLOSED | Adapterda HTTP/auth/credential implementasyonu ve fixture dosyası yok; credential/test-job kapıları kapalı; source/docs secret signature taraması temiz |
 | `F6A-EV-014` package event safety | PASS_LOCAL_PROPERTY | Sipariş satırları ve miktar zinciri persistence öncesi doğrulanır; fazla/negatif/duplicate/bilinmeyen satır olayı atomik reddedilir; canonical ilerleme yalnız kabul edilen yerel paketlerden türetilir; eski zaman veya geriye durum geçişi uygulanmaz; event kimliği deterministiktir |
+| `F6A-EV-015` durable job retry | PASS_MODEL_SQL / POSTGRES BLOCKED_RUNTIME | Bağlayıcı `PENDING/LEASED/RETRY_SCHEDULED/BLOCKED/DEAD/CANCELLED`, max-attempt, 15s/1m/5m/20m/1h + %10–20 deterministik jitter, expired-attempt kapanışı ve fencing uygulandı; idempotent migration SQL üretildi; Docker engine yok |
 
 ## Test sonucu
 
 - .NET build: başarılı, `0` uyarı / `0` hata.
-- Docker gerektirmeyen testler: `76/76` başarılı (Domain 12, Application 18, Adapter 42, API 2, Repository guard 2).
+- Docker gerektirmeyen testler: `83/83` başarılı (Domain 18, Application 19, Adapter 42, API 2, Repository guard 2).
+- PostgreSQL Testcontainers: `0/7` assertion çalıştı; Docker engine bulunmadığı için test sınıfı başlangıçta `BLOCKED_RUNTIME` oldu. Bu sonuç kod başarısızlığı olarak PASS’e çevrilmedi.
+- EF migration: modelde bekleyen değişiklik yok; F4 → F6A idempotent SQL üretimi başarılı. Migration yerel kullanıcı veritabanına uygulanmadı.
 - Web: strict TypeScript/Vite production build ve component testi.
-- Yeni migration oluşturulmadı.
+- `F6AJobRetryContract` migrationı, şartnamedeki eksik job state/max-attempt/index sözleşmesi ölçülebilir biçimde mevcut modelde bulunmadığı için oluşturuldu.
 
 ## Faz durumu
 

@@ -65,7 +65,7 @@ Bu belge yalnız F6A planıdır. Kullanıcı uygulama onayıyla Hepsiburada fail
 | `F6A-REQ-007` | s.26-28, 43-44, 65 | Package quantity invariant korunur; izin verilmeyen state/action dış etki üretmez. | State/property testleri | Existing package model | SIT package action kanıtı | PASS_LOCAL_PROPERTY / ACTION BLOCKED_EXTERNAL |
 | `F6A-REQ-008` | s.27-28, 43-44, 65 | Return/claim read ve action ayrı capability’dir; karar enum’u kanıtsız kodlanmaz. | Read/action fail-closed testleri | Return port | SIT claim fixture ve otorite | PLANNED / BLOCKED_EXTERNAL |
 | `F6A-REQ-009` | s.30-31, 43, 65 | Polling/webhook duplicate ve out-of-order aynı Inbox/state hattında güvenlidir. | Auth/raw-body/dedupe testleri | Webhook verifier/job | Public SIT callback/credential | PARTIAL_LOCAL_STATE / WEBHOOK BLOCKED_EXTERNAL |
-| `F6A-REQ-010` | s.31-33, 43-44, 65 | Async task/batch/polling retry aynı dış etkiyi tekrar üretmez; reconciliation açıklanabilirdir. | Worker-kill/retry/checkpoint testi | Job/cursor/reconciliation | SIT task result fixture | PLANNED |
+| `F6A-REQ-010` | s.31-33, 43-44, 65 | Async task/batch/polling retry aynı dış etkiyi tekrar üretmez; reconciliation açıklanabilirdir. | Worker-kill/retry/checkpoint testi | Job/cursor/reconciliation | SIT task result fixture | PARTIAL_LOCAL_RETRY / POSTGRES BLOCKED_RUNTIME / TASK BLOCKED_EXTERNAL |
 | `F6A-REQ-011` | s.43, 51-54, 65 | Auth expiry, 429, 5xx, timeout, validation ve business conflict ayrıdır. | Error mapper matrix | Adapter error mapping | Tarihli gerçek response | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
 | `F6A-REQ-012` | s.51-54, 65, 67 | Credential encrypted/masked; secret/PII log/API/fixture/manifest’e sızmaz. | Secret/PII scan | Security/adapter | Credential türü kararı | DONE_LOCAL_FAIL_CLOSED / CREDENTIAL BLOCKED_EXTERNAL |
 | `F6A-REQ-013` | s.43, 55-58, 65 | Global + connection + capability + business-authority kapıları olmadan write job/HTTP yoktur. | No-HTTP/kill-switch testleri | Existing controls | Safe-write onayı | DONE_LOCAL_FAIL_CLOSED |
@@ -149,6 +149,7 @@ Portal başlangıç yüzeyindeki client-credentials örneği ile marketplace gui
 | `BLOCK-F6A-005` | Stok/fiyat/product/package/return iş otoriteleri ve rollback yöntemi | Tüm write off | Safe-write |
 | `BLOCK-F6A-006` | Public HTTPS webhook callback ve inbound credential | Polling + reconciliation planı | Webhook E2E |
 | `BLOCK-F6A-007` | F5 Shopify production reconciliation/rollback kanıtı | F6A production release yok | Faz çıkışı |
+| `BLOCK-F6A-008` | Docker engine veya ayrılmış yerel PostgreSQL test credential’ı yok | Migration SQL/model doğrulaması; migration uygulanmaz | Fresh/upgrade ve worker-kill PostgreSQL revalidation |
 | `DEC-F6A-001` | Katalog create ve listing/offer write başlangıçta birlikte mi, ayrı capability dalgalarıyla mı açılacak? | Ayrı; ikisi de off | Release kapsamı |
 | `DEC-F6A-002` | Package/return dış aksiyon otoritesi MarketplaceHub mı portal operasyonu mu? | Read-only | Action UI/job |
 

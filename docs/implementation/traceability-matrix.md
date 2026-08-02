@@ -104,7 +104,7 @@ F6A ayrıntılı kabul ve kanıt eşlemesi [F6A-plan.md](F6A-plan.md) ve [F6A-ev
 | Aralık | Uygulama | Kanıt | Sonuç |
 | --- | --- | --- | --- |
 | `F6A-REQ-001–002` | Yalnız Hepsiburada draft bağlantısı; guide version/User-Agent/merchant scope, auth kanıtına kadar credential yok | Faz guard, connection validation | DONE_LOCAL_FAIL_CLOSED / BLOCKED_EXTERNAL |
-| `F6A-REQ-003–010` | Generic reference/product/inventory/order/return portları, atomik package quantity/state güvenliği ve kesin no-HTTP/no-write adapter | F6A contract/property tests; partner fixture yok | PACKAGE SAFETY PASS_LOCAL_PROPERTY / CONTRACT BLOCKED_EXTERNAL |
+| `F6A-REQ-003–010` | Generic reference/product/inventory/order/return portları, atomik package güvenliği, durable retry state/backoff/max-attempt ve kesin no-HTTP/no-write adapter | F6A contract/property tests, EF model/SQL; PostgreSQL runtime ve partner fixture yok | PACKAGE SAFETY PASS_LOCAL_PROPERTY / RETRY PASS_MODEL_SQL / POSTGRES+CONTRACT BLOCKED |
 | `F6A-REQ-011–015` | HTTP hata sınıfları, capability/kill-switch, secret/auth sınırı, yerel kuru mutabakat/rollback rehberi ve mevcut integrations UI | Adapter tests, secret/source guard, local policy tests, runbook review, Web build, repository guard | DONE_LOCAL_FAIL_CLOSED / RECONCILIATION PASS_LOCAL_DRY |
 | `F6A-REQ-016`, `F6A-EXIT-001–006` | SIT safe-write, reconciliation, rollback ve önceki platform kapısı | Dış kanıt bekleniyor | BLOCKED_EXTERNAL / BLOCKED_PHASE_GATE |
 

@@ -1,6 +1,6 @@
 namespace MarketplaceHub.Domain;
 
-public enum JobStatus { Pending, Running, Succeeded, Failed, DeadLettered }
+public enum JobStatus { Pending, Leased, RetryScheduled, Blocked, Succeeded, Dead, Cancelled }
 public enum IssueStatus { Open, Acknowledged, Resolved }
 
 public sealed class IntegrationJob
@@ -21,9 +21,11 @@ public sealed class IntegrationJob
     public DateTimeOffset? LeaseExpiresAt { get; set; }
     public DateTimeOffset? HeartbeatAt { get; set; }
     public int AttemptCount { get; set; }
+    public int MaxAttempts { get; set; } = JobRetryPolicy.DefaultMaxAttempts;
     public string? LastErrorCode { get; set; }
     public string? LastErrorSummary { get; set; }
     public required string CorrelationId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public long Version { get; set; }
