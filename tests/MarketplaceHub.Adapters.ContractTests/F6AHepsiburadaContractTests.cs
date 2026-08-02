@@ -1,4 +1,5 @@
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Persistence;
 using System.Text.RegularExpressions;
@@ -122,6 +123,88 @@ public sealed class F6AHepsiburadaContractTests
             var content = File.ReadAllText(file);
             Assert.All(patterns, pattern => Assert.False(pattern.IsMatch(content), $"Potential secret signature in {Path.GetRelativePath(root, file)}"));
         }
+    }
+
+    [Fact]
+    public void Package_safety_accepts_valid_split_cancel_ship_deliver_return_chain()
+    {
+        var remote = new RemotePackageAllocation("line-1", 8, 2, 6, 5, 1);
+
+        Assert.True(PackageIngestionSafety.TryNormalize(10, remote, ShipmentPackageStatus.Processing, out var safe));
+        Assert.Equal(8, safe.ActiveAllocatedQuantity);
+        Assert.Equal(2, safe.CancelledQuantity);
+        Assert.Equal(6, safe.ShippedQuantity);
+        Assert.Equal(5, safe.DeliveredQuantity);
+        Assert.Equal(1, safe.ReturnedQuantity);
+    }
+
+    [Theory]
+    [InlineData(9, 2, 6, 5, 1)]
+    [InlineData(8, 2, 9, 5, 1)]
+    [InlineData(8, 2, 6, 7, 1)]
+    [InlineData(8, 2, 6, 5, 6)]
+    [InlineData(-1, 11, 0, 0, 0)]
+    public void Package_safety_rejects_quantity_invariant_violations(decimal active, decimal cancelled, decimal shipped, decimal delivered, decimal returned)
+    {
+        var remote = new RemotePackageAllocation("line-1", active, cancelled, shipped, delivered, returned);
+
+        Assert.False(PackageIngestionSafety.TryNormalize(10, remote, ShipmentPackageStatus.Processing, out _));
+    }
+
+    [Theory]
+    [InlineData(ShipmentPackageStatus.Cancelled, 0, 10, 0, 0, 0)]
+    [InlineData(ShipmentPackageStatus.Shipped, 10, 0, 10, 0, 0)]
+    [InlineData(ShipmentPackageStatus.Delivered, 10, 0, 10, 10, 0)]
+    [InlineData(ShipmentPackageStatus.Returned, 10, 0, 10, 10, 10)]
+    public void Package_safety_normalizes_canonical_terminal_progress(
+        ShipmentPackageStatus status,
+        decimal active,
+        decimal cancelled,
+        decimal shipped,
+        decimal delivered,
+        decimal returned)
+    {
+        Assert.True(PackageIngestionSafety.TryNormalize(10, new("line-1", 10, 0, 0, 0, 0), status, out var safe));
+        Assert.Equal(new NormalizedPackageAllocation(active, cancelled, shipped, delivered, returned), safe);
+    }
+
+    [Fact]
+    public void Package_event_identity_is_deterministic_and_old_or_regressive_state_is_rejected()
+    {
+        var currentAt = DateTimeOffset.Parse("2026-08-02T10:00:00Z");
+        var olderAt = currentAt.AddSeconds(-1);
+
+        Assert.Equal(PackageIngestionSafety.EventId("package-1", currentAt), PackageIngestionSafety.EventId("package-1", currentAt));
+        var package = new RemotePackage("package-1", null, "UNVERIFIED", currentAt, null, null, []);
+        Assert.True(PackageIngestionSafety.AllEventsRecorded([package], new HashSet<string>(StringComparer.Ordinal) { PackageIngestionSafety.EventId("package-1", currentAt) }));
+        Assert.False(PackageIngestionSafety.AllEventsRecorded([package], new HashSet<string>(StringComparer.Ordinal)));
+        Assert.False(PackageIngestionSafety.ShouldAccept(ShipmentPackageStatus.Shipped, currentAt, ShipmentPackageStatus.Delivered, olderAt));
+        Assert.False(PackageIngestionSafety.ShouldAccept(ShipmentPackageStatus.Delivered, currentAt, ShipmentPackageStatus.New, currentAt.AddSeconds(1)));
+        Assert.True(PackageIngestionSafety.ShouldAccept(ShipmentPackageStatus.Shipped, currentAt, ShipmentPackageStatus.Delivered, currentAt.AddSeconds(1)));
+    }
+
+    [Fact]
+    public void Package_event_is_rejected_as_a_whole_for_duplicate_or_unknown_line_allocation()
+    {
+        var ordered = new Dictionary<string, decimal>(StringComparer.Ordinal) { ["line-1"] = 2 };
+        var allocation = new RemotePackageAllocation("line-1", 2, 0, 0, 0, 0);
+
+        Assert.False(PackageIngestionSafety.TryNormalizeAll(ordered, [allocation, allocation], ShipmentPackageStatus.Processing, out _));
+        Assert.False(PackageIngestionSafety.TryNormalizeAll(ordered, [new("unknown", 1, 0, 0, 0, 0)], ShipmentPackageStatus.Processing, out _));
+        Assert.True(PackageIngestionSafety.TryNormalizeAll(ordered, [allocation], ShipmentPackageStatus.Processing, out var safe));
+        Assert.Single(safe);
+    }
+
+    [Fact]
+    public void Order_event_is_rejected_before_persistence_for_duplicate_or_negative_lines()
+    {
+        var valid = new RemoteOrderLine("line-1", "sku", null, "title", 2, 10, 20, "UNVERIFIED");
+        var negative = valid with { ExternalLineId = "line-2", Quantity = -1 };
+
+        Assert.False(PackageIngestionSafety.TryGetOrderedQuantities([valid, valid], out _));
+        Assert.False(PackageIngestionSafety.TryGetOrderedQuantities([valid, negative], out _));
+        Assert.True(PackageIngestionSafety.TryGetOrderedQuantities([valid], out var quantities));
+        Assert.Equal(2, quantities["line-1"]);
     }
 
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }
