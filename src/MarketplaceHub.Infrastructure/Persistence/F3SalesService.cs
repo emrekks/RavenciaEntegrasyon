@@ -44,6 +44,8 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
 
     public Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, F3Capabilities.OrderRead, F3JobTypes.OrderSync, JsonSerializer.Serialize(new { connectionId, externalOrderId }), correlationId, cancellationToken);
 
+    public Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, F3Capabilities.ReferenceRead, F3JobTypes.ReferenceSync, JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES" }), correlationId, cancellationToken);
+
     public async Task<ServiceResult<Guid>> EnqueueShipmentActionAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string correlationId, CancellationToken cancellationToken)
     {
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken); if (package is null) return NotFound<Guid>(); if (package.Version != expectedVersion) return Precondition<Guid>(package.Version);
@@ -93,7 +95,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
     }
     private async Task<ServiceResult<Guid>> Enqueue(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId, CancellationToken cancellationToken)
     {
-        var recurringRead = type is F3JobTypes.OrderSync or F3JobTypes.ReturnSync or ShopifyContract.OrderSyncJob;
+        var recurringRead = type is F3JobTypes.ReferenceSync or F3JobTypes.OrderSync or F3JobTypes.ReturnSync or ShopifyContract.OrderSyncJob;
         var active = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == type && (recurringRead ? x.JobDedupKey.StartsWith(dedup) : x.JobDedupKey == dedup) && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
         if (active is not null) return ServiceResult<Guid>.Ok(active.Id);
 

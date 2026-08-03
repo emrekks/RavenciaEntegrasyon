@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
@@ -8,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections, IOrderPort orders, IReturnPort returns, ShopifyGraphQlClient shopify, TimeProvider timeProvider, HepsiburadaAdapter? hepsiburada = null) : IF3JobProcessor
+public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IOrderPort orders, IReturnPort returns, ShopifyGraphQlClient shopify, TimeProvider timeProvider, HepsiburadaAdapter? hepsiburada = null) : IF3JobProcessor
 {
     public async Task<bool> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
@@ -18,6 +20,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
             F3JobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
             ShopifyContract.ConnectionTestJob => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
             HepsiburadaContract.ConnectionTestJob => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
+            F3JobTypes.ReferenceSync => await SyncReferences(tenantId, connectionId.Value, correlationId, cancellationToken),
             ShopifyContract.WebhookIngestJob => await MarkShopifyWebhookProcessed(tenantId, payloadJson, cancellationToken),
             ShopifyContract.OrderSyncJob => await SyncOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
             F3JobTypes.OrderSync => await SyncOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -27,6 +30,58 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
             F3JobTypes.ReturnAction => await ReturnAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
             _ => false
         };
+    }
+
+    private async Task<bool> SyncReferences(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        const string resourceType = "CATEGORIES";
+        var items = new List<RemoteReferenceItem>();
+        var visitedCursors = new HashSet<string>(StringComparer.Ordinal);
+        string? cursor = null;
+        do
+        {
+            var result = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:{resourceType}:{cursor}"), new(resourceType, null), new(cursor, 1000), cancellationToken);
+            if (!result.IsSuccess) return false;
+            items.AddRange(result.Value!.Items);
+            if (items.Count > 100_000) return false;
+            cursor = result.Value.NextCursor;
+            if (!result.Value.HasMore) break;
+            if (string.IsNullOrWhiteSpace(cursor) || !visitedCursors.Add(cursor)) return false;
+        } while (!cancellationToken.IsCancellationRequested);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (items.Count == 0 || items.Any(x => !string.Equals(x.ResourceType, resourceType, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(x.ExternalId) || string.IsNullOrWhiteSpace(x.Name))) return false;
+        var ordered = items.OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
+        if (ordered.Select(x => x.ExternalId).Distinct(StringComparer.Ordinal).Count() != ordered.Count) return false;
+        var canonical = JsonSerializer.Serialize(ordered.Select(x => new { x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive }));
+        var contentHash = Hash(canonical);
+        var now = timeProvider.GetUtcNow();
+        var sourceVersion = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == F3Capabilities.ReferenceRead).Select(x => x.SourceVersion).SingleOrDefaultAsync(cancellationToken)
+            ?? await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.ApiVersion).SingleAsync(cancellationToken);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var snapshots = await db.ReferenceSnapshots.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType).ToListAsync(cancellationToken);
+        var snapshot = snapshots.SingleOrDefault(x => x.ContentHash == contentHash);
+        foreach (var current in snapshots.Where(x => x.IsCurrent && x.Id != snapshot?.Id)) current.IsCurrent = false;
+        if (snapshot is null)
+        {
+            snapshot = new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ResourceType = resourceType, SourceVersion = sourceVersion, ContentHash = contentHash, FetchedAt = now, IsCurrent = true, ItemCount = ordered.Count };
+            db.ReferenceSnapshots.Add(snapshot);
+            for (var index = 0; index < ordered.Count; index++)
+            {
+                var item = ordered[index];
+                db.ReferenceItems.Add(new ReferenceItem { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = snapshot.Id, ResourceType = resourceType, ExternalId = item.ExternalId, ParentExternalId = item.ParentExternalId, Name = item.Name, NormalizedName = item.Name.Trim().ToUpperInvariant(), Path = item.Path, Depth = item.Depth, IsLeaf = item.IsLeaf, IsActive = item.IsActive, PayloadHash = Hash(item.RawJson), SortOrder = index });
+            }
+        }
+        else
+        {
+            snapshot.IsCurrent = true;
+            snapshot.FetchedAt = now;
+            snapshot.SourceVersion = sourceVersion;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
     private async Task<bool> TestConnection(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
@@ -147,6 +202,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
     }
     private async Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken) { var now = timeProvider.GetUtcNow(); var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.DedupeKey == key, cancellationToken); if (issue is null) db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenantId, DedupeKey = key, Code = code, Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 }); else { issue.LastSeenAt = now; issue.OccurrenceCount++; } }
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
+    private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static ShipmentPackageStatus CanonicalPackage(string raw) => raw.ToUpperInvariant() switch { "CREATED" => ShipmentPackageStatus.New, "PICKING" => ShipmentPackageStatus.Processing, "INVOICED" => ShipmentPackageStatus.ReadyToShip, "SHIPPED" => ShipmentPackageStatus.Shipped, "DELIVERED" => ShipmentPackageStatus.Delivered, "CANCELLED" or "UNSUPPLIED" => ShipmentPackageStatus.Cancelled, "UNDELIVERED" => ShipmentPackageStatus.Undelivered, "RETURNED" => ShipmentPackageStatus.Returned, "AWAITING" or "UNPACKED" or "AT_COLLECTION_POINT" => ShipmentPackageStatus.OnHold, _ => ShipmentPackageStatus.ManualReview };
     private static ReturnClaimStatus CanonicalReturn(string raw) => raw.ToUpperInvariant() switch { "CREATED" => ReturnClaimStatus.Requested, "WAITINGINACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" => ReturnClaimStatus.Disputed, "COMPLETED" => ReturnClaimStatus.Completed, "CANCELLED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
     private static int StatusRank(ShipmentPackageStatus status) => status switch { ShipmentPackageStatus.New => 1, ShipmentPackageStatus.Processing => 2, ShipmentPackageStatus.OnHold => 3, ShipmentPackageStatus.ReadyToShip => 4, ShipmentPackageStatus.Shipped => 5, ShipmentPackageStatus.Undelivered => 6, ShipmentPackageStatus.Delivered => 7, ShipmentPackageStatus.ReturnInTransit => 8, ShipmentPackageStatus.Returned => 9, ShipmentPackageStatus.PartiallyCancelled => 2, ShipmentPackageStatus.Cancelled => 9, _ => 10 };

@@ -79,7 +79,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
 
         var leases = new JobLeaseService(db, new TokenHasher(Enumerable.Repeat((byte)17, 32).ToArray()), clock);
         var fake = new DeterministicFakeAdapter(FakeScenario.Success, clock);
-        var processor = new F3JobProcessor(db, fake, fake, fake, null!, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, null!, clock);
         var firstLease = Assert.IsType<LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
         Assert.True(await processor.ProcessAsync(firstLease.TenantId, firstLease.ConnectionId, firstLease.JobType, firstLease.PayloadJson, firstLease.CorrelationId, cancellationToken));
 
@@ -98,6 +98,36 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         Assert.Equal(1, await db.SyncCursors.CountAsync(x => x.TenantId == tenantId && x.ResourceType == "ORDERS", cancellationToken));
         Assert.Equal(2, await db.JobAttempts.CountAsync(x => x.JobId == jobId, cancellationToken));
         Assert.Equal(JobStatus.Succeeded, (await db.IntegrationJobs.SingleAsync(x => x.Id == jobId, cancellationToken)).Status);
+    }
+
+    [Fact]
+    public async Task Reference_sync_retry_keeps_one_current_snapshot_and_one_item()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var tenantId = Guid.Parse("95555555-5555-5555-5555-555555555555");
+        var connectionId = Guid.Parse("96666666-6666-6666-6666-666666666666");
+        var clock = new MutableTimeProvider(Now);
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options);
+        await db.Database.MigrateAsync(cancellationToken);
+        db.Tenants.Add(new Tenant { Id = tenantId, Code = "reference-e2e", DisplayName = "Reference E2E", CreatedAt = Now, UpdatedAt = Now });
+        db.PlatformConnections.Add(new PlatformConnection { Id = connectionId, PublicId = Guid.NewGuid(), TenantId = tenantId, PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Reference connection", ExternalStoreId = "synthetic-store", Status = "ACTIVE", ApiVersion = "v2", Version = 1 });
+        db.PlatformCapabilities.Add(new PlatformCapability { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, Code = F3Capabilities.ReferenceRead, SupportLevel = CapabilitySupportLevel.Supported, ApiVersion = "v2", Environment = "STAGE", StoreScope = "synthetic-store", SourceUrl = "test://reference", SourceVersion = "test-v1", EvidenceNote = "Deterministic reference fixture.", VerifiedAt = Now });
+        await db.SaveChangesAsync(cancellationToken);
+
+        var fake = new DeterministicFakeAdapter(FakeScenario.Success, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, null!, clock);
+        Assert.True(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{}", "reference-first", cancellationToken));
+        clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.True(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{}", "reference-retry", cancellationToken));
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(1, await db.ReferenceSnapshots.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken));
+        Assert.Equal(1, await db.ReferenceSnapshots.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.IsCurrent, cancellationToken));
+        Assert.Equal(1, await db.ReferenceItems.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken));
+        var snapshot = await db.ReferenceSnapshots.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
+        Assert.Equal("CATEGORIES", snapshot.ResourceType);
+        Assert.Equal("test-v1", snapshot.SourceVersion);
+        Assert.Equal(clock.GetUtcNow(), snapshot.FetchedAt);
     }
 
     private sealed class MutableTimeProvider(DateTimeOffset value) : TimeProvider

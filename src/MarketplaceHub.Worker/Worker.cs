@@ -107,7 +107,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             return new JobResult(succeeded, succeeded ? null : "IMPORT_JOB_REJECTED");
         }
 
-        if (job.JobType is F3JobTypes.ConnectionTest or F3JobTypes.OrderSync or F3JobTypes.ShipmentAction or F3JobTypes.ReturnSync or F3JobTypes.ReturnAction or F3JobTypes.WebhookIngest or ShopifyContract.ConnectionTestJob or ShopifyContract.OrderSyncJob or ShopifyContract.WebhookIngestJob or HepsiburadaContract.ConnectionTestJob)
+        if (job.JobType is F3JobTypes.ConnectionTest or F3JobTypes.ReferenceSync or F3JobTypes.OrderSync or F3JobTypes.ShipmentAction or F3JobTypes.ReturnSync or F3JobTypes.ReturnAction or F3JobTypes.WebhookIngest or ShopifyContract.ConnectionTestJob or ShopifyContract.OrderSyncJob or ShopifyContract.WebhookIngestJob or HepsiburadaContract.ConnectionTestJob)
         {
             var processor = services.GetRequiredService<IF3JobProcessor>();
             var succeeded = await processor.ProcessAsync(job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, cancellationToken);

@@ -3,6 +3,7 @@ namespace MarketplaceHub.Application;
 public static class F3JobTypes
 {
     public const string ConnectionTest = "TRENDYOL_CONNECTION_TEST";
+    public const string ReferenceSync = "TRENDYOL_REFERENCE_SYNC";
     public const string OrderSync = "TRENDYOL_ORDER_SYNC";
     public const string ShipmentAction = "TRENDYOL_SHIPMENT_ACTION";
     public const string ReturnSync = "TRENDYOL_RETURN_SYNC";
@@ -171,6 +172,7 @@ public interface IF3SalesService
     Task<PageResult<ShipmentView>> ShipmentsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
     Task<ServiceResult<ShipmentDetailView>> ShipmentAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueShipmentActionAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string correlationId, CancellationToken cancellationToken);
     Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
