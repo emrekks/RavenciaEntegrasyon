@@ -7,7 +7,7 @@
 3. Bağlantı testini çalıştır. Yalnız sign-in kanıtlanır; diğer capability'ler test firma kanıtı olmadan `UNKNOWN` kalır.
 4. Legal entity mali girdilerini yetkili kaynaktan gir; maskeli dönüşü doğrula.
 5. Mali kararlar onaylanmadıysa policy alanlarını `UNAPPROVED`, auto-submit'i kapalı bırak.
-6. E-Faturam `companyId`, `userId`, fatura serisi ve siparişteki adla eşleşen kargo firması VKN/TCKN + yasal unvanını kaydet. Eksik veya eşleşmeyen kimlikte E-Arşiv gönderimi fail-closed durur.
+6. E-Faturam `companyId`, `userId` ve fatura serisini kaydet. İnternet satışı işaretlenmediği için kargo firması bilgisi istenmez ve provider payload'ına eklenmez.
 
 ## Invoice akışı
 
@@ -20,6 +20,7 @@
 - Başarılı submit sonrasında doğrulanmış `InvoiceDocumentRead` capability varsa kalıcı HTTPS PDF bağlantısı alınır; PDF private FileAsset'a yazılır ve bağlantı ayrı alanda saklanır.
 - Trendyol link teslimi yalnız kalıcı HTTPS bağlantısı, paket kimliği, fatura numarası ve fatura tarihi birlikte hazırsa çalışır. Başarısız teslim yeni fatura üretmez; ayrı attempt olarak kalır.
 - Trendyol sipariş fiyatları KDV dahil kabul edilir. Her sipariş satırı ayrı fatura kalemidir; satırın `vatRate` oranıyla KDV hariç tutar hesaplanır ve toplam, paket/sipariş tutarıyla en fazla bir kuruş toleransla eşleşmeden taslak oluşturulmaz.
+- Trendyol'un güncel sipariş sözleşmesinde `lineUnitPrice` indirim sonrası birim fiyat, `packageTotalPrice` ise faturalanacak net paket tutarıdır. Fatura denetimi paket kapsamındaki tahsisli kalemler üzerinden yapılır; siparişin birden fazla paketi varsa sipariş genel toplamı tek paket faturası için kullanılmaz.
 - Fatura notu yalnız `YALNIZ: <YAZIYLA ÜCRET TUTARI>` biçimindedir.
 
 ## Kill switch ve olay müdahalesi

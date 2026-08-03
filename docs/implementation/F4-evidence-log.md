@@ -23,6 +23,7 @@
 | `F4-EV-015` backup/restore | BLOCKED_EXTERNAL | DB + private file modeli hazır; hedef backup/off-host/RTO ve belge checksum restore kanıtı yok |
 | `F4-EV-016` provider E2E | PARTIAL_PASS_CONNECTION | 2026-08-03 E-Faturam Stage connection `VERIFIED`; submit + permanent document + Trendyol link HTTP sözleşmeleri yerel kodda hazır, gerçek safe-write capability'leri `UNKNOWN`, bütün mali yazmalar off |
 | `F4-EV-017` production smoke | BLOCKED_EXTERNAL | Ubuntu sunucu/domain/production credential ve işlem bazlı etki onayı yok |
+| `F4-EV-018` canlı taslak hazırlığı | PARTIAL_PASS_LOCAL | Trendyol KDV-dahil satır/paket verisi üretimde salt-okunur doğrulandı. Mali profil ve manuel paket policy ekranı teknik JSON girişi olmadan hazır; canlı legal entity/policy henüz girilmediği için fatura taslağı ve tüm dış mali yazmalar kapalıdır. İnternet satışı kapalı olduğundan kargo bilgisi provider payload'ına dahil edilmez. |
 
 ## Fixture checksum
 
