@@ -6,7 +6,7 @@
 | --- | --- |
 | Faz | `F2` |
 | Başlangıç onayı | Kullanıcı 2026-07-31 tarihinde "Geçebilirsin" diyerek F2'yi açtı. |
-| Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 8-10, 17-21, 24-28, 34-37, 40-41, 47, 57-58 ve 62-63 |
+| Yetkili şartname | v3.5 PDF içinde devamında korunan v3.2 tabanı; özellikle taban sayfa 8-10, 17-21, 24-28, 34-37, 40-41, 47, 57-58 ve 62-63 |
 | Ön koşul | F1 `READY_LOCAL`, commit `f0ea0ce` |
 | Hedef sonuç | `READY_LOCAL`; F3 ve gerçek platform çağrıları kapalı |
 

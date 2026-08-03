@@ -10,18 +10,18 @@
 | F0 çıkış durumu | BLOCKED |
 | Hazırlanma tarihi | 2026-07-31 |
 | Yetkili ürün / çözüm | Ravencia Entegrasyon / MarketplaceHub |
-| Yetkili şartname | Repository kökü `Ravencia_Entegrasyon_v3_4_Nihai_Uygulama_Surumu.pdf`, v3.4, 77 sayfa |
-| Şartname SHA-256 | `5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51` |
+| Yetkili şartname | `output/pdf/Ravencia_Entegrasyon_v3_5_Nihai_Uygulama_Surumu.pdf`, v3.5, 79 sayfa |
+| Şartname SHA-256 | `DDA0DBE58555EB323A84A6E2C5449133FAF8584979BD8DB795DFEE587AED8B58` |
 
 Bu dosya yalnız F0 uygulamasını planlar ve gerçekleşen F0 dokümantasyon durumunu kaydeder. Kullanıcı onayı 2026-07-31 tarihinde verilmiş, F0 belgeleri oluşturulmuştur. Bu durum F0 çıkış kapısının geçildiği anlamına gelmez.
 
 ## Yetkili kaynak ve karar önceliği
 
-Repository kökündeki canonical şartname aşağıdaki dosyadır:
+Canonical şartname aşağıdaki dosyadır:
 
-`Ravencia_Entegrasyon_v3_4_Nihai_Uygulama_Surumu.pdf`
+`output/pdf/Ravencia_Entegrasyon_v3_5_Nihai_Uygulama_Surumu.pdf`
 
-v3.4, kullanıcı tarafından 2026-08-02 tarihinde onaylanan iki sayfalık mevcut AWS host revizyonu ile v3.3'ün değiştirilmemiş 75 sayfalık tabanını birlikte içerir. Revizyon; Ubuntu 24.04/4 vCPU/100–120 GB hedefini ölçülen Ubuntu 26.04 LTS, 2 vCPU, 8 GB sınıfı RAM ve 80 GB NVMe sınıfı hostla değiştirir. v3.3 ve v3.2 PDF'leri tarihsel kaynak olarak korunur; dağıtım hostu konusunda v3.4 üstündür. Mimari, modül, veri, teknoloji ve faz kararları değişmemiştir.
+v3.5, 2026-08-03 tarihli iki sayfalık üç-platform tamamlanma kapısı revizyonunu v3.4'ün önüne ekler. Aktif teslim sırası ve Shopify'ın Hepsiburada ön koşulu konusunda v3.5 üstündür. Devamındaki v3.4 AWS host revizyonu, v3.3 dağıtım revizyonu ve v3.2 tabanı eksiksiz korunur; diğer mimari, veri, teknoloji ve güvenlik kararları değişmemiştir.
 
 F0 sırasında kaynak önceliği aşağıdaki sırada uygulanacaktır:
 
@@ -111,7 +111,7 @@ Kullanıcı 2026-07-31 tarihinde yerel-makine-önce akışını, 2026-08-02 tari
 | --- | --- | --- | --- | --- | --- |
 | `F0-REQ-001` | F0 Teslimatlar; AI Çalışma Protokolü | Her gereksinimin faz, kabul kriteri, gelecek kod konumu ve test kanıtı vardır; tekrar kullanılabilir faz planı şablonu hazırlanır. | `docs/implementation/traceability-matrix.md`; `docs/implementation/Fx-plan-template.md` | Yok | DONE |
 | `F0-REQ-002` | F0 Teslimatlar | ADR-001 ile ADR-010 şartnameyle çelişmeden oluşturulur; her ADR karar, gerekçe, sonuç ve değiştirme kapısını içerir. | `docs/adr/ADR-001-*.md` - `ADR-010-*.md`; tutarlılık incelemesi | Açık işletme/operasyon girdileri | DONE |
-| `F0-REQ-003` | F0 Teslimatlar | Platform sırası `Trendyol -> E-Faturam -> Shopify -> Hepsiburada -> N11 -> Pazarama` olarak korunur. | İzlenebilirlik matrisi ve capability matrisi sıra kontrolü | Yok | DONE |
+| `F0-REQ-003` | F0 Teslimatlar + işletme sahibi ADR-015 | Tarihsel başlangıç sırası korunarak aktif teslim sırası `Trendyol -> Hepsiburada -> Trendyol E-Faturam` ile sınırlandırılır; diğer platformlar ertelenir. | ADR-015, izlenebilirlik ve capability matrisi sıra kontrolü | Yok | SUPERSEDED_OPERATIONALLY_BY_ADR_015 |
 | `F0-REQ-004` | Platform Adaptör Sözleşmesi; F0 Teslimatlar | Her platform için capability kodu, support level, kapsam, resmi URL, API version, scope, test hesabı ve kanıt durumu kayıtlıdır. Kanıtsız capability `UNKNOWN` kalır. | `docs/platform-rules/capability-matrix.md`; kaynak erişim ve fixture kayıtları | Platform dokümanı, credential/test hesabı | DONE; capability'ler UNKNOWN |
 | `F0-REQ-005` | Başlangıçta Güvenli Varsayılanlar; F0 Teslimatlar | Merkezi StockLedger, merkezi fiyat ve açık kanal override, tek `MAIN` depo, safety stock `0`, yalnız `PASS` iade restock ve otomatik fatura kapalı varsayımları kaydedilir. | `docs/implementation/F0-business-authorities.md`; ADR-006 | İş sahibi değişiklik talebi yoksa bağımlılık yok | DONE |
 | `F0-REQ-006` | F0 Teslimatlar; Yedekleme Profili Kararı; Tablo 48 | Gerçek hacim ve pik x5 profilinin yanı sıra RPO/RTO, `BACKUP_PROFILE` ve varsa off-host hedef kayıtlıdır. | `docs/implementation/F0-capacity-recovery-profile.md`; risk ve restore kanıtı | Hedef restore-RTO tamamlandı; x5 ölçümü 2026-08-03 işletme sahibi feragatiyle `NOT_MEASURED` kabul edildi; şifreli off-host kopya bekliyor | PARTIAL / X5_ACCEPTED_OWNER_WAIVER / OFF_HOST_BLOCKED |
@@ -218,14 +218,13 @@ ADR dosya adları kayıt konularını gösterir; içerikleri yeni mimari seçene
 
 ### Sıra ve varsayılan
 
-Bağlayıcı platform sırası şöyledir:
+ADR-015 ile bağlayıcı aktif teslim sırası şöyledir:
 
 1. Trendyol
-2. E-Faturam
-3. Shopify
-4. Hepsiburada
-5. N11
-6. Pazarama
+2. Hepsiburada
+3. Trendyol E-Faturam
+
+Shopify, N11 ve Pazarama mevcut tarihsel kayıtları korunarak `DEFERRED` durumundadır. Aktif üç platform tamamlanmadan bu platformlarda yeni geliştirme veya doğrulama başlatılmaz.
 
 Her capability başlangıçta `UNKNOWN` olacaktır. `SUPPORTED`, yalnız güncel resmi doküman ile test hesabı veya anonim fixture kanıtı birlikte bulunduğunda kullanılacaktır. Resmi belgede bulunmayan bir davranış otomatik olarak `NOT_SUPPORTED` sayılmaz. `UNKNOWN` veya `TEMPORARILY_UNAVAILABLE` durumunda dış yazma kapalıdır. `NOT_SUPPORTED` sessiz başarı değildir.
 

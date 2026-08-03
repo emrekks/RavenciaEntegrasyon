@@ -6,11 +6,11 @@
 | --- | --- |
 | Faz | `F6A` |
 | Plan durumu | `APPROVED` (2026-08-02) |
-| Uygulama durumu | `READY_CONNECTION_TEST / BLOCKED_MAPPING_WRITE / BLOCKED_PHASE_GATE` |
-| Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 12, 42-47, 51-58, 60, 64-65, 67-70 ve 72-73 |
-| Yetkili şartname SHA-256 | v3.4 `5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51` |
+| Uygulama durumu | `READY_ORDER_READ / BLOCKED_SAFE_WRITE` |
+| Yetkili şartname | v3.5 PDF; PDF sayfa 1-2 ADR-015 üstünlük revizyonu ve devamında korunan v3.4/v3.3/v3.2 tabanı |
+| Yetkili şartname SHA-256 | v3.5 `DDA0DBE58555EB323A84A6E2C5449133FAF8584979BD8DB795DFEE587AED8B58` |
 | Zorunlu sıra | `F6A Hepsiburada → F6B N11 → F6C Pazarama`; aynı anda uygulanmaz veya ilk kez canlıya alınmaz |
-| Önceki platform kapısı | F5 yerel çekirdeği `8bc29f3`; development-store production reconciliation/rollback kanıtı henüz `BLOCKED_EXTERNAL` |
+| Aktif sıra kararı | ADR-015: `Trendyol → Hepsiburada → Trendyol E-Faturam`; Shopify `DEFERRED` ve Hepsiburada için ön koşul değildir |
 | Hedef sonuç | Mevcut generic portları kullanan, Hepsiburada’ya özel sözleşmeleri yalnız Infrastructure adapter sınırında tutan, SIT odaklı ve bütün dış yazmaları kapalı başlayan F6A yerel çekirdeği |
 
 Bu belge yalnız F6A planıdır. Kullanıcı uygulama onayıyla Hepsiburada fail-closed yerel çekirdeği oluşturulmuştur; partner kanıtı olmadan HTTP/credential/mapping genişletilmez. F6B N11, F6C Pazarama ve F7+ açılmamıştır.
@@ -20,7 +20,7 @@ Bu belge yalnız F6A planıdır. Kullanıcı uygulama onayıyla Hepsiburada fail
 - F6 tek release değildir. Önce yalnız Hepsiburada uygulanır ve ayrı capability/test/reconciliation/rollback kapısından geçer.
 - N11 ancak F6A çıkışı; Pazarama ancak F6B çıkışı tamamlandıktan sonra ayrı plan ve onayla açılabilir.
 - İki adapter aynı anda ilk kez canlıya alınmaz.
-- F6A tam çıkışı için önceki platform olan Shopify’ın production reconciliation/rollback kanıtı zorunludur. Bu eksiklik yerel plan ve fail-closed contract çalışmalarını durdurmaz; F6A SIT safe-write ve production smoke’u durdurur.
+- ADR-015, Shopify'ı aktif kapsamdan ertelemiş ve F6A için önceki-platform kapısını kaldırmıştır. Bu karar Shopify kanıtını tamamlanmış saymaz; F6A kendi SIT safe-write, reconciliation, rollback ve production smoke kapılarından bağımsız geçer.
 - Güncel partner dokümanı, partner hesabında görülen version/auth/scope bilgisi ve tarihli SIT kanıtı halka açık özetten üstündür.
 
 ## F6A hedefleri
@@ -45,12 +45,12 @@ Bu belge yalnız F6A planıdır. Kullanıcı uygulama onayıyla Hepsiburada fail
 
 ## Mevcut repository durumu
 
-- `main`, `origin/main` ile senkron; son yaşayan faz F5 ve çalışma ağacı plan öncesinde temizdir.
+- F6A salt-okunur order mapper düzeltmesi `c889ce9` ile `main` üzerinde ve AWS üretim dağıtımında çalışmaktadır; bu karar güncellemesi dokümantasyon çalışma ağacındadır.
 - Domain/Application generic entegrasyon portları F3’ten beri mevcuttur; Shopify bunların farklı platformda yeniden kullanımını kanıtlamıştır.
 - Generic `PlatformConnection`, encrypted `PlatformCredential`, `PlatformCapability`, `ConnectionSyncPolicy`, `SyncCursor`, `IntegrationJob`, `InboxMessage`, `WebhookSubscription`, reconciliation, product/listing/offer, order/package ve return modelleri vardır.
-- Infrastructure adapter dizinlerinde yalnız `Trendyol`, `TrendyolEFaturam` ve `Shopify` vardır. Hepsiburada, N11 veya Pazarama production adapterı yoktur.
-- F6 route/menu/worker job/migration yoktur. Mevcut `/integrations` yüzeyi generic bağlantı/capability ekranıdır.
-- Dış write anahtarları kapalıdır; gerçek Hepsiburada test hesabı, credential veya fixture repository’de yoktur.
+- Infrastructure adapter dizinlerinde `Trendyol`, `TrendyolEFaturam`, `Shopify` ve `Hepsiburada` vardır; N11 veya Pazarama adapterı yoktur.
+- Hepsiburada mevcut generic `/integrations`, `/orders` ve job hattını kullanır; F6B/F6C route/menu/worker job/migration yoktur.
+- Hepsiburada SIT credential'ı yalnız üretim Stage bağlantısında şifreli saklanır; repository'de gerçek credential veya PII fixture yoktur. Bütün dış write anahtarları kapalıdır.
 
 ## Gereksinim ve kabul matrisi
 
@@ -61,7 +61,7 @@ Bu belge yalnız F6A planıdır. Kullanıcı uygulama onayıyla Hepsiburada fail
 | `F6A-REQ-003` | s.42-44, 65 | Reference/category/attribute/brand verisi generic reference porttan geçer; mapping scope/version taşır. | Anonim fixture contract testi | Adapter mapping | SIT reference payload | PLANNED / BLOCKED_EXTERNAL |
 | `F6A-REQ-004` | s.21-22, 42-44, 65 | Product/variant/media ile listing/offer ayrıdır; async tracking sonucu idempotent işlenir. | Upload/task/partial fixture testleri | Product port + mapper | SIT katalog ürünü | PLANNED / BLOCKED_EXTERNAL |
 | `F6A-REQ-005` | s.24-25, 42-44, 65 | Price ve stock ayrı yetenek/otorite; partial satır sonucu sessiz başarı değildir. | Mixed-result/no-write testleri | InventoryPrice port | Listing/offer SIT fixture | PLANNED / BLOCKED_EXTERNAL |
-| `F6A-REQ-006` | s.25-27, 43-44, 65 | Order/package polling cursor/overlap ile generic order modeline map edilir. | Duplicate/out-of-order fixture | Order port/worker | SIT order fixture | PLANNED / BLOCKED_EXTERNAL |
+| `F6A-REQ-006` | s.25-27, 43-44, 65 | Order/package polling cursor/overlap ile generic order modeline map edilir. | Duplicate/out-of-order fixture | Order port/worker | SIT order fixture | PASS_ORDER_SIT_READ / PACKAGE_ACTION BLOCKED_EXTERNAL |
 | `F6A-REQ-007` | s.26-28, 43-44, 65 | Package quantity invariant korunur; izin verilmeyen state/action dış etki üretmez. | State/property testleri | Existing package model | SIT package action kanıtı | PASS_LOCAL_PROPERTY / ACTION BLOCKED_EXTERNAL |
 | `F6A-REQ-008` | s.27-28, 43-44, 65 | Return/claim read ve action ayrı capability’dir; karar enum’u kanıtsız kodlanmaz. | Read/action fail-closed testleri | Return port | SIT claim fixture ve otorite | PASS_LOCAL_FAIL_CLOSED / CONTRACT BLOCKED_EXTERNAL |
 | `F6A-REQ-009` | s.30-31, 43, 65 | Polling/webhook duplicate ve out-of-order aynı Inbox/state hattında güvenlidir. | Auth/raw-body/dedupe testleri | Webhook verifier/job | Public SIT callback/credential | PARTIAL_LOCAL_STATE / WEBHOOK BLOCKED_EXTERNAL |
@@ -69,7 +69,7 @@ Bu belge yalnız F6A planıdır. Kullanıcı uygulama onayıyla Hepsiburada fail
 | `F6A-REQ-011` | s.43, 51-54, 65 | Auth expiry, 429, 5xx, timeout, validation ve business conflict ayrıdır. | Error mapper matrix | Adapter error mapping | Tarihli gerçek response | PASS_LOCAL_CLASSIFIER / CONTRACT BLOCKED_EXTERNAL |
 | `F6A-REQ-012` | s.51-54, 65, 67 | Credential encrypted/masked; secret/PII log/API/fixture/manifest’e sızmaz. | Secret/PII scan | Security/adapter | Credential türü kararı | DONE_LOCAL_FAIL_CLOSED / CREDENTIAL BLOCKED_EXTERNAL |
 | `F6A-REQ-013` | s.43, 55-58, 65 | Global + connection + capability + business-authority kapıları olmadan write job/HTTP yoktur. | No-HTTP/kill-switch testleri | Existing controls | Safe-write onayı | DONE_LOCAL_FAIL_CLOSED |
-| `F6A-REQ-014` | s.43, 58, 65 | Read-only reconciliation ve rollback runbook’u açıklanmıştır. | Local dry-run + runbook review | Reconciliation/README | Önceki platform prod kanıtı | PARTIAL_LOCAL / BLOCKED_PHASE_GATE |
+| `F6A-REQ-014` | s.43, 58, 65 | Read-only reconciliation ve rollback runbook’u açıklanmıştır. | Local dry-run + runbook review | Reconciliation/README | Hepsiburada tarihli SIT mutabakat kanıtı | PARTIAL_LOCAL / TARGET_RECONCILIATION_PENDING |
 | `F6A-REQ-015` | s.39-41, 65 | Mevcut integrations UI loading/empty/error/UNKNOWN gösterir; yalnız kanıtlı action görünür. | Component/a11y/route guard | Existing Web surface | Stitch F6 referansı yok | DONE_BUILD |
 | `F6A-REQ-016` | s.65, 67-70 | SIT safe-write ve kullanıcı onaylı düşük adet smoke audit/correlation/rollback ile yapılır. | E2E evidence log | Runbook/evidence | Test hesabı + işlem bazlı onay | BLOCKED_EXTERNAL |
 
@@ -136,19 +136,19 @@ Portal başlangıç yüzeyindeki client-credentials örneği ile marketplace gui
 - `RISK-F6A-005`: Sipariş/package olayları duplicate veya out-of-order olabilir. Quantity/state invariant ve reconciliation olmadan geriye gidiş oluşabilir.
 - `RISK-F6A-006`: Return/claim action sözleşmeleri ve neden değerleri değişebilir. Partner fixture olmadan enum/action kodlanmaz.
 - `RISK-F6A-007`: Public webhook Basic credential paylaşımı ve callback yüzeyi yeni inbound trust boundary’dir. HTTPS, secret rotation ve raw request kanıtı olmadan açılmaz.
-- `RISK-F6A-008`: F5 production reconciliation/rollback tamamlanmadan F6A’yı canlıya almak şartname çıkış kapısını ihlal eder.
+- `RISK-F6A-008`: Tarihsel F5→F6A kapısı ADR-015 ile operasyonel olarak kaldırıldı. Shopify kanıtı tamamlanmış gösterilmez; F6A'nın kendi safe-write/reconciliation/rollback kapıları atlanırsa yanlış canlı kabul riski devam eder.
 
 ## Açık kararlar ve blockerlar
 
 | Kimlik | Gerekli karar/girdi | Güvenli fallback | Etki |
 | --- | --- | --- | --- |
-| `BLOCK-F6A-001` | Sipariş SIT hesabı/merchant sağlandı; diğer ürün aileleri ve dolu anonim payload yok | Yalnız connection capability `SUPPORTED`, write off | Sipariş mapping ve diğer ürün aileleri |
+| `BLOCK-F6A-001` | Sipariş SIT hesabı/merchant ve dolu order payload doğrulandı; diğer ürün aileleri için partner kanıtı yok | Yalnız `ConnectionTest` ve `ORDER_READ` `SUPPORTED`, write off | Diğer ürün aileleri |
 | `BLOCK-F6A-002` | Sipariş SIT Basic Auth doğrulandı; diğer ürün aileleri/production auth modeli bilinmiyor | Doğrulanmış auth başka aileye taşınmaz | Diğer capability ve production |
 | `BLOCK-F6A-003` | Granted scope/permission ve SIT/production host/version kaydı | Yalnız fixture | Capability evidence |
-| `BLOCK-F6A-004` | Anonim reference/product/listing/order/package/return payload’ları | Sentetik contract shape yazılmaz | Mapping testleri |
+| `BLOCK-F6A-004` | Order payload/fixture tamamlandı; anonim reference/product/listing/package-action/return payload’ları eksik | Sentetik contract shape yazılmaz | Kalan mapping testleri |
 | `BLOCK-F6A-005` | Stok/fiyat/product/package/return iş otoriteleri ve rollback yöntemi | Tüm write off | Safe-write |
 | `BLOCK-F6A-006` | Public HTTPS webhook callback ve inbound credential | Polling + reconciliation planı | Webhook E2E |
-| `BLOCK-F6A-007` | F5 Shopify production reconciliation/rollback kanıtı | F6A production release yok | Faz çıkışı |
+| `BLOCK-F6A-007` | F5 Shopify production reconciliation/rollback kanıtı | ADR-015 ile `DEFERRED`; F6A'yı bloke etmez, Shopify tamamlanmış sayılmaz | SUPERSEDED_PHASE_GATE |
 | `BLOCK-F6A-008` | Docker engine veya ayrılmış yerel PostgreSQL test credential’ı yok | Migration SQL/model doğrulaması; migration uygulanmaz | Fresh/upgrade ve worker-kill PostgreSQL revalidation |
 | `DEC-F6A-001` | Katalog create ve listing/offer write başlangıçta birlikte mi, ayrı capability dalgalarıyla mı açılacak? | Ayrı; ikisi de off | Release kapsamı |
 | `DEC-F6A-002` | Package/return dış aksiyon otoritesi MarketplaceHub mı portal operasyonu mu? | Read-only | Action UI/job |
@@ -167,11 +167,11 @@ Portal başlangıç yüzeyindeki client-credentials örneği ile marketplace gui
 | `F6A-EXIT-002` | Contract/auth-expiry/429/5xx/timeout/validation ve partial-result testleri geçer. | Contract/resilience suite | PASS_LOCAL_CLASSIFIER / PARTIAL_RESULT BLOCKED_EXTERNAL |
 | `F6A-EXIT-003` | Duplicate/out-of-order ve package quantity invariant güvenlidir. | Property/integration testleri | PASS_LOCAL_PROPERTY / SIT BLOCKED_EXTERNAL |
 | `F6A-EXIT-004` | SIT safe-write düşük adet kullanıcı onayıyla; read-only reconciliation ve rollback kanıtlıdır. | Tarihli E2E/evidence log | BLOCKED_EXTERNAL |
-| `F6A-EXIT-005` | Önceki Shopify production reconciliation/rollback tamamdır; açıklanamayan kritik fark yoktur. | F5 production evidence | BLOCKED_PHASE_GATE |
+| `F6A-EXIT-005` | Tarihsel önceki-Shopify kapısı ADR-015 ile aktif kapsamdan kaldırılmıştır; Shopify tamamlanmış ilan edilmez. | ADR-015 + deferred F5 evidence | NOT_APPLICABLE_BY_ADR_015 |
 | `F6A-EXIT-006` | F6A tek yeni canlı adapterdır; production smoke sonrası rollback/reconciliation temizdir. | Go/No-Go kaydı | BLOCKED_EXTERNAL |
 
 ## Plan sonucu ve uygulama kapısı
 
-F6A planı kullanıcı tarafından 2026-08-02 tarihinde onaylandı. Sipariş SIT Basic Auth + User-Agent ve resmî salt-okunur endpoint AWS’den HTTP 200 ile doğrulandı; panelde şifreli credential ve bağlantı testi açıldı: sonuç `READY_CONNECTION_TEST`tir. Yanıt 0 item olduğu için sipariş mapping, SIT safe-write ve production çıkışı `BLOCKED_EXTERNAL`, F5 production reconciliation/rollback nedeniyle tam faz çıkışı ayrıca `BLOCKED_PHASE_GATE`dir.
+F6A planı kullanıcı tarafından 2026-08-02 tarihinde onaylandı. Sipariş SIT Basic Auth + User-Agent, dolu order payload ve salt-okunur eşitleme 2026-08-03'te AWS üretim dağıtımından doğrulandı; sonuç `READY_ORDER_READ`dir. `ConnectionTest` ve `ORDER_READ` `SUPPORTED`, iki SIT siparişi generic sipariş modeline işlendi. Katalog/stok-fiyat/package-action/return/webhook ve bütün dış yazmalar kanıtsız olduğu için kapalıdır. ADR-015 ile Shopify faz kapısı kaldırılmıştır; F6A tam çalışma için kendi SIT safe-write, target reconciliation, rollback ve production smoke kanıtlarını hâlâ tamamlamalıdır.
 
 F6B N11 ve F6C Pazarama açılmamıştır. Doğrulanan Sipariş SIT bağlantı testi dışında kanıtsız HTTP, DTO, enum veya dış yazma implementasyonu yapılmaz.

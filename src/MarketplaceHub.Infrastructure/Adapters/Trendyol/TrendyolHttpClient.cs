@@ -27,10 +27,14 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
     {
         var test = await TestAsync(context, cancellationToken); if (!test.IsSuccess) return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Failure(test.Error!, test.RateLimit);
         var identity = test.Value!; var now = timeProvider.GetUtcNow();
+        var products = await ListAsync(context, new(null, 1), new(null), cancellationToken);
+        var returns = await PollAsync(context, new ReturnPollWindow(null, null), new(null, 1), cancellationToken);
         IReadOnlyList<CapabilityEvidence> evidence =
         [
-            new(F3Capabilities.ConnectionTest, "SUPPORTED", "V2", identity.Environment, identity.ExternalStoreId, "https://developers.trendyol.com/v2.0/docs/authorization", "2026-07-31", null, null, "Stage/Production kimlik doğrulaması order stream read ile geçti.", null, now),
-            new(F3Capabilities.OrderRead, "SUPPORTED", "V2", identity.Environment, identity.ExternalStoreId, "https://developers.trendyol.com/v2.0/docs/getshipmentpackagesstream", "2026-07-31", null, null, "Cursor order stream read yanıtı alındı.", null, now)
+            SupportedEvidence(F3Capabilities.ConnectionTest, identity, "https://developers.trendyol.com/v2.0/docs/authorization", "Stage/Production kimlik doğrulaması order stream read ile geçti.", now),
+            SupportedEvidence(F3Capabilities.OrderRead, identity, "https://developers.trendyol.com/v2.0/docs/getshipmentpackagesstream", "Cursor order stream read yanıtı alındı.", now),
+            ReadProbeEvidence(F3Capabilities.ProductRead, identity, "https://developers.trendyol.com/v2.0/docs/product-filtering-approved-products-v2", products, "Onaylı ürün listesi", now),
+            ReadProbeEvidence(F3Capabilities.ReturnRead, identity, "https://developers.trendyol.com/v2.0/docs/getting-returned-orders-getclaims", returns, "İade talepleri", now)
         ];
         return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(evidence, test.RateLimit);
     }
@@ -119,6 +123,14 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
     public Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<InvoiceDeliveryStatus>.Failure(TrendyolErrorMapper.Unsupported("Invoice delivery status query endpoint’i doğrulanmadı; 409 sahte başarı sayılmaz.")));
 
     private bool CanWrite(TrendyolRequestContext context) => GlobalWritesEnabled && context.ExternalWritesEnabled;
+    private static CapabilityEvidence SupportedEvidence(string code, ConnectionIdentity identity, string sourceUrl, string note, DateTimeOffset verifiedAt) =>
+        new(code, "SUPPORTED", "V2", identity.Environment, identity.ExternalStoreId, sourceUrl, "2026-08-04", null, null, note, null, verifiedAt);
+
+    private static CapabilityEvidence ReadProbeEvidence<T>(string code, ConnectionIdentity identity, string sourceUrl, AdapterResult<T> probe, string label, DateTimeOffset verifiedAt) =>
+        probe.IsSuccess
+            ? SupportedEvidence(code, identity, sourceUrl, $"{label} salt-okunur probu başarılı yanıt aldı.", verifiedAt)
+            : new(code, "UNKNOWN", "V2", identity.Environment, identity.ExternalStoreId, sourceUrl, "2026-08-04", null, null, $"{label} salt-okunur probu kanıt üretmedi: {probe.Error?.Code ?? "UNKNOWN_ERROR"}.", null, verifiedAt);
+
     private void LogOrderResponseShape(string json)
     {
         try

@@ -1,6 +1,6 @@
 # F5 Shopify Adapter Kanıt Kaydı
 
-Doğrulama tarihi: `2026-08-02`. Ortam: Windows geliştirme makinesi. Development store, gerçek Shopify credential, granted scope, Location GID, public HTTPS veya dış yazma kullanılmadı.
+Doğrulama tarihi: `2026-08-02`. Ortam: Windows geliştirme makinesi. Development store, gerçek Shopify credential, granted scope, Location GID, public HTTPS veya dış yazma kullanılmadı. ADR-015 ile 2026-08-03 tarihinde `DEFERRED` durumuna alındı; mevcut kanıt korunur, yeni Shopify doğrulaması başlatılmaz.
 
 ## Sonuç özeti
 

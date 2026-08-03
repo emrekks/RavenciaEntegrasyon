@@ -1,6 +1,6 @@
 # F3 Trendyol Dikey Dilim Kanıt Kaydı
 
-İlk doğrulama tarihi: `2026-07-31`; Fake adapter/regresyon ek doğrulaması: `2026-08-02`; üretim paneli salt-okunur Stage doğrulaması: `2026-08-03`. Yerel ortam Windows geliştirme makinesi, .NET SDK `10.0.302`, Node `24.15.0`, npm `11.12.1`, PostgreSQL `18.4`; gerçek bağlantı testi AWS Ubuntu üretim dağıtımından çalıştırıldı. Production write kullanılmadı.
+İlk doğrulama tarihi: `2026-07-31`; Fake adapter/regresyon ek doğrulaması: `2026-08-02`; üretim paneli salt-okunur Stage doğrulaması: `2026-08-03`; ek read-capability probe doğrulaması: `2026-08-04`. Yerel ortam Windows geliştirme makinesi, .NET SDK `10.0.302`, Node `24.15.0`, npm `11.12.1`, PostgreSQL `18.4`; gerçek bağlantı testi AWS Ubuntu üretim dağıtımından çalıştırıldı. Production write kullanılmadı.
 
 ## Sonuç özeti
 
@@ -28,6 +28,7 @@
 | `F3-EV-020` deterministic Fake adapter | PASS_FULL_LOCAL_FAKE_RC / SANDBOX OPEN | Test-only adapter bütün generic portları uygular; success/empty/partial/auth/429/5xx/timeout/validation/contract senaryoları, deterministic clock, varsayılan write-off ve replay’de tek etki test edildi. PostgreSQL job→lease→processor→worker-kill/reaper→retry→completion zinciri tek Order/OrderLine/cursor üretti. Ayrı RC testi gerçek Chromium oturumu→API→PostgreSQL job→gerçek Worker→Fake adapter→sipariş listesi ve detay UI zincirini tamamladı. Production DI/ağ/auth/secret bağımlılığı yok; gerçek platform sandbox/SIT bölümü açıktır |
 | `F3-EV-021` Trendyol production read-only sync | PASS_TARGET_READ_ONLY | `release-2026-08-03-7` (`a5f3eac`) immutable app `sha256:2029f449…75070e8` ve edge `sha256:99cb59ea…120902` ile production deploy edildi; API/PostgreSQL/Caddy healthy, Worker running ve HTTPS readiness `200`. Trendyol Stage bağlantısı `ACTIVE`; `CONNECTION_TEST` ve `ORDER_READ` `SUPPORTED`, diğer capability’ler `UNKNOWN`/off. `TRENDYOL_ORDER_SYNC` tek denemede `SUCCEEDED`, `LastErrorCode=null`; panel sipariş listesi doldu. Hiçbir dış write capability veya butonu açılmadı. |
 | `F3-EV-022` Trendyol satır/paket doğrulaması | PASS_TARGET_READ_ONLY | 2026-08-03 salt-okunur tekrar eşitlemede 4.037 sipariş satırı aktarıldı. Resmî stream yanıtında `lines` dizisi ve 1–3 kalemli paketler görüldü. Tahsisli kalemlerle paket tutarı karşılaştırılan 13 faturalanabilir paketin 13'ünde toplam eşleşti; dış write yapılmadı. |
+| `F3-EV-023` Trendyol ek read-capability keşfi | PASS_LOCAL / TARGET_RERUN_OPEN | 2026-08-04 bağlantı keşfine onaylı ürün ve iade talebi için `size=1` salt-okunur proplar eklendi. Başarılı probe ilgili capability'yi `SUPPORTED`, hata ise koduyla `UNKNOWN` kaydeder; bağlantı testini sahte biçimde başarısız veya write yetkili yapmaz. Sayfalama alt sınırı nedeniyle büyük yanıt üretebilen katalog referans uçları otomatik probe edilmez ve `UNKNOWN` kalır. Adaptör sözleşme paketi `55/55 PASS`; production dağıtım ve panelden bağlantı testi tekrarı bekleniyor. |
 
 ## Fixture checksum'ları
 

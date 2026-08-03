@@ -1,11 +1,11 @@
 # ADR-014 - Platform teslim önceliği
 
-Durum: Accepted
+Durum: Superseded by ADR-015
 Tarih: 2026-08-03
 
 ## Karar
 
-İşletme sahibi aktif geliştirme ve doğrulama önceliğini `Trendyol → Trendyol E-Faturam → Hepsiburada` olarak belirledi. Shopify, N11 ve Pazarama projenin son aşamalarına ertelendi.
+İşletme sahibi aktif geliştirme ve doğrulama önceliğini `Trendyol → Trendyol E-Faturam → Hepsiburada` olarak belirledi. Bu tarihsel sıra, 2026-08-03 tarihli yeni işletme sahibi kararıyla ADR-015 tarafından `Trendyol → Hepsiburada → Trendyol E-Faturam` olarak değiştirilmiştir.
 
 Bu karar mevcut modüler monolit sınırlarını, generic portları veya fail-closed capability modelini değiştirmez. Ertelenen platformların mevcut yerel kodu silinmez; yeni production capability, route, menü veya dış yazma açılmaz. Erteleme, eksik Shopify production reconciliation kanıtını tamamlanmış saymaz; yalnız iş sırasını değiştirir.
 

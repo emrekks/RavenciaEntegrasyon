@@ -57,12 +57,14 @@ sudo -H ./deploy/scripts/install-marketplacehub.sh --host-only
 
 ## Faz ve güvenlik sınırı
 
-Aktif ve onaylanmış son yerel uygulama alt fazı F6A’dır. İşletme sahibinin 2026-08-03 öncelik kararıyla aktif doğrulama sırası Trendyol, E-Faturam ve Hepsiburada’dır; Shopify, N11 ve Pazarama son aşamalara ertelenmiştir. F6B N11, F6C Pazarama veya F7+ route, menü, migration ya da placeholder bulunmaz. Adapter kodunun bulunması gerçek mağaza capability’sinin kanıtlandığı anlamına gelmez:
+Aktif ve onaylanmış son yerel uygulama alt fazı F6A’dır. İşletme sahibinin 2026-08-03 tarihli ADR-015 kararıyla aktif teslim sırası yalnız `Trendyol → Hepsiburada → Trendyol E-Faturam`dır. Bu üç platform onaylı iş kapsamı için uçtan uca çalışır ve kanıtlı hale gelmeden Shopify, N11, Pazarama veya F7+ üzerinde yeni geliştirme/doğrulama başlatılmaz. F6B N11, F6C Pazarama veya F7+ route, menü, migration ya da placeholder bulunmaz. Adapter kodunun bulunması gerçek mağaza capability’sinin kanıtlandığı anlamına gelmez:
+
+Bağlayıcı güncel şartname: [`Ravencia Entegrasyon v3.5`](output/pdf/Ravencia_Entegrasyon_v3_5_Nihai_Uygulama_Surumu.pdf). v3.5 iki karar revizyon sayfasıyla v3.4/v3.3 revizyonlarını ve v3.2 tabanını eksiksiz korur.
 
 - Capability’ler bağlantı/environment/store/API-version kapsamında başta `UNKNOWN`dır.
 - Token ve secret değerleri şifreli saklanır, API/UI/log çıktısında geri gösterilmez.
-- Shopify ürün, stok, fiyat ve fulfillment yazmaları development-store kanıtları tamamlanana kadar fail-closed’dur.
-- Hepsiburada credential ve salt-okunur Sipariş SIT bağlantı testi açıktır. Boş yanıt zarfı doğrulandı; dolu anonim fixture olmadan sipariş aktarımı yapılmaz ve bütün dış yazmalar kapalıdır.
+- Shopify `DEFERRED` durumundadır; mevcut yerel kod korunur, bütün capability ve yazmaları yeni işletme sahibi kararına kadar fail-closed kalır.
+- Hepsiburada credential, salt-okunur Sipariş SIT bağlantı testi ve `ORDER_READ` açıktır. 2026-08-03'te iki dolu SIT siparişi generic sipariş modeline işlendi; katalog/stok-fiyat/package-action/return/webhook capability'leri ve bütün dış yazmalar kapalıdır.
 - Fatura otomasyonu mali kararlar ve test firma kanıtı olmadan kapalıdır.
 - AWS Ubuntu Server host profili, Docker Engine, systemd reboot ve named-volume kalıcılığı doğrulanmıştır; restore, domain/TLS ve RTO kanıtları tamamlanana kadar sonuç production kabulü sayılmaz.
 

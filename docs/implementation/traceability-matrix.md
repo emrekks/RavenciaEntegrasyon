@@ -8,7 +8,7 @@ Bu matris yalnız F0 dokümantasyon teslimatlarını izler. Gelecek kod ve test 
 | --- | --- | --- | --- | --- | --- | --- |
 | `F0-REQ-001` | F0 | Gereksinim-faz-kabul-kaynak-durum bağı kuruludur. | Bu matris; `Fx-plan-template.md` | F1+ / henüz yok | Yok | DONE |
 | `F0-REQ-002` | F0 | ADR-001–010 karar, sonuç ve değişiklik kapısı içerir. | `docs/adr/ADR-001`–`ADR-010` | F1+ / henüz yok | Yok | DONE |
-| `F0-REQ-003` | F0 | Platform sırası değişmeden kaydedilmiştir. | `F0-external-dependencies.md`; capability matrisi | Adapterlar F4+ | Test hesapları | DONE |
+| `F0-REQ-003` | F0 + ADR-015 | Tarihsel sıra korunarak aktif teslim `Trendyol → Hepsiburada → Trendyol E-Faturam` ile sınırlandırılmıştır. | v3.5 PDF; ADR-015; `F0-external-dependencies.md`; capability matrisi | Aktif üç platform kanıtları | Test hesapları | SUPERSEDED_OPERATIONALLY_BY_ADR_015 |
 | `F0-REQ-004` | F0 | Her platform/capability kanıt alanlarıyla kayıtlıdır. | `docs/platform-rules/capability-matrix.md` | Adapter testleri F4+ | Resmî kaynak ve test hesabı | DONE |
 | `F0-REQ-005` | F0 | Güvenli iş otoriteleri açık ve çelişkisizdir. | `F0-business-authorities.md`; ADR-006 | Domain uygulaması F2+ | Yok | DONE |
 | `F0-REQ-006` | F0 | Hacim, pik x5, RPO/RTO ve backup profili kayıtlıdır. | `F0-capacity-recovery-profile.md`; ADR-010 | Load/restore testleri F1+ | Hedef restore/RTO geçti; x5 yük ve şifreli off-host kopya bekliyor | BLOCKED_EXTERNAL |
@@ -92,10 +92,10 @@ F5 ayrıntılı kabul ve kanıt eşlemesi [F5-plan.md](F5-plan.md) ve [F5-eviden
 
 | Aralık | Uygulama | Kanıt | Sonuç |
 | --- | --- | --- | --- |
-| `F5-REQ-001–004` | Pinned Admin GraphQL 2026-07, canonical shop scope, encrypted token/client-secret ve capability UNKNOWN başlangıcı | Build, boundary ve adapter contract testleri | DONE_LOCAL_CORE |
-| `F5-REQ-005–009` | Generic product/inventory/order portları, JSONL checkpoint, GraphQL error ayrımı ve fail-closed writes | `F5ShopifyContractTests`; development-store yok | PARTIAL_LOCAL / BLOCKED_EXTERNAL |
-| `F5-REQ-010–014` | Raw-body HMAC, Inbox dedupe, worker dispatch, mevcut integrations UI ve no-migration reuse | HMAC testleri, source guard, Web build | DONE_LOCAL_CORE / PUBLIC_WEBHOOK BLOCKED_EXTERNAL |
-| `F5-EXIT-001–004` | F5 çıkış seti | `F5-EV-001–010` | READY_LOCAL_CORE; BLOCKED_EXTERNAL |
+| `F5-REQ-001–004` | Pinned Admin GraphQL 2026-07, canonical shop scope, encrypted token/client-secret ve capability UNKNOWN başlangıcı | Build, boundary ve adapter contract testleri | DONE_LOCAL_CORE / DEFERRED_BY_ADR_015 |
+| `F5-REQ-005–009` | Generic product/inventory/order portları, JSONL checkpoint, GraphQL error ayrımı ve fail-closed writes | `F5ShopifyContractTests`; development-store yok | PARTIAL_LOCAL / BLOCKED_EXTERNAL / DEFERRED_BY_ADR_015 |
+| `F5-REQ-010–014` | Raw-body HMAC, Inbox dedupe, worker dispatch, mevcut integrations UI ve no-migration reuse | HMAC testleri, source guard, Web build | DONE_LOCAL_CORE / PUBLIC_WEBHOOK BLOCKED_EXTERNAL / DEFERRED_BY_ADR_015 |
+| `F5-EXIT-001–004` | F5 çıkış seti | `F5-EV-001–010`; ADR-015 | READY_LOCAL_CORE; DEFERRED_BY_ADR_015 |
 
 ## F6A uygulama izi
 
@@ -103,9 +103,9 @@ F6A ayrıntılı kabul ve kanıt eşlemesi [F6A-plan.md](F6A-plan.md) ve [F6A-ev
 
 | Aralık | Uygulama | Kanıt | Sonuç |
 | --- | --- | --- | --- |
-| `F6A-REQ-001–002` | Yalnız Hepsiburada draft bağlantısı; guide version/User-Agent/merchant scope, auth kanıtına kadar credential yok | Faz guard, connection validation | DONE_LOCAL_FAIL_CLOSED / BLOCKED_EXTERNAL |
-| `F6A-REQ-003–010` | Generic reference/product/inventory/order/return portları, atomik package güvenliği, durable retry state/backoff/max-attempt, worker heartbeat/fencing; yalnız Sipariş SIT bağlantı probu HTTP, bütün write kapalı | F6A contract/property tests, AWS HTTP 200 boş zarf, worker build/policy, EF model/SQL ve PostgreSQL 18.4 worker-kill/retry testi; dolu partner fixture yok | CONNECTION PASS_ORDER_SIT / PACKAGE SAFETY PASS_LOCAL_PROPERTY / RETRY+HEARTBEAT PASS_POSTGRES_LOCAL / MAPPING BLOCKED_EXTERNAL |
+| `F6A-REQ-001–002` | Yalnız Hepsiburada F6A; Stage bağlantısı, guide version, Basic Auth, User-Agent ve merchant scope doğrulandı | Faz guard, şifreli credential, AWS SIT connection/order-read kanıtı | PASS_ORDER_SIT / OTHER_FAMILIES BLOCKED_EXTERNAL |
+| `F6A-REQ-003–010` | Generic reference/product/inventory/order/return portları, atomik package güvenliği, durable retry state/backoff/max-attempt, worker heartbeat/fencing; Sipariş SIT salt-okunur, bütün write kapalı | F6A contract/property tests, AWS dolu SIT order response (`items=2`), `merchantSKU` contract, worker build/policy, EF model/SQL ve PostgreSQL 18.4 worker-kill/retry testi | CONNECTION+ORDER_READ PASS_ORDER_SIT / PACKAGE SAFETY PASS_LOCAL_PROPERTY / RETRY+HEARTBEAT PASS_POSTGRES_LOCAL / OTHER MAPPINGS BLOCKED_EXTERNAL |
 | `F6A-REQ-011–015` | HTTP hata sınıfları, capability/kill-switch, secret/auth sınırı, yerel kuru mutabakat/rollback rehberi ve mevcut integrations UI | Bütün read/write portları ve hata sınıfları için adapter tests, secret/source guard, local policy tests, runbook review, Web build, repository guard | DONE_LOCAL_FAIL_CLOSED / RECONCILIATION PASS_LOCAL_DRY |
-| `F6A-REQ-016`, `F6A-EXIT-001–006` | SIT safe-write, reconciliation, rollback ve önceki platform kapısı | Dış kanıt bekleniyor | BLOCKED_EXTERNAL / BLOCKED_PHASE_GATE |
+| `F6A-REQ-016`, `F6A-EXIT-001–006` | SIT safe-write, Hepsiburada target reconciliation ve rollback; Shopify kapısı ADR-015 ile uygulanamaz | Hepsiburada dış kanıtı bekleniyor; ADR-015 Shopify'ı `DEFERRED` tutuyor | BLOCKED_EXTERNAL / PREVIOUS_PLATFORM_GATE_SUPERSEDED |
 
 F6B N11, F6C Pazarama ve F7+ production kodu, route, menü veya placeholder oluşturulmamıştır.

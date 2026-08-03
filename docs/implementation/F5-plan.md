@@ -5,14 +5,14 @@
 | Alan | Değer |
 | --- | --- |
 | Faz | `F5` |
-| Plan durumu | `APPROVED` (2026-08-02) |
-| Uygulama durumu | `READY_LOCAL_CORE / BLOCKED_EXTERNAL` |
-| Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 12, 23, 25, 29, 38, 42-47, 51-58, 60, 64, 66-70 ve 72-73 |
-| Yetkili şartname SHA-256 | v3.4 `5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51` |
+| Plan durumu | `DEFERRED_BY_ADR_015` (2026-08-03; tarihsel plan korunur) |
+| Uygulama durumu | `READY_LOCAL_CORE / DEFERRED / BLOCKED_EXTERNAL` |
+| Yetkili şartname | v3.5 PDF içindeki ADR-015 revizyonu ve devamında korunan v3.2 F5 tabanı |
+| Yetkili şartname SHA-256 | v3.5 `DDA0DBE58555EB323A84A6E2C5449133FAF8584979BD8DB795DFEE587AED8B58` |
 | Ön koşul | F4 yerel çekirdeği `5a1be44`; localhost giriş düzeltmesi `237c15d`; F4 dış kanıtları açık blocker olarak kayıtlı |
 | Hedef sonuç | Generic Domain/Application portlarının Shopify üzerinde yeniden kullanılabildiğini kanıtlayan, development-store odaklı ve dış yazmaları kapalı başlayan F5 adaptörü |
 
-Bu belge yalnız F5 uygulama planıdır. Kullanıcı onayı alınmadan Shopify production kodu, migration, endpoint, menü, worker dispatch veya placeholder oluşturulmaz. F4 dış blocker'ları F5'in bağımsız sonraki release olarak planlanmasını engellemez; ilk canlı F0-F4 kabulünü tamamlamış saydırmaz.
+Bu belge F5'in tarihsel uygulama planıdır. ADR-015 uyarınca Shopify aktif kapsam dışındadır; yeni production kodu, migration, endpoint, menü, worker dispatch, doğrulama veya safe-write çalışması yeni işletme sahibi kararı olmadan başlatılmaz. Mevcut yerel kod ve kanıt korunur; eksik blocker'lar tamamlanmış sayılmaz.
 
 ## F5 hedefleri
 

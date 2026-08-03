@@ -20,7 +20,7 @@
 | `RISK-F5-WEBHOOK-001` | Public HTTPS adresi hazır, fakat gerçek signed webhook teslim kanıtı yok. | Olay kaçırma, duplicate veya spoofing | Raw HMAC, route token, Inbox dedupe ve reconciliation sınırı yerelde hazır | Public endpoint üzerinden signed duplicate/out-of-order E2E | PARTIAL_PUBLIC_TLS / OPEN_DELIVERY_EVIDENCE |
 | `RISK-F6A-AUTH-001` | Sipariş SIT ürün ailesi için Basic Auth, merchant scope ve User-Agent canlı testle doğrulandı; diğer ürün aileleri ve production auth kanıtlanmadı. | Doğrulanmış sözleşmenin yanlış ürün ailesine taşınması | Credential yalnız STAGE; yalnız Sipariş SIT GET testi; production ve bütün write kapalı | Her ürün ailesi için ayrı tarihli auth/scope kanıtı | PARTIAL_CLOSED_ORDER_SIT / OPEN_OTHER_FAMILIES |
 | `RISK-F6A-CONTRACT-001` | Gerçek anonim reference/product/listing/order/package/return payload’ları yok. | Uydurma DTO, enum veya yanlış mapping | Generic port iskeleti no-HTTP; mapping kodlanmadı | Redacted SIT fixture + checksum | OPEN_BLOCKING_EXTERNAL |
-| `RISK-F6A-PHASE-001` | F5 production reconciliation/rollback tamamlanmadı. | Ardışık iki adapterın kanıtsız canlıya alınması | F6A production çıkışı kapalı; F6B/F6C yok | F5 production evidence | OPEN_BLOCKING_PHASE_GATE |
+| `RISK-F6A-PHASE-001` | Tarihsel F5→F6A sıra kapısı, yeni üç-platform önceliğiyle çelişiyordu. | Hepsiburada'nın Shopify dış kanıtına bağlı kalması veya Shopify'ın yanlışlıkla tamamlanmış sayılması | ADR-015 Shopify'ı `DEFERRED` yaptı; F6A yalnız kendi safe-write/reconciliation/rollback kapılarıyla ilerler; F6B/F6C yok | ADR-015 ve güncel F6A plan/evidence | CLOSED_SUPERSEDED_BY_ADR_015 |
 
 ## Blocker özeti
 

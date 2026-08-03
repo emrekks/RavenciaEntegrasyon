@@ -37,6 +37,22 @@ public sealed class F3TrendyolContractTests
         Assert.Single(TrendyolJsonMapper.Products(Fixture("product-approved.json")).Items); var claim = Assert.Single(TrendyolJsonMapper.Returns(Fixture("return-success.json")).Items); Assert.Equal("CLAIM-ANON-001", claim.ExternalClaimId); Assert.Equal("Created", claim.RawStatus); Assert.Single(claim.Lines);
     }
 
+    [Fact]
+    public void Capability_discovery_probes_bounded_seller_reads_and_contains_no_write_request()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Infrastructure", "Adapters", "Trendyol", "TrendyolHttpClient.cs"));
+        var discovery = source[source.IndexOf("DiscoverCapabilitiesAsync", StringComparison.Ordinal)..source.IndexOf("public async Task<AdapterResult<AdapterPageResult<RemoteReferenceItem>>>", StringComparison.Ordinal)];
+
+        Assert.Contains("F3Capabilities.ProductRead", discovery, StringComparison.Ordinal);
+        Assert.Contains("F3Capabilities.OrderRead", discovery, StringComparison.Ordinal);
+        Assert.Contains("F3Capabilities.ReturnRead", discovery, StringComparison.Ordinal);
+        Assert.DoesNotContain("F3Capabilities.ReferenceRead", discovery, StringComparison.Ordinal);
+        Assert.Contains("new(null, 1)", discovery, StringComparison.Ordinal);
+        Assert.DoesNotContain("HttpMethod.Post", discovery, StringComparison.Ordinal);
+        Assert.DoesNotContain("HttpMethod.Put", discovery, StringComparison.Ordinal);
+        Assert.DoesNotContain("HttpMethod.Delete", discovery, StringComparison.Ordinal);
+    }
+
     private static string Fixture(string name) => File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Infrastructure", "Adapters", "Trendyol", "Fixtures", name));
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }
 }

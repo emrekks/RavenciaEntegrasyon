@@ -6,9 +6,9 @@
 | --- | --- |
 | Faz | `F1` |
 | Durum | `READY_LOCAL_DEPLOY_PREPARED`; production/Ubuntu Server kabulü `BLOCKED_EXTERNAL` |
-| Yetkili şartname | Repository kökü `Ravencia_Entegrasyon_v3_4_Nihai_Uygulama_Surumu.pdf`, v3.4, 77 sayfa; v3.3/v3.2 tarihsel |
-| Şartname SHA-256 | v3.4 `5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51` |
-| Kaynak sayfalar | 5-6, 11-19, 23-24, 34-36, 39-41, 48-59, 61-62 |
+| Yetkili şartname | `output/pdf/Ravencia_Entegrasyon_v3_5_Nihai_Uygulama_Surumu.pdf`, v3.5, 79 sayfa; v3.4/v3.3/v3.2 devamında korunur |
+| Şartname SHA-256 | v3.5 `DDA0DBE58555EB323A84A6E2C5449133FAF8584979BD8DB795DFEE587AED8B58` |
+| Kaynak sayfalar | v3.5 mutlak sayfalar: 7-8, 13-21, 25-26, 36-38, 41-43, 50-61, 63-64 (v3.4 numaralarına +2) |
 | Onay kaydı | Kullanıcı 2026-07-31 tarihinde F1 başlangıcını açıkça onayladı. |
 | F0 yerel runtime kapısı | `READY_HISTORICAL`; hedef Ubuntu Server kanıtı production kapısına ertelendi. |
 

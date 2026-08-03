@@ -1,10 +1,10 @@
 # Hepsiburada Yerel Mutabakat ve Geri Dönüş Rehberi
 
-Durum: `LOCAL_DRY_ONLY`. Bu rehber dış sisteme bağlanma veya dış yazmayı açma yetkisi vermez.
+Durum: `SIT_READ_ONLY_VERIFIED`. Bu rehber dış yazmayı açma yetkisi vermez.
 
 ## Güvenlik sınırı
 
-- Hepsiburada bağlantısı yalnız `DRAFT` ve capability kayıtları `UNKNOWN` iken yerel kuru mutabakat yapılabilir.
+- Hepsiburada bağlantısı `DRAFT`/`VERIFIED` durumunda yerel kuru mutabakat yapabilir; uzak okuma yalnız aynı Stage bağlantısında `ORDER_READ=SUPPORTED` kanıtı varsa çalışır.
 - Yerel kuru mutabakat HTTP isteği, credential kullanımı, job kuyruğu veya dış etki üretmez.
 - Karşılaştırma yalnız veritabanındaki mevcut yerel listing, sipariş ve paket durumlarıyla yapılır.
 - Farklarda ham değer yerine SHA-256 özetleri saklanır; sonuç sessizce veriyi değiştirmez.
@@ -22,18 +22,18 @@ Bu kapsam adları mevcut ortak mutabakat sözleşmesidir; Hepsiburada dış API 
 
 ## Çalıştırma ve kanıt
 
-1. Bağlantının platform kodunun `HEPSIBURADA`, durumunun `DRAFT` ve bütün dış yazma anahtarlarının kapalı olduğunu kaydet.
+1. Bağlantının platform kodunun `HEPSIBURADA`, ortamının `STAGE`, durumunun `DRAFT` veya `VERIFIED` ve bütün dış yazma anahtarlarının kapalı olduğunu kaydet.
 2. Ortak `IF3ReconciliationService.RunLocalDryAsync` servisini seçilen yerel kapsamla çalıştır.
 3. Koşu kimliği, başlangıç/bitiş zamanı, karşılaştırılan kayıt sayısı ve fark sayısını kanıt kaydına ekle.
 4. Her fark için entity türü, anahtar, alan, iki SHA-256 özet ve çözüm sınıfını gözden geçir.
 5. Açıklanamayan kritik fark varsa bağlantıyı etkinleştirme ve capability durumunu yükseltme.
 
-Henüz operatöre açık yeni bir API endpoint veya menü oluşturulmamıştır. SIT verisi gelene kadar doğrulama servis ve otomatik test seviyesindedir.
+Operatöre açık salt-okunur sipariş eşitleme mevcut generic `/integrations` ve `/orders` yüzeylerini kullanır; yeni platforma özel endpoint veya menü oluşturulmamıştır. 2026-08-03'te iki dolu SIT siparişi eşitlenmiş, dış platforma yazma yapılmamıştır.
 
 ## Geri dönüş
 
 1. Global, bağlantı ve capability dış yazma anahtarlarını kapalı tut; biri açılmışsa önce kapat.
-2. Bağlantıyı etkinleştirme; `DRAFT` durumunda bırak.
+2. Uzak okuma geri alınacaksa `ORDER_READ` capability'sini yükseltme/yenileme; bağlantıyı `VERIFIED` durumundan ileri taşıma.
 3. Hepsiburada’ya ait bekleyen dış-yazma işi oluşturma veya yeniden deneme başlatma.
 4. Mutabakat, inbox ve audit kayıtlarını silme; olay incelemesi için koru.
 5. Credential mevcutsa loglama veya dışa aktarma yapmadan güvenli depoda devre dışı bırak; silme/rotasyon için ayrıca onay al.
@@ -42,7 +42,7 @@ Henüz operatöre açık yeni bir API endpoint veya menü oluşturulmamıştır.
 
 ## Açık kapılar
 
-- Shopify production reconciliation/rollback kanıtı tamamlanmadan F6A production çıkışı yoktur.
-- Hepsiburada partner/SIT kanıtı olmadan remote read, safe-write ve production smoke yoktur.
+- ADR-015 uyarınca Shopify `DEFERRED` durumundadır ve F6A için ön koşul değildir; bu erteleme Shopify'ı tamamlanmış saymaz.
+- Hepsiburada remote order read yalnız tarihli SIT kanıtıyla açıktır; safe-write ve production smoke için ayrıca işlem bazlı onay, rollback ve mutabakat kanıtı gerekir.
 - Açıklanamayan kritik fark varken capability `SUPPORTED` yapılamaz.
 - Bu rehber F6B veya F6C başlangıç onayı değildir.

@@ -7,8 +7,8 @@
 | Faz | `F3` |
 | Plan durumu | `APPROVED` |
 | Uygulama durumu | `READY_LOCAL_CORE / BLOCKED_EXTERNAL` |
-| Yetkili şartname | Repository kökündeki v3.2 PDF; özellikle sayfa 24-29, 34-47, 52, 57-58, 60 ve 63 |
-| Yetkili şartname SHA-256 | v3.4 `5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51` |
+| Yetkili şartname | v3.5 PDF içinde devamında korunan v3.2 tabanı; özellikle taban sayfa 24-29, 34-47, 52, 57-58, 60 ve 63 |
+| Yetkili şartname SHA-256 | v3.5 `DDA0DBE58555EB323A84A6E2C5449133FAF8584979BD8DB795DFEE587AED8B58` |
 | Ön koşul | F2 `READY_LOCAL`, commit `8cbf1b9` |
 | Faz başlatma kaydı | Kullanıcı 2026-07-31 tarihinde “Projeye devam edelim.” diyerek F3 planlamasını açtı. |
 | Hedef sonuç | Yerel/fixture uygulaması `READY_LOCAL`; gerçek Stage/SIT ve production kanıtları tamamlanana kadar faz çıkışı `BLOCKED_EXTERNAL` |
