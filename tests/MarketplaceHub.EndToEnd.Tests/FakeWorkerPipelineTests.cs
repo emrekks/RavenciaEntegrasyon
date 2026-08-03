@@ -128,6 +128,27 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         Assert.Equal("CATEGORIES", snapshot.ResourceType);
         Assert.Equal("test-v1", snapshot.SourceVersion);
         Assert.Equal(clock.GetUtcNow(), snapshot.FetchedAt);
+
+        var localCategoryId = Guid.Parse("97777777-7777-7777-7777-777777777777");
+        db.Categories.Add(new Category { Id = localCategoryId, TenantId = tenantId, Name = "Yerel Yaprak", NormalizedName = "YEREL YAPRAK", Path = "Yerel Yaprak", Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = Now, UpdatedAt = Now });
+        await db.SaveChangesAsync(cancellationToken);
+        var referenceService = new ReferenceDataService(db, clock);
+        var listed = await referenceService.ListAsync(tenantId, connectionId, "CATEGORIES", null, cancellationToken);
+        Assert.True(listed.Succeeded);
+        Assert.Equal(snapshot.Id, listed.Value!.SnapshotId);
+        Assert.Single(listed.Value.Items);
+        Assert.Null((await referenceService.GetMappingAsync(tenantId, "categories", localCategoryId, connectionId, cancellationToken)).Value);
+
+        var invalid = await referenceService.UpsertMappingAsync(tenantId, "categories", localCategoryId, null, new(connectionId, snapshot.Id, "synthetic-reference", "DRAFT"), cancellationToken);
+        Assert.False(invalid.Succeeded);
+        Assert.Equal("MAPPING_STATUS_INVALID", invalid.Error?.Code);
+        var created = await referenceService.UpsertMappingAsync(tenantId, "categories", localCategoryId, null, new(connectionId, snapshot.Id, "synthetic-reference", "VERIFIED"), cancellationToken);
+        Assert.True(created.Succeeded);
+        var updated = await referenceService.UpsertMappingAsync(tenantId, "categories", localCategoryId, created.Value!.Version, new(connectionId, snapshot.Id, "synthetic-reference", "VERIFIED"), cancellationToken);
+        Assert.True(updated.Succeeded);
+        Assert.Equal(created.Value.Id, updated.Value!.Id);
+        Assert.Equal(2, updated.Value.Version);
+        Assert.Equal(1, await db.CategoryMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localCategoryId, cancellationToken));
     }
 
     private sealed class MutableTimeProvider(DateTimeOffset value) : TimeProvider

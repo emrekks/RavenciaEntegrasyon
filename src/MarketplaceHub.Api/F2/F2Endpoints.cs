@@ -115,8 +115,8 @@ public static class F2Endpoints
 
     private static void MapReferenceEndpoints(RouteGroupBuilder api)
     {
-        api.MapGet("/reference-data/categories", (Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "CATEGORY", null));
-        api.MapGet("/reference-data/categories/{externalId}/attributes", (string externalId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "ATTRIBUTE", externalId));
+        api.MapGet("/reference-data/categories", (Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "CATEGORIES", null));
+        api.MapGet("/reference-data/categories/{externalId}/attributes", (string externalId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "CATEGORY_ATTRIBUTES", externalId));
         api.MapGet("/reference-data/brands", (Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "BRAND", null));
         foreach (var type in new[] { "categories", "brands", "attributes", "attribute-values" })
         {
