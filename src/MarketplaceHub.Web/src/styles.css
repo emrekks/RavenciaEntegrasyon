@@ -95,6 +95,8 @@ body { background:var(--mp-canvas); }
 .brand.wordmark small { color:#74807f; font-size:.64rem; font-weight:800; letter-spacing:.2em; }
 .app-shell aside nav { display:grid; gap:3px; margin:0; }
 .nav-section { margin:20px 14px 7px; color:#7a8584; font-size:.64rem; font-weight:850; letter-spacing:.14em; text-transform:uppercase; }
+.app-shell aside nav a[href="/imports"], .app-shell aside nav a[href="/inventory"], .app-shell aside nav a[href="/mappings/categories"] { display:none; }
+.app-shell aside nav a[href="/shipments"] { margin-top:2px; }
 .app-shell aside nav a { display:flex; align-items:center; gap:12px; min-height:43px; padding:10px 13px; color:#35413f; border-left:4px solid transparent; border-radius:8px; font-size:.9rem; font-weight:600; }
 .app-shell aside nav a:hover { color:var(--mp-primary); background:#f1f8f7; }
 .app-shell aside nav a.active { color:#073e3a; background:#ccefeb; border-left-color:var(--mp-primary); }
