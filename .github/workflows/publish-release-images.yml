@@ -48,10 +48,7 @@ jobs:
           set -euo pipefail
           dotnet restore MarketplaceHub.sln --locked-mode
           dotnet build MarketplaceHub.sln --no-restore
-          # Testcontainers projects must not start their isolated PostgreSQL containers in parallel.
-          for project in tests/*/*.csproj; do
-            dotnet test "$project" --no-build --no-restore
-          done
+          dotnet test MarketplaceHub.sln --no-build --no-restore
           dotnet format MarketplaceHub.sln --verify-no-changes --no-restore
 
       - name: Verify locked web application
