@@ -60,11 +60,16 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
     {
         var canonical = JsonSerializer.Serialize(new
         {
-            Id = Guid.NewGuid(), InvoiceType = "EARSIVFATURA", Currency = "TRY", Note = "YALNIZ: ÜÇ YÜZ TÜRK LİRASI", PayableTotal = 300m,
+            Id = Guid.NewGuid(),
+            InvoiceType = "EARSIVFATURA",
+            Currency = "TRY",
+            Note = "YALNIZ: ÜÇ YÜZ TÜRK LİRASI",
+            PayableTotal = 300m,
             IssuedAt = new DateTimeOffset(2026, 8, 3, 12, 5, 0, TimeSpan.FromHours(3)),
             Order = new
             {
-                OrderNumber = "ORDER-1", OrderedAt = new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.FromHours(3)),
+                OrderNumber = "ORDER-1",
+                OrderedAt = new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.FromHours(3)),
                 CustomerSnapshotJson = JsonSerializer.Serialize(new { customerFirstName = "Anonim", customerLastName = "Müşteri", customerEmail = "anonim@example.test" }),
                 InvoiceAddressSnapshotJson = JsonSerializer.Serialize(new { invoiceAddress = new { identityNumber = "11111111111", countryCode = "TR", city = "İstanbul", district = "Kadıköy", fullAddress = "Anonim adres" } }),
                 ShipmentAddressSnapshotJson = "{}"

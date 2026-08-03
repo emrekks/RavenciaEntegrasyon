@@ -150,11 +150,20 @@ public sealed partial class F4BillingService(
             var amounts = InvoiceAmounts.FromVatIncluded(includedTotal, line.VatRate);
             return new InvoiceLine
             {
-                Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, OrderLineId = line.Id,
-                LineSequence = index + 1, DescriptionSnapshot = line.TitleSnapshot, SkuSnapshot = line.Sku,
-                UnitSnapshot = "ADET", Quantity = quantity,
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                InvoiceId = invoice.Id,
+                OrderLineId = line.Id,
+                LineSequence = index + 1,
+                DescriptionSnapshot = line.TitleSnapshot,
+                SkuSnapshot = line.Sku,
+                UnitSnapshot = "ADET",
+                Quantity = quantity,
                 UnitPrice = decimal.Round(amounts.TaxExclusiveAmount / quantity, 4, MidpointRounding.AwayFromZero),
-                DiscountAmount = 0, VatRate = line.VatRate, VatAmount = amounts.VatAmount, LineTotal = amounts.PayableAmount
+                DiscountAmount = 0,
+                VatRate = line.VatRate,
+                VatAmount = amounts.VatAmount,
+                LineTotal = amounts.PayableAmount
             };
         }).ToList();
         var calculatedPayable = lines.Sum(x => x.LineTotal);

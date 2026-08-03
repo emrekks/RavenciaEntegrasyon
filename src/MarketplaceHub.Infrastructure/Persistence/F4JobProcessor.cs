@@ -62,7 +62,12 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         var package = invoice.PackageId is null ? null : await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.PackageId, cancellationToken);
         var canonical = JsonSerializer.Serialize(new
         {
-            invoice.Id, invoice.InvoiceType, invoice.Currency, invoice.PayableTotal, invoice.Note, IssuedAt = invoice.IssuedAt ?? invoice.UpdatedAt,
+            invoice.Id,
+            invoice.InvoiceType,
+            invoice.Currency,
+            invoice.PayableTotal,
+            invoice.Note,
+            IssuedAt = invoice.IssuedAt ?? invoice.UpdatedAt,
             Order = new { order.OrderNumber, order.OrderedAt, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson },
             Package = package is null ? null : new { package.ExternalPackageId, package.CargoProviderExternalId, package.StatusOccurredAt },
             Lines = lines.Select(x => new { x.LineSequence, x.DescriptionSnapshot, x.SkuSnapshot, x.UnitSnapshot, x.Quantity, x.UnitPrice, x.DiscountAmount, x.VatRate, x.VatAmount, x.LineTotal })

@@ -1,5 +1,5 @@
-using MarketplaceHub.Domain;
 using System.Text.Json;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Domain.Tests;
 
