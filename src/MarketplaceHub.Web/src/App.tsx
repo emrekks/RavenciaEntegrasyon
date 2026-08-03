@@ -8,7 +8,7 @@ import { BillingSettingsPage, InvoiceDetailPage, InvoicesPage } from './F4Pages'
 
 function Shell({ me }: { me: Me }) {
   const location = useLocation(); const initials = me.displayName.split(' ').map(part => part[0]).join('').slice(0, 2).toLocaleUpperCase('tr-TR')
-  const titles: Record<string, string> = { dashboard: 'Dashboard', products: 'Ürünler', catalog: 'Katalog', imports: 'İçe Aktarım', inventory: 'Stok', integrations: 'Platformlar · Trendyol · E-Faturam · Shopify · Hepsiburada', mappings: 'Eşleştirme Ayarları', orders: 'Siparişler', shipments: 'Gönderiler', returns: 'İadeler', invoices: 'Faturalar', settings: 'Ayarlar' }
+  const titles: Record<string, string> = { dashboard: 'Dashboard', products: 'Ürünler', catalog: 'Katalog', imports: 'İçe Aktarım', inventory: 'Stok', integrations: 'Platformlar · Trendyol · Hepsiburada · E-Faturam', mappings: 'Eşleştirme Ayarları', orders: 'Siparişler', shipments: 'Gönderiler', returns: 'İadeler', invoices: 'Faturalar', settings: 'Ayarlar' }
   const current = titles[location.pathname.split('/')[1]] ?? 'Operasyon Merkezi'
   if (location.pathname === '/settings/billing') return <Navigate to="/dashboard" replace />
   const [settingsOpen, setSettingsOpen] = useState(location.pathname.startsWith('/settings') || location.pathname === '/integrations' || location.pathname.startsWith('/mappings'))

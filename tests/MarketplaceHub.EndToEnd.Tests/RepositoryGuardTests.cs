@@ -15,9 +15,11 @@ public sealed class RepositoryGuardTests
     {
         var root = FindRoot(); var source = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Web", "src", "App.tsx"));
         foreach (var required in new[] { "/products", "/products/new", "/products/:id", "/catalog/categories", "/catalog/brands", "/catalog/attributes", "/imports", "/imports/:id", "/inventory", "/orders", "/orders/:id", "/shipments", "/returns", "/returns/:id", "/integrations", "/integrations/:id", "/mappings/categories", "/mappings/attributes", "/invoices", "/invoices/:id", "/settings/billing" }) Assert.Contains(required, source, StringComparison.Ordinal);
-        Assert.Contains("Shopify", source, StringComparison.Ordinal);
         Assert.Contains("Hepsiburada", source, StringComparison.Ordinal);
-        foreach (var forbidden in new[] { "/reports", "/operations", "/tenants", "/users", "N11", "Pazarama" }) Assert.DoesNotContain(forbidden, source, StringComparison.OrdinalIgnoreCase);
+        foreach (var forbidden in new[] { "/reports", "/operations", "/tenants", "/users", "Shopify", "N11", "Pazarama" }) Assert.DoesNotContain(forbidden, source, StringComparison.OrdinalIgnoreCase);
+        var pages = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Web", "src", "F3Pages.tsx"));
+        foreach (var requiredPlatform in new[] { "<option value=\"TRENDYOL\">", "<option value=\"HEPSIBURADA\">", "<option value=\"TRENDYOL_EFATURAM\">" }) Assert.Contains(requiredPlatform, pages, StringComparison.Ordinal);
+        Assert.DoesNotContain("<option value=\"SHOPIFY\">", pages, StringComparison.Ordinal);
     }
 
     [Fact]
