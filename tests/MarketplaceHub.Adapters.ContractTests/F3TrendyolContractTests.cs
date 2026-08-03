@@ -38,6 +38,17 @@ public sealed class F3TrendyolContractTests
     }
 
     [Fact]
+    public void Documented_brand_response_maps_to_canonical_BRANDS_resource()
+    {
+        const string json = "{\"brands\":[{\"id\":1584892,\"name\":\"brand-1\"}]}";
+        var brand = Assert.Single(TrendyolJsonMapper.References("BRANDS", json, null));
+        Assert.Equal("BRANDS", brand.ResourceType);
+        Assert.Equal("1584892", brand.ExternalId);
+        Assert.Equal("brand-1", brand.Name);
+        Assert.True(brand.IsActive);
+    }
+
+    [Fact]
     public void Capability_discovery_probes_documented_reads_and_contains_no_write_request()
     {
         var source = File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Infrastructure", "Adapters", "Trendyol", "TrendyolHttpClient.cs"));

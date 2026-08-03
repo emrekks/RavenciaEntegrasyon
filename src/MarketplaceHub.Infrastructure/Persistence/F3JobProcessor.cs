@@ -22,7 +22,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
             F3JobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
             ShopifyContract.ConnectionTestJob => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
             HepsiburadaContract.ConnectionTestJob => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
-            F3JobTypes.ReferenceSync => await SyncReferences(tenantId, connectionId.Value, correlationId, cancellationToken),
+            F3JobTypes.ReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
             ShopifyContract.WebhookIngestJob => await MarkShopifyWebhookProcessed(tenantId, payloadJson, cancellationToken),
             ShopifyContract.OrderSyncJob => await SyncOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
             F3JobTypes.OrderSync => await SyncOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -34,9 +34,10 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         };
     }
 
-    private async Task<bool> SyncReferences(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    private async Task<bool> SyncReferences(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
-        const string resourceType = "CATEGORIES";
+        var resourceType = ReferenceResourceType(payloadJson);
+        if (resourceType is not ("CATEGORIES" or "BRANDS")) return false;
         var items = new List<RemoteReferenceItem>();
         var visitedCursors = new HashSet<string>(StringComparer.Ordinal);
         string? cursor = null;
@@ -84,6 +85,16 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;
+    }
+
+    private static string ReferenceResourceType(string payloadJson)
+    {
+        try
+        {
+            using var payload = JsonDocument.Parse(payloadJson);
+            return payload.RootElement.TryGetProperty("resourceType", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()!.Trim().ToUpperInvariant() : "CATEGORIES";
+        }
+        catch (JsonException) { return ""; }
     }
 
     private async Task<bool> TestConnection(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)

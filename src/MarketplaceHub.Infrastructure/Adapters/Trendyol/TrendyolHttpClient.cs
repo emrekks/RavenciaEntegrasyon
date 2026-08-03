@@ -51,7 +51,13 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         else if (type == "ATTRIBUTE_VALUES" && TryParts(resource.ParentExternalId, out var categoryId, out var attributeId)) endpoint = TrendyolEndpoints.AttributeValues(categoryId, attributeId) + $"?page={Page(page.Cursor)}&size={page.Limit}";
         else return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(TrendyolErrorMapper.Unsupported("Reference resource için resmî V2 endpoint doğrulanmadı."));
         var response = await SendAsync(authorized, HttpMethod.Get, endpoint, null, cancellationToken); if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(response.Error!, response.RateLimit);
-        try { var items = TrendyolJsonMapper.References(type, response.Value!, resource.ParentExternalId); return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new(items, null, false), response.RateLimit); }
+        try
+        {
+            var items = TrendyolJsonMapper.References(type, response.Value!, resource.ParentExternalId);
+            var hasMore = type == "BRANDS" && items.Count >= page.Limit;
+            var next = hasMore ? (Page(page.Cursor) + 1).ToString(CultureInfo.InvariantCulture) : null;
+            return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new(items, next, hasMore), response.RateLimit);
+        }
         catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(TrendyolErrorMapper.Contract()); }
     }
 

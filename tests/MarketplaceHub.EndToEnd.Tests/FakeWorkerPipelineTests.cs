@@ -149,6 +149,20 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         Assert.Equal(created.Value.Id, updated.Value!.Id);
         Assert.Equal(2, updated.Value.Version);
         Assert.Equal(1, await db.CategoryMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localCategoryId, cancellationToken));
+
+        var localBrandId = Guid.Parse("98888888-8888-8888-8888-888888888888");
+        db.Brands.Add(new Brand { Id = localBrandId, TenantId = tenantId, Name = "Synthetic Reference", NormalizedName = "SYNTHETIC REFERENCE", IsActive = true, CreatedAt = Now, UpdatedAt = Now });
+        await db.SaveChangesAsync(cancellationToken);
+        Assert.True(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"BRANDS\"}", "brand-reference", cancellationToken));
+        db.ChangeTracker.Clear();
+        var brands = await referenceService.ListAsync(tenantId, connectionId, "BRANDS", null, cancellationToken);
+        Assert.True(brands.Succeeded);
+        Assert.Single(brands.Value!.Items);
+        Assert.Equal("BRANDS", brands.Value.ResourceType);
+        var brandMapping = await referenceService.UpsertMappingAsync(tenantId, "brands", localBrandId, null, new(connectionId, brands.Value.SnapshotId, "synthetic-reference", "VERIFIED"), cancellationToken);
+        Assert.True(brandMapping.Succeeded);
+        Assert.Equal(2, await db.ReferenceSnapshots.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken));
+        Assert.Equal(1, await db.BrandMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localBrandId, cancellationToken));
     }
 
     private sealed class MutableTimeProvider(DateTimeOffset value) : TimeProvider

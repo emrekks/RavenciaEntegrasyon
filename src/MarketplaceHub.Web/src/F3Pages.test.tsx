@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { expect, test, vi } from 'vitest'
-import { IntegrationsPage, MappingPage } from './F3Pages'
+import { BrandMappingPage, IntegrationsPage, MappingPage } from './F3Pages'
 
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } }))
 
@@ -49,4 +49,29 @@ test('shows only the three ADR-015 platforms in active connection UI', async () 
   expect(screen.getByText('E-Faturam Aktif')).toBeInTheDocument()
   expect(screen.queryByText('Shopify Ertelenmiş')).not.toBeInTheDocument()
   expect(screen.queryByRole('option', { name: /Shopify/i })).not.toBeInTheDocument()
+})
+
+test('maps a local brand to the verified Trendyol brand snapshot', async () => {
+  let savedBody = ''
+  globalThis.fetch = vi.fn((input, init) => {
+    const url = String(input)
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-brand' })
+    if (url.includes('/api/v1/connections?')) return json({ items: [{ id: 'connection-1', platformCode: 'TRENDYOL', environment: 'STAGE', displayName: 'Trendyol Stage', externalStoreId: 'seller-1', status: 'ACTIVE', apiVersion: 'V2', hasCredential: true, version: 1 }], nextCursor: null, hasMore: false })
+    if (url.includes('/api/v1/catalog/brands?')) return json({ items: [{ id: 'local-brand-1', name: 'Ravencia', isActive: true, version: 1 }], nextCursor: null, hasMore: false })
+    if (url.includes('/api/v1/reference-data/brands?')) return json({ snapshotId: 'brand-snapshot-1', resourceType: 'BRANDS', fetchedAt: '2026-08-04T00:00:00Z', items: [{ externalId: 'external-brand-1', parentExternalId: null, name: 'Ravencia', path: 'Ravencia', depth: 0, isLeaf: true, isActive: true }] })
+    if (url.includes('/api/v1/mappings/brands/local-brand-1') && init?.method === 'PUT') { savedBody = String(init.body); return json({ id: 'brand-mapping-1', connectionId: 'connection-1', snapshotId: 'brand-snapshot-1', localId: 'local-brand-1', externalId: 'external-brand-1', status: 'VERIFIED', verifiedAt: '2026-08-04T00:01:00Z', version: 1 }) }
+    if (url.includes('/api/v1/mappings/brands/local-brand-1')) return json(null)
+    return Promise.resolve(new Response('{}', { status: 404, headers: { 'Content-Type': 'application/problem+json' } }))
+  }) as typeof fetch
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  render(<QueryClientProvider client={client}><MemoryRouter><BrandMappingPage /></MemoryRouter></QueryClientProvider>)
+
+  const brandSection = (await screen.findByRole('heading', { name: 'Marka eşlemeleri' })).closest('section')!; const page = within(brandSection)
+  const connection = await page.findByLabelText('Marka için aktif Trendyol bağlantısı'); await within(connection).findByRole('option', { name: 'Trendyol Stage · seller-1' }); fireEvent.change(connection, { target: { value: 'connection-1' } })
+  const local = await page.findByLabelText('Panel markası'); await waitFor(() => expect(local).toBeEnabled()); fireEvent.change(local, { target: { value: 'local-brand-1' } })
+  const external = await page.findByLabelText('Trendyol markası'); await within(external).findByRole('option', { name: 'Ravencia' }); fireEvent.change(external, { target: { value: 'external-brand-1' } })
+  fireEvent.click(page.getByRole('button', { name: 'Eşlemeyi doğrula ve kaydet' }))
+
+  expect(await page.findByRole('status')).toHaveTextContent('Marka eşlemesi doğrulandı')
+  await waitFor(() => expect(JSON.parse(savedBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'brand-snapshot-1', externalId: 'external-brand-1', status: 'VERIFIED' }))
 })

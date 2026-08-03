@@ -29,7 +29,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         if (!string.Equals(command.Status, "VERIFIED", StringComparison.Ordinal)) return ServiceResult<CatalogMappingView>.Fail("MAPPING_STATUS_INVALID", "Panel üzerinden yalnız VERIFIED mapping kaydedilebilir.", 422);
         var snapshot = await db.ReferenceSnapshots.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && x.Id == command.SnapshotId && x.IsCurrent, cancellationToken);
         if (snapshot is null) return ServiceResult<CatalogMappingView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Mapping güncel ve aynı tenant/connection reference snapshot ister.", 422);
-        var expectedResource = mappingType switch { "categories" => "CATEGORIES", "brands" => "BRAND", "attributes" => "ATTRIBUTE", "attribute-values" => "ATTRIBUTE_VALUE", _ => "" };
+        var expectedResource = mappingType switch { "categories" => "CATEGORIES", "brands" => "BRANDS", "attributes" => "CATEGORY_ATTRIBUTES", "attribute-values" => "ATTRIBUTE_VALUES", _ => "" };
         if (!string.Equals(snapshot.ResourceType, expectedResource, StringComparison.Ordinal)) return ServiceResult<CatalogMappingView>.Fail("REFERENCE_RESOURCE_MISMATCH", "Snapshot mapping türüyle eşleşmiyor.", 422);
         var external = await db.ReferenceItems.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SnapshotId == command.SnapshotId && x.ResourceType == expectedResource && x.ExternalId == command.ExternalId, cancellationToken);
         if (external is null) return ServiceResult<CatalogMappingView>.Fail("EXTERNAL_REFERENCE_NOT_FOUND", "External reference kimliği snapshot içinde bulunamadı.", 422);
@@ -74,9 +74,9 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
     private Task<bool> LocalExistsAsync(Guid tenantId, string type, Guid localId, CancellationToken cancellationToken) => type switch
     {
         "categories" => db.Categories.AnyAsync(x => x.TenantId == tenantId && x.Id == localId && x.IsActive && x.IsLeaf, cancellationToken),
-        "brands" => db.Brands.AnyAsync(x => x.TenantId == tenantId && x.Id == localId, cancellationToken),
-        "attributes" => db.AttributeDefinitions.AnyAsync(x => x.TenantId == tenantId && x.Id == localId, cancellationToken),
-        "attribute-values" => db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.Id == localId, cancellationToken),
+        "brands" => db.Brands.AnyAsync(x => x.TenantId == tenantId && x.Id == localId && x.IsActive, cancellationToken),
+        "attributes" => db.AttributeDefinitions.AnyAsync(x => x.TenantId == tenantId && x.Id == localId && x.IsActive, cancellationToken),
+        "attribute-values" => db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.Id == localId && x.IsActive, cancellationToken),
         _ => Task.FromResult(false)
     };
 
