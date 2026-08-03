@@ -22,18 +22,6 @@ public static class TrendyolEFaturamCanonicalPayload
                 throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
 
             var invoiceType = RequiredText(root, "InvoiceType");
-            var package = root.TryGetProperty("Package", out var packageValue) && packageValue.ValueKind == JsonValueKind.Object ? packageValue : default;
-            var carrierName = package.ValueKind == JsonValueKind.Object ? Text(package, "CargoProviderExternalId") : "";
-            var carrier = settings.ConfiguredCarriers.FirstOrDefault(x => string.Equals(x.ProviderName.Trim(), carrierName.Trim(), StringComparison.OrdinalIgnoreCase));
-            EfaturamDelivery? delivery = null;
-            if (carrier is not null)
-            {
-                var sentAt = DateTimeOffset.TryParse(Text(package, "StatusOccurredAt"), out var occurredAt) ? DateOnly.FromDateTime(occurredAt.Date) : DateOnly.FromDateTime(DateTime.UtcNow);
-                delivery = new(carrier.TaxId, carrier.LegalName, null, sentAt);
-            }
-            if (invoiceType == "EARSIVFATURA" && delivery is null)
-                throw new JsonException("EFATURAM_CARRIER_IDENTITY_REQUIRED");
-
             var lines = RequiredArray(root, "Lines").EnumerateArray().Select(line =>
             {
                 var total = Decimal(line, "LineTotal");
@@ -51,8 +39,7 @@ public static class TrendyolEFaturamCanonicalPayload
                     Text(address, "fullAddress", "address1", "addressText", "address"), NullText(address, "postalCode"), NullText(address, "phone"),
                     NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), NullText(address, "firstName") ?? NullText(customer.RootElement, "customerFirstName"),
                     NullText(address, "lastName") ?? NullText(customer.RootElement, "customerLastName"), NullText(address, "taxOffice")),
-                lines,
-                new("https://www.trendyol.com", "Trendyol", "PAZARYERI", orderedAt, "ARACI_KURUM"), delivery);
+                lines);
             return TrendyolEFaturamInvoicePayload.Create(new(settings.CompanyId.Value, settings.UserId.Value, settings.Prefix), source);
         }
         finally

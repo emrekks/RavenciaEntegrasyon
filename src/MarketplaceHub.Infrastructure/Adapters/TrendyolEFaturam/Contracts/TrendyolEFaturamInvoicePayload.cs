@@ -21,8 +21,6 @@ public static class TrendyolEFaturamInvoicePayload
     {
         if (account.CompanyId <= 0 || account.UserId <= 0) throw new ArgumentOutOfRangeException(nameof(account));
         if (source.Lines.Count == 0) throw new ArgumentException("Invoice requires at least one line.", nameof(source));
-        if (source.InvoiceType == "EARSIVFATURA" && (source.Payment is null || source.Delivery is null))
-            throw new ArgumentException("Internet sale E-Archive invoices require payment and delivery information.", nameof(source));
 
         var lineRows = source.Lines.Select(line => new
         {

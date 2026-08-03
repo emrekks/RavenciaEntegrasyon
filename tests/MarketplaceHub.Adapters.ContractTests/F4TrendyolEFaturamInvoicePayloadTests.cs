@@ -35,12 +35,14 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
     }
 
     [Fact]
-    public void Internet_sale_earchive_rejects_missing_payment_or_delivery_fields()
+    public void Non_internet_sale_earchive_allows_missing_payment_and_delivery_fields()
     {
         var source = new EfaturamInvoicePayloadSource("local", "EARSIVFATURA", "TRY", "YALNIZ: SIFIR TÜRK LİRASI", "ORDER", new DateOnly(2026, 8, 3), DateTimeOffset.UtcNow,
             new("11111111111", "TR", "İstanbul", "Kadıköy", "Adres", null, null, null, "Ad", "Soyad", null),
             [new("Ürün", "C62", 1, 0, 0, 0, 0, 0, 0)]);
-        Assert.Throws<ArgumentException>(() => TrendyolEFaturamInvoicePayload.Create(new(1, 1, null), source));
+        using var payload = JsonDocument.Parse(TrendyolEFaturamInvoicePayload.Create(new(1, 1, null), source));
+        Assert.False(payload.RootElement.TryGetProperty("paymentInfo", out _));
+        Assert.False(payload.RootElement.TryGetProperty("deliveryInfo", out _));
     }
 
     [Fact]
@@ -87,6 +89,7 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
         Assert.Equal(2, result.RootElement.GetProperty("invoiceLines").GetArrayLength());
         Assert.Equal(30000, result.RootElement.GetProperty("invoiceTotal").GetProperty("payableAmount").GetInt64());
         Assert.Equal("11111111111", result.RootElement.GetProperty("recipientInfo").GetProperty("taxId").GetString());
-        Assert.Equal("1111111111", result.RootElement.GetProperty("deliveryInfo").GetProperty("carrierTaxId").GetString());
+        Assert.False(result.RootElement.TryGetProperty("paymentInfo", out _));
+        Assert.False(result.RootElement.TryGetProperty("deliveryInfo", out _));
     }
 }
