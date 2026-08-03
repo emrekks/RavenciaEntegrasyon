@@ -157,6 +157,12 @@ body { background:var(--mp-canvas); }
 @media (max-width:760px) { .app-shell { grid-template-columns:1fr; } .app-shell > aside { position:static; height:auto; padding:18px 14px; } .brand.wordmark { padding-bottom:12px; } .app-shell aside nav { display:flex; overflow-x:auto; padding-bottom:4px; } .app-shell aside nav a { flex:0 0 auto; } .nav-section,.sidebar-foot { display:none; } .topbar { height:58px; padding:0 17px; } .breadcrumb span,.breadcrumb b,.live-state,.sync-link { display:none; } .content { padding:25px 17px 40px; } .page-heading { align-items:flex-start; flex-direction:column; } .dashboard-toolbar { align-items:stretch; flex-direction:column; } .search-shell { flex:none; } .dashboard-metrics { grid-template-columns:1fr 1fr; } .flow-grid { grid-template-columns:1fr 1fr; } .flow-grid a:nth-child(3) { border-left:0; border-top:1px solid #e0e6e5; } .flow-grid a:nth-child(4) { border-top:1px solid #e0e6e5; } }
 @media (max-width:440px) { .dashboard-metrics,.flow-grid { grid-template-columns:1fr; } .flow-grid a { border-left:0; border-top:1px solid #e0e6e5; } .flow-grid a:first-child { border-top:0; } }
 .order-tabs { display:flex; gap:26px; margin:0 0 18px; padding:0 2px; border-bottom:1px solid #cad3d2; overflow-x:auto; }
+.orders-page .page-heading-actions { display:flex; align-items:center; gap:12px; }
+.order-metrics { grid-template-columns:repeat(4,1fr); margin:0 0 22px; }
+.order-metrics article { min-height:112px; }
+.order-metrics article strong { font-size:1.55rem; }
+.order-metrics article span { color:#7a8584; font-size:.75rem; }
+.orders-page .order-toolbar { margin-bottom:18px; padding:14px; background:#f7faf9; border:1px solid #dbe5e3; border-radius:10px; }
 .order-tabs button { flex:0 0 auto; padding:10px 0 11px; color:#667270; background:transparent; border:0; border-bottom:2px solid transparent; border-radius:0; font-size:.8rem; font-weight:700; }
 .order-tabs button:hover,.order-tabs button.active { color:var(--mp-primary); background:transparent; border-bottom-color:var(--mp-primary); }
 .order-toolbar { display:flex; align-items:center; gap:10px; padding:12px; margin-bottom:18px; background:#fff; border:1px solid #c7d1d0; border-radius:10px; box-shadow:0 2px 4px #0b29260d; }
@@ -165,7 +171,7 @@ body { background:var(--mp-canvas); }
 .order-search input { height:44px; padding-left:39px; background:#f8fafc; border-color:#c7d1d0; }
 .orders-table > * { grid-template-columns:minmax(230px,1.5fr) minmax(130px,.8fr) minmax(150px,.8fr) minmax(90px,.5fr); }
 .orders-table > a { min-height:82px; }
-@media (max-width:760px) { .order-toolbar { align-items:stretch; flex-direction:column; } .order-search { width:100%; min-width:0; } .orders-table > * { grid-template-columns:1fr 1fr; } }
+@media (max-width:760px) { .order-toolbar { align-items:stretch; flex-direction:column; } .order-search { width:100%; min-width:0; } .orders-table > * { grid-template-columns:1fr 1fr; } .order-metrics { grid-template-columns:1fr 1fr; } .orders-page .page-heading-actions { width:100%; justify-content:space-between; } }
 /* Stitch workspace refinements shared by catalog, billing and integrations. */
 .stitch-page .page-heading { margin-bottom: 24px; }
 .invoice-metrics { margin-bottom: 20px; }
