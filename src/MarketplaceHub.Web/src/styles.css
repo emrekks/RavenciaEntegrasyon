@@ -189,3 +189,4 @@ body { background:var(--mp-canvas); }
   .invoice-table .table-head, .invoice-table a { grid-template-columns: 1.4fr .8fr 1fr; }
   .invoice-table a > :nth-child(3), .invoice-table .table-head > :nth-child(3) { display: none; }
 }
+nav a[href="/settings/billing"] { display: none; }
