@@ -131,7 +131,7 @@ body { background:var(--mp-canvas); }
 .dashboard-metrics article p { margin:5px 0 0; color:#687472; font-size:.78rem; }
 .dashboard-metrics .safe-metric { background:#eaf8f6; border-color:#acdcd6; }
 .dashboard-metrics .safe-metric strong { color:var(--mp-primary); font-size:1.35rem; }
-.dashboard-panels { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(300px,.75fr); gap:16px; margin-top:18px; }
+.dashboard-panels { display:grid; grid-template-columns:1fr; gap:16px; margin-top:18px; }
 .dashboard-panels .panel { margin:0; padding:22px; }
 .panel-title { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; padding-bottom:16px; border-bottom:1px solid #e0e6e5; }
 .panel-title h2,.panel-title p { margin:0; }
