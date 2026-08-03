@@ -171,6 +171,9 @@ body { background:var(--mp-canvas); }
 .order-search input { height:44px; padding-left:39px; background:#f8fafc; border-color:#c7d1d0; }
 .orders-table > * { grid-template-columns:minmax(230px,1.5fr) minmax(130px,.8fr) minmax(150px,.8fr) minmax(90px,.5fr); }
 .orders-table > a { min-height:82px; }
+.orders-table .order-summary { display:flex; align-items:center; gap:12px; }
+.orders-table .order-summary > span:last-child { display:grid; gap:.18rem; }
+.order-thumb { display:grid; place-items:center; flex:0 0 auto; width:42px; height:42px; color:#6f817e; background:linear-gradient(145deg,#f8fbfc,#e7eeef); border:1px solid #ccd8d6; border-radius:6px; font-size:1.2rem; }
 @media (max-width:760px) { .order-toolbar { align-items:stretch; flex-direction:column; } .order-search { width:100%; min-width:0; } .orders-table > * { grid-template-columns:1fr 1fr; } .order-metrics { grid-template-columns:1fr 1fr; } .orders-page .page-heading-actions { width:100%; justify-content:space-between; } }
 /* Stitch workspace refinements shared by catalog, billing and integrations. */
 .stitch-page .page-heading { margin-bottom: 24px; }
@@ -190,3 +193,15 @@ body { background:var(--mp-canvas); }
   .invoice-table a > :nth-child(3), .invoice-table .table-head > :nth-child(3) { display: none; }
 }
 nav a[href="/settings/billing"] { display: none; }
+
+/* Stitch side navigation: five operational destinations; auxiliary items live in Settings. */
+.settings-nav { margin-top:auto; padding-top:18px; border-top:1px solid #d9e0df; }
+.settings-toggle,.logout-link { display:flex; align-items:center; justify-content:space-between; width:100%; min-height:43px; padding:10px 13px; color:#35413f; background:transparent; border:0; border-radius:8px; font-size:.9rem; font-weight:600; text-decoration:none; }
+.settings-toggle > span { display:flex; align-items:center; gap:12px; }
+.settings-toggle:hover,.logout-link:hover { color:var(--mp-primary); background:#f1f8f7; }
+.settings-toggle b { font-size:1rem; font-weight:700; }
+.settings-links { display:grid; gap:1px; padding:2px 0 5px 33px; }
+.app-shell .settings-links a { min-height:36px; padding:8px 10px; border-left:0; border-radius:6px; font-size:.82rem; }
+.app-shell .settings-links .nav-icon { width:17px; height:17px; font-size:.9rem; }
+.logout-link { justify-content:flex-start; gap:12px; margin-top:6px; }
+@media (max-width:760px) { .settings-nav { display:none; } }
