@@ -110,6 +110,17 @@ public sealed partial class F4BillingService(
 
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (orderLines.Count == 0) return Invalid<InvoiceDetailView>("orderId", "Fatura taslağı için sipariş satırı gerekir.");
+        Dictionary<Guid, decimal>? packageQuantities = null;
+        if (command.PackageId is { } selectedPackageId)
+        {
+            var packageAllocations = await db.PackageLineAllocations.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.PackageId == selectedPackageId)
+                .ToListAsync(cancellationToken);
+            packageQuantities = packageAllocations.GroupBy(x => x.OrderLineId)
+                .ToDictionary(x => x.Key, x => x.OrderByDescending(y => EventSequence(y.SourceEventId)).First().AllocatedQuantity);
+            orderLines = orderLines.Where(x => packageQuantities.GetValueOrDefault(x.Id) > 0).ToList();
+            if (orderLines.Count == 0) return Invalid<InvoiceDetailView>("packageId", "Seçilen pakette faturalanabilir sipariş kalemi bulunamadı.");
+        }
         var now = timeProvider.GetUtcNow(); var invoice = new Invoice
         {
             Id = Guid.CreateVersion7(),
@@ -122,6 +133,7 @@ public sealed partial class F4BillingService(
             InvoiceType = "UNDETERMINED",
             SequencePurpose = command.OriginalInvoiceId is null ? "SALE" : "ADJUSTMENT",
             Currency = order.Currency,
+            Note = string.Empty,
             IdempotencyKey = idempotencyKey,
             OriginalInvoiceId = command.OriginalInvoiceId,
             Status = InvoiceStatus.Draft,
@@ -129,8 +141,40 @@ public sealed partial class F4BillingService(
             UpdatedAt = now,
             Version = 1
         };
-        var lines = orderLines.Select((line, index) => new InvoiceLine { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, OrderLineId = line.Id, LineSequence = index + 1, DescriptionSnapshot = line.TitleSnapshot, SkuSnapshot = line.Sku, UnitSnapshot = "UNSPECIFIED", Quantity = line.OrderedQuantity - line.CancelledQuantity, UnitPrice = line.UnitPrice, DiscountAmount = 0, VatRate = line.VatRate, VatAmount = 0, LineTotal = (line.OrderedQuantity - line.CancelledQuantity) * line.UnitPrice }).ToList();
-        invoice.TaxExclusiveTotal = lines.Sum(x => x.LineTotal); invoice.DiscountTotal = 0; invoice.TaxTotal = 0; invoice.PayableTotal = lines.Sum(x => x.LineTotal);
+        var lines = orderLines.Select((line, index) =>
+        {
+            var quantity = packageQuantities?.GetValueOrDefault(line.Id) ?? line.OrderedQuantity - line.CancelledQuantity;
+            var includedTotal = decimal.Round(quantity * line.UnitPrice, 2, MidpointRounding.AwayFromZero);
+            var amounts = InvoiceAmounts.FromVatIncluded(includedTotal, line.VatRate);
+            return new InvoiceLine
+            {
+                Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, OrderLineId = line.Id,
+                LineSequence = index + 1, DescriptionSnapshot = line.TitleSnapshot, SkuSnapshot = line.Sku,
+                UnitSnapshot = "ADET", Quantity = quantity,
+                UnitPrice = decimal.Round(amounts.TaxExclusiveAmount / quantity, 4, MidpointRounding.AwayFromZero),
+                DiscountAmount = 0, VatRate = line.VatRate, VatAmount = amounts.VatAmount, LineTotal = amounts.PayableAmount
+            };
+        }).ToList();
+        var calculatedPayable = lines.Sum(x => x.LineTotal);
+        var remotePayable = order.NetAmount;
+        if (command.PackageId is { } billedPackageId)
+        {
+            var billedPackage = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == billedPackageId).Select(x => new { x.NetAmount, x.OrderId }).SingleAsync(cancellationToken);
+            if (billedPackage.NetAmount > 0) remotePayable = billedPackage.NetAmount;
+            else if (await db.ShipmentPackages.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.OrderId == billedPackage.OrderId, cancellationToken) != 1)
+                return Invalid<InvoiceDetailView>("packageId", "Paket toplamı henüz Trendyol'dan doğrulanmadı; siparişi yeniden eşitleyin.");
+        }
+        var targetPayable = decimal.Round(remotePayable, 2, MidpointRounding.AwayFromZero);
+        if (Math.Abs(calculatedPayable - targetPayable) > 0.01m)
+            return Invalid<InvoiceDetailView>("orderId", $"Sipariş kalem toplamı ({calculatedPayable:0.00}) ile Trendyol sipariş toplamı ({targetPayable:0.00}) eşleşmiyor.");
+        if (lines.Count > 0 && calculatedPayable != targetPayable)
+        {
+            var last = lines[^1]; var difference = targetPayable - calculatedPayable;
+            last.LineTotal += difference; last.VatAmount += difference;
+        }
+        invoice.TaxExclusiveTotal = lines.Sum(x => decimal.Round(x.LineTotal - x.VatAmount, 2, MidpointRounding.AwayFromZero));
+        invoice.DiscountTotal = 0; invoice.TaxTotal = lines.Sum(x => x.VatAmount); invoice.PayableTotal = targetPayable;
+        invoice.Note = InvoiceAmounts.TurkishInvoiceNote(invoice.PayableTotal);
         db.Invoices.Add(invoice); db.InvoiceLines.AddRange(lines);
         var sellerJson = JsonSerializer.Serialize(new { profile.Title, TaxId = _taxProtector.Unprotect(profile.ProtectedTaxId), profile.AddressSnapshotJson, profile.ContactSnapshotJson });
         var receiverJson = JsonSerializer.Serialize(new { order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson });
@@ -148,7 +192,7 @@ public sealed partial class F4BillingService(
         var documents = await db.InvoiceDocuments.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.CreatedAt).Select(x => new InvoiceDocumentView(x.Id, x.DocumentType, x.Sha256, x.CreatedAt)).ToListAsync(cancellationToken);
         var attempts = await db.InvoiceSubmissionAttempts.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new InvoiceAttemptView(x.AttemptNumber, x.Outcome, x.ErrorCode, x.StartedAt, x.CompletedAt)).ToListAsync(cancellationToken);
         var deliveries = await db.MarketplaceDeliveries.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new MarketplaceDeliveryView(x.Id, x.DeliveryType, x.Status, x.ExternalReference, x.ErrorCode, x.CreatedAt)).ToListAsync(cancellationToken);
-        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.InvoiceNumber, invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, cancellationToken), invoice.Version));
+        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, invoice.InvoiceNumber, invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, cancellationToken), invoice.Version));
     }
 
     public async Task<ServiceResult<InvoiceDetailView>> ValidateAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
@@ -161,8 +205,9 @@ public sealed partial class F4BillingService(
         var lines = await db.InvoiceLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).ToListAsync(cancellationToken);
         var failures = new List<string>();
         if (lines.Count == 0 || lines.Any(x => x.Quantity <= 0 || x.LineTotal < 0)) failures.Add("INVOICE_LINES_INVALID");
-        if (lines.Sum(x => x.LineTotal) != invoice.PayableTotal) failures.Add("INVOICE_TOTAL_MISMATCH");
-        if (lines.Any(x => x.UnitSnapshot == "UNSPECIFIED" || x.VatRate != 0 && x.VatAmount == 0)) failures.Add("FISCAL_CALCULATION_AUTHORITY_REQUIRED");
+        if (lines.Sum(x => x.LineTotal) != invoice.PayableTotal || invoice.TaxExclusiveTotal + invoice.TaxTotal - invoice.DiscountTotal != invoice.PayableTotal) failures.Add("INVOICE_TOTAL_MISMATCH");
+        if (lines.Any(x => x.UnitSnapshot == "UNSPECIFIED" || x.VatRate != 0 && x.VatAmount <= 0)) failures.Add("FISCAL_CALCULATION_AUTHORITY_REQUIRED");
+        if (invoice.Note != InvoiceAmounts.TurkishInvoiceNote(invoice.PayableTotal)) failures.Add("INVOICE_NOTE_MISMATCH");
         if (Unapproved(policy.RoundingRule) || Unapproved(policy.DueRule) || Unapproved(policy.AdjustmentRule)) failures.Add("FISCAL_POLICY_UNAPPROVED");
         if (invoice.InvoiceType == "UNDETERMINED") failures.Add("TAXPAYER_RESULT_REQUIRED");
         invoice.Status = failures.Count == 0 ? InvoiceStatus.Ready : InvoiceStatus.ValidationFailed; invoice.LastErrorCode = failures.FirstOrDefault(); invoice.Version++; invoice.UpdatedAt = timeProvider.GetUtcNow();
@@ -243,6 +288,7 @@ public sealed partial class F4BillingService(
     private static bool Unapproved(string value) => value is "UNKNOWN" or "UNAPPROVED";
     private static string Status(InvoiceStatus value) => value.ToString().ToUpperInvariant();
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+    private static long EventSequence(string sourceEventId) => long.TryParse(sourceEventId[(sourceEventId.LastIndexOf(':') + 1)..], out var value) ? value : 0;
     private static string MaskTaxId(string value) => value.Length <= 4 ? "****" : new string('*', value.Length - 4) + value[^4..];
     private static LegalEntityProfileView Map(LegalEntityProfile value) => new(value.Id, value.Title, value.MaskedTaxId, value.Status, value.UpdatedAt, value.Version);
     private static InvoicePolicyView Map(InvoicePolicy value) => new(value.Id, value.ProviderConnectionId, value.TriggerState, value.PackageScope, value.DueRule, value.RoundingRule, value.AdjustmentRule, value.AutoSubmit, value.Version);

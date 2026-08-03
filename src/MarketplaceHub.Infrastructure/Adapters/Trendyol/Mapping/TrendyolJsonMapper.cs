@@ -19,15 +19,17 @@ public static class TrendyolJsonMapper
             {
                 foreach (var line in lineArray.EnumerateArray())
                 {
-                    var externalLineId = Text(line, "id"); if (string.IsNullOrWhiteSpace(externalLineId)) continue;
+                    var externalLineId = Text(line, "lineId", "id"); if (string.IsNullOrWhiteSpace(externalLineId)) continue;
                     var quantity = Decimal(line, "quantity"); var rawStatus = Text(line, "orderLineItemStatusName");
-                    lines.Add(new(externalLineId, Text(line, "merchantSku", "stockCode"), NullText(line, "barcode"), Text(line, "productName"), quantity, Decimal(line, "price", "amount"), Decimal(line, "vatBaseAmount"), rawStatus));
+                    lines.Add(new(externalLineId, Text(line, "stockCode", "merchantSku"), NullText(line, "barcode"), Text(line, "productName"), quantity, Decimal(line, "lineUnitPrice", "price", "amount"), Decimal(line, "vatRate", "vatBaseAmount"), rawStatus));
                     allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
                 }
             }
+            var gross = Decimal(package, "packageGrossAmount", "grossAmount", "packageTotalPrice");
+            var discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
+            var net = Decimal(package, "packageTotalPrice", "totalPrice");
             var rawStatusPackage = Text(package, "shipmentPackageStatus", "status"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
-            var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName"), NullText(package, "cargoTrackingNumber"), allocations);
-            var gross = Decimal(package, "grossAmount", "packageTotalPrice"); var discount = Decimal(package, "totalDiscount", "packageTyDiscount"); var net = Decimal(package, "totalPrice", "packageTotalPrice");
+            var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName"), NullText(package, "cargoTrackingNumber"), allocations, gross, discount, net);
             rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
                 Snapshot(package, "customerFirstName", "customerLastName"), Snapshot(package, "shipmentAddress"), Snapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText()));
         }

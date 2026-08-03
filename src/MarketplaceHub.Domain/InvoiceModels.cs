@@ -94,6 +94,7 @@ public sealed class Invoice
     public decimal DiscountTotal { get; set; }
     public decimal TaxTotal { get; set; }
     public decimal PayableTotal { get; set; }
+    public required string Note { get; set; }
     public required string IdempotencyKey { get; set; }
     public string? ExternalReference { get; set; }
     public string? InvoiceNumber { get; set; }

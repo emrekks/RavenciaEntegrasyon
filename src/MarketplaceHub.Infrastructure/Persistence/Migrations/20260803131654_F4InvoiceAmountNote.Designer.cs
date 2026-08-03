@@ -3,6 +3,7 @@ using System;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260803131654_F4InvoiceAmountNote")]
+    partial class F4InvoiceAmountNote
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3728,22 +3731,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<decimal>("DiscountAmount")
-                        .HasPrecision(19, 4)
-                        .HasColumnType("numeric(19,4)");
-
                     b.Property<string>("ExternalPackageId")
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
-
-                    b.Property<decimal>("GrossAmount")
-                        .HasPrecision(19, 4)
-                        .HasColumnType("numeric(19,4)");
-
-                    b.Property<decimal>("NetAmount")
-                        .HasPrecision(19, 4)
-                        .HasColumnType("numeric(19,4)");
 
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid");

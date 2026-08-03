@@ -9,8 +9,20 @@ public sealed class F3TrendyolContractTests
     public void Anonymous_order_fixture_maps_cursor_package_and_line_without_PII()
     {
         var json = Fixture("order-success.json"); var page = TrendyolJsonMapper.Orders(json); var order = Assert.Single(page.Items); var package = Assert.Single(order.Packages); var line = Assert.Single(order.Lines);
-        Assert.False(page.HasMore); Assert.Equal("ORDER-ANON-001", order.ExternalOrderId); Assert.Equal("900001", package.ExternalPackageId); Assert.Equal("SKU-ANON-001", line.Sku);
+        Assert.False(page.HasMore); Assert.Equal("ORDER-ANON-001", order.ExternalOrderId); Assert.Equal("900001", package.ExternalPackageId); Assert.Equal(125.50m, package.NetAmount); Assert.Equal("SKU-ANON-001", line.Sku);
+        Assert.Equal(125.50m, line.UnitPrice); Assert.Equal(20m, line.VatRate);
         Assert.DoesNotContain("@", json, StringComparison.Ordinal); Assert.DoesNotContain("+90", json, StringComparison.Ordinal); Assert.True(TrendyolContractGuard.HasContentArray(json));
+    }
+
+    [Fact]
+    public void Legacy_order_fields_remain_readable_during_Trendyol_transition()
+    {
+        const string json = """
+            {"content":[{"shipmentPackageId":1,"orderNumber":"O-1","currencyCode":"TRY","packageTotalPrice":120,
+            "lines":[{"id":2,"merchantSku":"OLD-SKU","productName":"Legacy","quantity":1,"price":120,"vatBaseAmount":20}]}]}
+            """;
+        var line = Assert.Single(Assert.Single(TrendyolJsonMapper.Orders(json).Items).Lines);
+        Assert.Equal("2", line.ExternalLineId); Assert.Equal("OLD-SKU", line.Sku); Assert.Equal(120m, line.UnitPrice); Assert.Equal(20m, line.VatRate);
     }
 
     [Fact]

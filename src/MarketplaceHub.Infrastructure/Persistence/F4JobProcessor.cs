@@ -58,7 +58,13 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice is null || invoice.ProviderConnectionId != connectionId || invoice.Status != InvoiceStatus.Submitting) return false;
         var lines = await db.InvoiceLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id).OrderBy(x => x.LineSequence).ToListAsync(cancellationToken);
-        var canonical = JsonSerializer.Serialize(new { invoice.Id, invoice.InvoiceType, invoice.Currency, invoice.PayableTotal, Lines = lines.Select(x => new { x.LineSequence, x.Quantity, x.UnitPrice, x.VatRate, x.LineTotal }) });
+        var order = await db.Orders.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == invoice.OrderId, cancellationToken);
+        var canonical = JsonSerializer.Serialize(new
+        {
+            invoice.Id, invoice.InvoiceType, invoice.Currency, invoice.PayableTotal, invoice.Note,
+            Order = new { order.OrderNumber, order.OrderedAt, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson },
+            Lines = lines.Select(x => new { x.LineSequence, x.DescriptionSnapshot, x.SkuSnapshot, x.UnitSnapshot, x.Quantity, x.UnitPrice, x.DiscountAmount, x.VatRate, x.VatAmount, x.LineTotal })
+        });
         var hash = Hash(canonical); var started = timeProvider.GetUtcNow();
         var attempt = new InvoiceSubmissionAttempt { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, AttemptNumber = await NextAttempt(tenantId, invoice.Id, cancellationToken), RequestHash = hash, Outcome = "STARTED", StartedAt = started };
         var result = await provider.SubmitAsync(Context(tenantId, connectionId, correlationId, invoice.IdempotencyKey), new(invoice.Id, invoice.Id.ToString("N"), invoice.InvoiceType, invoice.Currency, canonical, hash), cancellationToken);

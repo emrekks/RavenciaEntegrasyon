@@ -9,7 +9,7 @@ Resmî kaynaklar:
 - Mükellef sorgusu: <https://developers.trendyolefaturam.com/OpenApi/Diğer/get-application-status-by-tax-id>
 - Giden E-Fatura: <https://developers.trendyolefaturam.com/OpenApi/Giden%20eFatura/create-outgoing-e-invoice>
 - E-Arşiv durum: <https://developers.trendyolefaturam.com/OpenApi/eArşiv/get-e-archive-status>
-- Geçici belge indirme: <https://developers.trendyolefaturam.com/OpenApi/Diğer/get-temporary-document-download-url>
+- Kalıcı belge bağlantısı: <https://developers.trendyolefaturam.com/OpenApi/Diğer/get-permanent-document-download-url>
 - E-Arşiv iptal: <https://developers.trendyolefaturam.com/OpenApi/eArşiv/cancel-e-archive>
 
 Güvenlik kapısı: sign-in dışındaki provider çağrıları, anonim test firma kanıtı ve mali politika onayı tamamlanana kadar adapter içinde `NOT_SUPPORTED` ile kapalıdır. Bir capability yalnız resmî kaynak ile tekrarlanabilir test kanıtı birlikte mevcutsa `SUPPORTED` olabilir. Ham provider status değerleri doğrulanmış eşleme olmadan domain sonucuna çevrilmez.

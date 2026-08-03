@@ -101,6 +101,9 @@ public sealed class ShipmentPackage
     public string? OriginExternalPackageId { get; set; }
     public string? CargoProviderExternalId { get; set; }
     public string? CargoTrackingNumber { get; set; }
+    public decimal GrossAmount { get; set; }
+    public decimal DiscountAmount { get; set; }
+    public decimal NetAmount { get; set; }
     public ShipmentPackageStatus Status { get; set; }
     public required string RawStatus { get; set; }
     public DateTimeOffset StatusOccurredAt { get; set; }
