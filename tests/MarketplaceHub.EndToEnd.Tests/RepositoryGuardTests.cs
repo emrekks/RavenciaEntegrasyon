@@ -66,6 +66,8 @@ public sealed class RepositoryGuardTests
         Assert.Contains("chmod 0640", initializer, StringComparison.Ordinal);
         Assert.Contains("config --quiet", deployment, StringComparison.Ordinal);
         Assert.Contains("pull postgres migrate api worker caddy", deployment, StringComparison.Ordinal);
+        Assert.Contains("readiness_attempts=30", deployment, StringComparison.Ordinal);
+        Assert.Contains("sleep 2", deployment, StringComparison.Ordinal);
         Assert.Contains("Bootstrap__Enabled=true", deployment, StringComparison.Ordinal);
         Assert.Contains("Ubuntu Server 26.04 LTS", installer, StringComparison.Ordinal);
         Assert.Contains("cpu_count >= 2", installer, StringComparison.Ordinal);

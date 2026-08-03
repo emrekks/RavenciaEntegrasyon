@@ -57,7 +57,14 @@ if [[ "$bootstrap" == true ]]; then
   "${compose[@]}" run --rm -e Bootstrap__Enabled=true migrate api/MarketplaceHub.Api.dll bootstrap
 fi
 
-status="$(curl --silent --show-error --fail --output /dev/null --write-out '%{http_code}' "$site_address/health/ready")"
-[[ "$status" == "200" ]] || { echo "Readiness returned HTTP $status." >&2; exit 1; }
+status="000"
+readiness_attempts=30
+for ((attempt = 1; attempt <= readiness_attempts; attempt++)); do
+  if status="$(curl --silent --show-error --fail --output /dev/null --write-out '%{http_code}' "$site_address/health/ready")" && [[ "$status" == "200" ]]; then
+    break
+  fi
+  (( attempt == readiness_attempts )) || sleep 2
+done
+[[ "$status" == "200" ]] || { echo "Readiness did not return HTTP 200 after $readiness_attempts attempts; last status was $status." >&2; exit 1; }
 "${compose[@]}" ps
 echo "Deployment completed and readiness returned HTTP 200."
