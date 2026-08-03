@@ -8,13 +8,15 @@ test('unauthenticated shell exposes login without application navigation', async
   await expect(page.getByText('Ürünler')).toHaveCount(0)
 })
 
-test('active F2 shell exposes only approved catalog and inventory navigation', async ({ page }) => {
+test('active shell exposes Stitch navigation and live-safe dashboard', async ({ page }) => {
   await page.route('**/api/v1/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: 'owner@example.invalid', displayName: 'Ravencia Admin', state: 'ACTIVE', tenantId: '00000000-0000-0000-0000-000000000002' }) }))
-  await page.route('**/api/v1/products', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], nextCursor: null, hasMore: false }) }))
-  await page.goto('/products')
-  await expect(page.getByRole('heading', { name: 'Ürünler' })).toBeVisible()
-  for (const label of ['Ürünler', 'Kategoriler', 'Markalar', 'Özellikler', 'İçe Aktarım', 'Stok']) await expect(page.getByRole('link', { name: label })).toBeVisible()
-  await expect(page.getByText('Siparişler')).toHaveCount(0)
-  await expect(page.getByText('Entegrasyonlar')).toHaveCount(0)
-  await expect(page.getByText('Faturalar')).toHaveCount(0)
+  await page.route('**/api/v1/connections', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ status: 'ACTIVE' }, { status: 'VERIFIED' }], nextCursor: null, hasMore: false }) }))
+  await page.route('**/api/v1/orders', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], nextCursor: null, hasMore: false }) }))
+  await page.route('**/api/v1/invoices', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ status: 'DRAFT' }], nextCursor: null, hasMore: false }) }))
+  await page.goto('/dashboard')
+  await expect(page.getByRole('heading', { name: 'Genel Bakış' })).toBeVisible()
+  const navigation = page.getByRole('navigation', { name: 'Ana menü' })
+  for (const label of ['Dashboard', 'Ürünler', 'Siparişler', 'İadeler', 'Faturalar', 'Platformlar']) await expect(navigation.getByRole('link', { name: label, exact: true })).toBeVisible()
+  await expect(page.getByText('Dış yazmalar kapalı')).toBeVisible()
+  await expect(page.getByText('Kontrollü entegrasyon modu')).toBeVisible()
 })

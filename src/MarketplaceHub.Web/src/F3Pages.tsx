@@ -50,7 +50,18 @@ export function IntegrationDetailPage() {
   </section>
 }
 
-export function OrdersPage() { const query = useQuery({ queryKey: ['orders'], queryFn: () => hubApi<Page<Order>>('/orders') }); return <ListPage eyebrow="Satış" title="Siparişler" description="Webhook ve overlap’li cursor polling aynı dedupe hattında birleşir.">{query.isLoading ? <Busy /> : query.isError ? <ErrorBox error={query.error} /> : !query.data?.items.length ? <Empty>Aktif ve kanıtlanmış bir bağlantıdan order sync çalıştırıldığında siparişler burada görünür.</Empty> : <div className="data-table" role="table"><div className="table-head" role="row"><span>Sipariş</span><span>Durum</span><span>Tutar</span><span>Paket</span></div>{query.data.items.map(item => <Link role="row" to={`/orders/${item.id}`} key={item.id}><span><strong>{item.orderNumber}</strong><small><DateText value={item.orderedAt} /></small></span><Badge value={item.derivedStatus} /><span>{item.netAmount.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</span><span>{item.packageCount}</span></Link>)}</div>}</ListPage> }
+export function OrdersPage() {
+  const [search, setSearch] = useState(''); const [status, setStatus] = useState('ALL')
+  const query = useQuery({ queryKey: ['orders'], queryFn: () => hubApi<Page<Order>>('/orders') })
+  const statuses = ['ALL', 'NEW', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED']
+  const labels: Record<string, string> = { ALL: 'Tümü', NEW: 'Yeni', PROCESSING: 'Hazırlanıyor', SHIPPED: 'Kargoda', DELIVERED: 'Teslim Edildi', CANCELLED: 'İptal / İade' }
+  const items = query.data?.items.filter(item => (status === 'ALL' || item.derivedStatus.toUpperCase() === status) && item.orderNumber.toLocaleLowerCase('tr-TR').includes(search.toLocaleLowerCase('tr-TR'))) ?? []
+  return <section className="content f3 orders-page"><div className="page-heading"><div><p className="eyebrow">Operasyon merkezi</p><h1>Siparişler</h1><p className="lede">Bağlı satış kanallarından gelen siparişleri ve paket durumlarını takip edin.</p></div><Badge value="LIVE READ" /></div>
+    <div className="order-tabs" role="tablist" aria-label="Sipariş durumları">{statuses.map(value => <button type="button" role="tab" aria-selected={status === value} className={status === value ? 'active' : ''} key={value} onClick={() => setStatus(value)}>{labels[value]}</button>)}</div>
+    <div className="order-toolbar"><label className="order-search"><span aria-hidden="true">⌕</span><input aria-label="Sipariş ara" value={search} onChange={event => setSearch(event.target.value)} placeholder="Sipariş numarası ara…" /></label><Link className="button-link secondary" to="/integrations">Platformlar</Link><Link className="button-link" to="/integrations">↯ Siparişleri eşitle</Link></div>
+    {query.isLoading ? <Busy /> : query.isError ? <ErrorBox error={query.error} /> : !query.data?.items.length ? <Empty>Aktif ve kanıtlanmış bir bağlantıdan order sync çalıştırıldığında siparişler burada görünür.</Empty> : !items.length ? <Empty>Seçili filtreyle eşleşen sipariş bulunamadı.</Empty> : <div className="data-table orders-table" role="table"><div className="table-head" role="row"><span>Sipariş</span><span>Durum</span><span>Tutar</span><span>Paket</span></div>{items.map(item => <Link role="row" to={`/orders/${item.id}`} key={item.id}><span><strong>#{item.orderNumber}</strong><small><DateText value={item.orderedAt} /> · {item.lineCount} ürün</small></span><Badge value={item.derivedStatus} /><span><strong>{item.netAmount.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</strong><small>KDV dahil</small></span><span><strong>{item.packageCount}</strong><small>paket</small></span></Link>)}</div>}
+  </section>
+}
 
 export function OrderDetailPage() {
   const { id = '' } = useParams(); const navigate = useNavigate(); const [invoiceMessage, setInvoiceMessage] = useState('')
