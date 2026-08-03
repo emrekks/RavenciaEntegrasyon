@@ -38,7 +38,7 @@ Bir platform yalnız aşağıdaki kanıtlar birlikte bulunduğunda bu karar kaps
 ## Sonuçlar
 
 - Mevcut Shopify/N11/Pazarama kod ve tarihsel kanıtları silinmez, fakat aktif teslim sayılmaz.
-- Panel ve yeni bağlantı API'si yalnız aktif üç platformu kabul eder; doğrudan API çağrısı kapsam dışı yeni bağlantı oluşturamaz.
+- Panel, bağlantı API'si, eşitleme, webhook ve Worker faaliyet kapıları yalnız aktif üç platformu kabul eder; kapsam dışı tarihsel kayıtlar okunabilir ve devre dışı bırakılabilir fakat yeniden etkinleştirilemez veya yeni iş üretemez.
 - Yeni çalışma ve kabul raporları yalnız aktif üç platformu ayrı ayrı gösterir; bir platformun kanıtı diğerine taşınmaz.
 - Bütün dış yazmalar mevcut global, connection, capability ve business-authority kapılarından geçmeye devam eder.
 - Bu kapsamın veya sıranın yeniden değiştirilmesi yeni işletme sahibi kararı ve ADR güncellemesi gerektirir.
