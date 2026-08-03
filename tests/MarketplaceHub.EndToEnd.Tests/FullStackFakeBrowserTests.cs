@@ -180,7 +180,13 @@ public sealed class FullStackFakeBrowserTests : IAsyncLifetime
                 var error = await process.StandardError.ReadToEndAsync(cancellationToken);
                 throw new InvalidOperationException($"Vite exited before readiness with code {process.ExitCode}. stdout: {output} stderr: {error}");
             }
-            try { if ((await client.GetAsync(ui, cancellationToken)).StatusCode == HttpStatusCode.OK) return; } catch (HttpRequestException) { }
+            try
+            {
+                var spa = await client.GetAsync(ui, cancellationToken);
+                var api = await client.GetAsync(new Uri(ui, "health/ready"), cancellationToken);
+                if (spa.StatusCode == HttpStatusCode.OK && api.StatusCode == HttpStatusCode.OK) return;
+            }
+            catch (HttpRequestException) { }
             await Task.Delay(250, cancellationToken);
         }
         throw new TimeoutException("Vite did not become ready.");
