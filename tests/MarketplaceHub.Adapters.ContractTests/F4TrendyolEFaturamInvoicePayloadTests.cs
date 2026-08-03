@@ -52,5 +52,36 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
         Assert.Equal("205", result.RawStatus);
         Assert.Equal("https://documents.example.test/invoice.pdf", TrendyolEFaturamJsonMapper.PermanentDocumentUrl("\"https://documents.example.test/invoice.pdf\""));
         Assert.Throws<JsonException>(() => TrendyolEFaturamJsonMapper.PermanentDocumentUrl("not-a-url"));
+        Assert.Throws<JsonException>(() => TrendyolEFaturamJsonMapper.PermanentDocumentUrl("http://documents.example.test/invoice.pdf"));
+    }
+
+    [Fact]
+    public void Canonical_Trendyol_order_is_converted_to_official_distinct_line_payload()
+    {
+        var canonical = JsonSerializer.Serialize(new
+        {
+            Id = Guid.NewGuid(), InvoiceType = "EARSIVFATURA", Currency = "TRY", Note = "YALNIZ: ÜÇ YÜZ TÜRK LİRASI", PayableTotal = 300m,
+            IssuedAt = new DateTimeOffset(2026, 8, 3, 12, 5, 0, TimeSpan.FromHours(3)),
+            Order = new
+            {
+                OrderNumber = "ORDER-1", OrderedAt = new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.FromHours(3)),
+                CustomerSnapshotJson = JsonSerializer.Serialize(new { customerFirstName = "Anonim", customerLastName = "Müşteri", customerEmail = "anonim@example.test" }),
+                InvoiceAddressSnapshotJson = JsonSerializer.Serialize(new { invoiceAddress = new { identityNumber = "11111111111", countryCode = "TR", city = "İstanbul", district = "Kadıköy", fullAddress = "Anonim adres" } }),
+                ShipmentAddressSnapshotJson = "{}"
+            },
+            Package = new { ExternalPackageId = "P-1", CargoProviderExternalId = "ANON-CARGO", StatusOccurredAt = new DateTimeOffset(2026, 8, 3, 13, 0, 0, TimeSpan.FromHours(3)) },
+            Lines = new[]
+            {
+                new { LineSequence = 1, DescriptionSnapshot = "Birinci Ürün", SkuSnapshot = "SKU-1", UnitSnapshot = "ADET", Quantity = 1m, UnitPrice = 100m, DiscountAmount = 0m, VatRate = 20m, VatAmount = 20m, LineTotal = 120m },
+                new { LineSequence = 2, DescriptionSnapshot = "İkinci Ürün", SkuSnapshot = "SKU-2", UnitSnapshot = "ADET", Quantity = 1m, UnitPrice = 150m, DiscountAmount = 0m, VatRate = 20m, VatAmount = 30m, LineTotal = 180m }
+            }
+        });
+        var settings = new TrendyolEFaturamConnectionSettings("API_USER", true, 10, 20, "RVN", [new("ANON-CARGO", "1111111111", "Anonim Kargo")]);
+
+        using var result = JsonDocument.Parse(TrendyolEFaturamCanonicalPayload.Create(settings, canonical));
+        Assert.Equal(2, result.RootElement.GetProperty("invoiceLines").GetArrayLength());
+        Assert.Equal(30000, result.RootElement.GetProperty("invoiceTotal").GetProperty("payableAmount").GetInt64());
+        Assert.Equal("11111111111", result.RootElement.GetProperty("recipientInfo").GetProperty("taxId").GetString());
+        Assert.Equal("1111111111", result.RootElement.GetProperty("deliveryInfo").GetProperty("carrierTaxId").GetString());
     }
 }

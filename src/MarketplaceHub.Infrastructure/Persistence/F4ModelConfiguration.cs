@@ -104,6 +104,7 @@ internal static class F4ModelConfiguration
             entity.Property(x => x.DocumentType).HasMaxLength(32);
             entity.Property(x => x.Sha256).HasMaxLength(128);
             entity.Property(x => x.ExternalDocumentId).HasMaxLength(256);
+            entity.Property(x => x.PermanentUrl).HasMaxLength(4096);
             entity.HasIndex(x => new { x.TenantId, x.InvoiceId, x.DocumentType, x.Sha256 }).IsUnique();
             entity.HasOne<Invoice>().WithMany().HasForeignKey(x => new { x.TenantId, x.InvoiceId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<FileAsset>().WithMany().HasForeignKey(x => new { x.TenantId, x.FileAssetId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);

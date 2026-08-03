@@ -28,7 +28,7 @@ public static class TrendyolEFaturamJsonMapper
     public static string PermanentDocumentUrl(string responseText)
     {
         var value = responseText.Trim().Trim('"');
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http")) throw new JsonException("Permanent document URL missing");
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != "https") throw new JsonException("Permanent document URL missing");
         return uri.AbsoluteUri;
     }
 

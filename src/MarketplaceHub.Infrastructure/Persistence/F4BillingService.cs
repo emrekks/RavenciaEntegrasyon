@@ -233,6 +233,7 @@ public sealed partial class F4BillingService(
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
         if (invoice.Status is not (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed)) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura pazaryerine iletime hazır değil.", 409);
         if (invoice.PackageId is null) return Invalid<Guid>("packageId", "Pazaryeri fatura iletimi için paket zorunludur.");
+        if (!await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null, cancellationToken)) return ServiceResult<Guid>.Fail("INVOICE_PERMANENT_LINK_REQUIRED", "Trendyol iletimi için kalıcı HTTPS fatura bağlantısı henüz hazır değil.", 409);
         var marketplaceConnectionId = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.PackageId).Select(x => (Guid?)x.ConnectionId).SingleOrDefaultAsync(cancellationToken);
         if (marketplaceConnectionId is null) return Invalid<Guid>("packageId", "Faturaya bağlı pazaryeri paketi bulunamadı.");
         if (!await WriteGates(tenantId, marketplaceConnectionId.Value, F4Capabilities.InvoiceDeliver, cancellationToken)) return CapabilityUnknown<Guid>(F4Capabilities.InvoiceDeliver);
@@ -251,7 +252,7 @@ public sealed partial class F4BillingService(
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>(); if (invoice.Version != expectedVersion) return Precondition<Guid>(invoice.Version);
         if (!states.Contains(invoice.Status) || !InvoiceStateMachine.CanTransition(invoice.Status, next)) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura mevcut durumdan bu işleme geçemez.", 409);
         if (!await WriteGates(tenantId, invoice.ProviderConnectionId, capability, cancellationToken)) return CapabilityUnknown<Guid>(capability);
-        invoice.Status = next; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++; return await AddJob(invoice, jobType, idempotencyKey, correlationId, cancellationToken);
+        invoice.Status = next; invoice.UpdatedAt = timeProvider.GetUtcNow(); if (jobType == F4JobTypes.InvoiceSubmit) invoice.IssuedAt ??= invoice.UpdatedAt; invoice.Version++; return await AddJob(invoice, jobType, idempotencyKey, correlationId, cancellationToken);
     }
 
     private async Task<ServiceResult<Guid>> AddJob(Invoice invoice, string jobType, string idempotencyKey, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null)
@@ -269,7 +270,8 @@ public sealed partial class F4BillingService(
         if (invoice.Status is InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed && invoice.PackageId is not null)
         {
             var marketplaceConnectionId = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == invoice.TenantId && x.Id == invoice.PackageId).Select(x => (Guid?)x.ConnectionId).SingleOrDefaultAsync(cancellationToken);
-            if (marketplaceConnectionId is not null && await WriteGates(invoice.TenantId, marketplaceConnectionId.Value, F4Capabilities.InvoiceDeliver, cancellationToken)) actions.Add("DELIVER");
+            var permanentLinkReady = await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null, cancellationToken);
+            if (permanentLinkReady && marketplaceConnectionId is not null && await WriteGates(invoice.TenantId, marketplaceConnectionId.Value, F4Capabilities.InvoiceDeliver, cancellationToken)) actions.Add("DELIVER");
         }
         if (invoice.Status is InvoiceStatus.Accepted or InvoiceStatus.Completed && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, F4Capabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
         return actions;

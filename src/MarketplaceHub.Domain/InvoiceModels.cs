@@ -146,6 +146,7 @@ public sealed class InvoiceDocument
     public Guid FileAssetId { get; set; }
     public required string Sha256 { get; set; }
     public string? ExternalDocumentId { get; set; }
+    public string? PermanentUrl { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }
 
