@@ -181,6 +181,10 @@ body { background:var(--mp-canvas); }
 .invoice-table a:last-child { border-bottom: 0; }
 .content > .split { align-items: start; }
 .content > .split > .panel, .content > .panel { box-shadow: 0 8px 24px rgba(15, 55, 50, .04); }
+.form-panel:has(input[name="carrierProviderName"]) > p,
+.form-panel:has(input[name="carrierProviderName"]) > label:has(input[name="carrierProviderName"]),
+.form-panel:has(input[name="carrierProviderName"]) > label:has(input[name="carrierTaxId"]),
+.form-panel:has(input[name="carrierProviderName"]) > label:has(input[name="carrierLegalName"]) { display: none; }
 @media (max-width: 900px) {
   .invoice-table .table-head, .invoice-table a { grid-template-columns: 1.4fr .8fr 1fr; }
   .invoice-table a > :nth-child(3), .invoice-table .table-head > :nth-child(3) { display: none; }
