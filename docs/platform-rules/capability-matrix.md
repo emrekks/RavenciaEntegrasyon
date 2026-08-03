@@ -30,14 +30,14 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 | Trendyol | Stok/fiyat | UNKNOWN | Birleşik endpoint ve partial batch doğrulandı | Partial fixture; Stage safe-write yok | off |
 | Trendyol | Sipariş/teslimat | SUPPORTED | Cursor stream ve webhook auth doğrulandı | 2026-08-03 Stage connection testi `OrderRead=SUPPORTED`; webhook ve yazma capability'leri `UNKNOWN` | off |
 | Trendyol | İade | UNKNOWN | Claims read dokümanı doğrulandı | Anonim claim fixture; Stage action yok | off |
-| Trendyol | Fatura | UNKNOWN | Invoice link/file resmî yolları doğrulandı | Stage package/delivery yok | off |
+| Trendyol | Fatura | UNKNOWN | Güncel invoice link yolu; package/link/date/number sözleşmesi doğrulandı | Yerel contract geçti; Stage package/delivery yok | off |
 | E-Faturam | Bağlantı | SUPPORTED | API `1.0.0`, Stage/production ve sign-in sözleşmesi doğrulandı | 2026-08-03 üretim paneli Stage testi; connection `VERIFIED` | off |
 | E-Faturam | Katalog referansı | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
 | E-Faturam | Ürün | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
 | E-Faturam | Stok/fiyat | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
 | E-Faturam | Sipariş/teslimat | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
 | E-Faturam | İade | UNKNOWN | Uygulanabilirlik kanıtlanmadı | Yok | off |
-| E-Faturam | Fatura | UNKNOWN | Taxpayer, submit, status, document ve cancel kaynakları doğrulandı | Anonim taxpayer parser fixture; test firma yok | off |
+| E-Faturam | Fatura | UNKNOWN | Kuruş bazlı submit ve kalıcı document URL kaynakları doğrulandı; status/cancel ayrı kanıt bekliyor | Yerel 2-kalem/KDV/toplam/not/kalıcı-HTTPS contract geçti; test firma safe-write yok | off |
 | Shopify | Bağlantı | UNKNOWN | 2026-07 pin ve yerel response-version guard hazır; development-store testi yok | Yok | off |
 | Shopify | Katalog referansı | UNKNOWN | Kapsam kanıtlanmadı | Yok | off |
 | Shopify | Ürün | UNKNOWN | Bulk/product delete dokümanı erişilebilir | Yok | off |
@@ -71,8 +71,8 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 
 Doğrulama tarihi: 2026-07-31. URL erişimi capability desteği anlamına gelmez.
 
-- Trendyol: <https://developers.trendyol.com/v3.0/docs/product-v2-api-endpoint>, <https://developers.trendyol.com/v3.0/docs/category-attribute-list-v2>, <https://developers.trendyol.com/v3.0/docs/1-webhook-model>, <https://developers.trendyol.com/v2.0/docs/product-create-v2>, <https://developers.trendyol.com/reference/sendinvoicelink>, <https://developers.trendyol.com/reference/uploadinvoicefile>
-- E-Faturam: <https://developers.trendyolefaturam.com/OpenApi/trendyol-e-faturam-entegrasyon-dokumani>, <https://developers.trendyolefaturam.com/OpenApi/Auth/sign-in>, <https://developers.trendyolefaturam.com/OpenApi/Diğer/get-application-status-by-tax-id>, <https://developers.trendyolefaturam.com/OpenApi/Giden%20eFatura/create-outgoing-e-invoice>, <https://developers.trendyolefaturam.com/OpenApi/eArşiv/get-e-archive-status>, <https://developers.trendyolefaturam.com/OpenApi/Diğer/get-temporary-document-download-url>, <https://developers.trendyolefaturam.com/OpenApi/eArşiv/cancel-e-archive>
+- Trendyol: <https://developers.trendyol.com/changelog/changelog>, <https://developers.trendyol.com/tr/docs/sipariş-paketlerini-çekme-getshipmentpackages>, <https://developers.trendyol.com/docs/fatura-linki-gönderme-sendinvoicelink>
+- E-Faturam: <https://developers.trendyolefaturam.com/OpenApi/trendyol-e-faturam-entegrasyon-dokumani>, <https://developers.trendyolefaturam.com/OpenApi/Auth/sign-in>, <https://developers.trendyolefaturam.com/OpenApi/Giden%20eFatura/create-outgoing-e-invoice>, <https://developers.trendyolefaturam.com/OpenApi/Diğer/get-permanent-document-download-url>
 - Shopify: <https://shopify.dev/docs/api/usage/versioning>, <https://shopify.dev/docs/api/usage/bulk-operations/queries>, <https://shopify.dev/docs/api/usage/bulk-operations/imports>, <https://shopify.dev/docs/apps/build/webhooks/verify-deliveries>, <https://shopify.dev/docs/api/admin-graphql/2026-07>
 - Hepsiburada: <https://developers.hepsiburada.com>
 - N11: <https://magazadestek.n11.com/faydali-dokumanlar>
