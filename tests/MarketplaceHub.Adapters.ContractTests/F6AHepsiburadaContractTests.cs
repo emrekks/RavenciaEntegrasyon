@@ -164,6 +164,20 @@ public sealed class F6AHepsiburadaContractTests
     }
 
     [Fact]
+    public void Live_SIT_merchantSKU_casing_is_accepted()
+    {
+        var root = FindRoot();
+        var json = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Infrastructure", "Adapters", "Hepsiburada", "Fixtures", "order-read-success.json"))
+            .Replace("\"merchantSku\"", "\"merchantSKU\"", StringComparison.Ordinal);
+
+        var order = Assert.Single(HepsiburadaOrderJsonMapper.Orders(json).Items);
+
+        Assert.Collection(order.Lines,
+            line => Assert.Equal("SKU-ANON-001", line.Sku),
+            line => Assert.Equal("SKU-ANON-002", line.Sku));
+    }
+
+    [Fact]
     public void Incomplete_SIT_line_is_rejected_instead_of_being_guessed()
     {
         const string json = """{"items":[{"id":"line","orderId":"order","orderNumber":"number","orderDate":"2026-08-03T18:00:00Z","quantity":1,"merchantSku":"sku","name":"title","unitPrice":{"amount":1,"currency":"TRY"},"totalPrice":{"amount":1,"currency":"TRY"},"vatRate":20,"customerName":"anon","status":"Open"}],"limit":1,"offset":0,"pageCount":1,"totalCount":1}""";

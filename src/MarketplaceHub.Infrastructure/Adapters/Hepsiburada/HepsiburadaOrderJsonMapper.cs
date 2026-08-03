@@ -41,7 +41,7 @@ public static class HepsiburadaOrderJsonMapper
                 var quantity = RequiredDecimal(item, "quantity");
                 if (quantity <= 0 || totalPrice.Amount < 0 || unitPrice.Amount < 0) throw new JsonException("Invalid amount or quantity.");
                 gross += totalPrice.Amount;
-                lines.Add(new(RequiredText(item, "id"), RequiredText(item, "merchantSku"), null, RequiredText(item, "name"), quantity, unitPrice.Amount, RequiredDecimal(item, "vatRate"), RequiredText(item, "status")));
+                lines.Add(new(RequiredText(item, "id"), RequiredText(item, "merchantSku", "merchantSKU"), null, RequiredText(item, "name"), quantity, unitPrice.Amount, RequiredDecimal(item, "vatRate"), RequiredText(item, "status")));
             }
             orders.Add(new(externalOrderId, orderNumber, orderedAt, orderedAt, currency ?? throw new JsonException("Currency missing."), gross, 0, gross,
                 JsonSerializer.Serialize(new { customerName }), shippingAddress.GetRawText(), "{}", lines, [], JsonSerializer.Serialize(items)));
@@ -55,7 +55,13 @@ public static class HepsiburadaOrderJsonMapper
         return new(orders, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore);
     }
 
-    private static string RequiredText(JsonElement value, string name) => value.TryGetProperty(name, out var property) && property.ValueKind is JsonValueKind.String or JsonValueKind.Number && !string.IsNullOrWhiteSpace(property.ToString()) ? property.ToString() : throw new JsonException($"Required {name} missing.");
+    private static string RequiredText(JsonElement value, params string[] names)
+    {
+        foreach (var name in names)
+            if (value.TryGetProperty(name, out var property) && property.ValueKind is JsonValueKind.String or JsonValueKind.Number && !string.IsNullOrWhiteSpace(property.ToString()))
+                return property.ToString();
+        throw new JsonException($"Required {string.Join("/", names)} missing.");
+    }
     private static JsonElement RequiredObject(JsonElement value, string name) => value.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.Object ? property : throw new JsonException($"Required {name} missing.");
     private static decimal RequiredDecimal(JsonElement value, string name) => value.TryGetProperty(name, out var property) && (property.TryGetDecimal(out var amount) || decimal.TryParse(property.ToString(), CultureInfo.InvariantCulture, out amount)) ? amount : throw new JsonException($"Required {name} missing.");
     private static int RequiredInt(JsonElement value, string name) => value.TryGetProperty(name, out var property) && property.TryGetInt32(out var result) ? result : throw new JsonException($"Required {name} missing.");
