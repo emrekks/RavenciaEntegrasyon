@@ -156,6 +156,45 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Twenty_parallel_duplicate_webhooks_acknowledge_once_and_enqueue_once()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var tenantId = Guid.NewGuid(); var connectionId = Guid.NewGuid(); var connectionPublicId = Guid.NewGuid(); var subscriptionId = Guid.NewGuid(); var routeToken = TokenHasher.NewToken(); var hasher = new TokenHasher(Enumerable.Repeat((byte)23, 32).ToArray());
+        var externalMessageId = "parallel-webhook-anonymous"; var payloadHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("{\"content\":[]}"u8));
+        await using (var setup = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options))
+        {
+            await setup.Database.MigrateAsync(cancellationToken);
+            setup.Tenants.Add(new Tenant { Id = tenantId, Code = $"hook-{Guid.NewGuid():N}", DisplayName = "Webhook Test", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow });
+            setup.PlatformConnections.Add(new PlatformConnection { Id = connectionId, PublicId = connectionPublicId, TenantId = tenantId, PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Webhook Test", ExternalStoreId = "anonymous-store", Status = "ACTIVE", ApiVersion = "V2", Version = 1 });
+            setup.WebhookSubscriptions.Add(new WebhookSubscription { Id = subscriptionId, TenantId = tenantId, ConnectionId = connectionId, RouteTokenHash = hasher.Hash(routeToken), AuthenticationType = "API_KEY", ProtectedVerifierSecret = "test-only", Status = "ACTIVE", Version = 1 });
+            await setup.SaveChangesAsync(cancellationToken);
+        }
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); var durations = new System.Collections.Concurrent.ConcurrentBag<double>();
+        var requests = Enumerable.Range(0, 20).Select(async index =>
+        {
+            await using var requestDb = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options);
+            var verifier = new FixedWebhookVerifier(new(externalMessageId, payloadHash, "ORDERS", "{\"content\":[]}"));
+            var service = new F3WebhookService(requestDb, hasher, verifier, null!, TimeProvider.System);
+            await gate.Task; var timer = System.Diagnostics.Stopwatch.StartNew();
+            var result = await service.ReceiveAsync(connectionPublicId, routeToken, "{\"content\":[]}"u8.ToArray(), new Dictionary<string, string>(), $"parallel-{index}", cancellationToken);
+            timer.Stop(); durations.Add(timer.Elapsed.TotalMilliseconds); return result;
+        }).ToArray();
+        gate.SetResult(); var results = await Task.WhenAll(requests);
+
+        Assert.All(results, result => Assert.True(result.Succeeded));
+        await using var verification = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options);
+        Assert.Equal(1, await verification.InboxMessages.CountAsync(x => x.TenantId == tenantId && x.ExternalMessageId == externalMessageId, cancellationToken));
+        Assert.Equal(1, await verification.IntegrationJobs.CountAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.WebhookIngest, cancellationToken));
+        var p95 = durations.Order().ElementAt((int)Math.Ceiling(durations.Count * 0.95) - 1); TestContext.Current.TestOutputHelper?.WriteLine($"20 parallel duplicate webhook ACK p95: {p95:F2} ms"); Assert.True(p95 < 500, $"Webhook ACK p95 was {p95:F2} ms.");
+    }
+
+    private sealed class FixedWebhookVerifier(VerifiedWebhookEnvelope envelope) : IWebhookVerifier
+    {
+        public ValueTask<AdapterResult<VerifiedWebhookEnvelope>> VerifyAsync(ReadOnlyMemory<byte> rawBody, IReadOnlyDictionary<string, string> headers, Guid connectionId, Guid subscriptionId, CancellationToken cancellationToken) => ValueTask.FromResult(AdapterResult<VerifiedWebhookEnvelope>.Success(envelope));
+    }
+
+    [Fact]
     public async Task Parallel_recovery_code_consumption_has_one_winner()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
