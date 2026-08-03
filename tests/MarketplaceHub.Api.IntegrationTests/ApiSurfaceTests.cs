@@ -11,6 +11,7 @@ public sealed class ApiSurfaceTests
         var f3 = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Api", "F3", "F3Endpoints.cs"));
         foreach (var required in new[] { "/connections", "/orders", "/shipments", "/returns", "/hooks/{connectionPublicId:guid}/{routeToken}" }) Assert.Contains(required, f3, StringComparison.Ordinal);
         foreach (var forbidden in new[] { "/invoices", "/billing", "/reports", "/tenants", "/users", "Shopify", "Hepsiburada", "N11", "Pazarama" }) Assert.DoesNotContain(forbidden, f3, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("EnqueueTestAsync(tenant.TenantId, id, http.Request.Headers[\"Idempotency-Key\"].ToString()", f3, StringComparison.Ordinal);
     }
 
     [Fact]
