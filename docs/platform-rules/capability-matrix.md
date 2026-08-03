@@ -4,7 +4,7 @@
 
 Support level yalnız `SUPPORTED`, `NOT_SUPPORTED`, `UNKNOWN`, `TEMPORARILY_UNAVAILABLE` olabilir. Başlangıç değeri `UNKNOWN`dur. `SUPPORTED` için birlikte şunlar zorunludur: güncel resmî kaynak, test hesabı veya secret/PII içermeyen anonim fixture, doğrulama tarihi, kaynak sürümü, gerekli scope, tenant+connection+environment+API version+store scope ve evidence note. Read desteği write desteği değildir.
 
-F0 başlangıcında hiçbir platform için test hesabı/anonim davranış kanıtı sağlanmamıştı. Yerel adapter/contract kanıtlarına ek olarak 2026-08-03 tarihinde üretim panelinden salt-okunur Stage bağlantı testleri çalıştırıldı: Trendyol bağlantı ve sipariş okuma, E-Faturam bağlantı, Hepsiburada bağlantı ve Hepsiburada sipariş okuma kanıtı `SUPPORTED` oldu. 2026-08-04 Trendyol tekrar testinde ayrıca `ProductRead=SUPPORTED`; `ReturnRead=UNKNOWN (REMOTE_RESOURCE_NOT_FOUND)` ve `ReferenceRead=UNKNOWN` olarak doğrulandı. Resmî kategori ağacı Stage yolunu kullanan salt-okunur `ReferenceRead` probu yerel olarak eklendi; üretim dağıtımı ve yeni panel testi tamamlanana kadar durum `UNKNOWN` kalır. Tüm dış yazmalar kapalıdır.
+F0 başlangıcında hiçbir platform için test hesabı/anonim davranış kanıtı sağlanmamıştı. Yerel adapter/contract kanıtlarına ek olarak 2026-08-03 tarihinde üretim panelinden salt-okunur Stage bağlantı testleri çalıştırıldı: Trendyol bağlantı ve sipariş okuma, E-Faturam bağlantı, Hepsiburada bağlantı ve Hepsiburada sipariş okuma kanıtı `SUPPORTED` oldu. 2026-08-04 Trendyol tekrar testlerinde `ProductRead=SUPPORTED`, ardından resmî kategori ağacı Stage probuyla `ReferenceRead=SUPPORTED` doğrulandı. `ReturnRead=UNKNOWN (REMOTE_RESOURCE_NOT_FOUND)` kalır. Tüm dış yazmalar kapalıdır.
 
 ADR-015 aktif teslim kapsamını `Trendyol → Hepsiburada → Trendyol E-Faturam` ile sınırlar. Shopify, N11 ve Pazarama satırları tarihsel capability envanteri olarak korunur; yeni doğrulama veya capability açılışı yapılmaz ve mevcut `UNKNOWN`/write-off durumları tamamlanmış sayılmaz.
 
@@ -27,7 +27,7 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 | Platform | Grup | Support level | Resmî kaynak durumu | Test/fixture kanıtı | Write switch |
 | --- | --- | --- | --- | --- | --- |
 | Trendyol | Bağlantı | SUPPORTED | Auth/environment dokümanı doğrulandı | 2026-08-03 üretim paneli Stage testi; connection `VERIFIED` | off |
-| Trendyol | Katalog referansı | UNKNOWN | V2 attribute/value yolları ve Product V2'nin kullandığı kategori ağacı doğrulandı | Anonim parser fixture; kategori ağacı salt-okunur bağlantı probu yerelde hazır, production tekrar testi bekliyor | off |
+| Trendyol | Katalog referansı | SUPPORTED | V2 attribute/value yolları ve Product V2'nin kullandığı kategori ağacı doğrulandı | 2026-08-04 production paneli Stage testi; job `019fc9c1-b405-759a-bf91-adbdec8c42ff`, `ReferenceRead=SUPPORTED` | off |
 | Trendyol | Ürün | UNKNOWN | Product V2 create/read/batch yolları doğrulandı | 2026-08-04 production paneli Stage probu `ProductRead=SUPPORTED`; ProductWrite ve Stage safe-write `UNKNOWN` | off |
 | Trendyol | Stok/fiyat | UNKNOWN | Birleşik endpoint ve partial batch doğrulandı | Partial fixture; Stage safe-write yok | off |
 | Trendyol | Sipariş/teslimat | SUPPORTED | Cursor stream ve webhook auth doğrulandı | 2026-08-03 Stage connection testi `OrderRead=SUPPORTED`; webhook ve yazma capability'leri `UNKNOWN` | off |
