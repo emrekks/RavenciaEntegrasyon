@@ -166,7 +166,20 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, TimePro
     public async Task<ServiceResult<Guid>> ValidatePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {
         var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken); if (product is null) return NotFound<Guid>();
-        if (product.CategoryId is null || !await db.CategoryMappings.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == product.CategoryId && x.Status == "VERIFIED", cancellationToken)) return ServiceResult<Guid>.Fail("CATALOG_MAPPING_REQUIRED", "Yayın öncesi kategori eşlemesi gereklidir.", 422, new Dictionary<string, string[]> { ["categoryId"] = ["Seçilen bağlantı için doğrulanmış kategori eşlemesi yok."] });
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
+        if (connection is null || connection.PlatformCode != "TRENDYOL" || connection.Status != "ACTIVE") return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın yalnız ACTIVE Trendyol bağlantısında doğrulanabilir.", 422);
+        var categoryMapping = product.CategoryId is Guid categoryId
+            ? await db.CategoryMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == categoryId && x.Status == "VERIFIED")
+                .Join(db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES" && x.IsCurrent), mapping => mapping.SnapshotId, snapshot => snapshot.Id, (mapping, _) => mapping).SingleOrDefaultAsync(cancellationToken)
+            : null;
+        if (categoryMapping is null) return ServiceResult<Guid>.Fail("CATEGORY_MAPPING_REQUIRED", "Yayın öncesi güncel kategori eşlemesi gereklidir.", 422, new Dictionary<string, string[]> { ["categoryId"] = ["Seçilen bağlantının güncel kategori snapshot'ı için doğrulanmış eşleme yok."] });
+        var brandMapping = product.BrandId is Guid brandId
+            ? await db.BrandMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == brandId && x.Status == "VERIFIED")
+                .Join(db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS" && x.IsCurrent), mapping => mapping.SnapshotId, snapshot => snapshot.Id, (mapping, _) => mapping).SingleOrDefaultAsync(cancellationToken)
+            : null;
+        if (brandMapping is null) return ServiceResult<Guid>.Fail("BRAND_MAPPING_REQUIRED", "Yayın öncesi güncel marka eşlemesi gereklidir.", 422, new Dictionary<string, string[]> { ["brandId"] = ["Ürün markası ve seçilen bağlantının güncel marka snapshot'ı için doğrulanmış eşleme zorunludur."] });
+        var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
+        if (profile is not null && ((!string.IsNullOrWhiteSpace(profile.ExternalCategoryId) && profile.ExternalCategoryId != categoryMapping.ExternalId) || (!string.IsNullOrWhiteSpace(profile.ExternalBrandId) && profile.ExternalBrandId != brandMapping.ExternalId))) return ServiceResult<Guid>.Fail("LISTING_MAPPING_CONFLICT", "Listing profile kimlikleri güncel doğrulanmış katalog eşlemeleriyle çelişiyor.", 409);
         return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "Gerçek platform capability kanıtı F3'te doğrulanmadan yayın işi oluşturulamaz.", 422);
     }
 
