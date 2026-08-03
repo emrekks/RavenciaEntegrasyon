@@ -49,7 +49,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     public async Task<ServiceResult<ConnectionView>> CreateAsync(Guid tenantId, CreateConnectionCommand command, CancellationToken cancellationToken)
     {
         var platform = string.IsNullOrWhiteSpace(command.PlatformCode) ? "TRENDYOL" : command.PlatformCode.Trim().ToUpperInvariant();
-        if (platform is not ("TRENDYOL" or "TRENDYOL_EFATURAM" or HepsiburadaContract.PlatformCode)) return Invalid<ConnectionView>("platformCode", "ADR-015 kapsamında yalnız TRENDYOL, TRENDYOL_EFATURAM veya HEPSIBURADA bağlantısı oluşturulabilir.");
+        if (!ActiveIntegrationScope.Contains(platform)) return Invalid<ConnectionView>("platformCode", "ADR-015 kapsamında yalnız TRENDYOL, TRENDYOL_EFATURAM veya HEPSIBURADA bağlantısı oluşturulabilir.");
         var environment = command.Environment.Trim().ToUpperInvariant();
         if (environment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Environment yalnız STAGE veya PRODUCTION olabilir.");
         var apiVersion = command.ApiVersion.Trim();
@@ -99,7 +99,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
 
     public async Task<ServiceResult<ConnectionView>> UpdateAsync(Guid tenantId, Guid id, long expectedVersion, UpdateConnectionCommand command, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == ShopifyContract.PlatformCode || x.PlatformCode == HepsiburadaContract.PlatformCode), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == ShopifyContract.PlatformCode || x.PlatformCode == HepsiburadaContract.PlatformCode), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
         if (string.IsNullOrWhiteSpace(command.DisplayName) || (connection.PlatformCode is "TRENDYOL" or HepsiburadaContract.PlatformCode) && string.IsNullOrWhiteSpace(command.UserAgentIdentity)) return Invalid<ConnectionView>("connection", "Ad; Trendyol ve Hepsiburada için ayrıca User-Agent kimliği zorunludur.");
         connection.DisplayName = command.DisplayName.Trim();
         if (connection.PlatformCode is "TRENDYOL" or HepsiburadaContract.PlatformCode) connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), ReadSettings(connection).ExternalWritesEnabled));
@@ -122,7 +122,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
 
     public async Task<ServiceResult<ConnectionView>> RotateCredentialAsync(Guid tenantId, Guid id, long expectedVersion, CredentialCommand command, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == ShopifyContract.PlatformCode || x.PlatformCode == HepsiburadaContract.PlatformCode), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == ShopifyContract.PlatformCode || x.PlatformCode == HepsiburadaContract.PlatformCode), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
         if (connection.PlatformCode == HepsiburadaContract.PlatformCode && connection.Environment != "STAGE") return ServiceResult<ConnectionView>.Fail("HEPSIBURADA_PRODUCTION_AUTH_UNVERIFIED", "Hepsiburada credential yalnız doğrulanmış STAGE/SIT bağlantısında kaydedilebilir.", 422);
         if (connection.PlatformCode == HepsiburadaContract.PlatformCode && (string.IsNullOrWhiteSpace(command.Username) || string.IsNullOrWhiteSpace(command.Password))) return Invalid<ConnectionView>("credential", "Hepsiburada STAGE için Merchant ID ve Secret Key zorunludur.");
         if (connection.PlatformCode == HepsiburadaContract.PlatformCode && !string.Equals(command.Username!.Trim(), connection.ExternalStoreId, StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("username", "Merchant ID, bağlantının merchant kapsam kimliğiyle aynı olmalıdır.");
@@ -147,7 +147,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
 
     public async Task<ServiceResult<Guid>> EnqueueTestAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await Find(tenantId, id, cancellationToken); if (connection is null) return NotFound<Guid>(); if (!await HasCredential(tenantId, id, cancellationToken)) return ServiceResult<Guid>.Fail("CREDENTIAL_REQUIRED", "Bağlantı testi için şifreli credential gerekir.", 422);
+        var connection = await Find(tenantId, id, cancellationToken); if (connection is null) return NotFound<Guid>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<Guid>(); if (!await HasCredential(tenantId, id, cancellationToken)) return ServiceResult<Guid>.Fail("CREDENTIAL_REQUIRED", "Bağlantı testi için şifreli credential gerekir.", 422);
         var jobType = connection.PlatformCode == "TRENDYOL" ? F3JobTypes.ConnectionTest : connection.PlatformCode == "TRENDYOL_EFATURAM" ? F4JobTypes.ConnectionTest : connection.PlatformCode == ShopifyContract.PlatformCode ? ShopifyContract.ConnectionTestJob : HepsiburadaContract.ConnectionTestJob;
         var dedup = $"connection-test:{connection.Id}:{idempotencyKey}"; var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var payload = JsonSerializer.Serialize(new { connectionId = id }); var job = NewJob(tenantId, id, jobType, dedup, payload, correlationId); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
@@ -155,7 +155,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
 
     public async Task<ServiceResult<ConnectionView>> SetActiveAsync(Guid tenantId, Guid id, long expectedVersion, bool active, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == ShopifyContract.PlatformCode || x.PlatformCode == HepsiburadaContract.PlatformCode), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == ShopifyContract.PlatformCode || x.PlatformCode == HepsiburadaContract.PlatformCode), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode) && active) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
         if (active)
         {
             var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == F3Capabilities.ConnectionTest, cancellationToken);
@@ -184,7 +184,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     {
         var normalized = resourceType.Trim().ToUpperInvariant(); if (!ResourceTypes.Contains(normalized)) return Invalid<SyncPolicyView>("resourceType", "F3 için desteklenen sync resource türü değil.");
         if (command.IntervalSeconds <= 0 || command.OverlapSeconds < 0 || command.JitterSeconds < 0) return Invalid<SyncPolicyView>("interval", "Sync interval pozitif; overlap ve jitter sıfır veya pozitif olmalıdır.");
-        if (!await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == ShopifyContract.PlatformCode), cancellationToken)) return NotFound<SyncPolicyView>();
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == ShopifyContract.PlatformCode), cancellationToken); if (connection is null) return NotFound<SyncPolicyView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<SyncPolicyView>();
         var policy = await db.ConnectionSyncPolicies.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType == normalized, cancellationToken);
         if (policy is null) { if (expectedVersion is not null) return NotFound<SyncPolicyView>(); policy = new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, ResourceType = normalized, Version = 1 }; db.ConnectionSyncPolicies.Add(policy); }
         else { if (expectedVersion is null) return ServiceResult<SyncPolicyView>.Fail("PRECONDITION_REQUIRED", "Mevcut sync policy için If-Match gereklidir.", 428); if (policy.Version != expectedVersion) return Precondition<SyncPolicyView>(policy.Version); policy.Version++; }
@@ -200,7 +200,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
 
     public async Task<ServiceResult<CreatedWebhookSubscription>> CreateWebhookAsync(Guid tenantId, Guid id, CreateWebhookSubscriptionCommand command, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == ShopifyContract.PlatformCode), cancellationToken); if (connection is null) return NotFound<CreatedWebhookSubscription>(); var type = command.AuthenticationType.Trim().ToUpperInvariant();
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == ShopifyContract.PlatformCode), cancellationToken); if (connection is null) return NotFound<CreatedWebhookSubscription>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<CreatedWebhookSubscription>(); var type = command.AuthenticationType.Trim().ToUpperInvariant();
         WebhookVerifierPayload payload;
         if (connection.PlatformCode == ShopifyContract.PlatformCode)
         {
@@ -232,6 +232,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     private static string MaskEmail(string value) { var separator = value.IndexOf('@'); return separator <= 1 ? "***" : value[..1] + "***" + value[separator..]; }
     private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => new() { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = type, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
+    private static ServiceResult<T> Deferred<T>() => ServiceResult<T>.Fail("PLATFORM_DEFERRED", "ADR-015 kapsamında bu platform salt tarihsel kayıttır; işlem kapalıdır.", 409);
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
     private sealed record CredentialPayload(string ApiKey, string ApiSecret);

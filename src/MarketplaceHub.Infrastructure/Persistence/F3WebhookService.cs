@@ -14,7 +14,7 @@ public sealed class F3WebhookService(AppDbContext db, TokenHasher tokenHasher, I
 {
     public async Task<ServiceResult<bool>> ReceiveAsync(Guid connectionPublicId, string routeToken, ReadOnlyMemory<byte> rawBody, IReadOnlyDictionary<string, string> headers, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == connectionPublicId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == ShopifyContract.PlatformCode) && x.Status == "ACTIVE", cancellationToken); if (connection is null) return NotFound();
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == connectionPublicId && x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE", cancellationToken); if (connection is null) return NotFound();
         var subscriptions = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && x.Status == "ACTIVE").ToListAsync(cancellationToken); var subscription = subscriptions.SingleOrDefault(x => SafeVerify(routeToken, x.RouteTokenHash)); if (subscription is null) return NotFound();
         var selectedVerifier = connection.PlatformCode == ShopifyContract.PlatformCode ? (IWebhookVerifier)shopifyVerifier : verifier;
         var verified = await selectedVerifier.VerifyAsync(rawBody, headers, connection.Id, subscription.Id, cancellationToken); if (!verified.IsSuccess) return ServiceResult<bool>.Fail(verified.Error!.Code, verified.Error.SafeMessage, verified.Error.HttpStatus ?? 422);

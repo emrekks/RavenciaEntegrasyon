@@ -104,6 +104,51 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Deferred_shopify_records_are_readable_but_all_new_activity_is_fail_closed()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var tenantId = Guid.NewGuid();
+        var connectionId = Guid.NewGuid();
+        await using (var setup = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options))
+        {
+            await setup.Database.MigrateAsync(cancellationToken);
+            var now = DateTimeOffset.UtcNow;
+            setup.Tenants.Add(new Tenant { Id = tenantId, Code = $"scope-{tenantId:N}", DisplayName = "Scope Guard", CreatedAt = now, UpdatedAt = now });
+            setup.PlatformConnections.Add(new PlatformConnection
+            {
+                Id = connectionId,
+                PublicId = Guid.NewGuid(),
+                TenantId = tenantId,
+                PlatformCode = "SHOPIFY",
+                Environment = "STAGE",
+                DisplayName = "Historical Shopify",
+                ExternalStoreId = "historical.myshopify.com",
+                ApiVersion = "2026-07",
+                Status = "ACTIVE",
+                SettingsJson = "{\"externalWritesEnabled\":false}",
+                Version = 1
+            });
+            await setup.SaveChangesAsync(cancellationToken);
+        }
+
+        await using var provider = BuildProvider($"Aa!9-{Guid.NewGuid():N}");
+        await using var scope = provider.CreateAsyncScope();
+        var service = scope.ServiceProvider.GetRequiredService<IF3ConnectionService>();
+
+        Assert.True((await service.GetAsync(tenantId, connectionId, cancellationToken)).Succeeded);
+        Assert.Equal("PLATFORM_DEFERRED", (await service.UpdateAsync(tenantId, connectionId, 1, new("Blocked", null), cancellationToken)).Error?.Code);
+        Assert.Equal("PLATFORM_DEFERRED", (await service.RotateCredentialAsync(tenantId, connectionId, 1, new(null, null, AccessToken: "blocked", ClientSecret: "blocked"), cancellationToken)).Error?.Code);
+        Assert.Equal("PLATFORM_DEFERRED", (await service.EnqueueTestAsync(tenantId, connectionId, "blocked", "scope-guard", cancellationToken)).Error?.Code);
+        Assert.Equal("PLATFORM_DEFERRED", (await service.SetActiveAsync(tenantId, connectionId, 1, true, cancellationToken)).Error?.Code);
+        Assert.Equal("PLATFORM_DEFERRED", (await service.UpsertSyncPolicyAsync(tenantId, connectionId, "ORDERS", null, new(60, 0, 0, true), cancellationToken)).Error?.Code);
+        Assert.Equal("PLATFORM_DEFERRED", (await service.CreateWebhookAsync(tenantId, connectionId, new("API_KEY", null, null, "blocked"), cancellationToken)).Error?.Code);
+
+        var disabled = await service.SetActiveAsync(tenantId, connectionId, 1, false, cancellationToken);
+        Assert.True(disabled.Succeeded);
+        Assert.Equal("DISABLED", disabled.Value?.Status);
+    }
+
+    [Fact]
     public async Task Job_dedup_lease_heartbeat_and_stale_token_guards_hold()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

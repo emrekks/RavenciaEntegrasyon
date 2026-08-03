@@ -15,6 +15,8 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
     public async Task<bool> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         if (connectionId is null) return false;
+        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId.Value).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (!ActiveIntegrationScope.Contains(platform)) return false;
         return jobType switch
         {
             F3JobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),

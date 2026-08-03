@@ -1,5 +1,10 @@
 namespace MarketplaceHub.Application;
 
+public static class ActiveIntegrationScope
+{
+    public static bool Contains(string? platformCode) => platformCode is "TRENDYOL" or "HEPSIBURADA" or "TRENDYOL_EFATURAM";
+}
+
 public static class F3JobTypes
 {
     public const string ConnectionTest = "TRENDYOL_CONNECTION_TEST";

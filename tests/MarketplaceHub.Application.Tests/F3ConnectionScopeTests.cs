@@ -8,6 +8,19 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class F3ConnectionScopeTests
 {
+    [Theory]
+    [InlineData("TRENDYOL")]
+    [InlineData("HEPSIBURADA")]
+    [InlineData("TRENDYOL_EFATURAM")]
+    public void Active_scope_contains_only_the_three_authorized_platforms(string platformCode)
+    {
+        Assert.True(ActiveIntegrationScope.Contains(platformCode));
+        Assert.False(ActiveIntegrationScope.Contains("SHOPIFY"));
+        Assert.False(ActiveIntegrationScope.Contains("N11"));
+        Assert.False(ActiveIntegrationScope.Contains("PAZARAMA"));
+        Assert.False(ActiveIntegrationScope.Contains(null));
+    }
+
     [Fact]
     public async Task CreateAsync_rejects_deferred_shopify_before_database_access()
     {
