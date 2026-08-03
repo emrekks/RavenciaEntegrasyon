@@ -24,6 +24,8 @@
 | `F6A-EV-016` worker heartbeat fencing | PASS_BUILD_POSTGRES_LOCAL | İki dakikalık lease için 30 saniyelik heartbeat ayrı ve kısa DbContext scope’larında çalışır; lease kaybı yerel yürütmeyi iptal eder, completion yeni scope ile token/expiry fencing’den geçer ve kayıtlı correlation korunur; lease heartbeat/stale-token zinciri gerçek PostgreSQL testinde geçti |
 | `F6A-EV-017` fail-closed port/error completeness | PASS_LOCAL | Connection, capability, reference, product, operation, order ve return read yöntemlerinin tamamı partner kanıtı olmadan aynı güvenli kapıda; archive dahil bütün write yöntemleri kapalıdır. 401/403, 404, 409, 429, 5xx, validation ve timeout sınıfları ayrı test edildi |
 
+| `F6A-EV-018` order-read implementation | PASS_LOCAL / PENDING_SIT_ORDER | Documented order-list fields are mapped only when every required identity, quantity, price, VAT, customer, status, and shipping-address field is present. The anonymous fixture verifies two different lines, prices, and VAT rates; incomplete rows are rejected. `ORDER_READ` remains UNKNOWN in SIT until the user-created test order is observed. |
+
 ## Test sonucu
 
 - .NET build: başarılı, `0` uyarı / `0` hata.

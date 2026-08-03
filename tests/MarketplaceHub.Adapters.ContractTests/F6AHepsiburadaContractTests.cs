@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
@@ -109,7 +110,7 @@ public sealed class F6AHepsiburadaContractTests
         Assert.DoesNotContain("HttpMethod.Post", source, StringComparison.Ordinal);
         Assert.DoesNotContain("HttpMethod.Put", source, StringComparison.Ordinal);
         Assert.DoesNotContain("HttpMethod.Delete", source, StringComparison.Ordinal);
-        Assert.All(Directory.GetFiles(adapterRoot, "*", SearchOption.AllDirectories), path => Assert.Contains(Path.GetExtension(path), new[] { ".cs", ".md" }));
+        Assert.All(Directory.GetFiles(adapterRoot, "*", SearchOption.AllDirectories), path => Assert.Contains(Path.GetExtension(path), new[] { ".cs", ".md", ".json" }));
     }
 
     [Fact]
@@ -125,7 +126,7 @@ public sealed class F6AHepsiburadaContractTests
         Assert.Contains("item.platformCode === 'HEPSIBURADA'", page, StringComparison.Ordinal);
         Assert.Contains("username: data.get('username')", page, StringComparison.Ordinal);
         Assert.DoesNotContain("disabled={item.platformCode === 'HEPSIBURADA'}", page, StringComparison.Ordinal);
-        Assert.Contains("Sipariş aktarımı ve tüm dış yazmalar kapalıdır.", page, StringComparison.Ordinal);
+        Assert.Contains("Dolu test siparişi doğrulanınca yalnız sipariş okuma açılır.", page, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -136,6 +137,38 @@ public sealed class F6AHepsiburadaContractTests
         Assert.True(HepsiburadaSitEnvelope.TryValidate(body, out var itemCount));
         Assert.Equal(0, itemCount);
         Assert.False(HepsiburadaSitEnvelope.TryValidate("""{"items":[]}"""u8, out _));
+    }
+
+    [Fact]
+    public void Anonymous_nonempty_SIT_fixture_maps_grouped_order_lines_and_vat_without_PII()
+    {
+        var root = FindRoot();
+        var json = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Infrastructure", "Adapters", "Hepsiburada", "Fixtures", "order-read-success.json"));
+
+        var page = HepsiburadaOrderJsonMapper.Orders(json);
+        var order = Assert.Single(page.Items);
+
+        Assert.Equal("ORDER-ID-ANON-001", order.ExternalOrderId);
+        Assert.Equal("ORDER-ANON-001", order.OrderNumber);
+        Assert.Equal(200m, order.GrossAmount);
+        Assert.Equal(200m, order.NetAmount);
+        Assert.Equal("TRY", order.Currency);
+        Assert.Equal(2, order.Lines.Count);
+        Assert.Collection(order.Lines,
+            line => { Assert.Equal("LINE-ANON-001", line.ExternalLineId); Assert.Equal(1m, line.Quantity); Assert.Equal(100m, line.UnitPrice); Assert.Equal(20m, line.VatRate); },
+            line => { Assert.Equal("LINE-ANON-002", line.ExternalLineId); Assert.Equal(2m, line.Quantity); Assert.Equal(50m, line.UnitPrice); Assert.Equal(20m, line.VatRate); });
+        Assert.Empty(order.Packages);
+        Assert.False(page.HasMore);
+        Assert.DoesNotContain("@", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("+90", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Incomplete_SIT_line_is_rejected_instead_of_being_guessed()
+    {
+        const string json = """{"items":[{"id":"line","orderId":"order","orderNumber":"number","orderDate":"2026-08-03T18:00:00Z","quantity":1,"merchantSku":"sku","name":"title","unitPrice":{"amount":1,"currency":"TRY"},"totalPrice":{"amount":1,"currency":"TRY"},"vatRate":20,"customerName":"anon","status":"Open"}],"limit":1,"offset":0,"pageCount":1,"totalCount":1}""";
+
+        Assert.Throws<JsonException>(() => HepsiburadaOrderJsonMapper.Orders(json));
     }
 
     [Fact]

@@ -6,11 +6,12 @@ namespace MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 public sealed class HepsiburadaAdapter : IConnectionPort, IReferenceDataPort, IProductPort, IInventoryPricePort, IOrderPort, IReturnPort
 {
     private readonly HepsiburadaConnectionProbe? _probe;
+    private readonly HepsiburadaOrderReader? _orderReader;
     private HepsiburadaProbeEvidence? _lastEvidence;
     private Guid? _lastConnectionId;
 
     public HepsiburadaAdapter() { }
-    public HepsiburadaAdapter(HepsiburadaConnectionProbe probe) => _probe = probe;
+    public HepsiburadaAdapter(HepsiburadaConnectionProbe probe, HepsiburadaOrderReader orderReader) { _probe = probe; _orderReader = orderReader; }
 
     public async Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken)
     {
@@ -44,6 +45,12 @@ public sealed class HepsiburadaAdapter : IConnectionPort, IReferenceDataPort, IP
                 evidence.ResponseSha256,
                 evidence.VerifiedAt)
         ];
+        var orderEvidence = _orderReader is null ? null : await _orderReader.ProbeAsync(context, cancellationToken);
+        if (orderEvidence is { IsSuccess: true }) capabilities = [.. capabilities, new(
+            F3Capabilities.OrderRead, "SUPPORTED", HepsiburadaContract.DocumentedApiVersion, evidence.Identity.Environment, evidence.Identity.ExternalStoreId,
+            HepsiburadaContract.OrderSitSource, "2026-06-04", null,
+            JsonSerializer.Serialize(new { readOnly = true, productFamily = "ORDER", externalWritesEnabled = false, responseOrderCount = orderEvidence.Value!.OrderCount }),
+            "Hepsiburada SIT dolu sipariş yanıtı doğrulandı; sadece sipariş okuma eşlemesi aktiftir.", orderEvidence.Value!.ResponseSha256, orderEvidence.Value!.VerifiedAt)];
         return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(capabilities, result.RateLimit);
     }
 
@@ -54,7 +61,15 @@ public sealed class HepsiburadaAdapter : IConnectionPort, IReferenceDataPort, IP
     public Task<AdapterResult<bool>> ArchiveAsync(AdapterContext context, ExternalProductIdentity identity, CancellationToken cancellationToken) => WriteBlocked<bool>();
     public Task<AdapterResult<BatchResult<BatchLineResult>>> PushStockAsync(AdapterContext context, IReadOnlyList<StockPushLine> lines, CancellationToken cancellationToken) => WriteBlocked<BatchResult<BatchLineResult>>();
     public Task<AdapterResult<BatchResult<BatchLineResult>>> PushPricesAsync(AdapterContext context, IReadOnlyList<PricePushLine> lines, CancellationToken cancellationToken) => WriteBlocked<BatchResult<BatchLineResult>>();
-    public Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) => Blocked<AdapterPageResult<RemoteOrder>>(ReadMessage);
+    public async Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
+    {
+        if (_orderReader is null) return await Blocked<AdapterPageResult<RemoteOrder>>(ReadMessage);
+        if (!int.TryParse(page.Cursor, out var offset) || offset < 0) offset = 0;
+        var response = await _orderReader.ReadAsync(context, offset, page.Limit, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(response.Error!, response.RateLimit);
+        try { return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(HepsiburadaOrderJsonMapper.Orders(response.Value!.Json), response.RateLimit); }
+        catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(new(AdapterErrorClass.ContractViolation, "HEPSIBURADA_ORDER_CONTRACT_VIOLATION", "Hepsiburada SIT sipariş yanıtı doğrulanmış sipariş alanlarıyla eşleşmedi.", 422, null, null), response.RateLimit); }
+    }
     public Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken) => Blocked<RemoteOrder>(ReadMessage);
     public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) => WriteBlocked<PackageActionResult>();
     Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> IReturnPort.PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) => Blocked<AdapterPageResult<RemoteReturnClaim>>(ReadMessage);
