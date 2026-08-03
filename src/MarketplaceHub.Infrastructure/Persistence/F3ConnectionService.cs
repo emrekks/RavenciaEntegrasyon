@@ -119,7 +119,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
             var prefix = command.EfaturamPrefix?.Trim().ToUpperInvariant();
             if (!string.IsNullOrEmpty(prefix) && (prefix.Length != 3 || prefix.Any(x => !char.IsAsciiLetterOrDigit(x)))) return Invalid<ConnectionView>("efaturamPrefix", "Fatura serisi tam 3 harf/rakam olmalıdır.");
             var carriers = (command.EfaturamCarriers ?? []).Select(x => new EfaturamCarrierIdentity(x.ProviderName.Trim(), x.TaxId.Trim(), x.LegalName.Trim())).ToList();
-            if (carriers.Count == 0 || carriers.Any(x => string.IsNullOrWhiteSpace(x.ProviderName) || string.IsNullOrWhiteSpace(x.LegalName) || x.TaxId.Length is not (10 or 11) || !x.TaxId.All(char.IsAsciiDigit))) return Invalid<ConnectionView>("efaturamCarriers", "En az bir kargo firması için sağlayıcı adı, yasal unvan ve 10/11 haneli VKN/TCKN gerekir.");
+            if (carriers.Any(x => string.IsNullOrWhiteSpace(x.ProviderName) || string.IsNullOrWhiteSpace(x.LegalName) || x.TaxId.Length is not (10 or 11) || !x.TaxId.All(char.IsAsciiDigit))) return Invalid<ConnectionView>("efaturamCarriers", "Kargo bilgisi girildiğinde sağlayıcı adı, yasal unvan ve 10/11 haneli VKN/TCKN birlikte girilmelidir.");
             if (carriers.Select(x => x.ProviderName).Distinct(StringComparer.OrdinalIgnoreCase).Count() != carriers.Count) return Invalid<ConnectionView>("efaturamCarriers", "Aynı kargo sağlayıcısı yalnız bir kez tanımlanabilir.");
             var current = ReadEfaturamSettings(connection);
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(integrationModel, current.ExternalWritesEnabled, command.EfaturamCompanyId, command.EfaturamUserId, prefix, carriers));
