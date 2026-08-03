@@ -7,7 +7,7 @@ public static class TrendyolCapabilityCatalog
     public static IReadOnlyDictionary<string, string> OfficialSources { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         [F3Capabilities.ConnectionTest] = "https://developers.trendyol.com/v2.0/docs/authorization",
-        [F3Capabilities.ReferenceRead] = "https://developers.trendyol.com/v2.0/docs/category-attribute-list-v2",
+        [F3Capabilities.ReferenceRead] = "https://developers.trendyol.com/v2.0/docs/trendyol-category-list-getcategorytree",
         [F3Capabilities.ProductRead] = "https://developers.trendyol.com/v2.0/docs/product-filtering-approved-products-v2",
         [F3Capabilities.ProductWrite] = "https://developers.trendyol.com/v2.0/docs/product-create-v2",
         [F3Capabilities.InventoryWrite] = "https://developers.trendyol.com/v2.0/docs/stock-and-price-update-updatepriceandinventory-1",
