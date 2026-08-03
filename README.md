@@ -57,7 +57,7 @@ sudo -H ./deploy/scripts/install-marketplacehub.sh --host-only
 
 ## Faz ve güvenlik sınırı
 
-Aktif ve onaylanmış son yerel uygulama alt fazı F6A’dır. F6B N11, F6C Pazarama veya F7+ route, menü, migration ya da placeholder bulunmaz. Trendyol, E-Faturam, Shopify ve Hepsiburada adapter kodlarının bulunması gerçek mağaza capability’sinin kanıtlandığı anlamına gelmez:
+Aktif ve onaylanmış son yerel uygulama alt fazı F6A’dır. İşletme sahibinin 2026-08-03 öncelik kararıyla aktif doğrulama sırası Trendyol, E-Faturam ve Hepsiburada’dır; Shopify, N11 ve Pazarama son aşamalara ertelenmiştir. F6B N11, F6C Pazarama veya F7+ route, menü, migration ya da placeholder bulunmaz. Adapter kodunun bulunması gerçek mağaza capability’sinin kanıtlandığı anlamına gelmez:
 
 - Capability’ler bağlantı/environment/store/API-version kapsamında başta `UNKNOWN`dır.
 - Token ve secret değerleri şifreli saklanır, API/UI/log çıktısında geri gösterilmez.
