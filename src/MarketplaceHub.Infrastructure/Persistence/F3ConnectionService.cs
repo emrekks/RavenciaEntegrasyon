@@ -26,12 +26,6 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
         F4Capabilities.ConnectionTest, F4Capabilities.TaxpayerQuery, F4Capabilities.InvoiceSubmit,
         F4Capabilities.InvoiceStatusRead, F4Capabilities.InvoiceDocumentRead, F4Capabilities.InvoiceCancel
     ];
-    private static readonly string[] ShopifyCapabilityCodes =
-    [
-        F3Capabilities.ConnectionTest, F3Capabilities.ProductRead, F3Capabilities.ProductWrite,
-        F3Capabilities.InventoryWrite, F3Capabilities.PriceWrite, F3Capabilities.OrderRead,
-        F3Capabilities.OrderWebhook, F3Capabilities.ShipmentWrite
-    ];
     private static readonly string[] HepsiburadaCapabilityCodes =
     [
         F3Capabilities.ConnectionTest, F3Capabilities.ReferenceRead, F3Capabilities.ProductRead,
@@ -55,15 +49,13 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     public async Task<ServiceResult<ConnectionView>> CreateAsync(Guid tenantId, CreateConnectionCommand command, CancellationToken cancellationToken)
     {
         var platform = string.IsNullOrWhiteSpace(command.PlatformCode) ? "TRENDYOL" : command.PlatformCode.Trim().ToUpperInvariant();
-        if (platform is not ("TRENDYOL" or "TRENDYOL_EFATURAM" or ShopifyContract.PlatformCode or HepsiburadaContract.PlatformCode)) return Invalid<ConnectionView>("platformCode", "Yalnız aktif faz platformları TRENDYOL, TRENDYOL_EFATURAM, SHOPIFY veya HEPSIBURADA olabilir.");
+        if (platform is not ("TRENDYOL" or "TRENDYOL_EFATURAM" or HepsiburadaContract.PlatformCode)) return Invalid<ConnectionView>("platformCode", "ADR-015 kapsamında yalnız TRENDYOL, TRENDYOL_EFATURAM veya HEPSIBURADA bağlantısı oluşturulabilir.");
         var environment = command.Environment.Trim().ToUpperInvariant();
         if (environment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Environment yalnız STAGE veya PRODUCTION olabilir.");
         var apiVersion = command.ApiVersion.Trim();
         if (platform == "TRENDYOL" && !string.Equals(apiVersion, "V2", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Trendyol marketplace bağlantısı yalnız Product Integration V2 kullanır.");
         if (platform == "TRENDYOL_EFATURAM" && !string.Equals(apiVersion, "1.0.0", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "E-Faturam bağlantısı doğrulanmış doküman sürümü 1.0.0 ile pinlenmelidir.");
-        if (platform == ShopifyContract.PlatformCode && apiVersion != ShopifyContract.ApiVersion) return Invalid<ConnectionView>("apiVersion", "Shopify Admin GraphQL sürümü 2026-07 olarak pinlenmelidir.");
         if (platform == HepsiburadaContract.PlatformCode && !string.Equals(apiVersion, HepsiburadaContract.DocumentedApiVersion, StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Hepsiburada draft bağlantısı doğrulanan guide sürümü v1.0 ile kaydedilmelidir.");
-        if (platform == ShopifyContract.PlatformCode && !ShopifyContract.TryNormalizeShopDomain(command.ExternalStoreId, out _)) return Invalid<ConnectionView>("externalStoreId", "Shopify mağaza alanı yalnız canonical *.myshopify.com biçiminde olabilir.");
         if (string.IsNullOrWhiteSpace(command.DisplayName) || string.IsNullOrWhiteSpace(command.ExternalStoreId) || (platform is "TRENDYOL" or HepsiburadaContract.PlatformCode) && string.IsNullOrWhiteSpace(command.UserAgentIdentity)) return Invalid<ConnectionView>("connection", "Ad ve dış mağaza/firma kapsamı; Trendyol ve Hepsiburada için ayrıca User-Agent kimliği zorunludur.");
         if (await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.PlatformCode == platform && x.Environment == environment && x.ExternalStoreId == command.ExternalStoreId.Trim(), cancellationToken)) return ServiceResult<ConnectionView>.Fail("CONNECTION_ALREADY_EXISTS", "Bu platform kapsamı ve environment için bağlantı zaten var.", 409);
 
@@ -76,13 +68,13 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
             Environment = environment,
             DisplayName = command.DisplayName.Trim(),
             ExternalStoreId = command.ExternalStoreId.Trim(),
-            ApiVersion = platform == "TRENDYOL" ? "V2" : platform == "TRENDYOL_EFATURAM" ? "1.0.0" : platform == ShopifyContract.PlatformCode ? ShopifyContract.ApiVersion : HepsiburadaContract.DocumentedApiVersion,
+            ApiVersion = platform == "TRENDYOL" ? "V2" : platform == "TRENDYOL_EFATURAM" ? "1.0.0" : HepsiburadaContract.DocumentedApiVersion,
             Status = "DRAFT",
-            SettingsJson = platform is "TRENDYOL" or HepsiburadaContract.PlatformCode ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false)) : platform == "TRENDYOL_EFATURAM" ? JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings("UNVERIFIED", false)) : JsonSerializer.Serialize(new ShopifyConnectionSettings(false)),
+            SettingsJson = platform is "TRENDYOL" or HepsiburadaContract.PlatformCode ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false)) : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings("UNVERIFIED", false)),
             Version = 1
         };
         db.PlatformConnections.Add(connection);
-        var capabilities = platform == "TRENDYOL" ? TrendyolCapabilityCodes : platform == "TRENDYOL_EFATURAM" ? EfaturamCapabilityCodes : platform == ShopifyContract.PlatformCode ? ShopifyCapabilityCodes : HepsiburadaCapabilityCodes;
+        var capabilities = platform == "TRENDYOL" ? TrendyolCapabilityCodes : platform == "TRENDYOL_EFATURAM" ? EfaturamCapabilityCodes : HepsiburadaCapabilityCodes;
         db.PlatformCapabilities.AddRange(capabilities.Select(code => new PlatformCapability
         {
             Id = Guid.CreateVersion7(),
