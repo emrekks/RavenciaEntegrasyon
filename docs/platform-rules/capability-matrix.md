@@ -27,7 +27,7 @@ Her satırın scope alanı `tenant + connection + environment + API version + st
 | Platform | Grup | Support level | Resmî kaynak durumu | Test/fixture kanıtı | Write switch |
 | --- | --- | --- | --- | --- | --- |
 | Trendyol | Bağlantı | SUPPORTED | Auth/environment dokümanı doğrulandı | 2026-08-03 üretim paneli Stage testi; connection `VERIFIED` | off |
-| Trendyol | Katalog referansı | SUPPORTED | V2 attribute/value yolları ve Product V2'nin kullandığı kategori ağacı doğrulandı | 2026-08-04 production paneli Stage testi; job `019fc9c1-b405-759a-bf91-adbdec8c42ff`, `ReferenceRead=SUPPORTED` | off |
+| Trendyol | Katalog referansı | SUPPORTED | Product V2'nin kullandığı kategori ağacı doğrulandı; yalnız kanıtlanmış `CATEGORIES` kaynağı snapshot modeline alınır, marka/özellik eşitlemesi açılmaz | 2026-08-04 production paneli Stage testi; job `019fc9c1-b405-759a-bf91-adbdec8c42ff`, `ReferenceRead=SUPPORTED`; idempotent snapshot akışı `release-2026-08-04-4` CI'da geçti | off |
 | Trendyol | Ürün | UNKNOWN | Product V2 create/read/batch yolları doğrulandı | 2026-08-04 production paneli Stage probu `ProductRead=SUPPORTED`; ProductWrite ve Stage safe-write `UNKNOWN` | off |
 | Trendyol | Stok/fiyat | UNKNOWN | Birleşik endpoint ve partial batch doğrulandı | Partial fixture; Stage safe-write yok | off |
 | Trendyol | Sipariş/teslimat | SUPPORTED | Cursor stream ve webhook auth doğrulandı | 2026-08-03 Stage connection testi `OrderRead=SUPPORTED`; webhook ve yazma capability'leri `UNKNOWN` | off |
