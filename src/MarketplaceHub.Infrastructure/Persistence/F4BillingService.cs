@@ -105,9 +105,9 @@ public sealed partial class F4BillingService(
         if (order is null) return Invalid<InvoiceDetailView>("orderId", "Sipariş bulunamadı.");
         if (command.PackageId is { } packageId && !await db.ShipmentPackages.AnyAsync(x => x.TenantId == tenantId && x.Id == packageId && x.OrderId == command.OrderId, cancellationToken)) return Invalid<InvoiceDetailView>("packageId", "Paket siparişe ait değil.");
         var provider = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.ProviderConnectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
-        var profile = await db.LegalEntityProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.LegalEntityProfileId && x.Status == "ACTIVE", cancellationToken);
-        var policy = await db.InvoicePolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.InvoicePolicyId && x.ProviderConnectionId == command.ProviderConnectionId, cancellationToken);
-        if (provider is null || profile is null || policy is null) return Invalid<InvoiceDetailView>("billing", "Aktif provider bağlantısı, legal entity ve bu bağlantıya ait policy zorunludur.");
+        if (provider is null) return Invalid<InvoiceDetailView>("billing", "Trendyol E-Faturam bağlantısı zorunludur.");
+        var profile = await ProviderManagedProfile(tenantId, provider.Id, cancellationToken);
+        var policy = await ManualPackagePolicy(tenantId, provider.Id, cancellationToken);
         if (command.OriginalInvoiceId is { } originalId && !await db.Invoices.AnyAsync(x => x.TenantId == tenantId && x.Id == originalId, cancellationToken)) return Invalid<InvoiceDetailView>("originalInvoiceId", "Orijinal fatura bulunamadı.");
 
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
@@ -187,9 +187,8 @@ public sealed partial class F4BillingService(
         invoice.DiscountTotal = 0; invoice.TaxTotal = lines.Sum(x => x.VatAmount); invoice.PayableTotal = targetPayable;
         invoice.Note = InvoiceAmounts.TurkishInvoiceNote(invoice.PayableTotal);
         db.Invoices.Add(invoice); db.InvoiceLines.AddRange(lines);
-        var sellerJson = JsonSerializer.Serialize(new { profile.Title, TaxId = _taxProtector.Unprotect(profile.ProtectedTaxId), profile.AddressSnapshotJson, profile.ContactSnapshotJson });
         var receiverJson = JsonSerializer.Serialize(new { order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson });
-        db.InvoicePartySnapshots.AddRange(Snapshot(invoice, "SELLER", sellerJson, now), Snapshot(invoice, "RECEIVER", receiverJson, now));
+        db.InvoicePartySnapshots.Add(Snapshot(invoice, "RECEIVER", receiverJson, now));
         await db.SaveChangesAsync(cancellationToken);
         return await GetAsync(tenantId, invoice.Id, cancellationToken);
     }
@@ -304,6 +303,20 @@ public sealed partial class F4BillingService(
     private static long EventSequence(string sourceEventId) => long.TryParse(sourceEventId[(sourceEventId.LastIndexOf(':') + 1)..], out var value) ? value : 0;
     private static string MaskTaxId(string value) => value.Length <= 4 ? "****" : new string('*', value.Length - 4) + value[^4..];
     private static LegalEntityProfileView Map(LegalEntityProfile value) => new(value.Id, value.Title, value.MaskedTaxId, value.Status, value.UpdatedAt, value.Version);
+    private async Task<LegalEntityProfile> ProviderManagedProfile(Guid tenantId, Guid providerConnectionId, CancellationToken cancellationToken)
+    {
+        var existing = await db.LegalEntityProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Title == $"EFATURAM_PROVIDER:{providerConnectionId:N}", cancellationToken);
+        if (existing is not null) return existing;
+        var now = timeProvider.GetUtcNow(); var profile = new LegalEntityProfile { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = $"EFATURAM_PROVIDER:{providerConnectionId:N}", ProtectedTaxId = _taxProtector.Protect("PROVIDER_MANAGED"), MaskedTaxId = "E-Faturam", AddressSnapshotJson = "{}", ContactSnapshotJson = "{}", Status = "ACTIVE", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        db.LegalEntityProfiles.Add(profile); await db.SaveChangesAsync(cancellationToken); return profile;
+    }
+    private async Task<InvoicePolicy> ManualPackagePolicy(Guid tenantId, Guid providerConnectionId, CancellationToken cancellationToken)
+    {
+        var existing = await db.InvoicePolicies.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProviderConnectionId == providerConnectionId, cancellationToken);
+        if (existing is not null) return existing;
+        var now = timeProvider.GetUtcNow(); var policy = new InvoicePolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ProviderConnectionId = providerConnectionId, TriggerState = "MANUAL_CONFIRMED", PackageScope = "SHIPMENT_PACKAGE", DueRule = "IMMEDIATE", RoundingRule = "LINE_HALF_AWAY_FROM_ZERO", AdjustmentRule = "REJECT_OVER_ONE_KURUS", AutoSubmit = false, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        db.InvoicePolicies.Add(policy); await db.SaveChangesAsync(cancellationToken); return policy;
+    }
     private static InvoicePolicyView Map(InvoicePolicy value) => new(value.Id, value.ProviderConnectionId, value.TriggerState, value.PackageScope, value.DueRule, value.RoundingRule, value.AdjustmentRule, value.AutoSubmit, value.Version);
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
