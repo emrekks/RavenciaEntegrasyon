@@ -5,6 +5,7 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
+using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -77,7 +78,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
             ExternalStoreId = command.ExternalStoreId.Trim(),
             ApiVersion = platform == "TRENDYOL" ? "V2" : platform == "TRENDYOL_EFATURAM" ? "1.0.0" : platform == ShopifyContract.PlatformCode ? ShopifyContract.ApiVersion : HepsiburadaContract.DocumentedApiVersion,
             Status = "DRAFT",
-            SettingsJson = platform is "TRENDYOL" or HepsiburadaContract.PlatformCode ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false)) : platform == "TRENDYOL_EFATURAM" ? JsonSerializer.Serialize(new EfaturamConnectionSettings("UNVERIFIED", false)) : JsonSerializer.Serialize(new ShopifyConnectionSettings(false)),
+            SettingsJson = platform is "TRENDYOL" or HepsiburadaContract.PlatformCode ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false)) : platform == "TRENDYOL_EFATURAM" ? JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings("UNVERIFIED", false)) : JsonSerializer.Serialize(new ShopifyConnectionSettings(false)),
             Version = 1
         };
         db.PlatformConnections.Add(connection);
@@ -108,7 +109,22 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == ShopifyContract.PlatformCode || x.PlatformCode == HepsiburadaContract.PlatformCode), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
         if (string.IsNullOrWhiteSpace(command.DisplayName) || (connection.PlatformCode is "TRENDYOL" or HepsiburadaContract.PlatformCode) && string.IsNullOrWhiteSpace(command.UserAgentIdentity)) return Invalid<ConnectionView>("connection", "Ad; Trendyol ve Hepsiburada için ayrıca User-Agent kimliği zorunludur.");
-        connection.DisplayName = command.DisplayName.Trim(); if (connection.PlatformCode is "TRENDYOL" or HepsiburadaContract.PlatformCode) connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), ReadSettings(connection).ExternalWritesEnabled)); connection.Version++;
+        connection.DisplayName = command.DisplayName.Trim();
+        if (connection.PlatformCode is "TRENDYOL" or HepsiburadaContract.PlatformCode) connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), ReadSettings(connection).ExternalWritesEnabled));
+        if (connection.PlatformCode == "TRENDYOL_EFATURAM" && command.EfaturamIntegrationModel is not null)
+        {
+            var integrationModel = command.EfaturamIntegrationModel.Trim().ToUpperInvariant();
+            if (integrationModel is not ("API_USER" or "MARKETPLACE")) return Invalid<ConnectionView>("efaturamIntegrationModel", "E-Faturam entegrasyon modeli API_USER veya MARKETPLACE olmalıdır.");
+            if (command.EfaturamCompanyId is null or <= 0 || command.EfaturamUserId is null or <= 0) return Invalid<ConnectionView>("efaturamFiscalAccount", "E-Faturam companyId ve userId pozitif olmalıdır.");
+            var prefix = command.EfaturamPrefix?.Trim().ToUpperInvariant();
+            if (!string.IsNullOrEmpty(prefix) && (prefix.Length != 3 || prefix.Any(x => !char.IsAsciiLetterOrDigit(x)))) return Invalid<ConnectionView>("efaturamPrefix", "Fatura serisi tam 3 harf/rakam olmalıdır.");
+            var carriers = (command.EfaturamCarriers ?? []).Select(x => new EfaturamCarrierIdentity(x.ProviderName.Trim(), x.TaxId.Trim(), x.LegalName.Trim())).ToList();
+            if (carriers.Count == 0 || carriers.Any(x => string.IsNullOrWhiteSpace(x.ProviderName) || string.IsNullOrWhiteSpace(x.LegalName) || x.TaxId.Length is not (10 or 11) || !x.TaxId.All(char.IsAsciiDigit))) return Invalid<ConnectionView>("efaturamCarriers", "En az bir kargo firması için sağlayıcı adı, yasal unvan ve 10/11 haneli VKN/TCKN gerekir.");
+            if (carriers.Select(x => x.ProviderName).Distinct(StringComparer.OrdinalIgnoreCase).Count() != carriers.Count) return Invalid<ConnectionView>("efaturamCarriers", "Aynı kargo sağlayıcısı yalnız bir kez tanımlanabilir.");
+            var current = ReadEfaturamSettings(connection);
+            connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(integrationModel, current.ExternalWritesEnabled, command.EfaturamCompanyId, command.EfaturamUserId, prefix, carriers));
+        }
+        connection.Version++;
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, await HasCredential(tenantId, id, cancellationToken)));
     }
 
@@ -219,6 +235,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     private static SyncPolicyView Map(ConnectionSyncPolicy x) => new(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, x.Enabled, x.Version);
     private static WebhookSubscriptionView Map(WebhookSubscription x) => new(x.Id, x.AuthenticationType, x.Status, x.ExternalSubscriptionId, x.VerifiedAt, x.LastReceivedAt, x.Version);
     private static ConnectionSettings ReadSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<ConnectionSettings>(value.SettingsJson) ?? new("", false); } catch (JsonException) { return new("", false); } }
+    private static TrendyolEFaturamConnectionSettings ReadEfaturamSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<TrendyolEFaturamConnectionSettings>(value.SettingsJson) ?? new("UNVERIFIED", false); } catch (JsonException) { return new("UNVERIFIED", false); } }
     private static string Mask(string value) => value.Length <= 4 ? "****" : $"****{value[^4..]}";
     private static string MaskEmail(string value) { var separator = value.IndexOf('@'); return separator <= 1 ? "***" : value[..1] + "***" + value[separator..]; }
     private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => new() { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = type, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
@@ -230,7 +247,6 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     private sealed record ShopifyCredentialPayload(string AccessToken, string ClientSecret);
     private sealed record HepsiburadaCredentialPayload(string Username, string Password);
     private sealed record ConnectionSettings(string UserAgentIdentity, bool ExternalWritesEnabled);
-    private sealed record EfaturamConnectionSettings(string IntegrationModel, bool ExternalWritesEnabled);
     private sealed record ShopifyConnectionSettings(bool ExternalWritesEnabled);
     private sealed record WebhookVerifierPayload(string? Username, string? Password, string? ApiKey, string? ClientSecret);
 }
