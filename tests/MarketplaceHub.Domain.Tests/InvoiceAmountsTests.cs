@@ -1,4 +1,5 @@
 using MarketplaceHub.Domain;
+using System.Text.Json;
 
 namespace MarketplaceHub.Domain.Tests;
 
@@ -25,5 +26,17 @@ public sealed class InvoiceAmountsTests
     public void Invoice_note_contains_only_the_amount_in_Turkish(decimal amount, string expected)
     {
         Assert.Equal(expected, InvoiceAmounts.TurkishInvoiceNote(amount));
+    }
+
+    [Theory]
+    [InlineData(true, true, "TEMELFATURA")]
+    [InlineData(true, false, "EARSIVFATURA")]
+    [InlineData(false, true, "EARSIVFATURA")]
+    [InlineData(false, false, "EARSIVFATURA")]
+    public void Trendyol_commercial_and_einvoice_flags_determine_invoice_type(bool commercial, bool available, string expected)
+    {
+        var customer = JsonSerializer.Serialize(new { commercial });
+        var address = JsonSerializer.Serialize(new { invoiceAddress = new { eInvoiceAvailable = available } });
+        Assert.Equal(expected, InvoiceAmounts.TrendyolInvoiceType(customer, address));
     }
 }

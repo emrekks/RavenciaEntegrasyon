@@ -31,7 +31,7 @@ public static class TrendyolJsonMapper
             var rawStatusPackage = Text(package, "shipmentPackageStatus", "status"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
             var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName"), NullText(package, "cargoTrackingNumber"), allocations, gross, discount, net);
             rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
-                Snapshot(package, "customerFirstName", "customerLastName"), Snapshot(package, "shipmentAddress"), Snapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText()));
+                Snapshot(package, "customerFirstName", "customerLastName", "customerEmail", "commercial"), Snapshot(package, "shipmentAddress"), Snapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText()));
         }
         return new(rows, NullText(root, "nextCursor"), Bool(root, "hasMore"));
     }

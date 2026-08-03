@@ -63,8 +63,10 @@ public sealed partial class F4BillingService(
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
         if (connection is null) return Invalid<InvoicePolicyView>("connectionId", "Trendyol E-Faturam provider bağlantısı bulunamadı.");
-        if (new[] { command.TriggerState, command.PackageScope, command.DueRule, command.RoundingRule, command.AdjustmentRule }.Any(string.IsNullOrWhiteSpace)) return Invalid<InvoicePolicyView>("policy", "Policy alanları açık bir değer veya UNAPPROVED taşımalıdır.");
-        if (new[] { command.TriggerState, command.PackageScope, command.DueRule, command.RoundingRule, command.AdjustmentRule }.Select(Normalize).Any(x => x != "UNAPPROVED")) return ServiceResult<InvoicePolicyView>.Fail("FISCAL_POLICY_DECISION_REQUIRED", "Mali karar kaydı tamamlanana kadar policy alanları yalnız UNAPPROVED olabilir.", 422);
+        if (new[] { command.TriggerState, command.PackageScope, command.DueRule, command.RoundingRule, command.AdjustmentRule }.Any(string.IsNullOrWhiteSpace)) return Invalid<InvoicePolicyView>("policy", "Policy alanları boş olamaz.");
+        var policyValues = new[] { Normalize(command.TriggerState), Normalize(command.PackageScope), Normalize(command.DueRule), Normalize(command.RoundingRule), Normalize(command.AdjustmentRule) };
+        var approvedManualPolicy = policyValues.SequenceEqual(["MANUAL_CONFIRMED", "SHIPMENT_PACKAGE", "IMMEDIATE", "LINE_HALF_AWAY_FROM_ZERO", "REJECT_OVER_ONE_KURUS"]);
+        if (!approvedManualPolicy && policyValues.Any(x => x != "UNAPPROVED")) return ServiceResult<InvoicePolicyView>.Fail("FISCAL_POLICY_DECISION_REQUIRED", "Yalnız doğrulanmış manuel paket faturası politikası veya tüm alanlarda UNAPPROVED kabul edilir.", 422);
         if (command.AutoSubmit) return ServiceResult<InvoicePolicyView>.Fail("AUTO_INVOICE_DISABLED", "Onaylı mali karar kaydı olmadan otomatik fatura açılamaz.", 422);
 
         var now = timeProvider.GetUtcNow(); var policy = await db.InvoicePolicies.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProviderConnectionId == connectionId, cancellationToken);
@@ -130,7 +132,7 @@ public sealed partial class F4BillingService(
             ProviderConnectionId = provider.Id,
             LegalEntityProfileId = profile.Id,
             InvoicePolicyId = policy.Id,
-            InvoiceType = "UNDETERMINED",
+            InvoiceType = InvoiceAmounts.TrendyolInvoiceType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson),
             SequencePurpose = command.OriginalInvoiceId is null ? "SALE" : "ADJUSTMENT",
             Currency = order.Currency,
             Note = string.Empty,

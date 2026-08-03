@@ -1,9 +1,24 @@
 namespace MarketplaceHub.Domain;
 
+using System.Text.Json;
+
 public sealed record VatIncludedInvoiceAmount(decimal TaxExclusiveAmount, decimal VatAmount, decimal PayableAmount);
 
 public static class InvoiceAmounts
 {
+    public static string TrendyolInvoiceType(string customerSnapshotJson, string invoiceAddressSnapshotJson)
+    {
+        try
+        {
+            using var customer = JsonDocument.Parse(customerSnapshotJson);
+            using var address = JsonDocument.Parse(invoiceAddressSnapshotJson);
+            var commercial = customer.RootElement.TryGetProperty("commercial", out var commercialValue) && commercialValue.ValueKind == JsonValueKind.True;
+            var available = address.RootElement.TryGetProperty("invoiceAddress", out var invoiceAddress) && invoiceAddress.TryGetProperty("eInvoiceAvailable", out var availableValue) && availableValue.ValueKind == JsonValueKind.True;
+            return commercial && available ? "TEMELFATURA" : "EARSIVFATURA";
+        }
+        catch (JsonException) { return "EARSIVFATURA"; }
+    }
+
     public static VatIncludedInvoiceAmount FromVatIncluded(decimal payableAmount, decimal vatRate)
     {
         if (payableAmount < 0) throw new ArgumentOutOfRangeException(nameof(payableAmount));

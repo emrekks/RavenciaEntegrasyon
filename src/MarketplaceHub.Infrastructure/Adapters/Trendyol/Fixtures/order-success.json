@@ -9,12 +9,13 @@
       "orderDate": 1762253333685,
       "lastModifiedDate": 1762253393685,
       "currencyCode": "TRY",
+      "commercial": false,
       "packageTotalPrice": 125.50,
       "shipmentPackageStatus": "Created",
       "cargoProviderName": "ANON-CARGO",
       "cargoTrackingNumber": "TRACK-ANON-001",
       "shipmentAddress": { "city": "ANON" },
-      "invoiceAddress": { "city": "ANON" },
+      "invoiceAddress": { "city": "ANON", "eInvoiceAvailable": false },
       "lines": [
         {
           "lineId": 700001,
