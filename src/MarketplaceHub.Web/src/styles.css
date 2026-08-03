@@ -164,3 +164,16 @@ body { background:var(--mp-canvas); }
 .orders-table > * { grid-template-columns:minmax(230px,1.5fr) minmax(130px,.8fr) minmax(150px,.8fr) minmax(90px,.5fr); }
 .orders-table > a { min-height:82px; }
 @media (max-width:760px) { .order-toolbar { align-items:stretch; flex-direction:column; } .order-search { width:100%; min-width:0; } .orders-table > * { grid-template-columns:1fr 1fr; } }
+/* Stitch workspace refinements shared by catalog, billing and integrations. */
+.stitch-page .page-heading { margin-bottom: 24px; }
+.invoice-metrics { margin-bottom: 20px; }
+.invoice-workspace { padding: 0; overflow: hidden; }
+.invoice-table .table-head, .invoice-table a { grid-template-columns: 1.5fr .8fr .8fr 1fr; }
+.invoice-table a { border-bottom: 1px solid var(--line); }
+.invoice-table a:last-child { border-bottom: 0; }
+.content > .split { align-items: start; }
+.content > .split > .panel, .content > .panel { box-shadow: 0 8px 24px rgba(15, 55, 50, .04); }
+@media (max-width: 900px) {
+  .invoice-table .table-head, .invoice-table a { grid-template-columns: 1.4fr .8fr 1fr; }
+  .invoice-table a > :nth-child(3), .invoice-table .table-head > :nth-child(3) { display: none; }
+}

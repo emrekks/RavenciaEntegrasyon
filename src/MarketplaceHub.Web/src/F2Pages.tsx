@@ -17,7 +17,7 @@ type Inventory = Versioned & { variantId: string; sku: string; locationCode: str
 const key = () => crypto.randomUUID()
 const ErrorBox = ({ error }: { error: unknown }) => error ? <div className="error" role="alert">{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</div> : null
 const Tag = ({ children }: { children: ReactNode }) => <span className="tag">{children}</span>
-function Page({ title, eyebrow, action, children }: { title: string; eyebrow: string; action?: ReactNode; children: ReactNode }) { return <section className="content"><div className="page-head"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>{action}</div>{children}</section> }
+function Page({ title, eyebrow, action, children }: { title: string; eyebrow: string; action?: ReactNode; children: ReactNode }) { return <section className="content stitch-page"><div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>{action}</div>{children}</section> }
 
 export function ProductsPage() {
   const query = useQuery({ queryKey: ['products'], queryFn: () => hubApi<PageData<Product>>('/products') })
