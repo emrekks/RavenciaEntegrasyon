@@ -26,6 +26,7 @@
 | `F3-EV-018` Stage/SIT | PARTIAL_PASS_READ | 2026-08-03 üretim paneli testi `VERIFIED`; `ConnectionTest` ve `OrderRead` `SUPPORTED`. Diğer read, webhook ve bütün write capability'leri kanıt beklediği için `UNKNOWN`/off |
 | `F3-EV-019` production smoke | BLOCKED_EXTERNAL | Ubuntu sunucu/domain/credential ve işlem başına etki onayı yok; dış yazma kapalı |
 | `F3-EV-020` deterministic Fake adapter | PASS_FULL_LOCAL_FAKE_RC / SANDBOX OPEN | Test-only adapter bütün generic portları uygular; success/empty/partial/auth/429/5xx/timeout/validation/contract senaryoları, deterministic clock, varsayılan write-off ve replay’de tek etki test edildi. PostgreSQL job→lease→processor→worker-kill/reaper→retry→completion zinciri tek Order/OrderLine/cursor üretti. Ayrı RC testi gerçek Chromium oturumu→API→PostgreSQL job→gerçek Worker→Fake adapter→sipariş listesi ve detay UI zincirini tamamladı. Production DI/ağ/auth/secret bağımlılığı yok; gerçek platform sandbox/SIT bölümü açıktır |
+| `F3-EV-021` Trendyol production read-only sync | PASS_TARGET_READ_ONLY | `release-2026-08-03-7` (`a5f3eac`) immutable app `sha256:2029f449…75070e8` ve edge `sha256:99cb59ea…120902` ile production deploy edildi; API/PostgreSQL/Caddy healthy, Worker running ve HTTPS readiness `200`. Trendyol Stage bağlantısı `ACTIVE`; `CONNECTION_TEST` ve `ORDER_READ` `SUPPORTED`, diğer capability’ler `UNKNOWN`/off. `TRENDYOL_ORDER_SYNC` tek denemede `SUCCEEDED`, `LastErrorCode=null`; panel sipariş listesi doldu. Hiçbir dış write capability veya butonu açılmadı. |
 
 ## Fixture checksum'ları
 
