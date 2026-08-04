@@ -1,0 +1,35 @@
+services:
+  bootstrap:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: marketplacehub-app:f1-local
+    restart: "no"
+    init: true
+    networks: [backend]
+    command: ["api/MarketplaceHub.Api.dll", "bootstrap"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      MARKETPLACEHUB_ENVIRONMENT: PILOT_LOCAL
+      AllowedHosts: "${MARKETPLACEHUB_ALLOWED_HOSTS:-localhost;127.0.0.1}"
+      ConnectionStrings__AppDb_FILE: /run/secrets/app_db_connection
+      Security__CredentialKey_FILE: /run/secrets/credential_key
+      DataProtection__KeysRoot: /var/lib/marketplacehub/dp-keys
+      Bootstrap__Enabled: "true"
+      Bootstrap__TenantCode: ${MARKETPLACEHUB_BOOTSTRAP_TENANT_CODE:-ravencia}
+      Bootstrap__TenantDisplayName: ${MARKETPLACEHUB_BOOTSTRAP_TENANT_NAME:-Ravencia}
+      Bootstrap__OwnerEmail: ${MARKETPLACEHUB_BOOTSTRAP_OWNER_EMAIL:-owner@example.invalid}
+      Bootstrap__OwnerDisplayName: ${MARKETPLACEHUB_BOOTSTRAP_OWNER_NAME:-Ravencia Admin}
+      Bootstrap__OwnerPassword_FILE: /run/secrets/bootstrap_owner_password
+    secrets:
+      - app_db_connection
+      - credential_key
+      - bootstrap_owner_password
+    volumes:
+      - dp_keys:/var/lib/marketplacehub/dp-keys
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+secrets:
+  bootstrap_owner_password:
+    file: ../secrets/bootstrap_owner_password.txt

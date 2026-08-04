@@ -17,7 +17,7 @@ public interface IJobLeaseService
 {
     Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, CancellationToken cancellationToken);
     Task<bool> HeartbeatAsync(Guid jobId, string leaseToken, TimeSpan extension, CancellationToken cancellationToken);
-    Task<bool> CompleteAsync(Guid jobId, string leaseToken, bool succeeded, string? errorCode, CancellationToken cancellationToken);
+    Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken);
     Task<int> ReapExpiredAsync(CancellationToken cancellationToken);
 }
 

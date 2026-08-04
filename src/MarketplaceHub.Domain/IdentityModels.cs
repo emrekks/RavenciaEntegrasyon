@@ -1,7 +1,7 @@
 namespace MarketplaceHub.Domain;
 
 public enum RecordStatus { Active, Disabled }
-public enum MembershipRole { Owner }
+public enum MembershipRole { Owner, Administrator, Operations, Accounting, ReadOnly }
 public enum SessionState { PasswordChangeRequired, MfaChallenge, Active, Revoked }
 public enum TotpState { Disabled, Pending, Enabled }
 
@@ -60,6 +60,7 @@ public sealed class UserSession
     public required string TokenHash { get; set; }
     public long SessionVersion { get; set; }
     public DateTimeOffset IssuedAt { get; set; }
+    public DateTimeOffset? ReauthenticatedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset AbsoluteExpiresAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }

@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
@@ -8,7 +9,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
 
-public sealed class TrendyolEFaturamHttpClient(IHttpClientFactory clients, TrendyolEFaturamAuthenticationHandler authentication, IConfiguration configuration) : IInvoiceProviderPort
+public sealed class TrendyolEFaturamHttpClient(IHttpClientFactory clients, TrendyolEFaturamAuthenticationHandler authentication, IConfiguration configuration, SafeRemoteDocumentDownloader documents) : IInvoiceProviderPort
 {
     private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
 
@@ -61,14 +62,13 @@ public sealed class TrendyolEFaturamHttpClient(IHttpClientFactory clients, Trend
         catch (JsonException) { return AdapterResult<RemoteInvoiceDocument>.Failure(TrendyolEFaturamErrorMapper.Contract(), response.RateLimit); }
         try
         {
-            using var download = await clients.CreateClient("TrendyolEFaturam").GetAsync(permanentUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (!download.IsSuccessStatusCode) return AdapterResult<RemoteInvoiceDocument>.Failure(TrendyolEFaturamErrorMapper.FromStatus(download.StatusCode, null, null));
-            if (download.Content.Headers.ContentLength is > 20_000_000) return AdapterResult<RemoteInvoiceDocument>.Failure(TrendyolEFaturamErrorMapper.Contract());
-            var content = await download.Content.ReadAsByteArrayAsync(cancellationToken);
-            if (content.Length == 0 || content.Length > 20_000_000) return AdapterResult<RemoteInvoiceDocument>.Failure(TrendyolEFaturamErrorMapper.Contract());
-            return AdapterResult<RemoteInvoiceDocument>.Success(new("PDF", "application/pdf", $"invoice-{documentUuid}.pdf", content, documentUuid, permanentUrl), response.RateLimit);
+            var download = await documents.DownloadPdfAsync(permanentUrl, cancellationToken);
+            if (download.RemoteStatus is { } status) return AdapterResult<RemoteInvoiceDocument>.Failure(TrendyolEFaturamErrorMapper.FromStatus(status, null, null));
+            if (!download.Succeeded) return AdapterResult<RemoteInvoiceDocument>.Failure(new(AdapterErrorClass.ContractViolation, download.ErrorCode ?? "EFATURAM_DOCUMENT_REJECTED", "E-Faturam belge adresi veya PDF içeriği güvenlik doğrulamasını geçemedi.", null, null, null));
+            return AdapterResult<RemoteInvoiceDocument>.Success(new("PDF", "application/pdf", $"invoice-{documentUuid}.pdf", download.Content!, documentUuid, download.FinalUrl), response.RateLimit);
         }
-        catch (HttpRequestException) { return AdapterResult<RemoteInvoiceDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_DOCUMENT_NETWORK_ERROR", "E-Faturam belgesi indirilemedi.", null, TimeSpan.FromSeconds(5), null)); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return AdapterResult<RemoteInvoiceDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_DOCUMENT_TIMEOUT", "E-Faturam belgesi zaman aşımı nedeniyle indirilemedi.", null, TimeSpan.FromSeconds(5), null)); }
+        catch (Exception exception) when (exception is HttpRequestException or SocketException) { return AdapterResult<RemoteInvoiceDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_DOCUMENT_NETWORK_ERROR", "E-Faturam belgesi indirilemedi.", null, TimeSpan.FromSeconds(5), null)); }
     }
 
     public Task<AdapterResult<InvoiceCancellationResult>> CancelAsync(AdapterContext context, InvoiceCancellation command, CancellationToken cancellationToken) =>

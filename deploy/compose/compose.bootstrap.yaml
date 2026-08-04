@@ -1,0 +1,36 @@
+services:
+  bootstrap:
+    image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
+    restart: "no"
+    init: true
+    networks: [backend]
+    command: ["api/MarketplaceHub.Api.dll", "bootstrap"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      MARKETPLACEHUB_ENVIRONMENT: PRODUCTION
+      AllowedHosts: ${MARKETPLACEHUB_ALLOWED_HOSTS:?set production allowed hosts}
+      ConnectionStrings__AppDb_FILE: /run/secrets/app_db_connection
+      Security__CredentialKey_FILE: /run/secrets/credential_key
+      DataProtection__KeysRoot: /var/lib/marketplacehub/dp-keys
+      DataProtection__CertificatePath: /run/secrets/dp_certificate
+      DataProtection__CertificatePassword_FILE: /run/secrets/dp_certificate_password
+      Bootstrap__Enabled: "true"
+      Bootstrap__TenantCode: ${MARKETPLACEHUB_BOOTSTRAP_TENANT_CODE:-ravencia}
+      Bootstrap__TenantDisplayName: ${MARKETPLACEHUB_BOOTSTRAP_TENANT_NAME:-Ravencia}
+      Bootstrap__OwnerEmail: ${MARKETPLACEHUB_BOOTSTRAP_OWNER_EMAIL:?set bootstrap owner email}
+      Bootstrap__OwnerDisplayName: ${MARKETPLACEHUB_BOOTSTRAP_OWNER_NAME:-Ravencia Admin}
+      Bootstrap__OwnerPassword_FILE: /run/secrets/bootstrap_owner_password
+    secrets:
+      - app_db_connection
+      - credential_key
+      - dp_certificate
+      - dp_certificate_password
+      - bootstrap_owner_password
+    volumes:
+      - dp_keys:/var/lib/marketplacehub/dp-keys
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+secrets:
+  bootstrap_owner_password:
+    file: ../secrets/bootstrap_owner_password.txt

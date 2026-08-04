@@ -30,10 +30,10 @@ Migration hiçbir kullanıcı veya parola seed etmez. İlk Owner bootstrap yaln�
 
 ```powershell
 $env:MARKETPLACEHUB_BOOTSTRAP_OWNER_EMAIL = '<approved-owner-email>'
-& $compose -f deploy/compose/compose.yaml run --rm -e Bootstrap__Enabled=true migrate api/MarketplaceHub.Api.dll bootstrap
+& $compose -f deploy/compose/compose.yaml -f deploy/compose/compose.bootstrap.local.yaml run --rm bootstrap
 ```
 
-Komut advisory lock alır; Tenant, Owner, OWNER membership, UserSecurity, kapalı `external-writes` flag'i ve fingerprint marker'ını tek transaction'da oluşturur. Aynı yapılandırmayla tekrar no-op; farklı fingerprint fail-closed'dur. İlk oturumun wire durumu `PASSWORD_CHANGE_REQUIRED` olur ve business/tenant claim'i alamaz.
+Komut advisory lock alır; Tenant, Owner, OWNER membership, UserSecurity, kapalı `AUTO_INVOICE_ENABLED` tenant mali otomasyon flag'i ve fingerprint marker'ını tek transaction'da oluşturur. Aynı yapılandırmayla tekrar no-op; farklı fingerprint fail-closed'dur. İlk oturumun wire durumu `PASSWORD_CHANGE_REQUIRED` olur ve business/tenant claim'i alamaz.
 
 ## Yerel sınır
 

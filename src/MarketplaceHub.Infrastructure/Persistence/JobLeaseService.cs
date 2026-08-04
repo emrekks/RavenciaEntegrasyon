@@ -35,20 +35,57 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         return new LeasedJob(job.Id, job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, token);
     }
 
-    public async Task<bool> CompleteAsync(Guid jobId, string leaseToken, bool succeeded, string? errorCode, CancellationToken cancellationToken)
+    public async Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken)
     {
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.Id == jobId, cancellationToken);
         if (job is null || job.Status != JobStatus.Leased || job.LeaseTokenHash is null || !hasher.Verify(leaseToken, job.LeaseTokenHash)) return false;
         var now = timeProvider.GetUtcNow();
         if (job.LeaseExpiresAt <= now) return false;
-        job.Status = succeeded ? JobStatus.Succeeded : errorCode == "UNSUPPORTED_JOB_TYPE" ? JobStatus.Dead : JobStatus.Blocked;
-        job.CompletedAt = now;
-        job.LastErrorCode = errorCode;
-        job.LeaseTokenHash = null; job.LeaseExpiresAt = null; job.HeartbeatAt = null;
+
+        var kind = result.Kind;
+        if (kind == JobCompletionKind.Retry && job.AttemptCount >= job.MaxAttempts) kind = JobCompletionKind.Dead;
+        job.Status = kind switch
+        {
+            JobCompletionKind.Succeeded => JobStatus.Succeeded,
+            JobCompletionKind.Retry => JobStatus.RetryScheduled,
+            JobCompletionKind.Blocked => JobStatus.Blocked,
+            JobCompletionKind.ManualReview => JobStatus.ManualReview,
+            _ => JobStatus.Dead
+        };
+        job.CompletedAt = kind == JobCompletionKind.Retry ? null : now;
+        job.AvailableAt = kind == JobCompletionKind.Retry
+            ? now.Add(EffectiveRetryDelay(job, result.RetryAfter))
+            : job.AvailableAt;
+        job.LastErrorCode = result.ErrorCode;
+        job.LastErrorSummary = result.ErrorSummary;
+        job.LeaseTokenHash = null;
+        job.LeaseExpiresAt = null;
+        job.HeartbeatAt = null;
+        job.Version++;
+
         var attempt = await db.JobAttempts.SingleAsync(x => x.JobId == jobId && x.AttemptNumber == job.AttemptCount, cancellationToken);
-        attempt.CompletedAt = now; attempt.Succeeded = succeeded; attempt.ErrorCode = errorCode;
+        attempt.CompletedAt = now;
+        attempt.Succeeded = kind == JobCompletionKind.Succeeded;
+        attempt.ErrorCode = kind == JobCompletionKind.Dead && result.Kind == JobCompletionKind.Retry
+            ? result.ErrorCode ?? "MAX_ATTEMPTS_EXHAUSTED"
+            : result.ErrorCode;
+        attempt.ErrorSummary = result.ErrorSummary;
+        if (kind == JobCompletionKind.Dead && result.Kind == JobCompletionKind.Retry)
+        {
+            job.LastErrorCode = attempt.ErrorCode;
+            job.LastErrorSummary ??= "Maksimum otomatik deneme sayısına ulaşıldı.";
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    private static TimeSpan EffectiveRetryDelay(IntegrationJob job, TimeSpan? requested)
+    {
+        var policyDelay = JobRetryPolicy.DelayAfterAttempt(job.AttemptCount, job.Id);
+        if (requested is null || requested <= TimeSpan.Zero) return policyDelay;
+        var bounded = requested > TimeSpan.FromHours(1) ? TimeSpan.FromHours(1) : requested.Value;
+        return bounded > policyDelay ? bounded : policyDelay;
     }
 
     public async Task<bool> HeartbeatAsync(Guid jobId, string leaseToken, TimeSpan extension, CancellationToken cancellationToken)

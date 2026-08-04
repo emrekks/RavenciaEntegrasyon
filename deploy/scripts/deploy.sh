@@ -15,10 +15,12 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repository_root="$(cd -- "$script_dir/../.." && pwd -P)"
 base_compose="$repository_root/deploy/compose/compose.yaml"
 production_compose="$repository_root/deploy/compose/compose.production.yaml"
+bootstrap_compose="$repository_root/deploy/compose/compose.bootstrap.yaml"
 secrets_root="$repository_root/deploy/secrets"
 environment_file="$secrets_root/production.env"
 
-required=(postgres_password.txt app_db_connection.txt credential_key.txt bootstrap_owner_password.txt dp_certificate.pfx dp_certificate_password.txt production.env)
+required=(postgres_password.txt app_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt production.env)
+[[ "$bootstrap" == true ]] && required+=(bootstrap_owner_password.txt)
 for name in "${required[@]}"; do
   [[ -s "$secrets_root/$name" ]] || { echo "Required deployment file is missing or empty: deploy/secrets/$name" >&2; exit 1; }
 done
@@ -54,17 +56,32 @@ echo "Production configuration passed fail-closed validation."
 "${compose[@]}" pull postgres migrate api worker caddy
 "${compose[@]}" up -d postgres migrate api worker caddy
 if [[ "$bootstrap" == true ]]; then
-  "${compose[@]}" run --rm -e Bootstrap__Enabled=true migrate api/MarketplaceHub.Api.dll bootstrap
+  bootstrap_stack=("${compose[@]}" -f "$bootstrap_compose")
+  "${bootstrap_stack[@]}" run --rm bootstrap
+  rm -f -- "$secrets_root/bootstrap_owner_password.txt"
+  echo "One-time bootstrap secret was removed after successful use."
 fi
 
 status="000"
 readiness_attempts=30
 for ((attempt = 1; attempt <= readiness_attempts; attempt++)); do
-  if status="$(curl --silent --show-error --fail --output /dev/null --write-out '%{http_code}' "$site_address/health/ready")" && [[ "$status" == "200" ]]; then
+  if status="$(curl --connect-timeout 3 --max-time 8 --silent --show-error --fail --output /dev/null --write-out '%{http_code}' "$site_address/health/ready")" && [[ "$status" == "200" ]]; then
     break
   fi
   (( attempt == readiness_attempts )) || sleep 2
 done
 [[ "$status" == "200" ]] || { echo "Readiness did not return HTTP 200 after $readiness_attempts attempts; last status was $status." >&2; exit 1; }
+
+worker_id="$("${compose[@]}" ps -q worker)"
+[[ -n "$worker_id" ]] || { echo "Worker container was not created." >&2; exit 1; }
+worker_health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$worker_id")"
+[[ "$worker_health" == "healthy" ]] || { echo "Worker is not healthy: $worker_health" >&2; exit 1; }
+
+html="$(curl --connect-timeout 3 --max-time 8 --silent --show-error --fail "$site_address/")"
+[[ "$html" == *'<div id="root">'* ]] || { echo "Frontend root marker was not served." >&2; exit 1; }
+asset_path="$(printf '%s' "$html" | grep -oE 'src="/[^"]+\.js"' | head -1 | cut -d'"' -f2)"
+[[ -n "$asset_path" ]] || { echo "Frontend JavaScript asset could not be identified." >&2; exit 1; }
+curl --connect-timeout 3 --max-time 8 --silent --show-error --fail --output /dev/null "$site_address$asset_path"
+
 "${compose[@]}" ps
-echo "Deployment completed and readiness returned HTTP 200."
+echo "Deployment completed; API readiness, Worker health and frontend assets were verified."

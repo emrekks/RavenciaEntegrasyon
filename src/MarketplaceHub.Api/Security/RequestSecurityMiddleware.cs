@@ -21,7 +21,7 @@ public sealed class RequestSecurityMiddleware(RequestDelegate next)
             if (!SameOrigin(context) || !ValidCsrf(context))
             {
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                await context.Response.WriteAsJsonAsync(new { type = "https://marketplacehub.invalid/problems/request-verification", title = "Request verification failed", status = 400 }, context.RequestAborted);
+                await context.Response.WriteAsJsonAsync(new { type = "https://marketplacehub.invalid/problems/request-verification", title = "Request verification failed", status = 400, code = "REQUEST_VERIFICATION_FAILED", retryable = true }, context.RequestAborted);
                 return;
             }
         }

@@ -11,6 +11,7 @@ using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using Serilog.Events;
 using Serilog.Formatting.Compact;
 
 if (args is ["healthcheck"])
@@ -35,7 +36,9 @@ if (args is ["healthcheck"])
 
 var builder = WebApplication.CreateBuilder(args);
 DependencyInjection.ApplyFileBackedSecrets(builder.Configuration);
-builder.Host.UseSerilog((_, configuration) => configuration.WriteTo.Console(new RenderedCompactJsonFormatter()));
+builder.Host.UseSerilog((_, configuration) => configuration
+    .MinimumLevel.Override("Microsoft.AspNetCore.Hosting.Diagnostics", LogEventLevel.Warning)
+    .WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddMarketplaceInfrastructure(builder.Configuration);
 builder.Services.AddScoped<BreakGlassService>();
 builder.Services.AddHttpContextAccessor();
@@ -55,6 +58,9 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    options.AddPolicy("webhook", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
 
 var app = builder.Build();
@@ -74,10 +80,12 @@ app.Use(async (context, next) =>
 app.UseMiddleware<RequestSecurityMiddleware>();
 app.UseMiddleware<SessionAuthMiddleware>();
 app.UseMiddleware<SessionStateBoundaryMiddleware>();
+app.UseMiddleware<RoleAuthorizationMiddleware>();
 app.UseMiddleware<F2IdempotencyMiddleware>();
 app.UseRateLimiter();
 app.MapAuthEndpoints();
 app.MapF2Endpoints();
+app.MapJobEndpoints();
 app.MapF3Endpoints();
 app.MapF4Endpoints();
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });

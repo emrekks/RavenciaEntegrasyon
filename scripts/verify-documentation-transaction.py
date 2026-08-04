@@ -57,13 +57,16 @@ def main() -> int:
         errors.append("CURRENT-PHASE does not declare the expected active F3/F4 state")
     status_version_match = re.search(r'^document_version:\s*["\']?([^"\'\s]+)', status_text, flags=re.M)
     spec_version_match = re.search(r'\*\*Belge sürümü:\*\*\s*([^\s]+)', spec_text)
-    if not status_version_match or not spec_version_match:
-        errors.append("master plan or status document version could not be read")
-    elif status_version_match.group(1) != spec_version_match.group(1):
-        errors.append(
-            "master plan and PROJECT-STATUS document versions do not match: "
-            f"{spec_version_match.group(1)} != {status_version_match.group(1)}"
-        )
+    current_version_match = re.search(r'\*\*Ana plan sürümü:\*\*\s*([^\s]+)', current_text)
+    if not status_version_match or not spec_version_match or not current_version_match:
+        errors.append("master plan, status or current phase document version could not be read")
+    else:
+        versions = {status_version_match.group(1), spec_version_match.group(1), current_version_match.group(1)}
+        if len(versions) != 1:
+            errors.append(
+                "master plan, PROJECT-STATUS and CURRENT-PHASE document versions do not match: "
+                f"{spec_version_match.group(1)} / {status_version_match.group(1)} / {current_version_match.group(1)}"
+            )
     if "PROJECT-STATUS.yaml" not in readme_text:
         errors.append("README does not point to PROJECT-STATUS.yaml")
 

@@ -83,7 +83,7 @@ public interface IF4BillingService
 
 public interface IF4JobProcessor
 {
-    Task<bool> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken);
+    Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken);
 }
 
 public sealed record InvoiceReconciliationView(Guid InvoiceId, string Status, IReadOnlyList<ReconciliationDifferenceView> Differences);

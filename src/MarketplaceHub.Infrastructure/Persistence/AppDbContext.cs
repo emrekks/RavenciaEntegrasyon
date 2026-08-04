@@ -155,7 +155,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(x => x.Role).HasConversion(v => "OWNER", v => MembershipRole.Owner).HasMaxLength(24); entity.Property(x => x.Status).HasConversion(RecordStatusConverter).HasMaxLength(24);
+            entity.Property(x => x.Role).HasConversion(MembershipRoleConverter).HasMaxLength(24); entity.Property(x => x.Status).HasConversion(RecordStatusConverter).HasMaxLength(24);
             entity.Property(x => x.Version).IsConcurrencyToken();
         });
         builder.Entity<UserSecurity>(entity =>
@@ -195,7 +195,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.ToTable("jobs", "integration", table => table.HasCheckConstraint("ck_job_attempt_bounds", "\"AttemptCount\" >= 0 AND \"MaxAttempts\" > 0 AND \"AttemptCount\" <= \"MaxAttempts\"")); entity.HasKey(x => x.Id);
             entity.Property(x => x.JobType).HasMaxLength(96); entity.Property(x => x.JobDedupKey).HasMaxLength(256);
             entity.Property(x => x.EffectIdempotencyKey).HasMaxLength(256); entity.Property(x => x.PayloadHash).HasMaxLength(128);
-            entity.Property(x => x.Status).HasConversion(value => value == JobStatus.RetryScheduled ? "RETRY_SCHEDULED" : value.ToString().ToUpperInvariant(), value => value == "RETRY_SCHEDULED" ? JobStatus.RetryScheduled : Enum.Parse<JobStatus>(value, true)).HasMaxLength(24); entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()").ValueGeneratedOnAdd(); entity.Property(x => x.MaxAttempts).HasDefaultValue(JobRetryPolicy.DefaultMaxAttempts); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.Status).HasConversion(JobStatusConverter).HasMaxLength(24); entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()").ValueGeneratedOnAdd(); entity.Property(x => x.MaxAttempts).HasDefaultValue(JobRetryPolicy.DefaultMaxAttempts); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.JobType, x.JobDedupKey }).IsUnique();
             entity.HasIndex(x => new { x.Status, x.Priority, x.AvailableAt, x.CreatedAt });
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
@@ -256,6 +256,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         });
     }
 
+    private static readonly ValueConverter<JobStatus, string> JobStatusConverter = new(
+        value => value == JobStatus.RetryScheduled ? "RETRY_SCHEDULED" : value == JobStatus.ManualReview ? "MANUAL_REVIEW" : value.ToString().ToUpperInvariant(),
+        value => value == "RETRY_SCHEDULED" ? JobStatus.RetryScheduled : value == "MANUAL_REVIEW" ? JobStatus.ManualReview : Enum.Parse<JobStatus>(value, true));
+    private static readonly ValueConverter<MembershipRole, string> MembershipRoleConverter = new(
+        value => value == MembershipRole.Owner ? "OWNER" : value == MembershipRole.Administrator ? "ADMINISTRATOR" : value == MembershipRole.Operations ? "OPERATIONS" : value == MembershipRole.Accounting ? "ACCOUNTING" : "READ_ONLY",
+        value => value == "ADMINISTRATOR" ? MembershipRole.Administrator : value == "OPERATIONS" ? MembershipRole.Operations : value == "ACCOUNTING" ? MembershipRole.Accounting : value == "READ_ONLY" ? MembershipRole.ReadOnly : MembershipRole.Owner);
     private static readonly ValueConverter<RecordStatus, string> RecordStatusConverter = new(
         value => value == RecordStatus.Active ? "ACTIVE" : "DISABLED",
         value => value == "ACTIVE" ? RecordStatus.Active : RecordStatus.Disabled);

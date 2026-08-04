@@ -13,7 +13,8 @@ public sealed class F2IdempotencyMiddleware(RequestDelegate next)
 
     public async Task InvokeAsync(HttpContext context, AppDbContext db, ITenantContextAccessor tenants, TimeProvider timeProvider)
     {
-        if (!HttpMethods.IsPost(context.Request.Method) || !context.Request.Path.StartsWithSegments("/api/v1") || context.Request.Path.StartsWithSegments("/api/v1/auth") || tenants.Current is not { } tenant || !context.Request.Headers.TryGetValue("Idempotency-Key", out var header) || string.IsNullOrWhiteSpace(header))
+        var isMutation = HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsPut(context.Request.Method) || HttpMethods.IsPatch(context.Request.Method) || HttpMethods.IsDelete(context.Request.Method);
+        if (!isMutation || !context.Request.Path.StartsWithSegments("/api/v1") || context.Request.Path.StartsWithSegments("/api/v1/auth") || tenants.Current is not { } tenant || !context.Request.Headers.TryGetValue("Idempotency-Key", out var header) || string.IsNullOrWhiteSpace(header))
         {
             await next(context); return;
         }
@@ -36,7 +37,9 @@ public sealed class F2IdempotencyMiddleware(RequestDelegate next)
         hashInput.CopyTo(combined, 0); requestBytes.ToArray().CopyTo(combined, hashInput.Length);
         var hash = Convert.ToHexString(SHA256.HashData(combined));
 
-        var existing = await db.ApiIdempotencyRecords.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.RouteTemplate == route && x.IdempotencyKey == key, context.RequestAborted);
+        var now = timeProvider.GetUtcNow();
+        await db.ApiIdempotencyRecords.Where(x => x.TenantId == tenant.TenantId && x.ExpiresAt <= now).ExecuteDeleteAsync(context.RequestAborted);
+        var existing = await db.ApiIdempotencyRecords.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.RouteTemplate == route && x.IdempotencyKey == key, context.RequestAborted);
         if (existing is not null)
         {
             var code = existing.RequestHash == hash ? "IDEMPOTENCY_REPLAY" : "IDEMPOTENCY_KEY_REUSED";
@@ -47,7 +50,6 @@ public sealed class F2IdempotencyMiddleware(RequestDelegate next)
             return;
         }
 
-        var now = timeProvider.GetUtcNow();
         var record = new ApiIdempotencyRecord { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, RouteTemplate = route, IdempotencyKey = key, RequestHash = hash, State = "IN_PROGRESS", CreatedAt = now, ExpiresAt = now.AddHours(24) };
         db.ApiIdempotencyRecords.Add(record);
         try { await db.SaveChangesAsync(context.RequestAborted); }
@@ -59,16 +61,34 @@ public sealed class F2IdempotencyMiddleware(RequestDelegate next)
             return;
         }
 
-        await next(context);
-        if (context.Response.StatusCode < 500)
+        try
         {
-            record.State = "COMPLETED"; record.ResponseStatus = context.Response.StatusCode;
-            await db.SaveChangesAsync(CancellationToken.None);
+            await next(context);
+            if (context.Response.StatusCode < 500)
+            {
+                record.State = "COMPLETED";
+                record.ResponseStatus = context.Response.StatusCode;
+                await db.SaveChangesAsync(CancellationToken.None);
+            }
+            else
+            {
+                db.ApiIdempotencyRecords.Remove(record);
+                await db.SaveChangesAsync(CancellationToken.None);
+            }
         }
-        else
+        catch
         {
-            db.ApiIdempotencyRecords.Remove(record);
-            await db.SaveChangesAsync(CancellationToken.None);
+            try
+            {
+                db.ApiIdempotencyRecords.Remove(record);
+                await db.SaveChangesAsync(CancellationToken.None);
+            }
+            catch (DbUpdateException)
+            {
+                // Preserve the original endpoint exception. Expired in-progress records are
+                // removed opportunistically on a later idempotent request.
+            }
+            throw;
         }
     }
 }

@@ -1,6 +1,6 @@
 namespace MarketplaceHub.Domain;
 
-public enum JobStatus { Pending, Leased, RetryScheduled, Blocked, Succeeded, Dead, Cancelled }
+public enum JobStatus { Pending, Leased, RetryScheduled, Blocked, ManualReview, Succeeded, Dead, Cancelled }
 public enum IssueStatus { Open, Acknowledged, Resolved }
 
 public sealed class IntegrationJob

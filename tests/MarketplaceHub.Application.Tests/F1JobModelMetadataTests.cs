@@ -17,6 +17,7 @@ public sealed class F1JobModelMetadataTests
 
         Assert.Equal("PENDING", converter.ConvertToProvider(JobStatus.Pending));
         Assert.Equal("RETRY_SCHEDULED", converter.ConvertToProvider(JobStatus.RetryScheduled));
+        Assert.Equal("MANUAL_REVIEW", converter.ConvertToProvider(JobStatus.ManualReview));
         Assert.Equal(JobRetryPolicy.DefaultMaxAttempts, entity.FindProperty(nameof(IntegrationJob.MaxAttempts))!.GetDefaultValue());
         Assert.Contains(entity.GetCheckConstraints(), constraint => constraint.Name == "ck_job_attempt_bounds");
         Assert.Contains(entity.GetIndexes(), index => index.Properties.Select(property => property.Name).SequenceEqual(new[] { "Status", "Priority", "AvailableAt", "CreatedAt" }));

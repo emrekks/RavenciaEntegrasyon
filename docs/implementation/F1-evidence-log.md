@@ -38,3 +38,10 @@ Doğrulama tarihi: 2026-07-31. Ortam: Windows geliştirme makinesi üzerinde Doc
 ## Yerel/production ayrımı
 
 F1 yerel uygulama ve AWS production runtime'ı deployment açısından hazırdır. Host profili, SSH, Docker/Compose, immutable registry digestleri, production PFX, public TLS, reboot/volume kalıcılığı ve hedef restore/RTO kanıtlanmıştır. Yönetici login smoke, şifreli off-host backup aktarımı ve x5 kapasite kanıtı tamamlanana kadar tam production kabulü `BLOCKED_EXTERNAL` kalır; dış platform yazmaları kapalıdır.
+## 2026-08-05 production sertleştirme v7
+
+| Kanıt | Sonuç | Ölçüm |
+| --- | --- | --- |
+| `F1-EV-024` job retry ve operatör takip modeli | CODED_STATIC_VERIFIED / DYNAMIC_NOT_RUN | Typed job sonucu, transient backoff, `MANUAL_REVIEW`, max-attempt `DEAD`, tenant-scope liste/ayrıntı/retry/cancel API ve panel ekranı eklendi. Exact .NET/PostgreSQL testleri bu ortamda çalıştırılmadı. |
+| `F1-EV-025` kimlik ve yetki sertleştirmesi | CODED_STATIC_VERIFIED / DYNAMIC_NOT_RUN | MFA için parola + ikinci faktörlü reauthentication, `ReauthenticatedAt`, rol bazlı write sınırı, CSRF token yenileme ve idempotency expiry temizliği eklendi. Migration/build/integration testleri bekliyor. |
+| `F1-EV-026` CI, bootstrap ve deployment sağlık kapıları | CODED_STATIC_VERIFIED / WORKFLOW_DOCKER_NOT_RUN | PR/push verify workflow'u, Git-base belge transaction kontrolü, one-shot bootstrap secret, Worker heartbeat ve frontend/API smoke eklendi. GitHub Actions ve Docker Compose koşusu bekliyor. |

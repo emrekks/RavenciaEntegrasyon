@@ -50,6 +50,8 @@ public static class DependencyInjection
         services.AddSingleton(new TokenHasher(credentialKey));
         services.AddSingleton<TotpService>();
         services.AddScoped<IJobLeaseService, JobLeaseService>();
+        services.AddScoped<IJobOperationsService, JobOperationsService>();
+        services.AddScoped<IScheduledJobProducer, ScheduledJobProducer>();
         services.AddSingleton<CursorCodec>();
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddScoped<IImportService, ImportService>();
@@ -74,6 +76,14 @@ public static class DependencyInjection
         services.AddScoped<IF3ReconciliationService, F3ReconciliationService>();
         services.Configure<TrendyolEFaturamOptions>(configuration.GetSection(TrendyolEFaturamOptions.SectionName));
         services.AddHttpClient("TrendyolEFaturam", client => client.Timeout = Timeout.InfiniteTimeSpan).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
+        services.AddHttpClient("TrendyolEFaturamDocument", client => client.Timeout = Timeout.InfiniteTimeSpan).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            AutomaticDecompression = System.Net.DecompressionMethods.All,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+            ConnectCallback = SafeRemoteDocumentDownloader.ConnectPublicOnlyAsync
+        });
+        services.AddScoped<SafeRemoteDocumentDownloader>();
         services.AddScoped<TrendyolEFaturamAuthenticationHandler>();
         services.AddScoped<TrendyolEFaturamHttpClient>();
         services.AddScoped<IInvoiceProviderPort>(provider => provider.GetRequiredService<TrendyolEFaturamHttpClient>());

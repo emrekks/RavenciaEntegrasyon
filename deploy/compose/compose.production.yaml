@@ -7,7 +7,7 @@ services:
       AllowedHosts: ${MARKETPLACEHUB_ALLOWED_HOSTS:?set production allowed hosts}
       DataProtection__CertificatePath: /run/secrets/dp_certificate
       DataProtection__CertificatePassword_FILE: /run/secrets/dp_certificate_password
-    secrets: &production_secrets [app_db_connection, credential_key, bootstrap_owner_password, dp_certificate, dp_certificate_password]
+    secrets: &production_secrets [app_db_connection, credential_key, dp_certificate, dp_certificate_password]
   api:
     image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
     build: null

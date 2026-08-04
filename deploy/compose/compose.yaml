@@ -14,19 +14,19 @@ x-app: &app
     AllowedHosts: "${MARKETPLACEHUB_ALLOWED_HOSTS:-localhost;127.0.0.1}"
     ConnectionStrings__AppDb_FILE: /run/secrets/app_db_connection
     Security__CredentialKey_FILE: /run/secrets/credential_key
-    Bootstrap__OwnerPassword_FILE: /run/secrets/bootstrap_owner_password
     Bootstrap__Enabled: "false"
     Bootstrap__TenantCode: ${MARKETPLACEHUB_BOOTSTRAP_TENANT_CODE:-ravencia}
     Bootstrap__TenantDisplayName: ${MARKETPLACEHUB_BOOTSTRAP_TENANT_NAME:-Ravencia}
     Bootstrap__OwnerEmail: ${MARKETPLACEHUB_BOOTSTRAP_OWNER_EMAIL:-owner@example.invalid}
     Bootstrap__OwnerDisplayName: ${MARKETPLACEHUB_BOOTSTRAP_OWNER_NAME:-Ravencia Admin}
     FeatureFlags__ExternalWrites: "false"
+    TrendyolEFaturam__DocumentAllowedHosts__0: ${MARKETPLACEHUB_EFATURAM_DOCUMENT_HOST:-}
+    Worker__HealthFile: /tmp/marketplacehub-worker-heartbeat
     Storage__Root: /var/lib/marketplacehub/files
     DataProtection__KeysRoot: /var/lib/marketplacehub/dp-keys
   secrets:
     - app_db_connection
     - credential_key
-    - bootstrap_owner_password
   volumes:
     - app_files:/var/lib/marketplacehub/files
     - dp_keys:/var/lib/marketplacehub/dp-keys
@@ -88,6 +88,12 @@ services:
     networks: [backend, egress]
     depends_on:
       migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /tmp/marketplacehub-worker-heartbeat && find /tmp/marketplacehub-worker-heartbeat -mmin -1 | grep -q ."]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+      start_period: 20s
 
   caddy:
     build:
@@ -153,4 +159,3 @@ secrets:
   postgres_password: { file: ../secrets/postgres_password.txt }
   app_db_connection: { file: ../secrets/app_db_connection.txt }
   credential_key: { file: ../secrets/credential_key.txt }
-  bootstrap_owner_password: { file: ../secrets/bootstrap_owner_password.txt }

@@ -37,13 +37,32 @@ public static class F3Endpoints
         api.MapPost("/returns/{id:guid}/actions", async (Guid id, ReturnDecisionCommand command, HttpContext http, IF3SalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Accepted(await service.EnqueueReturnActionAsync(tenant.TenantId, tenant.UserId, id, version, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : failure! : MissingContext(http));
         api.MapPost("/returns/{id:guid}/stock-dispositions", async (Guid id, ReturnDispositionCommand command, HttpContext http, IF3SalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? WithEtag(http, await service.ApplyDispositionAsync(tenant.TenantId, tenant.UserId, id, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), x => x.Version) : MissingContext(http));
 
-        api.MapPost("/hooks/{connectionPublicId:guid}/{routeToken}", ReceiveWebhook).DisableAntiforgery();
+        api.MapPost("/hooks/{connectionPublicId:guid}/{routeToken}", ReceiveWebhook).DisableAntiforgery().RequireRateLimiting("webhook");
         return endpoints;
     }
 
     private static async Task<IResult> ReceiveWebhook(Guid connectionPublicId, string routeToken, HttpContext http, IF3WebhookService service)
     {
-        if (http.Request.ContentLength is > 10 * 1024 * 1024) return Problem(http, new("WEBHOOK_TOO_LARGE", "Webhook gövdesi kabul edilen üst sınırı aşıyor.", 413)); await using var body = new MemoryStream(); await http.Request.Body.CopyToAsync(body, http.RequestAborted); var headers = http.Request.Headers.ToDictionary(x => x.Key, x => x.Value.ToString(), StringComparer.OrdinalIgnoreCase); var result = await service.ReceiveAsync(connectionPublicId, routeToken, body.ToArray(), headers, http.TraceIdentifier, http.RequestAborted); return result.Succeeded ? Results.Ok(new { accepted = true }) : Problem(http, result.Error!);
+        const int maximumBytes = 10 * 1024 * 1024;
+        var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+        if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = maximumBytes;
+        if (http.Request.ContentLength is > maximumBytes) return Problem(http, new("WEBHOOK_TOO_LARGE", "Webhook gövdesi kabul edilen üst sınırı aşıyor.", 413));
+
+        await using var body = new MemoryStream(http.Request.ContentLength is > 0 and <= maximumBytes ? (int)http.Request.ContentLength.Value : 0);
+        var buffer = new byte[81_920];
+        var total = 0;
+        while (true)
+        {
+            var read = await http.Request.Body.ReadAsync(buffer.AsMemory(), http.RequestAborted);
+            if (read == 0) break;
+            total += read;
+            if (total > maximumBytes) return Problem(http, new("WEBHOOK_TOO_LARGE", "Webhook gövdesi kabul edilen üst sınırı aşıyor.", 413));
+            await body.WriteAsync(buffer.AsMemory(0, read), http.RequestAborted);
+        }
+
+        var headers = http.Request.Headers.ToDictionary(x => x.Key, x => x.Value.ToString(), StringComparer.OrdinalIgnoreCase);
+        var result = await service.ReceiveAsync(connectionPublicId, routeToken, body.ToArray(), headers, http.TraceIdentifier, http.RequestAborted);
+        return result.Succeeded ? Results.Ok(new { accepted = true }) : Problem(http, result.Error!);
     }
     private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
     private static int PageSize(int? limit) => limit is null ? 50 : limit is >= 1 and <= 200 ? limit.Value : throw new ArgumentException("limit 1-200 arasında olmalıdır.");

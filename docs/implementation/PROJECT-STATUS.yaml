@@ -1,6 +1,6 @@
 schema_version: 1
 document_version: "6.0"
-updated_at: "2026-08-04"
+updated_at: "2026-08-05"
 active_scope:
   - TRENDYOL
   - TRENDYOL_EFATURAM
@@ -14,7 +14,7 @@ phases:
     evidence: docs/implementation/F0-evidence-log.md
   F1:
     title: Güvenli temel
-    status: READY_LOCAL
+    status: HARDENING_CODED_DYNAMIC_REVALIDATION_REQUIRED
     evidence: docs/implementation/F1-evidence-log.md
   F2:
     title: Katalog ve envanter çekirdeği
@@ -30,7 +30,7 @@ phases:
     evidence: docs/implementation/F4-evidence-log.md
   F5:
     title: Kontrollü production pilotu
-    status: PLANNED_BLOCKED_BY_F3_F4
+    status: PLANNED_BLOCKED_BY_F3_F4_AND_REVALIDATION
   F6:
     title: Stabilizasyon ve operasyon kabulü
     status: PLANNED
@@ -42,9 +42,23 @@ phases:
     status: PLANNED_NOT_ACTIVE
 features:
   authentication_mfa:
-    status: READY_LOCAL
+    status: CODED_HARDENED_DYNAMIC_REVALIDATION_REQUIRED
+  role_authorization:
+    status: CODED_STATIC_VERIFIED_USER_LIFECYCLE_PLANNED
+  job_retry_tracking:
+    status: CODED_STATIC_VERIFIED_DYNAMIC_REVALIDATION_REQUIRED
+  scheduled_sync:
+    status: CODED_STATIC_VERIFIED_DYNAMIC_REVALIDATION_REQUIRED
+  webhook_ingress_security:
+    status: CODED_STATIC_VERIFIED_DYNAMIC_REVALIDATION_REQUIRED
+  deployment_health_and_bootstrap_secrets:
+    status: CODED_STATIC_VERIFIED_DOCKER_REVALIDATION_REQUIRED
+  pull_request_ci_gates:
+    status: CODED_WORKFLOW_EXECUTION_REQUIRED
   dashboard:
     status: CODED_BASIC
+  job_operations_panel:
+    status: CODED_STATIC_VERIFIED_DYNAMIC_REVALIDATION_REQUIRED
   local_catalog_import:
     status: READY_LOCAL
   trendyol_reference_read:
@@ -68,9 +82,9 @@ features:
   efaturam_taxpayer_status_cancel:
     status: PLANNED
   secure_invoice_pdf:
-    status: IN_PROGRESS_SECURITY_GUARDS_REQUIRED
+    status: CODED_STATIC_VERIFIED_STAGE_E2E_REQUIRED
   trendyol_invoice_delivery:
-    status: CODED_RECONCILIATION_REQUIRED
+    status: CODED_SUBMITTED_MANUAL_CONFIRMATION_REQUIRED
 required_documents_on_status_change:
   - docs/implementation/PROJECT-STATUS.yaml
   - docs/implementation/CURRENT-PHASE.md

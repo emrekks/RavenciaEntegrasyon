@@ -82,7 +82,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         var fake = new DeterministicFakeAdapter(FakeScenario.Success, clock);
         var processor = new F3JobProcessor(db, fake, fake, fake, fake, null!, clock);
         var firstLease = Assert.IsType<LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
-        Assert.True(await processor.ProcessAsync(firstLease.TenantId, firstLease.ConnectionId, firstLease.JobType, firstLease.PayloadJson, firstLease.CorrelationId, cancellationToken));
+        Assert.True((await processor.ProcessAsync(firstLease.TenantId, firstLease.ConnectionId, firstLease.JobType, firstLease.PayloadJson, firstLease.CorrelationId, cancellationToken)).Succeeded);
 
         clock.Advance(TimeSpan.FromMinutes(3));
         Assert.Equal(1, await leases.ReapExpiredAsync(cancellationToken));
@@ -90,8 +90,8 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         job.AvailableAt = clock.GetUtcNow().AddSeconds(-1);
         await db.SaveChangesAsync(cancellationToken);
         var retryLease = Assert.IsType<LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
-        Assert.True(await processor.ProcessAsync(retryLease.TenantId, retryLease.ConnectionId, retryLease.JobType, retryLease.PayloadJson, retryLease.CorrelationId, cancellationToken));
-        Assert.True(await leases.CompleteAsync(retryLease.Id, retryLease.LeaseToken, true, null, cancellationToken));
+        Assert.True((await processor.ProcessAsync(retryLease.TenantId, retryLease.ConnectionId, retryLease.JobType, retryLease.PayloadJson, retryLease.CorrelationId, cancellationToken)).Succeeded);
+        Assert.True(await leases.CompleteAsync(retryLease.Id, retryLease.LeaseToken, JobExecutionResult.Success(), cancellationToken));
 
         db.ChangeTracker.Clear();
         Assert.Equal(1, await db.Orders.CountAsync(x => x.TenantId == tenantId, cancellationToken));
@@ -117,9 +117,9 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
 
         var fake = new DeterministicFakeAdapter(FakeScenario.Success, clock);
         var processor = new F3JobProcessor(db, fake, fake, fake, fake, null!, clock);
-        Assert.True(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{}", "reference-first", cancellationToken));
+        Assert.True((await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{}", "reference-first", cancellationToken)).Succeeded);
         clock.Advance(TimeSpan.FromMinutes(1));
-        Assert.True(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{}", "reference-retry", cancellationToken));
+        Assert.True((await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{}", "reference-retry", cancellationToken)).Succeeded);
 
         db.ChangeTracker.Clear();
         Assert.Equal(1, await db.ReferenceSnapshots.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken));
@@ -151,15 +151,15 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         Assert.Equal(2, updated.Value.Version);
         Assert.Equal(1, await db.CategoryMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localCategoryId, cancellationToken));
 
-        Assert.False(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"CATEGORY_ATTRIBUTES\",\"parentExternalId\":\"unknown-category\"}", "attribute-invalid-scope", cancellationToken));
-        Assert.True(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"CATEGORY_ATTRIBUTES\",\"parentExternalId\":\"synthetic-reference\"}", "attribute-reference", cancellationToken));
-        Assert.True(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"CATEGORY_ATTRIBUTES\",\"parentExternalId\":\"synthetic-reference\"}", "attribute-reference-retry", cancellationToken));
+        Assert.False((await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"CATEGORY_ATTRIBUTES\",\"parentExternalId\":\"unknown-category\"}", "attribute-invalid-scope", cancellationToken)).Succeeded);
+        Assert.True((await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"CATEGORY_ATTRIBUTES\",\"parentExternalId\":\"synthetic-reference\"}", "attribute-reference", cancellationToken)).Succeeded);
+        Assert.True((await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"CATEGORY_ATTRIBUTES\",\"parentExternalId\":\"synthetic-reference\"}", "attribute-reference-retry", cancellationToken)).Succeeded);
         var attributes = await referenceService.ListAsync(tenantId, connectionId, "CATEGORY_ATTRIBUTES", "synthetic-reference", cancellationToken);
         Assert.True(attributes.Succeeded);
         Assert.Single(attributes.Value!.Items);
         Assert.Equal("synthetic-reference", attributes.Value.Items[0].ParentExternalId);
 
-        Assert.True(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"ATTRIBUTE_VALUES\",\"parentExternalId\":\"synthetic-reference/synthetic-reference\"}", "attribute-value-reference", cancellationToken));
+        Assert.True((await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"ATTRIBUTE_VALUES\",\"parentExternalId\":\"synthetic-reference/synthetic-reference\"}", "attribute-value-reference", cancellationToken)).Succeeded);
         var attributeValues = await referenceService.ListAsync(tenantId, connectionId, "ATTRIBUTE_VALUES", "synthetic-reference/synthetic-reference", cancellationToken);
         Assert.True(attributeValues.Succeeded);
         Assert.Single(attributeValues.Value!.Items);
@@ -168,7 +168,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         var localBrandId = Guid.Parse("98888888-8888-8888-8888-888888888888");
         db.Brands.Add(new Brand { Id = localBrandId, TenantId = tenantId, Name = "Synthetic Reference", NormalizedName = "SYNTHETIC REFERENCE", IsActive = true, CreatedAt = Now, UpdatedAt = Now });
         await db.SaveChangesAsync(cancellationToken);
-        Assert.True(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"BRANDS\"}", "brand-reference", cancellationToken));
+        Assert.True((await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"BRANDS\"}", "brand-reference", cancellationToken)).Succeeded);
         db.ChangeTracker.Clear();
         var brands = await referenceService.ListAsync(tenantId, connectionId, "BRANDS", null, cancellationToken);
         Assert.True(brands.Succeeded);

@@ -162,8 +162,8 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
         var lease = Assert.IsType<MarketplaceHub.Application.LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
         Assert.False(await leases.HeartbeatAsync(lease.Id, "stale-token", TimeSpan.FromMinutes(1), cancellationToken));
         Assert.True(await leases.HeartbeatAsync(lease.Id, lease.LeaseToken, TimeSpan.FromMinutes(1), cancellationToken));
-        Assert.True(await leases.CompleteAsync(lease.Id, lease.LeaseToken, true, null, cancellationToken));
-        Assert.False(await leases.CompleteAsync(lease.Id, lease.LeaseToken, true, null, cancellationToken));
+        Assert.True(await leases.CompleteAsync(lease.Id, lease.LeaseToken, JobExecutionResult.Success(), cancellationToken));
+        Assert.False(await leases.CompleteAsync(lease.Id, lease.LeaseToken, JobExecutionResult.Success(), cancellationToken));
 
         db.IntegrationJobs.Add(NewJob(tenant.Id, "worker-kill")); await db.SaveChangesAsync(cancellationToken);
         var abandoned = Assert.IsType<MarketplaceHub.Application.LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
@@ -178,7 +178,7 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
         Assert.Null(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
         abandonedEntity.AvailableAt = DateTimeOffset.UtcNow.AddSeconds(-1); await db.SaveChangesAsync(cancellationToken);
         var retry = Assert.IsType<MarketplaceHub.Application.LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
-        Assert.Equal(abandoned.Id, retry.Id); Assert.True(await leases.CompleteAsync(retry.Id, retry.LeaseToken, true, null, cancellationToken));
+        Assert.Equal(abandoned.Id, retry.Id); Assert.True(await leases.CompleteAsync(retry.Id, retry.LeaseToken, JobExecutionResult.Success(), cancellationToken));
 
         var deadJob = NewJob(tenant.Id, "dead-after-one"); deadJob.MaxAttempts = 1; db.IntegrationJobs.Add(deadJob); await db.SaveChangesAsync(cancellationToken);
         var deadLease = Assert.IsType<MarketplaceHub.Application.LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
@@ -187,8 +187,24 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
 
         var blockedJob = NewJob(tenant.Id, "blocked"); db.IntegrationJobs.Add(blockedJob); await db.SaveChangesAsync(cancellationToken);
         var blockedLease = Assert.IsType<MarketplaceHub.Application.LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
-        Assert.True(await leases.CompleteAsync(blockedLease.Id, blockedLease.LeaseToken, false, "VALIDATION_FAILED", cancellationToken));
+        Assert.True(await leases.CompleteAsync(blockedLease.Id, blockedLease.LeaseToken, JobExecutionResult.Blocked("VALIDATION_FAILED"), cancellationToken));
         var blockedEntity = await db.IntegrationJobs.SingleAsync(x => x.Id == blockedLease.Id, cancellationToken); Assert.Equal(JobStatus.Blocked, blockedEntity.Status);
+
+        var transientJob = NewJob(tenant.Id, "transient"); db.IntegrationJobs.Add(transientJob); await db.SaveChangesAsync(cancellationToken);
+        var transientLease = Assert.IsType<MarketplaceHub.Application.LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
+        Assert.True(await leases.CompleteAsync(transientLease.Id, transientLease.LeaseToken, JobExecutionResult.Retry("REMOTE_RATE_LIMIT", retryAfter: TimeSpan.FromSeconds(30)), cancellationToken));
+        var transientEntity = await db.IntegrationJobs.SingleAsync(x => x.Id == transientLease.Id, cancellationToken);
+        Assert.Equal(JobStatus.RetryScheduled, transientEntity.Status); Assert.Null(transientEntity.CompletedAt); Assert.True(transientEntity.AvailableAt > DateTimeOffset.UtcNow.AddSeconds(20));
+
+        var reviewJob = NewJob(tenant.Id, "manual-review"); db.IntegrationJobs.Add(reviewJob); await db.SaveChangesAsync(cancellationToken);
+        var reviewLease = Assert.IsType<MarketplaceHub.Application.LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
+        Assert.True(await leases.CompleteAsync(reviewLease.Id, reviewLease.LeaseToken, JobExecutionResult.ManualReview("REMOTE_STATUS_UNKNOWN"), cancellationToken));
+        var reviewEntity = await db.IntegrationJobs.SingleAsync(x => x.Id == reviewLease.Id, cancellationToken); Assert.Equal(JobStatus.ManualReview, reviewEntity.Status);
+        var operations = new JobOperationsService(db, TimeProvider.System);
+        Assert.True((await operations.RetryAsync(tenant.Id, reviewEntity.Id, cancellationToken)).Succeeded);
+        await db.Entry(reviewEntity).ReloadAsync(cancellationToken); Assert.Equal(JobStatus.RetryScheduled, reviewEntity.Status); Assert.Null(reviewEntity.CompletedAt);
+        Assert.True((await operations.CancelAsync(tenant.Id, reviewEntity.Id, cancellationToken)).Succeeded);
+        await db.Entry(reviewEntity).ReloadAsync(cancellationToken); Assert.Equal(JobStatus.Cancelled, reviewEntity.Status);
 
         var exhaustedJob = NewJob(tenant.Id, "exhausted"); exhaustedJob.AttemptCount = exhaustedJob.MaxAttempts; db.IntegrationJobs.Add(exhaustedJob); await db.SaveChangesAsync(cancellationToken);
         Assert.Null(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken)); await db.Entry(exhaustedJob).ReloadAsync(cancellationToken); Assert.Equal(JobStatus.Dead, exhaustedJob.Status); Assert.Equal("MAX_ATTEMPTS_EXHAUSTED", exhaustedJob.LastErrorCode);

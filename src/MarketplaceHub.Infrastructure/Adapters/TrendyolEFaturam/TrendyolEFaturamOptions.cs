@@ -6,6 +6,7 @@ public sealed class TrendyolEFaturamOptions
     public Uri StageBaseAddress { get; init; } = new("https://stage-apigateway.trendyolefaturam.com/");
     public Uri ProductionBaseAddress { get; init; } = new("https://apigateway.trendyolecozum.com/");
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
+    public string[] DocumentAllowedHosts { get; init; } = [];
 }
 
 internal static class TrendyolEFaturamEndpoints

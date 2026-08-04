@@ -22,6 +22,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
+          fetch-depth: 2
 
       - name: Verify clean source tree
         shell: bash
@@ -29,7 +30,7 @@ jobs:
 
       - name: Verify documentation status
         shell: bash
-        run: python3 scripts/verify-documentation-transaction.py
+        run: python3 scripts/verify-documentation-transaction.py --base "$(git rev-parse HEAD^)"
 
       - name: Install exact .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -41,6 +42,14 @@ jobs:
         with:
           node-version: 24.18.1
           package-manager-cache: false
+
+      - name: Pin and verify npm
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global npm@11.12.1
+          [[ "$(node --version)" == "v24.18.1" ]]
+          [[ "$(npm --version)" == "11.12.1" ]]
 
       - name: Install locked web dependencies
         shell: bash
@@ -65,8 +74,9 @@ jobs:
         run: |
           set -euo pipefail
           npm run typecheck
-          npm test -- --run
+          npm test
           npm run build
+          npm run test:e2e
 
       - name: Create exact Buildx builder
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0

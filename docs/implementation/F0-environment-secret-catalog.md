@@ -20,7 +20,7 @@
 | `DataProtection__KeysRoot` | Kalıcı key-ring dizini | Sensitive path | `/var/lib/marketplacehub/dp-keys` volume. |
 | `DataProtection__CertificatePath` | Key-ring koruma PFX yolu | Sensitive | Production override içinde zorunlu. |
 | `DataProtection__CertificatePassword_FILE` | PFX parola dosyası | SECRET | Production zorunlu; repository dışında. |
-| `Bootstrap__Enabled` | İlk Owner bootstrap | Config | Base Compose `false`; yalnız one-shot `docker compose run -e Bootstrap__Enabled=true ... bootstrap`. |
+| `Bootstrap__Enabled` | İlk Owner bootstrap | Config | Base Compose `false`; yalnız `compose.bootstrap.local.yaml` veya production `compose.bootstrap.yaml` one-shot servisiyle çalıştırılır. |
 | `MARKETPLACEHUB_BOOTSTRAP_OWNER_EMAIL` | İlk Owner kullanıcı adı/e-posta | Config | Compose bunu `Bootstrap__OwnerEmail` anahtarına map eder; gerçek e-posta deployment initializer ile verilir. |
 | `Bootstrap__OwnerPassword_FILE` | Tek kullanımlık başlangıç parolası | SECRET | `/run/secrets/bootstrap_owner_password`; repository dışında; bootstrap sonrası erişimi kaldırılmalıdır. |
 | `ForcePasswordChange` | İlk oturumu kısıtlama | Uygulama davranışı | Bootstrap kodu kullanıcı kaydına doğrudan `true` yazar; ayrı environment anahtarı yoktur. |
@@ -48,6 +48,7 @@
 | `S3_ACCESS_KEY_ID_FILE` | Off-host erişim anahtarı | SECRET | Resilient profilde; minimum yetki. |
 | `S3_SECRET_ACCESS_KEY_FILE` | Off-host secret | SECRET | Resilient profilde; minimum yetki. |
 | `MARKETPLACEHUB_ALLOWED_HOSTS` | ASP.NET host allow-list | Config | Local `localhost;127.0.0.1`; initializer production origin hostunu üretir. |
+| `MARKETPLACEHUB_EFATURAM_DOCUMENT_HOST` | E-Faturam kalıcı PDF URL exact hostu | Config/Security boundary | Opsiyonel; wildcard, path veya query kabul edilmez. Stage/production resmî hostları adapter varsayılanında bulunur; farklı kanıtlı host açıkça eklenir. |
 
 ## Henüz adlandırılmayan secret'lar
 

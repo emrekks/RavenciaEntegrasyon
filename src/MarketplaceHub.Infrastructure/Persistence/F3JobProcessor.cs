@@ -10,22 +10,32 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IOrderPort orders, IReturnPort returns, TimeProvider timeProvider) : IF3JobProcessor
 {
-    public async Task<bool> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
-        if (connectionId is null) return false;
+        if (connectionId is null) return JobExecutionResult.Blocked("CONNECTION_REQUIRED", "Job requires a platform connection.");
         var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId.Value).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
-        if (!ActiveIntegrationScope.Contains(platform)) return false;
-        return jobType switch
+        if (!ActiveIntegrationScope.Contains(platform)) return JobExecutionResult.Blocked("CONNECTION_OUT_OF_SCOPE", "Connection is not active in the current integration scope.");
+        try
         {
-            F3JobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
-            F3JobTypes.ReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-            F3JobTypes.OrderSync => await SyncOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
-            F3JobTypes.ReturnSync => await SyncReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
-            F3JobTypes.WebhookIngest => await IngestWebhook(tenantId, connectionId.Value, payloadJson, cancellationToken),
-            F3JobTypes.ShipmentAction => await ShipmentAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-            F3JobTypes.ReturnAction => await ReturnAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-            _ => false
-        };
+            var succeeded = jobType switch
+            {
+                F3JobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
+                F3JobTypes.ReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                F3JobTypes.OrderSync => await SyncOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
+                F3JobTypes.ReturnSync => await SyncReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
+                F3JobTypes.WebhookIngest => await IngestWebhook(tenantId, connectionId.Value, payloadJson, cancellationToken),
+                F3JobTypes.ShipmentAction => await ShipmentAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                F3JobTypes.ReturnAction => await ReturnAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                _ => false
+            };
+            return succeeded
+                ? JobExecutionResult.Success()
+                : JobExecutionResult.Blocked("F3_JOB_REJECTED", "Job payload, capability or current entity state did not permit the operation.");
+        }
+        catch (JobProcessingException exception)
+        {
+            return exception.Result;
+        }
     }
 
     private async Task<bool> SyncReferences(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -38,7 +48,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         do
         {
             var result = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:{resourceType}:{parentExternalId}:{cursor}"), new(resourceType, parentExternalId), new(cursor, 1000), cancellationToken);
-            if (!result.IsSuccess) return false;
+            if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
             items.AddRange(result.Value!.Items);
             if (items.Count > 100_000) return false;
             cursor = result.Value.NextCursor;
@@ -111,8 +121,8 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken); if (connection is null) return false; var now = timeProvider.GetUtcNow(); connection.LastTestedAt = now;
         IConnectionPort port = connections;
-        var context = Context(tenantId, connectionId, correlationId, "connection-test"); var result = await port.TestAsync(context, cancellationToken); if (!result.IsSuccess) { connection.LastErrorCode = result.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); return false; }
-        var discovery = await port.DiscoverCapabilitiesAsync(context, cancellationToken); if (!discovery.IsSuccess) { connection.LastErrorCode = discovery.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); return false; }
+        var context = Context(tenantId, connectionId, correlationId, "connection-test"); var result = await port.TestAsync(context, cancellationToken); if (!result.IsSuccess) { connection.LastErrorCode = result.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
+        var discovery = await port.DiscoverCapabilitiesAsync(context, cancellationToken); if (!discovery.IsSuccess) { connection.LastErrorCode = discovery.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(discovery.Error!); }
         foreach (var evidence in discovery.Value!)
         {
             var capability = await db.PlatformCapabilities.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == evidence.Code, cancellationToken); if (capability is null) continue;
@@ -127,7 +137,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         var cursor = await Cursor(tenantId, connectionId, "ORDERS", cancellationToken); var policy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ORDERS", cancellationToken); var modifiedAfter = cursor.LastModifiedWatermark?.Subtract(TimeSpan.FromSeconds(policy?.OverlapSeconds ?? 0)); var next = cursor.OpaqueCursor; var orderPort = orders;
         do
         {
-            var result = await orderPort.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync:{next}"), new(modifiedAfter, null), new(next, 200), cancellationToken); if (!result.IsSuccess) return false;
+            var result = await orderPort.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync:{next}"), new(modifiedAfter, null), new(next, 200), cancellationToken); if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
             foreach (var order in result.Value!.Items) await UpsertOrder(tenantId, connectionId, order, cancellationToken);
             next = result.Value.NextCursor; cursor.OpaqueCursor = next; cursor.LastModifiedWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max() ?? cursor.LastModifiedWatermark; cursor.LastSuccessAt = timeProvider.GetUtcNow(); cursor.Version++; await db.SaveChangesAsync(cancellationToken); if (!result.Value.HasMore) break;
         } while (!cancellationToken.IsCancellationRequested);
@@ -179,7 +189,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken); var pageNumber = cursor.OpaqueCursor;
         do
         {
-            var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-sync:{pageNumber}"), new(cursor.LastModifiedWatermark, null), new(pageNumber, 200), cancellationToken); if (!result.IsSuccess) return false; foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, claim, cancellationToken); pageNumber = result.Value.NextCursor; cursor.OpaqueCursor = pageNumber; cursor.LastModifiedWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max() ?? cursor.LastModifiedWatermark; cursor.LastSuccessAt = timeProvider.GetUtcNow(); cursor.Version++; await db.SaveChangesAsync(cancellationToken); if (!result.Value.HasMore) break;
+            var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-sync:{pageNumber}"), new(cursor.LastModifiedWatermark, null), new(pageNumber, 200), cancellationToken); if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!); foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, claim, cancellationToken); pageNumber = result.Value.NextCursor; cursor.OpaqueCursor = pageNumber; cursor.LastModifiedWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max() ?? cursor.LastModifiedWatermark; cursor.LastSuccessAt = timeProvider.GetUtcNow(); cursor.Version++; await db.SaveChangesAsync(cancellationToken); if (!result.Value.HasMore) break;
         } while (!cancellationToken.IsCancellationRequested); return true;
     }
 
@@ -202,16 +212,55 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
 
     private async Task<bool> ShipmentAction(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
-        try { using var payload = JsonDocument.Parse(payloadJson); var packageId = payload.RootElement.GetProperty("packageId").GetGuid(); var action = payload.RootElement.GetProperty("Action").GetString()!; var body = payload.RootElement.GetProperty("PayloadJson").GetString()!; var package = await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == packageId && x.ConnectionId == connectionId, cancellationToken); var result = await orders.ExecutePackageActionAsync(Context(tenantId, connectionId, correlationId, $"shipment:{packageId}:{action}"), new(package.ExternalPackageId, action, body), cancellationToken); return result.IsSuccess; } catch (Exception exception) when (exception is JsonException or InvalidOperationException) { return false; }
+        try { using var payload = JsonDocument.Parse(payloadJson); var packageId = payload.RootElement.GetProperty("packageId").GetGuid(); var action = payload.RootElement.GetProperty("Action").GetString()!; var body = payload.RootElement.GetProperty("PayloadJson").GetString()!; var package = await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == packageId && x.ConnectionId == connectionId, cancellationToken); var result = await orders.ExecutePackageActionAsync(Context(tenantId, connectionId, correlationId, $"shipment:{packageId}:{action}"), new(package.ExternalPackageId, action, body), cancellationToken); if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!); return true; } catch (Exception exception) when (exception is JsonException or InvalidOperationException) { return false; }
     }
 
     private async Task<bool> ReturnAction(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
-        try { using var payload = JsonDocument.Parse(payloadJson); var decisionId = payload.RootElement.GetProperty("decisionId").GetGuid(); var decision = await db.ReturnDecisions.SingleAsync(x => x.TenantId == tenantId && x.Id == decisionId, cancellationToken); var claim = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == decision.ClaimId && x.ConnectionId == connectionId, cancellationToken); var evidence = await db.ReturnEvidence.AsNoTracking().Where(x => x.TenantId == tenantId && x.DecisionId == decisionId).Select(x => x.FileAssetId).ToListAsync(cancellationToken); var result = await returns.ExecuteAsync(Context(tenantId, connectionId, correlationId, decision.IdempotencyKey), new(claim.ExternalClaimId, decision.Action, decision.ReasonCode, decision.Explanation, evidence), cancellationToken); decision.Status = result.IsSuccess ? "SUCCEEDED" : "FAILED"; decision.ExternalOperationId = result.Value?.ExternalOperationId; decision.ErrorCode = result.Error?.Code; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return result.IsSuccess; } catch (Exception exception) when (exception is JsonException or InvalidOperationException) { return false; }
+        try
+        {
+            using var payload = JsonDocument.Parse(payloadJson);
+            var decisionId = payload.RootElement.GetProperty("decisionId").GetGuid();
+            var decision = await db.ReturnDecisions.SingleAsync(x => x.TenantId == tenantId && x.Id == decisionId, cancellationToken);
+            if (decision.Status == "SUCCEEDED") return true;
+            if (decision.Status == "MANUAL_REVIEW")
+                throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode ?? "RETURN_ACTION_REVIEW_REQUIRED", "İade kararı manuel inceleme bekliyor.", decision.ExternalOperationId));
+
+            var claim = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == decision.ClaimId && x.ConnectionId == connectionId, cancellationToken);
+            var evidence = await db.ReturnEvidence.AsNoTracking().Where(x => x.TenantId == tenantId && x.DecisionId == decisionId).Select(x => x.FileAssetId).ToListAsync(cancellationToken);
+            var result = await returns.ExecuteAsync(Context(tenantId, connectionId, correlationId, decision.IdempotencyKey), new(claim.ExternalClaimId, decision.Action, decision.ReasonCode, decision.Explanation, evidence), cancellationToken);
+            var now = timeProvider.GetUtcNow();
+            if (result.IsSuccess)
+            {
+                decision.Status = "SUCCEEDED";
+                decision.ExternalOperationId = result.Value!.ExternalOperationId;
+                decision.ErrorCode = null;
+                decision.CompletedAt = now;
+                await db.SaveChangesAsync(cancellationToken);
+                return true;
+            }
+
+            var error = result.Error!;
+            decision.ErrorCode = error.Code;
+            decision.ExternalOperationId ??= error.RemoteRequestId;
+            decision.Status = error.Class switch
+            {
+                AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit or AdapterErrorClass.Remote5xx => "RETRY_SCHEDULED",
+                AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug => "MANUAL_REVIEW",
+                _ => "FAILED"
+            };
+            decision.CompletedAt = decision.Status == "RETRY_SCHEDULED" ? null : now;
+            await db.SaveChangesAsync(cancellationToken);
+            throw JobProcessingException.FromAdapter(error);
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private async Task<SyncCursor> Cursor(Guid tenantId, Guid connectionId, string resource, CancellationToken cancellationToken) { var cursor = await db.SyncCursors.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resource, cancellationToken); if (cursor is not null) return cursor; cursor = new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ResourceType = resource, Version = 1 }; db.SyncCursors.Add(cursor); return cursor; }
-    private async Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken) { var now = timeProvider.GetUtcNow(); var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.DedupeKey == key, cancellationToken); if (issue is null) db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenantId, DedupeKey = key, Code = code, Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 }); else { issue.LastSeenAt = now; issue.OccurrenceCount++; } }
+    private async Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken) { var now = timeProvider.GetUtcNow(); var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is null) db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenantId, DedupeKey = key, Code = code, Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 }); else { issue.LastSeenAt = now; issue.OccurrenceCount++; } }
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static ShipmentPackageStatus CanonicalPackage(string raw) => raw.ToUpperInvariant() switch { "CREATED" => ShipmentPackageStatus.New, "PICKING" => ShipmentPackageStatus.Processing, "INVOICED" => ShipmentPackageStatus.ReadyToShip, "SHIPPED" => ShipmentPackageStatus.Shipped, "DELIVERED" => ShipmentPackageStatus.Delivered, "CANCELLED" or "UNSUPPLIED" => ShipmentPackageStatus.Cancelled, "UNDELIVERED" => ShipmentPackageStatus.Undelivered, "RETURNED" => ShipmentPackageStatus.Returned, "AWAITING" or "UNPACKED" or "AT_COLLECTION_POINT" => ShipmentPackageStatus.OnHold, _ => ShipmentPackageStatus.ManualReview };

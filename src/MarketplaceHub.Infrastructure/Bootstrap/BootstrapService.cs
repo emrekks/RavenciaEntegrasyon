@@ -52,7 +52,7 @@ public sealed class BootstrapService(AppDbContext db, UserManager<ApplicationUse
             if (!result.Succeeded) throw new InvalidOperationException("Owner creation failed: " + string.Join(", ", result.Errors.Select(x => x.Code)));
             db.TenantMemberships.Add(new TenantMembership { Id = Guid.NewGuid(), TenantId = tenant.Id, UserId = user.Id, Role = MembershipRole.Owner, CreatedAt = now, UpdatedAt = now });
             db.UserSecurities.Add(new UserSecurity { UserId = user.Id });
-            db.FeatureFlags.Add(new FeatureFlag { Key = "external-writes", Enabled = false, UpdatedAt = now });
+            db.FeatureFlags.Add(new FeatureFlag { Key = "AUTO_INVOICE_ENABLED", Enabled = false, UpdatedAt = now });
             db.BootstrapStates.Add(new BootstrapState { Key = "initial-owner", CompletedAt = now, TenantId = tenant.Id, OwnerUserId = user.Id, ConfigurationFingerprint = fingerprint });
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);

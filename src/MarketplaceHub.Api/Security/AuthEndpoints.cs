@@ -21,6 +21,7 @@ public static class AuthEndpoints
         group.MapPost("/login", LoginAsync).RequireRateLimiting("auth");
         group.MapPost("/logout", LogoutAsync);
         group.MapPost("/change-password", ChangePasswordAsync);
+        group.MapPost("/reauthenticate", ReauthenticateAsync).RequireRateLimiting("auth");
         group.MapGet("/me", MeAsync);
         group.MapGet("/security-status", SecurityStatusAsync);
         group.MapGet("/sessions", SessionsAsync);
@@ -48,7 +49,7 @@ public static class AuthEndpoints
         var state = user.ForcePasswordChange ? SessionState.PasswordChangeRequired : security.TotpState == TotpState.Enabled ? SessionState.MfaChallenge : SessionState.Active;
         var membership = state == SessionState.Active ? await db.TenantMemberships.SingleAsync(x => x.UserId == user.Id && x.Status == RecordStatus.Active, context.RequestAborted) : null;
         var raw = TokenHasher.NewToken(); var now = time.GetUtcNow();
-        db.UserSessions.Add(new UserSession { Id = Guid.NewGuid(), UserId = user.Id, TenantId = membership?.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
+        db.UserSessions.Add(new UserSession { Id = Guid.NewGuid(), UserId = user.Id, TenantId = membership?.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, ReauthenticatedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
         user.LastLoginAt = now; await db.SaveChangesAsync(context.RequestAborted);
         SetSessionCookie(context.Response, raw, now.AddHours(12));
         return Results.Ok(new { state = SessionStateWire(state) });
@@ -71,17 +72,30 @@ public static class AuthEndpoints
         user.ForcePasswordChange = false; user.SessionVersion++;
         await db.UserSessions.Where(x => x.UserId == user.Id && x.Id != session.Id && x.State != SessionState.Revoked).ExecuteUpdateAsync(x => x.SetProperty(s => s.State, SessionState.Revoked).SetProperty(s => s.RevokedAt, time.GetUtcNow()), context.RequestAborted);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted);
-        session.SessionVersion = user.SessionVersion; session.State = security.TotpState == TotpState.Enabled ? SessionState.MfaChallenge : SessionState.Active;
+        session.SessionVersion = user.SessionVersion; session.ReauthenticatedAt = time.GetUtcNow(); session.State = security.TotpState == TotpState.Enabled ? SessionState.MfaChallenge : SessionState.Active;
         session.TenantId = session.State == SessionState.Active ? (await db.TenantMemberships.SingleAsync(x => x.UserId == user.Id, context.RequestAborted)).TenantId : null;
         var raw = TokenHasher.NewToken(); session.TokenHash = hasher.Hash(raw); await db.SaveChangesAsync(context.RequestAborted); SetSessionCookie(context.Response, raw, session.AbsoluteExpiresAt);
         return Results.Ok(new { state = SessionStateWire(session.State) });
+    }
+
+    private static async Task<IResult> ReauthenticateAsync(ReauthenticateRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
+    {
+        var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden();
+        var user = await users.FindByIdAsync(session.UserId.ToString());
+        if (user is null || !await users.CheckPasswordAsync(user, request.Password)) return Results.Problem(statusCode: 401, title: "Reauthentication failed");
+        var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
+        if (security.TotpState == TotpState.Enabled && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
+            return Results.Problem(statusCode: 401, title: "Second factor verification failed");
+        session.ReauthenticatedAt = time.GetUtcNow();
+        await db.SaveChangesAsync(context.RequestAborted);
+        return Results.Ok(new { reauthenticatedAt = session.ReauthenticatedAt });
     }
 
     private static async Task<IResult> MeAsync(HttpContext context, AppDbContext db)
     {
         var session = CurrentSession(context); if (session is null) return Results.Unauthorized();
         var user = await db.Users.AsNoTracking().SingleAsync(x => x.Id == session.UserId, context.RequestAborted);
-        return Results.Ok(new { user.Id, user.Email, user.DisplayName, state = SessionStateWire(session.State), tenantId = session.State == SessionState.Active ? session.TenantId : null });
+        return Results.Ok(new { user.Id, user.Email, user.DisplayName, role = context.User.FindFirstValue(ClaimTypes.Role), state = SessionStateWire(session.State), tenantId = session.State == SessionState.Active ? session.TenantId : null });
     }
 
     private static async Task<IResult> SecurityStatusAsync(HttpContext context, AppDbContext db)
@@ -123,11 +137,12 @@ public static class AuthEndpoints
         if (!totp.TryValidate(secret, request.Code, null, out var step)) return Results.Problem(statusCode: 400, title: "Invalid verification code");
         await using var transaction = await db.Database.BeginTransactionAsync(context.RequestAborted);
         security.TotpState = TotpState.Enabled; security.EnrollmentExpiresAt = null; security.LastAcceptedTimeStep = step; security.Version++;
+        session.ReauthenticatedAt = time.GetUtcNow();
         var codes = ReplaceRecoveryCodes(db, security, hasher, time.GetUtcNow()); await db.SaveChangesAsync(context.RequestAborted); await transaction.CommitAsync(context.RequestAborted);
         return Results.Ok(new { recoveryCodes = codes });
     }
 
-    private static async Task<IResult> MfaChallengeAsync(CodeRequest request, HttpContext context, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher)
+    private static async Task<IResult> MfaChallengeAsync(CodeRequest request, HttpContext context, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
         var session = RequireSession(context, SessionState.MfaChallenge); if (session is null) return Forbidden();
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
@@ -136,7 +151,7 @@ public static class AuthEndpoints
         {
             var digest = hasher.Hash(NormalizeRecovery(request.RecoveryCode));
             var consumed = await db.RecoveryCodes.Where(x => x.UserId == session.UserId && x.CodeDigest == digest && x.UsedAt == null && x.InvalidatedAt == null)
-                .ExecuteUpdateAsync(update => update.SetProperty(x => x.UsedAt, DateTimeOffset.UtcNow), context.RequestAborted);
+                .ExecuteUpdateAsync(update => update.SetProperty(x => x.UsedAt, time.GetUtcNow()), context.RequestAborted);
             accepted = consumed == 1;
         }
         else if (security.TotpState == TotpState.Enabled && security.ProtectedTotpSecret is not null)
@@ -150,15 +165,18 @@ public static class AuthEndpoints
             }
         }
         if (!accepted) return Results.Problem(statusCode: 400, title: "Invalid MFA challenge");
-        session.State = SessionState.Active; session.TenantId = (await db.TenantMemberships.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted)).TenantId;
+        session.State = SessionState.Active; session.ReauthenticatedAt = time.GetUtcNow(); session.TenantId = (await db.TenantMemberships.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted)).TenantId;
         await db.SaveChangesAsync(context.RequestAborted); return Results.Ok(new { state = SessionStateWire(session.State) });
     }
 
-    private static async Task<IResult> MfaDisableAsync(PasswordRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, TimeProvider time)
+    private static async Task<IResult> MfaDisableAsync(ReauthenticateRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
-        var session = RequireRecentActive(context, time); if (session is null) return Forbidden();
+        var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden();
         var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null || !await users.CheckPasswordAsync(user, request.Password)) return Results.Problem(statusCode: 401, title: "Reauthentication failed");
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted);
+        if (security.TotpState == TotpState.Enabled && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
+            return Results.Problem(statusCode: 401, title: "Second factor verification failed");
+        session.ReauthenticatedAt = time.GetUtcNow();
         security.TotpState = TotpState.Disabled; security.ProtectedTotpSecret = null; security.LastAcceptedTimeStep = null; security.RecoveryBatchId = null;
         await db.RecoveryCodes.Where(x => x.UserId == user.Id && x.InvalidatedAt == null).ExecuteUpdateAsync(x => x.SetProperty(c => c.InvalidatedAt, time.GetUtcNow()), context.RequestAborted);
         user.SessionVersion++; session.SessionVersion = user.SessionVersion;
@@ -166,11 +184,14 @@ public static class AuthEndpoints
         await db.SaveChangesAsync(context.RequestAborted); return Results.NoContent();
     }
 
-    private static async Task<IResult> RecoveryRegenerateAsync(PasswordRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, TokenHasher hasher, TimeProvider time)
+    private static async Task<IResult> RecoveryRegenerateAsync(ReauthenticateRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
-        var session = RequireRecentActive(context, time); if (session is null) return Forbidden();
+        var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden();
         var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null || !await users.CheckPasswordAsync(user, request.Password)) return Results.Problem(statusCode: 401, title: "Reauthentication failed");
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted); if (security.TotpState != TotpState.Enabled) return Results.Problem(statusCode: 409, title: "MFA is not enabled");
+        if (!await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
+            return Results.Problem(statusCode: 401, title: "Second factor verification failed");
+        session.ReauthenticatedAt = time.GetUtcNow();
         await using var transaction = await db.Database.BeginTransactionAsync(context.RequestAborted);
         await db.RecoveryCodes.Where(x => x.UserId == user.Id && x.InvalidatedAt == null).ExecuteUpdateAsync(x => x.SetProperty(c => c.InvalidatedAt, time.GetUtcNow()), context.RequestAborted);
         var codes = ReplaceRecoveryCodes(db, security, hasher, time.GetUtcNow()); await db.SaveChangesAsync(context.RequestAborted); await transaction.CommitAsync(context.RequestAborted);
@@ -191,6 +212,23 @@ public static class AuthEndpoints
         return Results.NoContent();
     }
 
+    private static async Task<bool> ValidateSecondFactorAsync(ReauthenticateRequest request, Guid userId, UserSecurity security, HttpContext context, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
+    {
+        if (!string.IsNullOrWhiteSpace(request.RecoveryCode))
+        {
+            var digest = hasher.Hash(NormalizeRecovery(request.RecoveryCode));
+            var consumed = await db.RecoveryCodes.Where(x => x.UserId == userId && x.CodeDigest == digest && x.UsedAt == null && x.InvalidatedAt == null)
+                .ExecuteUpdateAsync(update => update.SetProperty(x => x.UsedAt, time.GetUtcNow()), context.RequestAborted);
+            return consumed == 1;
+        }
+        if (string.IsNullOrWhiteSpace(request.Code) || security.ProtectedTotpSecret is null) return false;
+        var secret = Convert.FromBase64String(protection.CreateProtector("MarketplaceHub.Totp.v1").Unprotect(security.ProtectedTotpSecret));
+        if (!totp.TryValidate(secret, request.Code, security.LastAcceptedTimeStep, out var step)) return false;
+        var updated = await db.UserSecurities.Where(x => x.UserId == userId && (x.LastAcceptedTimeStep == null || x.LastAcceptedTimeStep < step))
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.LastAcceptedTimeStep, step).SetProperty(x => x.Version, x => x.Version + 1), context.RequestAborted);
+        return updated == 1;
+    }
+
     private static List<string> ReplaceRecoveryCodes(AppDbContext db, UserSecurity security, TokenHasher hasher, DateTimeOffset now)
     {
         var batch = Guid.NewGuid(); var codes = Enumerable.Range(0, 10).Select(_ => $"{TokenHasher.NewToken(5)[..5]}-{TokenHasher.NewToken(5)[..5]}".ToUpperInvariant()).ToList();
@@ -201,7 +239,7 @@ public static class AuthEndpoints
 
     private static UserSession? CurrentSession(HttpContext context) => context.Items["UserSession"] as UserSession;
     private static UserSession? RequireSession(HttpContext context, params SessionState[] allowed) => CurrentSession(context) is { } session && allowed.Contains(session.State) ? session : null;
-    private static UserSession? RequireRecentActive(HttpContext context, TimeProvider time) => RequireSession(context, SessionState.Active) is { } session && session.IssuedAt >= time.GetUtcNow().AddMinutes(-10) ? session : null;
+    private static UserSession? RequireRecentActive(HttpContext context, TimeProvider time) => RequireSession(context, SessionState.Active) is { ReauthenticatedAt: { } verified } session && verified >= time.GetUtcNow().AddMinutes(-10) ? session : null;
     private static IResult Forbidden() => Results.Problem(statusCode: 403, title: "Session state does not permit this operation");
     private static string NormalizeRecovery(string code) => code.Replace("-", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
     private static void SetSessionCookie(HttpResponse response, string token, DateTimeOffset expires) => response.Cookies.Append(SessionAuthMiddleware.CookieName(response.HttpContext), token, new CookieOptions { HttpOnly = true, Secure = SecureCookie(response.HttpContext), SameSite = SameSiteMode.Lax, Path = "/", Expires = expires });
@@ -213,5 +251,5 @@ public static class AuthEndpoints
     public sealed record LoginRequest(string Email, string Password);
     public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     public sealed record CodeRequest(string Code, string? RecoveryCode = null);
-    public sealed record PasswordRequest(string Password);
+    public sealed record ReauthenticateRequest(string Password, string? Code = null, string? RecoveryCode = null);
 }
