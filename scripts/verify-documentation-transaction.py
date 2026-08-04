@@ -55,8 +55,15 @@ def main() -> int:
             errors.append(f"active scope {code} missing from status or AGENTS")
     if "F3_CLOSURE_ACTIVE" not in current_text or "F4_IN_PROGRESS" not in current_text:
         errors.append("CURRENT-PHASE does not declare the expected active F3/F4 state")
-    if "Belge sürümü:** 5.0" not in spec_text:
-        errors.append("master plan version is not 5.0")
+    status_version_match = re.search(r'^document_version:\s*["\']?([^"\'\s]+)', status_text, flags=re.M)
+    spec_version_match = re.search(r'\*\*Belge sürümü:\*\*\s*([^\s]+)', spec_text)
+    if not status_version_match or not spec_version_match:
+        errors.append("master plan or status document version could not be read")
+    elif status_version_match.group(1) != spec_version_match.group(1):
+        errors.append(
+            "master plan and PROJECT-STATUS document versions do not match: "
+            f"{spec_version_match.group(1)} != {status_version_match.group(1)}"
+        )
     if "PROJECT-STATUS.yaml" not in readme_text:
         errors.append("README does not point to PROJECT-STATUS.yaml")
 

@@ -65,7 +65,7 @@ Silinenler yalnız üretilmiş test sonuçları, cache, `bin/obj`, `node_modules
 
 Çelişki halinde aşağıdaki sıra kullanılır:
 
-1. `docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md` (proje öncesi plan, kullanıcı işleyişi, kapsam ve mimari)
+1. `docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md` (ana plan, kullanıcı işleyişi, kapsam ve mimari)
 2. `docs/implementation/PROJECT-STATUS.yaml` (makinece okunabilir durum)
 3. Bu dosya (anlık faz ve blokaj)
 4. `docs/specification/current-scope.md`

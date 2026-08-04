@@ -7,7 +7,7 @@ Ravencia MarketplaceHub, tek işletmenin Trendyol satış, ürün, sipariş, iad
 
 ## Yetkili nihai belge
 
-Proje öncesi planlama, karar geçmişi, kullanıcı paneli işleyişi, mimari, güvenlik, test, production kabulü ve gelecekte yeni platform ekleme planı için ana kaynak: [RAVENCIA-NIHAI-PROJE-BELGESI.md](docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md). Makinece okunabilir durum `PROJECT-STATUS.yaml`, güncel faz ve anlık blokajlar `CURRENT-PHASE.md` içinde tutulur. Kronolojik değişiklik özeti `docs/CHANGELOG.md` içindedir.
+Ana proje planı, kullanıcı paneli işleyişi, mimari, güvenlik, test, production kabulü ve gelecekte yeni platform ekleme planı için ana kaynak: [RAVENCIA-NIHAI-PROJE-BELGESI.md](docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md). Makinece okunabilir durum `PROJECT-STATUS.yaml`, güncel faz ve anlık blokajlar `CURRENT-PHASE.md` içinde tutulur. Kronolojik değişiklik özeti `docs/CHANGELOG.md` içindedir.
 
 ## Aktif kapsam
 
@@ -16,7 +16,7 @@ Yeni geliştirme ve doğrulama yalnız iki entegrasyon kodunda yapılır:
 - `TRENDYOL`
 - `TRENDYOL_EFATURAM`
 
-Diğer pazaryerlerine ait adapter, UI seçeneği, Worker yönlendirmesi, test ve faz dokümanları kaynak ağacından çıkarılmıştır. Yeni platform ancak bu iki entegrasyonun tamamlanma kapıları geçildikten ve ayrı bir ADR ile onaylandıktan sonra eklenir. Ayrıntılı kapsam: [current-scope.md](docs/specification/current-scope.md).
+Diğer pazaryerlerine ait adapter, UI seçeneği, Worker yönlendirmesi ve job türleri mevcut kapsamda etkin değildir. Yeni platform ancak bu iki entegrasyonun tamamlanma kapıları geçildikten sonra ayrı adapter fazı ve kabul kapılarıyla eklenir. Ayrıntılı kapsam: [current-scope.md](docs/specification/current-scope.md).
 
 ## Mimari
 

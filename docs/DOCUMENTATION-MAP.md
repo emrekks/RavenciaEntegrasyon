@@ -2,7 +2,7 @@
 
 ## Kaynak katmanları
 
-1. `specification/RAVENCIA-NIHAI-PROJE-BELGESI.md`: proje öncesi ana plan, hedef işleyiş ve bağlayıcı kapsam.
+1. `specification/RAVENCIA-NIHAI-PROJE-BELGESI.md`: ana proje planı, hedef işleyiş ve bağlayıcı kapsam.
 2. `implementation/PROJECT-STATUS.yaml`: makinece okunabilir güncel durum.
 3. `implementation/CURRENT-PHASE.md`: aktif faz ve sıradaki çalışma.
 4. `platform-rules/capability-matrix.md`: dış API kanıtları.

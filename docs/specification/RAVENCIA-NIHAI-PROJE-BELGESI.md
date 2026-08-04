@@ -1,11 +1,11 @@
 # RAVENCIA MARKETPLACEHUB
 
-## Proje Öncesi Ana Plan, Karar Geçmişi, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
+## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 5.0  
+**Belge sürümü:** 6.0  
 **Belge tarihi:** 4 Ağustos 2026  
-**Belge statüsü:** Yaşayan ana proje planı ve yetkili teknik kaynak  
-**Plan başlangıcı:** Proje geliştirmesi öncesindeki ihtiyaç ve mimari kararlarından itibaren  
+**Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
+**Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
 **Güncel uygulama statüsü:** `F3_CLOSURE_ACTIVE / F4_IN_PROGRESS / PRODUCTION_BLOCKED`  
 **Aktif entegrasyon kapsamı:** Trendyol ve Trendyol E-Faturam  
 **Ürün sahibi:** Ravencia  
@@ -15,29 +15,28 @@
 
 # 1. Belgenin amacı ve kullanım şekli
 
-Bu belge yalnız tamamlanmış sistemi tarif eden bir sonuç raporu değildir. Proje başlamadan önce alınan iş, sunucu, güvenlik, mimari ve geliştirme kararlarını; geliştirme sırasında yapılan değişiklikleri; tamamlanan işleri; henüz test edilmemiş alanları; ertelenen kararları ve gelecekte izlenecek yolu birlikte tutan ana plan belgesidir.
+Bu belge Ravencia MarketplaceHub'ın başlangıçtan production kullanımına kadar uygulanacak bağlayıcı ürün, teknik mimari, güvenlik, geliştirme, test ve operasyon planını tanımlar. Belge yalnız hedefleri sıralamaz; kullanıcı panelinin nasıl çalışacağını, arka plan süreçlerini, faz sırasını, tamamlanma ölçütlerini ve yeni platformların hangi kurallarla ekleneceğini de belirler.
 
 Belgenin üç temel görevi vardır:
 
-1. **Planlama:** Sistemin neden geliştirildiğini, hangi sırayla ilerleyeceğini, hangi kararların bağlayıcı olduğunu ve hangi özelliklerin daha sonra yapılacağını belirlemek.
-2. **Durum takibi:** Planlanan her işin `PLANLANDI`, `GELİŞTİRİLİYOR`, `KODLANDI`, `TEST EDİLDİ`, `STAGE DOĞRULANDI`, `PRODUCTION HAZIR`, `BLOKE`, `ERTELENDİ` veya `İPTAL` durumlarından hangisinde olduğunu göstermek.
-3. **Devralma:** Codex veya başka bir geliştiricinin repository'yi açtığında geçmiş kararları, mevcut fazı, sıradaki işi, test zorunluluğunu ve değiştirilmemesi gereken sınırları anlamasını sağlamak.
+1. **Planlama:** Sistemin kapsamını, mimarisini, sunucu düzenini, kullanıcı işleyişini, güvenlik sınırlarını ve uygulama sırasını tek kaynaktan tanımlamak.
+2. **Durum takibi:** Her işin planlanan, geliştirilen, kodlanan, test edilen, Stage'de doğrulanan veya production'a hazır durumunu kanıtla göstermek.
+3. **Devralma:** Codex veya başka bir geliştiricinin repository'yi açtığında mevcut fazı, sıradaki işi, test zorunluluğunu ve değiştirilmemesi gereken sistem sınırlarını doğrudan anlayabilmesini sağlamak.
 
-Bu belge yaşayan bir ana kaynaktır. Yeni bir karar alındığında yalnız bu dosyanın bir paragrafı değiştirilmez; ilgili ADR, faz planı, evidence log, capability matrisi, güncel durum dosyası, değişiklik kaydı ve README özeti aynı dokümantasyon işlemi içinde güncellenir.
+Bu belge yaşayan ana kaynaktır. Kapsam, faz veya uygulama durumu değiştiğinde ana plan, makinece okunabilir durum dosyası, aktif faz belgesi, capability matrisi, ilgili faz planı, evidence log, README ve değişiklik kaydı aynı dokümantasyon işlemi içinde birlikte güncellenir.
 
 ## 1.1 Yetkili kaynak sırası
 
 Bir çelişki oluşursa aşağıdaki öncelik uygulanır:
 
-1. `docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md`: ana plan, hedef işleyiş ve değişmez sınırlar.
+1. `docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md`: bağlayıcı ana plan, hedef işleyiş ve değişmez sınırlar.
 2. `docs/implementation/PROJECT-STATUS.yaml`: makinece okunabilir güncel durum kayıtları.
-3. `docs/implementation/CURRENT-PHASE.md`: insan tarafından okunabilir aktif faz, blokaj ve sıradaki işler.
-4. `docs/platform-rules/capability-matrix.md`: dış API işlevlerinin kanıt durumu.
-5. ADR belgeleri: karar geçmişi, gerekçe ve üstün gelen kararlar.
+3. `docs/implementation/CURRENT-PHASE.md`: aktif faz, blokajlar ve sıradaki işler.
+4. `docs/platform-rules/capability-matrix.md`: dış API yeteneklerinin kanıt durumu.
+5. ADR belgeleri: yürürlükteki mimari kararların teknik ayrıntıları ve sınırları.
 6. Faz planları ve evidence logları: uygulama adımları, test komutları ve kanıtlar.
-7. `docs/CHANGELOG.md`: kronolojik değişiklik özeti.
-8. Kaynak kod ve testler: mevcut fiili davranış.
-9. Eski PDF/DOCX, geçmiş taslaklar ve commit mesajları: yalnız tarihsel başvuru.
+7. Kaynak kod ve testler: mevcut fiili davranış.
+8. `docs/CHANGELOG.md`: uygulanmış değişikliklerin kronolojik özeti.
 
 Kaynak kod ile hedef belge arasında fark varsa bu fark gizlenmez. Kodun sunduğu durum “mevcut”, hedeflenen davranış “planlanan” olarak işaretlenir ve ilgili faza açık iş olarak eklenir.
 
@@ -50,22 +49,21 @@ Kaynak kod ile hedef belge arasında fark varsa bu fark gizlenmez. Kodun sunduğ
 | `PLANLANDI` | İş kapsamı ve kabul ölçütü tanımlandı; kod bulunmayabilir. |
 | `GELİŞTİRİLİYOR` | Aktif çalışma var; sonuç henüz çıkış kapısını geçmedi. |
 | `KODLANDI` | Kaynak kod mevcut; test veya dış sistem kanıtı olmayabilir. |
-| `TEST_EDİLDİ_YEREL` | İlgili unit/integration/contract testleri yerelde geçti. |
+| `TEST_EDİLDİ_YEREL` | İlgili unit, integration veya contract testleri yerelde geçti. |
 | `DOĞRULANDI_STAGE` | Resmî Stage/SIT ortamında gerçek kapsam ve credential ile senaryo geçti. |
-| `PİLOT_PRODUCTION` | Sınırlı mağaza/işlem hacminde kontrollü production kullanımı başladı. |
+| `PİLOT_PRODUCTION` | Sınırlı mağaza ve işlem hacminde kontrollü production kullanımı başladı. |
 | `PRODUCTION_HAZIR` | Güvenlik, izleme, backup/restore, rollback, Stage ve iş kabul kapıları geçti. |
 | `BLOKE_EXTERNAL` | Credential, resmî ortam, dış sağlayıcı veya iş onayı eksik. |
 | `BLOKE_TEKNİK` | Kod, veri modeli, test veya operasyon açığı var. |
-| `ERTELENDİ` | Bilinçli olarak daha sonraki faza taşındı. |
-| `İPTAL` | Plandan çıkarıldı; yeniden açılması yeni karar ister. |
-| `SUPERSEDED` | Daha yeni bir karar tarafından geçersiz kılındı; tarihsel kayıt korunur. |
+| `SONRAKİ_FAZ` | Mevcut faz tamamlandıktan sonra uygulanacak şekilde planlandı. |
+| `KAPSAM_DIŞI` | Bu ürün sürümünün ve aktif yol haritasının parçası değildir. |
 
 ## 2.2 “Tamamlandı” denebilmesi için zorunlu şartlar
 
 Bir görev yalnız aşağıdaki koşulların tamamı sağlandığında tamamlandı yazılabilir:
 
 - Kabul kriteri açıkça tanımlanmış olmalıdır.
-- İlgili kod ve migration değişikliği repository'de bulunmalıdır.
+- İlgili kod ve gerekiyorsa migration değişikliği repository'de bulunmalıdır.
 - Değişiklik etkisine uygun hedefli testler çalıştırılmalıdır.
 - Başarısız veya çalıştırılamayan test saklanmamalıdır.
 - Dış API yazma işlemi ise Stage/SIT kanıtı bulunmalıdır.
@@ -74,52 +72,66 @@ Bir görev yalnız aşağıdaki koşulların tamamı sağlandığında tamamland
 - İlgili evidence log ve capability satırı güncellenmelidir.
 - Production etkisi varsa rollback ve backup/restore etkisi değerlendirilmelidir.
 
-`HTTP 200/201`, ekranda buton görünmesi, adapter metodunun bulunması veya fake testin geçmesi tek başına tamamlanma değildir.
+`HTTP 200/201`, ekranda buton görünmesi, adapter metodunun bulunması veya yalnız fake testin geçmesi tek başına tamamlanma değildir.
 
-# 3. Proje öncesi ihtiyaç ve ilk hedef
+# 3. Projenin amacı ve kademeli kapsam modeli
 
-Ravencia'nın başlangıç ihtiyacı, farklı e-ticaret kanallarındaki ürün, stok, fiyat, sipariş, kargo, iade ve fatura süreçlerini tek bir kontrol panelinden yönetmekti. İlk fikir Trendyol, Hepsiburada, N11, Pazarama, PTTAVM, Shopify ve Trendyol E-Faturam gibi birden fazla sistemi aynı anda kapsayan merkezi bir entegrasyondu.
+Ravencia MarketplaceHub; ürün, varyant, stok, fiyat, sipariş, paket, kargo, iade ve fatura süreçlerini tek bir güvenli web panelinden yönetmek için geliştirilir. Sistem Ravencia'nın kendi sunucusunda çalışır ve dış platformlarla API üzerinden haberleşir.
 
-Proje öncesi hedeflenen temel kullanıcı deneyimi şuydu:
+Proje başlangıçtan itibaren kademeli teslim modeliyle uygulanır:
 
-- Kullanıcı kendi sunucusunda çalışan panele tarayıcıdan giriş yapacak.
-- Ürünlerini tek katalogda yönetecek.
-- Ürünleri pazaryerlerine gönderecek veya pazaryerlerinden içeri alacak.
-- Stok ve fiyatı merkezden değiştirecek.
-- Siparişleri tek listede görecek.
-- Siparişi hazırlama, kargo, etiket, fatura ve iade işlemlerini mümkün olduğu ölçüde aynı ekrandan yürütecek.
-- Platform erişim bilgilerini güvenli biçimde saklayacak.
-- Sistemin ücretli ve güvenilmez eklentilere bağımlılığı olmayacak.
-- Uygulama normal bir sanal sunucuda, Docker ile taşınabilir biçimde çalışacak.
+1. Trendyol ürün, stok, fiyat, sipariş, paket, kargo ve iade süreçleri tamamlanır.
+2. Trendyol E-Faturam üzerinden mükellef sorgusu, E-Fatura/E-Arşiv oluşturma, durum takibi, PDF saklama, iptal ve Trendyol'a fatura teslimi tamamlanır.
+3. İki entegrasyon Stage kanıtı, production pilotu ve operasyon stabilizasyonundan geçirilir.
+4. Platform Adapter Registry/Resolver katmanı sertleştirilir.
+5. Hepsiburada, N11, Pazarama, PTTAVM ve Shopify ihtiyaç sırasına göre tek tek eklenir.
 
-Yapılan teknik inceleme, bütün platformları aynı anda geliştirmeye çalışmanın doğrulama yüzeyini gereksiz büyüttüğünü gösterdi. Bu nedenle aktif kapsam Trendyol ve Trendyol E-Faturam'a düşürüldü. Ortak platform altyapısı korunurken doğrulanmamış platform kodları aktif üründen çıkarıldı.
+Hedef kullanıcı deneyimi:
 
-# 4. Karar geçmişi ve plan değişiklikleri
+- Kullanıcı panele tarayıcıdan güvenli biçimde giriş yapar.
+- Ürünlerini tek katalogda yönetir.
+- Trendyol'dan ürünleri içeri alır veya onaylı ürünleri Trendyol'a gönderir.
+- Stok ve fiyatları merkezden günceller.
+- Siparişleri tek listede görür ve ayrıntılarına ulaşır.
+- Siparişi işleme alır, paket ve kargo işlemlerini yürütür.
+- Desteklenen koşullarda kargo firmasını değiştirir.
+- Kargo etiketini görüntüler ve yazdırır.
+- Sipariş için E-Fatura veya E-Arşiv oluşturur.
+- Fatura durumunu, PDF belgesini ve Trendyol'a teslim sonucunu takip eder.
+- Hatalı işlemleri operasyon merkezinden güvenli biçimde yeniden dener.
+- Platform erişim bilgilerini şifreli ve audit edilebilir biçimde yönetir.
 
-## 4.1 Kronolojik karar özeti
+Sistem normal bir sanal sunucuda Docker ile taşınabilir biçimde çalışır. Ücretli veya güvenilirliği doğrulanmamış eklentiler temel iş akışının zorunlu bağımlılığı yapılmaz.
 
-| Tarih / dönem | İlk karar veya ihtiyaç | Güncel sonuç | Durum |
-|---|---|---|---|
-| 29-30 Temmuz 2026 | Birden fazla pazaryeri ve Shopify için merkezi panel | Uzun vadeli vizyon olarak korunuyor | `ERTELENDİ` |
-| 30-31 Temmuz 2026 | C# geçmişine uygun backend seçimi | .NET tabanlı modüler monolit | `KABUL_EDİLDİ` |
-| 31 Temmuz 2026 | Windows VPS üzerinde Linux container | Yerel Windows doğrulaması tarihsel kayıt; production hedefi değişti | `SUPERSEDED` |
-| 31 Temmuz 2026 | Çok kullanıcı ve gelecekte multi-tenant ihtimali | Tek aktif tenant; tenant iskeleti korunuyor | `KABUL_EDİLDİ` |
-| 31 Temmuz 2026 | PostgreSQL üzerinde merkezi veri ve job sistemi | Tek PostgreSQL, tek migration zinciri, DB tabanlı queue | `KABUL_EDİLDİ` |
-| 2 Ağustos 2026 | Production hostu Ubuntu Server 24.04 LTS | Doğrudan Docker Engine hedefi | `SUPERSEDED_BY_CURRENT_HOST` |
-| 2 Ağustos 2026 | Mevcut AWS Ubuntu hostunun kullanılması | Ubuntu Server 26.04 LTS, x86_64, 2 vCPU, 8 GB sınıfı RAM, 80 GB NVMe | `KABUL_EDİLDİ` |
-| 2-3 Ağustos 2026 | Yerel/sunucu backup ve restore kontrolleri | Yerel ve hedef ön kanıtları var; off-host production kopyası açık | `KISMEN_DOĞRULANDI` |
-| 4 Ağustos 2026 | Hepsiburada/Shopify kodunun aktif kapsamda tutulması | Yalnız Trendyol ve E-Faturam; diğerleri adapter fazına ertelendi | `KABUL_EDİLDİ` |
-| 4 Ağustos 2026 | Temiz kaynak paketi için `.git` çıkarılması | Release paketinde çıkarılır; geliştirme repository'sinde geçmiş korunur | `DÜZELTİLDİ` |
+# 4. Bağlayıcı sistem ve kapsam kararları
 
-## 4.2 Değişmeyen temel kararlar
+## 4.1 Aktif entegrasyon sırası
 
-- Mimari modüler monolittir; mevcut ölçek için mikroservis, Kubernetes, Kafka, RabbitMQ, Redis veya service mesh eklenmez.
-- API ve Worker ayrı process/container olarak çalışır; aynı domain ve PostgreSQL veri otoritesini kullanır.
-- PostgreSQL durable job, inbox, idempotency ve reconciliation kayıtlarının merkezidir.
-- Dış yazmalar varsayılan kapalıdır ve capability + global switch + bağlantı switch'i birlikte doğrulanmadan açılamaz.
+- Aktif geliştirme kapsamı yalnız `TRENDYOL` ve `TRENDYOL_EFATURAM`dır.
+- Bu iki entegrasyon production stabilizasyonunu tamamlamadan yeni platform geliştirmesi başlatılmaz.
+- Sonraki platformlar ortak domain ve job altyapısını kullanır; platforma özgü adapter, mapping, capability ve contract testleri ayrı geliştirilir.
+- Yeni platform eklemek için mevcut Trendyol akışının davranışı değiştirilmez.
+
+## 4.2 Mimari ve altyapı kararları
+
+- Backend .NET tabanlı modüler monolittir.
+- API ve Worker ayrı process/container olarak çalışır.
+- PostgreSQL iş verisinin, job kayıtlarının, inbox/idempotency kayıtlarının, audit bilgisinin ve migration zincirinin tek otoritesidir.
+- Web paneli React tabanlıdır ve API ile güvenli HTTPS üzerinden haberleşir.
+- Production hostu Ubuntu Server üzerinde Docker Engine ve Docker Compose kullanır.
+- Caddy HTTPS termination ve reverse proxy katmanıdır.
+- Mikroservis, Kubernetes, Kafka, RabbitMQ, Redis veya service mesh mevcut ölçek için zorunlu değildir ve ihtiyaç kanıtlanmadan eklenmez.
+
+## 4.3 Değişmez güvenlik ve veri bütünlüğü kuralları
+
+- Dış yazma işlemleri varsayılan olarak kapalıdır.
+- Bir dış yazma ancak global switch, bağlantı switch'i, environment ve capability birlikte izin verirse çalışır.
 - Uygulanmış migration dosyaları silinmez veya yeniden adlandırılmaz.
 - Hassas dosyalar public web root içinde tutulmaz.
-- Yeni platform yalnız Trendyol ve E-Faturam kapanışından sonra ayrı ADR ve adapter fazı ile eklenir.
+- Credential ve secret değerleri Git'e, loglara veya kullanıcıya dönen hata mesajlarına yazılmaz.
+- Her mali ve dış sistem işlemi correlation, audit ve idempotency kaydı üretir.
+- Test ve gerekli Stage kanıtı olmadan hiçbir özellik tamamlandı veya production-ready işaretlenmez.
+- Ana geliştirme repository'sinde Git geçmişi korunur; deployment paketine `.git` dahil edilmez.
 
 # 5. Sunucu, çalışma ortamı ve altyapı planı
 
@@ -654,17 +666,17 @@ CI ve yerel kontrol şu durumları hata kabul eder:
 - Ana kapsam değişmiş fakat README ve AGENTS hâlâ eski kapsamı söylüyor.
 - Faz “tamamlandı” yazılmış fakat çıkış testi kanıtı yok.
 
-# 11. Git geçmişi, commit ve paket politikası
+# 11. Git, commit ve paket politikası
 
-## 11.1 Git geçmişi neden korunmalıdır?
+## 11.1 Geliştirme repository'sinde Git kaydı
 
-Git geçmişi şu nedenlerle önemlidir:
+Geliştirme repository'sindeki Git kaydı şu amaçlarla korunur:
 
 - Hangi kararın hangi kod değişikliğiyle uygulandığını gösterir.
 - Eski ve yeni davranış arasındaki diff'i sağlar.
 - Test eklenme veya silinme geçmişini izler.
 - `git blame`, tag ve release commitleriyle hata araştırmasını kolaylaştırır.
-- Codex'in daha önce yapılan işi ve değişiklik bağlamını anlamasına yardım eder.
+- Codex'in mevcut kodun gelişim bağlamını, testlerin kaynağını ve commit sınırlarını anlamasına yardım eder.
 - Yanlış değişikliği güvenli biçimde geri alma veya forward-fix hazırlama imkânı verir.
 
 Bu nedenle ana geliştirme repository'sinden `.git` silinmeyecektir. Orijinal commit, branch, tag ve remote geçmişi korunacaktır.
@@ -695,13 +707,13 @@ Bu nedenle ana geliştirme repository'sinden `.git` silinmeyecektir. Orijinal co
 - Faz çıkışında tag oluşturulur.
 - Release tag yalnız CI tam doğrulamayı geçince kullanılır.
 - Geçmişi yeniden yazan force-push varsayılan olarak yapılmaz.
-- Eski migration veya evidence commitleri silinmez.
+- Uygulanmış migration ve evidence commitleri değiştirilmez veya silinmez.
 
 ---
 
 # KISIM II - GÜNCEL TEKNİK TASARIM, MODÜLLER VE FAZLAR
 
-Aşağıdaki bölümler projenin güncel teknik kapsamını, veri ve güvenlik mimarisini, faz planlarını ve production kabul kriterlerini ayrıntılandırır. Yukarıdaki proje öncesi plan ve kullanıcı işleyişi bu teknik bölümlerin iş otoritesidir.
+Aşağıdaki bölümler projenin teknik kapsamını, veri ve güvenlik mimarisini, faz planlarını ve production kabul kriterlerini ayrıntılandırır. Yukarıdaki ana plan ve kullanıcı işleyişi bu teknik bölümlerin iş otoritesidir.
 
 
 # 12. Ana plan durum panosu
@@ -720,9 +732,9 @@ Aşağıdaki bölümler projenin güncel teknik kapsamını, veri ve güvenlik m
 | Mükellef/status/cancel | Uçtan uca fatura yaşam döngüsü | `PLANLANDI` | F4 uygulama |
 | PDF ve Trendyol teslim | Güvenli PDF + 8 yıllık link | `KODLANDI_KISMEN` | Güvenlik ve reconciliation |
 | Production | Kontrollü pilot ve geri dönüş | `BLOKE` | F3/F4, off-host backup, CI |
-| Yeni platformlar | Adapter registry ile sırayla ekleme | `ERTELENDİ_F8` | F7 çıkış kapısı |
+| Yeni platformlar | Adapter registry ile sırayla ekleme | `SONRAKİ_FAZ_F8` | F7 çıkış kapısı |
 
-# 13. Kesin kapsam kararları
+# 13. Kesin ürün kapsamı
 
 ## 13.1 Aktif kapsam
 
@@ -742,7 +754,7 @@ Aşağıdaki platformlar tasarımın gelecekte destekleyebileceği kanallardır 
 - Shopify
 - Diğer pazaryerleri veya web mağazaları
 
-Bu platformlara ait eski, yarım, doğrulanmamış adapter kodları temizlenmiştir. Ortak domain, port, mapping, job, audit ve reconciliation altyapısı korunmuştur.
+Bu platformlara ait adapter, menü, route ve job uygulamaları mevcut kapsamda etkin değildir. Ortak domain, port, mapping, job, audit ve reconciliation altyapısı sonraki platformların standart biçimde eklenebilmesi için kullanılır.
 
 ## 13.3 Ürün kapsamı dışında kalan konular
 
@@ -1393,11 +1405,11 @@ Payload hash, correlation id ve uzak request id kanıt olarak saklanır.
 ## 19.5 Migration politikası
 
 - Uygulanmış EF Core migration silinmez veya yeniden adlandırılmaz.
-- Migration adında eski faz/platform ifadesi bulunması tarihsel kimliği değiştirmez.
+- Migration dosya adı migration zincirinin sabit kimliğidir; uygulanmış migration yeniden adlandırılmaz.
 - Model snapshot zinciri korunur.
 - Production migration önce backup ve staging restore üzerinde denenir.
 - Destructive migration ayrı ADR, veri sayımı, rollback ve bakım penceresi gerektirir.
-- Eski platform kayıtları otomatik hard-delete edilmez.
+- Kapsam dışı platform kayıtları otomatik hard-delete edilmez.
 
 ---
 
@@ -1978,7 +1990,7 @@ Her platform ayrı faz ve ayrı ADR ile açılır. Önerilen varsayılan sıra:
 4. PTTAVM.
 5. Shopify.
 
-Bu sıra iş önceliğine göre ADR ile değiştirilebilir.
+Bu sıra iş ihtiyacı ve teknik uygunluk onayıyla güncellenebilir.
 
 Her platform fazı aşağıdaki alt kapıları izler:
 
@@ -2107,7 +2119,7 @@ Sistem production-ready ilan edilmeden aşağıdaki maddelerin tamamı sağlanma
 
 Ana geliştirme repository'sinde Git geçmişi korunur. Temiz release paketinde `.git`, `bin`, `obj`, `node_modules`, `dist`, test sonucu, log, PostgreSQL data/WAL, secret, geçici PDF/PNG ve iç içe arşiv bulunmaz. Bu iki amaç birbirine karıştırılmaz.
 
-Kaynak temizliği `scripts/verify-repository-cleanliness.py` ile; dokümantasyon işlemi `scripts/verify-documentation-transaction.py` ile doğrulanır. Uygulanmış migration dosyaları tarihsel zincirdir ve eski faz/platform adı taşısa bile silinmez veya yeniden adlandırılmaz.
+Kaynak temizliği `scripts/verify-repository-cleanliness.py` ile; dokümantasyon işlemi `scripts/verify-documentation-transaction.py` ile doğrulanır. Uygulanmış migration dosyaları migration zincirinin sabit parçalarıdır; dosya adları veya içerikleri geriye dönük değiştirilmez.
 
 Geliştirme paketi, geçmişi ve değişiklik takibini korumak için `.git` içerebilir; deployment artefaktı ve container image `.git` içermez.
 
@@ -2199,12 +2211,12 @@ Dış API dokümanları değişebileceği için her Stage kabulünden önce endp
 
 ---
 
-# 37. Nihai karar özeti
+# 37. Nihai sistem özeti
 
 1. Proje yalnız Trendyol ve Trendyol E-Faturam ile tamamlanacaktır.
 2. Bu iki entegrasyon production stabilizasyonunu geçmeden başka platform açılmayacaktır.
 3. Ortak katalog, mapping, job, audit, reconciliation ve güvenlik altyapısı korunacaktır.
-4. Eski yarım adapterlar geri getirilmeyecek; yeni platformlar güncel resmî API ile sıfırdan adapter standardına göre yazılacaktır.
+4. Yeni platformlar güncel resmî API sözleşmeleriyle adapter standardına göre yazılacaktır.
 5. Product V2, asenkron batch ve batch result takibi zorunludur.
 6. Stok ve fiyat Trendyol'a birleşik komut olarak gönderilecektir.
 7. Fatura submit sonucu uzak terminal durumla doğrulanacaktır.
@@ -2212,6 +2224,6 @@ Dış API dokümanları değişebileceği için her Stage kabulünden önce endp
 9. External write varsayılan kapalı ve çift anahtarlı olacaktır.
 10. Test, Stage evidence, backup/restore ve rollback olmadan production-ready denmeyecektir.
 11. F3/F4 sonrasında production pilot, stabilizasyon ve adapter registry fazları tamamlanacaktır.
-12. Sonraki platformlar ayrı ADR ve çıkış kapılarıyla tek tek eklenecektir.
+12. Sonraki platformlar ayrı adapter kapsamı ve çıkış kapılarıyla tek tek eklenecektir.
 
 **Bu belge Ravencia MarketplaceHub için nihai ürün ve teknik ana çerçevedir.**

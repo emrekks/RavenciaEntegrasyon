@@ -1,5 +1,5 @@
 schema_version: 1
-document_version: "5.0"
+document_version: "6.0"
 updated_at: "2026-08-04"
 active_scope:
   - TRENDYOL
@@ -39,7 +39,7 @@ phases:
     status: PLANNED
   F8_PLUS:
     title: Diğer platformların tek tek eklenmesi
-    status: DEFERRED_NOT_ACTIVE
+    status: PLANNED_NOT_ACTIVE
 features:
   authentication_mfa:
     status: READY_LOCAL
