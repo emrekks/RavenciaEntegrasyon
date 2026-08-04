@@ -178,6 +178,37 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, TimePro
                 .Join(db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS" && x.IsCurrent), mapping => mapping.SnapshotId, snapshot => snapshot.Id, (mapping, _) => mapping).SingleOrDefaultAsync(cancellationToken)
             : null;
         if (brandMapping is null) return ServiceResult<Guid>.Fail("BRAND_MAPPING_REQUIRED", "Yayın öncesi güncel marka eşlemesi gereklidir.", 422, new Dictionary<string, string[]> { ["brandId"] = ["Ürün markası ve seçilen bağlantının güncel marka snapshot'ı için doğrulanmış eşleme zorunludur."] });
+        var attributeSnapshot = await db.ReferenceSnapshots.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.ScopeExternalId == categoryMapping.ExternalId && x.IsCurrent, cancellationToken);
+        if (attributeSnapshot is null) return ServiceResult<Guid>.Fail("ATTRIBUTE_SNAPSHOT_REQUIRED", "Seçili Trendyol kategorisinin güncel özellik snapshot'ı gereklidir.", 422);
+        var remoteAttributes = await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == attributeSnapshot.Id && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.IsActive).ToListAsync(cancellationToken);
+        var attributeMappings = await db.AttributeMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == categoryMapping.ExternalId && x.SnapshotId == attributeSnapshot.Id && x.Status == "VERIFIED").ToListAsync(cancellationToken);
+        if (attributeMappings.GroupBy(x => x.ExternalId, StringComparer.Ordinal).Any(group => group.Count() > 1)) return ServiceResult<Guid>.Fail("ATTRIBUTE_MAPPING_AMBIGUOUS", "Aynı Trendyol özelliğine birden fazla yerel özellik eşlenmiş.", 409);
+        var mappingByExternalId = attributeMappings.ToDictionary(x => x.ExternalId, StringComparer.Ordinal);
+        var requiredLocalIds = new HashSet<Guid>();
+        foreach (var remote in remoteAttributes.Where(x => x.IsRequired == true))
+        {
+            if (!mappingByExternalId.TryGetValue(remote.ExternalId, out var requiredMapping)) return ServiceResult<Guid>.Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Trendyol özelliği '{remote.Name}' eşlenmemiş.", 422);
+            requiredLocalIds.Add(requiredMapping.LocalId);
+        }
+        var assignments = await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).ToListAsync(cancellationToken);
+        var suppliedLocalIds = assignments.Select(x => x.AttributeId).ToHashSet();
+        if (requiredLocalIds.Any(id => !suppliedLocalIds.Contains(id))) return ServiceResult<Guid>.Fail("REQUIRED_ATTRIBUTE_MISSING", "Trendyol kategorisinin zorunlu özelliklerinden en az biri üründe eksik.", 422);
+        var mappingByLocalId = attributeMappings.ToDictionary(x => x.LocalId);
+        foreach (var assignment in assignments)
+        {
+            if (!mappingByLocalId.TryGetValue(assignment.AttributeId, out var attributeMapping)) return ServiceResult<Guid>.Fail("ATTRIBUTE_MAPPING_REQUIRED", "Üründe kullanılan her özellik seçili Trendyol kategorisinin güncel snapshot'ında eşlenmelidir.", 422);
+            var remote = remoteAttributes.SingleOrDefault(x => x.ExternalId == attributeMapping.ExternalId);
+            if (remote is null) return ServiceResult<Guid>.Fail("ATTRIBUTE_MAPPING_REQUIRED", "Özellik eşlemesi güncel kategori snapshot'ında bulunamadı.", 422);
+            if (assignment.ValueId is not Guid valueId)
+            {
+                if (remote.AllowsCustomValue != true) return ServiceResult<Guid>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' serbest değer kabul etmiyor; doğrulanmış değer eşlemesi gereklidir.", 422);
+                continue;
+            }
+            var valueScope = $"{categoryMapping.ExternalId}/{attributeMapping.ExternalId}";
+            var valueMapping = await db.AttributeValueMappings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == valueId && x.ScopeExternalId == valueScope && x.Status == "VERIFIED", cancellationToken);
+            if (valueMapping is null || !await db.ReferenceSnapshots.AsNoTracking().AnyAsync(snapshot => snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.Id == valueMapping.SnapshotId && snapshot.ResourceType == "ATTRIBUTE_VALUES" && snapshot.ScopeExternalId == valueScope && snapshot.IsCurrent, cancellationToken)) return ServiceResult<Guid>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değeri güncel Trendyol değer snapshot'ında eşlenmemiş.", 422);
+            if (!await db.ReferenceItems.AsNoTracking().AnyAsync(item => item.TenantId == tenantId && item.SnapshotId == valueMapping.SnapshotId && item.ResourceType == "ATTRIBUTE_VALUES" && item.ExternalId == valueMapping.ExternalId, cancellationToken)) return ServiceResult<Guid>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değer eşlemesi snapshot içinde bulunamadı.", 422);
+        }
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is not null && ((!string.IsNullOrWhiteSpace(profile.ExternalCategoryId) && profile.ExternalCategoryId != categoryMapping.ExternalId) || (!string.IsNullOrWhiteSpace(profile.ExternalBrandId) && profile.ExternalBrandId != brandMapping.ExternalId))) return ServiceResult<Guid>.Fail("LISTING_MAPPING_CONFLICT", "Listing profile kimlikleri güncel doğrulanmış katalog eşlemeleriyle çelişiyor.", 409);
         return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "Gerçek platform capability kanıtı F3'te doğrulanmadan yayın işi oluşturulamaz.", 422);

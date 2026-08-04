@@ -54,7 +54,7 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         try
         {
             var items = TrendyolJsonMapper.References(type, response.Value!, resource.ParentExternalId);
-            var hasMore = type == "BRANDS" && items.Count >= page.Limit;
+            var hasMore = type is "BRANDS" or "ATTRIBUTE_VALUES" && items.Count >= page.Limit;
             var next = hasMore ? (Page(page.Cursor) + 1).ToString(CultureInfo.InvariantCulture) : null;
             return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new(items, next, hasMore), response.RateLimit);
         }

@@ -9,6 +9,8 @@ public sealed class ApiSurfaceTests
         foreach (var required in new[] { "/catalog/categories", "/catalog/brands", "/catalog/attributes", "/products", "/imports", "/inventory", "/channel-offers", "/reference-data", "/mappings" }) Assert.Contains(required, f2, StringComparison.Ordinal);
         foreach (var forbidden in new[] { "/orders", "/shipments", "/returns", "/invoices", "/integrations", "/webhooks", "/tenants", "/users" }) Assert.DoesNotContain(forbidden, f2, StringComparison.Ordinal);
         Assert.Contains("connectionId, \"CATEGORIES\", null", f2, StringComparison.Ordinal);
+        Assert.Contains("connectionId, \"CATEGORY_ATTRIBUTES\", externalId", f2, StringComparison.Ordinal);
+        Assert.Contains("connectionId, \"ATTRIBUTE_VALUES\", $\"{categoryId}/{attributeId}\"", f2, StringComparison.Ordinal);
         Assert.DoesNotContain("connectionId, \"CATEGORY\", null", f2, StringComparison.Ordinal);
         var f3 = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Api", "F3", "F3Endpoints.cs"));
         foreach (var required in new[] { "/connections", "/orders", "/shipments", "/returns", "/hooks/{connectionPublicId:guid}/{routeToken}" }) Assert.Contains(required, f3, StringComparison.Ordinal);

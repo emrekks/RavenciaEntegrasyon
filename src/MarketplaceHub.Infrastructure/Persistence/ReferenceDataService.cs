@@ -9,17 +9,19 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
     public async Task<ServiceResult<ReferenceDataView>> ListAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, CancellationToken cancellationToken)
     {
         if (!await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)) return NotFound<ReferenceDataView>();
-        var snapshot = await db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType && x.IsCurrent).OrderByDescending(x => x.FetchedAt).Select(x => new { x.Id, x.ResourceType, x.FetchedAt }).FirstOrDefaultAsync(cancellationToken);
+        var scope = string.IsNullOrWhiteSpace(parentExternalId) ? "" : parentExternalId.Trim();
+        var snapshot = await db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType && x.ScopeExternalId == scope && x.IsCurrent).OrderByDescending(x => x.FetchedAt).Select(x => new { x.Id, x.ResourceType, x.FetchedAt }).FirstOrDefaultAsync(cancellationToken);
         if (snapshot is null) return ServiceResult<ReferenceDataView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Doğrulanmış güncel reference snapshot yok; canlı platform çağrısı yapılmadı.", 422);
         var query = db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == snapshot.Id && x.ResourceType == resourceType);
         if (parentExternalId is not null) query = query.Where(x => x.ParentExternalId == parentExternalId);
-        var rows = await query.OrderBy(x => x.SortOrder).ThenBy(x => x.Name).Select(x => new ReferenceItemView(x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive)).ToListAsync(cancellationToken);
+        var rows = await query.OrderBy(x => x.SortOrder).ThenBy(x => x.Name).Select(x => new ReferenceItemView(x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive, x.IsRequired, x.AllowsCustomValue, x.AllowsMultipleValues)).ToListAsync(cancellationToken);
         return ServiceResult<ReferenceDataView>.Ok(new(snapshot.Id, snapshot.ResourceType, snapshot.FetchedAt, rows));
     }
 
-    public async Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken)
     {
-        var mapping = await Query(mappingType).AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == connectionId, cancellationToken);
+        var scope = string.IsNullOrWhiteSpace(scopeExternalId) ? "" : scopeExternalId.Trim();
+        var mapping = await Query(mappingType).AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == connectionId && x.ScopeExternalId == scope, cancellationToken);
         return ServiceResult<CatalogMappingView?>.Ok(mapping is null ? null : Map(mapping));
     }
 
@@ -35,11 +37,12 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         if (external is null) return ServiceResult<CatalogMappingView>.Fail("EXTERNAL_REFERENCE_NOT_FOUND", "External reference kimliği snapshot içinde bulunamadı.", 422);
         if (mappingType == "categories" && (!external.IsLeaf || !external.IsActive)) return ServiceResult<CatalogMappingView>.Fail("ACTIVE_LEAF_CATEGORY_REQUIRED", "Ürün mapping'i yalnız etkin leaf kategoriye yapılabilir.", 422);
 
-        var mapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == command.ConnectionId, cancellationToken);
+        var scope = snapshot.ScopeExternalId;
+        var mapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope, cancellationToken);
         if (mapping is null)
         {
             mapping = New(mappingType);
-            mapping.Id = Guid.CreateVersion7(); mapping.TenantId = tenantId; mapping.LocalId = localId; mapping.ConnectionId = command.ConnectionId;
+            mapping.Id = Guid.CreateVersion7(); mapping.TenantId = tenantId; mapping.LocalId = localId; mapping.ConnectionId = command.ConnectionId; mapping.ScopeExternalId = scope;
             db.Add(mapping);
         }
         else
@@ -80,6 +83,6 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         _ => Task.FromResult(false)
     };
 
-    private static CatalogMappingView Map(CatalogMapping value) => new(value.Id, value.ConnectionId, value.SnapshotId, value.LocalId, value.ExternalId, value.Status, value.VerifiedAt, value.Version);
+    private static CatalogMappingView Map(CatalogMapping value) => new(value.Id, value.ConnectionId, value.SnapshotId, value.LocalId, value.ScopeExternalId, value.ExternalId, value.Status, value.VerifiedAt, value.Version);
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
 }

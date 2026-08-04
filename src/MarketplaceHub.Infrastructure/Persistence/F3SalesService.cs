@@ -44,12 +44,20 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
 
     public Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, F3Capabilities.OrderRead, F3JobTypes.OrderSync, JsonSerializer.Serialize(new { connectionId, externalOrderId }), correlationId, cancellationToken);
 
-    public Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string correlationId, CancellationToken cancellationToken)
+    public Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)
     {
         var normalized = resourceType.Trim().ToUpperInvariant();
-        return normalized is "CATEGORIES" or "BRANDS"
-            ? EnqueueRead(tenantId, connectionId, F3Capabilities.ReferenceRead, F3JobTypes.ReferenceSync, JsonSerializer.Serialize(new { connectionId, resourceType = normalized }), correlationId, cancellationToken)
-            : Task.FromResult(ServiceResult<Guid>.Fail("REFERENCE_RESOURCE_UNSUPPORTED", "Yalnız CATEGORIES veya BRANDS salt-okunur eşitlemesi açılmıştır.", 422));
+        var parent = string.IsNullOrWhiteSpace(parentExternalId) ? null : parentExternalId.Trim();
+        var valid = normalized switch
+        {
+            "CATEGORIES" or "BRANDS" => parent is null,
+            "CATEGORY_ATTRIBUTES" => parent is not null && !parent.Contains('/', StringComparison.Ordinal),
+            "ATTRIBUTE_VALUES" => parent?.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length == 2,
+            _ => false
+        };
+        return valid
+            ? EnqueueRead(tenantId, connectionId, F3Capabilities.ReferenceRead, F3JobTypes.ReferenceSync, JsonSerializer.Serialize(new { connectionId, resourceType = normalized, parentExternalId = parent }), correlationId, cancellationToken)
+            : Task.FromResult(ServiceResult<Guid>.Fail("REFERENCE_RESOURCE_UNSUPPORTED", "CATEGORIES/BRANDS scope almaz; CATEGORY_ATTRIBUTES categoryId, ATTRIBUTE_VALUES categoryId/attributeId scope ister.", 422));
     }
 
     public async Task<ServiceResult<Guid>> EnqueueShipmentActionAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string correlationId, CancellationToken cancellationToken)

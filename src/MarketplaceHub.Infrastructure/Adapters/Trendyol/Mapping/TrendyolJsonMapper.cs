@@ -88,7 +88,7 @@ public static class TrendyolJsonMapper
         }
         else if (resourceType == "CATEGORY_ATTRIBUTES" && root.TryGetProperty("categoryAttributes", out var attributes) && attributes.ValueKind == JsonValueKind.Array)
         {
-            foreach (var item in attributes.EnumerateArray()) if (item.TryGetProperty("attribute", out var attribute)) rows.Add(new(resourceType, Text(attribute, "id"), parentExternalId, Text(attribute, "name"), Text(attribute, "name"), 0, true, true, item.GetRawText()));
+            foreach (var item in attributes.EnumerateArray()) if (item.TryGetProperty("attribute", out var attribute)) rows.Add(new(resourceType, Text(attribute, "id"), parentExternalId, Text(attribute, "name"), Text(attribute, "name"), 0, true, true, item.GetRawText(), Bool(item, "required"), Bool(item, "allowCustom"), Bool(item, "allowMultipleAttributeValues")));
         }
         else if (resourceType == "ATTRIBUTE_VALUES")
         {

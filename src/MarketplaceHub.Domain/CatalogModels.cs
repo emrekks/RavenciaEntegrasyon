@@ -191,6 +191,7 @@ public sealed class ReferenceSnapshot
     public Guid TenantId { get; set; }
     public Guid ConnectionId { get; set; }
     public required string ResourceType { get; set; }
+    public string ScopeExternalId { get; set; } = "";
     public required string SourceVersion { get; set; }
     public required string ContentHash { get; set; }
     public Guid? AssetId { get; set; }
@@ -214,6 +215,9 @@ public sealed class ReferenceItem
     public int Depth { get; set; }
     public bool IsLeaf { get; set; }
     public bool IsActive { get; set; }
+    public bool? IsRequired { get; set; }
+    public bool? AllowsCustomValue { get; set; }
+    public bool? AllowsMultipleValues { get; set; }
     public required string PayloadHash { get; set; }
     public int? SortOrder { get; set; }
 }
@@ -225,6 +229,7 @@ public abstract class CatalogMapping
     public Guid ConnectionId { get; set; }
     public Guid SnapshotId { get; set; }
     public Guid LocalId { get; set; }
+    public string ScopeExternalId { get; set; } = "";
     public required string ExternalId { get; set; }
     public required string Status { get; set; }
     public DateTimeOffset? VerifiedAt { get; set; }

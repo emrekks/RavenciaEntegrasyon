@@ -118,8 +118,8 @@ internal static class F2ModelConfiguration
         });
         builder.Entity<ReferenceSnapshot>(entity =>
         {
-            entity.ToTable("reference_snapshots", "integration"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.ResourceType).HasMaxLength(64); entity.Property(x => x.ContentHash).HasMaxLength(128);
-            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ResourceType, x.ContentHash }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ResourceType, x.IsCurrent });
+            entity.ToTable("reference_snapshots", "integration"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.ResourceType).HasMaxLength(64); entity.Property(x => x.ScopeExternalId).HasMaxLength(512); entity.Property(x => x.ContentHash).HasMaxLength(128);
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ResourceType, x.ScopeExternalId, x.ContentHash }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ResourceType, x.ScopeExternalId, x.IsCurrent });
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<ReferenceItem>(entity =>
@@ -240,7 +240,7 @@ internal static class F2ModelConfiguration
     {
         builder.Entity<TMapping>(entity =>
         {
-            entity.ToTable(tableName, "catalog"); entity.Property(x => x.ExternalId).HasMaxLength(256); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.LocalId, x.SnapshotId }).IsUnique();
+            entity.ToTable(tableName, "catalog"); entity.Property(x => x.ScopeExternalId).HasMaxLength(512); entity.Property(x => x.ExternalId).HasMaxLength(256); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.LocalId, x.ScopeExternalId }).IsUnique();
         });
     }
 

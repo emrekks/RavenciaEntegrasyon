@@ -36,14 +36,14 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
 
     private async Task<bool> SyncReferences(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
-        var resourceType = ReferenceResourceType(payloadJson);
-        if (resourceType is not ("CATEGORIES" or "BRANDS")) return false;
+        var (resourceType, parentExternalId) = ReferenceResource(payloadJson);
+        if (!await IsValidReferenceScope(tenantId, connectionId, resourceType, parentExternalId, cancellationToken)) return false;
         var items = new List<RemoteReferenceItem>();
         var visitedCursors = new HashSet<string>(StringComparer.Ordinal);
         string? cursor = null;
         do
         {
-            var result = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:{resourceType}:{cursor}"), new(resourceType, null), new(cursor, 1000), cancellationToken);
+            var result = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:{resourceType}:{parentExternalId}:{cursor}"), new(resourceType, parentExternalId), new(cursor, 1000), cancellationToken);
             if (!result.IsSuccess) return false;
             items.AddRange(result.Value!.Items);
             if (items.Count > 100_000) return false;
@@ -53,27 +53,28 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         } while (!cancellationToken.IsCancellationRequested);
 
         cancellationToken.ThrowIfCancellationRequested();
-        if (items.Count == 0 || items.Any(x => !string.Equals(x.ResourceType, resourceType, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(x.ExternalId) || string.IsNullOrWhiteSpace(x.Name))) return false;
+        if ((items.Count == 0 && resourceType is "CATEGORIES" or "BRANDS") || items.Any(x => !string.Equals(x.ResourceType, resourceType, StringComparison.Ordinal) || !string.Equals(x.ParentExternalId ?? "", parentExternalId ?? "", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(x.ExternalId) || string.IsNullOrWhiteSpace(x.Name))) return false;
         var ordered = items.OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
         if (ordered.Select(x => x.ExternalId).Distinct(StringComparer.Ordinal).Count() != ordered.Count) return false;
-        var canonical = JsonSerializer.Serialize(ordered.Select(x => new { x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive }));
+        var canonical = JsonSerializer.Serialize(ordered.Select(x => new { x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive, x.IsRequired, x.AllowsCustomValue, x.AllowsMultipleValues }));
         var contentHash = Hash(canonical);
         var now = timeProvider.GetUtcNow();
         var sourceVersion = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == F3Capabilities.ReferenceRead).Select(x => x.SourceVersion).SingleOrDefaultAsync(cancellationToken)
             ?? await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.ApiVersion).SingleAsync(cancellationToken);
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var snapshots = await db.ReferenceSnapshots.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType).ToListAsync(cancellationToken);
+        var scope = parentExternalId ?? "";
+        var snapshots = await db.ReferenceSnapshots.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType && x.ScopeExternalId == scope).ToListAsync(cancellationToken);
         var snapshot = snapshots.SingleOrDefault(x => x.ContentHash == contentHash);
         foreach (var current in snapshots.Where(x => x.IsCurrent && x.Id != snapshot?.Id)) current.IsCurrent = false;
         if (snapshot is null)
         {
-            snapshot = new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ResourceType = resourceType, SourceVersion = sourceVersion, ContentHash = contentHash, FetchedAt = now, IsCurrent = true, ItemCount = ordered.Count };
+            snapshot = new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ResourceType = resourceType, ScopeExternalId = scope, SourceVersion = sourceVersion, ContentHash = contentHash, FetchedAt = now, IsCurrent = true, ItemCount = ordered.Count };
             db.ReferenceSnapshots.Add(snapshot);
             for (var index = 0; index < ordered.Count; index++)
             {
                 var item = ordered[index];
-                db.ReferenceItems.Add(new ReferenceItem { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = snapshot.Id, ResourceType = resourceType, ExternalId = item.ExternalId, ParentExternalId = item.ParentExternalId, Name = item.Name, NormalizedName = item.Name.Trim().ToUpperInvariant(), Path = item.Path, Depth = item.Depth, IsLeaf = item.IsLeaf, IsActive = item.IsActive, PayloadHash = Hash(item.RawJson), SortOrder = index });
+                db.ReferenceItems.Add(new ReferenceItem { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = snapshot.Id, ResourceType = resourceType, ExternalId = item.ExternalId, ParentExternalId = item.ParentExternalId, Name = item.Name, NormalizedName = item.Name.Trim().ToUpperInvariant(), Path = item.Path, Depth = item.Depth, IsLeaf = item.IsLeaf, IsActive = item.IsActive, IsRequired = item.IsRequired, AllowsCustomValue = item.AllowsCustomValue, AllowsMultipleValues = item.AllowsMultipleValues, PayloadHash = Hash(item.RawJson), SortOrder = index });
             }
         }
         else
@@ -87,14 +88,29 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         return true;
     }
 
-    private static string ReferenceResourceType(string payloadJson)
+    private static (string ResourceType, string? ParentExternalId) ReferenceResource(string payloadJson)
     {
         try
         {
             using var payload = JsonDocument.Parse(payloadJson);
-            return payload.RootElement.TryGetProperty("resourceType", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()!.Trim().ToUpperInvariant() : "CATEGORIES";
+            var resourceType = payload.RootElement.TryGetProperty("resourceType", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()!.Trim().ToUpperInvariant() : "CATEGORIES";
+            var parent = payload.RootElement.TryGetProperty("parentExternalId", out var parentValue) && parentValue.ValueKind == JsonValueKind.String ? parentValue.GetString()?.Trim() : null;
+            return (resourceType, string.IsNullOrWhiteSpace(parent) ? null : parent);
         }
-        catch (JsonException) { return ""; }
+        catch (JsonException) { return ("", null); }
+    }
+
+    private async Task<bool> IsValidReferenceScope(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, CancellationToken cancellationToken)
+    {
+        if (resourceType is "CATEGORIES" or "BRANDS") return parentExternalId is null;
+        if (resourceType == "CATEGORY_ATTRIBUTES" && parentExternalId is not null)
+            return await db.ReferenceItems.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES" && x.ExternalId == parentExternalId && x.IsLeaf && x.IsActive
+                && db.ReferenceSnapshots.Any(snapshot => snapshot.TenantId == tenantId && snapshot.Id == x.SnapshotId && snapshot.IsCurrent && snapshot.ScopeExternalId == ""), cancellationToken);
+        if (resourceType != "ATTRIBUTE_VALUES" || parentExternalId is null) return false;
+        var parts = parentExternalId.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length != 2) return false;
+        return await db.ReferenceItems.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.ExternalId == parts[1] && x.ParentExternalId == parts[0]
+            && db.ReferenceSnapshots.Any(snapshot => snapshot.TenantId == tenantId && snapshot.Id == x.SnapshotId && snapshot.IsCurrent && snapshot.ScopeExternalId == parts[0]), cancellationToken);
     }
 
     private async Task<bool> TestConnection(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)

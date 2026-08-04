@@ -138,7 +138,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         Assert.True(listed.Succeeded);
         Assert.Equal(snapshot.Id, listed.Value!.SnapshotId);
         Assert.Single(listed.Value.Items);
-        Assert.Null((await referenceService.GetMappingAsync(tenantId, "categories", localCategoryId, connectionId, cancellationToken)).Value);
+        Assert.Null((await referenceService.GetMappingAsync(tenantId, "categories", localCategoryId, connectionId, null, cancellationToken)).Value);
 
         var invalid = await referenceService.UpsertMappingAsync(tenantId, "categories", localCategoryId, null, new(connectionId, snapshot.Id, "synthetic-reference", "DRAFT"), cancellationToken);
         Assert.False(invalid.Succeeded);
@@ -150,6 +150,20 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         Assert.Equal(created.Value.Id, updated.Value!.Id);
         Assert.Equal(2, updated.Value.Version);
         Assert.Equal(1, await db.CategoryMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localCategoryId, cancellationToken));
+
+        Assert.False(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"CATEGORY_ATTRIBUTES\",\"parentExternalId\":\"unknown-category\"}", "attribute-invalid-scope", cancellationToken));
+        Assert.True(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"CATEGORY_ATTRIBUTES\",\"parentExternalId\":\"synthetic-reference\"}", "attribute-reference", cancellationToken));
+        Assert.True(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"CATEGORY_ATTRIBUTES\",\"parentExternalId\":\"synthetic-reference\"}", "attribute-reference-retry", cancellationToken));
+        var attributes = await referenceService.ListAsync(tenantId, connectionId, "CATEGORY_ATTRIBUTES", "synthetic-reference", cancellationToken);
+        Assert.True(attributes.Succeeded);
+        Assert.Single(attributes.Value!.Items);
+        Assert.Equal("synthetic-reference", attributes.Value.Items[0].ParentExternalId);
+
+        Assert.True(await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"ATTRIBUTE_VALUES\",\"parentExternalId\":\"synthetic-reference/synthetic-reference\"}", "attribute-value-reference", cancellationToken));
+        var attributeValues = await referenceService.ListAsync(tenantId, connectionId, "ATTRIBUTE_VALUES", "synthetic-reference/synthetic-reference", cancellationToken);
+        Assert.True(attributeValues.Succeeded);
+        Assert.Single(attributeValues.Value!.Items);
+        Assert.Equal("synthetic-reference/synthetic-reference", attributeValues.Value.Items[0].ParentExternalId);
 
         var localBrandId = Guid.Parse("98888888-8888-8888-8888-888888888888");
         db.Brands.Add(new Brand { Id = localBrandId, TenantId = tenantId, Name = "Synthetic Reference", NormalizedName = "SYNTHETIC REFERENCE", IsActive = true, CreatedAt = Now, UpdatedAt = Now });
@@ -169,8 +183,26 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         Assert.Equal("BRAND_MAPPING_REQUIRED", missingBrand.Error?.Code);
         var brandMapping = await referenceService.UpsertMappingAsync(tenantId, "brands", localBrandId, null, new(connectionId, brands.Value.SnapshotId, "synthetic-reference", "VERIFIED"), cancellationToken);
         Assert.True(brandMapping.Succeeded);
+        Assert.Equal("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", (await catalog.ValidatePublicationAsync(tenantId, productId, connectionId, cancellationToken)).Error?.Code);
+        var localAttributeId = Guid.Parse("91111111-1111-1111-1111-111111111111");
+        db.AttributeDefinitions.Add(new AttributeDefinition { Id = localAttributeId, TenantId = tenantId, Code = "SYNTHETIC", Name = "Synthetic Reference", DataType = AttributeDataType.Text, IsActive = true, CreatedAt = Now, UpdatedAt = Now });
+        await db.SaveChangesAsync(cancellationToken);
+        var attributeMapping = await referenceService.UpsertMappingAsync(tenantId, "attributes", localAttributeId, null, new(connectionId, attributes.Value.SnapshotId, "synthetic-reference", "VERIFIED"), cancellationToken);
+        Assert.True(attributeMapping.Succeeded);
+        Assert.Equal("synthetic-reference", attributeMapping.Value!.ScopeExternalId);
+        Assert.Equal("REQUIRED_ATTRIBUTE_MISSING", (await catalog.ValidatePublicationAsync(tenantId, productId, connectionId, cancellationToken)).Error?.Code);
+        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.NewGuid(), TenantId = tenantId, ProductId = productId, AttributeId = localAttributeId, TextValue = "custom-safe-value" });
+        await db.SaveChangesAsync(cancellationToken);
         var readyMappings = await catalog.ValidatePublicationAsync(tenantId, productId, connectionId, cancellationToken);
         Assert.Equal("CAPABILITY_UNKNOWN", readyMappings.Error?.Code);
+        var remoteAttribute = await db.ReferenceItems.SingleAsync(x => x.TenantId == tenantId && x.ResourceType == "CATEGORY_ATTRIBUTES", cancellationToken);
+        remoteAttribute.AllowsCustomValue = false; await db.SaveChangesAsync(cancellationToken);
+        Assert.Equal("ATTRIBUTE_VALUE_MAPPING_REQUIRED", (await catalog.ValidatePublicationAsync(tenantId, productId, connectionId, cancellationToken)).Error?.Code);
+        remoteAttribute.AllowsCustomValue = true; await db.SaveChangesAsync(cancellationToken);
+        var attributeSnapshot = await db.ReferenceSnapshots.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORY_ATTRIBUTES", cancellationToken);
+        attributeSnapshot.IsCurrent = false; await db.SaveChangesAsync(cancellationToken);
+        Assert.Equal("ATTRIBUTE_SNAPSHOT_REQUIRED", (await catalog.ValidatePublicationAsync(tenantId, productId, connectionId, cancellationToken)).Error?.Code);
+        attributeSnapshot.IsCurrent = true; await db.SaveChangesAsync(cancellationToken);
         var brandSnapshot = await db.ReferenceSnapshots.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS", cancellationToken);
         brandSnapshot.IsCurrent = false; await db.SaveChangesAsync(cancellationToken);
         Assert.Equal("BRAND_MAPPING_REQUIRED", (await catalog.ValidatePublicationAsync(tenantId, productId, connectionId, cancellationToken)).Error?.Code);
@@ -179,8 +211,12 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         await db.SaveChangesAsync(cancellationToken);
         var conflict = await catalog.ValidatePublicationAsync(tenantId, productId, connectionId, cancellationToken);
         Assert.Equal("LISTING_MAPPING_CONFLICT", conflict.Error?.Code);
-        Assert.Equal(2, await db.ReferenceSnapshots.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken));
+        Assert.Equal(4, await db.ReferenceSnapshots.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken));
+        Assert.Equal(4, await db.ReferenceSnapshots.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.IsCurrent, cancellationToken));
+        Assert.Equal("synthetic-reference", await db.ReferenceSnapshots.Where(x => x.ResourceType == "CATEGORY_ATTRIBUTES").Select(x => x.ScopeExternalId).SingleAsync(cancellationToken));
+        Assert.Equal("synthetic-reference/synthetic-reference", await db.ReferenceSnapshots.Where(x => x.ResourceType == "ATTRIBUTE_VALUES").Select(x => x.ScopeExternalId).SingleAsync(cancellationToken));
         Assert.Equal(1, await db.BrandMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localBrandId, cancellationToken));
+        Assert.Equal(1, await db.AttributeMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localAttributeId && x.ScopeExternalId == "synthetic-reference", cancellationToken));
     }
 
     private sealed class MutableTimeProvider(DateTimeOffset value) : TimeProvider

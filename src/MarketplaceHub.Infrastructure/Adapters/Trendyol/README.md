@@ -23,6 +23,8 @@ Doğrulama tarihi `2026-07-31`'dir. Production kökü `https://apigw.trendyol.co
 
 Basic Auth ve zorunlu User-Agent, <https://developers.trendyol.com/v2.0/docs/authorization> kaynağına göre uygulanır. Runtime rate policy sabit bir tahmin kullanmaz; `429` ve varsa `Retry-After` otoritedir.
 
+Kategori özellik snapshot'ı `categoryId`, özellik değeri snapshot'ı `categoryId/attributeId` scope'u ile saklanır. Yeni bir kategorinin eşitlenmesi başka kategorinin güncel snapshot'ını geçersiz kılmaz. `required`, `allowCustom` ve `allowMultipleAttributeValues` alanları yayınlama doğrulamasına taşınır; güncel scoped snapshot/mapping veya zorunlu değer eksikse ürün yazma işi oluşturulmaz.
+
 ## Fail-closed davranış
 
 - Capability satırları bağlantı oluşturulduğunda `UNKNOWN` başlar.

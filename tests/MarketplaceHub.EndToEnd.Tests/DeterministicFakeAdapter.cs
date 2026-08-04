@@ -33,7 +33,9 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
         ]);
 
     public Task<AdapterResult<AdapterPageResult<RemoteReferenceItem>>> ReadAsync(AdapterContext context, ReferenceResource resource, AdapterPageRequest page, CancellationToken cancellationToken) =>
-        Result(Page(new RemoteReferenceItem(resource.ResourceType, "synthetic-reference", resource.ParentExternalId, "Synthetic Reference", "Synthetic Reference", 0, true, true, "{}")));
+        Result(Page(resource.ResourceType == "CATEGORY_ATTRIBUTES"
+            ? new RemoteReferenceItem(resource.ResourceType, "synthetic-reference", resource.ParentExternalId, "Synthetic Reference", "Synthetic Reference", 0, true, true, "{}", true, true, false)
+            : new RemoteReferenceItem(resource.ResourceType, "synthetic-reference", resource.ParentExternalId, "Synthetic Reference", "Synthetic Reference", 0, true, true, "{}")));
 
     public Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) =>
         Result(Page(new RemoteProduct("synthetic-product", "synthetic-variant", "0000000000000", "SYNTHETIC-SKU", "{}")));

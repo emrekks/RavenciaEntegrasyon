@@ -49,6 +49,29 @@ public sealed class F3TrendyolContractTests
     }
 
     [Fact]
+    public void Documented_category_attribute_and_value_responses_preserve_parent_scope()
+    {
+        const string attributesJson = """
+            {"id":14609,"categoryAttributes":[{"allowCustom":false,"attribute":{"id":293,"name":"Beden"},"categoryId":14609,"required":true,"varianter":true,"slicer":false,"allowMultipleAttributeValues":false}]}
+            """;
+        var attribute = Assert.Single(TrendyolJsonMapper.References("CATEGORY_ATTRIBUTES", attributesJson, "14609"));
+        Assert.Equal("293", attribute.ExternalId);
+        Assert.Equal("14609", attribute.ParentExternalId);
+        Assert.Equal("Beden", attribute.Name);
+        Assert.True(attribute.IsRequired);
+        Assert.False(attribute.AllowsCustomValue);
+        Assert.False(attribute.AllowsMultipleValues);
+
+        const string valuesJson = """
+            {"totalElements":2,"totalPages":1,"page":0,"size":10,"content":[{"attributeValueId":4872,"attributeValue":"Tek Ebat"},{"attributeValueId":4873,"attributeValue":"S"}]}
+            """;
+        var values = TrendyolJsonMapper.References("ATTRIBUTE_VALUES", valuesJson, "14609/293");
+        Assert.Equal(2, values.Count);
+        Assert.All(values, value => Assert.Equal("14609/293", value.ParentExternalId));
+        Assert.Equal(["4872", "4873"], values.Select(value => value.ExternalId));
+    }
+
+    [Fact]
     public void Capability_discovery_probes_documented_reads_and_contains_no_write_request()
     {
         var source = File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Infrastructure", "Adapters", "Trendyol", "TrendyolHttpClient.cs"));
