@@ -1,0 +1,78 @@
+schema_version: 1
+document_version: "5.0"
+updated_at: "2026-08-04"
+active_scope:
+  - TRENDYOL
+  - TRENDYOL_EFATURAM
+overall_status: F3_CLOSURE_ACTIVE_F4_IN_PROGRESS_PRODUCTION_BLOCKED
+production_status: BLOCKED
+source_of_truth: docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md
+phases:
+  F0:
+    title: Temel mimari ve planlama
+    status: BASELINE_COMPLETE
+    evidence: docs/implementation/F0-evidence-log.md
+  F1:
+    title: Güvenli temel
+    status: READY_LOCAL
+    evidence: docs/implementation/F1-evidence-log.md
+  F2:
+    title: Katalog ve envanter çekirdeği
+    status: READY_LOCAL
+    evidence: docs/implementation/F2-evidence-log.md
+  F3:
+    title: Trendyol entegrasyonu kapanışı
+    status: ACTIVE_CLOSURE
+    evidence: docs/implementation/F3-evidence-log.md
+  F4:
+    title: Trendyol E-Faturam kapanışı
+    status: IN_PROGRESS_BLOCKED_EXTERNAL
+    evidence: docs/implementation/F4-evidence-log.md
+  F5:
+    title: Kontrollü production pilotu
+    status: PLANNED_BLOCKED_BY_F3_F4
+  F6:
+    title: Stabilizasyon ve operasyon kabulü
+    status: PLANNED
+  F7:
+    title: Platform adapter registry ve resolver
+    status: PLANNED
+  F8_PLUS:
+    title: Diğer platformların tek tek eklenmesi
+    status: DEFERRED_NOT_ACTIVE
+features:
+  authentication_mfa:
+    status: READY_LOCAL
+  dashboard:
+    status: CODED_BASIC
+  local_catalog_import:
+    status: READY_LOCAL
+  trendyol_reference_read:
+    status: CODED_STAGE_REVALIDATION_REQUIRED
+  trendyol_product_create:
+    status: IN_PROGRESS_ORCHESTRATION_REQUIRED
+  trendyol_product_update_archive:
+    status: PLANNED
+  trendyol_price_inventory_write:
+    status: PLANNED
+  trendyol_order_package_read:
+    status: CODED_STAGE_REVALIDATION_REQUIRED
+  trendyol_order_processing_write:
+    status: BLOCKED_CAPABILITY
+  trendyol_cargo_change:
+    status: BLOCKED_CAPABILITY
+  trendyol_label:
+    status: PLANNED_BLOCKED_CAPABILITY
+  efaturam_submit:
+    status: CODED_STAGE_E2E_REQUIRED
+  efaturam_taxpayer_status_cancel:
+    status: PLANNED
+  secure_invoice_pdf:
+    status: IN_PROGRESS_SECURITY_GUARDS_REQUIRED
+  trendyol_invoice_delivery:
+    status: CODED_RECONCILIATION_REQUIRED
+required_documents_on_status_change:
+  - docs/implementation/PROJECT-STATUS.yaml
+  - docs/implementation/CURRENT-PHASE.md
+  - docs/CHANGELOG.md
+  - relevant_phase_evidence_log

@@ -11,3 +11,16 @@ data
 deploy/secrets
 tmp
 docs
+output
+**/playwright-report
+**/test-results
+**/*.log
+**/pgdata
+*.rar
+*.zip
+*.7z
+*.pdf
+
+**/__pycache__
+**/*.pyc
+.pytest_cache

@@ -23,7 +23,7 @@
 ## Kapsam dışı
 
 - F3+ gerçek adapter, credential, capability discovery, platform endpoint/DTO, webhook, sipariş, paket, iade veya dış HTTP çağrısı.
-- F4 fatura; F5/F6 diğer platformlar; F7 raporlama; F7B kullanıcı/RBAC; F8 ikinci tenant/RLS/switcher.
+- F4 fatura; ileri raporlama, çok kullanıcılı RBAC ve ikinci tenant bu teslimin dışındadır.
 - F3+ `/orders`, `/shipments`, `/returns`, `/invoices`, `/integrations`, `/operations` ekran ve endpointleri.
 - Fuzzy/AI ürün eşleme, title similarity merge, broker/cache/mikroservis veya aktif multi-tenant.
 - Doğrulanmamış platform enum, alan, endpoint ya da limit.

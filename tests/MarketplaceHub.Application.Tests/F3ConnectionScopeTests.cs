@@ -10,9 +10,8 @@ public sealed class F3ConnectionScopeTests
 {
     [Theory]
     [InlineData("TRENDYOL")]
-    [InlineData("HEPSIBURADA")]
     [InlineData("TRENDYOL_EFATURAM")]
-    public void Active_scope_contains_only_the_three_authorized_platforms(string platformCode)
+    public void Active_scope_contains_only_the_two_authorized_integrations(string platformCode)
     {
         Assert.True(ActiveIntegrationScope.Contains(platformCode));
         Assert.False(ActiveIntegrationScope.Contains("SHOPIFY"));
@@ -37,7 +36,7 @@ public sealed class F3ConnectionScopeTests
 
         var result = await service.CreateAsync(
             Guid.NewGuid(),
-            new CreateConnectionCommand("Deferred Shopify", "STAGE", "example.myshopify.com", "2026-07", null, "SHOPIFY"),
+            new CreateConnectionCommand("Out-of-scope platform", "STAGE", "external-store", "v1", null, "SHOPIFY"),
             CancellationToken.None);
 
         Assert.False(result.Succeeded);

@@ -104,7 +104,7 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Deferred_shopify_records_are_readable_but_all_new_activity_is_fail_closed()
+    public async Task Out_of_scope_legacy_platform_records_are_not_exposed_by_active_services()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var tenantId = Guid.NewGuid();
@@ -119,12 +119,12 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
                 Id = connectionId,
                 PublicId = Guid.NewGuid(),
                 TenantId = tenantId,
-                PlatformCode = "SHOPIFY",
+                PlatformCode = "LEGACY_PLATFORM",
                 Environment = "STAGE",
-                DisplayName = "Historical Shopify",
-                ExternalStoreId = "historical.myshopify.com",
-                ApiVersion = "2026-07",
-                Status = "ACTIVE",
+                DisplayName = "Legacy integration",
+                ExternalStoreId = "legacy-store",
+                ApiVersion = "v1",
+                Status = "DISABLED",
                 SettingsJson = "{\"externalWritesEnabled\":false}",
                 Version = 1
             });
@@ -135,17 +135,11 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
         await using var scope = provider.CreateAsyncScope();
         var service = scope.ServiceProvider.GetRequiredService<IF3ConnectionService>();
 
-        Assert.True((await service.GetAsync(tenantId, connectionId, cancellationToken)).Succeeded);
-        Assert.Equal("PLATFORM_DEFERRED", (await service.UpdateAsync(tenantId, connectionId, 1, new("Blocked", null), cancellationToken)).Error?.Code);
-        Assert.Equal("PLATFORM_DEFERRED", (await service.RotateCredentialAsync(tenantId, connectionId, 1, new(null, null, AccessToken: "blocked", ClientSecret: "blocked"), cancellationToken)).Error?.Code);
-        Assert.Equal("PLATFORM_DEFERRED", (await service.EnqueueTestAsync(tenantId, connectionId, "blocked", "scope-guard", cancellationToken)).Error?.Code);
-        Assert.Equal("PLATFORM_DEFERRED", (await service.SetActiveAsync(tenantId, connectionId, 1, true, cancellationToken)).Error?.Code);
-        Assert.Equal("PLATFORM_DEFERRED", (await service.UpsertSyncPolicyAsync(tenantId, connectionId, "ORDERS", null, new(60, 0, 0, true), cancellationToken)).Error?.Code);
-        Assert.Equal("PLATFORM_DEFERRED", (await service.CreateWebhookAsync(tenantId, connectionId, new("API_KEY", null, null, "blocked"), cancellationToken)).Error?.Code);
-
-        var disabled = await service.SetActiveAsync(tenantId, connectionId, 1, false, cancellationToken);
-        Assert.True(disabled.Succeeded);
-        Assert.Equal("DISABLED", disabled.Value?.Status);
+        Assert.Equal("RESOURCE_NOT_FOUND", (await service.GetAsync(tenantId, connectionId, cancellationToken)).Error?.Code);
+        Assert.Equal("RESOURCE_NOT_FOUND", (await service.UpdateAsync(tenantId, connectionId, 1, new("Blocked", null), cancellationToken)).Error?.Code);
+        Assert.Equal("RESOURCE_NOT_FOUND", (await service.RotateCredentialAsync(tenantId, connectionId, 1, new(null, null), cancellationToken)).Error?.Code);
+        Assert.Equal("RESOURCE_NOT_FOUND", (await service.EnqueueTestAsync(tenantId, connectionId, "blocked", "scope-guard", cancellationToken)).Error?.Code);
+        Assert.Equal("RESOURCE_NOT_FOUND", (await service.SetActiveAsync(tenantId, connectionId, 1, true, cancellationToken)).Error?.Code);
     }
 
     [Fact]

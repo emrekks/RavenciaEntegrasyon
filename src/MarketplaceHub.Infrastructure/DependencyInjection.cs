@@ -1,7 +1,5 @@
 using System.Security.Cryptography.X509Certificates;
 using MarketplaceHub.Application;
-using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
-using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
 using MarketplaceHub.Infrastructure.Bootstrap;
@@ -69,16 +67,6 @@ public static class DependencyInjection
         services.AddScoped<IOrderPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IReturnPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IWebhookVerifier, TrendyolWebhookVerifier>();
-        services.AddHttpClient("Shopify", client => client.Timeout = TimeSpan.FromSeconds(30)).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
-        services.AddScoped<ShopifyAuthenticationHandler>();
-        services.AddScoped<ShopifyGraphQlClient>();
-        services.AddScoped<ShopifyWebhookVerifier>();
-        services.Configure<HepsiburadaOptions>(configuration.GetSection(HepsiburadaOptions.SectionName));
-        services.AddHttpClient("Hepsiburada", client => client.Timeout = Timeout.InfiniteTimeSpan).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
-        services.AddScoped<HepsiburadaAuthenticationHandler>();
-        services.AddScoped<HepsiburadaConnectionProbe>();
-        services.AddScoped<HepsiburadaOrderReader>();
-        services.AddScoped<HepsiburadaAdapter>();
         services.AddScoped<IF3ConnectionService, F3ConnectionService>();
         services.AddScoped<IF3SalesService, F3SalesService>();
         services.AddScoped<IF3WebhookService, F3WebhookService>();

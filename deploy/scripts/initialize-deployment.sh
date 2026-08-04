@@ -37,6 +37,8 @@ require_single_line "Owner email" "$owner_email"
 [[ "$app_image" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]] || { echo "Application image must be immutable name@sha256." >&2; exit 1; }
 [[ "$edge_image" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]] || { echo "Edge image must be immutable name@sha256." >&2; exit 1; }
 [[ "$site_address" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || { echo "Site address must be an HTTPS origin without a path or query." >&2; exit 1; }
+allowed_host="${site_address#https://}"
+allowed_host="${allowed_host%%:*}"
 [[ "$owner_email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || { echo "Owner email format is invalid." >&2; exit 1; }
 
 targets=(
@@ -78,7 +80,7 @@ certificate_tmp="$staging_root/certificate"
 mkdir -- "$certificate_tmp"
 cleanup() {
   rm -rf -- "$staging_root"
-  unset owner_password postgres_password credential_key certificate_password
+  unset owner_password postgres_password credential_key certificate_password allowed_host
 }
 trap cleanup EXIT
 
@@ -113,6 +115,7 @@ cat > "$staging_root/production.env" <<EOF
 MARKETPLACEHUB_APP_IMAGE=$app_image
 MARKETPLACEHUB_EDGE_IMAGE=$edge_image
 MARKETPLACEHUB_SITE_ADDRESS=$site_address
+MARKETPLACEHUB_ALLOWED_HOSTS=$allowed_host
 MARKETPLACEHUB_BOOTSTRAP_TENANT_CODE=ravencia
 MARKETPLACEHUB_BOOTSTRAP_TENANT_NAME=Ravencia
 MARKETPLACEHUB_BOOTSTRAP_OWNER_EMAIL=$owner_email

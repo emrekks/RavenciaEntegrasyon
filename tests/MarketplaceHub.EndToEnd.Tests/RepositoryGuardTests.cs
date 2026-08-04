@@ -11,15 +11,14 @@ public sealed class RepositoryGuardTests
     }
 
     [Fact]
-    public void F6A_web_surface_has_only_approved_routes_and_no_later_phase_menu()
+    public void Active_web_surface_has_only_Trendyol_and_EFaturam_integrations()
     {
         var root = FindRoot(); var source = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Web", "src", "App.tsx"));
         foreach (var required in new[] { "/products", "/products/new", "/products/:id", "/catalog/categories", "/catalog/brands", "/catalog/attributes", "/imports", "/imports/:id", "/inventory", "/orders", "/orders/:id", "/shipments", "/returns", "/returns/:id", "/integrations", "/integrations/:id", "/mappings/categories", "/mappings/attributes", "/invoices", "/invoices/:id", "/settings/billing" }) Assert.Contains(required, source, StringComparison.Ordinal);
-        Assert.Contains("Hepsiburada", source, StringComparison.Ordinal);
-        foreach (var forbidden in new[] { "/reports", "/operations", "/tenants", "/users", "Shopify", "N11", "Pazarama" }) Assert.DoesNotContain(forbidden, source, StringComparison.OrdinalIgnoreCase);
+        foreach (var forbidden in new[] { "/reports", "/operations", "/tenants", "/users", "Shopify", "Hepsiburada", "N11", "Pazarama" }) Assert.DoesNotContain(forbidden, source, StringComparison.OrdinalIgnoreCase);
         var pages = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Web", "src", "F3Pages.tsx"));
-        foreach (var requiredPlatform in new[] { "<option value=\"TRENDYOL\">", "<option value=\"HEPSIBURADA\">", "<option value=\"TRENDYOL_EFATURAM\">" }) Assert.Contains(requiredPlatform, pages, StringComparison.Ordinal);
-        Assert.DoesNotContain("<option value=\"SHOPIFY\">", pages, StringComparison.Ordinal);
+        foreach (var requiredPlatform in new[] { "<option value=\"TRENDYOL\">", "<option value=\"TRENDYOL_EFATURAM\">" }) Assert.Contains(requiredPlatform, pages, StringComparison.Ordinal);
+        foreach (var forbiddenPlatform in new[] { "<option value=\"SHOPIFY\">", "<option value=\"HEPSIBURADA\">", "<option value=\"N11\">", "<option value=\"PAZARAMA\">" }) Assert.DoesNotContain(forbiddenPlatform, pages, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -81,9 +80,8 @@ public sealed class RepositoryGuardTests
         Assert.Contains("systemctl is-enabled --quiet docker", installer, StringComparison.Ordinal);
         Assert.Contains("systemctl is-active --quiet docker", installer, StringComparison.Ordinal);
         Assert.Contains("--deploy --bootstrap", runbook, StringComparison.Ordinal);
-        var specification = Path.Combine(root, "Ravencia_Entegrasyon_v3_4_Nihai_Uygulama_Surumu.pdf");
-        Assert.True(File.Exists(specification));
-        Assert.Equal("5A652AC34574A3310B844AECE647B96D350DD7AA79FDF3AC54C080827150EC51", Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(specification))));
+        Assert.True(File.Exists(Path.Combine(root, "docs", "specification", "current-scope.md")));
+        Assert.Empty(Directory.GetFiles(root, "*.pdf", SearchOption.TopDirectoryOnly));
         Assert.True(File.Exists(Path.Combine(root, "docs", "adr", "ADR-012-ubuntu-server-container-runtime.md")));
         Assert.True(File.Exists(Path.Combine(root, "docs", "adr", "ADR-013-aws-ubuntu-26-04-host-profile.md")));
         Assert.False(File.Exists(Path.Combine(root, "deploy", "scripts", "Install-MarketplaceHub.ps1")));
@@ -98,6 +96,24 @@ public sealed class RepositoryGuardTests
         Assert.DoesNotContain(":latest", installer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("WSL", installer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Docker Desktop", installer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Repository_hygiene_is_enforced_before_build_and_packaging()
+    {
+        var root = FindRoot();
+        var gitignore = File.ReadAllText(Path.Combine(root, ".gitignore"));
+        var dockerignore = File.ReadAllText(Path.Combine(root, ".dockerignore"));
+        var verifier = File.ReadAllText(Path.Combine(root, "scripts", "verify-repository-cleanliness.py"));
+        var workflow = File.ReadAllText(Path.Combine(root, ".github", "workflows", "publish-release-images.yml"));
+
+        foreach (var required in new[] { "**/bin/", "**/obj/", "**/node_modules/", "output/", "*.rar", "*.zip", "**/pgdata/" })
+            Assert.Contains(required, gitignore, StringComparison.Ordinal);
+        foreach (var required in new[] { ".git", "**/bin", "**/obj", "**/node_modules", "output", "**/pgdata", "*.rar", "*.zip" })
+            Assert.Contains(required, dockerignore, StringComparison.Ordinal);
+        Assert.Contains("FORBIDDEN_DIRECTORY_NAMES", verifier, StringComparison.Ordinal);
+        Assert.Contains("verify-repository-cleanliness.py", workflow, StringComparison.Ordinal);
+        Assert.Contains("api/MarketplaceHub.Api.dll\", \"healthcheck", File.ReadAllText(Path.Combine(root, "deploy", "compose", "compose.yaml")), StringComparison.Ordinal);
     }
 
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }

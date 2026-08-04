@@ -1,4 +1,4 @@
-# F1–F6A Yerel Geliştirme Runbook'u
+# Trendyol ve E-Faturam Yerel Geliştirme Runbook'u
 
 ## Secret hazırlığı
 

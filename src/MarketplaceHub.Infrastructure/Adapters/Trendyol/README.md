@@ -20,6 +20,7 @@ Doğrulama tarihi `2026-07-31`'dir. Production kökü `https://apigw.trendyol.co
 | Brands | `GET product/brands` | <https://developers.trendyol.com/v2.0/docs/trendyol-brand-list-getbrands-1> |
 | Order cursor stream | `GET order/sellers/{sellerId}/orders/stream` | <https://developers.trendyol.com/v2.0/docs/getshipmentpackagesstream> |
 | Return claims | `GET order/sellers/{sellerId}/claims` | <https://developers.trendyol.com/v2.0/docs/getting-returned-orders-getclaims> |
+| Send invoice link | `POST sellers/{sellerId}/seller-invoice-links` | <https://developers.trendyol.com/v2.0/reference/sendinvoicelink> |
 
 Basic Auth ve zorunlu User-Agent, <https://developers.trendyol.com/v2.0/docs/authorization> kaynağına göre uygulanır. Runtime rate policy sabit bir tahmin kullanmaz; `429` ve varsa `Retry-After` otoritedir.
 
@@ -32,6 +33,7 @@ Kategori özellik snapshot'ı `categoryId`, özellik değeri snapshot'ı `catego
 - Global `FeatureFlags:ExternalWrites` ile connection içi `ExternalWritesEnabled` birlikte açık değilse write portu HTTP üretmez.
 - Connection içi write anahtarını açan API özellikle yoktur; Stage safe-write kanıtı ve ayrı kullanıcı kararı beklenir.
 - Archive, ayrık stock/price, package action ve return action için exact Stage sözleşmesi kanıtlanmadığından adapter endpoint uydurmaz ve `CAPABILITY_NOT_VERIFIED` döner.
+- Trendyol’a gönderilen fatura bağlantısı yalnız HTTPS olmakla yetinmez; resmî sözleşmedeki sekiz yıllık erişilebilirlik şartı provider/operasyon kanıtı olmadan production-ready sayılmaz.
 - Webhook auth yalnız resmî `API_KEY` (`x-api-key`) veya `BASIC_AUTHENTICATION` modelidir. Trendyol için belgelenmemiş HMAC/timestamp uygulanmaz.
 
 ## Fixture standardı

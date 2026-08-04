@@ -11,6 +11,7 @@ x-app: &app
   environment:
     ASPNETCORE_ENVIRONMENT: Production
     MARKETPLACEHUB_ENVIRONMENT: PILOT_LOCAL
+    AllowedHosts: "${MARKETPLACEHUB_ALLOWED_HOSTS:-localhost;127.0.0.1}"
     ConnectionStrings__AppDb_FILE: /run/secrets/app_db_connection
     Security__CredentialKey_FILE: /run/secrets/credential_key
     Bootstrap__OwnerPassword_FILE: /run/secrets/bootstrap_owner_password
@@ -75,7 +76,7 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
     healthcheck:
-      test: ["CMD-SHELL", "test -r /proc/1/cmdline"]
+      test: ["CMD", "dotnet", "api/MarketplaceHub.Api.dll", "healthcheck"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -97,7 +98,7 @@ services:
     init: true
     networks: [edge, backend]
     ports: ["80:80", "443:443", "443:443/udp"]
-    environment: { MARKETPLACEHUB_SITE_ADDRESS: "https://localhost" }
+    environment: { MARKETPLACEHUB_SITE_ADDRESS: "${MARKETPLACEHUB_SITE_ADDRESS:-https://localhost}" }
     volumes: [caddy_data:/data, caddy_config:/config]
     depends_on:
       api: { condition: service_healthy }

@@ -1,73 +1,111 @@
-# MarketplaceHub
+# Ravencia MarketplaceHub
 
-Bağlayıcı uygulama şartnamesi [v3.4 Nihai Uygulama Sürümü](Ravencia_Entegrasyon_v3_4_Nihai_Uygulama_Surumu.pdf)'dür. v3.3 ve v3.2 tarihsel taban olarak korunur; v3.4 mevcut AWS Ubuntu Server hedef revizyonu dağıtım-host hükümlerinde üstündür.
+> **Codex/devralma başlangıç noktası:** Önce [`AGENTS.md`](AGENTS.md), [`RAVENCIA-NIHAI-PROJE-BELGESI.md`](docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md), [`PROJECT-STATUS.yaml`](docs/implementation/PROJECT-STATUS.yaml) ve [`CURRENT-PHASE.md`](docs/implementation/CURRENT-PHASE.md) dosyalarını okuyun. Aktif durum `F3_CLOSURE_ACTIVE / F4_IN_PROGRESS / PRODUCTION_BLOCKED` olarak işaretlenmiştir.
 
-Ravencia MarketplaceHub, yetkili v3.4 şartnamesine göre geliştirilen modüler monolit e-ticaret yönetim sistemidir. Repository’de F1–F6A yerel çekirdekleri bulunur:
+Ravencia MarketplaceHub, tek işletmenin Trendyol satış, ürün, sipariş, iade ve Trendyol E-Faturam süreçlerini aynı panelden yönetmesi için geliştirilen modüler monolit uygulamadır.
 
-- F1: kimlik, güvenli oturum, tenant sınırı, job/inbox/idempotency, private file ve operasyon altyapısı.
-- F2: ürün, varyant, katalog referansları, CSV/XLSX içe aktarım, stok projection/ledger ve fiyat geçmişi.
-- F3: Trendyol V2 adapter sınırı, bağlantı/capability yönetimi, sipariş, paket, gönderi, iade, webhook ve reconciliation.
-- F4: fatura/mali belge çekirdeği, E-Faturam adapter sınırı, private belge saklama ve marketplace delivery ayrımı.
-- F5: Shopify Admin GraphQL `2026-07` adapter çekirdeği, HMAC webhook ve streaming bulk JSONL sözleşmesi.
-- F6A: Hepsiburada Sipariş SIT Basic Auth bağlantı testi doğrulandı; sipariş alan eşlemesi ve bütün dış yazmalar kanıt beklediği için kapalı.
 
-Yerel çekirdek durumu `READY_LOCAL_CORE`dır. Gerçek platform test hesapları, granted capability/scope kanıtları, hedef Ubuntu Server, public HTTPS, backup/restore hedefi ve iş otoritesi kararları tamamlanmadığından production kabulü `BLOCKED_EXTERNAL`dır. Bütün dış yazma anahtarları varsayılan olarak kapalıdır.
+## Yetkili nihai belge
+
+Proje öncesi planlama, karar geçmişi, kullanıcı paneli işleyişi, mimari, güvenlik, test, production kabulü ve gelecekte yeni platform ekleme planı için ana kaynak: [RAVENCIA-NIHAI-PROJE-BELGESI.md](docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md). Makinece okunabilir durum `PROJECT-STATUS.yaml`, güncel faz ve anlık blokajlar `CURRENT-PHASE.md` içinde tutulur. Kronolojik değişiklik özeti `docs/CHANGELOG.md` içindedir.
+
+## Aktif kapsam
+
+Yeni geliştirme ve doğrulama yalnız iki entegrasyon kodunda yapılır:
+
+- `TRENDYOL`
+- `TRENDYOL_EFATURAM`
+
+Diğer pazaryerlerine ait adapter, UI seçeneği, Worker yönlendirmesi, test ve faz dokümanları kaynak ağacından çıkarılmıştır. Yeni platform ancak bu iki entegrasyonun tamamlanma kapıları geçildikten ve ayrı bir ADR ile onaylandıktan sonra eklenir. Ayrıntılı kapsam: [current-scope.md](docs/specification/current-scope.md).
+
+## Mimari
+
+- .NET `10.0.302`: API, Worker, Application, Domain ve Infrastructure katmanları
+- React + TypeScript: yönetim paneli
+- PostgreSQL `18.4`: kalıcı veri, idempotency, inbox ve job lease kayıtları
+- Docker Compose + Caddy: Linux container üretim çalıştırması
+- Tek işletme / tek aktif tenant; ikinci tenant ve aktif multi-tenant yüzeyi yok
+- Dış yazmalar iki ayrı kapı ile varsayılan kapalı: global `FeatureFlags__ExternalWrites=false` ve bağlantı ayarı
+
+## Uygulama durumu
+
+| Alan | Durum |
+| --- | --- |
+| Kimlik, oturum, MFA altyapısı, tenant sınırı | Yerel çekirdek hazır |
+| Yerel ürün/katalog/stok/fiyat modeli ve içe aktarım | Yerel çekirdek hazır |
+| Trendyol bağlantı, kategori/marka/özellik/değer okuma | Kodlandı; gerçek hesapla tekrar doğrulanmalı |
+| Trendyol ürün ve sipariş okuma | Kodlandı; gerçek hesapla kabul testi gerekli |
+| Trendyol ürün oluşturma adapterı | Kodlandı ancak uygulama orkestrasyonu ve güvenli Stage yazma kanıtı eksik |
+| Trendyol stok + fiyat yazma | Tamamlanmadı; birleşik uzak istek modeline dönüştürülecek |
+| Trendyol paket/iade yazmaları | Tamamlanmadı; capability kanıtı olmadan kapalı |
+| E-Faturam giriş, fatura gönderimi, PDF kalıcı URL | Kodlandı; test firma E2E kanıtı gerekli |
+| E-Faturam mükellef sorgu, durum sorgu, iptal | Tamamlanmadı; fail-closed |
+| Fatura linkini Trendyol’a iletme | Kodlandı; gerçek package ile Stage kabul testi gerekli |
+| Production kabulü | Engelli; dış hesap, mali karar, backup ve E2E kanıtları gerekiyor |
+
+“Adapter kodu var” ifadesi “production’da tamamen çalışıyor” anlamına gelmez. Güncel capability tablosu [capability-matrix.md](docs/platform-rules/capability-matrix.md), detaylı inceleme [2026-08-04-project-review.md](docs/reviews/2026-08-04-project-review.md) içindedir.
 
 ## Gereksinimler
 
 - .NET SDK `10.0.302`
-- Node.js hedefi `24.18.1` ve npm `11.12.1` (doğrulanan yerel Node `24.15.0` yalnız engine uyarısı üretir)
+- Node.js `24.18.1`
+- npm `11.12.1`
 - PostgreSQL `18.4`
-- Container çalıştırmada Linux container destekli Docker Engine
-- Şartname gereği Compose CLI `v2.40.2`
-
-Kesin sürüm ve digest kayıtları [verified-versions.md](docs/dependencies/verified-versions.md) içindedir.
+- Docker Engine ve Compose `2.40.2`
 
 ## Doğrulama
 
-```powershell
+Kaynak ağacını derlemeden önce:
+
+```bash
+python3 scripts/verify-repository-cleanliness.py
+# Teslim için oluşturulan kopyada ayrıca:
+python3 scripts/verify-repository-cleanliness.py --package
+```
+
+Backend:
+
+```bash
 dotnet restore MarketplaceHub.sln --locked-mode
 dotnet build MarketplaceHub.sln --no-restore
-dotnet test MarketplaceHub.sln --no-build
-Set-Location src/MarketplaceHub.Web
-npm ci
+dotnet test MarketplaceHub.sln --no-build --no-restore
+dotnet format MarketplaceHub.sln --verify-no-changes --no-restore
+```
+
+Web:
+
+```bash
+cd src/MarketplaceHub.Web
+npm ci --ignore-scripts
 npm run typecheck
-npm test
+npm test -- --run
 npm run build
 ```
 
-Persistence integration testleri varsayılan olarak Testcontainers kullanır. Docker yoksa `MARKETPLACEHUB_TEST_POSTGRES` ile verilen, geçici veritabanı oluşturma/silme yetkili ayrı bir yerel PostgreSQL yönetici bağlantısını kullanabilir; test runner benzersiz test veritabanını kendisi oluşturur ve sonunda siler. Docker’sız Windows geliştirme seçeneği [local-development.md](docs/runbooks/local-development.md) içinde açıklanmıştır.
+## Container çalıştırma
 
-## Yerel container çalıştırma
-
-`deploy/secrets/` altındaki yerel secret dosyaları oluşturulmadan Compose başlatılmaz. Secret değerleri Git’e, image’a veya Compose YAML’ına yazılmaz.
-
-```powershell
-& "$env:LOCALAPPDATA\Ravencia\tools\docker-compose-v2.40.2.exe" -f deploy/compose/compose.yaml up -d
-```
-
-Yalnız Caddy `80/443` host portlarını açar. API, Worker ve PostgreSQL internal backend ağındadır. PILOT_LOCAL edge ayrı internal CA kullanır; production edge public DNS için otomatik HTTPS kullanır. Ubuntu Server'a ilk kurulum veya mevcut veriyi taşıma için [Ubuntu dağıtım runbook'u](docs/runbooks/ubuntu-server-deployment.md), production işlemleri için [immutable image release](docs/runbooks/image-release.md), [deployment-and-rollback.md](docs/runbooks/deployment-and-rollback.md), kimlik işlemleri için [identity-operations.md](docs/runbooks/identity-operations.md), fatura işlemleri için [invoice-operations.md](docs/runbooks/invoice-operations.md) ve kurtarma için [backup-and-restore.md](docs/runbooks/backup-and-restore.md) kullanılır.
-
-Ubuntu Server üzerinde etkileşimli hazırlık ve fail-closed doğrulama:
+Secret dosyaları `deploy/secrets/` altında yerel olarak oluşturulur ve Git’e eklenmez. Yalnız Caddy host portu açar; API, Worker ve PostgreSQL backend ağında kalır.
 
 ```bash
-chmod +x deploy/scripts/*.sh
-sudo -H ./deploy/scripts/install-marketplacehub.sh --host-only
+docker compose -f deploy/compose/compose.yaml up -d
 ```
 
-## Faz ve güvenlik sınırı
+Production override kullanılırken aşağıdakiler zorunludur:
 
-Aktif ve onaylanmış son yerel uygulama alt fazı F6A’dır. İşletme sahibinin 2026-08-03 tarihli ADR-015 kararıyla aktif teslim sırası yalnız `Trendyol → Hepsiburada → Trendyol E-Faturam`dır. Bu üç platform onaylı iş kapsamı için uçtan uca çalışır ve kanıtlı hale gelmeden Shopify, N11, Pazarama veya F7+ üzerinde yeni geliştirme/doğrulama başlatılmaz. F6B N11, F6C Pazarama veya F7+ route, menü, migration ya da placeholder bulunmaz. Adapter kodunun bulunması gerçek mağaza capability’sinin kanıtlandığı anlamına gelmez:
+- `MARKETPLACEHUB_ALLOWED_HOSTS`
+- `MARKETPLACEHUB_SITE_ADDRESS`
+- digest ile sabitlenmiş `MARKETPLACEHUB_APP_IMAGE`
+- digest ile sabitlenmiş `MARKETPLACEHUB_EDGE_IMAGE`
+- Data Protection sertifikası ve secret dosyaları
 
-Bağlayıcı güncel şartname: [`Ravencia Entegrasyon v3.5`](output/pdf/Ravencia_Entegrasyon_v3_5_Nihai_Uygulama_Surumu.pdf). v3.5 iki karar revizyon sayfasıyla v3.4/v3.3 revizyonlarını ve v3.2 tabanını eksiksiz korur.
+API container sağlık kontrolü gerçek `/health/ready` endpoint’ini çağırır; yalnız prosesin varlığı başarı sayılmaz. Caddy production alan adında varsayılan otomatik TLS akışını kullanır; `tls internal` ile özel CA sertifikasına zorlanmaz.
 
-- Capability’ler bağlantı/environment/store/API-version kapsamında başta `UNKNOWN`dır.
-- Token ve secret değerleri şifreli saklanır, API/UI/log çıktısında geri gösterilmez.
-- Shopify `DEFERRED` durumundadır; mevcut yerel kod korunur, bütün capability ve yazmaları yeni işletme sahibi kararına kadar fail-closed kalır.
-- Hepsiburada credential, salt-okunur Sipariş SIT bağlantı testi ve `ORDER_READ` açıktır. 2026-08-03'te iki dolu SIT siparişi generic sipariş modeline işlendi; katalog/stok-fiyat/package-action/return/webhook capability'leri ve bütün dış yazmalar kapalıdır.
-- Fatura otomasyonu mali kararlar ve test firma kanıtı olmadan kapalıdır.
-- AWS Ubuntu Server host profili, Docker Engine, systemd reboot ve named-volume kalıcılığı doğrulanmıştır; restore, domain/TLS ve RTO kanıtları tamamlanana kadar sonuç production kabulü sayılmaz.
+## Git geçmişi ve paketler
 
-Ubuntu Server kurulumu ve Stage/SIT hesap kanıtları ertelenmiş olsa da production aday imajlarını GitHub Container Registry'ye digest ile üreten manuel ve fail-closed yayın akışı repository'dedir. Bu hazırlık faz kapılarını açmaz: F6B/F6C/F7+ üretim kodu, gerçek platform write ve canlı deploy hâlâ ilgili dış kanıt ve ayrı onayları bekler.
+Ana geliştirme repository'sinde `.git` geçmişi korunur. Codex ve geliştirici commit, tag, diff ve blame bilgilerini buradan kullanır. Temiz release/deployment paketinde ise `.git`, secret, runtime veri ve üretilmiş çıktılar bulunmaz. Production teslimi tercihen CI tarafından üretilen immutable image digestleriyle yapılır.
 
-Güncel faz durumu [F6A planında](docs/implementation/F6A-plan.md), kanıtlar [F6A evidence logunda](docs/implementation/F6A-evidence-log.md), bütün faz izi ise [traceability matrixte](docs/implementation/traceability-matrix.md) tutulur.
+## Depo temizliği
+
+Kaynak paketine `.git`, `bin`, `obj`, `node_modules`, `dist`, test çıktısı, log, PostgreSQL data/WAL, secret, PDF üretim çıktısı veya arşiv dosyası eklenmez. Temiz paket üretmeden önce temizlik doğrulayıcısı çalıştırılır.
+
+Uygulanmış migration dosyaları geçmiş zinciridir ve adında eski bir faz kodu bulunsa bile silinmez veya yeniden adlandırılmaz. Migration kimliğinin değiştirilmesi mevcut veritabanlarının yükseltme geçmişini bozabilir.

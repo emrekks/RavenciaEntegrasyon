@@ -1,111 +1,23 @@
-# F0 İzlenebilirlik Matrisi
+# Güncel İzlenebilirlik Matrisi
 
-## Kural
-
-Bu matris yalnız F0 dokümantasyon teslimatlarını izler. Gelecek kod ve test yolları bilerek `F1+ / henüz yok` olarak gösterilir; F0 sırasında production artefaktı oluşturulmaz. Durumlar: `DONE`, `BLOCKED_EXTERNAL`, `PENDING_F1`.
-
-| Kimlik | Faz | Kabul ölçütü | F0 kanıtı | Gelecek kod/test | Dış bağımlılık | Durum |
-| --- | --- | --- | --- | --- | --- | --- |
-| `F0-REQ-001` | F0 | Gereksinim-faz-kabul-kaynak-durum bağı kuruludur. | Bu matris; `Fx-plan-template.md` | F1+ / henüz yok | Yok | DONE |
-| `F0-REQ-002` | F0 | ADR-001–010 karar, sonuç ve değişiklik kapısı içerir. | `docs/adr/ADR-001`–`ADR-010` | F1+ / henüz yok | Yok | DONE |
-| `F0-REQ-003` | F0 + ADR-015 | Tarihsel sıra korunarak aktif teslim `Trendyol → Hepsiburada → Trendyol E-Faturam` ile sınırlandırılmıştır. | v3.5 PDF; ADR-015; `F0-external-dependencies.md`; capability matrisi | Aktif üç platform kanıtları | Test hesapları | SUPERSEDED_OPERATIONALLY_BY_ADR_015 |
-| `F0-REQ-004` | F0 | Her platform/capability kanıt alanlarıyla kayıtlıdır. | `docs/platform-rules/capability-matrix.md` | Adapter testleri F4+ | Resmî kaynak ve test hesabı | DONE |
-| `F0-REQ-005` | F0 | Güvenli iş otoriteleri açık ve çelişkisizdir. | `F0-business-authorities.md`; ADR-006 | Domain uygulaması F2+ | Yok | DONE |
-| `F0-REQ-006` | F0 | Hacim, pik x5, RPO/RTO ve backup profili kayıtlıdır. | `F0-capacity-recovery-profile.md`; ADR-010 | Load/restore testleri F1+ | Hedef restore/RTO geçti; x5 yük ve şifreli off-host kopya bekliyor | BLOCKED_EXTERNAL |
-| `F0-REQ-007` | F0 | Environment/secret, threat, risk, kill switch ve rollback kayıtlıdır. | İlgili beş F0 belgesi; ADR-007 | Uygulama kontrolleri F1+ | Secret store ve hedef ortam | DONE |
-| `F0-REQ-008` | F0 | Fake adapter/anonim fixture standardı tanımlıdır. | `fake-adapter-fixture-standard.md` | Fixture/test uygulaması F1+ | Test hesabı fixture'ları | DONE |
-| `F0-REQ-009` | F0 | Mevcut AWS Ubuntu Server 26.04 LTS üzerinde direct Docker Engine, Linux/amd64, systemd/reboot, volume ve restore kanıtı vardır. | `ubuntu-server-runtime-validation.md`; ADR-013 | Dağıtım F1+ | Restore, domain/DNS ve production image testleri | PARTIAL_REBOOT_VOLUME_VERIFIED |
-| `F0-REQ-010` | F0 | Stitch ileri tarihli, engelleyici olmayan bağımlılıktır. | `F0-external-dependencies.md` | UI uygulaması ilgili faz | Stitch dosyası | DONE |
-| `F0-REQ-011` | F0 | Exact sürüm, resmî kaynak, tarih, lock ve digest kayıtlıdır. | `verified-versions.md`; F0 verification lock/digest kanıtları | Production lock/image F1 | Hedef child digest host runbook'una bağlı | DONE_F0 |
-| `F0-VAL-001` | F0 | Her gereksinim tek faz ve ölçülebilir kabule bağlıdır. | Bu matris | Yok | Yok | DONE |
-| `F0-VAL-002` | F0 | Kanıtsız capability `UNKNOWN`; uydurma sözleşme yoktur. | Capability matrisi incelemesi | Adapter sözleşmeleri F4+ | Test hesapları | DONE |
-| `F0-VAL-003` | F0 | Fixture standardı secret/PII yasaklar. | Fixture standardı | Tarama testi F1+ | Fixture erişimi | DONE |
-| `F0-VAL-004` | F0 | ADR'ler şartname ve birbirleriyle çelişmez. | ADR karar özeti ve çapraz bağlantılar | Yok | Yok | DONE |
-| `F0-VAL-005` | F0 | F1 gerçek platform secret'ı olmadan başlayabilir. | Fake adapter standardı; test-only deterministic Fake adapter; tüm write anahtarları kapalı | EndToEnd Fake senaryo ve full-stack browser testleri | Yok | DONE_WITH_LOCAL_FAKE_RC |
-| `F0-VAL-006` | F0 | Exact sürüm + kaynak + lock/digest eksiksizdir. | F0 locked restore/dry-run, index digest ve Compose checksum kanıtı | Production aktarımı F1 | Hedef child digest host runbook'una bağlı | DONE_F0 |
-| `F0-EXIT-001` | F0 | F1'i durduran mimari belirsizlik yoktur. | ADR-001–010 | Yok | Kullanıcı kabulü | DONE |
-| `F0-EXIT-002` | F0 | Dış bağımlılık, blocker ve güvenli fallback kayıtlıdır. | Dependency/risk kayıtları | Yok | Dış sağlayıcılar | DONE |
-| `F0-EXIT-003` | F0 | Runtime, volume ve backup uygulanabilirliği hedefte kanıtlıdır. | Ubuntu runbook ve recovery profilinde kanıt yuvaları | Runtime testleri production öncesi | Hedef Ubuntu Server | BLOCKED_EXTERNAL |
-| `F0-EXIT-004` | F0 | Sürüm belgesi commitli; lock/digest tutarlıdır. | F0 verification lock/digest seti; baseline commit `00c7b78591f158babb040070bf0aa0f04acace8e` | Production aktarımı F1 | Yok | DONE_F0 |
-
-## F0 sonucu
-
-Dokümantasyon ve dependency kanıt kapsamı tamamlanmıştır. `F0-REQ-006`, `F0-REQ-009` ve `F0-EXIT-003` hedef Ubuntu Server/restore kanıtı nedeniyle açıktır; F0 çıkışı `BLOCKED`dır.
-
-## F1 uygulama izi
-
-F1 ayrıntılı kabul ve kanıt eşlemesi [F1-plan.md](F1-plan.md) ve [F1-evidence-log.md](F1-evidence-log.md) içindedir. Özet bağ:
-
-| Aralık | Uygulama | Kanıt | Sonuç |
+| Gereksinim | Uygulama alanı | Test/kanıt | Durum |
 | --- | --- | --- | --- |
-| `F1-REQ-001–003` | Root solution/locks, tek AppDbContext/migration, advisory-lock bootstrap, manual GHCR digest workflow | Zero-warning build, fresh/concurrent/repeat PostgreSQL test, production TLS/digest repository guard | DONE_LOCAL_DEPLOY_PREPARED |
-| `F1-REQ-004–008` | Identity, custom session, CSRF, password-only, TOTP/recovery, revoke ve break-glass | HTTPS auth zinciri, parallel recovery test, audit doğrulaması | DONE_LOCAL |
-| `F1-REQ-009–012` | Server-side tenant context, job/inbox/effect, append-only audit, private file | Tenant/file guards; dedup/lease/heartbeat/stale/reaper testleri | DONE_LOCAL |
-| `F1-REQ-013–015` | `_FILE` secret, DP volume/PFX gate, JSON health/log, Caddy/Compose/backup | Container smoke, port/non-root/header/cookie ve restore kanıtı | DONE_LOCAL |
-| `F1-REQ-016–017` | React auth/security kabuğu ve operasyon/image-release runbook'ları | Strict TS, component, bundle, Playwright Chromium; runbook incelemesi | DONE_LOCAL_DEPLOY_PREPARED |
-| `F1-EXIT-001–006` | Yerel F1 çıkış seti | `F1-EV-001–019` | READY_LOCAL_DEPLOY_PREPARED |
-
-Hedef Ubuntu Server runtime/systemd/reboot/volume kanıtı tamamlanmıştır. RTO/restore, production PFX/off-host hedef ve manuel workflow çalıştırmasıyla üretilecek registry-pushed image digest'i dış bağımlılıktır; production kabulü `BLOCKED_EXTERNAL`dır. Bu F1 kayıt anında F2 henüz açılmamıştı.
-
-## F2 uygulama izi
-
-F2 ayrıntılı kabul ve kanıt eşlemesi [F2-plan.md](F2-plan.md) ve [F2-evidence-log.md](F2-evidence-log.md) içindedir.
-
-| Aralık | Uygulama | Kanıt | Sonuç |
-| --- | --- | --- | --- |
-| `F2-REQ-001–004` | Product/Variant/katalog/typed attribute/reference mapping/listing override fiziksel modeli | PostgreSQL 18.4 fresh migration, metadata ve constraint testleri | DONE_LOCAL |
-| `F2-REQ-005–007` | CSV/XLSX staging, deterministik matching, review/decision/apply ve provenance | Import repeat testi; macro/formula/malformed/CSV-neutralization fixture'ları | DONE_LOCAL |
-| `F2-REQ-008–010` | MAIN inventory projection, ledger/idempotency/reservation, ChannelOffer/Money/history | Domain ve PostgreSQL duplicate/history testleri | DONE_LOCAL |
-| `F2-REQ-011–012` | F2 API, cursor/ETag/ProblemDetails/idempotency ve capability fail-closed kapıları | Route guard; 1.000 ürün cursor testi; no-job kanıtı | DONE_LOCAL |
-| `F2-REQ-013–014` | Onaylı F2 web yolları ve bounded hacim | Strict TS/Vite/Vitest/Playwright; 10.000 satır import testi | DONE_LOCAL |
-| `F2-EXIT-001–005` | Yerel F2 çıkış seti | `F2-EV-001–015` | READY_LOCAL |
-
-Gerçek platform capability/test hesapları, hedef Ubuntu runtime, registry digest, production PFX, off-host backup ve ölçülmüş RTO dış bağımlılıktır. Production kabulü `BLOCKED_EXTERNAL`; F3 açılmamıştır.
-
-## F3 uygulama izi
-
-F3 ayrıntılı kabul ve kanıt eşlemesi [F3-plan.md](F3-plan.md) ve [F3-evidence-log.md](F3-evidence-log.md) içindedir.
-
-| Aralık | Uygulama | Kanıt | Sonuç |
-| --- | --- | --- | --- |
-| `F3-REQ-001–004` | Trendyol connection/credential/capability, Product V2 ve reference adapter sınırı | V2 route/source guard, encrypted credential, fixture parser testleri | DONE_LOCAL_CORE |
-| `F3-REQ-005–009` | Product/batch fail-closed, webhook Basic/API-key + Inbox, cursor/overlap polling | Partial batch, raw webhook guard, worker job/dedup kodu | DONE_LOCAL_CORE / WRITE BLOCKED_EXTERNAL |
-| `F3-REQ-010–013` | Order/Line/Package/history, ShipmentDocument, Return/Decision/Evidence/Disposition | PostgreSQL 18.4 migration, domain invariant ve metadata testleri | DONE_LOCAL_CORE |
-| `F3-REQ-014–019` | Local dry reconciliation, kill switch, F3 API/UI, adapter fixtures, resilience ve test-only deterministic Fake adapter | Route/repository/secret scan; Fake success/empty/partial/error/replay, PostgreSQL job/worker-kill/retry ve Chromium→API→gerçek Worker→Fake→UI senaryosu; .NET/Web build ve test seti | READY_LOCAL_CORE; FULL_LOCAL_FAKE_RC PASS; PERFORMANCE/STAGE BLOCKED_EXTERNAL |
-| `F3-EXIT-001–006` | F3 çıkış seti | `F3-EV-001–020` | BLOCKED_EXTERNAL |
-
-## F4 uygulama izi
-
-F4 ayrıntılı kabul ve kanıt eşlemesi [F4-plan.md](F4-plan.md) ve [F4-evidence-log.md](F4-evidence-log.md) içindedir.
-
-| Aralık | Uygulama | Kanıt | Sonuç |
-| --- | --- | --- | --- |
-| `F4-REQ-001–004` | LegalEntity/Policy, invoice/line/party snapshot ve allow-list mali state modeli | PostgreSQL 18.4 fresh migration, metadata/state testleri; onaysız mali otorite fail-closed | DONE_LOCAL_CORE / POLICY BLOCKED_DECISION |
-| `F4-REQ-005–010` | Provider/marketplace portları, E-Faturam sınırı, attempt/unknown/document/delivery modeli | Resmî source guard, anonim taxpayer fixture, private checksum/no-store ve job ayrımı | DONE_LOCAL_CORE / PROVIDER-STAGE BLOCKED_EXTERNAL |
-| `F4-REQ-011–015` | Cancellation/adjustment fallback, due issue, korumalı API, F4 UI ve reconciliation | API/repository guard, Web build/test, local dry reconciliation | PARTIAL_LOCAL / POLICY-STAGE BLOCKED_EXTERNAL |
-| `F4-REQ-016–018` | Credential/PII koruması, tek F4 migration, DB+file restore sınırı | Secret masking/protection, PostgreSQL integration; hedef restore açık | DONE_LOCAL_CORE / RESTORE BLOCKED_EXTERNAL |
-| `F4-EXIT-001–004` | F4 yerel çıkış seti | `F4-EV-001–017` | READY_LOCAL_CORE; BLOCKED_EXTERNAL |
-
-## F5 uygulama izi
-
-F5 ayrıntılı kabul ve kanıt eşlemesi [F5-plan.md](F5-plan.md) ve [F5-evidence-log.md](F5-evidence-log.md) içindedir.
-
-| Aralık | Uygulama | Kanıt | Sonuç |
-| --- | --- | --- | --- |
-| `F5-REQ-001–004` | Pinned Admin GraphQL 2026-07, canonical shop scope, encrypted token/client-secret ve capability UNKNOWN başlangıcı | Build, boundary ve adapter contract testleri | DONE_LOCAL_CORE / DEFERRED_BY_ADR_015 |
-| `F5-REQ-005–009` | Generic product/inventory/order portları, JSONL checkpoint, GraphQL error ayrımı ve fail-closed writes | `F5ShopifyContractTests`; development-store yok | PARTIAL_LOCAL / BLOCKED_EXTERNAL / DEFERRED_BY_ADR_015 |
-| `F5-REQ-010–014` | Raw-body HMAC, Inbox dedupe, worker dispatch, mevcut integrations UI ve no-migration reuse | HMAC testleri, source guard, Web build | DONE_LOCAL_CORE / PUBLIC_WEBHOOK BLOCKED_EXTERNAL / DEFERRED_BY_ADR_015 |
-| `F5-EXIT-001–004` | F5 çıkış seti | `F5-EV-001–010`; ADR-015 | READY_LOCAL_CORE; DEFERRED_BY_ADR_015 |
-
-## F6A uygulama izi
-
-F6A ayrıntılı kabul ve kanıt eşlemesi [F6A-plan.md](F6A-plan.md) ve [F6A-evidence-log.md](F6A-evidence-log.md) içindedir.
-
-| Aralık | Uygulama | Kanıt | Sonuç |
-| --- | --- | --- | --- |
-| `F6A-REQ-001–002` | Yalnız Hepsiburada F6A; Stage bağlantısı, guide version, Basic Auth, User-Agent ve merchant scope doğrulandı | Faz guard, şifreli credential, AWS SIT connection/order-read kanıtı | PASS_ORDER_SIT / OTHER_FAMILIES BLOCKED_EXTERNAL |
-| `F6A-REQ-003–010` | Generic reference/product/inventory/order/return portları, atomik package güvenliği, durable retry state/backoff/max-attempt, worker heartbeat/fencing; Sipariş SIT salt-okunur, bütün write kapalı | F6A contract/property tests, AWS dolu SIT order response (`items=2`), `merchantSKU` contract, worker build/policy, EF model/SQL ve PostgreSQL 18.4 worker-kill/retry testi | CONNECTION+ORDER_READ PASS_ORDER_SIT / PACKAGE SAFETY PASS_LOCAL_PROPERTY / RETRY+HEARTBEAT PASS_POSTGRES_LOCAL / OTHER MAPPINGS BLOCKED_EXTERNAL |
-| `F6A-REQ-011–015` | HTTP hata sınıfları, capability/kill-switch, secret/auth sınırı, yerel kuru mutabakat/rollback rehberi ve mevcut integrations UI | Bütün read/write portları ve hata sınıfları için adapter tests, secret/source guard, local policy tests, runbook review, Web build, repository guard | DONE_LOCAL_FAIL_CLOSED / RECONCILIATION PASS_LOCAL_DRY |
-| `F6A-REQ-016`, `F6A-EXIT-001–006` | SIT safe-write, Hepsiburada target reconciliation ve rollback; Shopify kapısı ADR-015 ile uygulanamaz | Hepsiburada dış kanıtı bekleniyor; ADR-015 Shopify'ı `DEFERRED` tutuyor | BLOCKED_EXTERNAL / PREVIOUS_PLATFORM_GATE_SUPERSEDED |
-
-F6B N11, F6C Pazarama ve F7+ production kodu, route, menü veya placeholder oluşturulmamıştır.
+| Yalnız Trendyol ve E-Faturam bağlantısı | `ActiveIntegrationScope`, connection service, UI, Worker, DI | Scope unit/UI/repository guard | IMPLEMENTED_LOCAL |
+| Güvenli kimlik ve tenant sınırı | API security middleware, Identity, tenant accessor | Domain/application/API tests | IMPLEMENTED_LOCAL |
+| Secret değerini geri göstermeme | Protected credential, masked hint, file-backed secret | Security tests | IMPLEMENTED_LOCAL |
+| Dış yazmayı varsayılan kapatma | Global feature flag + connection setting | Contract/service guards | IMPLEMENTED_LOCAL |
+| Kategori/özellik/değer eşitleme | Trendyol reference port + scoped snapshots | Contract + persistence tests | IMPLEMENTED_LOCAL / STAGE_RETEST_REQUIRED |
+| Leaf kategori zorunluluğu | Reference snapshot + `IsLeaf` scope validation | F3 job/persistence tests | IMPLEMENTED_LOCAL |
+| Ürün okuma | Trendyol approved-products mapper | Contract tests | IMPLEMENTED_LOCAL / E2E_REQUIRED |
+| Ürün yayınlama | Product port adapter | Application orchestration yok | PARTIAL |
+| Stok/fiyat yazma | Inventory-price port | Birleşik uzak komut yok | NOT_COMPLETE |
+| Sipariş/paket içeri alma | Order polling, overlap cursor, idempotent upsert | Contract/persistence tests | IMPLEMENTED_LOCAL / E2E_REQUIRED |
+| İade okuma | Claims polling/mapper | Contract tests | PARTIAL / FIXTURE_REQUIRED |
+| Fatura oluşturma | E-Faturam canonical payload + provider port | Contract/payload tests | IMPLEMENTED_LOCAL / FINANCIAL_E2E_REQUIRED |
+| Fatura durum/iptal | Provider port | Unsupported guard | NOT_COMPLETE |
+| PDF private storage | Permanent URL + private file abstraction | F4 tests | IMPLEMENTED_LOCAL / E2E_REQUIRED |
+| Trendyol invoice link | Marketplace delivery port | Contract tests | IMPLEMENTED_LOCAL / RECONCILIATION_REQUIRED |
+| Job lease/retry/idempotency | PostgreSQL job/inbox/idempotency | Persistence tests | IMPLEMENTED_LOCAL |
+| Gerçek readiness | `/health/ready`, Postgres health, container probe | Repository guard + deploy smoke | IMPLEMENTED_IN_CLEAN_COPY |
+| Temiz kaynak paketi | ignore + verifier + CI precheck | `python3 scripts/verify-repository-cleanliness.py` | IMPLEMENTED_IN_CLEAN_COPY |
+| Backup/restore | backup scripts/runbook | Hedef off-host test bekliyor | PARTIAL |

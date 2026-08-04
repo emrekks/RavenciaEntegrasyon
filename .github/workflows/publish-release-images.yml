@@ -23,6 +23,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify clean source tree
+        shell: bash
+        run: python3 scripts/verify-repository-cleanliness.py
+
+      - name: Verify documentation status
+        shell: bash
+        run: python3 scripts/verify-documentation-transaction.py
+
       - name: Install exact .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:

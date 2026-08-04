@@ -3,8 +3,6 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
-using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
-using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -105,11 +103,11 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
 
     private async Task<ServiceResult<Guid>> EnqueueRead(Guid tenantId, Guid connectionId, string capability, string type, string payload, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE" || x.PlatformCode == HepsiburadaContract.PlatformCode && x.Environment == "STAGE" && x.Status == "VERIFIED"), cancellationToken); if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Aktif kapsam içi marketplace bağlantısı veya doğrulanmış Hepsiburada SIT bağlantısı gerekir.", 422); if (!await Supported(tenantId, connectionId, capability, cancellationToken)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "Read capability Stage/SIT kanıtı olmadan sync işi oluşturulmaz.", 422); return await Enqueue(tenantId, connectionId, type, $"{type.ToLowerInvariant()}:{connectionId}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)))}", payload, correlationId, cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE"), cancellationToken); if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Aktif Trendyol bağlantısı gerekir.", 422); if (!await Supported(tenantId, connectionId, capability, cancellationToken)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "Read capability Stage/SIT kanıtı olmadan sync işi oluşturulmaz.", 422); return await Enqueue(tenantId, connectionId, type, $"{type.ToLowerInvariant()}:{connectionId}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)))}", payload, correlationId, cancellationToken);
     }
     private async Task<ServiceResult<Guid>> Enqueue(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId, CancellationToken cancellationToken)
     {
-        var recurringRead = type is F3JobTypes.ReferenceSync or F3JobTypes.OrderSync or F3JobTypes.ReturnSync or ShopifyContract.OrderSyncJob;
+        var recurringRead = type is F3JobTypes.ReferenceSync or F3JobTypes.OrderSync or F3JobTypes.ReturnSync;
         var active = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == type && (recurringRead ? x.JobDedupKey.StartsWith(dedup) : x.JobDedupKey == dedup) && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
         if (active is not null) return ServiceResult<Guid>.Ok(active.Id);
 

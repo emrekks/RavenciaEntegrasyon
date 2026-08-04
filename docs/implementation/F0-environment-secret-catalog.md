@@ -11,26 +11,22 @@
 
 | Değişken | Amaç | Sınıf | Şartname varsayılanı / kuralı |
 | --- | --- | --- | --- |
-| `APP_ENVIRONMENT` | Development/Test/Staging/Production | Config | Production açık yazılır. |
-| `APP_BASE_URL` | Canonical dış URL | Config | Local: `http://localhost` |
-| `APP_DISPLAY_NAME` | Panel ürün adı | Config | `Ravencia Entegrasyon` |
-| `APP_TIME_ZONE` | Gösterim timezone | Config | `Europe/Istanbul` |
+| `MARKETPLACEHUB_ENVIRONMENT` | `PILOT_LOCAL` / `PRODUCTION` runtime profili | Config | Base Compose `PILOT_LOCAL`; production override `PRODUCTION`. |
+| `MARKETPLACEHUB_SITE_ADDRESS` | Caddy canonical HTTPS origin | Config | Local `https://localhost`; production path/query içermeyen gerçek HTTPS origin. |
 | `ASPNETCORE_URLS` | Container listen | Config | `http://+:8080` |
-| `DB_HOST` / `DB_PORT` | PostgreSQL network adresi | Config | `postgres` / `5432` |
-| `DB_NAME` / `DB_USER` | Uygulama DB/rol | Config | `marketplacehub` / app role |
-| `DB_PASSWORD_FILE` | DB parola dosyası | SECRET | Zorunlu; repository dışında. |
+| `ConnectionStrings__AppDb_FILE` | Uygulama PostgreSQL connection-string secret dosyası | SECRET | Compose içinde `/run/secrets/app_db_connection`; gerçek değer repository dışında. |
+| `POSTGRES_PASSWORD_FILE` | PostgreSQL parola dosyası | SECRET | Compose içinde `/run/secrets/postgres_password`; repository dışında. |
 | `DB_COMMAND_TIMEOUT_SECONDS` | DB command timeout | Config | `30`; job türü ayrıca ayarlanabilir. |
-| `DATA_PROTECTION_KEYS_PATH` | Kalıcı key ring | Sensitive path | `/app/keys` |
-| `DATA_PROTECTION_CERT_PATH` | Key ring koruma sertifikası | Sensitive | Production zorunlu. |
-| `DATA_PROTECTION_CERT_PASSWORD_FILE` | Sertifika parola dosyası | SECRET | Production zorunlu. |
-| `BOOTSTRAP_ENABLED` | İlk Owner bootstrap | Config | `false`; yalnız one-shot ilk kurulumda `true`, sonra operator `false` yapar. |
-| `BOOTSTRAP_OWNER_USERNAME` | İlk Owner kullanıcı adı | Config | `RavenciaAdmin`; source/migration/image/Compose sabiti değildir. |
-| `BOOTSTRAP_OWNER_PASSWORD_FILE` | Tek kullanımlık başlangıç parolası | SECRET | Read-only; repository dışında; kurulumdan sonra kaldırılır. |
-| `BOOTSTRAP_FORCE_PASSWORD_CHANGE` | İlk oturumu kısıtlama | Config | `true`; başarılı değişimden önce business erişimi yok. |
-| `MFA_DEFAULT_ENABLED` | İlk Owner TOTP durumu | Config | `false`; kullanıcı tercihiyle açılır. |
-| `BOOTSTRAP_ADMIN_CIDRS` | Sabit pilot parolası için kurulum ağı | Sensitive | Varsayılan yalnız loopback; public ingress yok. |
-| `FILES_ROOT` | Private dosya kökü | Config | `/app/data/files` |
-| `MAX_UPLOAD_BYTES` | Genel upload üst sınırı | Config | `10 MiB`; endpoint override olabilir. |
+| `DataProtection__KeysRoot` | Kalıcı key-ring dizini | Sensitive path | `/var/lib/marketplacehub/dp-keys` volume. |
+| `DataProtection__CertificatePath` | Key-ring koruma PFX yolu | Sensitive | Production override içinde zorunlu. |
+| `DataProtection__CertificatePassword_FILE` | PFX parola dosyası | SECRET | Production zorunlu; repository dışında. |
+| `Bootstrap__Enabled` | İlk Owner bootstrap | Config | Base Compose `false`; yalnız one-shot `docker compose run -e Bootstrap__Enabled=true ... bootstrap`. |
+| `MARKETPLACEHUB_BOOTSTRAP_OWNER_EMAIL` | İlk Owner kullanıcı adı/e-posta | Config | Compose bunu `Bootstrap__OwnerEmail` anahtarına map eder; gerçek e-posta deployment initializer ile verilir. |
+| `Bootstrap__OwnerPassword_FILE` | Tek kullanımlık başlangıç parolası | SECRET | `/run/secrets/bootstrap_owner_password`; repository dışında; bootstrap sonrası erişimi kaldırılmalıdır. |
+| `ForcePasswordChange` | İlk oturumu kısıtlama | Uygulama davranışı | Bootstrap kodu kullanıcı kaydına doğrudan `true` yazar; ayrı environment anahtarı yoktur. |
+| `Security__TotpEnabled` | TOTP özelliği | Config | Varsayılan `false`; mevcut Compose yüzeyinde ayrıca map edilmemiştir. |
+| `Storage__Root` | Private dosya kökü | Config | `/var/lib/marketplacehub/files` volume. |
+| `Storage__MaxUploadBytes` | Genel upload üst sınırı | Config | Varsayılan `10 MiB`; endpoint override olabilir. |
 | `JOB_WORKER_ID` | Lease owner kimliği | Config | Container/instance benzersiz. |
 | `JOB_POLL_INTERVAL_MS` | Boş queue polling | Config | `1000` |
 | `JOB_BATCH_SIZE` | Tek claim adedi | Config | `10` |
@@ -38,7 +34,7 @@
 | `JOB_HEARTBEAT_SECONDS` | Heartbeat aralığı | Config | `30` |
 | `LOG_LEVEL` | Minimum log seviyesi | Config | `Information` |
 | `CORRELATION_HEADER` | İstek correlation header | Config | `X-Correlation-ID` |
-| `EXTERNAL_WRITES_ENABLED` | Global dış yazma kill switch | Config | `false`; production açılışı onaylı. |
+| `FeatureFlags__ExternalWrites` | Global dış yazma kill switch | Config | Base Compose `false`; onaylı Stage/production açılışına kadar değiştirilmez. |
 | `AUTO_INVOICE_ENABLED` | Otomatik fatura | Config | `false` |
 | `PLATFORM_{CODE}_WRITES_ENABLED` | Platform kill switch | Config | Başlangıç `false`. `{CODE}` yalnız bağlayıcı platform kaydıyla somutlaştırılır. |
 | `BACKUP_SCHEDULE` | DB backup cron/schedule | Config | 6 saatte bir. |
@@ -51,8 +47,7 @@
 | `RESTIC_PASSWORD_FILE` | Restic repo parolası | SECRET | Resilient profilde; backup setinden ayrı. |
 | `S3_ACCESS_KEY_ID_FILE` | Off-host erişim anahtarı | SECRET | Resilient profilde; minimum yetki. |
 | `S3_SECRET_ACCESS_KEY_FILE` | Off-host secret | SECRET | Resilient profilde; minimum yetki. |
-| `CADDY_DOMAIN` | TLS domain | Config | Localhost; production gerçek domain. |
-| `ACME_EMAIL` | Sertifika bildirim e-postası | Personal config | Production zorunlu; log redaction uygulanır. |
+| `MARKETPLACEHUB_ALLOWED_HOSTS` | ASP.NET host allow-list | Config | Local `localhost;127.0.0.1`; initializer production origin hostunu üretir. |
 
 ## Henüz adlandırılmayan secret'lar
 

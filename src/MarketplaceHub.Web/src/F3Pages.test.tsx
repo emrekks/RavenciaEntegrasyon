@@ -38,17 +38,17 @@ test('maps a local leaf category to the verified Trendyol snapshot', async () =>
   await waitFor(() => expect(JSON.parse(savedBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'snapshot-1', externalId: 'external-1', status: 'VERIFIED' }))
 })
 
-test('shows only the three ADR-015 platforms in active connection UI', async () => {
+test('shows only the two ADR-016 integrations in active connection UI', async () => {
   const connection = (id: string, platformCode: string, displayName: string) => ({ id, publicId: `public-${id}`, platformCode, environment: 'STAGE', displayName, externalStoreId: `store-${id}`, status: 'VERIFIED', apiVersion: 'v1', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, version: 1 })
-  globalThis.fetch = vi.fn(() => json({ items: [connection('1', 'TRENDYOL', 'Trendyol Aktif'), connection('2', 'HEPSIBURADA', 'Hepsiburada Aktif'), connection('3', 'TRENDYOL_EFATURAM', 'E-Faturam Aktif'), connection('4', 'SHOPIFY', 'Shopify Ertelenmiş')], nextCursor: null, hasMore: false })) as typeof fetch
+  globalThis.fetch = vi.fn(() => json({ items: [connection('1', 'TRENDYOL', 'Trendyol Aktif'), connection('2', 'TRENDYOL_EFATURAM', 'E-Faturam Aktif'), connection('3', 'LEGACY_PLATFORM_A', 'Eski Platform A'), connection('4', 'LEGACY_PLATFORM_B', 'Eski Platform B')], nextCursor: null, hasMore: false })) as typeof fetch
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><IntegrationsPage /></MemoryRouter></QueryClientProvider>)
 
   expect(await screen.findByText('Trendyol Aktif')).toBeInTheDocument()
-  expect(screen.getByText('Hepsiburada Aktif')).toBeInTheDocument()
+  expect(screen.queryByText('Eski Platform A')).not.toBeInTheDocument()
   expect(screen.getByText('E-Faturam Aktif')).toBeInTheDocument()
-  expect(screen.queryByText('Shopify Ertelenmiş')).not.toBeInTheDocument()
-  expect(screen.queryByRole('option', { name: /Shopify/i })).not.toBeInTheDocument()
+  expect(screen.queryByText('Eski Platform B')).not.toBeInTheDocument()
+  expect(screen.queryByRole('option', { name: /Eski Platform/i })).not.toBeInTheDocument()
 })
 
 test('maps a local brand to the verified Trendyol brand snapshot', async () => {

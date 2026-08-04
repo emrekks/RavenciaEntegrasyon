@@ -13,3 +13,17 @@ secrets/
 data/
 *.user
 *.log
+
+# Repository hygiene
+output/
+*.rar
+*.zip
+*.7z
+Thumbs.db
+.DS_Store
+**/pgdata/
+Ravencia_Entegrasyon_v*_Nihai_Uygulama_Surumu.pdf
+
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
