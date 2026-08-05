@@ -12,6 +12,7 @@ internal static class TrendyolEndpoints
 {
     public static string ProductCreate(string sellerId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/v2/products";
     public static string ApprovedProducts(string sellerId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/approved";
+    public static string UnapprovedProducts(string sellerId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/unapproved";
     public static string BatchResult(string sellerId, string batchId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/batch-requests/{Uri.EscapeDataString(batchId)}";
     public static string PriceAndInventory(string sellerId) => $"inventory/sellers/{Uri.EscapeDataString(sellerId)}/products/price-and-inventory";
     public static string OrderStream(string sellerId) => $"order/sellers/{Uri.EscapeDataString(sellerId)}/orders/stream";

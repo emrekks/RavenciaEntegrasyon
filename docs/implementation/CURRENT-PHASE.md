@@ -1,7 +1,7 @@
 # Güncel Faz ve Devralma Durumu
 
 **Son güncelleme:** 2026-08-05
-**Ana plan sürümü:** 6.2
+**Ana plan sürümü:** 6.3
 **Makine durum kaydı:** `PROJECT-STATUS.yaml`
 **Aktif ürün kapsamı:** `TRENDYOL` + `TRENDYOL_EFATURAM`
 **Genel durum:** `F3_CLOSURE_ACTIVE / F4_IN_PROGRESS / PRODUCTION_BLOCKED`
@@ -13,7 +13,7 @@
 | F0 | `BASELINE_COMPLETE` | Mimari, bağımlılık, risk ve doğrulama temeli oluşturuldu. |
 | F1 | `HARDENING_CODED_DYNAMIC_REVALIDATION_REQUIRED` | Job retry/takip, rol sınırı, MFA yeniden doğrulama, webhook/PDF güvenliği, scheduler, CI ve deployment sağlık kapıları kodlandı; tam .NET/npm/Docker doğrulaması bekliyor. |
 | F2 | `READY_LOCAL` | Ürün, katalog, import, stok ve fiyat yerel çekirdeği hazır. |
-| F3 | `ACTIVE_CLOSURE` | Trendyol read/reference omurgası ile Product Create durable job, batch polling ve satır sonucu kaydı kodlandı; exact dinamik doğrulama, create sonrası onay reconciliation, update/archive, birleşik stok-fiyat ve Stage safe-write eksik. |
+| F3 | `ACTIVE_CLOSURE` | Trendyol read/reference omurgası, Product Create durable job, batch polling, satır sonucu ve approved/unapproved onay uzlaştırması kodlandı; exact dinamik doğrulama, update/archive, birleşik stok-fiyat ve Stage safe-write/read-back eksik. |
 | F4 | `IN_PROGRESS_BLOCKED_EXTERNAL` | E-Faturam sign-in/submit/PDF URL ve güvenli PDF indirme kodu var; taxpayer/status/cancel ve gerçek E2E eksik. Trendyol fatura linki `SUBMITTED` sonrası otomatik kesin teyit endpoint'i doğrulanmadığı için manuel incelemeye düşer. |
 | F5 | `PLANNED_BLOCKED_BY_F3_F4_AND_REVALIDATION` | Production pilot; F3/F4 çıkış kapıları ve tam dinamik doğrulama geçilmeden başlamaz. |
 | F6 | `PLANNED` | Stabilizasyon, operasyon kabulü, restore drill ve 30 günlük pilot gözlemi. |
@@ -36,13 +36,14 @@ Aşağıdaki sorunlar kaynak kodunda düzeltilmiştir; fakat exact toolchain ve 
 - Pull request ve ana dal pushlarında verify workflow'u tanımlanmıştır; workflow'un gerçek başarılı koşusu henüz kanıt değildir.
 - F3 frontend regression kapsamı güncellendi: Vitest artık kategori kapsamı -> özellik -> özellik değeri zincirini ve iki mapping payload'ını; Playwright ise güncel operasyon/ayar menülerini, rol bazlı Faturalama görünürlüğünü ve gerçek route üzerinde kategori-kapsamlı özellik/değer mapping zincirini doğrular. Exact Node/npm kurulamadığı için sonuç `DYNAMIC_NOT_RUN / BLOCKED_ENVIRONMENT` olarak kalır.
 - Trendyol Product Create akışı `PRODUCT_WRITE=SUPPORTED`, global ve bağlantı bazlı dış yazma anahtarları, güncel doğrulanmış eşlemeler, teklif/stok ve kalıcı HTTPS görsel URL kontrollerinden sonra durable job üretir; worker `SUBMIT -> POLL` durum makinesiyle batch sonucunu ve varyant satırlarını kaydeder. Başarılı batch sonucu doğrudan yayında sayılmaz, `APPROVAL_PENDING` olur.
+- Create batch içinde en az bir kabul edilen varyant varsa ayrı onay uzlaştırma işi otomatik üretilir; batch aşamasında reddedilen satırlar korunur ve read-back yalnız kabul edilen satırlarda çalışır. Worker barkodu approved serviste, bulunmazsa unapproved serviste okur; onaylı `contentId/variantId` kimliklerini fail-closed linkler, pending/not-found satırını yeniden dener, ret nedenini satıra yazar ve kimlik çatışmasında sessiz rewire yerine `MANUAL_REVIEW` uygular. Eski approval job payload hash’i güncel listing state ile eşleşmiyorsa uzak sorgu yapılmadan `PRODUCT_APPROVAL_SUPERSEDED` olur; approval hataları mevcut `CREATE_REJECTED` satırlarını ezmez.
 - Ürün için Trendyol tarafından erişilebilir kalıcı HTTPS görsel URL kaydı `/api/v1/files/product-media-url` üzerinden yapılabilir; private upload dosyası doğrudan marketplace URL'si sayılmaz.
 
 ## Codex'in devam edeceği sıra
 
 1. v7 ve Product Create değişikliklerini exact .NET `10.0.302`, Node `24.18.1`, npm `11.12.1` ve Docker Compose ortamında restore/build/test/typecheck/smoke ile doğrula.
 2. Product Create için kodlanan başarı, replay ve partial-batch testlerini PostgreSQL üzerinde çalıştır; API/Worker status akışını Playwright ile görünür hale getir.
-3. Create batch kabulünden sonra approved-products read-back ile `APPROVAL_PENDING -> LIVE/REJECTED` reconciliation ekle.
+3. Kodlanan approved/unapproved onay uzlaştırmasının PostgreSQL senaryolarını çalıştır; gerçek Stage barkodunda `APPROVAL_PENDING -> LIVE/REJECTED` ve kimlik linklerini kanıtla.
 4. `ProductUpdate` ve uzak archive komutlarını create sözleşmesinden ayrı uygula.
 5. Trendyol stok ve fiyatı tek `price-and-inventory` komutu olarak uygula.
 6. Sipariş/paket/iade read akışlarını gerçek Stage fixture ve idempotency testleriyle kapat.
@@ -68,7 +69,7 @@ Test kaynakları silinmemiştir. Solution içinde Domain, Application, Persisten
 - v7 değişikliklerinin exact toolchain ile başarılı restore/build/test/typecheck/Vitest/Playwright sonucu
 - Docker Compose config, bootstrap, Worker heartbeat ve frontend/API smoke doğrulaması
 - Product Create için exact .NET/PostgreSQL test sonucu, gerçek Trendyol Stage credential ve güvenli write kanıtı
-- Create sonrası approved-products reconciliation; ProductUpdate/archive ve birleşik stok-fiyat akışları
+- Product Create/onay uzlaştırması için exact runtime ve Stage kanıtı; ProductUpdate/archive ve birleşik stok-fiyat akışları
 - E-Faturam test firma/company/user scope, taxpayer/status/cancel ve mali iş kuralı onayı
 - Güvenli PDF indirme için gerçek Stage host/PDF kanıtı
 - Trendyol fatura linki kesin teyit veya onaylı manuel inceleme prosedürü

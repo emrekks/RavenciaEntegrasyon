@@ -18,6 +18,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         try
         {
             if (jobType == F3JobTypes.ProductCreate) return await CreateProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            if (jobType == F3JobTypes.ProductApprovalReconcile) return await ReconcileProductApproval(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
             var succeeded = jobType switch
             {
                 F3JobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -133,11 +134,231 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         profile.ActualStatus = succeeded == listings.Count ? "APPROVAL_PENDING" : succeeded == 0 ? "CREATE_REJECTED" : "PARTIAL_FAILURE";
         profile.LastRejectionCode = listings.Select(x => x.RejectionCode).FirstOrDefault(x => x is not null);
         profile.Version++;
+        if (succeeded > 0)
+            await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         if (succeeded == listings.Count) return JobExecutionResult.Success();
         return succeeded == 0
             ? JobExecutionResult.Blocked("PRODUCT_BATCH_REJECTED", "Trendyol create batch içindeki tüm varyantlar reddedildi.", payload.ExternalOperationId)
             : JobExecutionResult.Blocked("PRODUCT_BATCH_PARTIAL_FAILURE", "Trendyol create batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
+    }
+
+    private async Task<JobExecutionResult> ReconcileProductApproval(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        ProductApprovalReconciliationJobPayload? payload;
+        try { payload = JsonSerializer.Deserialize<ProductApprovalReconciliationJobPayload>(payloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }); }
+        catch (JsonException) { return JobExecutionResult.Blocked("PRODUCT_APPROVAL_PAYLOAD_INVALID", "Ürün onay uzlaştırma işi payload sözleşmesini sağlamıyor."); }
+        if (payload is null || payload.JobId == Guid.Empty || payload.ProductId == Guid.Empty || payload.ProfileId == Guid.Empty || string.IsNullOrWhiteSpace(payload.PayloadHash) || payload.DeadlineAt <= payload.StartedAt)
+            return JobExecutionResult.Blocked("PRODUCT_APPROVAL_PAYLOAD_INVALID", "Ürün onay uzlaştırma işi zorunlu alanları eksik.");
+
+        var job = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.JobId && x.ConnectionId == connectionId && x.JobType == F3JobTypes.ProductApprovalReconcile, cancellationToken);
+        var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.ProfileId && x.ProductId == payload.ProductId && x.ConnectionId == connectionId, cancellationToken);
+        if (job is null || profile is null) return JobExecutionResult.Blocked("PRODUCT_APPROVAL_STATE_MISSING", "Onay uzlaştırma işi veya listing profile bulunamadı.");
+
+        var listings = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var allVariantIds = listings.Select(x => x.VariantId).ToArray();
+        var states = allVariantIds.Length == 0
+            ? new Dictionary<Guid, MarketplaceListingState>()
+            : await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && allVariantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, cancellationToken);
+        if (states.Values.Any(x => !string.Equals(x.PayloadHash, payload.PayloadHash, StringComparison.Ordinal)))
+            return JobExecutionResult.Blocked("PRODUCT_APPROVAL_SUPERSEDED", "Daha yeni bir ürün yayınlama payload'ı bulundu; eski onay işi güncel listing durumunu değiştirmedi.");
+        if (timeProvider.GetUtcNow() > payload.DeadlineAt)
+            return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_DEADLINE_EXPIRED", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_DEADLINE_EXPIRED", "Trendyol ürün onayı belirlenen uzlaştırma penceresinde terminal duruma ulaşmadı."), cancellationToken);
+        if (listings.Count == 0 || states.Count != listings.Count)
+            return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_STATE_INCOMPLETE", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_STATE_INCOMPLETE", "Onay uzlaştırması için listing state kayıtları eksik."), cancellationToken);
+
+        var candidates = listings.Where(x => !string.Equals(x.ActualStatus, "CREATE_REJECTED", StringComparison.Ordinal)).ToList();
+        if (candidates.Count == 0 || candidates.Any(x => string.IsNullOrWhiteSpace(x.ExternalBarcode)) || candidates.Select(x => x.ExternalBarcode).Distinct(StringComparer.OrdinalIgnoreCase).Count() != candidates.Count)
+            return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_BARCODES_INVALID", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_BARCODES_INVALID", "Onay uzlaştırması için kabul edilmiş ve benzersiz barkod listesi bulunamadı."), cancellationToken);
+
+        var remoteByBarcode = new Dictionary<string, RemotePublicationStatus>(StringComparer.OrdinalIgnoreCase);
+        foreach (var listing in candidates)
+        {
+            var barcode = listing.ExternalBarcode!;
+            var result = await products.GetPublicationStatusAsync(Context(tenantId, connectionId, correlationId, $"product-approval:{profile.Id:N}:{barcode}"), barcode, cancellationToken);
+            if (!result.IsSuccess)
+            {
+                var adapterResult = JobExecutionResult.FromAdapterError(result.Error!);
+                if (adapterResult.Kind == JobCompletionKind.Retry) return adapterResult;
+                return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", result.Error!.Code, JobExecutionResult.ManualReview(result.Error.Code, result.Error.SafeMessage, result.Error.RemoteRequestId), cancellationToken);
+            }
+            var remoteStatus = result.Value!;
+            if (!string.Equals(remoteStatus.Barcode, barcode, StringComparison.OrdinalIgnoreCase))
+                return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_CONTRACT_INVALID", "Trendyol ürün durum yanıtı istenen barkodla eşleşmedi."), cancellationToken);
+            remoteByBarcode.Add(barcode, remoteStatus);
+        }
+
+        var localVariantIds = candidates.Select(x => x.VariantId).ToArray();
+        var approvedStatuses = remoteByBarcode.Values.Where(x => x.Status == "APPROVED").ToList();
+        if (approvedStatuses.Any(x => string.IsNullOrWhiteSpace(x.ExternalProductId) || string.IsNullOrWhiteSpace(x.ExternalVariantId)))
+            return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTIFIERS_MISSING", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTIFIERS_MISSING", "Onaylanan ürün yanıtında contentId veya variantId bulunamadı."), cancellationToken);
+        var approvedContentIds = approvedStatuses.Select(x => x.ExternalProductId!).Distinct(StringComparer.Ordinal).ToList();
+        if (approvedContentIds.Count > 1)
+            return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_CONTENT_SPLIT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_CONTENT_SPLIT", "Tek yerel ürünün varyantları birden fazla Trendyol content kimliğine ayrılmış görünüyor."), cancellationToken);
+        var approvedVariantIds = approvedStatuses.Select(x => x.ExternalVariantId!).ToList();
+        if (approvedVariantIds.Distinct(StringComparer.Ordinal).Count() != approvedVariantIds.Count)
+            return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_VARIANT_ID_DUPLICATE", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_VARIANT_ID_DUPLICATE", "Trendyol onay yanıtı birden fazla barkod için aynı variantId değerini döndürdü."), cancellationToken);
+        if (approvedContentIds.Count == 1)
+        {
+            var approvedContentId = approvedContentIds[0];
+            if (await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == approvedContentId && x.ProductId != payload.ProductId, cancellationToken))
+                return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTITY_CONFLICT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTITY_CONFLICT", "Trendyol content kimliği başka bir yerel ürünle eşleşiyor."), cancellationToken);
+            var localProductLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == payload.ProductId, cancellationToken);
+            if (localProductLink is not null && !string.Equals(localProductLink.ExternalId, approvedContentId, StringComparison.Ordinal))
+                return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTITY_CONFLICT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTITY_CONFLICT", "Yerel ürün daha önce farklı bir Trendyol content kimliğiyle eşleştirilmiş."), cancellationToken);
+        }
+        if (approvedVariantIds.Count > 0 && await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && approvedVariantIds.Contains(x.ExternalId) && !localVariantIds.Contains(x.VariantId), cancellationToken))
+            return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTITY_CONFLICT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTITY_CONFLICT", "Trendyol variant kimliği başka bir yerel varyantla eşleşiyor."), cancellationToken);
+        var approvedVariantByLocalId = candidates
+            .Where(listing => remoteByBarcode[listing.ExternalBarcode!].Status == "APPROVED")
+            .ToDictionary(listing => listing.VariantId, listing => remoteByBarcode[listing.ExternalBarcode!].ExternalVariantId!, EqualityComparer<Guid>.Default);
+        var localVariantLinks = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && localVariantIds.Contains(x.VariantId)).ToListAsync(cancellationToken);
+        if (localVariantLinks.Any(link => approvedVariantByLocalId.TryGetValue(link.VariantId, out var expectedExternalId) && !string.Equals(link.ExternalId, expectedExternalId, StringComparison.Ordinal)))
+            return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTITY_CONFLICT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTITY_CONFLICT", "Yerel varyant daha önce farklı bir Trendyol variant kimliğiyle eşleştirilmiş."), cancellationToken);
+
+        var live = 0;
+        var rejected = listings.Count - candidates.Count;
+        var pending = 0;
+        var exceptional = 0;
+        string? firstCode = listings.Where(x => string.Equals(x.ActualStatus, "CREATE_REJECTED", StringComparison.Ordinal)).Select(x => x.RejectionCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        if (approvedContentIds.Count == 1)
+            await UpsertMarketplaceProductLink(tenantId, connectionId, payload.ProductId, approvedContentIds[0], cancellationToken);
+        foreach (var listing in candidates)
+        {
+            var remote = remoteByBarcode[listing.ExternalBarcode!];
+            var localStatus = remote.Status switch
+            {
+                "APPROVED" => "LIVE",
+                "PENDING_APPROVAL" or "NOT_FOUND" => "APPROVAL_PENDING",
+                "REJECTED" => "REJECTED",
+                "ARCHIVED" => "ARCHIVED",
+                "LOCKED" => "LOCKED",
+                "BLACKLISTED" => "BLACKLISTED",
+                _ => "MANUAL_REVIEW"
+            };
+            var code = localStatus switch
+            {
+                "REJECTED" => SafeCode(remote.RejectionCode ?? "PRODUCT_APPROVAL_REJECTED"),
+                "ARCHIVED" => "REMOTE_PRODUCT_ARCHIVED",
+                "LOCKED" => "REMOTE_PRODUCT_LOCKED",
+                "BLACKLISTED" => "REMOTE_PRODUCT_BLACKLISTED",
+                "MANUAL_REVIEW" => "PRODUCT_APPROVAL_STATUS_UNKNOWN",
+                _ => null
+            };
+            listing.ActualStatus = localStatus;
+            listing.DesiredStatus = "LIVE";
+            listing.RejectionCode = code;
+            if (states.TryGetValue(listing.VariantId, out var state))
+            {
+                state.DesiredStatus = "LIVE";
+                state.ActualStatus = localStatus;
+                state.LastRejectionCode = code;
+                state.Version++;
+            }
+
+            switch (localStatus)
+            {
+                case "LIVE":
+                    await UpsertMarketplaceVariantLink(tenantId, connectionId, listing.VariantId, remote.ExternalVariantId!, cancellationToken);
+                    live++;
+                    break;
+                case "REJECTED": rejected++; firstCode ??= code; break;
+                case "APPROVAL_PENDING": pending++; break;
+                default: exceptional++; firstCode ??= code; break;
+            }
+        }
+
+        profile.DesiredStatus = "LIVE";
+        if (exceptional > 0)
+        {
+            profile.ActualStatus = "MANUAL_REVIEW";
+            profile.LastRejectionCode = firstCode;
+        }
+        else if (pending > 0)
+        {
+            profile.ActualStatus = live + rejected > 0 ? "APPROVAL_PARTIAL_PENDING" : "APPROVAL_PENDING";
+            profile.LastRejectionCode = firstCode;
+        }
+        else if (live == listings.Count)
+        {
+            profile.ActualStatus = "LIVE";
+            profile.LastRejectionCode = null;
+        }
+        else if (rejected == listings.Count)
+        {
+            profile.ActualStatus = "REJECTED";
+            profile.LastRejectionCode = firstCode;
+        }
+        else
+        {
+            profile.ActualStatus = "PARTIAL_REJECTED";
+            profile.LastRejectionCode = firstCode;
+        }
+        profile.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        if (exceptional > 0) return JobExecutionResult.ManualReview(firstCode ?? "PRODUCT_APPROVAL_REVIEW_REQUIRED", "Trendyol ürün onayında operatör incelemesi gerektiren terminal durum oluştu.");
+        if (pending > 0) return JobExecutionResult.Retry("PRODUCT_APPROVAL_PENDING", "Trendyol ürün onayı henüz tamamlanmadı.", TimeSpan.FromMinutes(5));
+        if (live == listings.Count) return JobExecutionResult.Success();
+        return rejected == listings.Count
+            ? JobExecutionResult.Blocked("PRODUCT_APPROVAL_REJECTED", "Trendyol ürün onayı tüm varyantlar için reddedildi.")
+            : JobExecutionResult.Blocked("PRODUCT_APPROVAL_PARTIAL_REJECTION", "Trendyol ürün onayı bazı varyantlar için reddedildi.");
+    }
+
+    private async Task<JobExecutionResult> MarkApprovalResult(Guid tenantId, Guid connectionId, ChannelListingProfile profile, string status, string? rejectionCode, JobExecutionResult result, CancellationToken cancellationToken)
+    {
+        profile.ActualStatus = status;
+        profile.LastRejectionCode = SafeCode(rejectionCode);
+        profile.Version++;
+        var listings = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).ToListAsync(cancellationToken);
+        var candidates = listings.Where(x => !string.Equals(x.ActualStatus, "CREATE_REJECTED", StringComparison.Ordinal)).ToList();
+        var variantIds = candidates.Select(x => x.VariantId).ToArray();
+        var states = variantIds.Length == 0
+            ? new Dictionary<Guid, MarketplaceListingState>()
+            : await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, cancellationToken);
+        foreach (var listing in candidates)
+        {
+            listing.ActualStatus = status;
+            listing.RejectionCode = SafeCode(rejectionCode);
+            if (states.TryGetValue(listing.VariantId, out var state))
+            {
+                state.ActualStatus = status;
+                state.LastRejectionCode = SafeCode(rejectionCode);
+                state.Version++;
+            }
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        return result;
+    }
+
+    private async Task EnsureApprovalReconciliationJob(Guid tenantId, Guid connectionId, Guid productId, Guid profileId, string payloadHash, string correlationId, CancellationToken cancellationToken)
+    {
+        var dedup = $"product-approval:{connectionId:N}:{profileId:N}:{payloadHash}";
+        if (await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductApprovalReconcile && x.JobDedupKey == dedup, cancellationToken)) return;
+        var now = timeProvider.GetUtcNow();
+        var jobId = Guid.CreateVersion7();
+        var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profileId, payloadHash, now, now.AddDays(7)));
+        db.IntegrationJobs.Add(new IntegrationJob
+        {
+            Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductApprovalReconcile, PayloadJson = payload, PayloadVersion = 1,
+            PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = 1, Status = JobStatus.Pending,
+            AvailableAt = now, MaxAttempts = 200, CorrelationId = correlationId, CreatedAt = now, Version = 1
+        });
+    }
+
+    private async Task UpsertMarketplaceProductLink(Guid tenantId, Guid connectionId, Guid productId, string externalProductId, CancellationToken cancellationToken)
+    {
+        var productLink = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken);
+        if (productLink is null) db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, ExternalId = externalProductId, Version = 1 });
+    }
+
+    private async Task UpsertMarketplaceVariantLink(Guid tenantId, Guid connectionId, Guid variantId, string externalVariantId, CancellationToken cancellationToken)
+    {
+        var variantLink = await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId, cancellationToken);
+        if (variantLink is null) db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = externalVariantId, Version = 1 });
     }
 
     private async Task<JobExecutionResult> MarkPublicationResult(Guid tenantId, Guid connectionId, ChannelListingProfile profile, string status, string? rejectionCode, JobExecutionResult result, CancellationToken cancellationToken)

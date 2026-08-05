@@ -42,6 +42,30 @@ public sealed class F3TrendyolContractTests
     }
 
     [Fact]
+    public void Product_approval_readback_distinguishes_approved_pending_and_rejected_rows()
+    {
+        var approved = TrendyolJsonMapper.ApprovedPublicationStatus(Fixture("product-approved.json"), "BARCODE-ANON-001");
+        Assert.NotNull(approved);
+        Assert.Equal("APPROVED", approved!.Status);
+        Assert.Equal("800001", approved.ExternalProductId);
+        Assert.Equal("810001", approved.ExternalVariantId);
+
+        var rejected = TrendyolJsonMapper.UnapprovedPublicationStatus(Fixture("product-unapproved.json"), "BARCODE-ANON-002");
+        Assert.NotNull(rejected);
+        Assert.Equal("REJECTED", rejected!.Status);
+        Assert.Equal("ANONYMIZED_CONTENT_REJECTION", rejected.RejectionCode);
+
+        const string pendingJson = """
+            {"content":[{"productMainId":"PRODUCT-ANON-003","status":"pendingApproval","barcode":"BARCODE-ANON-003","rejectReasonDetails":[]}]}
+            """;
+        var pending = TrendyolJsonMapper.UnapprovedPublicationStatus(pendingJson, "BARCODE-ANON-003");
+        Assert.NotNull(pending);
+        Assert.Equal("PENDING_APPROVAL", pending!.Status);
+        Assert.Null(pending.RejectionCode);
+        Assert.Null(TrendyolJsonMapper.ApprovedPublicationStatus(Fixture("product-approved.json"), "UNKNOWN-BARCODE"));
+    }
+
+    [Fact]
     public void Documented_brand_response_maps_to_canonical_BRANDS_resource()
     {
         const string json = "{\"brands\":[{\"id\":1584892,\"name\":\"brand-1\"}]}";

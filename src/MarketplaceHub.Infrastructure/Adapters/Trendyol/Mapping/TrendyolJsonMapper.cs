@@ -48,6 +48,46 @@ public static class TrendyolJsonMapper
         return new(rows, NullText(root, "nextPageToken"), !string.IsNullOrWhiteSpace(NullText(root, "nextPageToken")));
     }
 
+    public static RemotePublicationStatus? ApprovedPublicationStatus(string json, string barcode)
+    {
+        using var document = JsonDocument.Parse(json);
+        foreach (var product in Content(document.RootElement))
+        {
+            var contentId = NullText(product, "contentId");
+            if (!product.TryGetProperty("variants", out var variants) || variants.ValueKind != JsonValueKind.Array) continue;
+            foreach (var variant in variants.EnumerateArray())
+            {
+                var remoteBarcode = NullText(variant, "barcode");
+                if (!string.Equals(remoteBarcode, barcode, StringComparison.OrdinalIgnoreCase)) continue;
+                var status = Bool(variant, "blacklisted") ? "BLACKLISTED"
+                    : Bool(variant, "locked") ? "LOCKED"
+                    : Bool(variant, "archived") ? "ARCHIVED"
+                    : "APPROVED";
+                return new(remoteBarcode!, status, contentId, NullText(variant, "variantId"), null, variant.GetRawText());
+            }
+        }
+        return null;
+    }
+
+    public static RemotePublicationStatus? UnapprovedPublicationStatus(string json, string barcode)
+    {
+        using var document = JsonDocument.Parse(json);
+        foreach (var product in Content(document.RootElement))
+        {
+            var remoteBarcode = NullText(product, "barcode");
+            if (!string.Equals(remoteBarcode, barcode, StringComparison.OrdinalIgnoreCase)) continue;
+            var rawStatus = Text(product, "status");
+            var status = string.Equals(rawStatus, "pendingApproval", StringComparison.OrdinalIgnoreCase) ? "PENDING_APPROVAL"
+                : string.Equals(rawStatus, "rejected", StringComparison.OrdinalIgnoreCase) ? "REJECTED"
+                : "UNKNOWN";
+            string? rejection = null;
+            if (product.TryGetProperty("rejectReasonDetails", out var reasons) && reasons.ValueKind == JsonValueKind.Array)
+                rejection = reasons.EnumerateArray().Select(reason => NullText(reason, "rejectReason")).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+            return new(remoteBarcode!, status, null, null, rejection, product.GetRawText());
+        }
+        return null;
+    }
+
     public static RemoteOperationStatus Batch(string json, string requestedId)
     {
         using var document = JsonDocument.Parse(json); var root = document.RootElement; var lines = new List<RemoteOperationLine>();

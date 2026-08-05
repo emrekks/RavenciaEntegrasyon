@@ -12,6 +12,7 @@ Doğrulama tarihi `2026-07-31`'dir. Production kökü `https://apigw.trendyol.co
 | --- | --- | --- |
 | Product V2 create | `POST product/sellers/{sellerId}/v2/products` | <https://developers.trendyol.com/v2.0/docs/product-create-v2> |
 | Approved product read | `GET product/sellers/{sellerId}/products/approved` | <https://developers.trendyol.com/v2.0/docs/product-filtering-approved-products-v2> |
+| Unapproved product read | `GET product/sellers/{sellerId}/products/unapproved` | <https://developers.trendyol.com/v2.0/docs/product-filtering-unapproved-products-v2> |
 | Batch result | `GET product/sellers/{sellerId}/products/batch-requests/{batchRequestId}` | <https://developers.trendyol.com/v2.0/docs/check-batchrequest-result-getbatchrequestresult-1> |
 | Stock + price | `POST inventory/sellers/{sellerId}/products/price-and-inventory` | <https://developers.trendyol.com/v2.0/docs/stock-and-price-update-updatepriceandinventory-1> |
 | Category tree | `GET product/product-categories` | <https://developers.trendyol.com/v2.0/docs/trendyol-category-list-getcategorytree> |
@@ -25,6 +26,10 @@ Doğrulama tarihi `2026-07-31`'dir. Production kökü `https://apigw.trendyol.co
 Basic Auth ve zorunlu User-Agent, <https://developers.trendyol.com/v2.0/docs/authorization> kaynağına göre uygulanır. Runtime rate policy sabit bir tahmin kullanmaz; `429` ve varsa `Retry-After` otoritedir.
 
 Kategori özellik snapshot'ı `categoryId`, özellik değeri snapshot'ı `categoryId/attributeId` scope'u ile saklanır. Yeni bir kategorinin eşitlenmesi başka kategorinin güncel snapshot'ını geçersiz kılmaz. `required`, `allowCustom` ve `allowMultipleAttributeValues` alanları yayınlama doğrulamasına taşınır; güncel scoped snapshot/mapping veya zorunlu değer eksikse ürün yazma işi oluşturulmaz.
+
+## Product Create onay uzlaştırması
+
+Create batch kabulü canlı yayın kanıtı değildir. Tam veya kısmi batch içinde kabul edilen satırlar onay read-back akışına girer; batch aşamasında reddedilen satırlar korunur. Worker her barkodu önce `products/approved`, sonuçta bire bir barkod yoksa `products/unapproved` endpoint'inde sorgular. Approved cevapta `contentId` ve `variantId` zorunludur; bunlar tenant + connection kapsamında benzersiz linklere fail-closed biçimde yazılır. Unapproved `pendingApproval` yeniden denenir, `rejected` ret nedeni ile terminal blocked olur. İki listede henüz görünmeyen barkod görünürlük gecikmesi kabul edilerek pending kalır. Mevcut bir yerel linkin farklı uzak kimlikle çakışması otomatik rewire edilmez ve manuel incelemeye gider. Bu akış salt-okunur uzak çağrı yapar; yeni marketplace write effect üretmez. Yedi günlük deadline sağlayıcı SLA'sı değil, sonsuz polling'i durduran yerel operasyon sınırıdır.
 
 ## Fail-closed davranış
 

@@ -2,7 +2,7 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 6.2
+**Belge sürümü:** 6.3
 **Belge tarihi:** 5 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
@@ -325,7 +325,9 @@ Kullanıcı ürün detayında:
 
 Worker create çağrısını `SUBMIT -> POLL` durum makinesiyle yürütür. Dış çağrıdan önce external-effect fence oluşturur; sonucu belirsiz ağ/5xx/contract durumunda otomatik ikinci create yerine `MANUAL_REVIEW` uygular. Batch sonucu varyant barkoduna göre `CREATE_ACCEPTED` veya `CREATE_REJECTED` olarak kaydedilir; kısmi sonuç `PARTIAL_FAILURE`, tam kabul ise yalnız `APPROVAL_PENDING` durumudur. `APPROVAL_PENDING`, ürünün Trendyol'da yayında olduğu anlamına gelmez. Kullanıcı `/api/v1/products/{productId}/publication-status/{connectionId}` üzerinden profile, job ve satır durumlarını okuyabilir.
 
-ProductUpdate, uzak archive, create sonrası approved-products read-back reconciliation, ürün detayındaki tamamlanmış operatör UI'si, exact .NET/PostgreSQL dinamik doğrulama ve gerçek Stage safe-write kanıtı henüz tamamlanmamıştır.
+Create batch içinde en az bir kabul edilen varyant varsa ayrı `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` işi otomatik oluşur. Batch aşamasında `CREATE_REJECTED` olan satırlar read-back dışında tutulur ve mevcut ret kodları korunur. Worker her barkodu önce onaylı ürün servisinde, bulunmazsa onaysız ürün servisinde sorgular. Onaylı satırın `contentId` ve `variantId` kimlikleri yerel ürün/varyant linklerine idempotent biçimde kaydedilir ve satır `LIVE` olur. `pendingApproval` veya iki listede de henüz görünmeyen barkod `APPROVAL_PENDING` olarak kalıp yeniden denenir; `rejected` satırı ret koduyla `REJECTED` olur. `archived`, `locked`, `blacklisted`, bilinmeyen durum veya mevcut yerel/uzak kimlik çatışması sessiz yeniden bağlama yapmadan `MANUAL_REVIEW` sınırına taşınır. Yedi günlük deadline Trendyol onay SLA'sı değil, sonsuz otomatik polling'i önleyen yerel operasyon korumasıdır. Onay işi başlamadan güncel listing-state payload hash değeri kontrol edilir; daha yeni bir yayınlama denemesi varsa eski iş `PRODUCT_APPROVAL_SUPERSEDED` ile dış sorgu ve durum değişikliği yapmadan durur. Deadline, contract veya kimlik hataları da önceki `CREATE_REJECTED` satırlarının kanıtını ezmez. Bu read-back işi yeni bir dış yazma üretmez.
+
+ProductUpdate, uzak archive, ürün detayındaki tamamlanmış operatör UI'si, exact .NET/PostgreSQL dinamik doğrulama ve gerçek Stage safe-write/read-back kanıtı henüz tamamlanmamıştır.
 
 ## 7.6 CSV/XLSX içe aktarma
 
@@ -732,7 +734,7 @@ Aşağıdaki bölümler projenin teknik kapsamını, veri ve güvenlik mimarisin
 | Kimlik ve güvenlik çekirdeği | Güvenli login, parola, MFA, secret | `READY_LOCAL` | Production rol/MFA kabulü |
 | Yerel katalog/import | Ürün, varyant, özellik, import | `READY_LOCAL` | Uçtan uca ürün yayınlama |
 | Trendyol read/reference | Kategori, marka, özellik, ürün, sipariş | `KODLANDI` | Gerçek Stage kapsam testi |
-| Trendyol product write | Create/update/archive + batch | `CREATE_KODLANDI_DINAMIK_DOGRULAMA_BEKLIYOR` | Create onay reconciliation, update/archive ve Stage |
+| Trendyol product write | Create/update/archive + batch | `CREATE_VE_ONAY_UZLASTIRMA_KODLANDI_DINAMIK_DOGRULAMA_BEKLIYOR` | Update/archive, exact runtime ve Stage |
 | Stok-fiyat write | Birleşik batch ve reconciliation | `PLANLANDI` | F3 uygulama ve test |
 | Sipariş/paket write | İşleme alma, kargo, durum | `BLOKE_CAPABILITY` | Resmî endpoint ve Stage kanıtı |
 | Etiket | Güvenli etiket alma/yazdırma | `PLANLANDI` | Capability ve format doğrulaması |
@@ -1900,12 +1902,13 @@ Sıra:
 4. Approved product read ve identity mapping.
 5. Create/update/archive komutlarını ayır.
 6. Publication durable job ve batch polling.
-7. Satır bazlı partial failure ekranı.
-8. Birleşik stok-fiyat job'ı.
-9. Sipariş/package polling idempotency.
-10. Webhook + polling reconciliation.
-11. Return read ve izinli actionlar.
-12. Invoice link `Submitted -> Confirmed` modeli.
+7. Approved/unapproved read-back ile onay uzlaştırması ve uzak kimlik kaydı.
+8. Satır bazlı partial failure ekranı.
+9. Birleşik stok-fiyat job'ı.
+10. Sipariş/package polling idempotency.
+11. Webhook + polling reconciliation.
+12. Return read ve izinli actionlar.
+13. Invoice link `Submitted -> Confirmed` modeli.
 
 Çıkış:
 

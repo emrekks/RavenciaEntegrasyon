@@ -86,6 +86,30 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         try { return AdapterResult<RemoteOperationStatus>.Success(TrendyolJsonMapper.Batch(response.Value!, externalOperationId), response.RateLimit); } catch (JsonException) { return AdapterResult<RemoteOperationStatus>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
+    public async Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(barcode)) return AdapterResult<RemotePublicationStatus>.Failure(TrendyolErrorMapper.Contract());
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemotePublicationStatus>.Failure(TrendyolErrorMapper.Configuration());
+        var encodedBarcode = Uri.EscapeDataString(barcode.Trim());
+        var approved = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.ApprovedProducts(authorized.Connection.ExternalStoreId) + $"?barcode={encodedBarcode}&size=100", null, cancellationToken);
+        if (!approved.IsSuccess) return AdapterResult<RemotePublicationStatus>.Failure(approved.Error!, approved.RateLimit);
+        try
+        {
+            var approvedStatus = TrendyolJsonMapper.ApprovedPublicationStatus(approved.Value!, barcode.Trim());
+            if (approvedStatus is not null) return AdapterResult<RemotePublicationStatus>.Success(approvedStatus, approved.RateLimit);
+        }
+        catch (JsonException) { return AdapterResult<RemotePublicationStatus>.Failure(TrendyolErrorMapper.Contract()); }
+
+        var unapproved = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.UnapprovedProducts(authorized.Connection.ExternalStoreId) + $"?barcode={encodedBarcode}&size=1000", null, cancellationToken);
+        if (!unapproved.IsSuccess) return AdapterResult<RemotePublicationStatus>.Failure(unapproved.Error!, unapproved.RateLimit);
+        try
+        {
+            var unapprovedStatus = TrendyolJsonMapper.UnapprovedPublicationStatus(unapproved.Value!, barcode.Trim());
+            return AdapterResult<RemotePublicationStatus>.Success(unapprovedStatus ?? new(barcode.Trim(), "NOT_FOUND", null, null, null, "{}"), unapproved.RateLimit);
+        }
+        catch (JsonException) { return AdapterResult<RemotePublicationStatus>.Failure(TrendyolErrorMapper.Contract()); }
+    }
+
     public Task<AdapterResult<bool>> ArchiveAsync(AdapterContext context, ExternalProductIdentity identity, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<bool>.Failure(TrendyolErrorMapper.Unsupported("Archive write capability ve exact V2 request Stage kanıtı bekleniyor.")));
     public Task<AdapterResult<BatchResult<BatchLineResult>>> PushStockAsync(AdapterContext context, IReadOnlyList<StockPushLine> lines, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<BatchResult<BatchLineResult>>.Failure(TrendyolErrorMapper.Unsupported("Ayrık stok payload capability kanıtı yok; birleşik price-and-inventory isteği uydurulmadı.")));
     public Task<AdapterResult<BatchResult<BatchLineResult>>> PushPricesAsync(AdapterContext context, IReadOnlyList<PricePushLine> lines, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<BatchResult<BatchLineResult>>.Failure(TrendyolErrorMapper.Unsupported("Ayrık fiyat payload capability kanıtı yok; birleşik price-and-inventory isteği uydurulmadı.")));

@@ -283,6 +283,20 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         Assert.Equal(1, fake.ExternalEffectCount);
         Assert.Equal(1, await db.ExternalEffectRecords.CountAsync(x => x.TenantId == tenantId && x.EffectType == F3JobTypes.ProductCreate, cancellationToken));
         Assert.Equal(1, await db.IntegrationJobs.CountAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductCreate, cancellationToken));
+        var approvalJob = await db.IntegrationJobs.SingleAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductApprovalReconcile, cancellationToken);
+        var approvalResult = await processor.ProcessAsync(tenantId, connectionId, approvalJob.JobType, approvalJob.PayloadJson, approvalJob.CorrelationId, cancellationToken);
+        Assert.True(approvalResult.Succeeded);
+
+        db.ChangeTracker.Clear();
+        status = await catalog.GetPublicationStatusAsync(tenantId, productId, connectionId, cancellationToken);
+        Assert.True(status.Succeeded);
+        Assert.Equal("LIVE", status.Value!.ActualStatus);
+        Assert.Equal("LIVE", Assert.Single(status.Value.Lines).ActualStatus);
+        Assert.Equal("LIVE", (await db.MarketplaceListingStates.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId, cancellationToken)).ActualStatus);
+        Assert.Equal("LIVE", (await db.MarketplaceListingStates.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId, cancellationToken)).DesiredStatus);
+        Assert.Equal($"fake-content-8690000000001", (await db.MarketplaceProductLinks.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken)).ExternalId);
+        Assert.Equal($"fake-variant-8690000000001", (await db.MarketplaceVariantLinks.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId, cancellationToken)).ExternalId);
+        Assert.Equal(1, fake.ExternalEffectCount);
         var terminalJob = await db.IntegrationJobs.SingleAsync(x => x.Id == queued.Value, cancellationToken);
         terminalJob.Status = JobStatus.Succeeded;
         terminalJob.CompletedAt = clock.GetUtcNow();
@@ -312,13 +326,13 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         db.ProductVariants.AddRange(
             new ProductVariant { Id = firstVariantId, TenantId = tenantId, ProductId = productId, Sku = "PARTIAL-1", SkuNormalized = "PARTIAL-1", Barcode = "8690000000101", BarcodeNormalized = "8690000000101", ModelCode = "PARTIAL", OptionSignature = "SIZE=M", CreatedAt = Now, UpdatedAt = Now },
             new ProductVariant { Id = secondVariantId, TenantId = tenantId, ProductId = productId, Sku = "PARTIAL-2", SkuNormalized = "PARTIAL-2", Barcode = "8690000000102", BarcodeNormalized = "8690000000102", ModelCode = "PARTIAL", OptionSignature = "SIZE=L", CreatedAt = Now, UpdatedAt = Now });
-        db.ChannelListingProfiles.Add(new ChannelListingProfile { Id = profileId, TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, Enabled = true, DesiredStatus = "CREATE_REQUESTED", ActualStatus = "QUEUED", Version = 1 });
+        db.ChannelListingProfiles.Add(new ChannelListingProfile { Id = profileId, TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "QUEUED", Version = 1 });
         db.ChannelListingVariants.AddRange(
-            new ChannelListingVariant { Id = Guid.NewGuid(), TenantId = tenantId, ProfileId = profileId, VariantId = firstVariantId, ExternalSku = "PARTIAL-1", ExternalBarcode = "8690000000101", DesiredStatus = "CREATE", ActualStatus = "QUEUED" },
-            new ChannelListingVariant { Id = Guid.NewGuid(), TenantId = tenantId, ProfileId = profileId, VariantId = secondVariantId, ExternalSku = "PARTIAL-2", ExternalBarcode = "8690000000102", DesiredStatus = "CREATE", ActualStatus = "QUEUED" });
+            new ChannelListingVariant { Id = Guid.NewGuid(), TenantId = tenantId, ProfileId = profileId, VariantId = firstVariantId, ExternalSku = "PARTIAL-1", ExternalBarcode = "8690000000101", DesiredStatus = "LIVE", ActualStatus = "QUEUED" },
+            new ChannelListingVariant { Id = Guid.NewGuid(), TenantId = tenantId, ProfileId = profileId, VariantId = secondVariantId, ExternalSku = "PARTIAL-2", ExternalBarcode = "8690000000102", DesiredStatus = "LIVE", ActualStatus = "QUEUED" });
         db.MarketplaceListingStates.AddRange(
-            new MarketplaceListingState { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, VariantId = firstVariantId, DesiredStatus = "CREATE", ActualStatus = "QUEUED", PayloadHash = "partial-hash", Version = 1 },
-            new MarketplaceListingState { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, VariantId = secondVariantId, DesiredStatus = "CREATE", ActualStatus = "QUEUED", PayloadHash = "partial-hash", Version = 1 });
+            new MarketplaceListingState { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, VariantId = firstVariantId, DesiredStatus = "LIVE", ActualStatus = "QUEUED", PayloadHash = "partial-hash", Version = 1 },
+            new MarketplaceListingState { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, VariantId = secondVariantId, DesiredStatus = "LIVE", ActualStatus = "QUEUED", PayloadHash = "partial-hash", Version = 1 });
         var publicationJson = "{\"items\":[{\"barcode\":\"8690000000101\"},{\"barcode\":\"8690000000102\"}]}";
         var payload = JsonSerializer.Serialize(new ProductPublicationJobPayload(jobId, productId, profileId, "SUBMIT", "partial-hash", publicationJson, null, null));
         db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductCreate, PayloadJson = payload, PayloadVersion = 1, PayloadHash = "partial-envelope", JobDedupKey = "partial-product-create", EffectIdempotencyKey = "partial-product-create-effect", Status = JobStatus.Pending, AvailableAt = Now, MaxAttempts = 10, CorrelationId = "product-partial-e2e", CreatedAt = Now, Version = 1 });
@@ -342,6 +356,183 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         Assert.Equal("CREATE_REJECTED", lines[1].ActualStatus);
         Assert.Equal("FAKE_PARTIAL_REJECTION", lines[1].RejectionCode);
         Assert.Equal(1, fake.ExternalEffectCount);
+
+        var approvalJob = await db.IntegrationJobs.SingleAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductApprovalReconcile, cancellationToken);
+        var approvalResult = await processor.ProcessAsync(tenantId, connectionId, approvalJob.JobType, approvalJob.PayloadJson, approvalJob.CorrelationId, cancellationToken);
+        Assert.Equal(JobCompletionKind.Blocked, approvalResult.Kind);
+        Assert.Equal("PRODUCT_APPROVAL_PARTIAL_REJECTION", approvalResult.ErrorCode);
+
+        db.ChangeTracker.Clear();
+        profile = await db.ChannelListingProfiles.SingleAsync(x => x.Id == profileId, cancellationToken);
+        lines = await db.ChannelListingVariants.Where(x => x.ProfileId == profileId).OrderBy(x => x.ExternalBarcode).ToListAsync(cancellationToken);
+        Assert.Equal("PARTIAL_REJECTED", profile.ActualStatus);
+        Assert.Equal("LIVE", lines[0].ActualStatus);
+        Assert.Equal("CREATE_REJECTED", lines[1].ActualStatus);
+        Assert.Equal(1, await db.MarketplaceVariantLinks.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken));
+        Assert.Equal(1, fake.ExternalEffectCount);
+    }
+
+    [Fact]
+    public async Task Product_approval_reconciliation_persists_live_and_rejected_variants_without_new_write()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var tenantId = Guid.Parse("c5555555-5555-5555-5555-555555555555");
+        var connectionId = Guid.Parse("c6666666-6666-6666-6666-666666666666");
+        var productId = Guid.Parse("c7777777-7777-7777-7777-777777777777");
+        var firstVariantId = Guid.Parse("c8888888-8888-8888-8888-888888888888");
+        var secondVariantId = Guid.Parse("c9999999-9999-9999-9999-999999999999");
+        var profileId = Guid.Parse("caaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var jobId = Guid.Parse("cbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var clock = new MutableTimeProvider(Now);
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options);
+        await db.Database.MigrateAsync(cancellationToken);
+        db.Tenants.Add(new Tenant { Id = tenantId, Code = "product-approval-partial-e2e", DisplayName = "Product Approval Partial E2E", CreatedAt = Now, UpdatedAt = Now });
+        db.PlatformConnections.Add(new PlatformConnection { Id = connectionId, PublicId = Guid.NewGuid(), TenantId = tenantId, PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Approval connection", ExternalStoreId = "synthetic-store", Status = "ACTIVE", ApiVersion = "v2", Version = 1 });
+        db.Products.Add(new Product { Id = productId, TenantId = tenantId, Title = "Approval Product", Description = "Approval reconciliation fixture", CreatedAt = Now, UpdatedAt = Now });
+        db.ProductVariants.AddRange(
+            new ProductVariant { Id = firstVariantId, TenantId = tenantId, ProductId = productId, Sku = "APPROVAL-1", SkuNormalized = "APPROVAL-1", Barcode = "8690000000201", BarcodeNormalized = "8690000000201", ModelCode = "APPROVAL", OptionSignature = "SIZE=M", CreatedAt = Now, UpdatedAt = Now },
+            new ProductVariant { Id = secondVariantId, TenantId = tenantId, ProductId = productId, Sku = "APPROVAL-2", SkuNormalized = "APPROVAL-2", Barcode = "8690000000202", BarcodeNormalized = "8690000000202", ModelCode = "APPROVAL", OptionSignature = "SIZE=L", CreatedAt = Now, UpdatedAt = Now });
+        db.ChannelListingProfiles.Add(new ChannelListingProfile { Id = profileId, TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "APPROVAL_PENDING", Version = 1 });
+        db.ChannelListingVariants.AddRange(
+            new ChannelListingVariant { Id = Guid.NewGuid(), TenantId = tenantId, ProfileId = profileId, VariantId = firstVariantId, ExternalSku = "APPROVAL-1", ExternalBarcode = "8690000000201", DesiredStatus = "LIVE", ActualStatus = "CREATE_ACCEPTED" },
+            new ChannelListingVariant { Id = Guid.NewGuid(), TenantId = tenantId, ProfileId = profileId, VariantId = secondVariantId, ExternalSku = "APPROVAL-2", ExternalBarcode = "8690000000202", DesiredStatus = "LIVE", ActualStatus = "CREATE_ACCEPTED" });
+        db.MarketplaceListingStates.AddRange(
+            new MarketplaceListingState { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, VariantId = firstVariantId, DesiredStatus = "LIVE", ActualStatus = "CREATE_ACCEPTED", PayloadHash = "approval-hash", Version = 1 },
+            new MarketplaceListingState { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, VariantId = secondVariantId, DesiredStatus = "LIVE", ActualStatus = "CREATE_ACCEPTED", PayloadHash = "approval-hash", Version = 1 });
+        var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profileId, "approval-hash", Now, Now.AddDays(7)));
+        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductApprovalReconcile, PayloadJson = payload, PayloadVersion = 1, PayloadHash = "approval-envelope", JobDedupKey = "approval-partial", EffectIdempotencyKey = "approval-partial", Status = JobStatus.Pending, AvailableAt = Now, MaxAttempts = 200, CorrelationId = "approval-partial-e2e", CreatedAt = Now, Version = 1 });
+        await db.SaveChangesAsync(cancellationToken);
+
+        var fake = new DeterministicFakeAdapter(FakeScenario.Partial, clock, true);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, clock);
+        var result = await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ProductApprovalReconcile, payload, "approval-partial-e2e", cancellationToken);
+        Assert.Equal(JobCompletionKind.Blocked, result.Kind);
+        Assert.Equal("PRODUCT_APPROVAL_PARTIAL_REJECTION", result.ErrorCode);
+
+        db.ChangeTracker.Clear();
+        var profile = await db.ChannelListingProfiles.SingleAsync(x => x.Id == profileId, cancellationToken);
+        var lines = await db.ChannelListingVariants.Where(x => x.ProfileId == profileId).OrderBy(x => x.ExternalBarcode).ToListAsync(cancellationToken);
+        Assert.Equal("PARTIAL_REJECTED", profile.ActualStatus);
+        Assert.Equal("LIVE", lines[0].ActualStatus);
+        Assert.Equal("REJECTED", lines[1].ActualStatus);
+        Assert.Equal("FAKE_APPROVAL_REJECTION", lines[1].RejectionCode);
+        Assert.Equal(1, await db.MarketplaceProductLinks.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken));
+        Assert.Equal(1, await db.MarketplaceVariantLinks.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken));
+        Assert.Equal(0, fake.ExternalEffectCount);
+    }
+
+    [Fact]
+    public async Task Product_approval_not_found_remains_pending_and_retries()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var tenantId = Guid.Parse("d5555555-5555-5555-5555-555555555555");
+        var connectionId = Guid.Parse("d6666666-6666-6666-6666-666666666666");
+        var productId = Guid.Parse("d7777777-7777-7777-7777-777777777777");
+        var variantId = Guid.Parse("d8888888-8888-8888-8888-888888888888");
+        var profileId = Guid.Parse("d9999999-9999-9999-9999-999999999999");
+        var jobId = Guid.Parse("daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var clock = new MutableTimeProvider(Now);
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options);
+        await db.Database.MigrateAsync(cancellationToken);
+        db.Tenants.Add(new Tenant { Id = tenantId, Code = "product-approval-pending-e2e", DisplayName = "Product Approval Pending E2E", CreatedAt = Now, UpdatedAt = Now });
+        db.PlatformConnections.Add(new PlatformConnection { Id = connectionId, PublicId = Guid.NewGuid(), TenantId = tenantId, PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Pending approval connection", ExternalStoreId = "synthetic-store", Status = "ACTIVE", ApiVersion = "v2", Version = 1 });
+        db.Products.Add(new Product { Id = productId, TenantId = tenantId, Title = "Pending Product", Description = "Pending approval fixture", CreatedAt = Now, UpdatedAt = Now });
+        db.ProductVariants.Add(new ProductVariant { Id = variantId, TenantId = tenantId, ProductId = productId, Sku = "PENDING-1", SkuNormalized = "PENDING-1", Barcode = "8690000000301", BarcodeNormalized = "8690000000301", ModelCode = "PENDING", OptionSignature = "SIZE=M", CreatedAt = Now, UpdatedAt = Now });
+        db.ChannelListingProfiles.Add(new ChannelListingProfile { Id = profileId, TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "APPROVAL_PENDING", Version = 1 });
+        db.ChannelListingVariants.Add(new ChannelListingVariant { Id = Guid.NewGuid(), TenantId = tenantId, ProfileId = profileId, VariantId = variantId, ExternalSku = "PENDING-1", ExternalBarcode = "8690000000301", DesiredStatus = "LIVE", ActualStatus = "CREATE_ACCEPTED" });
+        db.MarketplaceListingStates.Add(new MarketplaceListingState { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, DesiredStatus = "LIVE", ActualStatus = "CREATE_ACCEPTED", PayloadHash = "pending-hash", Version = 1 });
+        var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profileId, "pending-hash", Now, Now.AddDays(7)));
+        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductApprovalReconcile, PayloadJson = payload, PayloadVersion = 1, PayloadHash = "pending-envelope", JobDedupKey = "approval-pending", EffectIdempotencyKey = "approval-pending", Status = JobStatus.Pending, AvailableAt = Now, MaxAttempts = 200, CorrelationId = "approval-pending-e2e", CreatedAt = Now, Version = 1 });
+        await db.SaveChangesAsync(cancellationToken);
+
+        var fake = new DeterministicFakeAdapter(FakeScenario.Empty, clock, true);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, clock);
+        var result = await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ProductApprovalReconcile, payload, "approval-pending-e2e", cancellationToken);
+        Assert.Equal(JobCompletionKind.Retry, result.Kind);
+        Assert.Equal("PRODUCT_APPROVAL_PENDING", result.ErrorCode);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal("APPROVAL_PENDING", (await db.ChannelListingProfiles.SingleAsync(x => x.Id == profileId, cancellationToken)).ActualStatus);
+        Assert.Equal("APPROVAL_PENDING", (await db.ChannelListingVariants.SingleAsync(x => x.ProfileId == profileId, cancellationToken)).ActualStatus);
+        Assert.Equal(0, await db.MarketplaceProductLinks.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken));
+        Assert.Equal(0, fake.ExternalEffectCount);
+    }
+
+    [Fact]
+    public async Task Product_approval_identity_conflict_requires_manual_review_without_rewiring_links()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var tenantId = Guid.Parse("e5555555-5555-5555-5555-555555555555");
+        var connectionId = Guid.Parse("e6666666-6666-6666-6666-666666666666");
+        var productId = Guid.Parse("e7777777-7777-7777-7777-777777777777");
+        var variantId = Guid.Parse("e8888888-8888-8888-8888-888888888888");
+        var profileId = Guid.Parse("e9999999-9999-9999-9999-999999999999");
+        var jobId = Guid.Parse("eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var clock = new MutableTimeProvider(Now);
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options);
+        await db.Database.MigrateAsync(cancellationToken);
+        db.Tenants.Add(new Tenant { Id = tenantId, Code = "product-approval-conflict-e2e", DisplayName = "Product Approval Conflict E2E", CreatedAt = Now, UpdatedAt = Now });
+        db.PlatformConnections.Add(new PlatformConnection { Id = connectionId, PublicId = Guid.NewGuid(), TenantId = tenantId, PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Conflict approval connection", ExternalStoreId = "synthetic-store", Status = "ACTIVE", ApiVersion = "v2", Version = 1 });
+        db.Products.Add(new Product { Id = productId, TenantId = tenantId, Title = "Conflict Product", Description = "Identity conflict fixture", CreatedAt = Now, UpdatedAt = Now });
+        db.ProductVariants.Add(new ProductVariant { Id = variantId, TenantId = tenantId, ProductId = productId, Sku = "CONFLICT-1", SkuNormalized = "CONFLICT-1", Barcode = "8690000000401", BarcodeNormalized = "8690000000401", ModelCode = "CONFLICT", OptionSignature = "SIZE=M", CreatedAt = Now, UpdatedAt = Now });
+        db.ChannelListingProfiles.Add(new ChannelListingProfile { Id = profileId, TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "APPROVAL_PENDING", Version = 1 });
+        db.ChannelListingVariants.Add(new ChannelListingVariant { Id = Guid.NewGuid(), TenantId = tenantId, ProfileId = profileId, VariantId = variantId, ExternalSku = "CONFLICT-1", ExternalBarcode = "8690000000401", DesiredStatus = "LIVE", ActualStatus = "CREATE_ACCEPTED" });
+        db.MarketplaceListingStates.Add(new MarketplaceListingState { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, DesiredStatus = "LIVE", ActualStatus = "CREATE_ACCEPTED", PayloadHash = "conflict-hash", Version = 1 });
+        db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, ExternalId = "existing-content", Version = 1 });
+        db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = "existing-variant", Version = 1 });
+        var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profileId, "conflict-hash", Now, Now.AddDays(7)));
+        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductApprovalReconcile, PayloadJson = payload, PayloadVersion = 1, PayloadHash = "conflict-envelope", JobDedupKey = "approval-conflict", EffectIdempotencyKey = "approval-conflict", Status = JobStatus.Pending, AvailableAt = Now, MaxAttempts = 200, CorrelationId = "approval-conflict-e2e", CreatedAt = Now, Version = 1 });
+        await db.SaveChangesAsync(cancellationToken);
+
+        var fake = new DeterministicFakeAdapter(FakeScenario.Success, clock, true);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, clock);
+        var result = await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ProductApprovalReconcile, payload, "approval-conflict-e2e", cancellationToken);
+        Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
+        Assert.Equal("PRODUCT_APPROVAL_IDENTITY_CONFLICT", result.ErrorCode);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal("MANUAL_REVIEW", (await db.ChannelListingProfiles.SingleAsync(x => x.Id == profileId, cancellationToken)).ActualStatus);
+        Assert.Equal("existing-content", (await db.MarketplaceProductLinks.SingleAsync(x => x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken)).ExternalId);
+        Assert.Equal("existing-variant", (await db.MarketplaceVariantLinks.SingleAsync(x => x.VariantId == variantId && x.ConnectionId == connectionId, cancellationToken)).ExternalId);
+        Assert.Equal(0, fake.ExternalEffectCount);
+    }
+
+    [Fact]
+    public async Task Product_approval_superseded_payload_stops_without_remote_read_or_state_mutation()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var tenantId = Guid.Parse("f5555555-5555-5555-5555-555555555555");
+        var connectionId = Guid.Parse("f6666666-6666-6666-6666-666666666666");
+        var productId = Guid.Parse("f7777777-7777-7777-7777-777777777777");
+        var variantId = Guid.Parse("f8888888-8888-8888-8888-888888888888");
+        var profileId = Guid.Parse("f9999999-9999-9999-9999-999999999999");
+        var jobId = Guid.Parse("faaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var clock = new MutableTimeProvider(Now);
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options);
+        await db.Database.MigrateAsync(cancellationToken);
+        db.Tenants.Add(new Tenant { Id = tenantId, Code = "product-approval-superseded-e2e", DisplayName = "Product Approval Superseded E2E", CreatedAt = Now, UpdatedAt = Now });
+        db.PlatformConnections.Add(new PlatformConnection { Id = connectionId, PublicId = Guid.NewGuid(), TenantId = tenantId, PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Superseded approval connection", ExternalStoreId = "synthetic-store", Status = "ACTIVE", ApiVersion = "v2", Version = 1 });
+        db.Products.Add(new Product { Id = productId, TenantId = tenantId, Title = "Superseded Product", Description = "Superseded approval fixture", CreatedAt = Now, UpdatedAt = Now });
+        db.ProductVariants.Add(new ProductVariant { Id = variantId, TenantId = tenantId, ProductId = productId, Sku = "SUPERSEDED-1", SkuNormalized = "SUPERSEDED-1", Barcode = "8690000000501", BarcodeNormalized = "8690000000501", ModelCode = "SUPERSEDED", OptionSignature = "SIZE=M", CreatedAt = Now, UpdatedAt = Now });
+        db.ChannelListingProfiles.Add(new ChannelListingProfile { Id = profileId, TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "QUEUED", Version = 1 });
+        db.ChannelListingVariants.Add(new ChannelListingVariant { Id = Guid.NewGuid(), TenantId = tenantId, ProfileId = profileId, VariantId = variantId, ExternalSku = "SUPERSEDED-1", ExternalBarcode = "8690000000501", DesiredStatus = "LIVE", ActualStatus = "QUEUED" });
+        db.MarketplaceListingStates.Add(new MarketplaceListingState { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, DesiredStatus = "LIVE", ActualStatus = "QUEUED", PayloadHash = "newer-hash", Version = 1 });
+        var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profileId, "stale-hash", Now, Now.AddDays(7)));
+        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductApprovalReconcile, PayloadJson = payload, PayloadVersion = 1, PayloadHash = "stale-envelope", JobDedupKey = "approval-superseded", EffectIdempotencyKey = "approval-superseded", Status = JobStatus.Pending, AvailableAt = Now, MaxAttempts = 200, CorrelationId = "approval-superseded-e2e", CreatedAt = Now, Version = 1 });
+        await db.SaveChangesAsync(cancellationToken);
+
+        var fake = new DeterministicFakeAdapter(FakeScenario.Success, clock, true);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, clock);
+        var result = await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ProductApprovalReconcile, payload, "approval-superseded-e2e", cancellationToken);
+        Assert.Equal(JobCompletionKind.Blocked, result.Kind);
+        Assert.Equal("PRODUCT_APPROVAL_SUPERSEDED", result.ErrorCode);
+        Assert.Equal(0, fake.PublicationStatusReadCount);
+
+        db.ChangeTracker.Clear();
+        Assert.Equal("QUEUED", (await db.ChannelListingProfiles.SingleAsync(x => x.Id == profileId, cancellationToken)).ActualStatus);
+        Assert.Equal("QUEUED", (await db.ChannelListingVariants.SingleAsync(x => x.ProfileId == profileId, cancellationToken)).ActualStatus);
+        Assert.Equal("newer-hash", (await db.MarketplaceListingStates.SingleAsync(x => x.VariantId == variantId && x.ConnectionId == connectionId, cancellationToken)).PayloadHash);
+        Assert.Equal(0, await db.MarketplaceProductLinks.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken));
     }
 
     private sealed class MutableTimeProvider(DateTimeOffset value) : TimeProvider

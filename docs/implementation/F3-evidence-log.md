@@ -46,4 +46,17 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 | Dış etki ve replay koruması | CODED_STATIC_VERIFIED | Dış çağrı öncesi `ExternalEffectRecord` oluşturulur; belirsiz sonuçta otomatik tekrar yerine `MANUAL_REVIEW`; aynı payload terminal job dahil mevcut job'a döner. |
 | PostgreSQL başarı/replay/partial testleri | CODED / DYNAMIC_NOT_RUN | `FakeWorkerPipelineTests` içinde payload, tek dış etki, poll ve kısmi satır sonucu senaryoları eklendi. .NET SDK/Docker bulunmadığı için çalıştırılmadı. |
 | Trendyol Stage safe-write | BLOCKED_EXTERNAL | Gerçek credential, kontrollü barkod/SKU, açık operasyon onayı ve rollback gerekir. |
-| Create sonrası onay reconciliation | MISSING | Batch SUCCESS yalnız create kabulüdür; approved-products read-back ile LIVE/REJECTED kesinleştirilmelidir. |
+| Create sonrası onay reconciliation | CODED_STATIC_VERIFIED / DYNAMIC_NOT_RUN | Create batch içinde en az bir kabul edilen satır varsa otomatik durable reconciliation işi üretir; `CREATE_REJECTED` satırlar read-back dışında korunur; approved -> unapproved barkod fallback, pending/rejected/locked/archive/blacklist ayrımı, content/variant linkleri ve fail-closed kimlik çatışması eklendi. |
+
+### 2026-08-05 - Product Create onay uzlaştırması
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Approved/unapproved barkod read-back | CODED_STATIC_VERIFIED | Adapter önce `products/approved`, bire bir barkod bulunmazsa `products/unapproved` endpoint'ini okur; hiçbir dış yazma çağrısı yapmaz. |
+| Uzak durum eşlemesi | CODED_STATIC_VERIFIED | `APPROVED`, `PENDING_APPROVAL`, `REJECTED`, `ARCHIVED`, `LOCKED`, `BLACKLISTED` ve `NOT_FOUND` durumları yerel satır/profile durumlarına ayrılır. |
+| Uzak kimlik kalıcılığı | CODED_STATIC_VERIFIED | Onaylı `contentId` ve `variantId` değerleri tenant + connection benzersizlikleriyle kaydedilir; yerel veya uzak kimlik çatışması sessiz rewire yerine `MANUAL_REVIEW` olur. |
+| Durable lifecycle | CODED_STATIC_VERIFIED | En az bir satırı kabul edilen create batch `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` işi üretir; pending/not-found 5 dakika sonra retry olur, yedi günlük yerel operasyon deadline'ı aşılırsa yalnız kabul edilen satırlar manuel incelemeye taşınır ve `CREATE_REJECTED` kanıtları korunur. |
+| PostgreSQL onay senaryoları | CODED / DYNAMIC_NOT_RUN | Tam onay, kısmi ret, iki listede görünmeme, önceden farklı kimliğe bağlı link çatışması ve daha yeni payload tarafından supersede edilme senaryoları `FakeWorkerPipelineTests` içinde kodlandı. |
+| Contract fixture | CODED / DYNAMIC_NOT_RUN | Approved content/variant kimliği, unapproved rejection nedeni ve pending status mapper testi eklendi; fixture anonimdir. |
+| Exact .NET/PostgreSQL doğrulaması | BLOCKED_ENVIRONMENT | .NET SDK `10.0.302` ve Docker/PostgreSQL test ortamı bu çalışma ortamında bulunmuyor. Resmî SDK binary indirme girişimi araç gzip politikası ve kabuk DNS kısıtı nedeniyle tamamlanamadı. |
+| Trendyol Stage read-back | BLOCKED_EXTERNAL | Gerçek Stage credential, kontrollü create barkodu ve onay/ret görünürlük akışı gerekir. |

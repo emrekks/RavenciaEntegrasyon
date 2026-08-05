@@ -136,7 +136,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             return succeeded ? JobExecutionResult.Success() : JobExecutionResult.Blocked("IMPORT_JOB_REJECTED", "Import operation was rejected by its current state or validation rules.");
         }
 
-        if (job.JobType is F3JobTypes.ConnectionTest or F3JobTypes.ReferenceSync or F3JobTypes.ProductCreate or F3JobTypes.OrderSync or F3JobTypes.ShipmentAction or F3JobTypes.ReturnSync or F3JobTypes.ReturnAction or F3JobTypes.WebhookIngest)
+        if (job.JobType is F3JobTypes.ConnectionTest or F3JobTypes.ReferenceSync or F3JobTypes.ProductCreate or F3JobTypes.ProductApprovalReconcile or F3JobTypes.OrderSync or F3JobTypes.ShipmentAction or F3JobTypes.ReturnSync or F3JobTypes.ReturnAction or F3JobTypes.WebhookIngest)
         {
             var processor = services.GetRequiredService<IF3JobProcessor>();
             return await processor.ProcessAsync(job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, cancellationToken);

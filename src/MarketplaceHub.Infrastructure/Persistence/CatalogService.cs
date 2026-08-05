@@ -190,7 +190,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var profile = await db.ChannelListingProfiles.SingleAsync(x => x.TenantId == tenantId && x.Id == draft.ProfileId && x.ConnectionId == connectionId, cancellationToken);
         profile.ExternalCategoryId = draft.ExternalCategoryId;
         profile.ExternalBrandId = draft.ExternalBrandId;
-        profile.DesiredStatus = "CREATE_REQUESTED";
+        profile.DesiredStatus = "LIVE";
         profile.ActualStatus = "QUEUED";
         profile.LastRejectionCode = null;
         profile.Version++;
@@ -200,23 +200,23 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var listing = await db.ChannelListingVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProfileId == profile.Id && x.VariantId == variant.VariantId, cancellationToken);
             if (listing is null)
             {
-                listing = new ChannelListingVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProfileId = profile.Id, VariantId = variant.VariantId, DesiredStatus = "CREATE", ActualStatus = "QUEUED" };
+                listing = new ChannelListingVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProfileId = profile.Id, VariantId = variant.VariantId, DesiredStatus = "LIVE", ActualStatus = "QUEUED" };
                 db.ChannelListingVariants.Add(listing);
             }
             listing.ExternalSku = variant.Sku;
             listing.ExternalBarcode = variant.Barcode;
-            listing.DesiredStatus = "CREATE";
+            listing.DesiredStatus = "LIVE";
             listing.ActualStatus = "QUEUED";
             listing.RejectionCode = null;
 
             var state = await db.MarketplaceListingStates.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.VariantId, cancellationToken);
             if (state is null)
             {
-                state = new MarketplaceListingState { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.VariantId, DesiredStatus = "CREATE", ActualStatus = "QUEUED", Version = 1 };
+                state = new MarketplaceListingState { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.VariantId, DesiredStatus = "LIVE", ActualStatus = "QUEUED", Version = 1 };
                 db.MarketplaceListingStates.Add(state);
             }
             else state.Version++;
-            state.DesiredStatus = "CREATE";
+            state.DesiredStatus = "LIVE";
             state.ActualStatus = "QUEUED";
             state.LastRejectionCode = null;
             state.PayloadHash = draft.PayloadHash;
@@ -255,8 +255,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                                                   where listing.TenantId == tenantId && listing.ProfileId == profile.Id
                                                   orderby variant.Sku
                                                   select new PublicationLineView(variant.Id, variant.Sku, variant.Barcode, listing.DesiredStatus, listing.ActualStatus, listing.RejectionCode)).ToListAsync(cancellationToken);
-        var prefix = $"product-create:{connectionId:N}:{productId:N}:";
-        var job = await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductCreate && x.JobDedupKey.StartsWith(prefix)).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        var createPrefix = $"product-create:{connectionId:N}:{productId:N}:";
+        var hasProfile = profile is not null;
+        var approvalPrefix = hasProfile ? $"product-approval:{connectionId:N}:{profile!.Id:N}:" : "";
+        var job = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && ((x.JobType == F3JobTypes.ProductCreate && x.JobDedupKey.StartsWith(createPrefix)) || (hasProfile && x.JobType == F3JobTypes.ProductApprovalReconcile && x.JobDedupKey.StartsWith(approvalPrefix))))
+            .OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
         return ServiceResult<PublicationStatusView>.Ok(new(productId, connectionId, profile?.Id, profile?.DesiredStatus, profile?.ActualStatus, profile?.LastRejectionCode, job?.Id, job is null ? null : JobWire(job.Status), lines));
     }
 

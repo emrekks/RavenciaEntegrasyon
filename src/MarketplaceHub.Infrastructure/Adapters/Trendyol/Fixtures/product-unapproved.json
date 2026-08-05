@@ -1,0 +1,22 @@
+{
+  "totalElements": 1,
+  "totalPages": 1,
+  "page": 0,
+  "size": 1,
+  "nextPageToken": null,
+  "content": [
+    {
+      "supplierId": 2748,
+      "productMainId": "PRODUCT-ANON-002",
+      "status": "rejected",
+      "barcode": "BARCODE-ANON-002",
+      "stockCode": "SKU-ANON-002",
+      "rejectReasonDetails": [
+        {
+          "rejectReason": "ANONYMIZED_CONTENT_REJECTION",
+          "rejectReasonDetail": "Anonymized contract fixture detail."
+        }
+      ]
+    }
+  ]
+}

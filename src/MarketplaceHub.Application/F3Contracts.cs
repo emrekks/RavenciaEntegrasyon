@@ -15,6 +15,7 @@ public static class F3JobTypes
     public const string ReturnAction = "TRENDYOL_RETURN_ACTION";
     public const string WebhookIngest = "TRENDYOL_WEBHOOK_INGEST";
     public const string ProductCreate = "TRENDYOL_PRODUCT_CREATE";
+    public const string ProductApprovalReconcile = "TRENDYOL_PRODUCT_APPROVAL_RECONCILE";
 }
 
 public static class F3Capabilities
@@ -67,8 +68,10 @@ public sealed record RemoteOperationLine(string ExternalKey, bool Succeeded, str
 public sealed record RemoteOperationStatus(string ExternalOperationId, string Status, IReadOnlyList<RemoteOperationLine> Lines);
 public sealed record ProductPublication(Guid ProductId, string PayloadHash, string PayloadJson);
 public sealed record ProductPublicationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string PayloadHash, string PayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt);
+public sealed record ProductApprovalReconciliationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string PayloadHash, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
 public sealed record ExternalProductIdentity(string ExternalProductId, string? ExternalVariantId);
 public sealed record RemoteProduct(string ExternalProductId, string? ExternalVariantId, string? Barcode, string? Sku, string RawJson);
+public sealed record RemotePublicationStatus(string Barcode, string Status, string? ExternalProductId, string? ExternalVariantId, string? RejectionCode, string RawJson);
 public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter);
 public sealed record StockPushLine(Guid VariantId, string Barcode, decimal Quantity, long ProjectionVersion);
 public sealed record PricePushLine(Guid VariantId, string Barcode, decimal ListPrice, decimal SalePrice, string Currency, long PriceVersion);
@@ -104,6 +107,7 @@ public interface IProductPort
     Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken);
+    Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken);
     Task<AdapterResult<bool>> ArchiveAsync(AdapterContext context, ExternalProductIdentity identity, CancellationToken cancellationToken);
 }
 

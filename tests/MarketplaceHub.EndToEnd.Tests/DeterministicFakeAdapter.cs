@@ -21,8 +21,10 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
 {
     private readonly Dictionary<string, object> effects = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IReadOnlyList<string>> productBatchBarcodes = new(StringComparer.Ordinal);
+    private int publicationStatusReadCount;
 
     public int ExternalEffectCount { get; private set; }
+    public int PublicationStatusReadCount => Volatile.Read(ref publicationStatusReadCount);
 
     public Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken) =>
         Result(new ConnectionIdentity("FAKE", "TEST", "synthetic-store", "test-v1", "synthetic-scope"));
@@ -59,6 +61,16 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
             ? new RemoteOperationLine(barcode, false, null, "FAKE_PARTIAL_REJECTION", false)
             : new RemoteOperationLine(barcode, true, $"fake-content-{index + 1}", null, false)).ToList();
         return Result(new RemoteOperationStatus(externalOperationId, "COMPLETED", lines));
+    }
+
+    public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref publicationStatusReadCount);
+        if (scenario == FakeScenario.Empty) return Result(new RemotePublicationStatus(barcode, "NOT_FOUND", null, null, null, "{}"));
+        var rejected = scenario == FakeScenario.Partial && barcode.EndsWith('2');
+        return Result(rejected
+            ? new RemotePublicationStatus(barcode, "REJECTED", null, null, "FAKE_APPROVAL_REJECTION", "{}")
+            : new RemotePublicationStatus(barcode, "APPROVED", $"fake-content-{barcode}", $"fake-variant-{barcode}", null, "{}"));
     }
 
     public Task<AdapterResult<bool>> ArchiveAsync(AdapterContext context, ExternalProductIdentity identity, CancellationToken cancellationToken) =>
