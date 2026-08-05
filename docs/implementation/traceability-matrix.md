@@ -11,9 +11,10 @@
 | Leaf kategori zorunluluğu | Reference snapshot + `IsLeaf` scope validation | F3 job/persistence tests | IMPLEMENTED_LOCAL |
 | Ürün okuma | Trendyol approved/unapproved barkod filtreleri ve mapper | Contract fixture testleri | IMPLEMENTED_LOCAL / STAGE_E2E_REQUIRED |
 | Ürün yayınlama | Product create port, payload composer, durable job, batch polling, approved/unapproved onay uzlaştırması, kimlik linkleri ve publication status API | Kodlanmış PostgreSQL create/replay/partial + approval/live/reject/pending/identity-conflict/superseded-payload testleri; exact runtime ve Stage bekliyor | IMPLEMENTED_LOCAL / DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED |
-| Stok/fiyat yazma | Inventory-price port | Birleşik uzak komut yok | NOT_COMPLETE |
-| Sipariş/paket içeri alma | Order polling, overlap cursor, idempotent upsert | Contract/persistence tests | IMPLEMENTED_LOCAL / E2E_REQUIRED |
-| İade okuma | Claims polling/mapper | Contract tests | PARTIAL / FIXTURE_REQUIRED |
+| Stok/fiyat yazma | Birleşik price-inventory composer + durable job + version read-back guard | Contract/source + PostgreSQL senaryoları kodlandı | IMPLEMENTED_LOCAL / DYNAMIC_STAGE_REVALIDATION_REQUIRED |
+| Sipariş/paket içeri alma | Order stream cursor + `/v2/orders` exact read + idempotent upsert | 2026 field contract tests + persistence tests kodlandı | IMPLEMENTED_LOCAL / STAGE_E2E_REQUIRED |
+| Shipment ve etiket | Capability-controlled package actions, exact order read-back, common-label create/poll/private storage | Worker/UI/contract scenarios coded | IMPLEMENTED_LOCAL / DYNAMIC_STAGE_REVALIDATION_REQUIRED |
+| İade okuma ve aksiyon | Claims poll/exact read, `claimId`, approve/reject/evidence/read-back | Contract + worker scenarios coded | IMPLEMENTED_LOCAL / DYNAMIC_STAGE_REVALIDATION_REQUIRED |
 | Fatura oluşturma | E-Faturam canonical payload + provider port | Contract/payload tests | IMPLEMENTED_LOCAL / FINANCIAL_E2E_REQUIRED |
 | Fatura durum/iptal | Provider port | Unsupported guard | NOT_COMPLETE |
 | PDF private storage | Permanent URL + private file abstraction | F4 tests | IMPLEMENTED_LOCAL / E2E_REQUIRED |

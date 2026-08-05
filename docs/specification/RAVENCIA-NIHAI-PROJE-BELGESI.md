@@ -2,11 +2,11 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 6.3
+**Belge sürümü:** 7.0
 **Belge tarihi:** 5 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
-**Güncel uygulama statüsü:** `F3_CLOSURE_ACTIVE / F4_IN_PROGRESS / PRODUCTION_BLOCKED`  
+**Güncel uygulama statüsü:** `F3_CORE_CODE_COMPLETE_VALIDATION_PENDING / F4_IN_PROGRESS / PRODUCTION_BLOCKED`
 **Aktif entegrasyon kapsamı:** Trendyol ve Trendyol E-Faturam  
 **Ürün sahibi:** Ravencia  
 **Sistem adı:** Ravencia MarketplaceHub
@@ -327,7 +327,26 @@ Worker create çağrısını `SUBMIT -> POLL` durum makinesiyle yürütür. Dı�
 
 Create batch içinde en az bir kabul edilen varyant varsa ayrı `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` işi otomatik oluşur. Batch aşamasında `CREATE_REJECTED` olan satırlar read-back dışında tutulur ve mevcut ret kodları korunur. Worker her barkodu önce onaylı ürün servisinde, bulunmazsa onaysız ürün servisinde sorgular. Onaylı satırın `contentId` ve `variantId` kimlikleri yerel ürün/varyant linklerine idempotent biçimde kaydedilir ve satır `LIVE` olur. `pendingApproval` veya iki listede de henüz görünmeyen barkod `APPROVAL_PENDING` olarak kalıp yeniden denenir; `rejected` satırı ret koduyla `REJECTED` olur. `archived`, `locked`, `blacklisted`, bilinmeyen durum veya mevcut yerel/uzak kimlik çatışması sessiz yeniden bağlama yapmadan `MANUAL_REVIEW` sınırına taşınır. Yedi günlük deadline Trendyol onay SLA'sı değil, sonsuz otomatik polling'i önleyen yerel operasyon korumasıdır. Onay işi başlamadan güncel listing-state payload hash değeri kontrol edilir; daha yeni bir yayınlama denemesi varsa eski iş `PRODUCT_APPROVAL_SUPERSEDED` ile dış sorgu ve durum değişikliği yapmadan durur. Deadline, contract veya kimlik hataları da önceki `CREATE_REJECTED` satırlarının kanıtını ezmez. Bu read-back işi yeni bir dış yazma üretmez.
 
-ProductUpdate, uzak archive, ürün detayındaki tamamlanmış operatör UI'si, exact .NET/PostgreSQL dinamik doğrulama ve gerçek Stage safe-write/read-back kanıtı henüz tamamlanmamıştır.
+Product Update, uzak archive/unarchive, birleşik fiyat-stok batch, Order V2/stream read, paket aksiyonları, ortak etiket, iade approve/reject/evidence/read-back, capability evidence API/UI ve ilgili operatör ekranları kodlanmıştır. Bütün dış yazmalar capability, global anahtar, bağlantı anahtarı, idempotency ve external-effect fence ile kapatılır; write sonucu uygun read-back olmadan kesin başarıya yükseltilmez. Exact .NET/PostgreSQL/Docker testleri ve gerçek Trendyol Stage safe-write/read-back kanıtı bulunmadığından F3 production kapanışı yapılmamıştır.
+
+## 7.5.1 Trendyol Türkiye CORE operasyon kapanışı
+
+Kodlanan CORE kapsamı şunlardır:
+
+- Connection, credential, capability probe ve tarihli Stage/SIT evidence kaydı.
+- Kategori, marka, kategori özelliği ve değer snapshot/eşleme akışı.
+- Product V2 approved/unapproved read, create, update, archive/unarchive, batch poll ve approval reconciliation.
+- Birleşik fiyat-stok batch ve sürüm kontrollü sonuç uzlaştırması.
+- Order V2 tekil read, order stream cursor, idempotent order/package upsert ve webhook ingress.
+- Capability ile sınırlandırılmış paket aksiyonları; `PICKING` ve `INVOICED` satıcı durumları, `TRACKING_NUMBER`, iptal/split/cargo/alternative/manual akışları yalnız kanıtlı action listesinde görünür. `Shipped` ve `Delivered` satıcı tarafından uydurulmaz; uzak kargo hareketinden okunur.
+- Ortak etiket create/poll/private storage akışı.
+- İade read, exact claim read-back, approve/reject, zorunlu özel kanıt dosyası ve karar uzlaştırması.
+- Trendyol invoice-link teslimi `SUBMITTED` ara durumu ve manuel teyit sınırı. Resmî terminal query kanıtı olmadan sahte `CONFIRMED` üretilmez.
+- Ürün, envanter, shipment, return ve capability evidence operatör ekranları.
+
+Bu kapanış `storeFrontCode=TR` ve ürün payload'ında `channels=["CORE"]` ile Türkiye CORE mağaza kapsamıdır. `LUXE`, uluslararası storefront veya farklı kanal kimlikleri ayrı ADR, capability evidence, fixture ve kabul testi olmadan etkin değildir. Trendyol E-Faturam mali sağlayıcı kapanışı F4'tür ve F3 CORE kod kapanışına dahil değildir.
+
+**Durum:** `CODE_COMPLETE_STATIC_VERIFIED / DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED / PRODUCTION_BLOCKED`.
 
 ## 7.6 CSV/XLSX içe aktarma
 
@@ -353,6 +372,12 @@ Hedef Trendyol akışı:
 
 1. Kullanıcı bir veya daha fazla varyantın stok/fiyatını değiştirir.
 2. Sistem merkezi stok ve fiyat otoritesini günceller.
+3. Yalnız `LIVE` ve uzak kimliği bağlı varyantlar, aktif TRY teklifleri ve MAIN stok projection'ları deterministic payload'a girer.
+4. Fiyat ve stok tek `/price-and-inventory` batch işiyle gönderilir.
+5. İş, gönderilen `offerId`, `priceVersion`, `projectionVersion` ve payload hash kanıtlarını saklar.
+6. Batch sonucu satır bazında işlenir; daha yeni yerel fiyat veya stok sürümü varsa eski sonuç uygulanmaz ve uzlaştırma gerekir.
+
+**Mevcut durum:** Birleşik fiyat-stok composer, durable job, external-effect fence, batch polling, stale-version koruması ve panel tetikleyicisi kodlanmıştır. Dynamic/PostgreSQL ve Stage write testi bekler.
 3. Trendyol'a gönderilecek değişiklikler tek birleşik `price-and-inventory` job'ında gruplanır.
 4. Batch kimliği saklanır.
 5. Uzak sonuç tamamlanana kadar “başarılı” yazılmaz.
@@ -444,7 +469,7 @@ Kargo değişikliği her siparişte serbest bir alan değildir. Hedef davranış
 5. Uzak sonuç doğrulanır ve paket tekrar okunur.
 6. Audit kaydında eski/yeni değer, kullanıcı ve dış yanıt bulunur.
 
-**Durum:** Uzak endpoint, izin ve durum kuralları gerçek hesapla doğrulanmadan bu buton aktif olmayacaktır. Mevcut capability `UNKNOWN` kabul edilir.
+**Durum:** Endpoint ve durum doğrulaması kodlandı; buton yalnız bağlantıdaki tarihli Stage/SIT capability evidence içinde aksiyon izinliyse gösterilir. Evidence yoksa capability `UNKNOWN` ve dış yazma kapalıdır.
 
 ## 7.12 Kargo etiketi ve çıktı alma
 
@@ -458,7 +483,7 @@ Hedef etiket akışı:
 6. Kullanıcı A4 veya desteklenen termal formatta ön izleme/indirme yapar.
 7. Yeniden yazdırma audit kaydına işlenir.
 
-**Durum:** Etiket endpoint'i ve format capability'si kanıtlanana kadar `PLANLANDI / BLOKE_EXTERNAL`dır. Desteklenmeyen format uydurulmaz.
+**Durum:** Ortak etiket create/get, private storage, checksum ve sürümlü shipment document kaydı kodlandı. UI yalnız `LABEL_READ` + `LABEL_WRITE` evidence ve desteklenen format bulunduğunda aksiyonu gösterir; Stage kabulü olmadan production kapalıdır.
 
 ## 7.13 Fatura kesme: kullanıcı akışı
 
@@ -732,12 +757,12 @@ Aşağıdaki bölümler projenin teknik kapsamını, veri ve güvenlik mimarisin
 |---|---|---|---|
 | Mimari temel | Modüler monolit, API/Worker ayrımı | `TAMAMLANDI_F0` | Değişiklik yalnız ADR ile |
 | Kimlik ve güvenlik çekirdeği | Güvenli login, parola, MFA, secret | `READY_LOCAL` | Production rol/MFA kabulü |
-| Yerel katalog/import | Ürün, varyant, özellik, import | `READY_LOCAL` | Uçtan uca ürün yayınlama |
+| Yerel katalog/import | Ürün, varyant, özellik, import | `READY_LOCAL` | Exact runtime regresyonu |
 | Trendyol read/reference | Kategori, marka, özellik, ürün, sipariş | `KODLANDI` | Gerçek Stage kapsam testi |
-| Trendyol product write | Create/update/archive + batch | `CREATE_VE_ONAY_UZLASTIRMA_KODLANDI_DINAMIK_DOGRULAMA_BEKLIYOR` | Update/archive, exact runtime ve Stage |
-| Stok-fiyat write | Birleşik batch ve reconciliation | `PLANLANDI` | F3 uygulama ve test |
-| Sipariş/paket write | İşleme alma, kargo, durum | `BLOKE_CAPABILITY` | Resmî endpoint ve Stage kanıtı |
-| Etiket | Güvenli etiket alma/yazdırma | `PLANLANDI` | Capability ve format doğrulaması |
+| Trendyol product write | Create/update/archive + batch | `CORE_CODE_COMPLETE_STATIC_VERIFIED` | Exact runtime ve Stage safe-write kabulü |
+| Stok-fiyat write | Birleşik batch ve reconciliation | `CORE_CODE_COMPLETE_STATIC_VERIFIED` | Exact runtime, partial-batch ve Stage kabulü |
+| Sipariş/paket write | Sipariş okuma, izinli paket aksiyonları ve read-back | `CORE_CODE_COMPLETE_STATIC_VERIFIED_CAPABILITY_GATED` | Stage capability evidence ve güvenli yazma kabulü |
+| Etiket | Capability-gated ortak etiket oluşturma ve okuma | `CORE_CODE_COMPLETE_STATIC_VERIFIED_CAPABILITY_GATED` | Stage format ve yazdırma kabulü |
 | E-Faturam submit | Doğru belge oluşturma | `KODLANDI_KISMEN` | Mali policy + Stage E2E |
 | Mükellef/status/cancel | Uçtan uca fatura yaşam döngüsü | `PLANLANDI` | F4 uygulama |
 | PDF ve Trendyol teslim | Güvenli PDF + 8 yıllık link | `KODLANDI_KISMEN` | Güvenlik ve reconciliation |
@@ -750,7 +775,7 @@ Aşağıdaki bölümler projenin teknik kapsamını, veri ve güvenlik mimarisin
 
 | Platform kodu | Rol | Aktif durum |
 |---|---|---|
-| `TRENDYOL` | Pazaryeri ürün, referans, stok-fiyat, sipariş, paket, iade, webhook ve fatura linki | Aktif geliştirme, F3 kapanışı |
+| `TRENDYOL` | Türkiye CORE ürün, referans, stok-fiyat, sipariş, paket, iade, webhook ve fatura linki | F3 CORE kod kapsamı tamamlandı; dinamik/Stage kabulü bekliyor |
 | `TRENDYOL_EFATURAM` | Mükellef, e-Fatura/e-Arşiv, durum, PDF, iptal ve belge sağlayıcı işlemleri | Aktif geliştirme, F4 |
 
 ## 13.2 Mevcut fazlarda kapsam dışı
@@ -1503,7 +1528,7 @@ Kesin aralıklar rate limit ve gerçek operasyon hacmiyle ayarlanır.
 - Credential veya PII response'a eklenmez.
 - Capability kapalıysa 409/422 benzeri açık iş kuralı hatası döner; sessiz no-op yapılmaz.
 
-Mevcut API ürün, kategori, marka, import, stok, offer, referans, mapping, bağlantı, sipariş, iade, fatura ve kimlik endpointleri için başlangıç yüzeyini içermektedir. Eksik dış orkestrasyonlar tamamlandıkça endpoint durumları capability ile uyumlu hale getirilmelidir.
+Mevcut API ürün, kategori, marka, import, stok, offer, referans, mapping, bağlantı, sipariş, paket, etiket, iade, fatura ve kimlik endpointlerini içerir. Trendyol Türkiye CORE dış yazma yüzeyleri capability evidence, global/connection write switch, idempotency, ETag, external-effect fence ve uzak read-back kapılarıyla fail-closed çalışır; dinamik ve Stage kabulü olmadan production etkinleştirilmez.
 
 ---
 

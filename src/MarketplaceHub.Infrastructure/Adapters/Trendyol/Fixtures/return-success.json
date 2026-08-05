@@ -5,7 +5,7 @@
   "size": 1,
   "content": [
     {
-      "id": "CLAIM-ANON-001",
+      "claimId": "CLAIM-ANON-001",
       "orderNumber": "ORDER-ANON-001",
       "lastModifiedDate": 1762253993685,
       "items": [

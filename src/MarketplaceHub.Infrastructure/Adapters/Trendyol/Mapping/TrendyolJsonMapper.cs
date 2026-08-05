@@ -29,7 +29,7 @@ public static class TrendyolJsonMapper
             var discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
             var net = Decimal(package, "packageTotalPrice", "totalPrice");
             var rawStatusPackage = Text(package, "shipmentPackageStatus", "status"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
-            var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName"), NullText(package, "cargoTrackingNumber"), allocations, gross, discount, net);
+            var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber"), allocations, gross, discount, net);
             rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
                 Snapshot(package, "customerFirstName", "customerLastName", "customerEmail", "commercial"), Snapshot(package, "shipmentAddress"), Snapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText()));
         }
@@ -45,7 +45,16 @@ public static class TrendyolJsonMapper
             if (product.TryGetProperty("variants", out var variants) && variants.ValueKind == JsonValueKind.Array)
                 foreach (var variant in variants.EnumerateArray()) rows.Add(new(contentId, NullText(variant, "variantId"), NullText(variant, "barcode"), NullText(variant, "stockCode"), variant.GetRawText()));
         }
-        return new(rows, NullText(root, "nextPageToken"), !string.IsNullOrWhiteSpace(NullText(root, "nextPageToken")));
+        var currentPage = Long(root, "page");
+        var pageSize = Math.Max(1, Long(root, "size"));
+        var totalPages = Long(root, "totalPages");
+        var token = NullText(root, "nextPageToken");
+        string? next = null;
+        if (totalPages > 0 && currentPage + 1 < totalPages && (currentPage + 1) * pageSize < 10_000)
+            next = $"p:{currentPage + 1}";
+        else if (!string.IsNullOrWhiteSpace(token))
+            next = $"t:{token}";
+        return new(rows, next, !string.IsNullOrWhiteSpace(next));
     }
 
     public static RemotePublicationStatus? ApprovedPublicationStatus(string json, string barcode)
@@ -94,7 +103,11 @@ public static class TrendyolJsonMapper
         if (root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
             foreach (var item in items.EnumerateArray())
             {
-                var key = item.TryGetProperty("requestItem", out var request) ? Text(request, "barcode") : ""; var status = Text(item, "status"); var succeeded = string.Equals(status, "SUCCESS", StringComparison.OrdinalIgnoreCase); var failure = item.TryGetProperty("failureReasons", out var reasons) && reasons.ValueKind == JsonValueKind.Array ? reasons.EnumerateArray().Select(x => x.ToString()).FirstOrDefault() : null;
+                var key = "";
+                if (item.TryGetProperty("requestItem", out var request) && request.ValueKind == JsonValueKind.Object)
+                    key = Text(request, "barcode", "contentId", "stockCode");
+                if (string.IsNullOrWhiteSpace(key)) key = Text(item, "barcode", "contentId", "stockCode");
+                var status = Text(item, "status"); var succeeded = string.Equals(status, "SUCCESS", StringComparison.OrdinalIgnoreCase); var failure = item.TryGetProperty("failureReasons", out var reasons) && reasons.ValueKind == JsonValueKind.Array ? reasons.EnumerateArray().Select(x => x.ToString()).FirstOrDefault() : null;
                 lines.Add(new(key, succeeded, null, failure, !succeeded && !string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase)));
             }
         return new(NullText(root, "batchRequestId") ?? requestedId, Text(root, "status"), lines);
@@ -105,7 +118,7 @@ public static class TrendyolJsonMapper
         using var document = JsonDocument.Parse(json); var root = document.RootElement; var rows = new List<RemoteReturnClaim>();
         foreach (var claim in Content(root))
         {
-            var claimId = Text(claim, "id"); var orderNumber = Text(claim, "orderNumber"); if (claimId.Length == 0 || orderNumber.Length == 0) continue;
+            var claimId = Text(claim, "claimId", "id"); var orderNumber = Text(claim, "orderNumber"); if (claimId.Length == 0 || orderNumber.Length == 0) continue;
             var lines = new List<RemoteReturnLine>();
             if (claim.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
                 foreach (var item in items.EnumerateArray())

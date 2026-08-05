@@ -60,3 +60,19 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 | Contract fixture | CODED / DYNAMIC_NOT_RUN | Approved content/variant kimliği, unapproved rejection nedeni ve pending status mapper testi eklendi; fixture anonimdir. |
 | Exact .NET/PostgreSQL doğrulaması | BLOCKED_ENVIRONMENT | .NET SDK `10.0.302` ve Docker/PostgreSQL test ortamı bu çalışma ortamında bulunmuyor. Resmî SDK binary indirme girişimi araç gzip politikası ve kabuk DNS kısıtı nedeniyle tamamlanamadı. |
 | Trendyol Stage read-back | BLOCKED_EXTERNAL | Gerçek Stage credential, kontrollü create barkodu ve onay/ret görünürlük akışı gerekir. |
+
+## 2026-08-05 - Trendyol Türkiye CORE kod kapanışı
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Product V2 create/update/archive | CODED_STATIC_VERIFIED / DYNAMIC_NOT_RUN | Ayrı durable state machine, external-effect fence, batch poll ve approval read-back vardır. |
+| Approved product pagination | CODED_CONTRACT_TESTED / DYNAMIC_NOT_RUN | Size en fazla 100; ilk 10.000 kayıt page, devamı nextPageToken cursor. |
+| Birleşik fiyat-stok | CODED_STATIC_VERIFIED / DYNAMIC_NOT_RUN | Tek batch, offer/price/projection version kanıtı ve stale sonucu reddetme. |
+| Order V2 + stream | CODED_CONTRACT_TESTED / STAGE_NOT_RUN | `/v2/orders`, cursor ve 2026 field alias fixture'ları kodlandı. |
+| Shipment action + read-back | CODED_STATIC_VERIFIED / STAGE_NOT_RUN | Yalnız capability allowedActions; TRACKING_NUMBER için Picking/Invoiced durumu ve cargoSenderNumber/providerCode zorunlu; remote order read-back uygulanır. |
+| Common label | CODED_STATIC_VERIFIED / STAGE_NOT_RUN | Create, poll, private storage ve document attempt idempotency. |
+| Return action/evidence/read-back | CODED_CONTRACT_TESTED / STAGE_NOT_RUN | `claimId`, exact claim read, approve/reject, özel evidence ve conflict/manual review. |
+| Capability evidence | CODED_STATIC_VERIFIED / STAGE_EVIDENCE_MISSING | Owner/Admin, ETag, audit, official source ve write fixture SHA-256 zorunlu. |
+| Operatör UI | TYPESCRIPT_PASS / VITEST_PLAYWRIGHT_NOT_RUN | Ürün, fiyat-stok, shipment, return ve capability evidence ekranları; `tsc --noEmit` exit 0. |
+| Backend dynamic suite | BLOCKED_ENVIRONMENT | .NET SDK ve Docker yok; başarı sayılmadı. |
+| Stage safe-write | BLOCKED_EXTERNAL | Credential, kontrollü fixture ve açık operasyon onayı yok. |

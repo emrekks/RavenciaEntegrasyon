@@ -33,6 +33,7 @@ public sealed class TrendyolAuthenticationHandler(AppDbContext db, IDataProtecti
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{context.ApiKey}:{context.ApiSecret}")));
         request.Headers.UserAgent.ParseAdd(context.UserAgentIdentity);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.TryAddWithoutValidation("storeFrontCode", "TR");
         return request;
     }
 

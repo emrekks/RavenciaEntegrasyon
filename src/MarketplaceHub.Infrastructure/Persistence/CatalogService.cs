@@ -246,6 +246,57 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         }
     }
 
+    public async Task<ServiceResult<Guid>> EnqueueProductUpdateAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
+        if (connection is null || connection.PlatformCode != "TRENDYOL" || connection.Status != "ACTIVE") return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Güncelleme yalnız ACTIVE Trendyol bağlantısında yapılabilir.", 422);
+        if (!await db.PlatformCapabilities.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == F3Capabilities.ProductWrite && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "PRODUCT_WRITE capability Stage/SIT kanıtı olmadan güncelleme işi oluşturulmaz.", 422);
+        if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+
+        var build = await new ProductUpdateComposer(db).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+        if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
+        var draft = build.Value!;
+        var dedup = $"product-update:{connectionId:N}:{productId:N}:{draft.Publication.PayloadHash}";
+        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductUpdate && x.JobDedupKey == dedup, cancellationToken);
+        if (existing is not null) { await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(existing.Id); }
+
+        var profile = await db.ChannelListingProfiles.SingleAsync(x => x.TenantId == tenantId && x.Id == draft.ProfileId, cancellationToken);
+        profile.DesiredStatus = "LIVE"; profile.ActualStatus = "UPDATE_QUEUED"; profile.LastRejectionCode = null; profile.Version++;
+        var states = await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && draft.Variants.Select(v => v.VariantId).Contains(x.VariantId)).ToListAsync(cancellationToken);
+        foreach (var state in states) { state.DesiredStatus = "LIVE"; state.PayloadHash = draft.Publication.PayloadHash; state.Version++; }
+
+        var jobId = Guid.CreateVersion7();
+        var phase = draft.Publication.Mode == "APPROVED" ? "SUBMIT_CONTENT" : "SUBMIT_UNAPPROVED";
+        var payload = JsonSerializer.Serialize(new ProductUpdateJobPayload(jobId, productId, profile.Id, phase, draft.Publication.Mode, draft.Publication.PayloadHash, draft.Publication.UnapprovedPayloadJson, draft.Publication.ApprovedContentPayloadJson, draft.Publication.ApprovedVariantPayloadJson, draft.Publication.ApprovedDeliveryPayloadJson, null, null));
+        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductUpdate, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Status = JobStatus.Pending, AvailableAt = timeProvider.GetUtcNow(), MaxAttempts = 12, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow(), Version = 1 });
+        await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
+    }
+
+    public async Task<ServiceResult<Guid>> EnqueueProductArchiveAsync(Guid tenantId, Guid productId, Guid connectionId, bool archived, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
+        if (connection is null || connection.PlatformCode != "TRENDYOL" || connection.Status != "ACTIVE") return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Arşiv işlemi yalnız ACTIVE Trendyol bağlantısında yapılabilir.", 422);
+        if (!await db.PlatformCapabilities.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == F3Capabilities.ProductWrite && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "PRODUCT_WRITE capability Stage/SIT kanıtı olmadan arşiv işi oluşturulmaz.", 422);
+        if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        var build = await new ProductArchiveComposer(db).BuildAsync(tenantId, productId, connectionId, archived, cancellationToken);
+        if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
+        var draft = build.Value!; var dedup = $"product-archive:{connectionId:N}:{productId:N}:{archived}:{draft.PayloadHash}";
+        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductArchive && x.JobDedupKey == dedup, cancellationToken);
+        if (existing is not null) { await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(existing.Id); }
+        var profile = await db.ChannelListingProfiles.SingleAsync(x => x.TenantId == tenantId && x.Id == draft.ProfileId, cancellationToken);
+        profile.DesiredStatus = archived ? "ARCHIVED" : "LIVE"; profile.ActualStatus = archived ? "ARCHIVE_QUEUED" : "UNARCHIVE_QUEUED"; profile.LastRejectionCode = null; profile.Version++;
+        var listingVariants = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).ToListAsync(cancellationToken);
+        foreach (var listing in listingVariants) { listing.DesiredStatus = archived ? "ARCHIVED" : "LIVE"; listing.ActualStatus = profile.ActualStatus; listing.RejectionCode = null; }
+        var states = await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && draft.Variants.Select(v => v.VariantId).Contains(x.VariantId)).ToListAsync(cancellationToken);
+        foreach (var state in states) { state.DesiredStatus = archived ? "ARCHIVED" : "LIVE"; state.ActualStatus = profile.ActualStatus; state.LastRejectionCode = null; state.PayloadHash = draft.PayloadHash; state.Version++; }
+        var jobId = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
+        var payload = JsonSerializer.Serialize(new ProductArchiveJobPayload(jobId, productId, profile.Id, archived, "SUBMIT", draft.PayloadHash, draft.PayloadJson, null, now, now.AddHours(24)));
+        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductArchive, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 20, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
+    }
+
     public async Task<ServiceResult<PublicationStatusView>> GetPublicationStatusAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {
         if (!await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken) || !await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)) return NotFound<PublicationStatusView>();
@@ -259,7 +310,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var hasProfile = profile is not null;
         var approvalPrefix = hasProfile ? $"product-approval:{connectionId:N}:{profile!.Id:N}:" : "";
         var job = await db.IntegrationJobs.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && ((x.JobType == F3JobTypes.ProductCreate && x.JobDedupKey.StartsWith(createPrefix)) || (hasProfile && x.JobType == F3JobTypes.ProductApprovalReconcile && x.JobDedupKey.StartsWith(approvalPrefix))))
+            .Where(x => x.TenantId == tenantId && ((x.JobType == F3JobTypes.ProductCreate && x.JobDedupKey.StartsWith(createPrefix)) || (x.JobType == F3JobTypes.ProductUpdate && x.JobDedupKey.StartsWith($"product-update:{connectionId:N}:{productId:N}:")) || (x.JobType == F3JobTypes.ProductArchive && x.JobDedupKey.StartsWith($"product-archive:{connectionId:N}:{productId:N}:")) || (hasProfile && x.JobType == F3JobTypes.ProductApprovalReconcile && x.JobDedupKey.StartsWith(approvalPrefix))))
             .OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
         return ServiceResult<PublicationStatusView>.Ok(new(productId, connectionId, profile?.Id, profile?.DesiredStatus, profile?.ActualStatus, profile?.LastRejectionCode, job?.Id, job is null ? null : JobWire(job.Status), lines));
     }

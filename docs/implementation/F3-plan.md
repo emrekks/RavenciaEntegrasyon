@@ -1,38 +1,45 @@
-# F3 — Trendyol Tamamlama Planı
+# F3 — Trendyol Türkiye CORE Tamamlama Planı
 
 ## Hedef
 
-Trendyol ürün, referans, sipariş, paket, iade ve fatura-link akışlarını idempotent ve uzlaştırılabilir biçimde tamamlamak.
+Trendyol Türkiye CORE ürün, referans, sipariş, paket, iade, etiket, webhook ve fatura-link akışlarını idempotent, fail-closed ve uzlaştırılabilir biçimde tamamlamak.
 
-## Uygulama sırası
+## Kodlanan kapsam
 
-1. Connection/capability probe sözleşmesini güncel resmî endpointlerle doğrula.
-2. Category, brand, category attributes ve values pagination/leaf testlerini tamamla.
-3. Approved product import mapping ve local identity eşlemesini tamamla.
-4. `ProductCreate` komutunu ayrı sözleşme, çift dış-yazma kapısı ve doğrulanmış payload composer ile uygula. `ProductUpdate` ve uzak archive ayrı kalır.
-5. Publication job, `SUBMIT -> POLL` batch-result durum makinesi, partial failure ve satır sonuç kaydını ekle.
-6. En az bir satırı kabul edilen batch sonrasında approved -> unapproved fallback read-back ile onay uzlaştırması, ret nedeni ve uzak ürün/varyant kimliği kaydını ekle.
-7. Ayrı stock/price portunu birleşik `PriceInventoryBatch` komutuna dönüştür.
-8. Order stream/polling overlap, duplicate ve out-of-order fixture setini genişlet.
-9. Package action ve return action capability’lerini ayrı ayrı Stage’de kanıtla.
-10. Webhook signed delivery ile reconciliation fallback’i birlikte test et.
-11. Invoice-link tesliminde `SUBMITTED` ara durumu ve uzlaştırma ekle.
+1. Connection/credential/capability probe ve tarihli Stage/SIT evidence kaydı.
+2. Category, brand, category attributes ve values snapshot/pagination/leaf mapping.
+3. Approved product read için `page -> nextPageToken` cursor ve 100 kayıt sınırı.
+4. Product Create durable `SUBMIT -> POLL -> APPROVAL_RECONCILE`.
+5. Product Update: unapproved bulk veya approved content/variant/delivery fazları.
+6. Product archive/unarchive batch ve publication read-back.
+7. Birleşik `price-and-inventory` batch; fiyat/stok sürüm kanıtı ve stale sonucu uygulamama.
+8. Order stream + `/v2/orders` exact read ve 2026 alan aliasları.
+9. Capability kontrollü shipment action state machine ve exact order read-back.
+10. Common label create/poll/private document storage.
+11. Return poll/exact claim read, approve/reject, private evidence ve terminal read-back.
+12. Webhook bounded ingress, verification, inbox ve reconciliation fallback.
+13. Invoice-link `SUBMITTED` sınırı; doğrulanmamış terminal query yerine manuel inceleme.
+14. Ürün, fiyat-stok, shipment, return ve capability evidence panel yüzeyleri.
+
+## Güvenlik ve tutarlılık kapıları
+
+- Her write capability için `SUPPORTED` ve tarihli environment/store scope evidence gerekir.
+- Write capability evidence'ında SHA-256 Stage/SIT fixture checksum zorunludur.
+- Global ve connection external-write anahtarları birlikte açık olmalıdır.
+- Her dış yazma deterministic idempotency key ve `ExternalEffectRecord` fence kullanır.
+- Belirsiz ağ/5xx sonucu otomatik duplicate write üretmez; `MANUAL_REVIEW` olur.
+- Batch satır sonuçları barkod/contentId/stockCode ile korunur.
+- Read-back veya sürüm eşleşmesi olmadan yerel durum kesin başarıya yükseltilmez.
+- `storeFrontCode=TR`, product create `channels=["CORE"]`; LUXE/uluslararası kapsam dışıdır.
 
 ## Çıkış kapısı
 
-- Read akışları en az iki ardışık sync’te duplicate üretmez.
-- Write işlemleri aynı idempotency key ile güvenli tekrar edilir.
-- Partial batch hataları satır bazında görünür.
-- Rate-limit/timeout geçici hata, validation kalıcı hata olarak ayrılır.
-- Reconciliation uzak/yerel farkı tespit eder.
-- Gerçek Stage write kanıtı ve rollback adımı vardır.
+Kod kapsamı tamamlanmıştır; faz production kapanışı için aşağıdakilerin tamamı gerekir:
 
-## 2026-08-05 uygulama durumu
+- Exact .NET/PostgreSQL ve frontend suite PASS.
+- Docker Compose/API/Worker/Caddy smoke PASS.
+- Stage read ve açık onaylı write fixture PASS.
+- Duplicate, timeout, rate-limit, partial batch, stale payload ve rollback/read-back PASS.
+- Capability evidence, operatör prosedürü ve rollback kaydı tamam.
 
-- `ProductCreate`, eski genel `UpsertAsync` adından ayrıldı.
-- API yalnız `PRODUCT_WRITE=SUPPORTED`, global `FeatureFlags:ExternalWrites=true` ve bağlantı `ExternalWritesEnabled=true` birlikteyken durable job üretir.
-- Composer güncel kategori/marka/özellik/değer eşlemelerini, listing profile, barkod/SKU/model kodunu, aktif TRY teklifini, MAIN stok kaydını ve kalıcı HTTPS görsel URL'lerini doğrular.
-- Worker dış etki kaydıyla tekrar gönderimi fail-closed sınırlar; create batch kimliğini kaydeder, sonucu poll eder ve varyant bazında `CREATE_ACCEPTED`/`CREATE_REJECTED` yazar.
-- Tam batch kabulü `APPROVAL_PENDING` durumudur; ürünün Trendyol'da canlı olduğu anlamına gelmez. En az bir satırı kabul edilen tam veya kısmi batch için otomatik `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` işi oluşur; batch reddi alan satırlar read-back dışında korunur. Approval job güncel listing-state payload hash’iyle eşleşmezse daha yeni yayın denemesini ezmeden `PRODUCT_APPROVAL_SUPERSEDED` olarak durur.
-- Onay uzlaştırması barkodu önce approved, sonra unapproved serviste okur; `APPROVED`, `PENDING_APPROVAL`, `REJECTED`, `ARCHIVED`, `LOCKED`, `BLACKLISTED` ve `NOT_FOUND` durumlarını yerel profile/satır kayıtlarına taşır. Onaylı `contentId/variantId` kimlikleri idempotent kaydedilir; mevcut link uyuşmazlığı otomatik değiştirilmez ve `MANUAL_REVIEW` olur.
-- Başarı/replay, partial-batch, tam onay, kısmi ret, görünürlük gecikmesi ve kimlik çatışması PostgreSQL testleri kodlandı; exact .NET/PostgreSQL ortamında çalıştırılmadığı için faz kapanmış değildir.
+**Güncel durum:** `CODE_COMPLETE_STATIC_VERIFIED / DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED / PRODUCTION_BLOCKED`.

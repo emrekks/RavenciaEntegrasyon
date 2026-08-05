@@ -49,7 +49,7 @@ public sealed class FakeAdapterScenarioTests
     public async Task Writes_are_fail_closed_until_explicitly_enabled_and_replay_has_one_effect()
     {
         var disabled = Adapter(FakeScenario.Success);
-        Assert.Equal("FAKE_WRITE_DISABLED", (await disabled.ArchiveAsync(Context, new("synthetic", null), TestContext.Current.CancellationToken)).Error?.Code);
+        Assert.Equal("FAKE_WRITE_DISABLED", (await disabled.ArchiveAsync(Context, "{\"items\":[{\"barcode\":\"0000000000000\",\"archived\":true}]}", TestContext.Current.CancellationToken)).Error?.Code);
 
         var enabled = Adapter(FakeScenario.Success, true);
         var first = await enabled.CreateAsync(Context, new(Guid.Empty, "synthetic-hash", "{\"items\":[{\"barcode\":\"0000000000000\"}]}"), TestContext.Current.CancellationToken);
@@ -62,13 +62,10 @@ public sealed class FakeAdapterScenarioTests
     public async Task Partial_batch_is_visible_and_is_not_reported_as_full_success()
     {
         var adapter = Adapter(FakeScenario.Partial, true);
-        var result = await adapter.PushStockAsync(Context,
-        [
-            new(Guid.Parse("33333333-3333-3333-3333-333333333333"), "0000000000000", 1, 1),
-            new(Guid.Parse("44444444-4444-4444-4444-444444444444"), "0000000000001", 1, 1)
-        ], TestContext.Current.CancellationToken);
+        var submit = await adapter.PushPriceAndInventoryAsync(Context, "{\"items\":[{\"barcode\":\"0000000000000\",\"quantity\":1,\"salePrice\":10,\"listPrice\":10},{\"barcode\":\"0000000000001\",\"quantity\":1,\"salePrice\":10,\"listPrice\":10}]}", TestContext.Current.CancellationToken);
+        var result = await adapter.GetOperationAsync(Context, submit.Value!.ExternalOperationId, TestContext.Current.CancellationToken);
 
-        Assert.True(result.Value!.IsPartial);
+        Assert.Equal("COMPLETED", result.Value!.Status);
         Assert.Contains(result.Value.Lines, x => x.Succeeded);
         Assert.Contains(result.Value.Lines, x => !x.Succeeded);
     }

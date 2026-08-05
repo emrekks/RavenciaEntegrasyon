@@ -58,11 +58,37 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
             : Task.FromResult(ServiceResult<Guid>.Fail("REFERENCE_RESOURCE_UNSUPPORTED", "CATEGORIES/BRANDS scope almaz; CATEGORY_ATTRIBUTES categoryId, ATTRIBUTE_VALUES categoryId/attributeId scope ister.", 422));
     }
 
-    public async Task<ServiceResult<Guid>> EnqueueShipmentActionAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string correlationId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<Guid>> EnqueueShipmentActionAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken); if (package is null) return NotFound<Guid>(); if (package.Version != expectedVersion) return Precondition<Guid>(package.Version);
-        var actions = await CapabilityValues(tenantId, package.ConnectionId, F3Capabilities.ShipmentWrite, "allowedActions", cancellationToken); if (!actions.Contains(command.Action, StringComparer.Ordinal)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "Bu shipment aksiyonu için Stage/SIT capability kanıtı yok.", 422); if (!await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
-        return await Enqueue(tenantId, package.ConnectionId, F3JobTypes.ShipmentAction, $"shipment-action:{package.Id}:v{package.Version}:{command.Action}", JsonSerializer.Serialize(new { packageId, command.Action, command.PayloadJson }), correlationId, cancellationToken);
+        var action = command.Action.Trim().ToUpperInvariant();
+        var validation = ValidateShipmentAction(package, action, command.PayloadJson); if (validation is not null) return ServiceResult<Guid>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
+        var actions = await CapabilityValues(tenantId, package.ConnectionId, F3Capabilities.ShipmentWrite, "allowedActions", cancellationToken); if (!actions.Contains(action, StringComparer.Ordinal)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "Bu shipment aksiyonu için Stage/SIT capability kanıtı yok.", 422); if (!await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        var normalizedKey = idempotencyKey.Trim();
+        var commandHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{action}
+{command.PayloadJson}")));
+        var dedup = $"shipment-action:{package.Id}:v{package.Version}:{action}:{commandHash}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedKey)))}";
+        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ShipmentAction && x.EffectIdempotencyKey == normalizedKey, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
+        var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new ShipmentActionJobPayload(jobId, package.Id, action, command.PayloadJson)); var job = NewJob(tenantId, package.ConnectionId, F3JobTypes.ShipmentAction, dedup, payload, correlationId); job.Id = jobId; job.EffectIdempotencyKey = normalizedKey; db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
+    }
+
+    public async Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken); if (package is null) return NotFound<Guid>(); if (package.Version != expectedVersion) return Precondition<Guid>(package.Version);
+        if (string.IsNullOrWhiteSpace(package.CargoTrackingNumber)) return ServiceResult<Guid>.Fail("CARGO_TRACKING_REQUIRED", "Ortak etiket için kargo takip numarası gerekir.", 422);
+        if (boxQuantity is < 1 or > 50) return Invalid<Guid>("boxQuantity", "boxQuantity 1-50 arasında olmalıdır.");
+        if (volumetricHeight < 0 || volumetricHeight > 10000) return Invalid<Guid>("volumetricHeight", "volumetricHeight 0-10000 arasında olmalıdır.");
+        if (!await Supported(tenantId, package.ConnectionId, F3Capabilities.LabelRead, cancellationToken) || !await Supported(tenantId, package.ConnectionId, F3Capabilities.LabelWrite, cancellationToken)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "LABEL_READ ve LABEL_WRITE Stage/SIT kanıtı olmadan ortak etiket işi oluşturulmaz.", 422);
+        if (!await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        var normalizedKey = idempotencyKey.Trim(); var existingAttempt = await db.ShipmentDocumentAttempts.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == normalizedKey, cancellationToken);
+        if (existingAttempt is not null)
+        {
+            var existingJob = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.CommonLabel && x.EffectIdempotencyKey == normalizedKey, cancellationToken);
+            return existingJob is null ? ServiceResult<Guid>.Fail("LABEL_ATTEMPT_STATE_CONFLICT", "Etiket denemesi var ancak job kaydı bulunamadı.", 409) : ServiceResult<Guid>.Ok(existingJob.Id);
+        }
+        var now = timeProvider.GetUtcNow(); var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new CommonLabelJobPayload(jobId, package.Id, "SUBMIT", boxQuantity, decimal.Round(volumetricHeight, 2, MidpointRounding.ToEven), now, now.AddMinutes(15)));
+        var job = NewJob(tenantId, package.ConnectionId, F3JobTypes.CommonLabel, $"common-label:{package.Id}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedKey)))}", payload, correlationId); job.Id = jobId; job.EffectIdempotencyKey = normalizedKey; job.MaxAttempts = 30;
+        db.ShipmentDocumentAttempts.Add(new ShipmentDocumentAttempt { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, IdempotencyKey = normalizedKey, Status = "PENDING", CreatedAt = now }); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
     }
 
     public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
@@ -82,11 +108,25 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
 
     public async Task<ServiceResult<Guid>> EnqueueReturnActionAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, ReturnDecisionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
-        var prior = await db.ReturnDecisions.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken); if (prior is not null) return ServiceResult<Guid>.Ok(prior.Id);
-        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId, cancellationToken); if (claim is null) return NotFound<Guid>(); if (claim.Version != expectedVersion) return Precondition<Guid>(claim.Version); var actions = await CapabilityValues(tenantId, claim.ConnectionId, F3Capabilities.ReturnWrite, "allowedActions", cancellationToken); if (!actions.Contains(command.Action, StringComparer.Ordinal)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "Bu return aksiyonu için Stage/SIT capability kanıtı yok.", 422); if (!await WritesEnabled(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
-        var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, Action = command.Action, ReasonCode = command.ReasonCode, Explanation = command.Explanation, IdempotencyKey = idempotencyKey, Status = "PENDING", ActorUserId = userId, CreatedAt = timeProvider.GetUtcNow() }; db.ReturnDecisions.Add(decision);
-        if (command.EvidenceAssetIds is not null) foreach (var assetId in command.EvidenceAssetIds.Distinct()) { var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == assetId && x.ArchivedAt == null, cancellationToken); if (asset is null) return ServiceResult<Guid>.Fail("EVIDENCE_NOT_FOUND", "İade kanıt dosyası tenant private storage içinde bulunamadı.", 422); db.ReturnEvidence.Add(new ReturnEvidence { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, DecisionId = decision.Id, FileAssetId = asset.Id, EvidenceKind = asset.Classification, Checksum = asset.Sha256, CreatedAt = timeProvider.GetUtcNow() }); }
-        var job = NewJob(tenantId, claim.ConnectionId, F3JobTypes.ReturnAction, $"return-action:{idempotencyKey}", JsonSerializer.Serialize(new { claimId, decisionId = decision.Id }), correlationId); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
+        var normalizedKey = idempotencyKey.Trim(); var prior = await db.ReturnDecisions.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == normalizedKey, cancellationToken); if (prior is not null) return ServiceResult<Guid>.Ok(prior.Id);
+        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId, cancellationToken); if (claim is null) return NotFound<Guid>(); if (claim.Version != expectedVersion) return Precondition<Guid>(claim.Version);
+        var action = command.Action.Trim().ToUpperInvariant(); if (action is not ("APPROVE" or "REJECT")) return Invalid<Guid>("action", "İade aksiyonu APPROVE veya REJECT olmalıdır.");
+        if (claim.Status != ReturnClaimStatus.ActionRequired) return ServiceResult<Guid>.Fail("RETURN_ACTION_NOT_ALLOWED", "İade aksiyonu yalnız ACTION_REQUIRED durumunda oluşturulabilir.", 409);
+        var activeDecision = await db.ReturnDecisions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && (x.Status == "PENDING" || x.Status == "SUBMITTED" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW")).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        if (activeDecision is not null) return ServiceResult<Guid>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade için tamamlanmamış bir karar zaten bulunuyor.", 409);
+        if (action == "REJECT" && (string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)) return Invalid<Guid>("explanation", "REJECT için reasonCode ve en fazla 500 karakter açıklama gerekir.");
+        var evidenceOptional = command.ReasonCode is "1651" or "451" or "2101";
+        if (action == "REJECT" && !evidenceOptional && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)) return Invalid<Guid>("evidenceAssetIds", "Seçilen ret nedeni için en az bir kanıt dosyası gerekir.");
+        var actions = await CapabilityValues(tenantId, claim.ConnectionId, F3Capabilities.ReturnWrite, "allowedActions", cancellationToken); if (!actions.Contains(action, StringComparer.Ordinal)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "Bu return aksiyonu için Stage/SIT capability kanıtı yok.", 422); if (!await WritesEnabled(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, Action = action, ReasonCode = string.IsNullOrWhiteSpace(command.ReasonCode) ? null : command.ReasonCode.Trim(), Explanation = string.IsNullOrWhiteSpace(command.Explanation) ? null : command.Explanation.Trim(), IdempotencyKey = normalizedKey, Status = "PENDING", ActorUserId = userId, CreatedAt = timeProvider.GetUtcNow() }; db.ReturnDecisions.Add(decision);
+        if (command.EvidenceAssetIds is not null) foreach (var assetId in command.EvidenceAssetIds.Distinct())
+        {
+            var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == assetId && x.ArchivedAt == null && x.Status == "ACTIVE", cancellationToken);
+            if (asset is null) return ServiceResult<Guid>.Fail("EVIDENCE_NOT_FOUND", "İade kanıt dosyası tenant private storage içinde bulunamadı.", 422);
+            if (asset.Classification != "RETURN_EVIDENCE" || asset.SizeBytes is <= 0 or > 10 * 1024 * 1024 || asset.MimeType is not ("application/pdf" or "image/jpeg" or "image/png")) return ServiceResult<Guid>.Fail("EVIDENCE_INVALID", "İade kanıtı PDF/JPEG/PNG ve en fazla 10 MiB olmalıdır.", 422);
+            db.ReturnEvidence.Add(new ReturnEvidence { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, DecisionId = decision.Id, FileAssetId = asset.Id, EvidenceKind = asset.Classification, Checksum = asset.Sha256, CreatedAt = timeProvider.GetUtcNow() });
+        }
+        var job = NewJob(tenantId, claim.ConnectionId, F3JobTypes.ReturnAction, $"return-action:{normalizedKey}", JsonSerializer.Serialize(new { claimId, decisionId = decision.Id }), correlationId); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
     }
 
     public async Task<ServiceResult<ReturnDetailView>> ApplyDispositionAsync(Guid tenantId, Guid userId, Guid claimId, ReturnDispositionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -99,6 +139,41 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var now = timeProvider.GetUtcNow(); db.ReturnStockDispositions.Add(new ReturnStockDisposition { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, ReturnLineId = line.Id, InventoryItemId = item.Id, Disposition = disposition, Quantity = command.Quantity, IdempotencyKey = idempotencyKey, Reason = command.Reason.Trim(), ActorUserId = userId, CreatedAt = now });
         if (disposition == ReturnStockDispositionKind.Pass) { item.OnHand += command.Quantity; item.Available = Math.Max(0, item.OnHand - item.Reserved); item.ProjectionVersion++; item.Version++; db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = "RETURN_PASS", QuantityDelta = command.Quantity, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = idempotencyKey, IdempotencyKey = idempotencyKey, OccurredAt = now, RecordedAt = now, ActorUserId = userId, CorrelationId = correlationId }); }
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "RETURN_STOCK_DISPOSITION", TargetType = "ReturnClaim", TargetId = claimId.ToString("D"), Reason = command.Reason.Trim(), CorrelationId = correlationId, CreatedAt = now }); await db.SaveChangesAsync(cancellationToken); return await ReturnAsync(tenantId, claimId, cancellationToken);
+    }
+
+    private static ServiceError? ValidateShipmentAction(ShipmentPackage package, string action, string payloadJson)
+    {
+        var supported = new HashSet<string>(StringComparer.Ordinal) { "PICKING", "INVOICED", "TRACKING_NUMBER", "CANCEL_ITEMS", "SPLIT", "MULTI_SPLIT", "CHANGE_CARGO_PROVIDER", "ALTERNATIVE_DELIVERY", "MANUAL_DELIVER", "MANUAL_RETURN" };
+        if (!supported.Contains(action)) return new("SHIPMENT_ACTION_UNSUPPORTED", "Paket aksiyonu tanınmıyor.", 422);
+        if (action == "PICKING" && package.Status is not (ShipmentPackageStatus.New or ShipmentPackageStatus.OnHold)) return new("SHIPMENT_STATE_CONFLICT", "PICKING yalnız NEW/ON_HOLD paket için gönderilebilir.", 409);
+        if (action == "INVOICED" && package.Status != ShipmentPackageStatus.Processing) return new("SHIPMENT_STATE_CONFLICT", "INVOICED yalnız PROCESSING paket için gönderilebilir.", 409);
+        if (action == "TRACKING_NUMBER" && package.Status is not (ShipmentPackageStatus.Processing or ShipmentPackageStatus.ReadyToShip)) return new("SHIPMENT_STATE_CONFLICT", "TRACKING_NUMBER yalnız PICKING/INVOICED paket için gönderilebilir.", 409);
+        if ((action is "CANCEL_ITEMS" or "SPLIT" or "MULTI_SPLIT" or "CHANGE_CARGO_PROVIDER") && package.Status is (ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Returned or ShipmentPackageStatus.Cancelled)) return new("SHIPMENT_STATE_CONFLICT", "Bu aksiyon sevk edilmiş veya terminal paket için kullanılamaz.", 409);
+        if (action is "MANUAL_DELIVER" or "MANUAL_RETURN") return null;
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson); var root = document.RootElement; if (root.ValueKind != JsonValueKind.Object) return new("SHIPMENT_ACTION_PAYLOAD_INVALID", "Paket aksiyonu body nesne olmalıdır.", 422);
+            static bool Text(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString());
+            static bool NonEmptyArray(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array && value.GetArrayLength() > 0;
+            static bool Object(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object;
+            static bool Boolean(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False;
+            static bool OptionalPositiveNumber(JsonElement root, string name) => !root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number) && number > 0;
+            static bool StatusWithLinesAndParams(JsonElement root, string expected) => Text(root, "status") && string.Equals(root.GetProperty("status").GetString(), expected, StringComparison.OrdinalIgnoreCase) && NonEmptyArray(root, "lines") && Object(root, "params");
+            var valid = action switch
+            {
+                "PICKING" => StatusWithLinesAndParams(root, "Picking"),
+                "INVOICED" => StatusWithLinesAndParams(root, "Invoiced"),
+                "TRACKING_NUMBER" => Text(root, "cargoSenderNumber") && Text(root, "providerCode") && (!root.TryGetProperty("returnTrackingNumber", out var returnTracking) || returnTracking.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(returnTracking.GetString())),
+                "CANCEL_ITEMS" => NonEmptyArray(root, "lines"),
+                "SPLIT" => NonEmptyArray(root, "orderLineIds") && (!root.TryGetProperty("shouldKeepPreviousStatus", out var keep) || keep.ValueKind is JsonValueKind.True or JsonValueKind.False),
+                "MULTI_SPLIT" => NonEmptyArray(root, "splitGroups"),
+                "CHANGE_CARGO_PROVIDER" => Text(root, "cargoProvider"),
+                "ALTERNATIVE_DELIVERY" => Boolean(root, "isPhoneNumber") && Text(root, "trackingInfo") && Object(root, "params") && OptionalPositiveNumber(root, "boxQuantity") && OptionalPositiveNumber(root, "deci"),
+                _ => true
+            };
+            return valid ? null : new("SHIPMENT_ACTION_PAYLOAD_INVALID", $"{action} için zorunlu body alanları eksik.", 422);
+        }
+        catch (JsonException) { return new("SHIPMENT_ACTION_PAYLOAD_INVALID", "Paket aksiyonu body geçerli JSON olmalıdır.", 422); }
     }
 
     private async Task<ServiceResult<Guid>> EnqueueRead(Guid tenantId, Guid connectionId, string capability, string type, string payload, string correlationId, CancellationToken cancellationToken)

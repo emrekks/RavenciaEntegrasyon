@@ -71,6 +71,18 @@ public static class F2Endpoints
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return Accepted(await service.EnqueuePublicationAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
         });
+        api.MapPost("/products/{id:guid}/update-jobs", async (Guid id, PublicationRequest command, HttpContext http, ICatalogService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+            return Accepted(await service.EnqueueProductUpdateAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
+        });
+        api.MapPost("/products/{id:guid}/archive-jobs", async (Guid id, ProductArchiveRequest command, HttpContext http, ICatalogService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+            return Accepted(await service.EnqueueProductArchiveAsync(tenant.TenantId, id, command.ConnectionId, command.Archived, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
+        });
         api.MapGet("/products/{id:guid}/publication-status/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.GetPublicationStatusAsync(tenant.TenantId, id, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPost("/files/product-media", UploadProductMediaAsync).DisableAntiforgery();
@@ -117,6 +129,8 @@ public static class F2Endpoints
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateOfferAsync(tenant.TenantId, tenant.UserId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
         api.MapPost("/channel-offers/price-sync-jobs", async (HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.ValidateExternalSyncAsync(tenant.TenantId, "PRICE_SYNC", http.RequestAborted)) : MissingContext(http));
+        api.MapPost("/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid connectionId, HttpContext http, IInventoryService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueuePriceInventorySyncAsync(tenant.TenantId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
 
         MapReferenceEndpoints(api);
         return endpoints;
@@ -258,5 +272,6 @@ public static class F2Endpoints
     private static IResult Problem(HttpContext http, ServiceError error) => Results.Json(ToProblem(error, http.TraceIdentifier), statusCode: error.Status, contentType: "application/problem+json");
     private static object ToProblem(ServiceError error, string? correlationId) => new { type = $"https://marketplacehub.invalid/problems/{error.Code.ToLowerInvariant().Replace('_', '-')}", title = error.Message, status = error.Status, code = error.Code, correlationId, retryable = error.Status is 429 or >= 500, fieldErrors = error.FieldErrors };
     public sealed record PublicationRequest(Guid ConnectionId);
+    public sealed record ProductArchiveRequest(Guid ConnectionId, bool Archived);
     public sealed record RegisterProductMediaUrl(Guid ProductId, Guid? VariantId, string Url, string? MediaRole, int SortOrder, string? AltText);
 }

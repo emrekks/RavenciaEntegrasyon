@@ -1,98 +1,50 @@
 # Güncel Faz ve Devralma Durumu
 
 **Son güncelleme:** 2026-08-05
-**Ana plan sürümü:** 6.3
-**Makine durum kaydı:** `PROJECT-STATUS.yaml`
-**Aktif ürün kapsamı:** `TRENDYOL` + `TRENDYOL_EFATURAM`
-**Genel durum:** `F3_CLOSURE_ACTIVE / F4_IN_PROGRESS / PRODUCTION_BLOCKED`
+
+**Ana plan sürümü:** 7.0
+
+**Aktif ürün kapsamı:** `TRENDYOL Türkiye CORE` + `TRENDYOL_EFATURAM`
+
+**Genel durum:** `F3_CORE_CODE_COMPLETE_VALIDATION_PENDING / F4_IN_PROGRESS / PRODUCTION_BLOCKED`
 
 ## Faz özeti
 
 | Faz | Durum | Açıklama |
 | --- | --- | --- |
-| F0 | `BASELINE_COMPLETE` | Mimari, bağımlılık, risk ve doğrulama temeli oluşturuldu. |
-| F1 | `HARDENING_CODED_DYNAMIC_REVALIDATION_REQUIRED` | Job retry/takip, rol sınırı, MFA yeniden doğrulama, webhook/PDF güvenliği, scheduler, CI ve deployment sağlık kapıları kodlandı; tam .NET/npm/Docker doğrulaması bekliyor. |
-| F2 | `READY_LOCAL` | Ürün, katalog, import, stok ve fiyat yerel çekirdeği hazır. |
-| F3 | `ACTIVE_CLOSURE` | Trendyol read/reference omurgası, Product Create durable job, batch polling, satır sonucu ve approved/unapproved onay uzlaştırması kodlandı; exact dinamik doğrulama, update/archive, birleşik stok-fiyat ve Stage safe-write/read-back eksik. |
-| F4 | `IN_PROGRESS_BLOCKED_EXTERNAL` | E-Faturam sign-in/submit/PDF URL ve güvenli PDF indirme kodu var; taxpayer/status/cancel ve gerçek E2E eksik. Trendyol fatura linki `SUBMITTED` sonrası otomatik kesin teyit endpoint'i doğrulanmadığı için manuel incelemeye düşer. |
-| F5 | `PLANNED_BLOCKED_BY_F3_F4_AND_REVALIDATION` | Production pilot; F3/F4 çıkış kapıları ve tam dinamik doğrulama geçilmeden başlamaz. |
-| F6 | `PLANNED` | Stabilizasyon, operasyon kabulü, restore drill ve 30 günlük pilot gözlemi. |
-| F7 | `PLANNED` | Platform adapter registry/resolver ve yeni platform ekleme standardının sertleştirilmesi. |
-| F8+ | `PLANNED_NOT_ACTIVE` | Diğer platformlar ayrı ADR ve fazlarla tek tek eklenir; şu anda adapter geliştirilmez. |
+| F0 | `BASELINE_COMPLETE` | Mimari, bağımlılık, risk ve doğrulama temeli hazır. |
+| F1 | `HARDENING_CODED_DYNAMIC_REVALIDATION_REQUIRED` | Güvenlik/job/deployment sertleştirmesi kodlandı; exact runtime doğrulaması bekler. |
+| F2 | `READY_LOCAL` | Yerel katalog, ürün, import, stok ve fiyat çekirdeği hazır. |
+| F3 | `CORE_CODE_COMPLETE_STATIC_VERIFIED` | Trendyol Türkiye CORE bağlantı, referans, mapping, Product V2 create/update/archive/approval, birleşik fiyat-stok, Order V2/stream, paket aksiyonu, takip numarası, ortak etiket, iade aksiyonu/evidence/read-back, webhook ve invoice-link sınırı kodlandı. Dynamic, Docker ve Stage kabulü bekler. |
+| F4 | `IN_PROGRESS_BLOCKED_EXTERNAL` | E-Faturam taxpayer/status/cancel ve gerçek mali E2E eksik. |
+| F5 | `PLANNED_BLOCKED_BY_F3_F4_AND_REVALIDATION` | Production pilot, F3/F4 dış kabul kapıları geçmeden başlamaz. |
+| F6+ | `PLANNED` | Stabilizasyon, adapter registry ve sonraki platformlar. |
 
-## Production sertleştirme v7 kapsamı
+## Bu teslimde kapanan Trendyol işleri
 
-Aşağıdaki sorunlar kaynak kodunda düzeltilmiştir; fakat exact toolchain ve gerçek servis testleri geçmeden `PASS` veya `PRODUCTION_READY` sayılmaz:
+- Product Update: unapproved veya approved content/variant/delivery fazlarına ayrılan durable state machine.
+- Archive/unarchive: batch submit, poll ve publication read-back.
+- Fiyat-stok: tek batch payload, offer/projection version kanıtı ve stale-result koruması.
+- Sipariş: `/v2/orders` tekil read, stream cursor ve 2026 alan adları.
+- Shipment: capability listesine bağlı paket aksiyonları, takip numarası, read-back ve ortak etiket.
+- Return: `claimId` sözleşmesi, exact claim read-back, approve/reject, private evidence ve karar uzlaştırması.
+- Capability: mevcut bağlantılara yeni capability backfill ve Owner/Administrator evidence kaydı.
+- UI: ürün yayın yönetimi, fiyat-stok sync, shipment detail/actions/label, return decision/evidence ve capability evidence formu.
+- Product read: 100 kayıt üst sınırı, ilk 10.000 kayıtta page, sonrasında `nextPageToken` cursor geçişi.
 
-- Geçici job hataları backoff ile `RETRY_SCHEDULED`, kalıcı hatalar `BLOCKED`, belirsiz mali sonuçlar `MANUAL_REVIEW` olur.
-- Job liste/ayrıntı/retry/cancel API'leri ve panelde İşlem Takibi ekranı vardır.
-- Webhook gerçek byte sınırı, rate limit ve gizli route log redaction uygulanır.
-- E-Faturam PDF indirme exact HTTPS host, public IP, sınırlı redirect, MIME, boyut ve `%PDF-` kontrolüyle sınırlandırılır.
-- Fatura linki HTTP 2xx sonrası doğrudan tamamlanmaz; `SUBMITTED` ve teyit/manual-review modeli kullanılır.
-- Bootstrap parolası yalnız one-shot bootstrap servisine verilir ve başarılı kurulumdan sonra kaldırılır.
-- Worker heartbeat, frontend asset smoke ve API readiness birlikte deployment kapısıdır.
-- CSRF token yenileme, idempotency retention, MFA reauthentication ve rol bazlı yazma yetkileri uygulanır.
-- Periyodik sipariş/iade/reference job üreticisi eklenmiştir.
-- Pull request ve ana dal pushlarında verify workflow'u tanımlanmıştır; workflow'un gerçek başarılı koşusu henüz kanıt değildir.
-- F3 frontend regression kapsamı güncellendi: Vitest artık kategori kapsamı -> özellik -> özellik değeri zincirini ve iki mapping payload'ını; Playwright ise güncel operasyon/ayar menülerini, rol bazlı Faturalama görünürlüğünü ve gerçek route üzerinde kategori-kapsamlı özellik/değer mapping zincirini doğrular. Exact Node/npm kurulamadığı için sonuç `DYNAMIC_NOT_RUN / BLOCKED_ENVIRONMENT` olarak kalır.
-- Trendyol Product Create akışı `PRODUCT_WRITE=SUPPORTED`, global ve bağlantı bazlı dış yazma anahtarları, güncel doğrulanmış eşlemeler, teklif/stok ve kalıcı HTTPS görsel URL kontrollerinden sonra durable job üretir; worker `SUBMIT -> POLL` durum makinesiyle batch sonucunu ve varyant satırlarını kaydeder. Başarılı batch sonucu doğrudan yayında sayılmaz, `APPROVAL_PENDING` olur.
-- Create batch içinde en az bir kabul edilen varyant varsa ayrı onay uzlaştırma işi otomatik üretilir; batch aşamasında reddedilen satırlar korunur ve read-back yalnız kabul edilen satırlarda çalışır. Worker barkodu approved serviste, bulunmazsa unapproved serviste okur; onaylı `contentId/variantId` kimliklerini fail-closed linkler, pending/not-found satırını yeniden dener, ret nedenini satıra yazar ve kimlik çatışmasında sessiz rewire yerine `MANUAL_REVIEW` uygular. Eski approval job payload hash’i güncel listing state ile eşleşmiyorsa uzak sorgu yapılmadan `PRODUCT_APPROVAL_SUPERSEDED` olur; approval hataları mevcut `CREATE_REJECTED` satırlarını ezmez.
-- Ürün için Trendyol tarafından erişilebilir kalıcı HTTPS görsel URL kaydı `/api/v1/files/product-media-url` üzerinden yapılabilir; private upload dosyası doğrudan marketplace URL'si sayılmaz.
+## Kalan zorunlu doğrulamalar
 
-## Codex'in devam edeceği sıra
-
-1. v7 ve Product Create değişikliklerini exact .NET `10.0.302`, Node `24.18.1`, npm `11.12.1` ve Docker Compose ortamında restore/build/test/typecheck/smoke ile doğrula.
-2. Product Create için kodlanan başarı, replay ve partial-batch testlerini PostgreSQL üzerinde çalıştır; API/Worker status akışını Playwright ile görünür hale getir.
-3. Kodlanan approved/unapproved onay uzlaştırmasının PostgreSQL senaryolarını çalıştır; gerçek Stage barkodunda `APPROVAL_PENDING -> LIVE/REJECTED` ve kimlik linklerini kanıtla.
-4. `ProductUpdate` ve uzak archive komutlarını create sözleşmesinden ayrı uygula.
-5. Trendyol stok ve fiyatı tek `price-and-inventory` komutu olarak uygula.
-6. Sipariş/paket/iade read akışlarını gerçek Stage fixture ve idempotency testleriyle kapat.
-7. F4 taxpayer query, invoice status polling ve cancellation akışlarını ekle.
-8. E-Faturam güvenli PDF indiricisini gerçek izinli host ve Stage PDF ile doğrula.
-9. Trendyol fatura linki için resmî teyit/read-back imkânı doğrulanırsa `SUBMITTED -> CONFIRMED` reconciliation ekle; aksi halde manuel operasyon prosedürünü kanıtla.
-10. Stage E2E, backup/restore ve production read-only smoke kanıtlarını kaydet.
-11. F3 ve F4 kapandıktan sonra F5 production pilotunu, F6 stabilizasyonu ve F7 adapter registry hazırlığını yürüt.
-12. Yeni platformu ancak F7 çıkış kapısından sonra ayrı ADR ile aç.
-
-## Test görünürlüğü ve başarı kuralı
-
-Test kaynakları silinmemiştir. Solution içinde Domain, Application, Persistence, API, Adapter Contract ve End-to-End test projeleri bulunur. Web tarafında Vitest/Testing Library testleri `src/MarketplaceHub.Web/src/*.test.tsx` altındadır.
-
-- Hedefli test, geliştirme döngüsünde değiştirilmiş alanı hızlı doğrular.
-- Faz/release kapısında bütün backend ve web testleri zorunludur.
-- Çalıştırılmayan test `NOT_RUN`, araç/registry engeli `BLOCKED_ENVIRONMENT` olarak yazılır; başarılı sayılmaz.
-- Başarılı testin özet ve komutu evidence loguna girer; gereksiz ayrıntılı çıktı konuşma bağlamına taşınmaz.
-- PR verify workflow'u tanımlanmıştır; bu commit için gerçek GitHub Actions sonucu görülmeden CI kanıtı `PASS` değildir.
+1. Exact .NET `10.0.302`, Node `24.18.1`, npm `11.12.1` ve PostgreSQL/Docker ortamında locked restore, build, test, format, Vitest, Playwright ve Compose smoke.
+2. Trendyol Stage'de tarihli fixture checksum ile capability evidence; açık onaylı create/update/archive/fiyat-stok/paket/etiket/iade yazma senaryoları.
+3. Duplicate, timeout, rate-limit, partial batch, visibility delay, stale payload ve read-back uyuşmazlığı testleri.
+4. Invoice-link için resmî terminal query kanıtlanırsa reconciliation; kanıtlanmazsa onaylı manuel teyit prosedürü.
+5. F4 E-Faturam kapanışı, backup/restore ve production pilotu.
 
 ## Production blockerları
 
-- v7 değişikliklerinin exact toolchain ile başarılı restore/build/test/typecheck/Vitest/Playwright sonucu
-- Docker Compose config, bootstrap, Worker heartbeat ve frontend/API smoke doğrulaması
-- Product Create için exact .NET/PostgreSQL test sonucu, gerçek Trendyol Stage credential ve güvenli write kanıtı
-- Product Create/onay uzlaştırması için exact runtime ve Stage kanıtı; ProductUpdate/archive ve birleşik stok-fiyat akışları
-- E-Faturam test firma/company/user scope, taxpayer/status/cancel ve mali iş kuralı onayı
-- Güvenli PDF indirme için gerçek Stage host/PDF kanıtı
-- Trendyol fatura linki kesin teyit veya onaylı manuel inceleme prosedürü
-- Off-host backup ve temiz hedef restore/smoke
-- Başarılı GitHub Actions verify/release koşuları ve immutable image digest'leri
-
-## Test ve belge çalışma kuralı
-
-- Durum değiştiren kod commitleri `PROJECT-STATUS.yaml`, bu dosya, ilgili evidence log ve `docs/CHANGELOG.md` dosyalarını birlikte günceller.
-- `verify-documentation-transaction.py --base <merge-base>` kod/deploy/test değişikliklerinde bu işlemi zorunlu tutar.
-- Ana geliştirme repository'sinde Git geçmişi korunur; `.git` yalnız temiz release paketinden çıkarılır.
-- Evidence logları geçmişteki doğrulamaları korur; yeni kod değişikliği eski PASS kaydını otomatik olarak güncel kod için PASS yapmaz.
-
-## Kaynak önceliği
-
-Çelişki halinde aşağıdaki sıra kullanılır:
-
-1. `docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md`
-2. `docs/implementation/PROJECT-STATUS.yaml`
-3. Bu dosya
-4. `docs/specification/current-scope.md`
-5. `docs/adr/ADR-016-trendyol-efaturam-only-until-complete.md`
-6. capability matrix
-7. ilgili faz planı ve evidence log
-8. `docs/CHANGELOG.md`
-9. tarihsel F0-F2 belgeleri
+- Exact backend ve frontend dinamik suite sonucu yok.
+- Docker/Compose ve gerçek PostgreSQL Testcontainers sonucu yok.
+- Trendyol Stage credential, kontrollü barkod/SKU/claim/package ve açık safe-write onayı yok.
+- Capability satırları gerçek evidence olmadan `SUPPORTED` yapılamaz; global ve connection write switch kapalı kalır.
+- LUXE/uluslararası storefront kapsam dışıdır.
+- F4 mali süreçler ve off-host restore kanıtı tamamlanmamıştır.

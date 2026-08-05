@@ -82,7 +82,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
 
         var leases = new JobLeaseService(db, new TokenHasher(Enumerable.Repeat((byte)17, 32).ToArray()), clock);
         var fake = new DeterministicFakeAdapter(FakeScenario.Success, clock);
-        var processor = new F3JobProcessor(db, fake, fake, fake, fake, null!, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, fake, null!, clock);
         var firstLease = Assert.IsType<LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
         Assert.True((await processor.ProcessAsync(firstLease.TenantId, firstLease.ConnectionId, firstLease.JobType, firstLease.PayloadJson, firstLease.CorrelationId, cancellationToken)).Succeeded);
 
@@ -118,7 +118,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         await db.SaveChangesAsync(cancellationToken);
 
         var fake = new DeterministicFakeAdapter(FakeScenario.Success, clock);
-        var processor = new F3JobProcessor(db, fake, fake, fake, fake, null!, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, fake, null!, clock);
         Assert.True((await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{}", "reference-first", cancellationToken)).Succeeded);
         clock.Advance(TimeSpan.FromMinutes(1));
         Assert.True((await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{}", "reference-retry", cancellationToken)).Succeeded);
@@ -264,7 +264,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         }
 
         var fake = new DeterministicFakeAdapter(FakeScenario.Success, clock, true);
-        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, fake, null!, clock);
         var submitted = await processor.ProcessAsync(tenantId, connectionId, job.JobType, job.PayloadJson, job.CorrelationId, cancellationToken);
         Assert.Equal(JobCompletionKind.Retry, submitted.Kind);
         Assert.Equal("PRODUCT_BATCH_PENDING", submitted.ErrorCode);
@@ -339,7 +339,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         await db.SaveChangesAsync(cancellationToken);
 
         var fake = new DeterministicFakeAdapter(FakeScenario.Partial, clock, true);
-        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, fake, null!, clock);
         var submitted = await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ProductCreate, payload, "product-partial-submit", cancellationToken);
         Assert.Equal(JobCompletionKind.Retry, submitted.Kind);
         db.ChangeTracker.Clear();
@@ -404,7 +404,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         await db.SaveChangesAsync(cancellationToken);
 
         var fake = new DeterministicFakeAdapter(FakeScenario.Partial, clock, true);
-        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, fake, null!, clock);
         var result = await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ProductApprovalReconcile, payload, "approval-partial-e2e", cancellationToken);
         Assert.Equal(JobCompletionKind.Blocked, result.Kind);
         Assert.Equal("PRODUCT_APPROVAL_PARTIAL_REJECTION", result.ErrorCode);
@@ -446,7 +446,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         await db.SaveChangesAsync(cancellationToken);
 
         var fake = new DeterministicFakeAdapter(FakeScenario.Empty, clock, true);
-        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, fake, null!, clock);
         var result = await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ProductApprovalReconcile, payload, "approval-pending-e2e", cancellationToken);
         Assert.Equal(JobCompletionKind.Retry, result.Kind);
         Assert.Equal("PRODUCT_APPROVAL_PENDING", result.ErrorCode);
@@ -485,7 +485,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         await db.SaveChangesAsync(cancellationToken);
 
         var fake = new DeterministicFakeAdapter(FakeScenario.Success, clock, true);
-        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, fake, null!, clock);
         var result = await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ProductApprovalReconcile, payload, "approval-conflict-e2e", cancellationToken);
         Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
         Assert.Equal("PRODUCT_APPROVAL_IDENTITY_CONFLICT", result.ErrorCode);
@@ -522,7 +522,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         await db.SaveChangesAsync(cancellationToken);
 
         var fake = new DeterministicFakeAdapter(FakeScenario.Success, clock, true);
-        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, fake, null!, clock);
         var result = await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ProductApprovalReconcile, payload, "approval-superseded-e2e", cancellationToken);
         Assert.Equal(JobCompletionKind.Blocked, result.Kind);
         Assert.Equal("PRODUCT_APPROVAL_SUPERSEDED", result.ErrorCode);

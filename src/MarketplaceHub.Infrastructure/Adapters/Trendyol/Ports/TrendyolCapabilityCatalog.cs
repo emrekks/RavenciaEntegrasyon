@@ -14,7 +14,10 @@ public static class TrendyolCapabilityCatalog
         [F3Capabilities.PriceWrite] = "https://developers.trendyol.com/v2.0/docs/stock-and-price-update-updatepriceandinventory-1",
         [F3Capabilities.OrderRead] = "https://developers.trendyol.com/v2.0/docs/getshipmentpackagesstream",
         [F3Capabilities.OrderWebhook] = "https://developers.trendyol.com/v2.0/docs/webhook-model",
+        [F3Capabilities.ShipmentWrite] = "https://developers.trendyol.com/v3.0/docs/order-services-best-practices",
+        [F3Capabilities.LabelRead] = "https://developers.trendyol.com/v2.0/docs/common-label-barcode-get-integration",
+        [F3Capabilities.LabelWrite] = "https://developers.trendyol.com/v2.0/docs/common-label-barcode-request-createcommonlabel",
         [F3Capabilities.ReturnRead] = "https://developers.trendyol.com/v2.0/docs/getting-returned-orders-getclaims",
-        [F3Capabilities.LabelRead] = "https://developers.trendyol.com/v2.0/docs/common-label-barcode-request-createcommonlabel"
+        [F3Capabilities.ReturnWrite] = "https://developers.trendyol.com/v2.0/reference/approveclaimlineitems"
     };
 }

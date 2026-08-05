@@ -1,10 +1,14 @@
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeProvider timeProvider) : IInventoryService
+public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeProvider timeProvider, IConfiguration configuration) : IInventoryService
 {
     public async Task<PageResult<InventoryItemView>> ListAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken)
     {
@@ -120,7 +124,33 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
     }
 
     public Task<ServiceResult<Guid>> ValidateExternalSyncAsync(Guid tenantId, string operation, CancellationToken cancellationToken) =>
-        Task.FromResult(ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", $"{operation} için doğrulanmış platform capability ve mapping yok; job ve dış HTTP çağrısı oluşturulmadı.", 422));
+        Task.FromResult(ServiceResult<Guid>.Fail("USE_COMBINED_PRICE_INVENTORY", $"{operation} Trendyol'da ayrık gönderilmez; birleşik price-and-inventory işi kullanılmalıdır.", 422));
+
+    public async Task<ServiceResult<Guid>> EnqueuePriceInventorySyncAsync(Guid tenantId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE", cancellationToken);
+        if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için ACTIVE Trendyol bağlantısı gerekir.", 422);
+        var capabilities = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.Code == F3Capabilities.InventoryWrite || x.Code == F3Capabilities.PriceWrite) && x.SupportLevel == CapabilitySupportLevel.Supported).Select(x => x.Code).ToListAsync(cancellationToken);
+        if (!capabilities.Contains(F3Capabilities.InventoryWrite) || !capabilities.Contains(F3Capabilities.PriceWrite)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "INVENTORY_WRITE ve PRICE_WRITE Stage/SIT kanıtı olmadan birleşik iş oluşturulmaz.", 422);
+        if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken);
+        if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
+        var draft = build.Value!; var dedup = $"price-inventory:{connectionId:N}:{draft.PayloadHash}";
+        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
+        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
+        var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
+        var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null));
+        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(id);
+    }
+
+    private bool WritesEnabled(string settingsJson)
+    {
+        if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
+        try { using var document = JsonDocument.Parse(settingsJson); return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True; }
+        catch (JsonException) { return false; }
+    }
+    private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
     private async Task<InventoryItemView?> FindItemAsync(Guid tenantId, Guid itemId, CancellationToken cancellationToken) =>
         await (from item in db.InventoryItems.AsNoTracking()

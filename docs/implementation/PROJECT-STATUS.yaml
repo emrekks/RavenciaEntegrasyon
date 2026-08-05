@@ -1,10 +1,10 @@
 schema_version: 1
-document_version: "6.3"
-updated_at: "2026-08-05"
+document_version: '7.0'
+updated_at: '2026-08-05'
 active_scope:
-  - TRENDYOL
-  - TRENDYOL_EFATURAM
-overall_status: F3_CLOSURE_ACTIVE_F4_IN_PROGRESS_PRODUCTION_BLOCKED
+- TRENDYOL
+- TRENDYOL_EFATURAM
+overall_status: F3_CORE_CODE_COMPLETE_VALIDATION_PENDING_F4_IN_PROGRESS_PRODUCTION_BLOCKED
 production_status: BLOCKED
 source_of_truth: docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md
 phases:
@@ -22,7 +22,7 @@ phases:
     evidence: docs/implementation/F2-evidence-log.md
   F3:
     title: Trendyol entegrasyonu kapanışı
-    status: ACTIVE_CLOSURE
+    status: CORE_CODE_COMPLETE_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
     evidence: docs/implementation/F3-evidence-log.md
   F4:
     title: Trendyol E-Faturam kapanışı
@@ -70,17 +70,17 @@ features:
   trendyol_product_create_approval_reconciliation:
     status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   trendyol_product_update_archive:
-    status: PLANNED
+    status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   trendyol_price_inventory_write:
-    status: PLANNED
+    status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   trendyol_order_package_read:
-    status: CODED_STAGE_REVALIDATION_REQUIRED
+    status: CODED_STATIC_VERIFIED_STAGE_REVALIDATION_REQUIRED
   trendyol_order_processing_write:
-    status: BLOCKED_CAPABILITY
+    status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   trendyol_cargo_change:
-    status: BLOCKED_CAPABILITY
+    status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   trendyol_label:
-    status: PLANNED_BLOCKED_CAPABILITY
+    status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   efaturam_submit:
     status: CODED_STAGE_E2E_REQUIRED
   efaturam_taxpayer_status_cancel:
@@ -89,8 +89,14 @@ features:
     status: CODED_STATIC_VERIFIED_STAGE_E2E_REQUIRED
   trendyol_invoice_delivery:
     status: CODED_SUBMITTED_MANUAL_CONFIRMATION_REQUIRED
+  trendyol_return_read_write:
+    status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
+  trendyol_capability_evidence:
+    status: CODED_STATIC_VERIFIED_STAGE_EVIDENCE_REQUIRED
+  trendyol_core_operator_ui:
+    status: CODED_TYPESCRIPT_VERIFIED_VITEST_PLAYWRIGHT_REVALIDATION_REQUIRED
 required_documents_on_status_change:
-  - docs/implementation/PROJECT-STATUS.yaml
-  - docs/implementation/CURRENT-PHASE.md
-  - docs/CHANGELOG.md
-  - relevant_phase_evidence_log
+- docs/implementation/PROJECT-STATUS.yaml
+- docs/implementation/CURRENT-PHASE.md
+- docs/CHANGELOG.md
+- relevant_phase_evidence_log

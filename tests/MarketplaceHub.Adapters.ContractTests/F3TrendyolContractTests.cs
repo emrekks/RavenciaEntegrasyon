@@ -65,6 +65,74 @@ public sealed class F3TrendyolContractTests
         Assert.Null(TrendyolJsonMapper.ApprovedPublicationStatus(Fixture("product-approved.json"), "UNKNOWN-BARCODE"));
     }
 
+
+    [Fact]
+    public void Order_v2_documented_fields_map_without_legacy_aliases()
+    {
+        const string json = """
+            {"hasMore":true,"nextCursor":"CURSOR-2","content":[{"shipmentPackageId":991,"orderNumber":"O-V2","currencyCode":"TRY","packageGrossAmount":150,"packageSellerDiscount":10,"packageTyDiscount":5,"packageTotalPrice":135,"shipmentPackageStatus":"Created","cargoSenderNumber":"TRACK-V2","orderDate":1762253333685,"lastModifiedDate":1762253393685,"lines":[{"lineId":771,"stockCode":"SKU-V2","barcode":"BC-V2","productName":"V2 Product","quantity":2,"lineGrossAmount":150,"lineUnitPrice":75,"vatRate":20,"orderLineItemStatusName":"Created"}]}]}
+            """;
+        var page = TrendyolJsonMapper.Orders(json);
+        Assert.True(page.HasMore); Assert.Equal("CURSOR-2", page.NextCursor);
+        var order = Assert.Single(page.Items); var line = Assert.Single(order.Lines); var package = Assert.Single(order.Packages);
+        Assert.Equal("991", package.ExternalPackageId); Assert.Equal("TRACK-V2", package.CargoTrackingNumber); Assert.Equal("771", line.ExternalLineId); Assert.Equal("SKU-V2", line.Sku);
+        Assert.Equal(75m, line.UnitPrice); Assert.Equal(20m, line.VatRate); Assert.Equal(150m, package.GrossAmount); Assert.Equal(15m, package.DiscountAmount); Assert.Equal(135m, package.NetAmount);
+    }
+
+    [Fact]
+    public void Approved_product_pagination_uses_page_then_next_page_token_at_the_ten_thousand_boundary()
+    {
+        const string offsetJson = """{"page":0,"size":100,"totalPages":2,"content":[],"nextPageToken":null}""";
+        var offset = TrendyolJsonMapper.Products(offsetJson);
+        Assert.True(offset.HasMore); Assert.Equal("p:1", offset.NextCursor);
+
+        const string tokenJson = """{"page":99,"size":100,"totalPages":101,"content":[],"nextPageToken":"TOKEN-10000"}""";
+        var token = TrendyolJsonMapper.Products(tokenJson);
+        Assert.True(token.HasMore); Assert.Equal("t:TOKEN-10000", token.NextCursor);
+    }
+
+    [Fact]
+    public void Batch_lines_accept_content_and_stock_keys_for_update_and_price_inventory_operations()
+    {
+        const string json = """
+            {"batchRequestId":"B-2","status":"COMPLETED","items":[
+              {"requestItem":{"contentId":800001},"status":"SUCCESS","failureReasons":[]},
+              {"requestItem":{"stockCode":"SKU-2"},"status":"FAILED","failureReasons":["INVALID_PRICE"]}
+            ]}
+            """;
+        var batch = TrendyolJsonMapper.Batch(json, "fallback");
+        Assert.Equal("800001", batch.Lines[0].ExternalKey);
+        Assert.Equal("SKU-2", batch.Lines[1].ExternalKey);
+        Assert.False(batch.Lines[1].Succeeded);
+    }
+
+    [Fact]
+    public void Current_return_contract_prefers_claimId_and_preserves_line_ids()
+    {
+        const string json = """
+            {"page":0,"totalPages":1,"content":[{"claimId":"CLAIM-V2","id":"LEGACY-ID","orderNumber":"O-1","lastModifiedDate":1762253993685,"items":[{"id":"CLAIM-LINE-V2","orderLineItemId":"ORDER-LINE-V2","quantity":1,"claimItemStatus":{"name":"Created"},"customerClaimItemReason":{"name":"Reason","code":"R1"}}]}]}
+            """;
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+        Assert.Equal("CLAIM-V2", claim.ExternalClaimId);
+        var line = Assert.Single(claim.Lines); Assert.Equal("CLAIM-LINE-V2", line.ExternalReturnLineId); Assert.Equal("ORDER-LINE-V2", line.ExternalOrderLineId);
+    }
+
+    [Fact]
+    public void Source_contract_uses_storefront_header_v2_orders_core_channel_and_tracking_details_write()
+    {
+        var root = FindRoot();
+        var http = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Infrastructure", "Adapters", "Trendyol", "TrendyolHttpClient.cs"));
+        var auth = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Infrastructure", "Adapters", "Trendyol", "TrendyolAuthenticationHandler.cs"));
+        var options = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Infrastructure", "Adapters", "Trendyol", "TrendyolOptions.cs"));
+        var composer = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Infrastructure", "Persistence", "ProductPublicationComposer.cs"));
+        Assert.Contains("storeFrontCode", auth, StringComparison.Ordinal); Assert.Contains("TR", auth, StringComparison.Ordinal);
+        Assert.Contains("/v2/orders", options, StringComparison.Ordinal); Assert.Contains("OrderStream", http, StringComparison.Ordinal);
+        Assert.Contains("channels = new[] { \"CORE\" }", composer, StringComparison.Ordinal);
+        Assert.Contains("TRACKING_NUMBER", http, StringComparison.Ordinal);
+        Assert.Contains("/tracking-details", options, StringComparison.Ordinal);
+        Assert.Contains("Math.Clamp(page.Limit, 1, 100)", http, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Documented_brand_response_maps_to_canonical_BRANDS_resource()
     {

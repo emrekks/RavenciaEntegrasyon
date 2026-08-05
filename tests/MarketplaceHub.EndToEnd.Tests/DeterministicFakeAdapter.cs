@@ -44,15 +44,20 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
     public Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) =>
         Result(Page(new RemoteProduct("synthetic-product", "synthetic-variant", "0000000000000", "SYNTHETIC-SKU", "{}")));
 
-    public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken)
-    {
-        var result = await Write(context, () => new RemoteOperationRef($"fake-operation-{context.IdempotencyKey}", "PRODUCT", timeProvider.GetUtcNow()));
-        if (!result.IsSuccess) return result;
-        using var document = JsonDocument.Parse(publication.PayloadJson);
-        var barcodes = document.RootElement.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("barcode").GetString()!).ToList();
-        productBatchBarcodes[result.Value!.ExternalOperationId] = barcodes;
-        return result;
-    }
+    public Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) =>
+        BatchWrite(context, publication.PayloadJson, "PRODUCT_CREATE");
+
+    public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
+        BatchWrite(context, publication.UnapprovedPayloadJson, "PRODUCT_UPDATE_UNAPPROVED");
+
+    public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
+        BatchWrite(context, publication.ApprovedContentPayloadJson, "PRODUCT_UPDATE_CONTENT");
+
+    public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
+        BatchWrite(context, publication.ApprovedVariantPayloadJson, "PRODUCT_UPDATE_VARIANTS");
+
+    public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
+        BatchWrite(context, publication.ApprovedDeliveryPayloadJson, "PRODUCT_UPDATE_DELIVERY");
 
     public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken)
     {
@@ -73,14 +78,11 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
             : new RemotePublicationStatus(barcode, "APPROVED", $"fake-content-{barcode}", $"fake-variant-{barcode}", null, "{}"));
     }
 
-    public Task<AdapterResult<bool>> ArchiveAsync(AdapterContext context, ExternalProductIdentity identity, CancellationToken cancellationToken) =>
-        Write(context, () => true);
+    public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) =>
+        BatchWrite(context, payloadJson, "PRODUCT_ARCHIVE");
 
-    public Task<AdapterResult<BatchResult<BatchLineResult>>> PushStockAsync(AdapterContext context, IReadOnlyList<StockPushLine> lines, CancellationToken cancellationToken) =>
-        Write(context, () => Batch(lines.Select(x => x.VariantId).ToArray()));
-
-    public Task<AdapterResult<BatchResult<BatchLineResult>>> PushPricesAsync(AdapterContext context, IReadOnlyList<PricePushLine> lines, CancellationToken cancellationToken) =>
-        Write(context, () => Batch(lines.Select(x => x.VariantId).ToArray()));
+    public Task<AdapterResult<RemoteOperationRef>> PushPriceAndInventoryAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) =>
+        BatchWrite(context, payloadJson, "PRICE_AND_INVENTORY");
 
     public Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) =>
         Result(Page(Order()));
@@ -91,6 +93,12 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
     public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) =>
         Write(context, () => new PackageActionResult(command.ExternalPackageId, "SYNTHETIC", $"fake-operation-{context.IdempotencyKey}"));
 
+    public Task<AdapterResult<bool>> CreateCommonLabelAsync(AdapterContext context, CommonLabelRequest request, CancellationToken cancellationToken) =>
+        Write(context, () => true);
+
+    public Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken) =>
+        Result(new CommonLabelDocument(cargoTrackingNumber, "ZPL", System.Text.Encoding.UTF8.GetBytes("^XA^FO20,20^FDSYNTHETIC^FS^XZ")));
+
     Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> IReturnPort.PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) =>
         Result(Page(ReturnClaim()));
 
@@ -99,6 +107,18 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
 
     public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) =>
         Write(context, () => new ReturnActionResult(command.ExternalClaimId, "SYNTHETIC", $"fake-operation-{context.IdempotencyKey}"));
+
+    private async Task<AdapterResult<RemoteOperationRef>> BatchWrite(AdapterContext context, string payloadJson, string kind)
+    {
+        var result = await Write(context, () => new RemoteOperationRef($"fake-operation-{context.IdempotencyKey}", kind, timeProvider.GetUtcNow()));
+        if (!result.IsSuccess) return result;
+        using var document = JsonDocument.Parse(payloadJson);
+        var keys = document.RootElement.GetProperty("items").EnumerateArray().Select(item =>
+            item.TryGetProperty("barcode", out var barcode) ? barcode.ToString() :
+            item.TryGetProperty("contentId", out var contentId) ? contentId.ToString() : "synthetic-item").ToList();
+        productBatchBarcodes[result.Value!.ExternalOperationId] = keys;
+        return result;
+    }
 
     private Task<AdapterResult<T>> Result<T>(T value)
     {

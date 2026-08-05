@@ -2,37 +2,38 @@
 
 ## Durum sözleşmesi
 
-- `SUPPORTED`: Resmî kaynak + tarihli test hesabı/anonim fixture + kapsam kaydı vardır.
-- `UNKNOWN`: Kod veya doküman olabilir; güvenli dış çalışma kanıtı yoktur.
-- `NOT_SUPPORTED`: Platform veya proje kararı açıkça desteklemez.
-- `TEMPORARILY_UNAVAILABLE`: Daha önce kanıtlı capability geçici olarak erişilemiyordur.
+- `SUPPORTED`: Resmî kaynak, tarihli environment/store scope kanıtı ve gerekli fixture vardır.
+- `UNKNOWN`: Kod bulunabilir; güvenli dış çalışma kanıtı yoktur.
+- `NOT_SUPPORTED`: Platform veya proje kararı desteklemez.
+- Read kanıtı write yetkisi değildir. Write için global + connection anahtarı ve Stage/SIT SHA-256 fixture evidence zorunludur.
 
-Read kanıtı write yetkisi değildir. Bütün write işlemleri global ve connection düzeyindeki iki anahtar açılmadan çalışmaz.
+## Trendyol Türkiye CORE
 
-## Güncel durum
+| Capability | Kod durumu | Dış kanıt / çıkış durumu |
+| --- | --- | --- |
+| Connection test | Uygulandı | Gerçek hesapla yeniden kabul edilmeli |
+| Reference read | Uygulandı | Büyük ağaç/pagination Stage testi gerekli |
+| Product read | Uygulandı | Approved/unapproved, 100 limit, page→token cursor; Stage katalog testi gerekli |
+| Product create | Uygulandı | Durable batch + approval read-back; safe-write fixture gerekli |
+| Product update | Uygulandı | Unapproved ve approved content/variant/delivery fazları; Stage fixture gerekli |
+| Product archive/unarchive | Uygulandı | Batch + publication read-back; Stage fixture gerekli |
+| Inventory + price write | Uygulandı | Tek batch ve stale-version koruması; Stage fixture gerekli |
+| Order read | Uygulandı | Stream + `/v2/orders`; overlap/duplicate Stage testi gerekli |
+| Webhook ingest | Uygulandı | Gerçek subscription/auth delivery kanıtı gerekli |
+| Shipment write | Uygulandı, fail-closed | Yalnız evidence constraints `allowedActions`; Stage action fixture gerekli |
+| Label read/write | Uygulandı | Common label create/poll/private storage; gerçek ZPL/PDF testi gerekli |
+| Return read/write | Uygulandı | Exact claim read, approve/reject/evidence; Stage claim fixture gerekli |
+| Invoice link delivery | Uygulandı | POST sonrası `SUBMITTED`; gerçek package ve URL retention testi gerekli |
+| Invoice delivery terminal query | Doğrulanmadı | Sahte başarı yok; manuel teyit veya resmî query kanıtı gerekir |
 
-| Platform | Capability | Kod durumu | Dış kanıt / çıkış durumu |
-| --- | --- | --- | --- |
-| Trendyol | Connection test | Uygulandı | Gerçek Stage/Production hesapla yeniden kabul edilmeli |
-| Trendyol | Category/brand/attribute/value read | Uygulandı | Büyük kategori ağacı, pagination ve leaf seçimi E2E testi gerekli |
-| Trendyol | Approved + unapproved product status read | Uygulandı | Barkod bazlı onay/pending/ret read-back kodlandı; gerçek Stage görünürlük gecikmesi ve pagination kapsamı doğrulanmalı |
-| Trendyol | Product create + batch result + approval reconciliation | Adapter + application durable job + satır sonucu + approved/unapproved read-back uygulandı | Exact dinamik test, gerçek Stage safe-write/read-back ve operatör görünürlüğü gerekli |
-| Trendyol | Product update/archive | Uygulanmadı | `UNKNOWN`; create ile update aynı işlem gibi gösterilmemeli |
-| Trendyol | Stock + price write | Uygulanmadı | Mevcut ayrı portlar birleşik uzak komuta dönüştürülmeli |
-| Trendyol | Order/package read | Uygulandı | Duplicate, overlap, pagination ve durum geçişi gerçek fixture ile doğrulanmalı |
-| Trendyol | Webhook ingest | Yerel sınır uygulandı | Resmî signed delivery ve reconciliation kanıtı gerekli |
-| Trendyol | Shipment/package write | Uygulanmadı | Exact action endpoint ve izin seti doğrulanmadan kapalı |
-| Trendyol | Return read | Uygulandı | Boş kaynak/404 davranışı ve gerçek claim fixture gerekli |
-| Trendyol | Return action | Uygulanmadı | Approve/reject/dispute ayrı capability olarak kanıtlanmalı |
-| Trendyol | Invoice link delivery | Uygulandı | Gerçek package ile Stage testi, sonuç uzlaştırması ve URL için 8 yıllık erişilebilirlik kanıtı gerekli |
-| Trendyol | Invoice delivery status | Uygulanmadı | POST 2xx tek başına nihai teslim kanıtı sayılmamalı |
-| E-Faturam | Sign-in / connection test | Uygulandı | Test firma ve doğru entegrasyon modeliyle kabul edilmeli |
-| E-Faturam | Taxpayer query | Uygulanmadı | Firma/user scope ve endpoint sözleşmesi doğrulanmalı |
-| E-Faturam | Invoice submit | Uygulandı | Mali policy, e-Fatura/e-Arşiv ayrımı ve Stage E2E gerekli |
-| E-Faturam | Invoice status read | Uygulanmadı | Polling/reconciliation tamamlanmalı |
-| E-Faturam | Permanent PDF URL | Uygulandı | Exact download host allow-list, redirect/IP guard, PDF imza kontrolü, URL ömrü ve private download E2E gerekli |
-| E-Faturam | Invoice cancel | Uygulanmadı | Mali yetki, süre ve durum kuralları onaylanmalı |
+## E-Faturam
+
+F4 kapsamıdır. Sign-in/submit/PDF URL kodu vardır; taxpayer, status ve cancel ile gerçek mali E2E tamamlanmamıştır.
 
 ## Açılma kuralı
 
-Bir capability `UNKNOWN` iken API/UI iş oluşturamaz. Capability satırı yalnız bağlantı, environment, seller/company, API version, scope, kaynak URL, doğrulama tarihi ve evidence note ile `SUPPORTED` yapılır.
+Capability `UNKNOWN` iken API/UI dış iş oluşturamaz. Evidence endpoint'i yalnız Owner/Administrator tarafından ETag ve audit ile güncellenir; resmî HTTPS kaynak, environment/store bire bir eşleşmesi ve write için 64 haneli fixture SHA-256 ister.
+
+## Kanal sınırı
+
+Bu matris `storeFrontCode=TR` ve `channels=["CORE"]` kapsamındadır. LUXE veya uluslararası storefront ayrı ADR/evidence olmadan desteklenmez.

@@ -16,7 +16,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     [
         F3Capabilities.ConnectionTest, F3Capabilities.ReferenceRead, F3Capabilities.ProductRead, F3Capabilities.ProductWrite,
         F3Capabilities.InventoryWrite, F3Capabilities.PriceWrite, F3Capabilities.OrderRead, F3Capabilities.OrderWebhook,
-        F3Capabilities.ShipmentWrite, F3Capabilities.LabelRead, F3Capabilities.ReturnRead, F3Capabilities.ReturnWrite,
+        F3Capabilities.ShipmentWrite, F3Capabilities.LabelRead, F3Capabilities.LabelWrite, F3Capabilities.ReturnRead, F3Capabilities.ReturnWrite,
         F4Capabilities.InvoiceDeliver
     ];
     private static readonly string[] EfaturamCapabilityCodes =
@@ -150,9 +150,50 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
 
     public async Task<ServiceResult<IReadOnlyList<CapabilityView>>> CapabilitiesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        if (!await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM"), cancellationToken)) return NotFound<IReadOnlyList<CapabilityView>>();
-        var rows = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).OrderBy(x => x.Code).Select(x => new CapabilityView(x.Code, x.SupportLevel.ToString().ToUpperInvariant(), x.ApiVersion, x.Environment, x.StoreScope, x.SourceUrl, x.VerifiedAt, x.ConstraintsJson)).ToListAsync(cancellationToken);
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM"), cancellationToken);
+        if (connection is null) return NotFound<IReadOnlyList<CapabilityView>>();
+        await EnsureCapabilityRowsAsync(connection, cancellationToken);
+        var rows = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).OrderBy(x => x.Code).Select(x => new CapabilityView(x.Code, x.SupportLevel.ToString().ToUpperInvariant(), x.ApiVersion, x.Environment, x.StoreScope, x.SourceUrl, x.VerifiedAt, x.ConstraintsJson, x.Version)).ToListAsync(cancellationToken);
         return ServiceResult<IReadOnlyList<CapabilityView>>.Ok(rows);
+    }
+
+    public async Task<ServiceResult<CapabilityView>> RecordCapabilityEvidenceAsync(Guid tenantId, Guid actorUserId, Guid id, string code, long expectedVersion, RecordCapabilityEvidenceCommand command, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM"), cancellationToken);
+        if (connection is null) return NotFound<CapabilityView>();
+        await EnsureCapabilityRowsAsync(connection, cancellationToken);
+        var normalizedCode = code.Trim().ToUpperInvariant();
+        var expectedCodes = connection.PlatformCode == "TRENDYOL" ? TrendyolCapabilityCodes : EfaturamCapabilityCodes;
+        if (!expectedCodes.Contains(normalizedCode, StringComparer.Ordinal)) return Invalid<CapabilityView>("code", "Bu bağlantı türü için tanımlı capability değildir.");
+        var capability = await db.PlatformCapabilities.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == normalizedCode, cancellationToken);
+        if (capability.Version != expectedVersion) return Precondition<CapabilityView>(capability.Version);
+
+        var support = command.SupportLevel.Trim().ToUpperInvariant();
+        if (support is not ("SUPPORTED" or "UNKNOWN" or "NOT_SUPPORTED")) return Invalid<CapabilityView>("supportLevel", "Support level SUPPORTED, UNKNOWN veya NOT_SUPPORTED olmalıdır.");
+        if (!string.Equals(command.Environment.Trim(), connection.Environment, StringComparison.OrdinalIgnoreCase) || !string.Equals(command.StoreScope.Trim(), connection.ExternalStoreId, StringComparison.Ordinal))
+            return Invalid<CapabilityView>("scope", "Evidence environment ve store scope bağlantıyla bire bir eşleşmelidir.");
+        if (!Uri.TryCreate(command.SourceUrl.Trim(), UriKind.Absolute, out var sourceUri) || sourceUri.Scheme != Uri.UriSchemeHttps || !sourceUri.Host.Equals("developers.trendyol.com", StringComparison.OrdinalIgnoreCase))
+            return Invalid<CapabilityView>("sourceUrl", "Capability evidence yalnız resmî HTTPS Trendyol geliştirici kaynağına dayanabilir.");
+        if (string.IsNullOrWhiteSpace(command.SourceVersion) || string.IsNullOrWhiteSpace(command.EvidenceNote) || command.EvidenceNote.Trim().Length > 1000)
+            return Invalid<CapabilityView>("evidenceNote", "Kaynak sürümü ve en fazla 1000 karakterlik evidence note zorunludur.");
+        var now = timeProvider.GetUtcNow();
+        if (command.VerifiedAt > now.AddMinutes(5) || command.VerifiedAt < now.AddYears(-2)) return Invalid<CapabilityView>("verifiedAt", "Doğrulama zamanı gelecekte veya iki yıldan eski olamaz.");
+        if (command.ConstraintsJson is not null)
+        {
+            try { using var constraints = JsonDocument.Parse(command.ConstraintsJson); if (constraints.RootElement.ValueKind != JsonValueKind.Object) return Invalid<CapabilityView>("constraintsJson", "Capability constraints JSON nesnesi olmalıdır."); }
+            catch (JsonException) { return Invalid<CapabilityView>("constraintsJson", "Capability constraints geçerli JSON olmalıdır."); }
+        }
+        var writeCapability = normalizedCode is F3Capabilities.ProductWrite or F3Capabilities.InventoryWrite or F3Capabilities.PriceWrite or F3Capabilities.ShipmentWrite or F3Capabilities.LabelWrite or F3Capabilities.ReturnWrite or F4Capabilities.InvoiceDeliver;
+        var checksum = command.FixtureChecksum?.Trim().ToUpperInvariant();
+        if (support == "SUPPORTED" && writeCapability && (checksum is null || checksum.Length != 64 || checksum.Any(x => !Uri.IsHexDigit(x))))
+            return Invalid<CapabilityView>("fixtureChecksum", "Write capability SUPPORTED yapılırken 64 haneli SHA-256 Stage/SIT fixture checksum zorunludur.");
+
+        capability.SupportLevel = support switch { "SUPPORTED" => CapabilitySupportLevel.Supported, "NOT_SUPPORTED" => CapabilitySupportLevel.NotSupported, _ => CapabilitySupportLevel.Unknown };
+        capability.SourceUrl = sourceUri.ToString(); capability.SourceVersion = command.SourceVersion.Trim(); capability.Environment = connection.Environment; capability.StoreScope = connection.ExternalStoreId;
+        capability.EvidenceNote = command.EvidenceNote.Trim(); capability.FixtureChecksum = checksum; capability.ConstraintsJson = command.ConstraintsJson; capability.VerifiedAt = command.VerifiedAt; capability.Version++;
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = actorUserId, Action = "CAPABILITY_EVIDENCE_RECORDED", TargetType = "PlatformCapability", TargetId = capability.Id.ToString("D"), Reason = $"{normalizedCode}:{support}", CorrelationId = correlationId, CreatedAt = now });
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<CapabilityView>.Ok(new(capability.Code, capability.SupportLevel.ToString().ToUpperInvariant(), capability.ApiVersion, capability.Environment, capability.StoreScope, capability.SourceUrl, capability.VerifiedAt, capability.ConstraintsJson, capability.Version));
     }
 
     public async Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> SyncPoliciesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -192,6 +233,20 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     }
 
     private Task<PlatformConnection?> Find(Guid tenantId, Guid id, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM"), cancellationToken);
+    private async Task EnsureCapabilityRowsAsync(PlatformConnection connection, CancellationToken cancellationToken)
+    {
+        var expected = connection.PlatformCode == "TRENDYOL" ? TrendyolCapabilityCodes : EfaturamCapabilityCodes;
+        var existing = await db.PlatformCapabilities.Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id).Select(x => x.Code).ToListAsync(cancellationToken);
+        var missing = expected.Except(existing, StringComparer.Ordinal).ToArray();
+        if (missing.Length == 0) return;
+        db.PlatformCapabilities.AddRange(missing.Select(code => new PlatformCapability
+        {
+            Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.Id, Code = code,
+            SupportLevel = CapabilitySupportLevel.Unknown, ApiVersion = connection.ApiVersion, Environment = connection.Environment,
+            StoreScope = connection.ExternalStoreId, EvidenceNote = "Bu capability sonradan eklendi; Stage/SIT kanıtı bekleniyor.", Version = 1
+        }));
+        await db.SaveChangesAsync(cancellationToken);
+    }
     private Task<bool> HasCredential(Guid tenantId, Guid id, CancellationToken cancellationToken) => db.PlatformCredentials.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.RevokedAt == null, cancellationToken);
     private async Task<HashSet<Guid>> ActiveCredentialConnectionIds(Guid tenantId, IEnumerable<Guid> connectionIds, CancellationToken cancellationToken) => (await db.PlatformCredentials.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.ConnectionId) && x.RevokedAt == null).Select(x => x.ConnectionId).ToListAsync(cancellationToken)).ToHashSet();
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));

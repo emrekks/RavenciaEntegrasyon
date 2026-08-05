@@ -3,13 +3,13 @@
 > Ayrıntılı ve yetkili ürün/teknik çerçeve: `RAVENCIA-NIHAI-PROJE-BELGESI.md`. Bu dosya günlük kapsam özetidir.
 
 **Karar tarihi:** 2026-08-04  
-**Karar:** Aktif entegrasyon geliştirmesi yalnız Trendyol ve Trendyol E-Faturam ile sınırlıdır.
+**Karar:** Aktif entegrasyon geliştirmesi Trendyol Türkiye `CORE` storefront ve Trendyol E-Faturam ile sınırlıdır.
 
 ## 1. Aktif entegrasyonlar
 
 | Platform kodu | Sorumluluk |
 | --- | --- |
-| `TRENDYOL` | Bağlantı/capability, referans katalog, ürün, stok-fiyat, sipariş, paket, iade, webhook ve fatura link teslimi |
+| `TRENDYOL` | Türkiye `CORE`: bağlantı/capability, referans katalog, Product V2 create/update/archive/read-back, stok-fiyat, Order V2/stream, paket, takip numarası, etiket, iade, webhook ve fatura link teslimi |
 | `TRENDYOL_EFATURAM` | Mükellef, mali belge oluşturma, durum, PDF, iptal ve mali belge sağlayıcı işlemleri |
 
 UI bağlantı seçicisi, API servisleri, DI kayıtları ve Worker yönlendirmesi bu iki kodla sınırlandırılır.
@@ -30,6 +30,9 @@ Sistem aşağıdaki uçtan uca akışı güvenilir biçimde tamamlamalıdır:
 10. Reconciliation, retry, dead-letter, audit, backup/restore ve rollback kanıtlarını tamamla.
 
 ## 3. Kapsam dışı
+
+Trendyol `LUXE`, uluslararası storefront ve Türkiye dışı channel/storefront kodları ayrı ADR ve kabul kanıtı olmadan etkin değildir. E-Faturam mali sağlayıcı kapanışı F4 olarak ayrıca izlenir.
+
 
 Başka pazaryeri adapterı, credential türü, menü, route, job türü, webhook doğrulayıcısı veya capability satırı oluşturulmaz. Yeni platform için önce ayrı karar belgesi, resmi doküman, test hesabı, fixture ve tamamlanmış Trendyol/E-Faturam çıkış raporu gerekir.
 

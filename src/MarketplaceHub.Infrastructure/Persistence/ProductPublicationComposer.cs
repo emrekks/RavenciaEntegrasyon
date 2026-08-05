@@ -167,6 +167,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
                 ["productMainId"] = modelCodes[0],
                 ["brandId"] = externalBrandId,
                 ["categoryId"] = externalCategoryId,
+                ["channels"] = new[] { "CORE" },
                 ["quantity"] = checked((int)Math.Min(int.MaxValue, Math.Floor(publishable))),
                 ["stockCode"] = variant.Sku.Trim(),
                 ["origin"] = string.IsNullOrWhiteSpace(profile.Origin) ? null : profile.Origin.Trim().ToUpperInvariant(),

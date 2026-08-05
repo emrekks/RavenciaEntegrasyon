@@ -64,21 +64,33 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
     public async Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<AdapterPageResult<RemoteProduct>>.Failure(TrendyolErrorMapper.Configuration());
-        var query = new List<string> { $"size={page.Limit}" }; if (!string.IsNullOrWhiteSpace(page.Cursor)) query.Add("nextPageToken=" + Uri.EscapeDataString(page.Cursor)); if (filter.ModifiedAfter is not null) { query.Add("startDate=" + filter.ModifiedAfter.Value.ToUnixTimeMilliseconds()); query.Add("dateQueryType=VARIANT_MODIFIED_DATE"); }
+        var size = Math.Clamp(page.Limit, 1, 100);
+        var query = new List<string> { $"size={size}" };
+        if (TryProductCursor(page.Cursor, out var pageNumber, out var nextPageToken))
+        {
+            if (!string.IsNullOrWhiteSpace(nextPageToken)) query.Add("nextPageToken=" + Uri.EscapeDataString(nextPageToken));
+            else query.Add($"page={pageNumber}");
+        }
+        else query.Add("page=0");
+        if (filter.ModifiedAfter is not null) { query.Add("startDate=" + filter.ModifiedAfter.Value.ToUnixTimeMilliseconds()); query.Add("dateQueryType=VARIANT_MODIFIED_DATE"); }
         var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.ApprovedProducts(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', query), null, cancellationToken); if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteProduct>>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<AdapterPageResult<RemoteProduct>>.Success(TrendyolJsonMapper.Products(response.Value!), response.RateLimit); } catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteProduct>>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
-    public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken)
-    {
-        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized)) return AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.WriteClosed());
-        JsonDocument payload; try { payload = JsonDocument.Parse(publication.PayloadJson); } catch (JsonException) { return AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.Contract()); }
-        using (payload)
-        {
-            var response = await SendAsync(authorized, HttpMethod.Post, TrendyolEndpoints.ProductCreate(authorized.Connection.ExternalStoreId), JsonContent.Create(payload.RootElement), cancellationToken); if (!response.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(response.Error!, response.RateLimit);
-            try { using var doc = JsonDocument.Parse(response.Value!); var id = doc.RootElement.GetProperty("batchRequestId").GetString(); return string.IsNullOrWhiteSpace(id) ? AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.Contract()) : AdapterResult<RemoteOperationRef>.Success(new(id, "PRODUCT_V2", timeProvider.GetUtcNow()), response.RateLimit); } catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException) { return AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.Contract()); }
-        }
-    }
+    public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) =>
+        await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.ProductCreate, publication.PayloadJson, "PRODUCT_CREATE_V2", cancellationToken);
+
+    public async Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
+        await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.ProductUpdateUnapproved, publication.UnapprovedPayloadJson, "PRODUCT_UPDATE_UNAPPROVED_V2", cancellationToken);
+
+    public async Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
+        await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.ProductUpdateContent, publication.ApprovedContentPayloadJson, "PRODUCT_UPDATE_CONTENT_V2", cancellationToken);
+
+    public async Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
+        await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.ProductUpdateVariant, publication.ApprovedVariantPayloadJson, "PRODUCT_UPDATE_VARIANT_V2", cancellationToken);
+
+    public async Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
+        await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.ProductUpdateDelivery, publication.ApprovedDeliveryPayloadJson, "PRODUCT_UPDATE_DELIVERY_V2", cancellationToken);
 
     public async Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken)
     {
@@ -110,9 +122,11 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         catch (JsonException) { return AdapterResult<RemotePublicationStatus>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
-    public Task<AdapterResult<bool>> ArchiveAsync(AdapterContext context, ExternalProductIdentity identity, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<bool>.Failure(TrendyolErrorMapper.Unsupported("Archive write capability ve exact V2 request Stage kanıtı bekleniyor.")));
-    public Task<AdapterResult<BatchResult<BatchLineResult>>> PushStockAsync(AdapterContext context, IReadOnlyList<StockPushLine> lines, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<BatchResult<BatchLineResult>>.Failure(TrendyolErrorMapper.Unsupported("Ayrık stok payload capability kanıtı yok; birleşik price-and-inventory isteği uydurulmadı.")));
-    public Task<AdapterResult<BatchResult<BatchLineResult>>> PushPricesAsync(AdapterContext context, IReadOnlyList<PricePushLine> lines, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<BatchResult<BatchLineResult>>.Failure(TrendyolErrorMapper.Unsupported("Ayrık fiyat payload capability kanıtı yok; birleşik price-and-inventory isteği uydurulmadı.")));
+    public async Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) =>
+        await SubmitBatchAsync(context, HttpMethod.Put, TrendyolEndpoints.ProductArchiveState, payloadJson, "PRODUCT_ARCHIVE_STATE", cancellationToken);
+
+    public async Task<AdapterResult<RemoteOperationRef>> PushPriceAndInventoryAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) =>
+        await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.PriceAndInventory, payloadJson, "PRICE_AND_INVENTORY", cancellationToken);
 
     public async Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
@@ -122,8 +136,78 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         try { return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(TrendyolJsonMapper.Orders(response.Value!), response.RateLimit); } catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
-    public Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Unsupported("External order identity tekil lookup sözleşmesiyle eşlenmeden çağrı yapılmaz.")));
-    public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Unsupported("Package action capability ve exact endpoint Stage kanıtı bekleniyor.")));
+    public async Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(externalOrderId)) return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Contract());
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Configuration());
+        var endpoint = TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) + $"?orderNumber={Uri.EscapeDataString(externalOrderId.Trim())}&size=200";
+        var response = await SendAsync(authorized, HttpMethod.Get, endpoint, null, cancellationToken); if (!response.IsSuccess) return AdapterResult<RemoteOrder>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            var page = TrendyolJsonMapper.Orders(response.Value!);
+            var order = page.Items.FirstOrDefault(x => string.Equals(x.ExternalOrderId, externalOrderId, StringComparison.OrdinalIgnoreCase) || string.Equals(x.OrderNumber, externalOrderId, StringComparison.OrdinalIgnoreCase));
+            return order is null ? AdapterResult<RemoteOrder>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_ORDER_NOT_FOUND", "Platform siparişi bulunamadı.", 404, null, null), response.RateLimit) : AdapterResult<RemoteOrder>.Success(order, response.RateLimit);
+        }
+        catch (JsonException) { return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Contract()); }
+    }
+
+    public async Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized)) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.WriteClosed());
+        if (string.IsNullOrWhiteSpace(command.ExternalPackageId)) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Contract());
+        var action = command.Action.Trim().ToUpperInvariant();
+        var seller = authorized.Connection.ExternalStoreId;
+        var endpoint = action switch
+        {
+            "PICKING" or "INVOICED" => TrendyolEndpoints.ShipmentPackage(seller, command.ExternalPackageId),
+            "TRACKING_NUMBER" => TrendyolEndpoints.ShipmentTrackingDetails(seller, command.ExternalPackageId),
+            "CANCEL_ITEMS" => TrendyolEndpoints.ShipmentUnsupplied(seller, command.ExternalPackageId),
+            "SPLIT" => TrendyolEndpoints.ShipmentSplit(seller, command.ExternalPackageId),
+            "MULTI_SPLIT" => TrendyolEndpoints.ShipmentMultiSplit(seller, command.ExternalPackageId),
+            "CHANGE_CARGO_PROVIDER" => TrendyolEndpoints.ShipmentCargoProvider(seller, command.ExternalPackageId),
+            "ALTERNATIVE_DELIVERY" => TrendyolEndpoints.ShipmentAlternativeDelivery(seller, command.ExternalPackageId),
+            "MANUAL_DELIVER" => TrendyolEndpoints.ShipmentManualDeliver(seller, command.ExternalPackageId),
+            "MANUAL_RETURN" => TrendyolEndpoints.ShipmentManualReturn(seller, command.ExternalPackageId),
+            _ => ""
+        };
+        if (endpoint.Length == 0) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Unsupported("Paket aksiyonu resmî Trendyol sözleşmesinde tanımlı değil."));
+        HttpContent? content = null;
+        if (action is not ("MANUAL_DELIVER" or "MANUAL_RETURN"))
+        {
+            JsonDocument payload; try { payload = JsonDocument.Parse(command.PayloadJson); } catch (JsonException) { return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Contract()); }
+            content = JsonContent.Create(payload.RootElement.Clone()); payload.Dispose();
+        }
+        var method = action is "SPLIT" or "MULTI_SPLIT" ? HttpMethod.Post : HttpMethod.Put;
+        using (content)
+        {
+            var response = await SendAsync(authorized, method, endpoint, content, cancellationToken); if (!response.IsSuccess) return AdapterResult<PackageActionResult>.Failure(response.Error!, response.RateLimit);
+            return AdapterResult<PackageActionResult>.Success(new(command.ExternalPackageId, "ACCEPTED", response.Error?.RemoteRequestId), response.RateLimit);
+        }
+    }
+
+    public async Task<AdapterResult<bool>> CreateCommonLabelAsync(AdapterContext context, CommonLabelRequest request, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<bool>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized)) return AdapterResult<bool>.Failure(TrendyolErrorMapper.WriteClosed());
+        if (string.IsNullOrWhiteSpace(request.CargoTrackingNumber) || request.BoxQuantity < 1 || request.VolumetricHeight <= 0) return AdapterResult<bool>.Failure(TrendyolErrorMapper.Contract());
+        var body = JsonContent.Create(new { format = "ZPL", boxQuantity = request.BoxQuantity, volumetricHeight = request.VolumetricHeight });
+        var response = await SendAsync(authorized, HttpMethod.Post, TrendyolEndpoints.CommonLabel(authorized.Connection.ExternalStoreId, request.CargoTrackingNumber), body, cancellationToken);
+        return response.IsSuccess ? AdapterResult<bool>.Success(true, response.RateLimit) : AdapterResult<bool>.Failure(response.Error!, response.RateLimit);
+    }
+
+    public async Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<CommonLabelDocument>.Failure(TrendyolErrorMapper.Configuration());
+        var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.CommonLabel(authorized.Connection.ExternalStoreId, cargoTrackingNumber), null, cancellationToken); if (!response.IsSuccess) return AdapterResult<CommonLabelDocument>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            using var document = JsonDocument.Parse(response.Value!);
+            if (!document.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array) return AdapterResult<CommonLabelDocument>.Failure(TrendyolErrorMapper.Contract());
+            var labels = data.EnumerateArray().Select(x => x.TryGetProperty("label", out var label) ? label.GetString() : null).Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+            var format = data.GetArrayLength() > 0 && data[0].TryGetProperty("format", out var formatValue) ? formatValue.GetString() : "ZPL";
+            return labels.Length == 0 ? AdapterResult<CommonLabelDocument>.Failure(TrendyolErrorMapper.Contract()) : AdapterResult<CommonLabelDocument>.Success(new(cargoTrackingNumber, format ?? "ZPL", Encoding.UTF8.GetBytes(string.Join(Environment.NewLine, labels))), response.RateLimit);
+        }
+        catch (JsonException) { return AdapterResult<CommonLabelDocument>.Failure(TrendyolErrorMapper.Contract()); }
+    }
 
     public async Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
@@ -132,8 +216,43 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         try { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(TrendyolJsonMapper.Returns(response.Value!), response.RateLimit); } catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
-    Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<RemoteReturnClaim>.Failure(TrendyolErrorMapper.Unsupported("Claim kimliği tekil lookup biçimi Stage kanıtı bekliyor.")));
-    public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.Unsupported("Return write capability ve exact endpoint Stage kanıtı bekleniyor.")));
+    async Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemoteReturnClaim>.Failure(TrendyolErrorMapper.Configuration());
+        if (string.IsNullOrWhiteSpace(externalReturnId)) return AdapterResult<RemoteReturnClaim>.Failure(TrendyolErrorMapper.Contract());
+        var endpoint = TrendyolEndpoints.Claims(authorized.Connection.ExternalStoreId) + "?claimIds=" + Uri.EscapeDataString(externalReturnId);
+        var response = await SendAsync(authorized, HttpMethod.Get, endpoint, null, cancellationToken); if (!response.IsSuccess) return AdapterResult<RemoteReturnClaim>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            var page = TrendyolJsonMapper.Returns(response.Value!);
+            var claim = page.Items.FirstOrDefault(x => string.Equals(x.ExternalClaimId, externalReturnId, StringComparison.OrdinalIgnoreCase));
+            return claim is null ? AdapterResult<RemoteReturnClaim>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_RETURN_NOT_FOUND", "Platform iade kaydı bulunamadı.", 404, null, null), response.RateLimit) : AdapterResult<RemoteReturnClaim>.Success(claim, response.RateLimit);
+        }
+        catch (JsonException) { return AdapterResult<RemoteReturnClaim>.Failure(TrendyolErrorMapper.Contract()); }
+    }
+
+    public async Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized)) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.WriteClosed());
+        if (string.IsNullOrWhiteSpace(command.ExternalClaimId) || command.ExternalLineItemIds.Count == 0) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.Contract());
+        var action = command.Action.Trim().ToUpperInvariant();
+        if (action == "APPROVE")
+        {
+            var response = await SendAsync(authorized, HttpMethod.Put, TrendyolEndpoints.ApproveClaim(authorized.Connection.ExternalStoreId, command.ExternalClaimId), JsonContent.Create(new { claimLineItemIdList = command.ExternalLineItemIds, @params = new { } }), cancellationToken);
+            return response.IsSuccess ? AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, "ACCEPTED", null), response.RateLimit) : AdapterResult<ReturnActionResult>.Failure(response.Error!, response.RateLimit);
+        }
+        if (action != "REJECT" || string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.Contract());
+        var evidenceOptional = command.ReasonCode is "1651" or "451" or "2101";
+        if (!evidenceOptional && command.EvidenceFiles.Count == 0) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.Unsupported("Bu ret nedeni için kanıt dosyası zorunludur."));
+        using var multipart = new MultipartFormDataContent();
+        foreach (var file in command.EvidenceFiles)
+        {
+            var part = new ByteArrayContent(file.Content); part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.MimeType); multipart.Add(part, "file", Path.GetFileName(file.FileName));
+        }
+        var endpoint = TrendyolEndpoints.RejectClaim(authorized.Connection.ExternalStoreId, command.ExternalClaimId, command.ReasonCode, command.ExternalLineItemIds, command.Explanation.Trim());
+        var rejected = await SendAsync(authorized, HttpMethod.Post, endpoint, multipart, cancellationToken);
+        return rejected.IsSuccess ? AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, "ISSUE_CREATED", null), rejected.RateLimit) : AdapterResult<ReturnActionResult>.Failure(rejected.Error!, rejected.RateLimit);
+    }
 
     public async Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken)
     {
@@ -153,6 +272,17 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
     }
 
     public Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<InvoiceDeliveryStatus>.Failure(TrendyolErrorMapper.Unsupported("Invoice delivery status query endpoint’i doğrulanmadı; 409 sahte başarı sayılmaz.")));
+
+    private async Task<AdapterResult<RemoteOperationRef>> SubmitBatchAsync(AdapterContext context, HttpMethod method, Func<string, string> endpointFactory, string payloadJson, string kind, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized)) return AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.WriteClosed());
+        JsonDocument payload; try { payload = JsonDocument.Parse(payloadJson); } catch (JsonException) { return AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.Contract()); }
+        using (payload)
+        {
+            var response = await SendAsync(authorized, method, endpointFactory(authorized.Connection.ExternalStoreId), JsonContent.Create(payload.RootElement), cancellationToken); if (!response.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(response.Error!, response.RateLimit);
+            try { using var document = JsonDocument.Parse(response.Value!); var id = document.RootElement.GetProperty("batchRequestId").GetString(); return string.IsNullOrWhiteSpace(id) ? AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.Contract()) : AdapterResult<RemoteOperationRef>.Success(new(id, kind, timeProvider.GetUtcNow()), response.RateLimit); } catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException) { return AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.Contract()); }
+        }
+    }
 
     private bool CanWrite(TrendyolRequestContext context) => GlobalWritesEnabled && context.ExternalWritesEnabled;
     private static CapabilityEvidence SupportedEvidence(string code, ConnectionIdentity identity, string sourceUrl, string note, DateTimeOffset verifiedAt) =>
@@ -183,6 +313,15 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         }
     }
     private static int Page(string? value) => int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var page) && page >= 0 ? page : 0;
+    private static bool TryProductCursor(string? value, out int page, out string? token)
+    {
+        page = 0; token = null;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        if (value.StartsWith("p:", StringComparison.Ordinal) && int.TryParse(value.AsSpan(2), NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0) { page = parsed; return true; }
+        if (value.StartsWith("t:", StringComparison.Ordinal) && value.Length > 2) { token = value[2..]; return true; }
+        token = value;
+        return true;
+    }
     private static bool TryParts(string? value, out string categoryId, out string attributeId) { var parts = value?.Split('/', 2, StringSplitOptions.RemoveEmptyEntries) ?? []; categoryId = parts.ElementAtOrDefault(0) ?? ""; attributeId = parts.ElementAtOrDefault(1) ?? ""; return parts.Length == 2; }
 
     private async Task<AdapterResult<string>> SendAsync(TrendyolRequestContext context, HttpMethod method, string endpoint, HttpContent? content, CancellationToken cancellationToken)
