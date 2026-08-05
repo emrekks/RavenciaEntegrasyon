@@ -16,7 +16,7 @@ Read kanıtı write yetkisi değildir. Bütün write işlemleri global ve connec
 | Trendyol | Connection test | Uygulandı | Gerçek Stage/Production hesapla yeniden kabul edilmeli |
 | Trendyol | Category/brand/attribute/value read | Uygulandı | Büyük kategori ağacı, pagination ve leaf seçimi E2E testi gerekli |
 | Trendyol | Approved product read | Uygulandı | Pagination/token ve mapping fixture kapsamı genişletilmeli |
-| Trendyol | Product create + batch result | Adapter uygulandı | Application job/orchestration, Stage safe-write ve partial result yönetimi eksik |
+| Trendyol | Product create + batch result | Adapter + application durable job + satır sonucu uygulandı | Exact dinamik test, approved-products onay reconciliation ve Stage safe-write gerekli |
 | Trendyol | Product update/archive | Uygulanmadı | `UNKNOWN`; create ile update aynı işlem gibi gösterilmemeli |
 | Trendyol | Stock + price write | Uygulanmadı | Mevcut ayrı portlar birleşik uzak komuta dönüştürülmeli |
 | Trendyol | Order/package read | Uygulandı | Duplicate, overlap, pagination ve durum geçişi gerçek fixture ile doğrulanmalı |

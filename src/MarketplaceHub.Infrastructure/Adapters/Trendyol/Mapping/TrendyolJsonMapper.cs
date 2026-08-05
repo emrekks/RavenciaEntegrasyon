@@ -55,7 +55,7 @@ public static class TrendyolJsonMapper
             foreach (var item in items.EnumerateArray())
             {
                 var key = item.TryGetProperty("requestItem", out var request) ? Text(request, "barcode") : ""; var status = Text(item, "status"); var succeeded = string.Equals(status, "SUCCESS", StringComparison.OrdinalIgnoreCase); var failure = item.TryGetProperty("failureReasons", out var reasons) && reasons.ValueKind == JsonValueKind.Array ? reasons.EnumerateArray().Select(x => x.ToString()).FirstOrDefault() : null;
-                lines.Add(new(key, succeeded, null, failure, !succeeded && status is not "FAILED"));
+                lines.Add(new(key, succeeded, null, failure, !succeeded && !string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase)));
             }
         return new(NullText(root, "batchRequestId") ?? requestedId, Text(root, "status"), lines);
     }

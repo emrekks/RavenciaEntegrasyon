@@ -16,6 +16,8 @@ public sealed record AttributeView(Guid Id, string Code, string Name, string Dat
 public sealed record ProductVariantView(Guid Id, string Sku, string? Barcode, string? ModelCode, string OptionSignature, string Status, long Version);
 public sealed record ProductView(Guid Id, string Title, string Description, Guid? BrandId, Guid? CategoryId, string Status, DateTimeOffset UpdatedAt, long Version, IReadOnlyList<ProductVariantView> Variants);
 public sealed record ListingProfileView(Guid Id, Guid ProductId, Guid ConnectionId, string? TitleOverride, string? DescriptionOverride, string? ExternalCategoryId, string? ExternalBrandId, int? DeliveryTimeDays, bool Enabled, string DesiredStatus, string ActualStatus, long Version);
+public sealed record PublicationLineView(Guid VariantId, string Sku, string? Barcode, string DesiredStatus, string ActualStatus, string? RejectionCode);
+public sealed record PublicationStatusView(Guid ProductId, Guid ConnectionId, Guid? ProfileId, string? DesiredStatus, string? ActualStatus, string? LastRejectionCode, Guid? LastJobId, string? LastJobStatus, IReadOnlyList<PublicationLineView> Lines);
 
 public sealed record CreateCategoryCommand(string Name, Guid? ParentId);
 public sealed record UpdateCategoryCommand(string Name, Guid? ParentId, bool IsActive);
@@ -50,7 +52,8 @@ public interface ICatalogService
     Task<ServiceResult<ProductView>> ArchiveProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
     Task<ServiceResult<ListingProfileView>> GetListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<ListingProfileView>> UpsertListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, long? expectedVersion, UpsertListingProfileCommand command, CancellationToken cancellationToken);
-    Task<ServiceResult<Guid>> ValidatePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);
+    Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<PublicationStatusView>> GetPublicationStatusAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);
 }
 
 public sealed record ImportSessionView(Guid Id, string SourceType, string Status, Guid? SourceAssetId, int TotalRows, int ValidRows, int ErrorRows, int ReviewRows, DateTimeOffset UpdatedAt, long Version);

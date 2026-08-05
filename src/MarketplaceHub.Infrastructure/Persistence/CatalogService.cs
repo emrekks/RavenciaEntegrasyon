@@ -1,10 +1,15 @@
+using System.Data;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class CatalogService(AppDbContext db, CursorCodec cursors, TimeProvider timeProvider) : ICatalogService
+public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, TimeProvider timeProvider) : ICatalogService
 {
     public async Task<PageResult<CategoryView>> ListCategoriesAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken)
     {
@@ -163,56 +168,108 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, TimePro
         profile.TitleOverride = NullTrim(command.TitleOverride); profile.DescriptionOverride = NullTrim(command.DescriptionOverride); profile.ExternalCategoryId = NullTrim(command.ExternalCategoryId); profile.ExternalBrandId = NullTrim(command.ExternalBrandId); profile.DeliveryTimeDays = command.DeliveryTimeDays; profile.Enabled = command.Enabled; if (expectedVersion is not null) profile.Version++; await db.SaveChangesAsync(cancellationToken); return ServiceResult<ListingProfileView>.Ok(MapProfile(profile));
     }
 
-    public async Task<ServiceResult<Guid>> ValidatePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken); if (product is null) return NotFound<Guid>();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-        if (connection is null || connection.PlatformCode != "TRENDYOL" || connection.Status != "ACTIVE") return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın yalnız ACTIVE Trendyol bağlantısında doğrulanabilir.", 422);
-        var categoryMapping = product.CategoryId is Guid categoryId
-            ? await db.CategoryMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == categoryId && x.Status == "VERIFIED")
-                .Join(db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES" && x.IsCurrent), mapping => mapping.SnapshotId, snapshot => snapshot.Id, (mapping, _) => mapping).SingleOrDefaultAsync(cancellationToken)
-            : null;
-        if (categoryMapping is null) return ServiceResult<Guid>.Fail("CATEGORY_MAPPING_REQUIRED", "Yayın öncesi güncel kategori eşlemesi gereklidir.", 422, new Dictionary<string, string[]> { ["categoryId"] = ["Seçilen bağlantının güncel kategori snapshot'ı için doğrulanmış eşleme yok."] });
-        var brandMapping = product.BrandId is Guid brandId
-            ? await db.BrandMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == brandId && x.Status == "VERIFIED")
-                .Join(db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS" && x.IsCurrent), mapping => mapping.SnapshotId, snapshot => snapshot.Id, (mapping, _) => mapping).SingleOrDefaultAsync(cancellationToken)
-            : null;
-        if (brandMapping is null) return ServiceResult<Guid>.Fail("BRAND_MAPPING_REQUIRED", "Yayın öncesi güncel marka eşlemesi gereklidir.", 422, new Dictionary<string, string[]> { ["brandId"] = ["Ürün markası ve seçilen bağlantının güncel marka snapshot'ı için doğrulanmış eşleme zorunludur."] });
-        var attributeSnapshot = await db.ReferenceSnapshots.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.ScopeExternalId == categoryMapping.ExternalId && x.IsCurrent, cancellationToken);
-        if (attributeSnapshot is null) return ServiceResult<Guid>.Fail("ATTRIBUTE_SNAPSHOT_REQUIRED", "Seçili Trendyol kategorisinin güncel özellik snapshot'ı gereklidir.", 422);
-        var remoteAttributes = await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == attributeSnapshot.Id && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.IsActive).ToListAsync(cancellationToken);
-        var attributeMappings = await db.AttributeMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == categoryMapping.ExternalId && x.SnapshotId == attributeSnapshot.Id && x.Status == "VERIFIED").ToListAsync(cancellationToken);
-        if (attributeMappings.GroupBy(x => x.ExternalId, StringComparer.Ordinal).Any(group => group.Count() > 1)) return ServiceResult<Guid>.Fail("ATTRIBUTE_MAPPING_AMBIGUOUS", "Aynı Trendyol özelliğine birden fazla yerel özellik eşlenmiş.", 409);
-        var mappingByExternalId = attributeMappings.ToDictionary(x => x.ExternalId, StringComparer.Ordinal);
-        var requiredLocalIds = new HashSet<Guid>();
-        foreach (var remote in remoteAttributes.Where(x => x.IsRequired == true))
+        if (connection is null || connection.PlatformCode != "TRENDYOL" || connection.Status != "ACTIVE") return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın yalnız ACTIVE Trendyol bağlantısında yapılabilir.", 422);
+        if (!await db.PlatformCapabilities.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == F3Capabilities.ProductWrite && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "PRODUCT_WRITE capability Stage/SIT kanıtı olmadan yayın işi oluşturulmaz.", 422);
+        if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+
+        var draftResult = await new ProductPublicationComposer(db).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+        if (!draftResult.Succeeded) return ServiceResult<Guid>.Fail(draftResult.Error!.Code, draftResult.Error.Message, draftResult.Error.Status, draftResult.Error.FieldErrors);
+        var draft = draftResult.Value!;
+        var dedup = $"product-create:{connectionId:N}:{productId:N}:{draft.PayloadHash}";
+        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductCreate && x.JobDedupKey == dedup, cancellationToken);
+        if (existing is not null)
         {
-            if (!mappingByExternalId.TryGetValue(remote.ExternalId, out var requiredMapping)) return ServiceResult<Guid>.Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Trendyol özelliği '{remote.Name}' eşlenmemiş.", 422);
-            requiredLocalIds.Add(requiredMapping.LocalId);
+            await transaction.CommitAsync(cancellationToken);
+            return ServiceResult<Guid>.Ok(existing.Id);
         }
-        var assignments = await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).ToListAsync(cancellationToken);
-        var suppliedLocalIds = assignments.Select(x => x.AttributeId).ToHashSet();
-        if (requiredLocalIds.Any(id => !suppliedLocalIds.Contains(id))) return ServiceResult<Guid>.Fail("REQUIRED_ATTRIBUTE_MISSING", "Trendyol kategorisinin zorunlu özelliklerinden en az biri üründe eksik.", 422);
-        var mappingByLocalId = attributeMappings.ToDictionary(x => x.LocalId);
-        foreach (var assignment in assignments)
+
+        var profile = await db.ChannelListingProfiles.SingleAsync(x => x.TenantId == tenantId && x.Id == draft.ProfileId && x.ConnectionId == connectionId, cancellationToken);
+        profile.ExternalCategoryId = draft.ExternalCategoryId;
+        profile.ExternalBrandId = draft.ExternalBrandId;
+        profile.DesiredStatus = "CREATE_REQUESTED";
+        profile.ActualStatus = "QUEUED";
+        profile.LastRejectionCode = null;
+        profile.Version++;
+
+        foreach (var variant in draft.Variants)
         {
-            if (!mappingByLocalId.TryGetValue(assignment.AttributeId, out var attributeMapping)) return ServiceResult<Guid>.Fail("ATTRIBUTE_MAPPING_REQUIRED", "Üründe kullanılan her özellik seçili Trendyol kategorisinin güncel snapshot'ında eşlenmelidir.", 422);
-            var remote = remoteAttributes.SingleOrDefault(x => x.ExternalId == attributeMapping.ExternalId);
-            if (remote is null) return ServiceResult<Guid>.Fail("ATTRIBUTE_MAPPING_REQUIRED", "Özellik eşlemesi güncel kategori snapshot'ında bulunamadı.", 422);
-            if (assignment.ValueId is not Guid valueId)
+            var listing = await db.ChannelListingVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProfileId == profile.Id && x.VariantId == variant.VariantId, cancellationToken);
+            if (listing is null)
             {
-                if (remote.AllowsCustomValue != true) return ServiceResult<Guid>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' serbest değer kabul etmiyor; doğrulanmış değer eşlemesi gereklidir.", 422);
-                continue;
+                listing = new ChannelListingVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProfileId = profile.Id, VariantId = variant.VariantId, DesiredStatus = "CREATE", ActualStatus = "QUEUED" };
+                db.ChannelListingVariants.Add(listing);
             }
-            var valueScope = $"{categoryMapping.ExternalId}/{attributeMapping.ExternalId}";
-            var valueMapping = await db.AttributeValueMappings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == valueId && x.ScopeExternalId == valueScope && x.Status == "VERIFIED", cancellationToken);
-            if (valueMapping is null || !await db.ReferenceSnapshots.AsNoTracking().AnyAsync(snapshot => snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.Id == valueMapping.SnapshotId && snapshot.ResourceType == "ATTRIBUTE_VALUES" && snapshot.ScopeExternalId == valueScope && snapshot.IsCurrent, cancellationToken)) return ServiceResult<Guid>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değeri güncel Trendyol değer snapshot'ında eşlenmemiş.", 422);
-            if (!await db.ReferenceItems.AsNoTracking().AnyAsync(item => item.TenantId == tenantId && item.SnapshotId == valueMapping.SnapshotId && item.ResourceType == "ATTRIBUTE_VALUES" && item.ExternalId == valueMapping.ExternalId, cancellationToken)) return ServiceResult<Guid>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değer eşlemesi snapshot içinde bulunamadı.", 422);
+            listing.ExternalSku = variant.Sku;
+            listing.ExternalBarcode = variant.Barcode;
+            listing.DesiredStatus = "CREATE";
+            listing.ActualStatus = "QUEUED";
+            listing.RejectionCode = null;
+
+            var state = await db.MarketplaceListingStates.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.VariantId, cancellationToken);
+            if (state is null)
+            {
+                state = new MarketplaceListingState { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.VariantId, DesiredStatus = "CREATE", ActualStatus = "QUEUED", Version = 1 };
+                db.MarketplaceListingStates.Add(state);
+            }
+            else state.Version++;
+            state.DesiredStatus = "CREATE";
+            state.ActualStatus = "QUEUED";
+            state.LastRejectionCode = null;
+            state.PayloadHash = draft.PayloadHash;
         }
-        var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
-        if (profile is not null && ((!string.IsNullOrWhiteSpace(profile.ExternalCategoryId) && profile.ExternalCategoryId != categoryMapping.ExternalId) || (!string.IsNullOrWhiteSpace(profile.ExternalBrandId) && profile.ExternalBrandId != brandMapping.ExternalId))) return ServiceResult<Guid>.Fail("LISTING_MAPPING_CONFLICT", "Listing profile kimlikleri güncel doğrulanmış katalog eşlemeleriyle çelişiyor.", 409);
-        return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "Gerçek platform capability kanıtı F3'te doğrulanmadan yayın işi oluşturulamaz.", 422);
+
+        var jobId = Guid.CreateVersion7();
+        var payload = JsonSerializer.Serialize(new ProductPublicationJobPayload(jobId, productId, profile.Id, "SUBMIT", draft.PayloadHash, draft.PayloadJson, null, null));
+        db.IntegrationJobs.Add(new IntegrationJob
+        {
+            Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductCreate, PayloadJson = payload, PayloadVersion = 1,
+            PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = 0, Status = JobStatus.Pending,
+            AvailableAt = timeProvider.GetUtcNow(), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow(), Version = 1
+        });
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ServiceResult<Guid>.Ok(jobId);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            db.ChangeTracker.Clear();
+            var concurrent = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductCreate && x.JobDedupKey == dedup, cancellationToken);
+            if (concurrent is not null) return ServiceResult<Guid>.Ok(concurrent.Id);
+            throw;
+        }
     }
+
+    public async Task<ServiceResult<PublicationStatusView>> GetPublicationStatusAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        if (!await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken) || !await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)) return NotFound<PublicationStatusView>();
+        var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
+        IReadOnlyList<PublicationLineView> lines = profile is null ? Array.Empty<PublicationLineView>() : await (from listing in db.ChannelListingVariants.AsNoTracking()
+                                                  join variant in db.ProductVariants.AsNoTracking() on new { listing.TenantId, listing.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
+                                                  where listing.TenantId == tenantId && listing.ProfileId == profile.Id
+                                                  orderby variant.Sku
+                                                  select new PublicationLineView(variant.Id, variant.Sku, variant.Barcode, listing.DesiredStatus, listing.ActualStatus, listing.RejectionCode)).ToListAsync(cancellationToken);
+        var prefix = $"product-create:{connectionId:N}:{productId:N}:";
+        var job = await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductCreate && x.JobDedupKey.StartsWith(prefix)).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        return ServiceResult<PublicationStatusView>.Ok(new(productId, connectionId, profile?.Id, profile?.DesiredStatus, profile?.ActualStatus, profile?.LastRejectionCode, job?.Id, job is null ? null : JobWire(job.Status), lines));
+    }
+
+    private bool WritesEnabled(string settingsJson)
+    {
+        if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
+        try { using var document = JsonDocument.Parse(settingsJson); return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True; }
+        catch (JsonException) { return false; }
+    }
+
+    private static string NormalizeKey(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value.Trim())));
+    private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+    private static string JobWire(JobStatus value) => value switch { JobStatus.RetryScheduled => "RETRY_SCHEDULED", JobStatus.ManualReview => "MANUAL_REVIEW", _ => value.ToString().ToUpperInvariant() };
 
     private async Task<ServiceError?> ValidateProductReferencesAsync(Guid tenantId, string title, Guid? categoryId, Guid? brandId, CancellationToken cancellationToken)
     {

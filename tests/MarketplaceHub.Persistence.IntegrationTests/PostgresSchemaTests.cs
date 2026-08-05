@@ -347,7 +347,7 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
         var updated = await inventory.UpdateOfferAsync(GuardTenantId, Guid.NewGuid(), GuardOfferId, 1, new(100, 90, "TRY", 20, "FIXTURE", "FIXTURE", 2, "DRAFT", "fixture"), cancellationToken);
         Assert.True(updated.Succeeded); Assert.Equal(2, updated.Value!.PriceVersion);
         Assert.False((await inventory.ValidateExternalSyncAsync(GuardTenantId, "STOCK_SYNC", cancellationToken)).Succeeded);
-        var catalog = scope.ServiceProvider.GetRequiredService<ICatalogService>(); Assert.False((await catalog.ValidatePublicationAsync(GuardTenantId, GuardProductId, Guid.NewGuid(), cancellationToken)).Succeeded);
+        var catalog = scope.ServiceProvider.GetRequiredService<ICatalogService>(); Assert.False((await catalog.EnqueuePublicationAsync(GuardTenantId, GuardProductId, Guid.NewGuid(), "guard-publication", "guard-correlation", cancellationToken)).Succeeded);
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>(); db.ChangeTracker.Clear();
         Assert.Equal(1, await db.StockLedgerEntries.CountAsync(x => x.TenantId == GuardTenantId, cancellationToken));
         Assert.Equal(1, await db.ChannelPriceHistory.CountAsync(x => x.TenantId == GuardTenantId && x.OfferId == GuardOfferId, cancellationToken));

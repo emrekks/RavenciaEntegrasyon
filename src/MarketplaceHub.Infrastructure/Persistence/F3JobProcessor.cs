@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IOrderPort orders, IReturnPort returns, TimeProvider timeProvider) : IF3JobProcessor
+public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IOrderPort orders, IReturnPort returns, TimeProvider timeProvider) : IF3JobProcessor
 {
     public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
@@ -17,6 +17,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         if (!ActiveIntegrationScope.Contains(platform)) return JobExecutionResult.Blocked("CONNECTION_OUT_OF_SCOPE", "Connection is not active in the current integration scope.");
         try
         {
+            if (jobType == F3JobTypes.ProductCreate) return await CreateProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
             var succeeded = jobType switch
             {
                 F3JobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -28,15 +29,141 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
                 F3JobTypes.ReturnAction => await ReturnAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                 _ => false
             };
-            return succeeded
-                ? JobExecutionResult.Success()
-                : JobExecutionResult.Blocked("F3_JOB_REJECTED", "Job payload, capability or current entity state did not permit the operation.");
+            return succeeded ? JobExecutionResult.Success() : JobExecutionResult.Blocked("F3_JOB_REJECTED", "Job payload, capability or current entity state did not permit the operation.");
         }
         catch (JobProcessingException exception)
         {
             return exception.Result;
         }
     }
+
+    private async Task<JobExecutionResult> CreateProduct(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        ProductPublicationJobPayload? payload;
+        try { payload = JsonSerializer.Deserialize<ProductPublicationJobPayload>(payloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }); }
+        catch (JsonException) { return JobExecutionResult.Blocked("PRODUCT_PUBLICATION_PAYLOAD_INVALID", "Ürün yayınlama işi payload sözleşmesini sağlamıyor."); }
+        if (payload is null || payload.JobId == Guid.Empty || payload.ProductId == Guid.Empty || payload.ProfileId == Guid.Empty || string.IsNullOrWhiteSpace(payload.PayloadHash) || string.IsNullOrWhiteSpace(payload.PayloadJson)) return JobExecutionResult.Blocked("PRODUCT_PUBLICATION_PAYLOAD_INVALID", "Ürün yayınlama işi zorunlu alanları eksik.");
+
+        var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.JobId && x.ConnectionId == connectionId && x.JobType == F3JobTypes.ProductCreate, cancellationToken);
+        var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.ProfileId && x.ProductId == payload.ProductId && x.ConnectionId == connectionId, cancellationToken);
+        if (job is null || profile is null) return JobExecutionResult.Blocked("PRODUCT_PUBLICATION_STATE_MISSING", "Yayın işi veya listing profile bulunamadı.");
+
+        if (string.Equals(payload.Phase, "SUBMIT", StringComparison.OrdinalIgnoreCase))
+        {
+            var existingEffect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == F3JobTypes.ProductCreate && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
+            if (existingEffect is not null) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki dış yazmanın sonucu kesinleştirilemedi; tekrar gönderim engellendi."), cancellationToken);
+
+            var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = F3JobTypes.ProductCreate, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
+            db.ExternalEffectRecords.Add(effect);
+            await db.SaveChangesAsync(cancellationToken);
+
+            var submit = await products.CreateAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new ProductPublication(payload.ProductId, payload.PayloadHash, payload.PayloadJson), cancellationToken);
+            if (!submit.IsSuccess)
+            {
+                var error = submit.Error!;
+                if (error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug)
+                    return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Create çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId), cancellationToken);
+                db.ExternalEffectRecords.Remove(effect);
+                await db.SaveChangesAsync(cancellationToken);
+                var adapterResult = JobExecutionResult.FromAdapterError(error);
+                var status = adapterResult.Kind == JobCompletionKind.Retry ? "RETRY_SCHEDULED" : adapterResult.Kind == JobCompletionKind.ManualReview ? "MANUAL_REVIEW" : "BLOCKED";
+                return await MarkPublicationResult(tenantId, connectionId, profile, status, error.Code, adapterResult, cancellationToken);
+            }
+
+            var operation = submit.Value!;
+            effect.CompletedAt = timeProvider.GetUtcNow();
+            var next = payload with { Phase = "POLL", ExternalOperationId = operation.ExternalOperationId, SubmittedAt = operation.SubmittedAt };
+            job.PayloadJson = JsonSerializer.Serialize(next);
+            job.PayloadHash = Hash(job.PayloadJson);
+            profile.ActualStatus = "BATCH_SUBMITTED";
+            profile.LastRejectionCode = null;
+            profile.Version++;
+            await SetListingStatus(tenantId, connectionId, profile.Id, "BATCH_SUBMITTED", null, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", "Trendyol create batch sonucu bekleniyor.", TimeSpan.FromSeconds(15), operation.ExternalOperationId);
+        }
+
+        if (!string.Equals(payload.Phase, "POLL", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(payload.ExternalOperationId) || payload.SubmittedAt is null) return JobExecutionResult.Blocked("PRODUCT_PUBLICATION_PHASE_INVALID", "Yayın işi bilinmeyen bir fazda.");
+        if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > TimeSpan.FromHours(4)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_RESULT_EXPIRED", JobExecutionResult.ManualReview("PRODUCT_BATCH_RESULT_EXPIRED", "Batch sonucu dört saatlik sorgulama penceresinde tamamlanamadı.", payload.ExternalOperationId), cancellationToken);
+
+        var operationResult = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:poll"), payload.ExternalOperationId, cancellationToken);
+        if (!operationResult.IsSuccess)
+        {
+            var adapterResult = JobExecutionResult.FromAdapterError(operationResult.Error!);
+            if (adapterResult.Kind == JobCompletionKind.Retry) return adapterResult;
+            var status = adapterResult.Kind == JobCompletionKind.ManualReview ? "MANUAL_REVIEW" : "BLOCKED";
+            return await MarkPublicationResult(tenantId, connectionId, profile, status, operationResult.Error!.Code, adapterResult, cancellationToken);
+        }
+
+        var operationStatus = operationResult.Value!;
+        if (string.Equals(operationStatus.Status, "IN_PROGRESS", StringComparison.OrdinalIgnoreCase))
+        {
+            profile.ActualStatus = "BATCH_IN_PROGRESS";
+            profile.Version++;
+            await SetListingStatus(tenantId, connectionId, profile.Id, "BATCH_IN_PROGRESS", null, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", "Trendyol create batch işlemi sürüyor.", TimeSpan.FromSeconds(15), payload.ExternalOperationId);
+        }
+        if (!string.Equals(operationStatus.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_STATUS_UNKNOWN", JobExecutionResult.ManualReview("PRODUCT_BATCH_STATUS_UNKNOWN", "Batch servisi tanınmayan bir durum döndürdü.", payload.ExternalOperationId), cancellationToken);
+
+        var listings = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).ToListAsync(cancellationToken);
+        var listingVariantIds = listings.Select(x => x.VariantId).ToArray();
+        var states = await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && listingVariantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, cancellationToken);
+        var lines = operationStatus.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ExternalKey)).ToList();
+        if (lines.Count == 0 || lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Tamamlanan batch sonucu eksik veya yinelenen barkod satırları içeriyor.", payload.ExternalOperationId), cancellationToken);
+        var byBarcode = lines.ToDictionary(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase);
+        if (listings.Any(x => string.IsNullOrWhiteSpace(x.ExternalBarcode) || !byBarcode.ContainsKey(x.ExternalBarcode))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu gönderilen tüm barkodları içermiyor.", payload.ExternalOperationId), cancellationToken);
+        if (byBarcode.Keys.Any(key => listings.All(x => !string.Equals(x.ExternalBarcode, key, StringComparison.OrdinalIgnoreCase)))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu bilinmeyen barkod içeriyor.", payload.ExternalOperationId), cancellationToken);
+
+        var succeeded = 0;
+        foreach (var listing in listings)
+        {
+            var line = byBarcode[listing.ExternalBarcode!];
+            var rejection = line.Succeeded ? null : SafeCode(line.ErrorCode ?? "REMOTE_VALIDATION_FAILED");
+            listing.ActualStatus = line.Succeeded ? "CREATE_ACCEPTED" : "CREATE_REJECTED";
+            listing.RejectionCode = rejection;
+            if (line.Succeeded) succeeded++;
+            if (states.TryGetValue(listing.VariantId, out var state))
+            {
+                state.ActualStatus = listing.ActualStatus;
+                state.LastRejectionCode = rejection;
+                state.Version++;
+            }
+        }
+        profile.ActualStatus = succeeded == listings.Count ? "APPROVAL_PENDING" : succeeded == 0 ? "CREATE_REJECTED" : "PARTIAL_FAILURE";
+        profile.LastRejectionCode = listings.Select(x => x.RejectionCode).FirstOrDefault(x => x is not null);
+        profile.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        if (succeeded == listings.Count) return JobExecutionResult.Success();
+        return succeeded == 0
+            ? JobExecutionResult.Blocked("PRODUCT_BATCH_REJECTED", "Trendyol create batch içindeki tüm varyantlar reddedildi.", payload.ExternalOperationId)
+            : JobExecutionResult.Blocked("PRODUCT_BATCH_PARTIAL_FAILURE", "Trendyol create batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
+    }
+
+    private async Task<JobExecutionResult> MarkPublicationResult(Guid tenantId, Guid connectionId, ChannelListingProfile profile, string status, string? rejectionCode, JobExecutionResult result, CancellationToken cancellationToken)
+    {
+        profile.ActualStatus = status;
+        profile.LastRejectionCode = SafeCode(rejectionCode);
+        profile.Version++;
+        await SetListingStatus(tenantId, connectionId, profile.Id, status, rejectionCode, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return result;
+    }
+
+    private async Task SetListingStatus(Guid tenantId, Guid connectionId, Guid profileId, string status, string? rejectionCode, CancellationToken cancellationToken)
+    {
+        var listings = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profileId).ToListAsync(cancellationToken);
+        var variantIds = listings.Select(x => x.VariantId).ToArray();
+        var states = await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, cancellationToken);
+        foreach (var listing in listings)
+        {
+            listing.ActualStatus = status;
+            listing.RejectionCode = SafeCode(rejectionCode);
+            if (states.TryGetValue(listing.VariantId, out var state)) { state.ActualStatus = status; state.LastRejectionCode = SafeCode(rejectionCode); state.Version++; }
+        }
+    }
+
+    private static string? SafeCode(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim()[..Math.Min(256, value.Trim().Length)];
 
     private async Task<bool> SyncReferences(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {

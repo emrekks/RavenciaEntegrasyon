@@ -52,8 +52,8 @@ public sealed class FakeAdapterScenarioTests
         Assert.Equal("FAKE_WRITE_DISABLED", (await disabled.ArchiveAsync(Context, new("synthetic", null), TestContext.Current.CancellationToken)).Error?.Code);
 
         var enabled = Adapter(FakeScenario.Success, true);
-        var first = await enabled.UpsertAsync(Context, new(Guid.Empty, "synthetic-hash", "{}"), TestContext.Current.CancellationToken);
-        var replay = await enabled.UpsertAsync(Context, new(Guid.Empty, "synthetic-hash", "{}"), TestContext.Current.CancellationToken);
+        var first = await enabled.CreateAsync(Context, new(Guid.Empty, "synthetic-hash", "{\"items\":[{\"barcode\":\"0000000000000\"}]}"), TestContext.Current.CancellationToken);
+        var replay = await enabled.CreateAsync(Context, new(Guid.Empty, "synthetic-hash", "{\"items\":[{\"barcode\":\"0000000000000\"}]}"), TestContext.Current.CancellationToken);
         Assert.Equal(first.Value, replay.Value);
         Assert.Equal(1, enabled.ExternalEffectCount);
     }

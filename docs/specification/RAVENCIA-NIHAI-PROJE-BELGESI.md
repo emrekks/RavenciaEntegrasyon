@@ -2,7 +2,7 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 6.1
+**Belge sürümü:** 6.2
 **Belge tarihi:** 5 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
@@ -321,7 +321,11 @@ Kullanıcı ürün detayında:
 - Uzak batch sonucunu satır bazında izler.
 - Hatalı satırı düzelterek yalnız ilgili ürün/varyantı yeniden gönderir.
 
-**Mevcut durum:** Yerel katalog, ürün/varyant, import, kategori/marka/özellik modelleri ve bazı ekranlar vardır. Trendyol ürün yayınlama application orkestrasyonu, create/update/archive ayrımı ve Stage write kanıtı tamamlanmamıştır.
+**Mevcut durum:** Yerel katalog ve eşleme çekirdeğine ek olarak Trendyol Product Create application orkestrasyonu kodlanmıştır. Yayın isteği yalnız `PRODUCT_WRITE=SUPPORTED`, global ve bağlantı bazlı dış yazma anahtarları açık, listing profile etkin, eşlemeler güncel/doğrulanmış, varyant barkod-SKU-model kodları geçerli, aktif TRY teklifi ve MAIN stok kaydı mevcut ve Trendyol tarafından erişilebilir kalıcı HTTPS görsel URL'si kayıtlı olduğunda durable job üretir. Private product-media upload tek başına uzak görsel URL'si sayılmaz; kalıcı URL `/api/v1/files/product-media-url` ile kaydedilir.
+
+Worker create çağrısını `SUBMIT -> POLL` durum makinesiyle yürütür. Dış çağrıdan önce external-effect fence oluşturur; sonucu belirsiz ağ/5xx/contract durumunda otomatik ikinci create yerine `MANUAL_REVIEW` uygular. Batch sonucu varyant barkoduna göre `CREATE_ACCEPTED` veya `CREATE_REJECTED` olarak kaydedilir; kısmi sonuç `PARTIAL_FAILURE`, tam kabul ise yalnız `APPROVAL_PENDING` durumudur. `APPROVAL_PENDING`, ürünün Trendyol'da yayında olduğu anlamına gelmez. Kullanıcı `/api/v1/products/{productId}/publication-status/{connectionId}` üzerinden profile, job ve satır durumlarını okuyabilir.
+
+ProductUpdate, uzak archive, create sonrası approved-products read-back reconciliation, ürün detayındaki tamamlanmış operatör UI'si, exact .NET/PostgreSQL dinamik doğrulama ve gerçek Stage safe-write kanıtı henüz tamamlanmamıştır.
 
 ## 7.6 CSV/XLSX içe aktarma
 
@@ -728,7 +732,7 @@ Aşağıdaki bölümler projenin teknik kapsamını, veri ve güvenlik mimarisin
 | Kimlik ve güvenlik çekirdeği | Güvenli login, parola, MFA, secret | `READY_LOCAL` | Production rol/MFA kabulü |
 | Yerel katalog/import | Ürün, varyant, özellik, import | `READY_LOCAL` | Uçtan uca ürün yayınlama |
 | Trendyol read/reference | Kategori, marka, özellik, ürün, sipariş | `KODLANDI` | Gerçek Stage kapsam testi |
-| Trendyol product write | Create/update/archive + batch | `GELİŞTİRİLİYOR` | Application orchestration ve Stage |
+| Trendyol product write | Create/update/archive + batch | `CREATE_KODLANDI_DINAMIK_DOGRULAMA_BEKLIYOR` | Create onay reconciliation, update/archive ve Stage |
 | Stok-fiyat write | Birleşik batch ve reconciliation | `PLANLANDI` | F3 uygulama ve test |
 | Sipariş/paket write | İşleme alma, kargo, durum | `BLOKE_CAPABILITY` | Resmî endpoint ve Stage kanıtı |
 | Etiket | Güvenli etiket alma/yazdırma | `PLANLANDI` | Capability ve format doğrulaması |

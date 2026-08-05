@@ -1,5 +1,5 @@
 schema_version: 1
-document_version: "6.1"
+document_version: "6.2"
 updated_at: "2026-08-05"
 active_scope:
   - TRENDYOL
@@ -66,7 +66,9 @@ features:
   trendyol_mapping_workspace:
     status: CODED_TESTS_UPDATED_DYNAMIC_REVALIDATION_REQUIRED
   trendyol_product_create:
-    status: IN_PROGRESS_ORCHESTRATION_REQUIRED
+    status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
+  trendyol_product_create_approval_reconciliation:
+    status: PLANNED
   trendyol_product_update_archive:
     status: PLANNED
   trendyol_price_inventory_write:

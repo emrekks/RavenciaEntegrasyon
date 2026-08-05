@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MarketplaceHub.Application;
 
 namespace MarketplaceHub.EndToEnd.Tests;
@@ -19,6 +20,7 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
     : IConnectionPort, IReferenceDataPort, IProductPort, IInventoryPricePort, IOrderPort, IReturnPort
 {
     private readonly Dictionary<string, object> effects = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyList<string>> productBatchBarcodes = new(StringComparer.Ordinal);
 
     public int ExternalEffectCount { get; private set; }
 
@@ -40,11 +42,24 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
     public Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) =>
         Result(Page(new RemoteProduct("synthetic-product", "synthetic-variant", "0000000000000", "SYNTHETIC-SKU", "{}")));
 
-    public Task<AdapterResult<RemoteOperationRef>> UpsertAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) =>
-        Write(context, () => new RemoteOperationRef($"fake-operation-{context.IdempotencyKey}", "PRODUCT", timeProvider.GetUtcNow()));
+    public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken)
+    {
+        var result = await Write(context, () => new RemoteOperationRef($"fake-operation-{context.IdempotencyKey}", "PRODUCT", timeProvider.GetUtcNow()));
+        if (!result.IsSuccess) return result;
+        using var document = JsonDocument.Parse(publication.PayloadJson);
+        var barcodes = document.RootElement.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("barcode").GetString()!).ToList();
+        productBatchBarcodes[result.Value!.ExternalOperationId] = barcodes;
+        return result;
+    }
 
-    public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken) =>
-        Result(new RemoteOperationStatus(externalOperationId, "SYNTHETIC", []));
+    public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken)
+    {
+        if (!productBatchBarcodes.TryGetValue(externalOperationId, out var barcodes)) return Result(new RemoteOperationStatus(externalOperationId, "COMPLETED", []));
+        var lines = barcodes.Select((barcode, index) => scenario == FakeScenario.Partial && index > 0
+            ? new RemoteOperationLine(barcode, false, null, "FAKE_PARTIAL_REJECTION", false)
+            : new RemoteOperationLine(barcode, true, $"fake-content-{index + 1}", null, false)).ToList();
+        return Result(new RemoteOperationStatus(externalOperationId, "COMPLETED", lines));
+    }
 
     public Task<AdapterResult<bool>> ArchiveAsync(AdapterContext context, ExternalProductIdentity identity, CancellationToken cancellationToken) =>
         Write(context, () => true);

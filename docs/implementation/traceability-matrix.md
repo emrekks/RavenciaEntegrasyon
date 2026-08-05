@@ -10,7 +10,7 @@
 | Birleşik kategori-kapsamlı eşleme çalışma alanı | `MappingPage kind="attributes"`, `AttributeValueMappingEditor` | Vitest request/payload regression + Playwright route akışı | CODED / DYNAMIC_REVALIDATION_REQUIRED |
 | Leaf kategori zorunluluğu | Reference snapshot + `IsLeaf` scope validation | F3 job/persistence tests | IMPLEMENTED_LOCAL |
 | Ürün okuma | Trendyol approved-products mapper | Contract tests | IMPLEMENTED_LOCAL / E2E_REQUIRED |
-| Ürün yayınlama | Product port adapter | Application orchestration yok | PARTIAL |
+| Ürün yayınlama | Product create port, payload composer, durable job, worker polling, publication status API | Kodlanmış PostgreSQL başarı/replay/partial testleri; exact runtime ve Stage bekliyor | IMPLEMENTED_LOCAL / DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED |
 | Stok/fiyat yazma | Inventory-price port | Birleşik uzak komut yok | NOT_COMPLETE |
 | Sipariş/paket içeri alma | Order polling, overlap cursor, idempotent upsert | Contract/persistence tests | IMPLEMENTED_LOCAL / E2E_REQUIRED |
 | İade okuma | Claims polling/mapper | Contract tests | PARTIAL / FIXTURE_REQUIRED |

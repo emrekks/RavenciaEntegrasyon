@@ -28,7 +28,11 @@ public sealed class F3TrendyolContractTests
     [Fact]
     public void Partial_batch_preserves_each_line_result()
     {
-        var json = Fixture("batch-partial.json"); var batch = TrendyolJsonMapper.Batch(json, "fallback"); Assert.Equal("BATCH-ANON-001", batch.ExternalOperationId); Assert.Equal(2, batch.Lines.Count); Assert.Single(batch.Lines, x => x.Succeeded); Assert.Single(batch.Lines, x => !x.Succeeded); Assert.True(TrendyolContractGuard.HasBatchRequestId(json));
+        var json = Fixture("batch-partial.json"); var batch = TrendyolJsonMapper.Batch(json, "fallback");
+        Assert.Equal("BATCH-ANON-001", batch.ExternalOperationId); Assert.Equal("COMPLETED", batch.Status); Assert.Equal(2, batch.Lines.Count);
+        Assert.Equal("BARCODE-ANON-001", Assert.Single(batch.Lines, x => x.Succeeded).ExternalKey);
+        var failed = Assert.Single(batch.Lines, x => !x.Succeeded); Assert.Equal("BARCODE-ANON-002", failed.ExternalKey); Assert.Equal("ANONYMIZED_REMOTE_VALIDATION", failed.ErrorCode); Assert.False(failed.Retryable);
+        Assert.True(TrendyolContractGuard.HasBatchRequestId(json));
     }
 
     [Fact]

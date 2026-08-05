@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using MarketplaceHub.Api.Security;
@@ -64,8 +66,15 @@ public static class F2Endpoints
             return WithEtag(http, await service.UpsertListingProfileAsync(tenant.TenantId, id, connectionId, expected, command, http.RequestAborted), x => x.Version);
         });
         api.MapPost("/products/{id:guid}/publication-jobs", async (Guid id, PublicationRequest command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.ValidatePublicationAsync(tenant.TenantId, id, command.ConnectionId, http.RequestAborted)) : MissingContext(http));
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+            return Accepted(await service.EnqueuePublicationAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
+        });
+        api.MapGet("/products/{id:guid}/publication-status/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant ? Result(await service.GetPublicationStatusAsync(tenant.TenantId, id, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPost("/files/product-media", UploadProductMediaAsync).DisableAntiforgery();
+        api.MapPost("/files/product-media-url", RegisterProductMediaUrlAsync);
 
         api.MapGet("/imports", async (HttpContext http, IImportService service, int? limit, string? after) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
@@ -165,6 +174,76 @@ public static class F2Endpoints
         return Results.Created($"/api/v1/products/{productId:D}", new { media.Id, media.ProductId, media.VariantId, media.FileAssetId, media.MediaRole, media.SortOrder, media.AltText, media.Status });
     }
 
+    private static async Task<IResult> RegisterProductMediaUrlAsync(RegisterProductMediaUrl command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+        if (!Uri.TryCreate(command.Url?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo) || uri.AbsoluteUri.Length > 512)
+            return Problem(http, new("PRODUCT_MEDIA_URL_INVALID", "Kalıcı, kullanıcı bilgisi içermeyen ve en fazla 512 karakterlik HTTPS görsel URL'si gereklidir.", 422, new Dictionary<string, string[]> { ["url"] = ["Geçerli bir HTTPS görsel URL'si girin."] }));
+        if (uri.IsLoopback || IPAddress.TryParse(uri.Host, out var address) && !IsPublicAddress(address))
+            return Problem(http, new("PRODUCT_MEDIA_URL_INVALID", "Yerel, özel ağ veya loopback görsel adresi kullanılamaz.", 422, new Dictionary<string, string[]> { ["url"] = ["Trendyol tarafından internet üzerinden erişilebilen bir adres girin."] }));
+        if (command.SortOrder is < 0 or > 999) return Problem(http, new("PRODUCT_MEDIA_SORT_INVALID", "sortOrder 0-999 arasında olmalıdır.", 422));
+        if (!await db.Products.AnyAsync(x => x.TenantId == tenant.TenantId && x.Id == command.ProductId, http.RequestAborted) || command.VariantId is Guid variantId && !await db.ProductVariants.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.Id == variantId, http.RequestAborted))
+            return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün veya varyant bulunamadı.", 404));
+
+        var url = uri.AbsoluteUri;
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(url)));
+        var asset = await db.FileAssets.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.RelativePath == url, http.RequestAborted);
+        if (asset is not null && asset.Classification != "PRODUCT_MEDIA_URL") return Problem(http, new("PRODUCT_MEDIA_URL_CONFLICT", "Bu URL farklı bir dosya sınıfında kayıtlı.", 409));
+        if (asset is null)
+        {
+            var originalName = Path.GetFileName(uri.AbsolutePath);
+            asset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, Classification = "PRODUCT_MEDIA_URL", RelativePath = url, OriginalNameSafe = string.IsNullOrWhiteSpace(originalName) ? null : originalName[..Math.Min(originalName.Length, 256)], MimeType = "image/remote", SizeBytes = 0, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
+            db.FileAssets.Add(asset);
+        }
+        else
+        {
+            asset.Status = "ACTIVE";
+            asset.ArchivedAt = null;
+        }
+
+        var media = await db.ProductMedia.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.VariantId == command.VariantId && x.SortOrder == command.SortOrder, http.RequestAborted);
+        if (media is null)
+        {
+            media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = command.ProductId, VariantId = command.VariantId, FileAssetId = asset.Id, MediaRole = MediaRole(command.MediaRole), SortOrder = command.SortOrder, AltText = SafeAltText(command.AltText), Status = "ACTIVE" };
+            db.ProductMedia.Add(media);
+        }
+        else
+        {
+            media.FileAssetId = asset.Id;
+            media.MediaRole = MediaRole(command.MediaRole);
+            media.AltText = SafeAltText(command.AltText);
+            media.Status = "ACTIVE";
+        }
+        await db.SaveChangesAsync(http.RequestAborted);
+        return Results.Created($"/api/v1/products/{command.ProductId:D}", new { media.Id, media.ProductId, media.VariantId, media.FileAssetId, url, media.MediaRole, media.SortOrder, media.AltText, media.Status });
+    }
+
+    private static bool IsPublicAddress(IPAddress address)
+    {
+        if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any) || address.Equals(IPAddress.None) || address.Equals(IPAddress.IPv6None)) return false;
+        if (address.AddressFamily == AddressFamily.InterNetworkV6) return !address.IsIPv6LinkLocal && !address.IsIPv6SiteLocal && !address.IsIPv6Multicast;
+        var bytes = address.GetAddressBytes();
+        return bytes[0] is not 0 and not 10 and not 127
+            && !(bytes[0] == 169 && bytes[1] == 254)
+            && !(bytes[0] == 172 && bytes[1] is >= 16 and <= 31)
+            && !(bytes[0] == 192 && bytes[1] == 168)
+            && bytes[0] < 224;
+    }
+
+    private static string MediaRole(string? value)
+    {
+        var role = string.IsNullOrWhiteSpace(value) ? "GALLERY" : value.Trim().ToUpperInvariant();
+        return role[..Math.Min(role.Length, 32)];
+    }
+
+    private static string? SafeAltText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var text = value.Trim();
+        return text[..Math.Min(text.Length, 320)];
+    }
+
     private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
     private static int PageSize(int? limit) => limit is null ? 50 : limit is >= 1 and <= 200 ? limit.Value : throw new ArgumentException("limit 1-200 arasında olmalıdır.");
     private static IResult? RequireIdempotency(HttpContext http) => string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"]) ? Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400)) : http.Request.Headers["Idempotency-Key"].ToString().Length > 256 ? Problem(http, new("IDEMPOTENCY_KEY_INVALID", "Idempotency-Key en fazla 256 karakterdir.", 400)) : null;
@@ -179,4 +258,5 @@ public static class F2Endpoints
     private static IResult Problem(HttpContext http, ServiceError error) => Results.Json(ToProblem(error, http.TraceIdentifier), statusCode: error.Status, contentType: "application/problem+json");
     private static object ToProblem(ServiceError error, string? correlationId) => new { type = $"https://marketplacehub.invalid/problems/{error.Code.ToLowerInvariant().Replace('_', '-')}", title = error.Message, status = error.Status, code = error.Code, correlationId, retryable = error.Status is 429 or >= 500, fieldErrors = error.FieldErrors };
     public sealed record PublicationRequest(Guid ConnectionId);
+    public sealed record RegisterProductMediaUrl(Guid ProductId, Guid? VariantId, string Url, string? MediaRole, int SortOrder, string? AltText);
 }

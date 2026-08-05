@@ -6,7 +6,7 @@ public sealed class ApiSurfaceTests
     public void Api_source_keeps_F2_and_adds_only_approved_F3_route_families()
     {
         var root = FindRoot(); var f2 = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Api", "F2", "F2Endpoints.cs"));
-        foreach (var required in new[] { "/catalog/categories", "/catalog/brands", "/catalog/attributes", "/products", "/imports", "/inventory", "/channel-offers", "/reference-data", "/mappings" }) Assert.Contains(required, f2, StringComparison.Ordinal);
+        foreach (var required in new[] { "/catalog/categories", "/catalog/brands", "/catalog/attributes", "/products", "/publication-jobs", "/publication-status/", "/files/product-media-url", "/imports", "/inventory", "/channel-offers", "/reference-data", "/mappings" }) Assert.Contains(required, f2, StringComparison.Ordinal);
         foreach (var forbidden in new[] { "/orders", "/shipments", "/returns", "/invoices", "/integrations", "/webhooks", "/tenants", "/users" }) Assert.DoesNotContain(forbidden, f2, StringComparison.Ordinal);
         Assert.Contains("connectionId, \"CATEGORIES\", null", f2, StringComparison.Ordinal);
         Assert.Contains("connectionId, \"CATEGORY_ATTRIBUTES\", externalId", f2, StringComparison.Ordinal);

@@ -14,6 +14,7 @@ public static class F3JobTypes
     public const string ReturnSync = "TRENDYOL_RETURN_SYNC";
     public const string ReturnAction = "TRENDYOL_RETURN_ACTION";
     public const string WebhookIngest = "TRENDYOL_WEBHOOK_INGEST";
+    public const string ProductCreate = "TRENDYOL_PRODUCT_CREATE";
 }
 
 public static class F3Capabilities
@@ -65,6 +66,7 @@ public sealed record RemoteOperationRef(string ExternalOperationId, string Kind,
 public sealed record RemoteOperationLine(string ExternalKey, bool Succeeded, string? ExternalId, string? ErrorCode, bool Retryable);
 public sealed record RemoteOperationStatus(string ExternalOperationId, string Status, IReadOnlyList<RemoteOperationLine> Lines);
 public sealed record ProductPublication(Guid ProductId, string PayloadHash, string PayloadJson);
+public sealed record ProductPublicationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string PayloadHash, string PayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt);
 public sealed record ExternalProductIdentity(string ExternalProductId, string? ExternalVariantId);
 public sealed record RemoteProduct(string ExternalProductId, string? ExternalVariantId, string? Barcode, string? Sku, string RawJson);
 public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter);
@@ -100,7 +102,7 @@ public interface IReferenceDataPort
 public interface IProductPort
 {
     Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken);
-    Task<AdapterResult<RemoteOperationRef>> UpsertAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken);
+    Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken);
     Task<AdapterResult<bool>> ArchiveAsync(AdapterContext context, ExternalProductIdentity identity, CancellationToken cancellationToken);
 }
