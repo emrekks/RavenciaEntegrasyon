@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
@@ -16,44 +15,11 @@ public sealed partial class F4BillingService(
     CursorCodec cursors,
     IDataProtectionProvider dataProtection,
     IPrivateFileStorage files,
-    IInvoiceProviderPort provider,
     IConfiguration configuration,
     TimeProvider timeProvider) : IF4BillingService
 {
     private readonly IDataProtector _taxProtector = dataProtection.CreateProtector("MarketplaceHub.InvoiceTaxIdentity.v1");
     private readonly IDataProtector _partyProtector = dataProtection.CreateProtector("MarketplaceHub.InvoicePartySnapshot.v1");
-
-    public async Task<ServiceResult<LegalEntityProfileView>> GetLegalEntityAsync(Guid tenantId, CancellationToken cancellationToken)
-    {
-        var profile = await db.LegalEntityProfiles.AsNoTracking().Where(x => x.TenantId == tenantId).OrderByDescending(x => x.UpdatedAt).FirstOrDefaultAsync(cancellationToken);
-        return profile is null ? NotFound<LegalEntityProfileView>() : ServiceResult<LegalEntityProfileView>.Ok(Map(profile));
-    }
-
-    public async Task<ServiceResult<LegalEntityProfileView>> UpsertLegalEntityAsync(Guid tenantId, long? expectedVersion, UpsertLegalEntityProfileCommand command, CancellationToken cancellationToken)
-    {
-        var taxId = command.TaxId.Trim();
-        if (!TaxIdPattern().IsMatch(taxId)) return Invalid<LegalEntityProfileView>("taxId", "VKN/TCKN yalnız 10 veya 11 rakam olmalıdır; bu kontrol mükellefiyet sonucu değildir.");
-        if (string.IsNullOrWhiteSpace(command.Title)) return Invalid<LegalEntityProfileView>("title", "Mali unvan zorunludur.");
-        if (command.Status.Trim().ToUpperInvariant() is not ("ACTIVE" or "DISABLED")) return Invalid<LegalEntityProfileView>("status", "Status ACTIVE veya DISABLED olmalıdır.");
-        if (!ValidJson(command.AddressSnapshotJson) || !ValidJson(command.ContactSnapshotJson)) return Invalid<LegalEntityProfileView>("snapshot", "Adres ve iletişim snapshot alanları geçerli JSON olmalıdır.");
-
-        var now = timeProvider.GetUtcNow();
-        var profile = await db.LegalEntityProfiles.Where(x => x.TenantId == tenantId).OrderByDescending(x => x.UpdatedAt).FirstOrDefaultAsync(cancellationToken);
-        if (profile is null)
-        {
-            if (expectedVersion is not null) return NotFound<LegalEntityProfileView>();
-            profile = new LegalEntityProfile { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), ProtectedTaxId = _taxProtector.Protect(taxId), MaskedTaxId = MaskTaxId(taxId), AddressSnapshotJson = command.AddressSnapshotJson, ContactSnapshotJson = command.ContactSnapshotJson, Status = command.Status.Trim().ToUpperInvariant(), CreatedAt = now, UpdatedAt = now, Version = 1 };
-            db.LegalEntityProfiles.Add(profile);
-        }
-        else
-        {
-            if (expectedVersion is null) return PreconditionRequired<LegalEntityProfileView>();
-            if (profile.Version != expectedVersion) return Precondition<LegalEntityProfileView>(profile.Version);
-            profile.Title = command.Title.Trim(); profile.ProtectedTaxId = _taxProtector.Protect(taxId); profile.MaskedTaxId = MaskTaxId(taxId); profile.AddressSnapshotJson = command.AddressSnapshotJson; profile.ContactSnapshotJson = command.ContactSnapshotJson; profile.Status = command.Status.Trim().ToUpperInvariant(); profile.UpdatedAt = now; profile.Version++;
-        }
-        await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<LegalEntityProfileView>.Ok(Map(profile));
-    }
 
     public async Task<ServiceResult<InvoicePolicyView>> GetPolicyAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
@@ -61,20 +27,6 @@ public sealed partial class F4BillingService(
         return policy is null ? NotFound<InvoicePolicyView>() : ServiceResult<InvoicePolicyView>.Ok(Map(policy));
     }
 
-
-    public async Task<ServiceResult<TaxpayerView>> QueryTaxpayerAsync(Guid tenantId, Guid connectionId, string taxId, CancellationToken cancellationToken)
-    {
-        taxId = taxId.Trim();
-        if (!TaxIdPattern().IsMatch(taxId)) return Invalid<TaxpayerView>("taxId", "VKN/TCKN yalnız 10 veya 11 rakam olmalıdır.");
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
-        if (connection is null) return Invalid<TaxpayerView>("connectionId", "Trendyol E-Faturam bağlantısı bulunamadı.");
-        if (!await CapabilitySupported(tenantId, connectionId, F4Capabilities.TaxpayerQuery, cancellationToken)) return CapabilityUnknown<TaxpayerView>(F4Capabilities.TaxpayerQuery);
-        var result = await provider.QueryTaxpayerAsync(new(tenantId, connectionId, $"taxpayer:{Guid.CreateVersion7():N}", $"taxpayer:{taxId}", timeProvider.GetUtcNow().AddMinutes(2)), new(taxId), cancellationToken);
-        if (!result.IsSuccess) return ServiceResult<TaxpayerView>.Fail(result.Error!.Code, result.Error.SafeMessage, result.Error.Class == AdapterErrorClass.NotFound ? 404 : 422);
-        var value = result.Value!;
-        var applications = value.Applications.Select(x => new TaxpayerApplicationView(x.Type, x.ServiceName, x.GibStatus, x.Activated, x.ActivationDate, x.DeactivationDate)).ToArray();
-        return ServiceResult<TaxpayerView>.Ok(new(taxId, value.IsRegistered, value.ProviderCustomerId, applications, timeProvider.GetUtcNow()));
-    }
 
     public async Task<ServiceResult<InvoicePolicyView>> UpsertPolicyAsync(Guid tenantId, Guid connectionId, long? expectedVersion, UpsertInvoicePolicyCommand command, CancellationToken cancellationToken)
     {
@@ -145,9 +97,6 @@ public sealed partial class F4BillingService(
             orderLines = orderLines.Where(x => x.OrderedQuantity - x.CancelledQuantity > 0).ToList();
             if (orderLines.Count == 0) return Invalid<InvoiceDetailView>("orderId", "Siparişte faturalanabilir pozitif miktarlı kalem bulunamadı.");
         }
-        TrendyolEFaturamConnectionSettings providerSettings;
-        try { providerSettings = JsonSerializer.Deserialize<TrendyolEFaturamConnectionSettings>(provider.SettingsJson) ?? new("UNVERIFIED", false); }
-        catch (JsonException) { return Invalid<InvoiceDetailView>("billing", "E-Faturam bağlantı ayarları geçerli değil."); }
         var now = timeProvider.GetUtcNow(); var invoice = new Invoice
         {
             Id = Guid.CreateVersion7(),
@@ -157,7 +106,7 @@ public sealed partial class F4BillingService(
             ProviderConnectionId = provider.Id,
             LegalEntityProfileId = profile.Id,
             InvoicePolicyId = policy.Id,
-            InvoiceType = InvoiceAmounts.TrendyolInvoiceType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, providerSettings.EInvoiceType),
+            InvoiceType = InvoiceAmounts.TrendyolInvoiceType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson),
             SequencePurpose = command.OriginalInvoiceId is null ? "SALE" : "ADJUSTMENT",
             Currency = order.Currency,
             Note = string.Empty,
@@ -244,21 +193,14 @@ public sealed partial class F4BillingService(
         if (lines.Any(x => x.UnitSnapshot == "UNSPECIFIED" || x.VatRate != 0 && x.VatAmount <= 0)) failures.Add("FISCAL_CALCULATION_AUTHORITY_REQUIRED");
         if (invoice.Note != InvoiceAmounts.TurkishInvoiceNote(invoice.PayableTotal)) failures.Add("INVOICE_NOTE_MISMATCH");
         if (Unapproved(policy.RoundingRule) || Unapproved(policy.DueRule) || Unapproved(policy.AdjustmentRule)) failures.Add("FISCAL_POLICY_UNAPPROVED");
-        if (invoice.InvoiceType == "UNDETERMINED") failures.Add("TAXPAYER_RESULT_REQUIRED");
+        if (invoice.InvoiceType is not ("TEMELFATURA" or "EARSIVFATURA")) failures.Add("INVOICE_TYPE_INVALID");
         if (invoice.InvoiceType == "EARSIVFATURA")
         {
             if (invoice.PackageId is null) failures.Add("EFATURAM_INTERNET_SALE_PACKAGE_REQUIRED");
             else
             {
                 var packageCarrier = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.PackageId).Select(x => x.CargoProviderExternalId).SingleOrDefaultAsync(cancellationToken);
-                var settingsJson = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId).Select(x => x.SettingsJson).SingleAsync(cancellationToken);
-                try
-                {
-                    var settings = JsonSerializer.Deserialize<TrendyolEFaturamConnectionSettings>(settingsJson);
-                    if (string.IsNullOrWhiteSpace(packageCarrier) || settings is null || !settings.ConfiguredCarriers.Any(x => string.Equals(x.ProviderName, packageCarrier, StringComparison.OrdinalIgnoreCase))) failures.Add("EFATURAM_CARRIER_MAPPING_REQUIRED");
-                    if (!Uri.TryCreate(settings?.PurchaseUrl, UriKind.Absolute, out var purchaseUrl) || purchaseUrl.Scheme != Uri.UriSchemeHttps) failures.Add("EFATURAM_PURCHASE_URL_INVALID");
-                }
-                catch (JsonException) { failures.Add("EFATURAM_SETTINGS_INVALID"); }
+                if (!TrendyolCarrierCatalog.TryResolve(packageCarrier, out _)) failures.Add("EFATURAM_CARRIER_CATALOG_MISS");
             }
         }
         invoice.Status = failures.Count == 0 ? InvoiceStatus.Ready : InvoiceStatus.ValidationFailed; invoice.LastErrorCode = failures.FirstOrDefault(); invoice.Version++; invoice.UpdatedAt = timeProvider.GetUtcNow();
@@ -343,14 +285,11 @@ public sealed partial class F4BillingService(
     private async Task<bool> AutoInvoiceEnabled(Guid tenantId, CancellationToken cancellationToken) => await db.FeatureFlags.AsNoTracking().AnyAsync(x => x.Key == "AUTO_INVOICE_ENABLED" && x.Enabled, cancellationToken);
     private InvoicePartySnapshot Snapshot(Invoice invoice, string role, string content, DateTimeOffset now) => new() { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, InvoiceId = invoice.Id, Role = role, ProtectedContent = _partyProtector.Protect(content), ContentHash = Hash(content), CreatedAt = now };
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
-    private static bool ValidJson(string value) { try { JsonDocument.Parse(value); return true; } catch (JsonException) { return false; } }
     private static string Normalize(string value) => value.Trim().ToUpperInvariant();
     private static bool Unapproved(string value) => value is "UNKNOWN" or "UNAPPROVED";
     private static string Status(InvoiceStatus value) => value.ToString().ToUpperInvariant();
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static long EventSequence(string sourceEventId) => long.TryParse(sourceEventId[(sourceEventId.LastIndexOf(':') + 1)..], out var value) ? value : 0;
-    private static string MaskTaxId(string value) => value.Length <= 4 ? "****" : new string('*', value.Length - 4) + value[^4..];
-    private static LegalEntityProfileView Map(LegalEntityProfile value) => new(value.Id, value.Title, value.MaskedTaxId, value.Status, value.UpdatedAt, value.Version);
     private async Task<LegalEntityProfile> ProviderManagedProfile(Guid tenantId, Guid providerConnectionId, CancellationToken cancellationToken)
     {
         var existing = await db.LegalEntityProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Title == $"EFATURAM_PROVIDER:{providerConnectionId:N}", cancellationToken);
@@ -372,6 +311,4 @@ public sealed partial class F4BillingService(
     private static ServiceResult<T> PreconditionRequired<T>() => ServiceResult<T>.Fail("PRECONDITION_REQUIRED", "Mevcut kayıt için If-Match gereklidir.", 428);
     private static ServiceResult<T> CapabilityUnknown<T>(string capability) => ServiceResult<T>.Fail("CAPABILITY_NOT_SUPPORTED", $"{capability} doğrulanmadığı için dış işlem kapalıdır.", 422);
 
-    [GeneratedRegex("^[0-9]{10,11}$", RegexOptions.CultureInvariant)]
-    private static partial Regex TaxIdPattern();
 }

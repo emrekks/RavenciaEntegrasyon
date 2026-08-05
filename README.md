@@ -38,7 +38,7 @@ Diğer pazaryerlerine ait adapter, UI seçeneği, Worker yönlendirmesi ve job t
 | Trendyol Product V2 create/update/archive + approval | Kodlandı ve statik doğrulandı; dynamic/Stage kabulü gerekli |
 | Trendyol birleşik stok + fiyat yazma | Kodlandı; sürüm korumalı batch, dynamic/Stage kabulü gerekli |
 | Trendyol Order V2, paket, etiket ve iade | Kodlandı; capability evidence ve Stage fixture gerekli |
-| E-Faturam API_USER/MARKETPLACE giriş, güvenli mali ayarlar, mükellef sorgu, fatura gönderimi, numeric durum, permanent PDF ve E-Arşiv iptal | Kod kapsamı tamamlandı; exact runtime ve Stage mali E2E gerekli |
+| E-Faturam doğrudan API_USER giriş, token kaynaklı mali kapsam, otomatik E-Fatura/E-Arşiv seçimi, fatura gönderimi, numeric durum, permanent PDF ve E-Arşiv iptal | Kod kapsamı tamamlandı; exact runtime ve Stage mali E2E gerekli |
 | Giden E-Fatura UUID durum sorgusu | Exact Stage/SIT endpoint kanıtı gelene kadar yapılandırma düzeyinde fail-closed |
 | Fatura linkini Trendyol’a iletme | Kodlandı; gerçek package ile Stage kabul testi gerekli |
 | Production kabulü | Engelli; dış hesap, mali karar, backup ve E2E kanıtları gerekiyor |

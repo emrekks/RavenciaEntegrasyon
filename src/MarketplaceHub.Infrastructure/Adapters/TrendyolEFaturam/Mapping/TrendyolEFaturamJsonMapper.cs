@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 
@@ -8,35 +6,6 @@ namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Mapping;
 
 public static class TrendyolEFaturamJsonMapper
 {
-    public static TaxpayerResult Taxpayer(string json)
-    {
-        using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-        if (!root.TryGetProperty("applicationDetail", out var details) || details.ValueKind != JsonValueKind.Array) throw new JsonException("applicationDetail missing");
-        var applications = details.EnumerateArray().Select(item => new TaxpayerApplicationResult(
-            Integer(item, "type"),
-            Text(item, "serviceName") ?? string.Empty,
-            Text(item, "gibStatus") ?? string.Empty,
-            item.TryGetProperty("activated", out var activated) && activated.ValueKind == JsonValueKind.True,
-            Date(item, "activationDate"),
-            Date(item, "deactivationDate"))).ToArray();
-        var customer = root.TryGetProperty("partnerCustomerId", out var id) && id.ValueKind == JsonValueKind.Number ? id.GetInt64().ToString(CultureInfo.InvariantCulture) : null;
-        var eInvoiceRegistered = applications.Any(x => x.Activated && (x.Type == 1 || x.ServiceName.Contains("E-FATURA", StringComparison.OrdinalIgnoreCase) || x.ServiceName.Contains("EINVOICE", StringComparison.OrdinalIgnoreCase)));
-        return new(eInvoiceRegistered, customer, applications, Hash(json));
-    }
-
-    public static (string AccessToken, long CompanyId, long UserId, long? PartnerCustomerId) CustomerAccess(string json)
-    {
-        using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-        var token = RequiredText(root, "accessToken");
-        var companyId = RequiredLong(root, "companyId");
-        var userId = RequiredLong(root, "userId");
-        var partnerCustomerId = NullableLong(root, "partnerCustomerId");
-        if (companyId <= 0 || userId <= 0) throw new JsonException("customerSignIn scope invalid");
-        return (token, companyId, userId, partnerCustomerId);
-    }
-
     public static InvoiceSubmissionResult OutgoingInvoice(string json, string? remoteRequestId)
     {
         using var document = JsonDocument.Parse(json);
@@ -73,10 +42,5 @@ public static class TrendyolEFaturamJsonMapper
 
     private static string RequiredText(JsonElement root, string name) => Text(root, name) is { Length: > 0 } value ? value : throw new JsonException($"{name} missing");
     private static string? Text(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) ? value.ToString().Trim() : null;
-    private static int Integer(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.TryGetInt32(out var result) ? result : 0;
-    private static long RequiredLong(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.TryGetInt64(out var result) ? result : throw new JsonException($"{name} missing");
-    private static long? NullableLong(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.TryGetInt64(out var result) ? result : null;
     private static int? NullableInteger(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.TryGetInt32(out var result) ? result : null;
-    private static DateTimeOffset? Date(JsonElement root, string name) => Text(root, name) is { Length: > 0 } value && DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed) ? parsed : null;
-    private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 }

@@ -31,23 +31,7 @@ public sealed class TrendyolEFaturamHttpClient(
             configured.Connection.Environment,
             configured.Connection.ExternalStoreId,
             "1.0.0",
-            $"company:{access.Value!.CompanyId};user:{access.Value.UserId};model:{configured.IntegrationModel}"), access.RateLimit);
-    }
-
-    public async Task<AdapterResult<TaxpayerResult>> QueryTaxpayerAsync(AdapterContext context, TaxpayerQuery query, CancellationToken cancellationToken)
-    {
-        if (query.TaxId.Length is not (10 or 11) || !query.TaxId.All(char.IsAsciiDigit))
-            return AdapterResult<TaxpayerResult>.Failure(new(AdapterErrorClass.Validation, "EFATURAM_TAX_ID_INVALID", "VKN/TCKN 10 veya 11 rakam olmalıdır.", null, null, null));
-        var configured = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
-        if (configured is null) return AdapterResult<TaxpayerResult>.Failure(TrendyolEFaturamErrorMapper.Configuration());
-        if (configured.IntegrationModel != "MARKETPLACE" || !long.TryParse(configured.Connection.ExternalStoreId, out var partnerId) || partnerId <= 0)
-            return AdapterResult<TaxpayerResult>.Failure(TrendyolEFaturamErrorMapper.Unsupported("Mükellef sorgusu pazaryeri entegratörü modeli ve sayısal Partner ID gerektirir."));
-        var partner = await SignIn(configured, configured.Credential.PartnerEmail!, configured.Credential.PartnerPassword!, cancellationToken);
-        if (!partner.IsSuccess) return AdapterResult<TaxpayerResult>.Failure(partner.Error!, partner.RateLimit);
-        var response = await SendAuthorized(configured, partner.Value!, HttpMethod.Get, TrendyolEFaturamEndpoints.TaxpayerStatus(partnerId, query.TaxId), null, cancellationToken);
-        if (!response.IsSuccess) return AdapterResult<TaxpayerResult>.Failure(response.Error!, response.RateLimit);
-        try { return AdapterResult<TaxpayerResult>.Success(TrendyolEFaturamJsonMapper.Taxpayer(response.Value!.Body), response.RateLimit); }
-        catch (JsonException) { return AdapterResult<TaxpayerResult>.Failure(TrendyolEFaturamErrorMapper.Contract(), response.RateLimit); }
+            $"company:{access.Value!.CompanyId};user:{access.Value.UserId};model:API_USER"), access.RateLimit);
     }
 
     public async Task<AdapterResult<InvoiceSubmissionResult>> SubmitAsync(AdapterContext context, InvoiceSubmission submission, CancellationToken cancellationToken)
@@ -55,14 +39,14 @@ public sealed class TrendyolEFaturamHttpClient(
         var configured = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (configured is null) return AdapterResult<InvoiceSubmissionResult>.Failure(TrendyolEFaturamErrorMapper.Configuration());
         if (!CanWrite(configured)) return AdapterResult<InvoiceSubmissionResult>.Failure(TrendyolEFaturamErrorMapper.Unsupported("E-Faturam dış gönderim izinleri kapalı."));
+        var access = await AcquireAccess(configured, cancellationToken);
+        if (!access.IsSuccess) return AdapterResult<InvoiceSubmissionResult>.Failure(access.Error!, access.RateLimit);
         string officialPayload;
-        try { officialPayload = TrendyolEFaturamCanonicalPayload.Create(configured.Settings, submission.PayloadJson); }
+        try { officialPayload = TrendyolEFaturamCanonicalPayload.Create(new(access.Value!.CompanyId, access.Value.UserId, null, "WEB"), submission.PayloadJson); }
         catch (Exception exception) when (exception is JsonException or ArgumentException or FormatException)
         {
             return AdapterResult<InvoiceSubmissionResult>.Failure(new(AdapterErrorClass.Validation, "EFATURAM_FISCAL_PAYLOAD_INVALID", exception.Message, null, null, null));
         }
-        var access = await AcquireAccess(configured, cancellationToken);
-        if (!access.IsSuccess) return AdapterResult<InvoiceSubmissionResult>.Failure(access.Error!, access.RateLimit);
         using var payload = JsonDocument.Parse(officialPayload);
         var endpoint = submission.InvoiceType == "EARSIVFATURA" ? TrendyolEFaturamEndpoints.CreateEArchive : TrendyolEFaturamEndpoints.CreateOutgoingInvoice;
         var response = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Post, endpoint, JsonContent.Create(payload.RootElement), cancellationToken);
@@ -74,7 +58,7 @@ public sealed class TrendyolEFaturamHttpClient(
     public async Task<AdapterResult<InvoiceRemoteStatus>> QueryStatusAsync(AdapterContext context, ExternalInvoiceReference reference, CancellationToken cancellationToken)
     {
         var configured = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
-        if (configured is null || configured.Settings.CompanyId is not > 0) return AdapterResult<InvoiceRemoteStatus>.Failure(TrendyolEFaturamErrorMapper.Configuration());
+        if (configured is null) return AdapterResult<InvoiceRemoteStatus>.Failure(TrendyolEFaturamErrorMapper.Configuration());
         var access = await AcquireAccess(configured, cancellationToken);
         if (!access.IsSuccess) return AdapterResult<InvoiceRemoteStatus>.Failure(access.Error!, access.RateLimit);
         var uuid = reference.EttnUuid ?? reference.ExternalReference;
@@ -116,7 +100,7 @@ public sealed class TrendyolEFaturamHttpClient(
     public async Task<AdapterResult<RemoteInvoiceDocument>> GetDocumentAsync(AdapterContext context, ExternalInvoiceReference reference, string documentKind, CancellationToken cancellationToken)
     {
         var configured = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
-        if (configured is null || configured.Settings.CompanyId is not > 0) return AdapterResult<RemoteInvoiceDocument>.Failure(TrendyolEFaturamErrorMapper.Configuration());
+        if (configured is null) return AdapterResult<RemoteInvoiceDocument>.Failure(TrendyolEFaturamErrorMapper.Configuration());
         if (!string.Equals(documentKind, "PDF", StringComparison.OrdinalIgnoreCase)) return AdapterResult<RemoteInvoiceDocument>.Failure(TrendyolEFaturamErrorMapper.Unsupported("Yalnız PDF belge akışı doğrulandı."));
         var providerType = reference.InvoiceType == "EARSIVFATURA" ? "EARCHIVE" : reference.InvoiceType is "TEMELFATURA" or "TICARIFATURA" ? "EINVOICE" : null;
         if (providerType is null) return AdapterResult<RemoteInvoiceDocument>.Failure(TrendyolEFaturamErrorMapper.Contract());
@@ -143,7 +127,7 @@ public sealed class TrendyolEFaturamHttpClient(
     public async Task<AdapterResult<InvoiceCancellationResult>> CancelAsync(AdapterContext context, InvoiceCancellation command, CancellationToken cancellationToken)
     {
         var configured = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
-        if (configured is null || configured.Settings.CompanyId is not > 0) return AdapterResult<InvoiceCancellationResult>.Failure(TrendyolEFaturamErrorMapper.Configuration());
+        if (configured is null) return AdapterResult<InvoiceCancellationResult>.Failure(TrendyolEFaturamErrorMapper.Configuration());
         if (!CanWrite(configured)) return AdapterResult<InvoiceCancellationResult>.Failure(TrendyolEFaturamErrorMapper.Unsupported("E-Faturam dış gönderim izinleri kapalı."));
         var access = await AcquireAccess(configured, cancellationToken);
         if (!access.IsSuccess) return AdapterResult<InvoiceCancellationResult>.Failure(access.Error!, access.RateLimit);
@@ -155,32 +139,15 @@ public sealed class TrendyolEFaturamHttpClient(
 
     private async Task<AdapterResult<TrendyolEFaturamAccessContext>> AcquireAccess(TrendyolEFaturamRequestContext context, CancellationToken cancellationToken)
     {
-        if (context.IntegrationModel == "API_USER")
-        {
-            if (context.Settings.CompanyId is not > 0 || context.Settings.UserId is not > 0) return AdapterResult<TrendyolEFaturamAccessContext>.Failure(TrendyolEFaturamErrorMapper.Configuration());
-            var login = await SignIn(context, context.Credential.Email!, context.Credential.Password!, cancellationToken);
-            return login.IsSuccess
-                ? AdapterResult<TrendyolEFaturamAccessContext>.Success(new(login.Value!, context.Settings.CompanyId.Value, context.Settings.UserId.Value, null), login.RateLimit)
-                : AdapterResult<TrendyolEFaturamAccessContext>.Failure(login.Error!, login.RateLimit);
-        }
-
-        var partner = await SignIn(context, context.Credential.PartnerEmail!, context.Credential.PartnerPassword!, cancellationToken);
-        if (!partner.IsSuccess) return AdapterResult<TrendyolEFaturamAccessContext>.Failure(partner.Error!, partner.RateLimit);
-        var response = await SendAuthorized(context, partner.Value!, HttpMethod.Post, TrendyolEFaturamEndpoints.CustomerSignIn,
-            JsonContent.Create(new { email = context.Credential.CustomerEmail, password = context.Credential.CustomerPassword, taxId = context.Credential.CustomerTaxId }), cancellationToken);
-        if (!response.IsSuccess) return AdapterResult<TrendyolEFaturamAccessContext>.Failure(response.Error!, response.RateLimit);
-        try
-        {
-            var customer = TrendyolEFaturamJsonMapper.CustomerAccess(response.Value!.Body);
-            var partnerId = long.TryParse(context.Connection.ExternalStoreId, out var parsed) ? parsed : customer.PartnerCustomerId;
-            if (context.Settings.CompanyId is > 0 && context.Settings.CompanyId != customer.CompanyId || context.Settings.UserId is > 0 && context.Settings.UserId != customer.UserId)
-                return AdapterResult<TrendyolEFaturamAccessContext>.Failure(new(AdapterErrorClass.Validation, "EFATURAM_CUSTOMER_SCOPE_MISMATCH", "customerSignIn companyId/userId ile bağlantı ayarları eşleşmiyor.", null, null, response.Value.RemoteRequestId), response.RateLimit);
-            return AdapterResult<TrendyolEFaturamAccessContext>.Success(new(customer.AccessToken, customer.CompanyId, customer.UserId, partnerId), response.RateLimit);
-        }
-        catch (JsonException)
-        {
-            return AdapterResult<TrendyolEFaturamAccessContext>.Failure(TrendyolEFaturamErrorMapper.Contract(), response.RateLimit);
-        }
+        var login = await SignIn(context, context.Credential.Email!, context.Credential.Password!, cancellationToken);
+        if (!login.IsSuccess) return AdapterResult<TrendyolEFaturamAccessContext>.Failure(login.Error!, login.RateLimit);
+        if (!TrendyolEFaturamAccessTokenScope.TryRead(login.Value!, out var companyId, out var userId))
+            return AdapterResult<TrendyolEFaturamAccessContext>.Failure(new(
+                AdapterErrorClass.ContractViolation,
+                "EFATURAM_TOKEN_SCOPE_MISSING",
+                "E-Faturam giriş tokenında companyId/userId kapsamı okunamadı; mali hesap bilgileri panelden girilmez.",
+                null, null, null), login.RateLimit);
+        return AdapterResult<TrendyolEFaturamAccessContext>.Success(new(login.Value!, companyId, userId), login.RateLimit);
     }
 
     private async Task<AdapterResult<string>> SignIn(TrendyolEFaturamRequestContext context, string email, string password, CancellationToken cancellationToken)
@@ -203,7 +170,7 @@ public sealed class TrendyolEFaturamHttpClient(
         catch (HttpRequestException) { return AdapterResult<string>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_NETWORK_ERROR", "E-Faturam ağına güvenli bağlantı kurulamadı.", null, TimeSpan.FromSeconds(5), null)); }
     }
 
-    private bool CanWrite(TrendyolEFaturamRequestContext context) => GlobalWritesEnabled && context.ExternalWritesEnabled && context.IntegrationModel is "API_USER" or "MARKETPLACE";
+    private bool CanWrite(TrendyolEFaturamRequestContext context) => GlobalWritesEnabled && context.ExternalWritesEnabled;
 
     private async Task<AdapterResult<AuthorizedResponse>> SendAuthorized(TrendyolEFaturamRequestContext context, string token, HttpMethod method, string endpoint, HttpContent? content, CancellationToken cancellationToken)
     {

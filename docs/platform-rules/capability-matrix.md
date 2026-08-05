@@ -28,12 +28,12 @@
 
 ## Trendyol E-Faturam
 
-Mali ayarlar secret içermeyen ayrı read-back sözleşmesiyle yönetilir. Birden çok kargo sağlayıcısı VKN/TCKN ve yasal unvanla eşlenebilir; submit sırasında paket sağlayıcısının bire bir eşleşmesi zorunludur.
+Gönderen mali hesap E-Faturam tarafından yönetilir. Panel yalnız doğrudan API kullanıcı credentialını saklar; company/user scope sign-in tokenından okunur, varsayılan seri provider hesabından gelir. Belge türü sipariş snapshotından otomatik seçilir. Payment/delivery kullanıcı ayarı değildir; E-Arşiv için gerekli alanlar Trendyol siparişi ve resmî carrier kataloğundan üretilir.
 
 | Capability | Kod durumu | Dış kanıt / çıkış durumu |
 | --- | --- | --- |
-| Connection test | Uygulandı | API_USER ve MARKETPLACE auth Stage hesabıyla doğrulanmalı |
-| Taxpayer query | Uygulandı | MARKETPLACE + sayısal Partner ID + kontrollü VKN/TCKN fixture gerekli |
+| Connection test | Uygulandı | API_USER sign-in ve token company/user scope Stage hesabıyla doğrulanmalı |
+| Automatic invoice routing | Uygulandı | Corporate + eInvoiceAvailable ve individual/E-Arşiv fixtureları doğrulanmalı |
 | Invoice submit | Uygulandı | E-Fatura/E-Arşiv safe-write Stage fixture gerekli |
 | E-Arşiv status read | Uygulandı | UUID ve 10/20/29/30/40/50/100/105/200/205/305/405 kodları Stage'de doğrulanmalı |
 | Giden E-Fatura status read | Fail-closed | Exact göreli endpoint deployment ayarı yalnız Stage/SIT evidence sonrasında girilir |

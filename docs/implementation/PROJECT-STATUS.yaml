@@ -1,5 +1,5 @@
 schema_version: 1
-document_version: '7.2'
+document_version: '7.3'
 updated_at: '2026-08-05'
 active_scope:
 - TRENDYOL
@@ -81,18 +81,20 @@ features:
     status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   trendyol_label:
     status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
-  efaturam_connection_settings:
-    status: CODED_STATIC_VERIFIED_SAFE_READBACK_MULTI_CARRIER_DYNAMIC_REVALIDATION_REQUIRED
+  efaturam_provider_managed_account:
+    status: CODED_STATIC_VERIFIED_TOKEN_SCOPE_STAGE_REVALIDATION_REQUIRED
+  efaturam_automatic_invoice_routing:
+    status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   efaturam_submit:
     status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
-  efaturam_taxpayer_status_cancel:
+  efaturam_status_cancel:
     status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   secure_invoice_pdf:
     status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   trendyol_invoice_delivery:
     status: CODED_SUBMITTED_MANUAL_CONFIRMATION_REQUIRED
   efaturam_operator_ui:
-    status: CODED_STATIC_VERIFIED_MULTI_CARRIER_SETTINGS_VITEST_PLAYWRIGHT_REVALIDATION_REQUIRED
+    status: CODED_STATIC_VERIFIED_SIMPLIFIED_PROVIDER_MANAGED_UI_VITEST_PLAYWRIGHT_REVALIDATION_REQUIRED
   efaturam_einvoice_status:
     status: FAIL_CLOSED_STAGE_ENDPOINT_EVIDENCE_REQUIRED
   trendyol_return_read_write:

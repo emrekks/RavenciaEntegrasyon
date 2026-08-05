@@ -2,7 +2,7 @@
 
 **Son güncelleme:** 2026-08-05
 
-**Ana plan sürümü:** 7.2
+**Ana plan sürümü:** 7.3
 
 **Aktif ürün kapsamı:** `TRENDYOL Türkiye CORE` + `TRENDYOL_EFATURAM`
 
@@ -16,7 +16,7 @@
 | F1 | `HARDENING_CODED_DYNAMIC_REVALIDATION_REQUIRED` | Güvenlik/job/deployment sertleştirmesi kodlandı; exact runtime doğrulaması bekler. |
 | F2 | `READY_LOCAL` | Yerel katalog, ürün, import, stok ve fiyat çekirdeği hazır. |
 | F3 | `CORE_CODE_COMPLETE_STATIC_VERIFIED` | Trendyol Türkiye CORE bağlantı, referans, mapping, Product V2 create/update/archive/approval, birleşik fiyat-stok, Order V2/stream, paket aksiyonu, takip numarası, ortak etiket, iade aksiyonu/evidence/read-back, webhook ve invoice-link sınırı kodlandı. Dynamic, Docker ve Stage kabulü bekler. |
-| F4 | `CODE_COMPLETE_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED` | API_USER/MARKETPLACE auth, güvenli ayar görünümü, çoklu kargo eşlemesi, taxpayer, E-Fatura/E-Arşiv create, numeric status, PDF, E-Arşiv cancel, Trendyol link teslimi ve operatör UI kodlandı; exact runtime ve Stage kabulü bekler. |
+| F4 | `CODE_COMPLETE_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED` | Doğrudan API_USER auth, token kaynaklı mali kapsam, otomatik E-Fatura/E-Arşiv seçimi, provider-managed hesap, numeric status, PDF, E-Arşiv cancel, Trendyol link teslimi ve sade operatör UI kodlandı; exact runtime ve Stage kabulü bekler. |
 | F5 | `PLANNED_BLOCKED_BY_F3_F4_AND_REVALIDATION` | Production pilot, F3/F4 dış kabul kapıları geçmeden başlamaz. |
 | F6+ | `PLANNED` | Stabilizasyon, adapter registry ve sonraki platformlar. |
 
@@ -34,12 +34,13 @@
 
 ## Bu teslimde kapanan Trendyol E-Faturam işleri
 
-- API_USER `signIn` ve MARKETPLACE partner `signIn -> customerSignIn` kimlik doğrulaması, company/user scope uyuşmazlığı koruması.
-- Şifre içermeyen mali ayar read-back endpoint'i, mevcut değerleri koruyan PATCH ve çoklu kargo VKN/TCKN-yasal unvan paneli.
-- MARKETPLACE Partner ID + VKN/TCKN mükellefiyet sorgusu ve başvuru ayrıntıları.
-- Temel/Ticari E-Fatura ile internet satışı E-Arşiv canonical payload; `paymentInfo`, `deliveryInfo`, ASCII VKN/TCKN ve kuruş denklemleri.
-- Durable submit, numeric status reconciliation, private PDF, E-Arşiv cancellation ve Trendyol package invoice-link teslimi.
-- Resmî E-Faturam evidence hostu ve mali write capability'lerde Stage fixture SHA-256 zorunluluğu.
+- E-Faturam bağlantısı yalnız doğrudan API_USER `signIn` modeline sadeleştirildi; panel yalnız e-posta/parolayı şifreli saklar.
+- `companyId` ve `userId` sign-in tokenından otomatik okunur; mali hesap, kullanıcı kimliği ve seri/prefix ayarları panel/API/persistence yüzeyinden çıkarıldı. Eski bağlantı `SettingsJson` kayıtları veri migrasyonuyla yalnız `ExternalWritesEnabled` kalacak biçimde temizlenir.
+- Belge türü `commercial + eInvoiceAvailable` snapshotına göre otomatik `TEMELFATURA` veya `EARSIVFATURA` seçilir; ayrı mükellef sorgusu ve kullanıcı senaryo seçimi kaldırıldı.
+- Ödeme ve taşıyıcı kullanıcı ayarları kaldırıldı. E-Arşiv internet satışı için gereken teknik alanlar Trendyol siparişi ve resmî kargo sağlayıcı kataloğundan otomatik üretilir; bilinmeyen taşıyıcı fail-closed bloklanır.
+- Canonical payload, ASCII VKN/TCKN, iptal edilmiş satır filtresi ve kuruş denklemleri korunur.
+- Durable submit, numeric status reconciliation, private PDF, E-Arşiv cancellation ve Trendyol package invoice-link teslimi korunur.
+- Resmî E-Faturam evidence hostu ve mali write capability'lerde Stage fixture SHA-256 zorunluluğu korunur.
 - Giden E-Fatura status yolu tahmin edilmeden deployment ayarında fail-closed bırakıldı.
 
 ## Kalan zorunlu doğrulamalar

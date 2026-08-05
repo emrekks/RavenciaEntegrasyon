@@ -1,3 +1,4 @@
+using System.Text;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Mapping;
 
@@ -5,15 +6,6 @@ namespace MarketplaceHub.Adapters.ContractTests;
 
 public sealed class F4TrendyolEFaturamContractTests
 {
-    [Fact]
-    public void Anonymous_taxpayer_fixture_maps_without_personal_data()
-    {
-        var json = Fixture("taxpayer-registered-anonymous.json"); var result = TrendyolEFaturamJsonMapper.Taxpayer(json);
-        Assert.True(result.IsRegistered); Assert.Equal("100001", result.ProviderCustomerId); Assert.Equal(2, result.Applications.Count); Assert.All(result.Applications, application => Assert.True(application.Activated)); Assert.Equal(64, result.RawResultHash.Length);
-        Assert.DoesNotContain("@", json, StringComparison.Ordinal); Assert.DoesNotContain("+90", json, StringComparison.Ordinal);
-    }
-
-
     [Theory]
     [InlineData("earchive-status-approved-anonymous.json", "ACCEPTED", true, "205")]
     [InlineData("earchive-status-cancelled-anonymous.json", "CANCELLED", true, "305")]
@@ -49,14 +41,34 @@ public sealed class F4TrendyolEFaturamContractTests
     }
 
     [Fact]
-    public void Customer_signin_scope_is_mapped_from_official_body()
+    public void Fiscal_scope_is_read_from_signin_jwt_instead_of_user_settings()
     {
-        var access = TrendyolEFaturamJsonMapper.CustomerAccess(Fixture("customer-signin-anonymous.json"));
-        Assert.Equal(10, access.CompanyId);
-        Assert.Equal(20, access.UserId);
-        Assert.Equal(100001, access.PartnerCustomerId);
-        Assert.Equal("anonymous-stage-token", access.AccessToken);
+        var token = Jwt("""{"scope":{"companyId":"10","userId":20}}""");
+        Assert.True(TrendyolEFaturamAccessTokenScope.TryRead(token, out var companyId, out var userId));
+        Assert.Equal(10, companyId);
+        Assert.Equal(20, userId);
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not-a-jwt")]
+    [InlineData("header.invalid-base64.signature")]
+    public void Invalid_signin_token_does_not_create_a_fiscal_scope(string token) =>
+        Assert.False(TrendyolEFaturamAccessTokenScope.TryRead(token, out _, out _));
+
+    [Theory]
+    [InlineData("TEXMP", "8590921777")]
+    [InlineData("Trendyol Express", "8590921777")]
+    [InlineData("Yurtiçi Kargo", "3130557669")]
+    [InlineData("PTT Kargo Marketplace", "7320068060")]
+    public void Official_Trendyol_carrier_aliases_resolve_without_user_mapping(string provider, string expectedTaxId)
+    {
+        Assert.True(TrendyolCarrierCatalog.TryResolve(provider, out var carrier));
+        Assert.Equal(expectedTaxId, carrier.TaxId);
+    }
+
+    [Fact]
+    public void Unknown_carrier_is_not_invented() => Assert.False(TrendyolCarrierCatalog.TryResolve("UNMAPPED-CARRIER", out _));
 
     [Theory]
     [InlineData("1.0.0", true)]
@@ -65,10 +77,17 @@ public sealed class F4TrendyolEFaturamContractTests
     public void Api_version_is_exactly_pinned(string value, bool expected) => Assert.Equal(expected, TrendyolEFaturamContractGuard.IsPinnedApiVersion(value));
 
     [Fact]
-    public void Tax_id_format_is_not_treated_as_taxpayer_evidence()
+    public void Tax_id_format_validation_remains_strict_for_invoice_recipients()
     {
         Assert.True(TrendyolEFaturamContractGuard.IsTaxIdFormat("1234567890"));
         Assert.False(TrendyolEFaturamContractGuard.IsTaxIdFormat("123456789"));
+    }
+
+    private static string Jwt(string payload)
+    {
+        static string Segment(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var header = Segment("""{"alg":"none"}""");
+        return $"{header}.{Segment(payload)}.";
     }
 
     private static string Fixture(string name) => File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Infrastructure", "Adapters", "TrendyolEFaturam", "Fixtures", name));

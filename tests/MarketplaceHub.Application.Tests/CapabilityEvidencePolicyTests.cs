@@ -16,7 +16,6 @@ public sealed class CapabilityEvidencePolicyTests
     [InlineData(F4Capabilities.InvoiceDeliver, true)]
     [InlineData(F4Capabilities.InvoiceStatusRead, false)]
     [InlineData(F4Capabilities.InvoiceDocumentRead, false)]
-    [InlineData(F4Capabilities.TaxpayerQuery, false)]
     public void Financial_writes_require_stage_fixture_checksum(string capability, bool expected) =>
         Assert.Equal(expected, CapabilityEvidencePolicy.RequiresStageFixtureChecksum(capability));
 

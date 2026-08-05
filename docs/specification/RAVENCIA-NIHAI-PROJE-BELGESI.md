@@ -2,7 +2,7 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 7.2
+**Belge sürümü:** 7.3
 **Belge tarihi:** 5 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
@@ -81,7 +81,7 @@ Ravencia MarketplaceHub; ürün, varyant, stok, fiyat, sipariş, paket, kargo, i
 Proje başlangıçtan itibaren kademeli teslim modeliyle uygulanır:
 
 1. Trendyol ürün, stok, fiyat, sipariş, paket, kargo ve iade süreçleri tamamlanır.
-2. Trendyol E-Faturam üzerinden mükellef sorgusu, E-Fatura/E-Arşiv oluşturma, durum takibi, PDF saklama, iptal ve Trendyol'a fatura teslimi tamamlanır.
+2. Trendyol E-Faturam üzerinden siparişe göre otomatik E-Fatura/E-Arşiv oluşturma, durum takibi, PDF saklama, iptal ve Trendyol'a fatura teslimi tamamlanır.
 3. İki entegrasyon Stage kanıtı, production pilotu ve operasyon stabilizasyonundan geçirilir.
 4. Platform Adapter Registry/Resolver katmanı sertleştirilir.
 5. Hepsiburada, N11, Pazarama, PTTAVM ve Shopify ihtiyaç sırasına göre tek tek eklenir.
@@ -507,7 +507,7 @@ Sipariş veya paket detayında kullanıcı “Fatura oluştur” seçeneğini ku
 
 “Fatura oluştur” butonuna basılması faturanın başarıyla kesildiği anlamına gelmez. Kullanıcıya `Taslak`, `Kuyrukta`, `Gönderildi`, `Sağlayıcı işliyor`, `Başarılı`, `Başarısız`, `İptal bekliyor`, `İptal edildi`, `Trendyol'a teslim bekliyor` gibi ayrı durumlar gösterilir.
 
-**Mevcut durum:** API_USER ve MARKETPLACE kimlik doğrulaması, mükellef sorgusu, Temel/Ticari E-Fatura ile internet satışı E-Arşiv payloadı, numeric provider status uzlaştırması, güvenli kalıcı PDF, E-Arşiv iptali ve Trendyol link teslimi kodlanmıştır. Giden E-Fatura status endpointi exact Stage/SIT kanıtı olmadan fail-closed kalır. Exact runtime ve gerçek Stage mali E2E tamamlanmadığı için production bloke durumdadır.
+**Mevcut durum:** Doğrudan API_USER kimlik doğrulaması, sign-in tokenından company/user scope, Trendyol siparişinden otomatik TEMELFATURA/EARSIVFATURA seçimi, otomatik internet satışı ödeme/taşıyıcı alanları, numeric provider status uzlaştırması, güvenli kalıcı PDF, E-Arşiv iptali ve Trendyol link teslimi kodlanmıştır. Gönderen mali hesap, seri, senaryo, ödeme ve kargo eşleme ayarları panelde tutulmaz. Giden E-Fatura status endpointi exact Stage/SIT kanıtı olmadan fail-closed kalır. Exact runtime ve gerçek Stage mali E2E tamamlanmadığı için production bloke durumdadır.
 
 ## 7.14 Fatura listesi ve fatura detayı
 
@@ -1106,19 +1106,14 @@ Exact endpoint, yetki ve Stage kanıtı bulunmayan paket aksiyonları UI'da gös
 
 Otomatik iade onayı varsayılan kapalıdır.
 
-## 15.14 E-Faturam mükellef sorgusu
+## 15.14 E-Faturam otomatik belge türü kararı
 
-Fatura türü belirlenmeden önce alıcının e-Fatura mükellefi olup olmadığı sorgulanır. Sonuç:
+Panel ayrı bir mükellef sorgusu çalıştırmaz. Fatura türü, Trendyol sipariş snapshotındaki iki alanla deterministik seçilir:
 
-- VKN/TCKN.
-- Kayıtlı/kayıtsız.
-- Sağlayıcı müşteri kimliği.
-- Sorgu zamanı.
-- Ham sonuç hash'i.
+- `commercial=true` ve `invoiceAddress.eInvoiceAvailable=true`: `TEMELFATURA`.
+- Diğer tüm durumlar: `EARSIVFATURA`.
 
-olarak kayıt edilir.
-
-Mükellef sonucu cache'lenecekse geçerlilik süresi tanımlanmalı; kritik fatura öncesinde gerektiğinde yeniden doğrulanmalıdır.
+Müşteri VKN/TCKN, ad/unvan ve adres bilgileri fatura adresi snapshotından alınır. Eksik veya geçersiz zorunlu müşteri bilgisi submit öncesi validation hatasıdır. Kullanıcı belge türünü elle değiştiremez.
 
 ## 15.15 Fatura türü ve mali politika
 
@@ -1274,7 +1269,7 @@ Trendyol fatura linkinin en az 8 yıl erişilebilir olmasını ister. Bu nedenle
 
 ## 17.1 Entegrasyon modeli
 
-Bağlantı iki açık modelden biriyle çalışır. `API_USER`, tek işletmenin kendi mali hesabına doğrudan `signIn` yapar. `MARKETPLACE`, partner `signIn` sonrasında müşteri `customerSignIn` çağrısıyla müşteri tokenı ve company/user scope üretir. Model, credential alanları ve scope birbirine karıştırılmaz; customerSignIn sonucundaki companyId/userId bağlantı ayarıyla uyuşmazsa işlem bloklanır.
+Aktif ürün kapsamında Ravencia kendi E-Faturam hesabını doğrudan `API_USER` modeliyle kullanır. Panel yalnız E-Faturam e-posta/parolasını şifreli saklar. `companyId` ve `userId` başarılı sign-in tokenından okunur; panelde girilmez, API ile geri gösterilmez ve connection settings içinde saklanmaz. Prefix/seri gönderilmez; E-Faturam hesabındaki varsayılan seri kullanılır. Partner `customerSignIn` ve çoklu müşteri mali hesap modeli aktif kapsam dışıdır.
 
 ## 17.2 Ortamlar
 
@@ -1291,9 +1286,11 @@ Sign-in ile alınan token güvenli memory/cache süresi içinde kullanılır. To
 
 API payload tutarları kuruş cinsinden integer değerler olarak gönderilir. Örneğin 114,55 TL, 11455 olarak taşınır. Dönüşüm merkezi mali hesaplama bileşeninde yapılır ve property bazlı testlerle doğrulanır.
 
-## 17.5 İnternet satış e-Arşiv alanları
+## 17.5 Belge türü ve internet satış e-Arşiv alanları
 
-İnternet satışına ait e-Arşiv belgelerinde payment ve delivery bilgileri zorunlu alanlarla doldurulur. Purchase URL, ödeme yöntemi, gönderi ve teslimat bilgisi sipariş snapshot'ından deterministik üretilir.
+Belge türü kullanıcı ayarı değildir. Trendyol siparişinde `commercial=true` ve fatura adresinde `eInvoiceAvailable=true` birlikteyse `TEMELFATURA`; diğer siparişlerde `EARSIVFATURA` seçilir. Ayrı mükellef sorgusu veya Temel/Ticari senaryo seçimi yapılmaz.
+
+İnternet satışına ait E-Arşiv belgelerinde provider sözleşmesinin istediği `paymentInfo` ve `deliveryInfo` alanları panelden ayarlanmaz. Ödeme bağlamı Trendyol siparişinden, taşıyıcı VKN/unvanı resmî Trendyol kargo sağlayıcı kataloğundan deterministik üretilir. Bilinmeyen taşıyıcıda tahmin yapılmaz ve submit bloklanır.
 
 ## 17.6 Statü takibi
 
@@ -1492,7 +1489,7 @@ Hedef mantıksal gruplar:
 | Stock/price | birleşik fiyat-stok batch | Yüksek |
 | Order/package | polling, webhook ingest, package action | Yüksek |
 | Return | claim sync ve kontrollü action | Orta |
-| Invoice | taxpayer, submit, status, PDF, cancel | Yüksek |
+| Invoice | otomatik belge türü, submit, status, PDF, cancel | Yüksek |
 | Invoice delivery | Trendyol link submit ve reconcile | Yüksek |
 | Reconciliation | uzak/yerel karşılaştırma | Orta/düşük |
 
@@ -1949,10 +1946,10 @@ Sıra:
 
 Sıra:
 
-1. Entegrasyon modeli, test company/user scope.
-2. Taxpayer query.
-3. Mali policy onayı.
-4. Canonical payload ve kuruş testleri.
+1. Doğrudan API kullanıcı sign-in ve token kaynaklı company/user scope.
+2. Trendyol siparişinden otomatik E-Fatura/E-Arşiv kararı.
+3. Provider-managed mali hesap ve manuel policy onayı.
+4. Canonical payload, otomatik internet satışı alanları ve kuruş testleri.
 5. Submit ve duplicate koruması.
 6. Status polling.
 7. Güvenli permanent PDF indirme.
@@ -1960,7 +1957,7 @@ Sıra:
 9. Cancellation guardları.
 10. Trendyol link delivery reconciliation.
 
-Güncel kod notu: API_USER/MARKETPLACE auth, taxpayer, E-Fatura/E-Arşiv create, E-Arşiv status/cancel, numeric durum kataloğu, güvenli permanent PDF, private storage ve Trendyol link tesliminde `Submitted -> ManualReview/Confirmed` modeli kodlanmıştır. Giden E-Fatura UUID status yolu yalnız exact Stage/SIT kanıtı ile yapılandırılır; gerçek mali E2E ve teslim teyidi hâlâ dış doğrulama bekler.
+Güncel kod notu: doğrudan API_USER auth, token kaynaklı company/user scope, otomatik belge türü, E-Fatura/E-Arşiv create, E-Arşiv status/cancel, numeric durum kataloğu, güvenli permanent PDF, private storage ve Trendyol link tesliminde `Submitted -> ManualReview/Confirmed` modeli kodlanmıştır. Mali hesap/seri/senaryo/kargo/ödeme ayarları panelden kaldırılmıştır; E-Arşiv için zorunlu teknik alanlar sipariş ve resmî katalogdan otomatik üretilir. Giden E-Fatura UUID status yolu yalnız exact Stage/SIT kanıtı ile yapılandırılır; gerçek mali E2E ve teslim teyidi hâlâ dış doğrulama bekler.
 
 Çıkış:
 
@@ -2122,7 +2119,7 @@ Sistem production-ready ilan edilmeden aşağıdaki maddelerin tamamı sağlanma
 ## 30.3 E-Faturam
 
 - Test firma ve sign-in geçti.
-- Taxpayer query geçti.
+- Token kaynaklı company/user scope ve otomatik belge türü kararı geçti.
 - e-Fatura/e-Arşiv doğru seçildi.
 - Submit ve status terminale ulaştı.
 - PDF güvenli indirildi ve checksum doğrulandı.

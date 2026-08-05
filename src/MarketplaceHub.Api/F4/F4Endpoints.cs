@@ -10,11 +10,8 @@ public static class F4Endpoints
     {
         var api = endpoints.MapGroup("/api/v1").AddEndpointFilter(async (context, next) => { try { return await next(context); } catch (ArgumentException exception) { return Problem(context.HttpContext, new("INVALID_CURSOR", exception.Message, 400)); } });
 
-        api.MapGet("/billing/legal-entity-profile", async (HttpContext http, IF4BillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetLegalEntityAsync(tenant.TenantId, http.RequestAborted), x => x.Version) : Unauthorized(http));
-        api.MapPut("/billing/legal-entity-profile", UpsertLegalEntity);
         api.MapGet("/billing/invoice-policies/{connectionId:guid}", async (Guid connectionId, HttpContext http, IF4BillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetPolicyAsync(tenant.TenantId, connectionId, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPut("/billing/invoice-policies/{connectionId:guid}", UpsertPolicy);
-        api.MapGet("/billing/taxpayers/{taxId}", async (string taxId, Guid connectionId, HttpContext http, IF4BillingService service) => Tenant(http) is { } tenant ? Result(await service.QueryTaxpayerAsync(tenant.TenantId, connectionId, taxId, http.RequestAborted), value => Results.Ok(value)) : Unauthorized(http));
 
         api.MapGet("/invoices", async (HttpContext http, IF4BillingService service, int? limit, string? after, string? status) => Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http));
         api.MapPost("/invoices", async (CreateInvoiceCommand command, HttpContext http, IF4BillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateDraftAsync(tenant.TenantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.RequestAborted), "/api/v1/invoices") : MissingContext(http));
@@ -26,12 +23,6 @@ public static class F4Endpoints
         api.MapPost("/invoices/{id:guid}/cancellation-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IF4BillingService service, UserManager<ApplicationUser> users) => await EnqueueProtected(id, command, http, users, (tenant, version, key) => service.EnqueueCancellationAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted)));
         api.MapGet("/invoices/{invoiceId:guid}/documents/{documentId:guid}/content", async (Guid invoiceId, Guid documentId, HttpContext http, IF4BillingService service) => Tenant(http) is { } tenant ? Stream(await service.OpenDocumentAsync(tenant.TenantId, invoiceId, documentId, http.RequestAborted), http) : Unauthorized(http));
         return endpoints;
-    }
-
-    private static async Task<IResult> UpsertLegalEntity(UpsertLegalEntityProfileCommand command, HttpContext http, IF4BillingService service)
-    {
-        var tenant = Tenant(http); if (tenant is null) return Unauthorized(http); var version = OptionalIfMatch(http, out var failure); if (failure is not null) return failure;
-        return WithEtag(http, await service.UpsertLegalEntityAsync(tenant.TenantId, version, command, http.RequestAborted), x => x.Version);
     }
 
     private static async Task<IResult> UpsertPolicy(Guid connectionId, UpsertInvoicePolicyCommand command, HttpContext http, IF4BillingService service)

@@ -9,7 +9,7 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
     [Fact]
     public void Official_payload_uses_kurus_distinct_lines_exact_total_and_only_requested_note()
     {
-        var account = new EfaturamFiscalAccount(10, 20, "RVN");
+        var account = new EfaturamFiscalAccount(10, 20, null);
         var recipient = new EfaturamRecipient("11111111111", "TR", "İstanbul", "Kadıköy", "Anonim adres", null, null, null, "Anonim", "Müşteri", null);
         var source = new EfaturamInvoicePayloadSource(
             "local-1", "EARSIVFATURA", "TRY", "YALNIZ: ÜÇ YÜZ TÜRK LİRASI", "ORDER-1", new DateOnly(2026, 8, 3),
@@ -18,7 +18,7 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
                 new("Birinci Ürün", "C62", 1, 100m, 100m, 20m, 20m, 0m, 120m),
                 new("İkinci Ürün", "C62", 1, 150m, 150m, 30m, 20m, 0m, 180m)
             ],
-            new("https://www.trendyol.com", "Trendyol", "CARD", new DateTimeOffset(2026, 8, 3, 11, 0, 0, TimeSpan.FromHours(3)), "CREDIT_CARD"),
+            new("https://www.trendyol.com", "Trendyol", "PAZARYERI", new DateTimeOffset(2026, 8, 3, 11, 0, 0, TimeSpan.FromHours(3)), "MEDIATOR"),
             new("1111111111", "Anonim Kargo", null, new DateOnly(2026, 8, 3)));
 
         using var json = JsonDocument.Parse(TrendyolEFaturamInvoicePayload.Create(account, source));
@@ -31,6 +31,7 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
         Assert.Equal(30000, root.GetProperty("invoiceTotal").GetProperty("payableAmount").GetInt64());
         Assert.Equal(25000, root.GetProperty("invoiceTotal").GetProperty("taxExclusiveAmount").GetInt64());
         Assert.Equal(5000, root.GetProperty("totalTax").GetProperty("totalTaxAmount").GetInt64());
+        Assert.False(root.TryGetProperty("prefix", out _));
         Assert.Equal("https://www.trendyol.com", root.GetProperty("paymentInfo").GetProperty("purchaseUrl").GetString());
     }
 
@@ -76,21 +77,21 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
                 InvoiceAddressSnapshotJson = JsonSerializer.Serialize(new { invoiceAddress = new { identityNumber = "11111111111", countryCode = "TR", city = "İstanbul", district = "Kadıköy", fullAddress = "Anonim adres" } }),
                 ShipmentAddressSnapshotJson = "{}"
             },
-            Package = new { ExternalPackageId = "P-1", CargoProviderExternalId = "ANON-CARGO", StatusOccurredAt = new DateTimeOffset(2026, 8, 3, 13, 0, 0, TimeSpan.FromHours(3)) },
+            Package = new { ExternalPackageId = "P-1", CargoProviderExternalId = "TEXMP", StatusOccurredAt = new DateTimeOffset(2026, 8, 3, 13, 0, 0, TimeSpan.FromHours(3)) },
             Lines = new[]
             {
                 new { LineSequence = 1, DescriptionSnapshot = "Birinci Ürün", SkuSnapshot = "SKU-1", UnitSnapshot = "ADET", Quantity = 1m, UnitPrice = 100m, DiscountAmount = 0m, VatRate = 20m, VatAmount = 20m, LineTotal = 120m },
                 new { LineSequence = 2, DescriptionSnapshot = "İkinci Ürün", SkuSnapshot = "SKU-2", UnitSnapshot = "ADET", Quantity = 1m, UnitPrice = 150m, DiscountAmount = 0m, VatRate = 20m, VatAmount = 30m, LineTotal = 180m }
             }
         });
-        var settings = new TrendyolEFaturamConnectionSettings("API_USER", true, 10, 20, "RVN", [new("ANON-CARGO", "1111111111", "Anonim Kargo")]);
+        var account = new EfaturamFiscalAccount(10, 20, null, "WEB");
 
-        using var result = JsonDocument.Parse(TrendyolEFaturamCanonicalPayload.Create(settings, canonical));
+        using var result = JsonDocument.Parse(TrendyolEFaturamCanonicalPayload.Create(account, canonical));
         Assert.Equal(2, result.RootElement.GetProperty("invoiceLines").GetArrayLength());
         Assert.Equal(30000, result.RootElement.GetProperty("invoiceTotal").GetProperty("payableAmount").GetInt64());
         Assert.Equal("11111111111", result.RootElement.GetProperty("recipientInfo").GetProperty("taxId").GetString());
-        Assert.Equal("https://www.trendyol.com/", result.RootElement.GetProperty("paymentInfo").GetProperty("purchaseUrl").GetString());
-        Assert.Equal("1111111111", result.RootElement.GetProperty("deliveryInfo").GetProperty("carrierTaxId").GetString());
+        Assert.Equal("https://www.trendyol.com", result.RootElement.GetProperty("paymentInfo").GetProperty("purchaseUrl").GetString());
+        Assert.Equal("8590921777", result.RootElement.GetProperty("deliveryInfo").GetProperty("carrierTaxId").GetString());
     }
 
     [Fact]
@@ -103,7 +104,7 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
             Package = (object?)null,
             Lines = new[] { new { LineSequence = 1, DescriptionSnapshot = "Ürün", SkuSnapshot = "SKU", UnitSnapshot = "ADET", Quantity = 1m, UnitPrice = 100m, DiscountAmount = 0m, VatRate = 20m, VatAmount = 20m, LineTotal = 120m } }
         });
-        var error = Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new("API_USER", true, 1, 1, "RVN", []), canonical));
+        var error = Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new EfaturamFiscalAccount(1, 1, null), canonical));
         Assert.Contains("EFATURAM_RECIPIENT_TAX_ID_REQUIRED", error.Message, StringComparison.Ordinal);
     }
 
@@ -117,8 +118,8 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
             Package = new { ExternalPackageId = "P-1", CargoProviderExternalId = "UNMAPPED", StatusOccurredAt = DateTimeOffset.UtcNow },
             Lines = new[] { new { LineSequence = 1, DescriptionSnapshot = "Ürün", SkuSnapshot = "SKU", UnitSnapshot = "ADET", Quantity = 1m, UnitPrice = 100m, DiscountAmount = 0m, VatRate = 20m, VatAmount = 20m, LineTotal = 120m } }
         });
-        var error = Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new("API_USER", true, 1, 1, "RVN", []), canonical));
-        Assert.Contains("EFATURAM_CARRIER_MAPPING_REQUIRED", error.Message, StringComparison.Ordinal);
+        var error = Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new EfaturamFiscalAccount(1, 1, null), canonical));
+        Assert.Contains("EFATURAM_CARRIER_CATALOG_MISS", error.Message, StringComparison.Ordinal);
     }
 
 }

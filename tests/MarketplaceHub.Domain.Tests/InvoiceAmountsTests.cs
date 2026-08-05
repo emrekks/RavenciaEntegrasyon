@@ -41,11 +41,9 @@ public sealed class InvoiceAmountsTests
     }
 
     [Fact]
-    public void Configured_commercial_scenario_is_used_only_for_einvoice_eligible_order()
+    public void Invalid_order_snapshot_falls_back_to_earchive()
     {
-        var customer = JsonSerializer.Serialize(new { commercial = true });
-        var address = JsonSerializer.Serialize(new { invoiceAddress = new { eInvoiceAvailable = true } });
-        Assert.Equal("TICARIFATURA", InvoiceAmounts.TrendyolInvoiceType(customer, address, "TICARIFATURA"));
+        Assert.Equal("EARSIVFATURA", InvoiceAmounts.TrendyolInvoiceType("not-json", "{}"));
     }
 
 }

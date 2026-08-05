@@ -14,7 +14,6 @@ public static class F4JobTypes
 public static class F4Capabilities
 {
     public const string ConnectionTest = "CONNECTION_TEST";
-    public const string TaxpayerQuery = "TAXPAYER_QUERY";
     public const string InvoiceSubmit = "INVOICE_SUBMIT";
     public const string InvoiceStatusRead = "INVOICE_STATUS_READ";
     public const string InvoiceDocumentRead = "INVOICE_DOCUMENT_READ";
@@ -22,9 +21,6 @@ public static class F4Capabilities
     public const string InvoiceDeliver = "INVOICE_DELIVER";
 }
 
-public sealed record TaxpayerQuery(string TaxId);
-public sealed record TaxpayerApplicationResult(int Type, string ServiceName, string GibStatus, bool Activated, DateTimeOffset? ActivationDate, DateTimeOffset? DeactivationDate);
-public sealed record TaxpayerResult(bool IsRegistered, string? ProviderCustomerId, IReadOnlyList<TaxpayerApplicationResult> Applications, string RawResultHash);
 public sealed record InvoiceSubmission(Guid InvoiceId, string LocalReferenceId, string InvoiceType, string Currency, string PayloadJson, string RequestHash);
 public sealed record InvoiceSubmissionResult(string ExternalReference, string? InvoiceNumber, string? EttnUuid, string RawStatus, string? RemoteRequestId);
 public sealed record ExternalInvoiceReference(string ExternalReference, string? EttnUuid, string? InvoiceType = null);
@@ -40,7 +36,6 @@ public sealed record InvoiceDeliveryStatus(string ExternalReference, string RawS
 public interface IInvoiceProviderPort
 {
     Task<AdapterResult<ConnectionIdentity>> TestConnectionAsync(AdapterContext context, CancellationToken cancellationToken);
-    Task<AdapterResult<TaxpayerResult>> QueryTaxpayerAsync(AdapterContext context, TaxpayerQuery query, CancellationToken cancellationToken);
     Task<AdapterResult<InvoiceSubmissionResult>> SubmitAsync(AdapterContext context, InvoiceSubmission submission, CancellationToken cancellationToken);
     Task<AdapterResult<InvoiceRemoteStatus>> QueryStatusAsync(AdapterContext context, ExternalInvoiceReference reference, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteInvoiceDocument>> GetDocumentAsync(AdapterContext context, ExternalInvoiceReference reference, string documentKind, CancellationToken cancellationToken);
@@ -53,10 +48,6 @@ public interface IInvoiceMarketplacePort
     Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken);
 }
 
-public sealed record LegalEntityProfileView(Guid Id, string Title, string MaskedTaxId, string Status, DateTimeOffset UpdatedAt, long Version);
-public sealed record UpsertLegalEntityProfileCommand(string Title, string TaxId, string AddressSnapshotJson, string ContactSnapshotJson, string Status);
-public sealed record TaxpayerApplicationView(int Type, string ServiceName, string GibStatus, bool Activated, DateTimeOffset? ActivationDate, DateTimeOffset? DeactivationDate);
-public sealed record TaxpayerView(string TaxId, bool IsRegistered, string? ProviderCustomerId, IReadOnlyList<TaxpayerApplicationView> Applications, DateTimeOffset CheckedAt);
 public sealed record InvoicePolicyView(Guid Id, Guid ProviderConnectionId, string TriggerState, string PackageScope, string DueRule, string RoundingRule, string AdjustmentRule, bool AutoSubmit, long Version);
 public sealed record UpsertInvoicePolicyCommand(string TriggerState, string PackageScope, string DueRule, string RoundingRule, string AdjustmentRule, bool AutoSubmit);
 public sealed record CreateInvoiceCommand(Guid OrderId, Guid? PackageId, Guid ProviderConnectionId, Guid? OriginalInvoiceId);
@@ -69,10 +60,7 @@ public sealed record InvoiceDetailView(Guid Id, Guid OrderId, string OrderNumber
 
 public interface IF4BillingService
 {
-    Task<ServiceResult<LegalEntityProfileView>> GetLegalEntityAsync(Guid tenantId, CancellationToken cancellationToken);
-    Task<ServiceResult<LegalEntityProfileView>> UpsertLegalEntityAsync(Guid tenantId, long? expectedVersion, UpsertLegalEntityProfileCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<InvoicePolicyView>> GetPolicyAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
-    Task<ServiceResult<TaxpayerView>> QueryTaxpayerAsync(Guid tenantId, Guid connectionId, string taxId, CancellationToken cancellationToken);
     Task<ServiceResult<InvoicePolicyView>> UpsertPolicyAsync(Guid tenantId, Guid connectionId, long? expectedVersion, UpsertInvoicePolicyCommand command, CancellationToken cancellationToken);
     Task<PageResult<InvoiceListView>> ListAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
     Task<ServiceResult<InvoiceDetailView>> CreateDraftAsync(Guid tenantId, CreateInvoiceCommand command, string idempotencyKey, CancellationToken cancellationToken);

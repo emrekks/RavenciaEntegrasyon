@@ -148,14 +148,16 @@ test('maps a category-scoped attribute and its value in the unified mapping work
 })
 
 
-test('loads secret-free E-Faturam settings and submits all carrier mappings with ETag', async () => {
-  let patch: RequestInit | undefined
+test('uses only direct E-Faturam credentials and does not expose fiscal account settings', async () => {
+  let credentialRequest: RequestInit | undefined
   globalThis.fetch = vi.fn((input, init) => {
     const url = String(input)
-    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-efaturam-settings' })
-    if (url.endsWith('/api/v1/connections/connection-ef/efaturam-settings')) return json({ integrationModel: 'MARKETPLACE', companyId: 10, userId: 20, prefix: 'RVN', carriers: [{ providerName: 'ANON-CARGO-A', taxId: '1111111111', legalName: 'Anonim Kargo A A.Ş.' }, { providerName: 'ANON-CARGO-B', taxId: '22222222222', legalName: 'Anonim Kargo B A.Ş.' }], purchaseUrl: 'https://www.trendyol.com', paymentAgentName: 'Trendyol', paymentType: 'PAZARYERI', paymentMeans: 'MEDIATOR', eInvoiceType: 'TEMELFATURA', externalWritesEnabled: false, version: 4 })
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-efaturam-direct' })
     if (url.endsWith('/api/v1/connections/connection-ef/capabilities')) return json([])
-    if (url.endsWith('/api/v1/connections/connection-ef') && init?.method === 'PATCH') { patch = init; return json({ id: 'connection-ef', publicId: 'public-ef', platformCode: 'TRENDYOL_EFATURAM', environment: 'STAGE', displayName: 'E-Faturam Stage', externalStoreId: '100001', status: 'VERIFIED', apiVersion: '1.0.0', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, version: 5 }) }
+    if (url.endsWith('/api/v1/connections/connection-ef/credential') && init?.method === 'PUT') {
+      credentialRequest = init
+      return json({})
+    }
     if (url.endsWith('/api/v1/connections/connection-ef')) return json({ id: 'connection-ef', publicId: 'public-ef', platformCode: 'TRENDYOL_EFATURAM', environment: 'STAGE', displayName: 'E-Faturam Stage', externalStoreId: '100001', status: 'VERIFIED', apiVersion: '1.0.0', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, version: 4 })
     return Promise.resolve(new Response('{}', { status: 404, headers: { 'Content-Type': 'application/problem+json' } }))
   }) as typeof fetch
@@ -163,26 +165,20 @@ test('loads secret-free E-Faturam settings and submits all carrier mappings with
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/integrations/connection-ef']}><Routes><Route path="/integrations/:id" element={<IntegrationDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
 
-  expect(await screen.findByRole('heading', { name: 'E-Faturam mali hesap ayarları' })).toBeInTheDocument()
-  const carriers = screen.getByLabelText('Kargo tüzel kimlik eşlemeleri')
-  expect(carriers).toHaveValue('ANON-CARGO-A | 1111111111 | Anonim Kargo A A.Ş.\nANON-CARGO-B | 22222222222 | Anonim Kargo B A.Ş.')
-  fireEvent.change(screen.getByLabelText('E-Fatura senaryosu'), { target: { value: 'TICARIFATURA' } })
-  fireEvent.change(carriers, { target: { value: 'ANON-CARGO-A | 1111111111 | Anonim Kargo A A.Ş.\nANON-CARGO-C | 3333333333 | Anonim Kargo C A.Ş.' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Mali hesap ayarlarını kaydet' }))
+  expect(await screen.findByRole('heading', { name: 'E-Faturam hesabı otomatik yönetilir' })).toBeInTheDocument()
+  expect(screen.queryByText('E-Faturam mali hesap ayarları')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('E-Fatura senaryosu')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Kargo tüzel kimlik eşlemeleri')).not.toBeInTheDocument()
 
-  expect(await screen.findByRole('status')).toHaveTextContent('Bağlantı ayarları güncellendi.')
-  await waitFor(() => expect(patch).toBeDefined())
-  expect(new Headers(patch?.headers).get('If-Match')).toBe('"v4"')
-  expect(JSON.parse(String(patch?.body))).toMatchObject({
-    displayName: 'E-Faturam Stage',
-    efaturamIntegrationModel: 'MARKETPLACE',
-    efaturamCompanyId: 10,
-    efaturamUserId: 20,
-    efaturamPrefix: 'RVN',
-    efaturamEInvoiceType: 'TICARIFATURA',
-    efaturamCarriers: [
-      { providerName: 'ANON-CARGO-A', taxId: '1111111111', legalName: 'Anonim Kargo A A.Ş.' },
-      { providerName: 'ANON-CARGO-C', taxId: '3333333333', legalName: 'Anonim Kargo C A.Ş.' }
-    ]
-  })
+  fireEvent.change(screen.getByLabelText('E-Faturam e-postası'), { target: { value: 'owner@example.test' } })
+  fireEvent.change(screen.getByLabelText('E-Faturam parolası'), { target: { value: 'strong-password' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Şifreli kaydet' }))
+
+  expect(await screen.findByRole('status')).toHaveTextContent('Credential şifreli olarak yenilendi')
+  await waitFor(() => expect(credentialRequest).toBeDefined())
+  const headers = new Headers(credentialRequest?.headers)
+  expect(headers.get('If-Match')).toBe('"v4"')
+  expect(headers.get('Idempotency-Key')).toBeTruthy()
+  expect(headers.get('X-CSRF-TOKEN')).toBeTruthy()
+  expect(JSON.parse(String(credentialRequest?.body))).toEqual({ email: 'owner@example.test', password: 'strong-password' })
 })

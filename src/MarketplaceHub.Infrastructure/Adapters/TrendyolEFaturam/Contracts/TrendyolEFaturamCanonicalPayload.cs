@@ -4,10 +4,10 @@ namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 
 public static class TrendyolEFaturamCanonicalPayload
 {
-    public static string Create(TrendyolEFaturamConnectionSettings settings, string canonicalJson)
+    public static string Create(EfaturamFiscalAccount account, string canonicalJson)
     {
-        if (settings.CompanyId is not > 0 || settings.UserId is not > 0)
-            throw new JsonException("E-Faturam fiscal account is incomplete.");
+        if (account.CompanyId <= 0 || account.UserId <= 0)
+            throw new JsonException("E-Faturam access token scope is incomplete.");
 
         using var document = JsonDocument.Parse(canonicalJson);
         var root = document.RootElement;
@@ -38,13 +38,11 @@ public static class TrendyolEFaturamCanonicalPayload
             {
                 var package = RequiredObject(root, "Package");
                 var cargoProvider = RequiredText(package, "CargoProviderExternalId");
-                var carrier = settings.ConfiguredCarriers.FirstOrDefault(x => string.Equals(x.ProviderName, cargoProvider, StringComparison.OrdinalIgnoreCase))
-                    ?? throw new JsonException("EFATURAM_CARRIER_MAPPING_REQUIRED");
+                if (!TrendyolCarrierCatalog.TryResolve(cargoProvider, out var carrier))
+                    throw new JsonException("EFATURAM_CARRIER_CATALOG_MISS");
                 var sentAt = DateTimeOffset.Parse(RequiredText(package, "StatusOccurredAt"));
-                if (!Uri.TryCreate(settings.PurchaseUrl, UriKind.Absolute, out var purchaseUrl) || purchaseUrl.Scheme != Uri.UriSchemeHttps)
-                    throw new JsonException("EFATURAM_PURCHASE_URL_INVALID");
-                payment = new(purchaseUrl.AbsoluteUri, settings.PaymentAgentName, settings.PaymentType, orderedAt, settings.PaymentMeans);
-                delivery = new(carrier.TaxId, carrier.LegalName, null, DateOnly.FromDateTime(sentAt.Date));
+                payment = new("https://www.trendyol.com", "Trendyol", "PAZARYERI", orderedAt, "MEDIATOR");
+                delivery = new(carrier.TaxId, carrier.Name, null, DateOnly.FromDateTime(sentAt.Date));
             }
 
             var source = new EfaturamInvoicePayloadSource(
@@ -55,7 +53,7 @@ public static class TrendyolEFaturamCanonicalPayload
                     NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), NullText(address, "firstName") ?? NullText(customer.RootElement, "customerFirstName"),
                     NullText(address, "lastName") ?? NullText(customer.RootElement, "customerLastName"), NullText(address, "taxOffice")),
                 lines, payment, delivery);
-            return TrendyolEFaturamInvoicePayload.Create(new(settings.CompanyId.Value, settings.UserId.Value, settings.Prefix), source);
+            return TrendyolEFaturamInvoicePayload.Create(account, source);
         }
         finally
         {

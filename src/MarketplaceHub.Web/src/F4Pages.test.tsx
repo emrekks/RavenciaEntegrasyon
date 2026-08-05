@@ -45,26 +45,45 @@ test('requires explicit password confirmation and queues E-Faturam submission wi
   expect(JSON.parse(String(request?.body))).toEqual({ password: 'test-password', confirmed: true })
 })
 
-test('queries and displays E-Fatura taxpayer applications for the selected provider connection', async () => {
-  globalThis.fetch = vi.fn((input) => {
+test('shows automatic invoice routing and saves only the manual package policy', async () => {
+  let policyRequest: RequestInit | undefined
+  let policyLoaded = false
+  globalThis.fetch = vi.fn((input, init) => {
     const url = String(input)
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-f4-policy' })
     if (url.includes('/api/v1/connections')) return json({ items: [{ id: 'connection-1', platformCode: 'TRENDYOL_EFATURAM', displayName: 'E-Faturam Stage', status: 'ACTIVE' }], nextCursor: null, hasMore: false })
-    if (url.endsWith('/api/v1/billing/legal-entity-profile')) return json({ id: 'legal-1', title: 'Ravencia', maskedTaxId: '******7890', status: 'ACTIVE', version: 1 })
-    if (url.includes('/api/v1/billing/invoice-policies/connection-1')) return json({ id: 'policy-1', providerConnectionId: 'connection-1', triggerState: 'MANUAL_CONFIRMED', packageScope: 'SHIPMENT_PACKAGE', dueRule: 'IMMEDIATE', roundingRule: 'LINE_HALF_AWAY_FROM_ZERO', adjustmentRule: 'REJECT_OVER_ONE_KURUS', autoSubmit: false, version: 1 })
-    if (url.includes('/api/v1/billing/taxpayers/1234567890?connectionId=connection-1')) return json({ taxId: '1234567890', isRegistered: true, providerCustomerId: '100001', checkedAt: '2026-08-05T12:00:00Z', applications: [{ type: 1, serviceName: 'E-FATURA', gibStatus: 'AKTIF', activated: true, activationDate: '2025-01-01T00:00:00Z', deactivationDate: null }] })
+    if (url.includes('/api/v1/billing/invoice-policies/connection-1') && init?.method === 'PUT') {
+      policyRequest = init
+      return json({ id: 'policy-1', providerConnectionId: 'connection-1', triggerState: 'MANUAL_CONFIRMED', packageScope: 'SHIPMENT_PACKAGE', dueRule: 'IMMEDIATE', roundingRule: 'LINE_HALF_AWAY_FROM_ZERO', adjustmentRule: 'REJECT_OVER_ONE_KURUS', autoSubmit: false, version: 2 })
+    }
+    if (url.includes('/api/v1/billing/invoice-policies/connection-1')) { policyLoaded = true; return json({ id: 'policy-1', providerConnectionId: 'connection-1', triggerState: 'MANUAL_CONFIRMED', packageScope: 'SHIPMENT_PACKAGE', dueRule: 'IMMEDIATE', roundingRule: 'LINE_HALF_AWAY_FROM_ZERO', adjustmentRule: 'REJECT_OVER_ONE_KURUS', autoSubmit: false, version: 1 }) }
     return json({ title: 'Bulunamadı' }, 404)
   }) as typeof fetch
 
   render(<QueryClientProvider client={client()}><MemoryRouter><BillingSettingsPage /></MemoryRouter></QueryClientProvider>)
 
-  const provider = await screen.findByLabelText('Provider')
+  expect(await screen.findByRole('heading', { name: 'Otomatik fatura yönlendirmesi' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Belge türü otomatik seçilir' })).toBeInTheDocument()
+  expect(screen.getByText('TEMELFATURA')).toBeInTheDocument()
+  expect(screen.getByText('EARSIVFATURA')).toBeInTheDocument()
+  expect(screen.queryByLabelText('VKN/TCKN')).not.toBeInTheDocument()
+  expect(screen.getByText(/Ödeme ve taşıyıcı alanları ekranda ayar değildir/)).toBeInTheDocument()
+
+  const provider = screen.getByLabelText('Provider')
   await within(provider).findByRole('option', { name: 'E-Faturam Stage' })
   fireEvent.change(provider, { target: { value: 'connection-1' } })
-  const taxpayerForm = screen.getByRole('heading', { name: 'E-Fatura mükellefiyet sorgusu' }).closest('form')!
-  fireEvent.change(within(taxpayerForm).getByLabelText('VKN/TCKN'), { target: { value: '1234567890' } })
-  fireEvent.click(within(taxpayerForm).getByRole('button', { name: 'Provider’dan sorgula' }))
+  await waitFor(() => expect(policyLoaded).toBe(true))
+  fireEvent.click(screen.getByRole('button', { name: 'Manuel paket politikasını kaydet' }))
 
-  expect(await screen.findByText('Aktif e-belge başvurusu bulundu')).toBeInTheDocument()
-  expect(screen.getByText('E-FATURA')).toBeInTheDocument()
-  expect(screen.getByText('AKTIF')).toBeInTheDocument()
+  expect(await screen.findByRole('status')).toHaveTextContent('Manuel paket faturası politikası kaydedildi')
+  await waitFor(() => expect(policyRequest).toBeDefined())
+  expect(new Headers(policyRequest?.headers).get('If-Match')).toBe('"v1"')
+  expect(JSON.parse(String(policyRequest?.body))).toEqual({
+    triggerState: 'MANUAL_CONFIRMED',
+    packageScope: 'SHIPMENT_PACKAGE',
+    dueRule: 'IMMEDIATE',
+    roundingRule: 'LINE_HALF_AWAY_FROM_ZERO',
+    adjustmentRule: 'REJECT_OVER_ONE_KURUS',
+    autoSubmit: false
+  })
 })
