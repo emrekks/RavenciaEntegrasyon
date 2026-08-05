@@ -92,11 +92,7 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         {
             attempt.Outcome = "SUCCEEDED"; attempt.ExternalReference = result.Value!.ExternalReference; attempt.RemoteRequestId = result.Value.RemoteRequestId;
             invoice.ExternalReference = result.Value.ExternalReference; invoice.InvoiceNumber = result.Value.InvoiceNumber; invoice.EttnUuid = result.Value.EttnUuid; invoice.IssuedAt ??= started; invoice.Status = InvoiceStatus.Submitted; invoice.LastErrorCode = null;
-            var documentPayload = JsonSerializer.Serialize(new { invoiceId = invoice.Id });
-            var documentDedup = $"{F4JobTypes.InvoiceDocumentFetch}:{invoice.Id}:automatic";
-            if (await db.PlatformCapabilities.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == F4Capabilities.InvoiceDocumentRead && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken)
-                && !await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == F4JobTypes.InvoiceDocumentFetch && x.JobDedupKey == documentDedup, cancellationToken))
-                db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = F4JobTypes.InvoiceDocumentFetch, PayloadJson = documentPayload, PayloadVersion = 1, PayloadHash = Hash(documentPayload), JobDedupKey = documentDedup, EffectIdempotencyKey = documentDedup, AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 });
+            await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, F4JobTypes.InvoiceReconcile, F4Capabilities.InvoiceStatusRead, "after-submit", correlationId, cancellationToken);
         }
         else
         {
@@ -121,6 +117,7 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
     {
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice is null || invoice.ProviderConnectionId != connectionId || string.IsNullOrWhiteSpace(invoice.ExternalReference)) return false;
+        var cancellationPending = invoice.Status == InvoiceStatus.CancellationPending;
         var result = await provider.QueryStatusAsync(Context(tenantId, connectionId, correlationId, $"reconcile:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, invoice.InvoiceType), cancellationToken);
         if (!result.IsSuccess)
         {
@@ -134,34 +131,41 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         var remote = result.Value!;
         invoice.InvoiceNumber ??= remote.InvoiceNumber;
         invoice.EttnUuid ??= remote.EttnUuid;
-        var normalized = NormalizeRemoteStatus(remote.RawStatus);
-        if (AcceptedStatuses.Contains(normalized))
+        switch (remote.CanonicalStatus)
         {
-            invoice.Status = InvoiceStatus.Accepted;
-            invoice.LastErrorCode = null;
-        }
-        else if (RejectedStatuses.Contains(normalized))
-        {
-            invoice.Status = InvoiceStatus.Rejected;
-            invoice.LastErrorCode = $"REMOTE_{normalized}";
-        }
-        else if (!remote.IsTerminal && PendingStatuses.Contains(normalized))
-        {
-            invoice.Status = InvoiceStatus.Submitted;
-            invoice.LastErrorCode = null;
-            invoice.UpdatedAt = timeProvider.GetUtcNow();
-            invoice.Version++;
-            await db.SaveChangesAsync(cancellationToken);
-            throw new JobProcessingException(JobExecutionResult.Retry("INVOICE_REMOTE_PENDING", "Fatura sağlayıcıda işlenmeye devam ediyor.", TimeSpan.FromMinutes(2)));
-        }
-        else
-        {
-            invoice.Status = InvoiceStatus.ManualReview;
-            invoice.LastErrorCode = "REMOTE_STATUS_MAPPING_REQUIRED";
-            invoice.UpdatedAt = timeProvider.GetUtcNow();
-            invoice.Version++;
-            await db.SaveChangesAsync(cancellationToken);
-            throw new JobProcessingException(JobExecutionResult.ManualReview("REMOTE_STATUS_MAPPING_REQUIRED", $"Eşlenmemiş uzak fatura durumu: {normalized}."));
+            case "ACCEPTED" when cancellationPending:
+                invoice.LastErrorCode = null;
+                invoice.UpdatedAt = timeProvider.GetUtcNow();
+                invoice.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                throw new JobProcessingException(JobExecutionResult.Retry("INVOICE_CANCELLATION_REMOTE_PENDING", "E-Arşiv iptal isteği henüz nihai duruma ulaşmadı.", TimeSpan.FromMinutes(2)));
+            case "ACCEPTED":
+                invoice.Status = InvoiceStatus.Accepted;
+                invoice.LastErrorCode = null;
+                await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, F4JobTypes.InvoiceDocumentFetch, F4Capabilities.InvoiceDocumentRead, "after-acceptance", correlationId, cancellationToken);
+                break;
+            case "REJECTED":
+                invoice.Status = cancellationPending ? InvoiceStatus.CancellationRejected : InvoiceStatus.Rejected;
+                invoice.LastErrorCode = $"REMOTE_STATUS_{remote.RawStatus}";
+                break;
+            case "CANCELLED":
+                invoice.Status = InvoiceStatus.Cancelled;
+                invoice.LastErrorCode = null;
+                break;
+            case "PENDING" when !remote.IsTerminal:
+                invoice.Status = cancellationPending ? InvoiceStatus.CancellationPending : InvoiceStatus.Submitted;
+                invoice.LastErrorCode = null;
+                invoice.UpdatedAt = timeProvider.GetUtcNow();
+                invoice.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                throw new JobProcessingException(JobExecutionResult.Retry(cancellationPending ? "INVOICE_CANCELLATION_REMOTE_PENDING" : "INVOICE_REMOTE_PENDING", "Fatura sağlayıcıda işlenmeye devam ediyor.", TimeSpan.FromMinutes(2)));
+            default:
+                invoice.Status = InvoiceStatus.ManualReview;
+                invoice.LastErrorCode = "REMOTE_STATUS_MAPPING_REQUIRED";
+                invoice.UpdatedAt = timeProvider.GetUtcNow();
+                invoice.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                throw new JobProcessingException(JobExecutionResult.ManualReview("REMOTE_STATUS_MAPPING_REQUIRED", $"Eşlenmemiş uzak fatura durumu: {remote.RawStatus}."));
         }
 
         invoice.UpdatedAt = timeProvider.GetUtcNow();
@@ -284,13 +288,13 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         var existing = await db.InvoiceDocuments.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.DocumentType == document.DocumentKind && x.Sha256 == hash, cancellationToken);
         if (existing is not null)
         {
-            existing.PermanentUrl ??= document.PermanentUrl; invoice.Status = invoice.Status == InvoiceStatus.Submitted ? InvoiceStatus.Accepted : invoice.Status; invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
+            existing.PermanentUrl ??= document.PermanentUrl; invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
             await db.SaveChangesAsync(cancellationToken); return true;
         }
         await using var content = new MemoryStream(document.Content, writable: false); var assetId = Guid.CreateVersion7(); var stored = await files.SaveAsync(tenantId, $"{assetId:N}-{Path.GetFileName(document.FileName)}", document.MimeType, content, document.Content.LongLength, cancellationToken);
         db.FileAssets.Add(new FileAsset { Id = assetId, TenantId = tenantId, Classification = "INVOICE_DOCUMENT", RelativePath = stored, OriginalNameSafe = Path.GetFileName(document.FileName), MimeType = document.MimeType, SizeBytes = document.Content.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() });
         db.InvoiceDocuments.Add(new InvoiceDocument { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, DocumentType = document.DocumentKind, FileAssetId = assetId, Sha256 = hash, ExternalDocumentId = document.ExternalDocumentId, PermanentUrl = document.PermanentUrl, CreatedAt = timeProvider.GetUtcNow() });
-        invoice.Status = invoice.Status == InvoiceStatus.Submitted ? InvoiceStatus.Accepted : invoice.Status; invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++; await db.SaveChangesAsync(cancellationToken); return true;
+        invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++; await db.SaveChangesAsync(cancellationToken); return true;
     }
 
     private async Task<bool> ScanDue(Guid tenantId, CancellationToken cancellationToken)
@@ -308,9 +312,15 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
     private async Task<bool> Cancel(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
-        if (invoice is null || invoice.ProviderConnectionId != connectionId || string.IsNullOrWhiteSpace(invoice.ExternalReference)) return false;
+        if (invoice is null || invoice.ProviderConnectionId != connectionId || invoice.InvoiceType != "EARSIVFATURA" || string.IsNullOrWhiteSpace(invoice.ExternalReference)) return false;
         var result = await provider.CancelAsync(Context(tenantId, connectionId, correlationId, $"cancel:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, "OPERATOR_CONFIRMED"), cancellationToken);
-        if (result.IsSuccess) invoice.Status = InvoiceStatus.Cancelled;
+        if (result.IsSuccess)
+        {
+            invoice.Status = result.Value!.CanonicalStatus == "CANCELLED" ? InvoiceStatus.Cancelled : InvoiceStatus.CancellationPending;
+            invoice.LastErrorCode = null;
+            if (invoice.Status == InvoiceStatus.CancellationPending)
+                await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, F4JobTypes.InvoiceReconcile, F4Capabilities.InvoiceStatusRead, "after-cancellation", correlationId, cancellationToken);
+        }
         else
         {
             invoice.Status = result.Error!.Class switch
@@ -319,8 +329,8 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
                 AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug => InvoiceStatus.ManualReview,
                 _ => InvoiceStatus.CancellationRejected
             };
+            invoice.LastErrorCode = result.Error.Code;
         }
-        invoice.LastErrorCode = result.Error?.Code;
         invoice.UpdatedAt = timeProvider.GetUtcNow();
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
@@ -328,18 +338,15 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         return true;
     }
 
-    private static readonly HashSet<string> AcceptedStatuses = new(StringComparer.Ordinal)
+    private async Task EnqueueAutomaticJob(Guid tenantId, Guid connectionId, Guid invoiceId, string jobType, string capability, string suffix, string correlationId, CancellationToken cancellationToken)
     {
-        "ACCEPTED", "APPROVED", "COMPLETED", "SUCCESS", "SUCCEEDED", "ISSUED", "SENT"
-    };
-    private static readonly HashSet<string> RejectedStatuses = new(StringComparer.Ordinal)
-    {
-        "REJECTED", "FAILED", "ERROR", "INVALID", "CANCELLED", "CANCELED"
-    };
-    private static readonly HashSet<string> PendingStatuses = new(StringComparer.Ordinal)
-    {
-        "PENDING", "PROCESSING", "CREATED", "SUBMITTED", "WAITING", "QUEUED", "IN_PROGRESS"
-    };
+        if (!await db.PlatformCapabilities.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == capability && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken)) return;
+        var dedup = $"{jobType}:{invoiceId}:{suffix}";
+        if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken)) return;
+        var payload = JsonSerializer.Serialize(new { invoiceId });
+        db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 });
+    }
+
     private static readonly HashSet<string> AcceptedDeliveryStatuses = new(StringComparer.Ordinal)
     {
         "DELIVERED", "CONFIRMED", "ACCEPTED", "SUCCESS", "SUCCEEDED", "COMPLETED"

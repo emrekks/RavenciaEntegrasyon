@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { expect, test, vi } from 'vitest'
-import { BrandMappingPage, IntegrationsPage, MappingPage } from './F3Pages'
+import { BrandMappingPage, IntegrationDetailPage, IntegrationsPage, MappingPage } from './F3Pages'
 
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } }))
 
@@ -145,4 +145,44 @@ test('maps a category-scoped attribute and its value in the unified mapping work
   expect(await screen.findByText('Özellik değeri eşlemesi doğrulandı.')).toBeInTheDocument()
   expect(valueMappingUrl).toContain('/mappings/attribute-values/local-value-1')
   await waitFor(() => expect(JSON.parse(valueBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'value-snapshot-1', externalId: 'value-2', status: 'VERIFIED' }))
+})
+
+
+test('loads secret-free E-Faturam settings and submits all carrier mappings with ETag', async () => {
+  let patch: RequestInit | undefined
+  globalThis.fetch = vi.fn((input, init) => {
+    const url = String(input)
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-efaturam-settings' })
+    if (url.endsWith('/api/v1/connections/connection-ef/efaturam-settings')) return json({ integrationModel: 'MARKETPLACE', companyId: 10, userId: 20, prefix: 'RVN', carriers: [{ providerName: 'ANON-CARGO-A', taxId: '1111111111', legalName: 'Anonim Kargo A A.Ş.' }, { providerName: 'ANON-CARGO-B', taxId: '22222222222', legalName: 'Anonim Kargo B A.Ş.' }], purchaseUrl: 'https://www.trendyol.com', paymentAgentName: 'Trendyol', paymentType: 'PAZARYERI', paymentMeans: 'MEDIATOR', eInvoiceType: 'TEMELFATURA', externalWritesEnabled: false, version: 4 })
+    if (url.endsWith('/api/v1/connections/connection-ef/capabilities')) return json([])
+    if (url.endsWith('/api/v1/connections/connection-ef') && init?.method === 'PATCH') { patch = init; return json({ id: 'connection-ef', publicId: 'public-ef', platformCode: 'TRENDYOL_EFATURAM', environment: 'STAGE', displayName: 'E-Faturam Stage', externalStoreId: '100001', status: 'VERIFIED', apiVersion: '1.0.0', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, version: 5 }) }
+    if (url.endsWith('/api/v1/connections/connection-ef')) return json({ id: 'connection-ef', publicId: 'public-ef', platformCode: 'TRENDYOL_EFATURAM', environment: 'STAGE', displayName: 'E-Faturam Stage', externalStoreId: '100001', status: 'VERIFIED', apiVersion: '1.0.0', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, version: 4 })
+    return Promise.resolve(new Response('{}', { status: 404, headers: { 'Content-Type': 'application/problem+json' } }))
+  }) as typeof fetch
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/integrations/connection-ef']}><Routes><Route path="/integrations/:id" element={<IntegrationDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+
+  expect(await screen.findByRole('heading', { name: 'E-Faturam mali hesap ayarları' })).toBeInTheDocument()
+  const carriers = screen.getByLabelText('Kargo tüzel kimlik eşlemeleri')
+  expect(carriers).toHaveValue('ANON-CARGO-A | 1111111111 | Anonim Kargo A A.Ş.\nANON-CARGO-B | 22222222222 | Anonim Kargo B A.Ş.')
+  fireEvent.change(screen.getByLabelText('E-Fatura senaryosu'), { target: { value: 'TICARIFATURA' } })
+  fireEvent.change(carriers, { target: { value: 'ANON-CARGO-A | 1111111111 | Anonim Kargo A A.Ş.\nANON-CARGO-C | 3333333333 | Anonim Kargo C A.Ş.' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Mali hesap ayarlarını kaydet' }))
+
+  expect(await screen.findByRole('status')).toHaveTextContent('Bağlantı ayarları güncellendi.')
+  await waitFor(() => expect(patch).toBeDefined())
+  expect(new Headers(patch?.headers).get('If-Match')).toBe('"v4"')
+  expect(JSON.parse(String(patch?.body))).toMatchObject({
+    displayName: 'E-Faturam Stage',
+    efaturamIntegrationModel: 'MARKETPLACE',
+    efaturamCompanyId: 10,
+    efaturamUserId: 20,
+    efaturamPrefix: 'RVN',
+    efaturamEInvoiceType: 'TICARIFATURA',
+    efaturamCarriers: [
+      { providerName: 'ANON-CARGO-A', taxId: '1111111111', legalName: 'Anonim Kargo A A.Ş.' },
+      { providerName: 'ANON-CARGO-C', taxId: '3333333333', legalName: 'Anonim Kargo C A.Ş.' }
+    ]
+  })
 })

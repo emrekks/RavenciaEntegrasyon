@@ -2,24 +2,31 @@
 
 ## Hedef
 
-Trendyol siparişi/paketi için doğru mali belgeyi oluşturmak, uzak durumunu takip etmek, PDF’yi private saklamak ve Trendyol’a güvenli link iletmek.
+Trendyol siparişi/paketi için doğru E-Fatura veya internet satışı E-Arşiv belgesini oluşturmak, provider durumunu sayısal kodlarla uzlaştırmak, PDF'yi private saklamak, E-Arşiv iptalini takip etmek ve Trendyol paketine güvenli fatura linki iletmek.
 
-## Uygulama sırası
+## Kodlanan kapsam
 
-1. Test firma, company/user scope ve entegrasyon modelini doğrula.
-2. Taxpayer query endpoint ve mapper’ı uygula.
-3. Mali policy: e-Fatura/e-Arşiv seçimi, rounding, due, adjustment ve iptal kurallarını onayla.
-4. Submit payload fixture’larını gerçek ancak anonim örneklerle genişlet.
-5. Invoice status polling ve terminal durum eşlemesini uygula.
-6. Permanent PDF URL alımı, download checksum ve private immutable storage testini tamamla.
-7. Cancellation endpoint, izin, süre ve durum guardlarını uygula.
-8. Trendyol link teslimini `SUBMITTED → CONFIRMED` şeklinde uzlaştır.
-9. Duplicate submit/delivery ve timeout-after-remote-success senaryolarını test et.
+1. `API_USER`: `signIn` ve `x-access-token`.
+2. `MARKETPLACE`: partner `signIn` → müşteri `customerSignIn`; company/user/customer scope doğrulaması.
+3. Partner/VKN-TCKN bazlı mükellefiyet sorgusu ve başvuru ayrıntıları.
+4. Bağlantı bazlı Temel/Ticari E-Fatura senaryosu.
+5. E-Arşiv internet satışı için zorunlu payment/delivery ve kargo tüzel kimlik eşlemesi.
+6. Kuruş dönüşümü, satır/toplam denklemi, yalnız tutarı içeren Türkçe not ve deterministic request hash.
+7. Durable submit → status reconcile → document fetch → Trendyol link delivery akışı.
+8. Resmî sayısal status kataloğu; unknown sonuçta manuel inceleme.
+9. Kalıcı PDF URL, güvenli indirme ve private immutable storage.
+10. E-Arşiv iptal submit → status reconcile; E-Fatura için otomatik iptal yok.
+11. Duplicate submit/delivery koruması, ETag, idempotency ve parola + açık onay.
+12. Panelde güvenli mali ayar read-back, çoklu kargo eşlemesi, filtre, submit/reconcile/deliver/cancel, belge erişimi, mükellef sorgusu ve capability evidence yüzeyleri.
 
-## Çıkış kapısı
+## Dış kabul kapısı
 
-- Aynı sipariş/paket için duplicate mali belge oluşmaz.
-- Uzak durum bilinmeden yerel terminal başarı yazılmaz.
-- PDF public storage’a veya loga düşmez.
-- İptal ve adjustment iş kuralları yazılı mali onaya dayanır.
-- Stage E2E ve production read-only smoke kanıtı vardır.
+- Exact .NET/Node/npm toolchain ile build, unit, integration, Vitest ve Playwright.
+- Docker/PostgreSQL Testcontainers ve Compose smoke.
+- Trendyol E-Faturam Stage credential, company/user scope, kontrollü VKN/TCKN, paket ve fatura fixture'ları.
+- E-Arşiv create/status/PDF/cancel ve Trendyol link teslim E2E.
+- Giden E-Fatura status endpoint'i için exact relative path, tarihli source ve fixture checksum kanıtı; mali write evidence için yalnız resmî E-Faturam doküman hostu kabul edilir.
+
+## Çıkış durumu
+
+`CODE_COMPLETE_STATIC_VERIFIED / DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED / PRODUCTION_BLOCKED`

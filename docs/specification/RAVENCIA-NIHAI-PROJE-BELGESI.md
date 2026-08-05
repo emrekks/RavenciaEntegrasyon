@@ -2,11 +2,11 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 7.0
+**Belge sürümü:** 7.2
 **Belge tarihi:** 5 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
-**Güncel uygulama statüsü:** `F3_CORE_CODE_COMPLETE_VALIDATION_PENDING / F4_IN_PROGRESS / PRODUCTION_BLOCKED`
+**Güncel uygulama statüsü:** `F3_CORE_CODE_COMPLETE_VALIDATION_PENDING / F4_CODE_COMPLETE_VALIDATION_PENDING / PRODUCTION_BLOCKED`
 **Aktif entegrasyon kapsamı:** Trendyol ve Trendyol E-Faturam  
 **Ürün sahibi:** Ravencia  
 **Sistem adı:** Ravencia MarketplaceHub
@@ -507,7 +507,7 @@ Sipariş veya paket detayında kullanıcı “Fatura oluştur” seçeneğini ku
 
 “Fatura oluştur” butonuna basılması faturanın başarıyla kesildiği anlamına gelmez. Kullanıcıya `Taslak`, `Kuyrukta`, `Gönderildi`, `Sağlayıcı işliyor`, `Başarılı`, `Başarısız`, `İptal bekliyor`, `İptal edildi`, `Trendyol'a teslim bekliyor` gibi ayrı durumlar gösterilir.
 
-**Mevcut durum:** Sipariş paketinden fatura taslağı oluşturma, E-Faturam gönderim adapterı, kalıcı URL alanı, güvenli PDF indirme sınırı ve Trendyol link gönderiminin `SUBMITTED`/manuel teyit modeli kodlanmıştır. Mükellef sorgusu, provider durum polling'i, iptal, gerçek Stage PDF/host doğrulaması ve uçtan uca mali kabul tamamlanmamıştır.
+**Mevcut durum:** API_USER ve MARKETPLACE kimlik doğrulaması, mükellef sorgusu, Temel/Ticari E-Fatura ile internet satışı E-Arşiv payloadı, numeric provider status uzlaştırması, güvenli kalıcı PDF, E-Arşiv iptali ve Trendyol link teslimi kodlanmıştır. Giden E-Fatura status endpointi exact Stage/SIT kanıtı olmadan fail-closed kalır. Exact runtime ve gerçek Stage mali E2E tamamlanmadığı için production bloke durumdadır.
 
 ## 7.14 Fatura listesi ve fatura detayı
 
@@ -763,8 +763,8 @@ Aşağıdaki bölümler projenin teknik kapsamını, veri ve güvenlik mimarisin
 | Stok-fiyat write | Birleşik batch ve reconciliation | `CORE_CODE_COMPLETE_STATIC_VERIFIED` | Exact runtime, partial-batch ve Stage kabulü |
 | Sipariş/paket write | Sipariş okuma, izinli paket aksiyonları ve read-back | `CORE_CODE_COMPLETE_STATIC_VERIFIED_CAPABILITY_GATED` | Stage capability evidence ve güvenli yazma kabulü |
 | Etiket | Capability-gated ortak etiket oluşturma ve okuma | `CORE_CODE_COMPLETE_STATIC_VERIFIED_CAPABILITY_GATED` | Stage format ve yazdırma kabulü |
-| E-Faturam submit | Doğru belge oluşturma | `KODLANDI_KISMEN` | Mali policy + Stage E2E |
-| Mükellef/status/cancel | Uçtan uca fatura yaşam döngüsü | `PLANLANDI` | F4 uygulama |
+| E-Faturam submit | Doğru belge oluşturma | `KODLANDI_STATIK_DOGRULANDI` | Exact runtime + Stage E2E |
+| Mükellef/status/cancel | Uçtan uca fatura yaşam döngüsü | `KODLANDI_STATIK_DOGRULANDI` | E-Fatura status exact endpoint evidence + Stage E2E |
 | PDF ve Trendyol teslim | Güvenli PDF + 8 yıllık link | `KODLANDI_KISMEN` | Güvenlik ve reconciliation |
 | Production | Kontrollü pilot ve geri dönüş | `BLOKE` | F3/F4, off-host backup, CI |
 | Yeni platformlar | Adapter registry ile sırayla ekleme | `SONRAKİ_FAZ_F8` | F7 çıkış kapısı |
@@ -776,7 +776,7 @@ Aşağıdaki bölümler projenin teknik kapsamını, veri ve güvenlik mimarisin
 | Platform kodu | Rol | Aktif durum |
 |---|---|---|
 | `TRENDYOL` | Türkiye CORE ürün, referans, stok-fiyat, sipariş, paket, iade, webhook ve fatura linki | F3 CORE kod kapsamı tamamlandı; dinamik/Stage kabulü bekliyor |
-| `TRENDYOL_EFATURAM` | Mükellef, e-Fatura/e-Arşiv, durum, PDF, iptal ve belge sağlayıcı işlemleri | Aktif geliştirme, F4 |
+| `TRENDYOL_EFATURAM` | Mükellef, e-Fatura/e-Arşiv, numeric durum, PDF, E-Arşiv iptal ve belge sağlayıcı işlemleri | F4 kod kapsamı tamamlandı; exact runtime/Stage kabulü bekliyor |
 
 ## 13.2 Mevcut fazlarda kapsam dışı
 
@@ -1266,7 +1266,7 @@ Rate limit servis grubu bazında ele alınır. Worker concurrency yalnız sunucu
 
 ## 16.5 Fatura linki saklama süresi
 
-Trendyol fatura linkinin uzun süre erişilebilir olmasını ister; mevcut yerel Marketplace dokümanında 8 yıllık erişilebilirlik şartı yer alır. Bu nedenle yalnız provider'ın “permanent URL” adını kullanması yeterli kabul edilmez. Link sahipliği, retention, probe ve gerekirse kontrollü belge gateway'i ile garanti edilmelidir.
+Trendyol fatura linkinin en az 8 yıl erişilebilir olmasını ister. Bu nedenle yalnız provider'ın “permanent URL” adını kullanması yeterli kabul edilmez. Link sahipliği, retention, probe ve gerekirse kontrollü belge gateway'i ile garanti edilmelidir.
 
 ---
 
@@ -1274,7 +1274,7 @@ Trendyol fatura linkinin uzun süre erişilebilir olmasını ister; mevcut yerel
 
 ## 17.1 Entegrasyon modeli
 
-İlk ürün tek işletmenin kendi firması adına işlem yaptığı bireysel API kullanıcı modelidir. Çok sayıda alt mükellefi yöneten pazaryeri entegratörü modeli aktif değildir. Entegrasyon modeli test hesabı ve sözleşmeyle kesinleştirilmeden token scope varsayılmaz.
+Bağlantı iki açık modelden biriyle çalışır. `API_USER`, tek işletmenin kendi mali hesabına doğrudan `signIn` yapar. `MARKETPLACE`, partner `signIn` sonrasında müşteri `customerSignIn` çağrısıyla müşteri tokenı ve company/user scope üretir. Model, credential alanları ve scope birbirine karıştırılmaz; customerSignIn sonucundaki companyId/userId bağlantı ayarıyla uyuşmazsa işlem bloklanır.
 
 ## 17.2 Ortamlar
 
@@ -1945,7 +1945,7 @@ Sıra:
 
 ## F4 - Trendyol E-Faturam tamamlama
 
-**Durum:** Devam ediyor, dış hesap ve eksik endpointler nedeniyle blokajlı.
+**Durum:** Kod kapsamı tamamlandı ve statik doğrulandı; exact runtime, Stage/SIT ve production kabulü blokajlı.
 
 Sıra:
 
@@ -1960,7 +1960,7 @@ Sıra:
 9. Cancellation guardları.
 10. Trendyol link delivery reconciliation.
 
-Güncel kod notu: güvenli PDF indirme sınırı ve Trendyol link tesliminde `Submitted -> ManualReview/Confirmed` güvenli durum modeli statik olarak kodlanmıştır. Taxpayer/status/cancel endpointleri ile gerçek Stage PDF ve teslim teyidi hâlâ dış doğrulama bekler.
+Güncel kod notu: API_USER/MARKETPLACE auth, taxpayer, E-Fatura/E-Arşiv create, E-Arşiv status/cancel, numeric durum kataloğu, güvenli permanent PDF, private storage ve Trendyol link tesliminde `Submitted -> ManualReview/Confirmed` modeli kodlanmıştır. Giden E-Fatura UUID status yolu yalnız exact Stage/SIT kanıtı ile yapılandırılır; gerçek mali E2E ve teslim teyidi hâlâ dış doğrulama bekler.
 
 Çıkış:
 
@@ -2155,7 +2155,7 @@ Sistem production-ready ilan edilmeden aşağıdaki maddelerin tamamı sağlanma
 | P0 | Ürün adapterı var fakat application publication orchestration eksik | UI'dan gerçek yayın tamamlanmaz | Durable publication job + batch poll + satır sonucu |
 | P0 | Create/update ayrılmamış | Yanlış endpoint ve veri bozulması | Ayrı command/port sözleşmeleri |
 | P0 | Stok ve fiyat ayrı modellenmiş | Trendyol birleşik isteğiyle uyumsuz | PriceInventoryBatch tasarımı |
-| P0 | E-Faturam status/taxpayer/cancel eksik | Yanlış belge türü ve sahte terminal başarı | F4 planını tamamla, fail-closed |
+| P0 | E-Faturam exact runtime/Stage mali E2E eksik | Sözleşme drift veya yanlış production aktivasyonu | Capability/write kapılarını kapalı tut; F4 Stage kabulünü tamamla |
 | P1 | Provider URL'si güven sınırına alınmamış | SSRF veya hatalı dosya | Exact host/IP/redirect/PDF guard |
 | P1 | Fatura linki uzun süre erişilebilirlik garantisi yok | Yasal/operasyonel teslim sorunu | Retention sözleşmesi + probe + private kopya |
 | P1 | Backup aynı hostta kalabilir | Host kaybında veri ve yedek kaybı | Şifreli off-host ve restore drill |

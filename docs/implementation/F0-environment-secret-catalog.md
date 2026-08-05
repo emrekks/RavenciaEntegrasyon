@@ -49,6 +49,7 @@
 | `S3_SECRET_ACCESS_KEY_FILE` | Off-host secret | SECRET | Resilient profilde; minimum yetki. |
 | `MARKETPLACEHUB_ALLOWED_HOSTS` | ASP.NET host allow-list | Config | Local `localhost;127.0.0.1`; initializer production origin hostunu üretir. |
 | `MARKETPLACEHUB_EFATURAM_DOCUMENT_HOST` | E-Faturam kalıcı PDF URL exact hostu | Config/Security boundary | Opsiyonel; wildcard, path veya query kabul edilmez. Stage/production resmî hostları adapter varsayılanında bulunur; farklı kanıtlı host açıkça eklenir. |
+| `MARKETPLACEHUB_EFATURAM_EINVOICE_STATUS_PATH` | Giden E-Fatura status/search göreli API yolu | Config/Stage evidence boundary | Varsayılan boş. Yalnız exact Stage/SIT kanıtı sonrası relative path; tam URL veya tahmini endpoint yasaktır. |
 
 ## Henüz adlandırılmayan secret'lar
 

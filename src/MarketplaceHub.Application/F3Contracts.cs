@@ -157,12 +157,26 @@ public interface IWebhookVerifier
 }
 
 public sealed record ConnectionView(Guid Id, Guid PublicId, string PlatformCode, string Environment, string DisplayName, string ExternalStoreId, string Status, string ApiVersion, DateTimeOffset? LastTestedAt, DateTimeOffset? LastSuccessAt, string? LastErrorCode, bool HasCredential, long Version);
+public sealed record EfaturamCarrierView(string ProviderName, string TaxId, string LegalName);
+public sealed record EfaturamConnectionSettingsView(string IntegrationModel, long? CompanyId, long? UserId, string? Prefix, IReadOnlyList<EfaturamCarrierView> Carriers, string PurchaseUrl, string PaymentAgentName, string PaymentType, string PaymentMeans, string EInvoiceType, bool ExternalWritesEnabled, long Version);
 public sealed record CapabilityView(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string? SourceUrl, DateTimeOffset? VerifiedAt, string? ConstraintsJson, long Version);
 public sealed record RecordCapabilityEvidenceCommand(string SupportLevel, string SourceUrl, string SourceVersion, string Environment, string StoreScope, string EvidenceNote, string? FixtureChecksum, string? ConstraintsJson, DateTimeOffset VerifiedAt);
 public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null);
 public sealed record EfaturamCarrierCommand(string ProviderName, string TaxId, string LegalName);
-public sealed record UpdateConnectionCommand(string DisplayName, string? UserAgentIdentity, string? EfaturamIntegrationModel = null, long? EfaturamCompanyId = null, long? EfaturamUserId = null, string? EfaturamPrefix = null, IReadOnlyList<EfaturamCarrierCommand>? EfaturamCarriers = null);
-public sealed record CredentialCommand(string? ApiKey, string? ApiSecret, string? Email = null, string? Password = null, string? AccessToken = null, string? ClientSecret = null, string? Username = null);
+public sealed record UpdateConnectionCommand(string DisplayName, string? UserAgentIdentity, string? EfaturamIntegrationModel = null, long? EfaturamCompanyId = null, long? EfaturamUserId = null, string? EfaturamPrefix = null, IReadOnlyList<EfaturamCarrierCommand>? EfaturamCarriers = null, string? EfaturamEInvoiceType = null);
+public sealed record CredentialCommand(
+    string? ApiKey,
+    string? ApiSecret,
+    string? Email = null,
+    string? Password = null,
+    string? AccessToken = null,
+    string? ClientSecret = null,
+    string? Username = null,
+    string? PartnerEmail = null,
+    string? PartnerPassword = null,
+    string? CustomerEmail = null,
+    string? CustomerPassword = null,
+    string? CustomerTaxId = null);
 public sealed record SyncPolicyView(Guid Id, string ResourceType, int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled, long Version);
 public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);
@@ -174,6 +188,7 @@ public interface IF3ConnectionService
     Task<PageResult<ConnectionView>> ListAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken);
     Task<ServiceResult<ConnectionView>> CreateAsync(Guid tenantId, CreateConnectionCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ConnectionView>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
+    Task<ServiceResult<EfaturamConnectionSettingsView>> GetEfaturamSettingsAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ConnectionView>> UpdateAsync(Guid tenantId, Guid id, long expectedVersion, UpdateConnectionCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ConnectionView>> RotateCredentialAsync(Guid tenantId, Guid id, long expectedVersion, CredentialCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueTestAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken);

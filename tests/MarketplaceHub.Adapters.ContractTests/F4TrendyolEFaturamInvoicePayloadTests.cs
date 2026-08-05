@@ -35,9 +35,9 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
     }
 
     [Fact]
-    public void Non_internet_sale_earchive_allows_missing_payment_and_delivery_fields()
+    public void Low_level_payload_omits_optional_internet_fields_when_source_does_not_supply_them()
     {
-        var source = new EfaturamInvoicePayloadSource("local", "EARSIVFATURA", "TRY", "YALNIZ: SIFIR TÜRK LİRASI", "ORDER", new DateOnly(2026, 8, 3), DateTimeOffset.UtcNow,
+        var source = new EfaturamInvoicePayloadSource("local", "TEMELFATURA", "TRY", "YALNIZ: SIFIR TÜRK LİRASI", "ORDER", new DateOnly(2026, 8, 3), DateTimeOffset.UtcNow,
             new("11111111111", "TR", "İstanbul", "Kadıköy", "Adres", null, null, null, "Ad", "Soyad", null),
             [new("Ürün", "C62", 1, 0, 0, 0, 0, 0, 0)]);
         using var payload = JsonDocument.Parse(TrendyolEFaturamInvoicePayload.Create(new(1, 1, null), source));
@@ -89,7 +89,36 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
         Assert.Equal(2, result.RootElement.GetProperty("invoiceLines").GetArrayLength());
         Assert.Equal(30000, result.RootElement.GetProperty("invoiceTotal").GetProperty("payableAmount").GetInt64());
         Assert.Equal("11111111111", result.RootElement.GetProperty("recipientInfo").GetProperty("taxId").GetString());
-        Assert.False(result.RootElement.TryGetProperty("paymentInfo", out _));
-        Assert.False(result.RootElement.TryGetProperty("deliveryInfo", out _));
+        Assert.Equal("https://www.trendyol.com/", result.RootElement.GetProperty("paymentInfo").GetProperty("purchaseUrl").GetString());
+        Assert.Equal("1111111111", result.RootElement.GetProperty("deliveryInfo").GetProperty("carrierTaxId").GetString());
     }
+
+    [Fact]
+    public void Canonical_payload_rejects_non_ascii_tax_digits()
+    {
+        var canonical = JsonSerializer.Serialize(new
+        {
+            Id = Guid.NewGuid(), InvoiceType = "TEMELFATURA", Currency = "TRY", Note = "YALNIZ: YÜZ YİRMİ TÜRK LİRASI", PayableTotal = 120m, IssuedAt = DateTimeOffset.UtcNow,
+            Order = new { OrderNumber = "ORDER", OrderedAt = DateTimeOffset.UtcNow, CustomerSnapshotJson = "{}", InvoiceAddressSnapshotJson = JsonSerializer.Serialize(new { invoiceAddress = new { identityNumber = "١١١١١١١١١١١", countryCode = "TR", city = "İstanbul", district = "Kadıköy", fullAddress = "Adres" } }), ShipmentAddressSnapshotJson = "{}" },
+            Package = (object?)null,
+            Lines = new[] { new { LineSequence = 1, DescriptionSnapshot = "Ürün", SkuSnapshot = "SKU", UnitSnapshot = "ADET", Quantity = 1m, UnitPrice = 100m, DiscountAmount = 0m, VatRate = 20m, VatAmount = 20m, LineTotal = 120m } }
+        });
+        var error = Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new("API_USER", true, 1, 1, "RVN", []), canonical));
+        Assert.Contains("EFATURAM_RECIPIENT_TAX_ID_REQUIRED", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Canonical_earchive_rejects_missing_carrier_mapping()
+    {
+        var canonical = JsonSerializer.Serialize(new
+        {
+            Id = Guid.NewGuid(), InvoiceType = "EARSIVFATURA", Currency = "TRY", Note = "YALNIZ: YÜZ YİRMİ TÜRK LİRASI", PayableTotal = 120m, IssuedAt = DateTimeOffset.UtcNow,
+            Order = new { OrderNumber = "ORDER", OrderedAt = DateTimeOffset.UtcNow, CustomerSnapshotJson = "{}", InvoiceAddressSnapshotJson = JsonSerializer.Serialize(new { invoiceAddress = new { identityNumber = "11111111111", countryCode = "TR", city = "İstanbul", district = "Kadıköy", fullAddress = "Adres" } }), ShipmentAddressSnapshotJson = "{}" },
+            Package = new { ExternalPackageId = "P-1", CargoProviderExternalId = "UNMAPPED", StatusOccurredAt = DateTimeOffset.UtcNow },
+            Lines = new[] { new { LineSequence = 1, DescriptionSnapshot = "Ürün", SkuSnapshot = "SKU", UnitSnapshot = "ADET", Quantity = 1m, UnitPrice = 100m, DiscountAmount = 0m, VatRate = 20m, VatAmount = 20m, LineTotal = 120m } }
+        });
+        var error = Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new("API_USER", true, 1, 1, "RVN", []), canonical));
+        Assert.Contains("EFATURAM_CARRIER_MAPPING_REQUIRED", error.Message, StringComparison.Ordinal);
+    }
+
 }

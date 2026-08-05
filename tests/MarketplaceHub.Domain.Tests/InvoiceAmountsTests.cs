@@ -39,4 +39,13 @@ public sealed class InvoiceAmountsTests
         var address = JsonSerializer.Serialize(new { invoiceAddress = new { eInvoiceAvailable = available } });
         Assert.Equal(expected, InvoiceAmounts.TrendyolInvoiceType(customer, address));
     }
+
+    [Fact]
+    public void Configured_commercial_scenario_is_used_only_for_einvoice_eligible_order()
+    {
+        var customer = JsonSerializer.Serialize(new { commercial = true });
+        var address = JsonSerializer.Serialize(new { invoiceAddress = new { eInvoiceAvailable = true } });
+        Assert.Equal("TICARIFATURA", InvoiceAmounts.TrendyolInvoiceType(customer, address, "TICARIFATURA"));
+    }
+
 }

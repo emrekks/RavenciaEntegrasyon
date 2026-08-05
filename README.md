@@ -1,6 +1,6 @@
 # Ravencia MarketplaceHub
 
-> **Codex/devralma başlangıç noktası:** Önce [`AGENTS.md`](AGENTS.md), [`RAVENCIA-NIHAI-PROJE-BELGESI.md`](docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md), [`PROJECT-STATUS.yaml`](docs/implementation/PROJECT-STATUS.yaml) ve [`CURRENT-PHASE.md`](docs/implementation/CURRENT-PHASE.md) dosyalarını okuyun. Aktif durum `F3_CORE_CODE_COMPLETE_VALIDATION_PENDING / F4_IN_PROGRESS / PRODUCTION_BLOCKED` olarak işaretlenmiştir.
+> **Codex/devralma başlangıç noktası:** Önce [`AGENTS.md`](AGENTS.md), [`RAVENCIA-NIHAI-PROJE-BELGESI.md`](docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md), [`PROJECT-STATUS.yaml`](docs/implementation/PROJECT-STATUS.yaml) ve [`CURRENT-PHASE.md`](docs/implementation/CURRENT-PHASE.md) dosyalarını okuyun. Aktif durum `F3_CORE_CODE_COMPLETE_VALIDATION_PENDING / F4_CODE_COMPLETE_VALIDATION_PENDING / PRODUCTION_BLOCKED` olarak işaretlenmiştir.
 
 Ravencia MarketplaceHub, tek işletmenin Trendyol satış, ürün, sipariş, iade ve Trendyol E-Faturam süreçlerini aynı panelden yönetmesi için geliştirilen modüler monolit uygulamadır.
 
@@ -38,8 +38,8 @@ Diğer pazaryerlerine ait adapter, UI seçeneği, Worker yönlendirmesi ve job t
 | Trendyol Product V2 create/update/archive + approval | Kodlandı ve statik doğrulandı; dynamic/Stage kabulü gerekli |
 | Trendyol birleşik stok + fiyat yazma | Kodlandı; sürüm korumalı batch, dynamic/Stage kabulü gerekli |
 | Trendyol Order V2, paket, etiket ve iade | Kodlandı; capability evidence ve Stage fixture gerekli |
-| E-Faturam giriş, fatura gönderimi, PDF kalıcı URL | Kodlandı; test firma E2E kanıtı gerekli |
-| E-Faturam mükellef sorgu, durum sorgu, iptal | Tamamlanmadı; fail-closed |
+| E-Faturam API_USER/MARKETPLACE giriş, güvenli mali ayarlar, mükellef sorgu, fatura gönderimi, numeric durum, permanent PDF ve E-Arşiv iptal | Kod kapsamı tamamlandı; exact runtime ve Stage mali E2E gerekli |
+| Giden E-Fatura UUID durum sorgusu | Exact Stage/SIT endpoint kanıtı gelene kadar yapılandırma düzeyinde fail-closed |
 | Fatura linkini Trendyol’a iletme | Kodlandı; gerçek package ile Stage kabul testi gerekli |
 | Production kabulü | Engelli; dış hesap, mali karar, backup ve E2E kanıtları gerekiyor |
 

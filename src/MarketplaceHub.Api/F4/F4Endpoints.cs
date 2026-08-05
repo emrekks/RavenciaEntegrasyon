@@ -14,6 +14,7 @@ public static class F4Endpoints
         api.MapPut("/billing/legal-entity-profile", UpsertLegalEntity);
         api.MapGet("/billing/invoice-policies/{connectionId:guid}", async (Guid connectionId, HttpContext http, IF4BillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetPolicyAsync(tenant.TenantId, connectionId, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPut("/billing/invoice-policies/{connectionId:guid}", UpsertPolicy);
+        api.MapGet("/billing/taxpayers/{taxId}", async (string taxId, Guid connectionId, HttpContext http, IF4BillingService service) => Tenant(http) is { } tenant ? Result(await service.QueryTaxpayerAsync(tenant.TenantId, connectionId, taxId, http.RequestAborted), value => Results.Ok(value)) : Unauthorized(http));
 
         api.MapGet("/invoices", async (HttpContext http, IF4BillingService service, int? limit, string? after, string? status) => Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http));
         api.MapPost("/invoices", async (CreateInvoiceCommand command, HttpContext http, IF4BillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateDraftAsync(tenant.TenantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.RequestAborted), "/api/v1/invoices") : MissingContext(http));

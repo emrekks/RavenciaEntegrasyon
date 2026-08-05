@@ -18,7 +18,7 @@ public static class TrendyolEFaturamCanonicalPayload
         {
             var address = RequiredObject(addressSnapshot.RootElement, "invoiceAddress");
             var taxId = Text(address, "taxNumber", "invoiceTaxNumber", "identityNumber", "IdentityNumber");
-            if (taxId.Length is not (10 or 11) || !taxId.All(char.IsDigit))
+            if (taxId.Length is not (10 or 11) || !taxId.All(char.IsAsciiDigit))
                 throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
 
             var invoiceType = RequiredText(root, "InvoiceType");
@@ -32,6 +32,21 @@ public static class TrendyolEFaturamCanonicalPayload
             }).ToArray();
 
             var orderedAt = DateTimeOffset.Parse(RequiredText(order, "OrderedAt"));
+            EfaturamPayment? payment = null;
+            EfaturamDelivery? delivery = null;
+            if (invoiceType == "EARSIVFATURA")
+            {
+                var package = RequiredObject(root, "Package");
+                var cargoProvider = RequiredText(package, "CargoProviderExternalId");
+                var carrier = settings.ConfiguredCarriers.FirstOrDefault(x => string.Equals(x.ProviderName, cargoProvider, StringComparison.OrdinalIgnoreCase))
+                    ?? throw new JsonException("EFATURAM_CARRIER_MAPPING_REQUIRED");
+                var sentAt = DateTimeOffset.Parse(RequiredText(package, "StatusOccurredAt"));
+                if (!Uri.TryCreate(settings.PurchaseUrl, UriKind.Absolute, out var purchaseUrl) || purchaseUrl.Scheme != Uri.UriSchemeHttps)
+                    throw new JsonException("EFATURAM_PURCHASE_URL_INVALID");
+                payment = new(purchaseUrl.AbsoluteUri, settings.PaymentAgentName, settings.PaymentType, orderedAt, settings.PaymentMeans);
+                delivery = new(carrier.TaxId, carrier.LegalName, null, DateOnly.FromDateTime(sentAt.Date));
+            }
+
             var source = new EfaturamInvoicePayloadSource(
                 RequiredText(root, "Id"), invoiceType, RequiredText(root, "Currency"), RequiredText(root, "Note"), RequiredText(order, "OrderNumber"),
                 DateOnly.FromDateTime(orderedAt.Date), DateTimeOffset.Parse(RequiredText(root, "IssuedAt")),
@@ -39,7 +54,7 @@ public static class TrendyolEFaturamCanonicalPayload
                     Text(address, "fullAddress", "address1", "addressText", "address"), NullText(address, "postalCode"), NullText(address, "phone"),
                     NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), NullText(address, "firstName") ?? NullText(customer.RootElement, "customerFirstName"),
                     NullText(address, "lastName") ?? NullText(customer.RootElement, "customerLastName"), NullText(address, "taxOffice")),
-                lines);
+                lines, payment, delivery);
             return TrendyolEFaturamInvoicePayload.Create(new(settings.CompanyId.Value, settings.UserId.Value, settings.Prefix), source);
         }
         finally

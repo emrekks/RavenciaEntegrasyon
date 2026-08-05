@@ -143,6 +143,50 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Efaturam_safe_settings_readback_preserves_unspecified_fields_and_multiple_carriers()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var tenantId = Guid.NewGuid();
+        await using (var setup = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options))
+        {
+            await setup.Database.MigrateAsync(cancellationToken);
+            var now = DateTimeOffset.UtcNow;
+            setup.Tenants.Add(new Tenant { Id = tenantId, Code = $"efaturam-{tenantId:N}", DisplayName = "E-Faturam Settings", CreatedAt = now, UpdatedAt = now });
+            await setup.SaveChangesAsync(cancellationToken);
+        }
+
+        await using var provider = BuildProvider($"Aa!9-{Guid.NewGuid():N}");
+        await using var scope = provider.CreateAsyncScope();
+        var service = scope.ServiceProvider.GetRequiredService<IF3ConnectionService>();
+        var created = await service.CreateAsync(tenantId, new("E-Faturam Stage", "STAGE", "100001", "1.0.0", null, "TRENDYOL_EFATURAM"), cancellationToken);
+        Assert.True(created.Succeeded);
+
+        var updated = await service.UpdateAsync(tenantId, created.Value!.Id, created.Value.Version, new(
+            "E-Faturam Stage", null, "API_USER", 10, 20, "RVN",
+            [new("ANON-CARGO-1", "1111111111", "Anonim Kargo Bir"), new("ANON-CARGO-2", "11111111111", "Anonim Kargo İki")],
+            "TICARIFATURA"), cancellationToken);
+        Assert.True(updated.Succeeded);
+
+        var first = await service.GetEfaturamSettingsAsync(tenantId, created.Value.Id, cancellationToken);
+        Assert.True(first.Succeeded);
+        Assert.Equal(2, first.Value!.Carriers.Count);
+        Assert.Equal("TICARIFATURA", first.Value.EInvoiceType);
+        Assert.False(first.Value.ExternalWritesEnabled);
+
+        var partial = await service.UpdateAsync(tenantId, created.Value.Id, updated.Value!.Version, new(
+            "E-Faturam Stage Güncel", null, "API_USER", null, null, null, null, null), cancellationToken);
+        Assert.True(partial.Succeeded);
+
+        var preserved = await service.GetEfaturamSettingsAsync(tenantId, created.Value.Id, cancellationToken);
+        Assert.True(preserved.Succeeded);
+        Assert.Equal(10, preserved.Value!.CompanyId);
+        Assert.Equal(20, preserved.Value.UserId);
+        Assert.Equal("RVN", preserved.Value.Prefix);
+        Assert.Equal("TICARIFATURA", preserved.Value.EInvoiceType);
+        Assert.Equal(new[] { "ANON-CARGO-1", "ANON-CARGO-2" }, preserved.Value.Carriers.Select(x => x.ProviderName));
+    }
+
+    [Fact]
     public async Task Job_dedup_lease_heartbeat_and_stale_token_guards_hold()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

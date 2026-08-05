@@ -54,7 +54,8 @@ def main() -> int:
         if code not in status_text or code not in agents_text:
             errors.append(f"active scope {code} missing from status or AGENTS")
     valid_f3_states = ("F3_CLOSURE_ACTIVE", "F3_CORE_CODE_COMPLETE_VALIDATION_PENDING")
-    if not any(state in current_text for state in valid_f3_states) or "F4_IN_PROGRESS" not in current_text:
+    valid_f4_states = ("F4_IN_PROGRESS", "F4_CODE_COMPLETE_VALIDATION_PENDING")
+    if not any(state in current_text for state in valid_f3_states) or not any(state in current_text for state in valid_f4_states):
         errors.append("CURRENT-PHASE does not declare the expected active or validation-pending F3/F4 state")
     status_version_match = re.search(r'^document_version:\s*["\']?([^"\'\s]+)', status_text, flags=re.M)
     spec_version_match = re.search(r'\*\*Belge sürümü:\*\*\s*([^\s]+)', spec_text)

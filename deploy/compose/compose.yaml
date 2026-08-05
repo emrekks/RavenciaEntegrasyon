@@ -21,6 +21,7 @@ x-app: &app
     Bootstrap__OwnerDisplayName: ${MARKETPLACEHUB_BOOTSTRAP_OWNER_NAME:-Ravencia Admin}
     FeatureFlags__ExternalWrites: "false"
     TrendyolEFaturam__DocumentAllowedHosts__0: ${MARKETPLACEHUB_EFATURAM_DOCUMENT_HOST:-}
+    TrendyolEFaturam__OutgoingInvoiceStatusPath: ${MARKETPLACEHUB_EFATURAM_EINVOICE_STATUS_PATH:-}
     Worker__HealthFile: /tmp/marketplacehub-worker-heartbeat
     Storage__Root: /var/lib/marketplacehub/files
     DataProtection__KeysRoot: /var/lib/marketplacehub/dp-keys

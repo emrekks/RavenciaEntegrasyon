@@ -87,6 +87,27 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
         var connection = await Find(tenantId, id, cancellationToken); return connection is null ? NotFound<ConnectionView>() : ServiceResult<ConnectionView>.Ok(Map(connection, await HasCredential(tenantId, id, cancellationToken)));
     }
 
+    public async Task<ServiceResult<EfaturamConnectionSettingsView>> GetEfaturamSettingsAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        if (connection is null) return NotFound<EfaturamConnectionSettingsView>();
+        if (connection.PlatformCode != "TRENDYOL_EFATURAM") return ServiceResult<EfaturamConnectionSettingsView>.Fail("PLATFORM_MISMATCH", "Bu ayar görünümü yalnız Trendyol E-Faturam bağlantıları içindir.", 409);
+        var settings = ReadEfaturamSettings(connection);
+        return ServiceResult<EfaturamConnectionSettingsView>.Ok(new(
+            settings.IntegrationModel,
+            settings.CompanyId,
+            settings.UserId,
+            settings.Prefix,
+            settings.ConfiguredCarriers.Select(x => new EfaturamCarrierView(x.ProviderName, x.TaxId, x.LegalName)).ToList(),
+            settings.PurchaseUrl,
+            settings.PaymentAgentName,
+            settings.PaymentType,
+            settings.PaymentMeans,
+            settings.EInvoiceType,
+            settings.ExternalWritesEnabled,
+            connection.Version));
+    }
+
     public async Task<ServiceResult<ConnectionView>> UpdateAsync(Guid tenantId, Guid id, long expectedVersion, UpdateConnectionCommand command, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM"), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
@@ -95,16 +116,24 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
         if (connection.PlatformCode == "TRENDYOL") connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), ReadSettings(connection).ExternalWritesEnabled));
         if (connection.PlatformCode == "TRENDYOL_EFATURAM" && command.EfaturamIntegrationModel is not null)
         {
+            var current = ReadEfaturamSettings(connection);
             var integrationModel = command.EfaturamIntegrationModel.Trim().ToUpperInvariant();
             if (integrationModel is not ("API_USER" or "MARKETPLACE")) return Invalid<ConnectionView>("efaturamIntegrationModel", "E-Faturam entegrasyon modeli API_USER veya MARKETPLACE olmalıdır.");
-            if (command.EfaturamCompanyId is null or <= 0 || command.EfaturamUserId is null or <= 0) return Invalid<ConnectionView>("efaturamFiscalAccount", "E-Faturam companyId ve userId pozitif olmalıdır.");
-            var prefix = command.EfaturamPrefix?.Trim().ToUpperInvariant();
+            var companyId = command.EfaturamCompanyId ?? current.CompanyId;
+            var userId = command.EfaturamUserId ?? current.UserId;
+            if (companyId is null or <= 0 || userId is null or <= 0) return Invalid<ConnectionView>("efaturamFiscalAccount", "E-Faturam companyId ve userId pozitif olmalıdır.");
+            var prefix = command.EfaturamPrefix is null ? current.Prefix : command.EfaturamPrefix.Trim().ToUpperInvariant();
             if (!string.IsNullOrEmpty(prefix) && (prefix.Length != 3 || prefix.Any(x => !char.IsAsciiLetterOrDigit(x)))) return Invalid<ConnectionView>("efaturamPrefix", "Fatura serisi tam 3 harf/rakam olmalıdır.");
-            var carriers = (command.EfaturamCarriers ?? []).Select(x => new EfaturamCarrierIdentity(x.ProviderName.Trim(), x.TaxId.Trim(), x.LegalName.Trim())).ToList();
+            var carriers = command.EfaturamCarriers is null
+                ? current.ConfiguredCarriers.ToList()
+                : command.EfaturamCarriers.Select(x => new EfaturamCarrierIdentity(x.ProviderName.Trim(), x.TaxId.Trim(), x.LegalName.Trim())).ToList();
             if (carriers.Any(x => string.IsNullOrWhiteSpace(x.ProviderName) || string.IsNullOrWhiteSpace(x.LegalName) || x.TaxId.Length is not (10 or 11) || !x.TaxId.All(char.IsAsciiDigit))) return Invalid<ConnectionView>("efaturamCarriers", "Kargo bilgisi girildiğinde sağlayıcı adı, yasal unvan ve 10/11 haneli VKN/TCKN birlikte girilmelidir.");
             if (carriers.Select(x => x.ProviderName).Distinct(StringComparer.OrdinalIgnoreCase).Count() != carriers.Count) return Invalid<ConnectionView>("efaturamCarriers", "Aynı kargo sağlayıcısı yalnız bir kez tanımlanabilir.");
-            var current = ReadEfaturamSettings(connection);
-            connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(integrationModel, current.ExternalWritesEnabled, command.EfaturamCompanyId, command.EfaturamUserId, prefix, carriers));
+            var eInvoiceType = (command.EfaturamEInvoiceType ?? current.EInvoiceType).Trim().ToUpperInvariant();
+            if (eInvoiceType is not ("TEMELFATURA" or "TICARIFATURA")) return Invalid<ConnectionView>("efaturamEInvoiceType", "E-Fatura tipi TEMELFATURA veya TICARIFATURA olmalıdır.");
+            connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(
+                integrationModel, current.ExternalWritesEnabled, companyId, userId, prefix, carriers,
+                current.PurchaseUrl, current.PaymentAgentName, current.PaymentType, current.PaymentMeans, eInvoiceType));
         }
         connection.Version++;
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, await HasCredential(tenantId, id, cancellationToken)));
@@ -114,12 +143,29 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM"), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
         if (connection.PlatformCode == "TRENDYOL" && (string.IsNullOrWhiteSpace(command.ApiKey) || string.IsNullOrWhiteSpace(command.ApiSecret))) return Invalid<ConnectionView>("credential", "Trendyol için API key ve secret zorunludur.");
-        if (connection.PlatformCode == "TRENDYOL_EFATURAM" && (string.IsNullOrWhiteSpace(command.Email) || string.IsNullOrWhiteSpace(command.Password))) return Invalid<ConnectionView>("credential", "E-Faturam için e-posta ve parola zorunludur.");
+        TrendyolEFaturamCredentialPayload? efaturamCredential = null;
+        if (connection.PlatformCode == "TRENDYOL_EFATURAM")
+        {
+            var settings = ReadEfaturamSettings(connection);
+            if (settings.IntegrationModel == "API_USER")
+            {
+                if (string.IsNullOrWhiteSpace(command.Email) || string.IsNullOrWhiteSpace(command.Password)) return Invalid<ConnectionView>("credential", "API kullanıcısı modeli için E-Faturam e-posta ve parola zorunludur.");
+                efaturamCredential = new(command.Email.Trim(), command.Password);
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(command.PartnerEmail) || string.IsNullOrWhiteSpace(command.PartnerPassword) || string.IsNullOrWhiteSpace(command.CustomerEmail) || string.IsNullOrWhiteSpace(command.CustomerPassword) || string.IsNullOrWhiteSpace(command.CustomerTaxId))
+                    return Invalid<ConnectionView>("credential", "Pazaryeri modeli için partner ve müşteri e-posta/parolası ile müşteri VKN/TCKN zorunludur.");
+                var taxId = command.CustomerTaxId.Trim();
+                if (taxId.Length is not (10 or 11) || !taxId.All(char.IsAsciiDigit)) return Invalid<ConnectionView>("customerTaxId", "Müşteri VKN/TCKN 10 veya 11 rakam olmalıdır.");
+                efaturamCredential = new(null, null, command.PartnerEmail.Trim(), command.PartnerPassword, command.CustomerEmail.Trim(), command.CustomerPassword, taxId);
+            }
+        }
         var now = timeProvider.GetUtcNow(); var current = await db.PlatformCredentials.Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.RevokedAt == null).ToListAsync(cancellationToken); foreach (var item in current) { item.RevokedAt = now; item.Version++; }
         var payload = connection.PlatformCode == "TRENDYOL"
             ? JsonSerializer.Serialize(new CredentialPayload(command.ApiKey!, command.ApiSecret!))
-            : JsonSerializer.Serialize(new EfaturamCredentialPayload(command.Email!, command.Password!));
-        var hint = connection.PlatformCode == "TRENDYOL" ? Mask(command.ApiKey!) : MaskEmail(command.Email!);
+            : JsonSerializer.Serialize(efaturamCredential!);
+        var hint = connection.PlatformCode == "TRENDYOL" ? Mask(command.ApiKey!) : MaskEmail(efaturamCredential!.Email ?? efaturamCredential.PartnerEmail!);
         var credentialType = connection.PlatformCode == "TRENDYOL" ? "BASIC" : "EMAIL_PASSWORD";
         db.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, CredentialType = credentialType, ProtectedPayload = _credentialProtector.Protect(payload), MaskedHint = hint, CreatedAt = now, Version = 1 });
         connection.LastTestedAt = null; connection.LastSuccessAt = null; connection.LastErrorCode = null; connection.Status = "DRAFT"; connection.Version++;
@@ -172,8 +218,9 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
         if (support is not ("SUPPORTED" or "UNKNOWN" or "NOT_SUPPORTED")) return Invalid<CapabilityView>("supportLevel", "Support level SUPPORTED, UNKNOWN veya NOT_SUPPORTED olmalıdır.");
         if (!string.Equals(command.Environment.Trim(), connection.Environment, StringComparison.OrdinalIgnoreCase) || !string.Equals(command.StoreScope.Trim(), connection.ExternalStoreId, StringComparison.Ordinal))
             return Invalid<CapabilityView>("scope", "Evidence environment ve store scope bağlantıyla bire bir eşleşmelidir.");
-        if (!Uri.TryCreate(command.SourceUrl.Trim(), UriKind.Absolute, out var sourceUri) || sourceUri.Scheme != Uri.UriSchemeHttps || !sourceUri.Host.Equals("developers.trendyol.com", StringComparison.OrdinalIgnoreCase))
-            return Invalid<CapabilityView>("sourceUrl", "Capability evidence yalnız resmî HTTPS Trendyol geliştirici kaynağına dayanabilir.");
+        var officialEvidenceHost = CapabilityEvidencePolicy.OfficialDocumentationHost(connection.PlatformCode);
+        if (!Uri.TryCreate(command.SourceUrl.Trim(), UriKind.Absolute, out var sourceUri) || sourceUri.Scheme != Uri.UriSchemeHttps || !sourceUri.Host.Equals(officialEvidenceHost, StringComparison.OrdinalIgnoreCase))
+            return Invalid<CapabilityView>("sourceUrl", $"Capability evidence yalnız resmî HTTPS {officialEvidenceHost} kaynağına dayanabilir.");
         if (string.IsNullOrWhiteSpace(command.SourceVersion) || string.IsNullOrWhiteSpace(command.EvidenceNote) || command.EvidenceNote.Trim().Length > 1000)
             return Invalid<CapabilityView>("evidenceNote", "Kaynak sürümü ve en fazla 1000 karakterlik evidence note zorunludur.");
         var now = timeProvider.GetUtcNow();
@@ -183,7 +230,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
             try { using var constraints = JsonDocument.Parse(command.ConstraintsJson); if (constraints.RootElement.ValueKind != JsonValueKind.Object) return Invalid<CapabilityView>("constraintsJson", "Capability constraints JSON nesnesi olmalıdır."); }
             catch (JsonException) { return Invalid<CapabilityView>("constraintsJson", "Capability constraints geçerli JSON olmalıdır."); }
         }
-        var writeCapability = normalizedCode is F3Capabilities.ProductWrite or F3Capabilities.InventoryWrite or F3Capabilities.PriceWrite or F3Capabilities.ShipmentWrite or F3Capabilities.LabelWrite or F3Capabilities.ReturnWrite or F4Capabilities.InvoiceDeliver;
+        var writeCapability = CapabilityEvidencePolicy.RequiresStageFixtureChecksum(normalizedCode);
         var checksum = command.FixtureChecksum?.Trim().ToUpperInvariant();
         if (support == "SUPPORTED" && writeCapability && (checksum is null || checksum.Length != 64 || checksum.Any(x => !Uri.IsHexDigit(x))))
             return Invalid<CapabilityView>("fixtureChecksum", "Write capability SUPPORTED yapılırken 64 haneli SHA-256 Stage/SIT fixture checksum zorunludur.");
@@ -264,7 +311,6 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
     private sealed record CredentialPayload(string ApiKey, string ApiSecret);
-    private sealed record EfaturamCredentialPayload(string Email, string Password);
     private sealed record ConnectionSettings(string UserAgentIdentity, bool ExternalWritesEnabled);
     private sealed record WebhookVerifierPayload(string? Username, string? Password, string? ApiKey, string? ClientSecret);
 }

@@ -26,13 +26,25 @@
 | Invoice link delivery | Uygulandı | POST sonrası `SUBMITTED`; gerçek package ve URL retention testi gerekli |
 | Invoice delivery terminal query | Doğrulanmadı | Sahte başarı yok; manuel teyit veya resmî query kanıtı gerekir |
 
-## E-Faturam
+## Trendyol E-Faturam
 
-F4 kapsamıdır. Sign-in/submit/PDF URL kodu vardır; taxpayer, status ve cancel ile gerçek mali E2E tamamlanmamıştır.
+Mali ayarlar secret içermeyen ayrı read-back sözleşmesiyle yönetilir. Birden çok kargo sağlayıcısı VKN/TCKN ve yasal unvanla eşlenebilir; submit sırasında paket sağlayıcısının bire bir eşleşmesi zorunludur.
+
+| Capability | Kod durumu | Dış kanıt / çıkış durumu |
+| --- | --- | --- |
+| Connection test | Uygulandı | API_USER ve MARKETPLACE auth Stage hesabıyla doğrulanmalı |
+| Taxpayer query | Uygulandı | MARKETPLACE + sayısal Partner ID + kontrollü VKN/TCKN fixture gerekli |
+| Invoice submit | Uygulandı | E-Fatura/E-Arşiv safe-write Stage fixture gerekli |
+| E-Arşiv status read | Uygulandı | UUID ve 10/20/29/30/40/50/100/105/200/205/305/405 kodları Stage'de doğrulanmalı |
+| Giden E-Fatura status read | Fail-closed | Exact göreli endpoint deployment ayarı yalnız Stage/SIT evidence sonrasında girilir |
+| Invoice document read | Uygulandı | Resmî permanent URL hostu, PDF ve retention E2E gerekli |
+| E-Arşiv cancel | Uygulandı | 305 terminal read-back fixture gerekli |
+| E-Fatura cancel | Otomatik desteklenmez | Mevzuata uygun manuel itiraz/iptal süreci |
+| Trendyol invoice delivery | Uygulandı | Provider permanent URL ve gerçek package E2E; terminal teyit kanıtı yoksa manuel review |
 
 ## Açılma kuralı
 
-Capability `UNKNOWN` iken API/UI dış iş oluşturamaz. Evidence endpoint'i yalnız Owner/Administrator tarafından ETag ve audit ile güncellenir; resmî HTTPS kaynak, environment/store bire bir eşleşmesi ve write için 64 haneli fixture SHA-256 ister.
+Capability `UNKNOWN` iken API/UI dış iş oluşturamaz. Evidence endpoint'i yalnız Owner/Administrator tarafından ETag ve audit ile güncellenir; platforma göre `developers.trendyol.com` veya `developers.trendyolefaturam.com` resmî HTTPS kaynağı, environment/store bire bir eşleşmesi ve write için 64 haneli fixture SHA-256 ister.
 
 ## Kanal sınırı
 

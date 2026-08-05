@@ -6,7 +6,7 @@ public sealed record VatIncludedInvoiceAmount(decimal TaxExclusiveAmount, decima
 
 public static class InvoiceAmounts
 {
-    public static string TrendyolInvoiceType(string customerSnapshotJson, string invoiceAddressSnapshotJson)
+    public static string TrendyolInvoiceType(string customerSnapshotJson, string invoiceAddressSnapshotJson, string eInvoiceType = "TEMELFATURA")
     {
         try
         {
@@ -14,7 +14,9 @@ public static class InvoiceAmounts
             using var address = JsonDocument.Parse(invoiceAddressSnapshotJson);
             var commercial = customer.RootElement.TryGetProperty("commercial", out var commercialValue) && commercialValue.ValueKind == JsonValueKind.True;
             var available = address.RootElement.TryGetProperty("invoiceAddress", out var invoiceAddress) && invoiceAddress.TryGetProperty("eInvoiceAvailable", out var availableValue) && availableValue.ValueKind == JsonValueKind.True;
-            return commercial && available ? "TEMELFATURA" : "EARSIVFATURA";
+            var configured = eInvoiceType.Trim().ToUpperInvariant();
+            if (configured is not ("TEMELFATURA" or "TICARIFATURA")) configured = "TEMELFATURA";
+            return commercial && available ? configured : "EARSIVFATURA";
         }
         catch (JsonException) { return "EARSIVFATURA"; }
     }

@@ -1,7 +1,7 @@
 # Ravencia MarketplaceHub — Baştan Sona Proje İncelemesi
 
-**İnceleme tarihi:** 2026-08-04  
-**İncelenen girdi:** `V3-Ravencia-Entegrasyon(1).rar`  
+**İnceleme tarihi:** 2026-08-04
+**İncelenen girdi:** `V3-Ravencia-Entegrasyon(1).rar`
 **Hedef kapsam:** Yalnız Trendyol + Trendyol E-Faturam
 
 ## 1. Yönetici özeti
@@ -86,26 +86,26 @@ Eski platform adı taşıyan uygulanmış EF Core migration silinmedi. Bu dosya 
 
 ### P0 — Teslim arşivinde runtime verisi ve geçmiş
 
-**Sorun:** `.git`, build çıktıları ve PostgreSQL data/WAL kaynak arşivindeydi.  
-**Etki:** Gereksiz büyüklük; kişisel/iş verisi veya secret sızıntısı; başka makinede hatalı DB kopyası.  
+**Sorun:** `.git`, build çıktıları ve PostgreSQL data/WAL kaynak arşivindeydi.
+**Etki:** Gereksiz büyüklük; kişisel/iş verisi veya secret sızıntısı; başka makinede hatalı DB kopyası.
 **Çözüm:** Temiz kaynak-only paket, ignore kuralları, CI precheck. PostgreSQL yedeği yalnız `pg_dump` + private file/data-protection seti olarak ayrı şifreli backup paketinde tutulmalı.
 
 ### P0 — Aktif kapsamın kod ve dokümanda çelişmesi
 
-**Sorun:** Eski platformlar adapter, DI, Worker, UI, test ve planlarda bulunuyordu.  
-**Etki:** Operatör yanlış bağlantı oluşturabilir; dead code büyür; test yükü dağılır.  
+**Sorun:** Eski platformlar adapter, DI, Worker, UI, test ve planlarda bulunuyordu.
+**Etki:** Operatör yanlış bağlantı oluşturabilir; dead code büyür; test yükü dağılır.
 **Çözüm:** ADR-016 ve yalnız iki platformlu active scope. Bu temiz kopyada uygulandı.
 
 ### P0 — Tamamlanmamış capability’nin hazır gibi algılanması
 
-**Sorun:** Bazı adapter metotları var fakat gerçek dış kanıt veya application akışı yok.  
-**Etki:** UI/operasyon “hazır” zannedip veri yazabilir.  
+**Sorun:** Bazı adapter metotları var fakat gerçek dış kanıt veya application akışı yok.
+**Etki:** UI/operasyon “hazır” zannedip veri yazabilir.
 **Çözüm:** Capability `UNKNOWN` iken job oluşturma; UI’da “Kodlandı / Stage kanıtı yok / Desteklenmiyor” ayrımı; completion checklist.
 
 ### P1 — Trendyol ürün yayınlama orkestrasyonu eksik
 
-**Bulgu:** `IProductPort.UpsertAsync` adapterda mevcut; fakat production application service/job/API/UI çağrısı bulunmuyor.  
-**Etki:** Panelden Trendyol’a ürün yayınlama hedefi gerçekleştirilemiyor.  
+**Bulgu:** `IProductPort.UpsertAsync` adapterda mevcut; fakat production application service/job/API/UI çağrısı bulunmuyor.
+**Etki:** Panelden Trendyol’a ürün yayınlama hedefi gerçekleştirilemiyor.
 **Çözüm:**
 
 1. `ProductPublication` aggregate ve validation snapshot oluştur.
@@ -117,64 +117,64 @@ Eski platform adı taşıyan uygulanmış EF Core migration silinmedi. Bu dosya 
 
 ### P1 — “Upsert” create endpoint’ine sabit
 
-**Bulgu:** `UpsertAsync` her zaman product create endpoint’ine POST ediyor.  
-**Etki:** Var olan ürün güncellemesi duplicate veya validation hatası üretebilir.  
+**Bulgu:** `UpsertAsync` her zaman product create endpoint’ine POST ediyor.
+**Etki:** Var olan ürün güncellemesi duplicate veya validation hatası üretebilir.
 **Çözüm:** Portu `CreateProductsAsync`, `UpdateProductsAsync`, `ArchiveProductsAsync` olarak ayır; capability ve payload validation ayrı olsun.
 
 ### P1 — Stok ve fiyat modeli uzak sözleşmeyle uyuşmuyor
 
-**Bulgu:** Application portu `PushStockAsync` ve `PushPricesAsync` olarak ayrılmış; adapter ikisini de desteklenmiyor olarak kapatmış.  
-**Etki:** Stok/fiyat eşitleme hiç çalışmıyor; ayrı retry yapılırsa uzak sistemde tutarsızlık olabilir.  
+**Bulgu:** Application portu `PushStockAsync` ve `PushPricesAsync` olarak ayrılmış; adapter ikisini de desteklenmiyor olarak kapatmış.
+**Etki:** Stok/fiyat eşitleme hiç çalışmıyor; ayrı retry yapılırsa uzak sistemde tutarsızlık olabilir.
 **Çözüm:** Tek `PriceInventoryBatchCommand` içinde barcode, quantity, salePrice, listPrice tut; aynı batch ve aynı idempotency kaydıyla gönder; partial batch sonucunu satır bazında işle.
 
 ### P1 — Trendyol paket ve iade yazmaları eksik
 
-**Bulgu:** package action ve return action adapterları fail-closed unsupported.  
-**Etki:** Panelden kargo/paket ve iade işlemi yapılamaz.  
+**Bulgu:** package action ve return action adapterları fail-closed unsupported.
+**Etki:** Panelden kargo/paket ve iade işlemi yapılamaz.
 **Çözüm:** Her aksiyon için ayrı capability, allowed status transition, exact endpoint fixture ve Stage safe-write testi. Genel “shipment write” tek başına yeterli olmamalı.
 
 ### P1 — Invoice link teslimi erken terminal başarı yazıyor
 
-**Bulgu:** POST 2xx sonrası adapter `DELIVERED` döndürüyor; query endpoint uygulanmamış.  
-**Etki:** Uzak sistem işlemi sonradan reddederse yerel kayıt yanlış terminal durumda kalabilir.  
+**Bulgu:** POST 2xx sonrası adapter `DELIVERED` döndürüyor; query endpoint uygulanmamış.
+**Etki:** Uzak sistem işlemi sonradan reddederse yerel kayıt yanlış terminal durumda kalabilir.
 **Çözüm:** İlk sonuç `SUBMITTED`; remote request ID sakla; doğrulanmış query/reconciliation veya idempotent read-back ile `CONFIRMED` yap.
 
 ### P1 — E-Faturam akışı yarım
 
-**Bulgu:** sign-in, submit ve permanent URL var; taxpayer query, remote status ve cancel yok.  
-**Etki:** Doğru belge türü ve terminal durum güvenilir belirlenemez; iptal operasyonu panelden yürütülemez.  
+**Bulgu:** sign-in, submit ve permanent URL var; taxpayer query, remote status ve cancel yok.
+**Etki:** Doğru belge türü ve terminal durum güvenilir belirlenemez; iptal operasyonu panelden yürütülemez.
 **Çözüm:** Test firma scope’u doğrulandıktan sonra sırasıyla taxpayer, status polling, PDF download/checksum ve cancel geliştirilmeli.
 
 ### P1 — Mali politika onayı eksik
 
-**Sorun:** e-Fatura/e-Arşiv seçimi, rounding, due, adjustment ve iptal kuralları tam iş otoritesiyle onaylı değil.  
-**Etki:** Teknik olarak başarılı ancak mali olarak yanlış belge.  
+**Sorun:** e-Fatura/e-Arşiv seçimi, rounding, due, adjustment ve iptal kuralları tam iş otoritesiyle onaylı değil.
+**Etki:** Teknik olarak başarılı ancak mali olarak yanlış belge.
 **Çözüm:** Koddan bağımsız, versiyonlu fiscal policy kaydı; onaysız policy ile auto-submit kapalı.
 
 
 ### P1 — Deployment environment sözleşmesi çelişkiliydi
 
-**Bulgu:** Production initializer, `compose.production.yaml` tarafından zorunlu tutulan `MARKETPLACEHUB_ALLOWED_HOSTS` değerini üretmiyordu. `.env.example` içindeki bazı anahtarlar da Compose substitution sözleşmesiyle eşleşmiyordu. Production TLS tarafı ayrıca incelendi; release edge image’ının `Caddyfile.production` kullandığı ve `tls internal` içermediği doğrulandı.  
-**Etki:** Initializer’ın ürettiği `production.env` ile deployment ön-kontrolü zorunlu değişken hatası verebilirdi; local `.env` ayarlarının bir bölümü etkisiz kalabilirdi.  
+**Bulgu:** Production initializer, `compose.production.yaml` tarafından zorunlu tutulan `MARKETPLACEHUB_ALLOWED_HOSTS` değerini üretmiyordu. `.env.example` içindeki bazı anahtarlar da Compose substitution sözleşmesiyle eşleşmiyordu. Production TLS tarafı ayrıca incelendi; release edge image’ının `Caddyfile.production` kullandığı ve `tls internal` içermediği doğrulandı.
+**Etki:** Initializer’ın ürettiği `production.env` ile deployment ön-kontrolü zorunlu değişken hatası verebilirdi; local `.env` ayarlarının bir bölümü etkisiz kalabilirdi.
 **Çözüm:** AllowedHosts production origin hostundan türetildi, site address Compose değişkenine bağlandı ve örnek environment dosyası çalışan sözleşmeye göre yenilendi.
 
 
 ### P1 — E-Faturam belge indirme URL’si güven sınırına alınmamış
 
-**Bulgu:** Provider’ın döndürdüğü `permanentUrl` doğrudan HTTP client ile indiriliyor; URL için HTTPS/host allow-list ve indirilen byte’lar için `%PDF-` imza doğrulaması yapılmıyor.  
-**Etki:** Capability yanlışlıkla açılır ve provider yanıtı bozulur/ele geçirilirse SSRF benzeri iç ağ erişimi veya PDF yerine hatalı içerik saklama riski oluşur.  
+**Bulgu:** Provider’ın döndürdüğü `permanentUrl` doğrudan HTTP client ile indiriliyor; URL için HTTPS/host allow-list ve indirilen byte’lar için `%PDF-` imza doğrulaması yapılmıyor.
+**Etki:** Capability yanlışlıkla açılır ve provider yanıtı bozulur/ele geçirilirse SSRF benzeri iç ağ erişimi veya PDF yerine hatalı içerik saklama riski oluşur.
 **Çözüm:** Stage kanıtından çıkarılmış exact host allow-list, HTTPS-only ve user-info/port kısıtları; özel ağ/IP reddi; redirect kapatma veya her redirect’i yeniden doğrulama; PDF magic-byte ve boyut kontrolü. Bu kapılar tamamlanana kadar `INVOICE_DOCUMENT_READ` `UNKNOWN` kalmalıdır.
 
 ### P1 — Fatura bağlantısının 8 yıllık erişim garantisi yok
 
-**Bulgu:** Trendyol’a HTTPS fatura linki gönderiliyor; fakat URL’nin sekiz yıl erişilebilir kalacağını doğrulayan retention/availability kontrolü veya sahiplik sözleşmesi yok.  
-**Etki:** Başlangıçta çalışan E-Faturam kalıcı URL’si daha sonra erişilemezse yasal/operasyonel teslim şartı ihlal edilebilir.  
+**Bulgu:** Trendyol’a HTTPS fatura linki gönderiliyor; fakat URL’nin en az sekiz yıl erişilebilir kalacağını doğrulayan retention/availability kontrolü veya sahiplik sözleşmesi yok.
+**Etki:** Başlangıçta çalışan E-Faturam kalıcı URL’si daha sonra erişilemezse yasal/operasyonel teslim şartı ihlal edilebilir.
 **Çözüm:** Provider URL ömrünü yazılı doğrula; günlük/haftalık link probe ve alarm ekle; belgeyi private storage içinde checksum ile sakla; provider bağımlılığı kabul edilmiyorsa kontrollü, kalıcı ve yetkilendirilmiş belge gateway’i tasarla.
 
 ### P1 — Backup aynı host riskini çözmüyor
 
-**Sorun:** Yerel backup staging aynı fiziksel hostta kalabilir.  
-**Etki:** Disk/host kaybında hem veri hem yedek kaybolur.  
+**Sorun:** Yerel backup staging aynı fiziksel hostta kalabilir.
+**Etki:** Disk/host kaybında hem veri hem yedek kaybolur.
 **Çözüm:** Şifreli off-host object storage/ikinci sunucu; periyodik temiz volume restore; RPO/RTO ölçümü.
 
 ### P2 — Gözlemlenebilirlik eksikleri

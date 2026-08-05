@@ -46,7 +46,7 @@ public static class TrendyolEFaturamInvoicePayload
         var taxTotal = source.Lines.Sum(x => x.VatAmount);
         var discountTotal = source.Lines.Sum(x => x.DiscountAmount);
         var payable = source.Lines.Sum(x => x.PayableAmount);
-        if (Money(taxExclusive + taxTotal - discountTotal) != Money(payable)) throw new ArgumentException("Invoice total equation is invalid.", nameof(source));
+        if (Money(taxExclusive + taxTotal) != Money(payable)) throw new ArgumentException("Invoice total equation is invalid.", nameof(source));
 
         var taxes = source.Lines.GroupBy(x => x.VatRate).Select(group => new
         {
@@ -73,7 +73,7 @@ public static class TrendyolEFaturamInvoicePayload
             totalTax = new { totalTaxAmount = Kurus(taxTotal), subTotalTaxes = taxes },
             invoiceTotal = new
             {
-                lineExtensionAmount = Kurus(taxExclusive),
+                lineExtensionAmount = Kurus(taxExclusive + discountTotal),
                 taxExclusiveAmount = Kurus(taxExclusive),
                 taxInclusiveAmount = Kurus(taxExclusive + taxTotal),
                 payableAmount = Kurus(payable),
