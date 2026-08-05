@@ -1,5 +1,5 @@
 schema_version: 1
-document_version: "6.0"
+document_version: "6.1"
 updated_at: "2026-08-05"
 active_scope:
   - TRENDYOL
@@ -63,6 +63,8 @@ features:
     status: READY_LOCAL
   trendyol_reference_read:
     status: CODED_STAGE_REVALIDATION_REQUIRED
+  trendyol_mapping_workspace:
+    status: CODED_TESTS_UPDATED_DYNAMIC_REVALIDATION_REQUIRED
   trendyol_product_create:
     status: IN_PROGRESS_ORCHESTRATION_REQUIRED
   trendyol_product_update_archive:

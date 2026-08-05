@@ -2,8 +2,8 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 6.0  
-**Belge tarihi:** 4 Ağustos 2026  
+**Belge sürümü:** 6.1
+**Belge tarihi:** 5 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
 **Güncel uygulama statüsü:** `F3_CLOSURE_ACTIVE / F4_IN_PROGRESS / PRODUCTION_BLOCKED`  
@@ -286,7 +286,11 @@ Trendyol'a ürün göndermeden önce kullanıcı:
 7. Snapshot'ın güncelliğini ve doğrulanma tarihini görür.
 8. Eski snapshot ile hazırlanmış yayın işlemi varsa sistem yeniden doğrulama ister.
 
+Panelde kategori kapsamı seçildikten sonra özellik ve özellik değeri eşleme adımları aynı çalışma alanında ardışık olarak açılır. Özellik değeri bölümü, özellik eşlemesi doğrulanmadan gösterilmez. Marka eşlemesi aynı güvenli snapshot kurallarını kullanır ancak ayrı görünümde tutulur.
+
 Kategori kırılımının ara düğümleri ürün yayınında seçilemez. Bu, yarım kategori seçimi problemini önleyen zorunlu kuraldır.
+
+**Mevcut durum:** Kategori, marka, kategori-kapsamlı özellik ve özellik değeri eşleme API/UI akışları kodlanmıştır. Vitest senaryosu birleşik kategori–özellik–değer akışına, Playwright kabuk senaryosu güncel menü ve rol görünürlüğüne göre yenilenmiştir. Exact Node/npm ortamı kurulamadığı için bu değişikliklerin dinamik frontend doğrulaması `BLOCKED_ENVIRONMENT` durumundadır; Stage referans verisi ve gerçek credential doğrulaması ayrıca bekler.
 
 ## 7.5 Ürün listesi ve ürün detayı
 
@@ -472,7 +476,7 @@ Sipariş veya paket detayında kullanıcı “Fatura oluştur” seçeneğini ku
 
 “Fatura oluştur” butonuna basılması faturanın başarıyla kesildiği anlamına gelmez. Kullanıcıya `Taslak`, `Kuyrukta`, `Gönderildi`, `Sağlayıcı işliyor`, `Başarılı`, `Başarısız`, `İptal bekliyor`, `İptal edildi`, `Trendyol'a teslim bekliyor` gibi ayrı durumlar gösterilir.
 
-**Mevcut durum:** Sipariş paketinden fatura taslağı oluşturma, E-Faturam gönderim adapterı, kalıcı URL alanı ve Trendyol link gönderimi kısmen kodlanmıştır. Mükellef sorgusu, durum polling, iptal, güvenli PDF indirme ve gerçek E2E tamamlanmamıştır.
+**Mevcut durum:** Sipariş paketinden fatura taslağı oluşturma, E-Faturam gönderim adapterı, kalıcı URL alanı, güvenli PDF indirme sınırı ve Trendyol link gönderiminin `SUBMITTED`/manuel teyit modeli kodlanmıştır. Mükellef sorgusu, provider durum polling'i, iptal, gerçek Stage PDF/host doğrulaması ve uçtan uca mali kabul tamamlanmamıştır.
 
 ## 7.14 Fatura listesi ve fatura detayı
 
@@ -933,6 +937,16 @@ Yayınlama öncesi validation şu kontrolleri yapar:
 - Liste fiyatı satış fiyatından düşük mü?
 - Varyant gruplaması tutarlı mı?
 
+Eşleme çalışma alanında seçim bağımlılıkları aşağıdaki sırayla uygulanır:
+
+1. ACTIVE Trendyol bağlantısı seçilir.
+2. Doğrulanmış yerel kategori eşlemesi üzerinden uzak kategori kapsamı belirlenir.
+3. Güncel kategori özelliği snapshot'ından yerel özellik eşlenir.
+4. Özellik seçim listesi taşıyorsa güncel özellik değeri snapshot'ından yerel değer eşlenir.
+5. Her kayıt belirli snapshot ve scope ile `VERIFIED` saklanır; eski veya farklı scope'taki kayıt yayınlama kapısında kabul edilmez.
+
+**Kod durumu:** Bu zincir web panelinde tek kategori-kapsamlı özellik/değer çalışma alanı olarak uygulanmıştır; marka eşlemesi ayrı görünümde devam eder. Frontend regression testleri güncel bileşen, erişilebilir alan adı, buton metni, PUT payload'ı ve değer endpoint'iyle hizalanmıştır. Dinamik Vitest/Playwright sonucu henüz üretilmemiştir.
+
 ## 15.8 Ürün okuma ve yerel eşleştirme
 
 Trendyol'daki onaylı ürünler sayfalı biçimde çekilir. Her uzak ürün için:
@@ -1135,6 +1149,8 @@ E-Faturam'dan geçici veya kalıcı doküman URL'si alınabilir. Güvenli indirm
 
 PDF public web klasörüne veya doğrudan source repository'ye yazılmaz. Trendyol'a verilen kalıcı linkin yasal erişim süresini karşılaması ayrıca izlenir.
 
+**Kod durumu:** Exact HTTPS host allow-list, public DNS/IP doğrulaması, sınırlı redirect, streaming boyut sınırı, MIME ve `%PDF-` kontrolü uygulanmıştır. Gerçek E-Faturam Stage hostu ve örnek PDF ile dinamik doğrulama yapılmadığı için capability production'a açılmaz.
+
 ## 15.18 Fatura iptali
 
 İptal işlemi:
@@ -1165,6 +1181,8 @@ Fatura link teslimi doğru `shipmentPackageId` ile yapılır. Akış:
 8. Gerçek teslim kanıtı oluşunca `Confirmed` yapılır.
 
 Fatura URL'si periyodik probe ile izlenmeli; erişilemezlik operasyon alarmı oluşturmalıdır.
+
+**Kod durumu:** Link gönderiminde HTTP 2xx yalnız `Submitted` kabul edilir. Resmî read-back/confirmation endpoint'i doğrulanmadığı için otomatik `Confirmed` üretilmez; belirsiz sonuç yeniden dış etki oluşturmadan `MANUAL_REVIEW` akışına gider.
 
 ## 15.20 Operasyon ve hata yönetimi
 
@@ -1417,7 +1435,7 @@ Payload hash, correlation id ve uzak request id kanıt olarak saklanır.
 
 ## 20.1 Job durumları
 
-`Pending`, `Leased`, `RetryScheduled`, `Blocked`, `Succeeded`, `Dead`, `Cancelled`.
+`Pending`, `Leased`, `RetryScheduled`, `Blocked`, `ManualReview`, `Succeeded`, `Dead`, `Cancelled`.
 
 ## 20.2 Lease ve fencing
 
@@ -1909,6 +1927,8 @@ Sıra:
 8. Private storage/checksum.
 9. Cancellation guardları.
 10. Trendyol link delivery reconciliation.
+
+Güncel kod notu: güvenli PDF indirme sınırı ve Trendyol link tesliminde `Submitted -> ManualReview/Confirmed` güvenli durum modeli statik olarak kodlanmıştır. Taxpayer/status/cancel endpointleri ile gerçek Stage PDF ve teslim teyidi hâlâ dış doğrulama bekler.
 
 Çıkış:
 

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { expect, test, vi } from 'vitest'
-import { AttributeMappingPage, BrandMappingPage, IntegrationsPage, MappingPage } from './F3Pages'
+import { BrandMappingPage, IntegrationsPage, MappingPage } from './F3Pages'
 
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } }))
 
@@ -76,31 +76,73 @@ test('maps a local brand to the verified Trendyol brand snapshot', async () => {
   await waitFor(() => expect(JSON.parse(savedBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'brand-snapshot-1', externalId: 'external-brand-1', status: 'VERIFIED' }))
 })
 
-test('maps a local attribute inside the verified Trendyol category scope', async () => {
-  let savedBody = ''; let mappingUrl = ''
+test('maps a category-scoped attribute and its value in the unified mapping workspace', async () => {
+  let attributeSaved = false
+  let valueSaved = false
+  let attributeBody = ''
+  let valueBody = ''
+  let valueMappingUrl = ''
+
   globalThis.fetch = vi.fn((input, init) => {
     const url = String(input)
-    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-attribute' })
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-attribute-value' })
     if (url.includes('/api/v1/connections?')) return json({ items: [{ id: 'connection-1', platformCode: 'TRENDYOL', displayName: 'Trendyol Stage', externalStoreId: 'seller-1', status: 'ACTIVE' }], nextCursor: null, hasMore: false })
     if (url.includes('/api/v1/catalog/categories?')) return json({ items: [{ id: 'local-category-1', path: 'Giyim / Elbise', isLeaf: true, isActive: true }], nextCursor: null, hasMore: false })
-    if (url.includes('/api/v1/catalog/attributes?')) return json({ items: [{ id: 'local-attribute-1', code: 'SIZE', name: 'Beden', dataType: 'SINGLE_SELECT', isActive: true }], nextCursor: null, hasMore: false })
+    if (url.includes('/api/v1/catalog/attributes?')) return json({ items: [{ id: 'local-attribute-1', code: 'SIZE', name: 'Beden', dataType: 'SINGLE_SELECT', isActive: true, values: [{ id: 'local-value-1', value: 'M', isActive: true }] }], nextCursor: null, hasMore: false })
     if (url.includes('/api/v1/mappings/categories/local-category-1')) return json({ id: 'category-mapping-1', connectionId: 'connection-1', snapshotId: 'category-snapshot-1', localId: 'local-category-1', scopeExternalId: '', externalId: '14609', status: 'VERIFIED', version: 1 })
-    if (url.includes('/api/v1/reference-data/categories/14609/attributes?')) return json({ snapshotId: 'attribute-snapshot-1', resourceType: 'CATEGORY_ATTRIBUTES', fetchedAt: '2026-08-04T00:00:00Z', items: [{ externalId: '293', parentExternalId: '14609', name: 'Beden', path: 'Beden', depth: 0, isLeaf: true, isActive: true }] })
-    if (url.includes('/api/v1/mappings/attributes/local-attribute-1') && init?.method === 'PUT') { mappingUrl = url; savedBody = String(init.body); return json({ id: 'attribute-mapping-1', connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', localId: 'local-attribute-1', scopeExternalId: '14609', externalId: '293', status: 'VERIFIED', version: 1 }) }
-    if (url.includes('/api/v1/mappings/attributes/local-attribute-1')) return json(null)
+    if (url.includes('/api/v1/reference-data/categories/14609/attributes/293/values?')) return json({ snapshotId: 'value-snapshot-1', resourceType: 'ATTRIBUTE_VALUES', fetchedAt: '2026-08-05T00:00:00Z', items: [{ externalId: 'value-2', parentExternalId: '293', name: 'M', path: 'M', depth: 0, isLeaf: true, isActive: true }] })
+    if (url.includes('/api/v1/reference-data/categories/14609/attributes?')) return json({ snapshotId: 'attribute-snapshot-1', resourceType: 'CATEGORY_ATTRIBUTES', fetchedAt: '2026-08-05T00:00:00Z', items: [{ externalId: '293', parentExternalId: '14609', name: 'Beden', path: 'Beden', depth: 0, isLeaf: true, isActive: true, isRequired: true, allowsCustomValue: false, allowsMultipleValues: false }] })
+    if (url.includes('/api/v1/mappings/attributes/local-attribute-1') && init?.method === 'PUT') {
+      attributeBody = String(init.body)
+      attributeSaved = true
+      return json({ id: 'attribute-mapping-1', connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', localId: 'local-attribute-1', scopeExternalId: '14609', externalId: '293', status: 'VERIFIED', version: 1 })
+    }
+    if (url.includes('/api/v1/mappings/attributes/local-attribute-1')) return json(attributeSaved ? { id: 'attribute-mapping-1', connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', localId: 'local-attribute-1', scopeExternalId: '14609', externalId: '293', status: 'VERIFIED', version: 1 } : null)
+    if (url.includes('/api/v1/mappings/attribute-values/local-value-1') && init?.method === 'PUT') {
+      valueMappingUrl = url
+      valueBody = String(init.body)
+      valueSaved = true
+      return json({ id: 'value-mapping-1', connectionId: 'connection-1', snapshotId: 'value-snapshot-1', localId: 'local-value-1', scopeExternalId: '14609/293', externalId: 'value-2', status: 'VERIFIED', version: 1 })
+    }
+    if (url.includes('/api/v1/mappings/attribute-values/local-value-1')) return json(valueSaved ? { id: 'value-mapping-1', connectionId: 'connection-1', snapshotId: 'value-snapshot-1', localId: 'local-value-1', scopeExternalId: '14609/293', externalId: 'value-2', status: 'VERIFIED', version: 1 } : null)
     return Promise.resolve(new Response('{}', { status: 404, headers: { 'Content-Type': 'application/problem+json' } }))
   }) as typeof fetch
+
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  render(<QueryClientProvider client={client}><MemoryRouter><AttributeMappingPage /></MemoryRouter></QueryClientProvider>)
+  render(<QueryClientProvider client={client}><MemoryRouter><MappingPage kind="attributes" /></MemoryRouter></QueryClientProvider>)
 
-  const attributeSection = (await screen.findByRole('heading', { name: 'Özellik eşlemeleri', level: 1 })).closest('section')!; const page = within(attributeSection)
-  const connection = page.getByLabelText('Özellik için aktif Trendyol bağlantısı'); await within(connection).findByRole('option', { name: 'Trendyol Stage · seller-1' }); fireEvent.change(connection, { target: { value: 'connection-1' } })
-  const category = page.getByLabelText('Özellik kapsamı panel kategorisi'); await within(category).findByRole('option', { name: 'Giyim / Elbise' }); fireEvent.change(category, { target: { value: 'local-category-1' } })
-  const local = await page.findByLabelText('Panel özelliği'); await within(local).findByRole('option', { name: 'Beden · SINGLE_SELECT' }); fireEvent.change(local, { target: { value: 'local-attribute-1' } })
-  const external = await page.findByLabelText('Trendyol kategori özelliği'); await within(external).findByRole('option', { name: 'Beden' }); fireEvent.change(external, { target: { value: '293' } })
-  const save = page.getByRole('button', { name: 'Eşlemeyi doğrula ve kaydet' }); await waitFor(() => expect(save).toBeEnabled()); fireEvent.click(save)
+  expect(await screen.findByRole('heading', { name: 'Özellik eşlemeleri', level: 1 })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Kategori kapsamını seçin' })).toBeInTheDocument()
 
-  expect(await page.findByRole('status')).toHaveTextContent('Özellik eşlemesi doğrulandı')
-  expect(mappingUrl).toContain('/mappings/attributes/local-attribute-1')
-  await waitFor(() => expect(JSON.parse(savedBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', externalId: '293', status: 'VERIFIED' }))
+  const connection = screen.getByLabelText('Özellik için aktif Trendyol bağlantısı')
+  await within(connection).findByRole('option', { name: 'Trendyol Stage · seller-1' })
+  fireEvent.change(connection, { target: { value: 'connection-1' } })
+
+  const category = screen.getByLabelText('Özellik kapsamı panel kategorisi')
+  await within(category).findByRole('option', { name: 'Giyim / Elbise' })
+  fireEvent.change(category, { target: { value: 'local-category-1' } })
+
+  const localAttribute = await screen.findByLabelText('Panel özelliği')
+  await within(localAttribute).findByRole('option', { name: 'Beden · SINGLE_SELECT' })
+  fireEvent.change(localAttribute, { target: { value: 'local-attribute-1' } })
+
+  const remoteAttribute = screen.getByLabelText('Trendyol kategori özelliği')
+  await within(remoteAttribute).findByRole('option', { name: 'Beden · zorunlu' })
+  fireEvent.change(remoteAttribute, { target: { value: '293' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Eşlemeyi doğrula ve kaydet' }))
+
+  expect(await screen.findByText('Özellik eşlemesi doğrulandı ve kategori kapsamında kaydedildi.')).toBeInTheDocument()
+  await waitFor(() => expect(JSON.parse(attributeBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', externalId: '293', status: 'VERIFIED' }))
+
+  expect(await screen.findByRole('heading', { name: 'Özellik değeri eşlemesi' })).toBeInTheDocument()
+  const localValue = screen.getByLabelText('Panel özellik değeri')
+  fireEvent.change(localValue, { target: { value: 'local-value-1' } })
+  const remoteValue = screen.getByLabelText('Trendyol özellik değeri')
+  await within(remoteValue).findByRole('option', { name: 'M' })
+  fireEvent.change(remoteValue, { target: { value: 'value-2' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Değer eşlemesini kaydet' }))
+
+  expect(await screen.findByText('Özellik değeri eşlemesi doğrulandı.')).toBeInTheDocument()
+  expect(valueMappingUrl).toContain('/mappings/attribute-values/local-value-1')
+  await waitFor(() => expect(JSON.parse(valueBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'value-snapshot-1', externalId: 'value-2', status: 'VERIFIED' }))
 })

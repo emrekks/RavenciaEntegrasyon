@@ -1,7 +1,7 @@
 # Güncel Faz ve Devralma Durumu
 
 **Son güncelleme:** 2026-08-05
-**Ana plan sürümü:** 6.0
+**Ana plan sürümü:** 6.1
 **Makine durum kaydı:** `PROJECT-STATUS.yaml`
 **Aktif ürün kapsamı:** `TRENDYOL` + `TRENDYOL_EFATURAM`
 **Genel durum:** `F3_CLOSURE_ACTIVE / F4_IN_PROGRESS / PRODUCTION_BLOCKED`
@@ -34,6 +34,7 @@ Aşağıdaki sorunlar kaynak kodunda düzeltilmiştir; fakat exact toolchain ve 
 - CSRF token yenileme, idempotency retention, MFA reauthentication ve rol bazlı yazma yetkileri uygulanır.
 - Periyodik sipariş/iade/reference job üreticisi eklenmiştir.
 - Pull request ve ana dal pushlarında verify workflow'u tanımlanmıştır; workflow'un gerçek başarılı koşusu henüz kanıt değildir.
+- F3 frontend regression kapsamı güncellendi: Vitest artık kategori kapsamı -> özellik -> özellik değeri zincirini ve iki mapping payload'ını; Playwright ise güncel operasyon/ayar menülerini, rol bazlı Faturalama görünürlüğünü ve gerçek route üzerinde kategori-kapsamlı özellik/değer mapping zincirini doğrular. Exact Node/npm kurulamadığı için sonuç `DYNAMIC_NOT_RUN / BLOCKED_ENVIRONMENT` olarak kalır.
 
 ## Codex'in devam edeceği sıra
 

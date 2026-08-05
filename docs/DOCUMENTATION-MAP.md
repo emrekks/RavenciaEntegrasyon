@@ -10,8 +10,9 @@
 6. `implementation/F*-plan.md`: faz görevleri.
 7. `implementation/F*-evidence-log.md`: test ve uygulama kanıtları.
 8. `implementation/traceability-matrix.md`: gereksinim-kod-test ilişkisi.
-9. `CHANGELOG.md`: kronolojik insan özeti.
-10. Kökteki `README.md` ve `AGENTS.md`: hızlı başlangıç ve Codex kuralları.
+9. `reviews/`: tarihli inceleme, doğrulama ve teslim raporları.
+10. `CHANGELOG.md`: kronolojik insan özeti.
+11. Kökteki `README.md` ve `AGENTS.md`: hızlı başlangıç ve Codex kuralları.
 
 ## Tek işlemde güncelleme
 

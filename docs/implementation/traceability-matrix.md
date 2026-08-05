@@ -7,6 +7,7 @@
 | Secret değerini geri göstermeme | Protected credential, masked hint, file-backed secret | Security tests | IMPLEMENTED_LOCAL |
 | Dış yazmayı varsayılan kapatma | Global feature flag + connection setting | Contract/service guards | IMPLEMENTED_LOCAL |
 | Kategori/özellik/değer eşitleme | Trendyol reference port + scoped snapshots | Contract + persistence tests | IMPLEMENTED_LOCAL / STAGE_RETEST_REQUIRED |
+| Birleşik kategori-kapsamlı eşleme çalışma alanı | `MappingPage kind="attributes"`, `AttributeValueMappingEditor` | Vitest request/payload regression + Playwright route akışı | CODED / DYNAMIC_REVALIDATION_REQUIRED |
 | Leaf kategori zorunluluğu | Reference snapshot + `IsLeaf` scope validation | F3 job/persistence tests | IMPLEMENTED_LOCAL |
 | Ürün okuma | Trendyol approved-products mapper | Contract tests | IMPLEMENTED_LOCAL / E2E_REQUIRED |
 | Ürün yayınlama | Product port adapter | Application orchestration yok | PARTIAL |

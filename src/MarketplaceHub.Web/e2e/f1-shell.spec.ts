@@ -8,15 +8,21 @@ test('unauthenticated shell exposes login without application navigation', async
   await expect(page.getByText('Ürünler')).toHaveCount(0)
 })
 
-test('active shell exposes Stitch navigation and live-safe dashboard', async ({ page }) => {
-  await page.route('**/api/v1/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: 'owner@example.invalid', displayName: 'Ravencia Admin', state: 'ACTIVE', tenantId: '00000000-0000-0000-0000-000000000002' }) }))
+test('active shell exposes current operation and settings navigation with the live-safe dashboard', async ({ page }) => {
+  await page.route('**/api/v1/auth/me', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: 'owner@example.invalid', displayName: 'Ravencia Admin', role: 'OWNER', state: 'ACTIVE', tenantId: '00000000-0000-0000-0000-000000000002' }) }))
   await page.route('**/api/v1/connections', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ status: 'ACTIVE' }, { status: 'VERIFIED' }], nextCursor: null, hasMore: false }) }))
   await page.route('**/api/v1/orders', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], nextCursor: null, hasMore: false }) }))
   await page.route('**/api/v1/invoices', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [{ status: 'DRAFT' }], nextCursor: null, hasMore: false }) }))
   await page.goto('/dashboard')
+
   await expect(page.getByRole('heading', { name: 'Genel Bakış' })).toBeVisible()
   const navigation = page.getByRole('navigation', { name: 'Ana menü' })
-  for (const label of ['Dashboard', 'Ürünler', 'Siparişler', 'İadeler', 'Faturalar', 'Platformlar']) await expect(navigation.getByRole('link', { name: label, exact: true })).toBeVisible()
+  for (const label of ['Dashboard', 'Ürünler', 'Siparişler', 'İadeler', 'Faturalar', 'İşlem Takibi']) await expect(navigation.getByRole('link', { name: label, exact: true })).toBeVisible()
+
+  const settings = page.getByRole('button', { name: 'Ayarlar' })
+  await settings.click()
+  for (const label of ['Platformlar', 'Eşleştirme Ayarları', 'Faturalama', 'Sistem Ayarları']) await expect(page.getByRole('link', { name: label, exact: true })).toBeVisible()
+
   await expect(page.getByText('Dış yazmalar kapalı')).toBeVisible()
   await expect(page.getByText('Kontrollü entegrasyon modu')).toBeVisible()
 })
