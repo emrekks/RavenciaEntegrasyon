@@ -34,6 +34,7 @@ internal static class TrendyolEndpoints
     public static string CommonLabel(string sellerId, string cargoTrackingNumber) => $"sellers/{Uri.EscapeDataString(sellerId)}/common-label/{Uri.EscapeDataString(cargoTrackingNumber)}";
     public static string Claims(string sellerId) => $"order/sellers/{Uri.EscapeDataString(sellerId)}/claims";
     public static string ApproveClaim(string sellerId, string claimId) => $"order/sellers/{Uri.EscapeDataString(sellerId)}/claims/{Uri.EscapeDataString(claimId)}/items/approve";
+    public const string ClaimIssueReasons = "order/claim-issue-reasons";
     public static string RejectClaim(string sellerId, string claimId, string reasonId, IReadOnlyList<string> lineIds, string description) => $"order/sellers/{Uri.EscapeDataString(sellerId)}/claims/{Uri.EscapeDataString(claimId)}/issue?claimIssueReasonId={Uri.EscapeDataString(reasonId)}&claimItemIdList={Uri.EscapeDataString(string.Join(',', lineIds))}&description={Uri.EscapeDataString(description)}";
     public static string InvoiceLinks(string sellerId) => $"sellers/{Uri.EscapeDataString(sellerId)}/seller-invoice-links";
     public const string Categories = "product/product-categories";

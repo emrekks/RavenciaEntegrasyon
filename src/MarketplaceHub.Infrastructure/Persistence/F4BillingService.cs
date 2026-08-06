@@ -66,10 +66,91 @@ public sealed partial class F4BillingService(
         return new(items, hasMore ? cursors.Encode(rows[limit - 1].Id) : null, hasMore);
     }
 
+    public async Task<IReadOnlyList<InvoiceWorkspaceItemView>> WorkspaceAsync(Guid tenantId, int limit, CancellationToken cancellationToken)
+    {
+        var packages = await db.ShipmentPackages.AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .OrderByDescending(x => x.StatusOccurredAt)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+        if (packages.Count == 0) return [];
+
+        var orderIds = packages.Select(x => x.OrderId).Distinct().ToArray();
+        var packageIds = packages.Select(x => x.Id).ToArray();
+        var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).ToListAsync(cancellationToken);
+        var invoices = await db.Invoices.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null && ((x.PackageId != null && packageIds.Contains(x.PackageId.Value)) || (x.PackageId == null && orderIds.Contains(x.OrderId))))
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        var variantIds = lines.Where(x => x.VariantId != null).Select(x => x.VariantId!.Value).Distinct().ToArray();
+        var mediaRows = await (from media in db.ProductMedia.AsNoTracking()
+            join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
+            where media.TenantId == tenantId && media.VariantId != null && variantIds.Contains(media.VariantId.Value) && media.Status == "ACTIVE" && asset.Status == "ACTIVE" && asset.Classification == "PRODUCT_MEDIA_URL"
+            orderby media.SortOrder
+            select new { VariantId = media.VariantId!.Value, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+        var mediaByVariant = mediaRows.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Url);
+        var linesByOrder = lines.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
+        var now = timeProvider.GetUtcNow();
+
+        return packages.Select(package =>
+        {
+            if (!orders.TryGetValue(package.OrderId, out var order)) return null;
+            var orderLines = linesByOrder.GetValueOrDefault(order.Id) ?? [];
+            var invoice = invoices.FirstOrDefault(x => x.PackageId == package.Id) ?? invoices.FirstOrDefault(x => x.PackageId == null && x.OrderId == order.Id);
+            var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
+            var dueAt = deliveredAt?.AddDays(7);
+            var dueSoon = invoice is null && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);
+            var image = orderLines.Where(x => x.VariantId != null).Select(x => mediaByVariant.GetValueOrDefault(x.VariantId!.Value)).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+            var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+            var status = invoice is null ? "FATURALANDIRILMADI" : Status(invoice.Status);
+            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, status, invoice?.InvoiceNumber, invoice is null);
+        }).Where(x => x is not null).Select(x => x!).ToList();
+    }
+
+    private static string InvoiceWorkspaceCustomerName(string customerJson, string invoiceAddressJson)
+    {
+        static string? Find(JsonElement element, params string[] names)
+        {
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (names.Contains(property.Name, StringComparer.OrdinalIgnoreCase) && property.Value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined or JsonValueKind.Array or JsonValueKind.Object))
+                    {
+                        var text = property.Value.ToString(); if (!string.IsNullOrWhiteSpace(text)) return text;
+                    }
+                    var nested = Find(property.Value, names); if (!string.IsNullOrWhiteSpace(nested)) return nested;
+                }
+            }
+            else if (element.ValueKind == JsonValueKind.Array) foreach (var item in element.EnumerateArray()) { var nested = Find(item, names); if (!string.IsNullOrWhiteSpace(nested)) return nested; }
+            return null;
+        }
+        try
+        {
+            using var customer = JsonDocument.Parse(string.IsNullOrWhiteSpace(customerJson) ? "{}" : customerJson);
+            var first = Find(customer.RootElement, "customerFirstName", "firstName");
+            var last = Find(customer.RootElement, "customerLastName", "lastName");
+            var full = string.Join(' ', new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)));
+            if (!string.IsNullOrWhiteSpace(full)) return full;
+            using var address = JsonDocument.Parse(string.IsNullOrWhiteSpace(invoiceAddressJson) ? "{}" : invoiceAddressJson);
+            return Find(address.RootElement, "fullName", "name", "company", "companyName") ?? "—";
+        }
+        catch (JsonException) { return "—"; }
+    }
+
     public async Task<ServiceResult<InvoiceDetailView>> CreateDraftAsync(Guid tenantId, CreateInvoiceCommand command, string idempotencyKey, CancellationToken cancellationToken)
     {
         var existing = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
         if (existing is not null) return await GetAsync(tenantId, existing.Id, cancellationToken);
+        if (command.OriginalInvoiceId is null)
+        {
+            var duplicate = command.PackageId is { } requestedPackageId
+                ? await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null && x.PackageId == requestedPackageId).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken)
+                : await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null && x.PackageId == null && x.OrderId == command.OrderId).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+            if (duplicate is not null) return ServiceResult<InvoiceDetailView>.Fail("INVOICE_ALREADY_EXISTS", "Bu sipariş paketi için daha önce fatura oluşturulmuş; ikinci satış faturası oluşturulamaz.", 409);
+        }
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.OrderId, cancellationToken);
         if (order is null) return Invalid<InvoiceDetailView>("orderId", "Sipariş bulunamadı.");
         if (command.PackageId is { } packageId && !await db.ShipmentPackages.AnyAsync(x => x.TenantId == tenantId && x.Id == packageId && x.OrderId == command.OrderId, cancellationToken)) return Invalid<InvoiceDetailView>("packageId", "Paket siparişe ait değil.");

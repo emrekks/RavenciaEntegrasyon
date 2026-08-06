@@ -115,7 +115,11 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     public async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
         var afterId = Decode(after); var query = db.Products.AsNoTracking().Where(x => x.TenantId == tenantId); if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0); if (!string.IsNullOrWhiteSpace(status) && TryProductStatus(status, out var parsed)) query = query.Where(x => x.Status == parsed);
-        var products = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken); var ids = products.Take(limit).Select(x => x.Id).ToArray(); var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId)).ToListAsync(cancellationToken); return Page(products, limit, product => MapProduct(product, variants.Where(x => x.ProductId == product.Id)));
+        var rows = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+        var hasMore = rows.Count > limit; var products = rows.Take(limit).ToList(); var ids = products.Select(x => x.Id).ToArray();
+        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId)).ToListAsync(cancellationToken);
+        var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken);
+        return new(views, hasMore ? cursors.Encode(rows[limit - 1].Id) : null, hasMore);
     }
 
     public async Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken)
@@ -127,13 +131,16 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && normalizedSkus.Contains(x.SkuNormalized), cancellationToken)) return Conflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "SKU başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
         var normalizedBarcodes = command.Variants.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).Select(x => Normalize(x.Barcode!)).ToArray(); if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && normalizedBarcodes.Contains(x.BarcodeNormalized), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
         var now = timeProvider.GetUtcNow(); var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, CreatedAt = now, UpdatedAt = now };
-        var variants = command.Variants.Select(variant => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = string.IsNullOrWhiteSpace(variant.Barcode) ? null : Normalize(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), CreatedAt = now, UpdatedAt = now }).ToList();
-        db.Products.Add(product); db.ProductVariants.AddRange(variants); db.ProductAttributeAssignments.AddRange((command.Attributes ?? []).Select(x => Assignment(tenantId, product.Id, x))); await EnsureMainInventoryAsync(tenantId, variants, cancellationToken); await db.SaveChangesAsync(cancellationToken); return ServiceResult<ProductView>.Ok(MapProduct(product, variants));
+        var variants = command.Variants.Select(variant => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = string.IsNullOrWhiteSpace(variant.Barcode) ? null : Normalize(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), CreatedAt = now, UpdatedAt = now }).ToList();
+        db.Products.Add(product); db.ProductVariants.AddRange(variants); db.ProductAttributeAssignments.AddRange((command.Attributes ?? []).Select(x => Assignment(tenantId, product.Id, x))); await EnsureMainInventoryAsync(tenantId, variants, cancellationToken); await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, product.Id, cancellationToken);
     }
 
     public async Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>(); var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken); return ServiceResult<ProductView>.Ok(MapProduct(product, variants));
+        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>();
+        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken);
+        var views = await BuildProductViewsAsync(tenantId, [product], variants, cancellationToken);
+        return ServiceResult<ProductView>.Ok(views[0]);
     }
 
     public async Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken)
@@ -141,14 +148,14 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>(); if (product.Version != expectedVersion) return Precondition<ProductView>(product.Version);
         var validation = await ValidateProductReferencesAsync(tenantId, command.Title, command.CategoryId, command.BrandId, cancellationToken); if (validation is not null) return ServiceResult<ProductView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
         var attributeValidation = await ValidateAttributesAsync(tenantId, command.CategoryId, command.Attributes ?? [], cancellationToken); if (attributeValidation is not null) return ServiceResult<ProductView>.Fail(attributeValidation.Code, attributeValidation.Message, attributeValidation.Status, attributeValidation.FieldErrors);
-        product.Title = command.Title.Trim(); product.Description = command.Description.Trim(); product.CategoryId = command.CategoryId; product.BrandId = command.BrandId; product.Version++; product.UpdatedAt = timeProvider.GetUtcNow(); var currentAssignments = await db.ProductAttributeAssignments.Where(x => x.TenantId == tenantId && x.ProductId == id && x.VariantId == null).ToListAsync(cancellationToken); db.ProductAttributeAssignments.RemoveRange(currentAssignments); db.ProductAttributeAssignments.AddRange((command.Attributes ?? []).Select(x => Assignment(tenantId, id, x))); await db.SaveChangesAsync(cancellationToken); var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken); return ServiceResult<ProductView>.Ok(MapProduct(product, variants));
+        product.Title = command.Title.Trim(); product.Description = command.Description.Trim(); product.CategoryId = command.CategoryId; product.BrandId = command.BrandId; product.Version++; product.UpdatedAt = timeProvider.GetUtcNow(); var currentAssignments = await db.ProductAttributeAssignments.Where(x => x.TenantId == tenantId && x.ProductId == id && x.VariantId == null).ToListAsync(cancellationToken); db.ProductAttributeAssignments.RemoveRange(currentAssignments); db.ProductAttributeAssignments.AddRange((command.Attributes ?? []).Select(x => Assignment(tenantId, id, x))); await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, id, cancellationToken);
     }
 
     public async Task<ServiceResult<ProductView>> ArchiveProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
     {
         var product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>(); if (product.Version != expectedVersion) return Precondition<ProductView>(product.Version); product.Status = ProductStatus.Archived; product.ArchivedAt = timeProvider.GetUtcNow(); product.UpdatedAt = product.ArchivedAt.Value; product.Version++; var variants = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken); foreach (var variant in variants) { variant.Status = ProductStatus.Archived; variant.UpdatedAt = product.UpdatedAt; variant.Version++; }
         var media = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId == id && x.Status != "ARCHIVED").ToListAsync(cancellationToken); foreach (var item in media) item.Status = "ARCHIVED"; var assetIds = media.Select(x => x.FileAssetId).Distinct().ToArray(); var sharedAssetIds = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId != id && x.Status != "ARCHIVED" && assetIds.Contains(x.FileAssetId)).Select(x => x.FileAssetId).Distinct().ToListAsync(cancellationToken); var assets = await db.FileAssets.Where(x => x.TenantId == tenantId && assetIds.Contains(x.Id) && !sharedAssetIds.Contains(x.Id)).ToListAsync(cancellationToken); foreach (var asset in assets) { asset.Status = "ARCHIVED"; asset.ArchivedAt = product.ArchivedAt; }
-        await db.SaveChangesAsync(cancellationToken); return ServiceResult<ProductView>.Ok(MapProduct(product, variants));
+        await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, id, cancellationToken);
     }
 
     public async Task<ServiceResult<ListingProfileView>> GetListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
@@ -325,6 +332,42 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     private static string NormalizeKey(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value.Trim())));
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static string JobWire(JobStatus value) => value switch { JobStatus.RetryScheduled => "RETRY_SCHEDULED", JobStatus.ManualReview => "MANUAL_REVIEW", _ => value.ToString().ToUpperInvariant() };
+
+    private async Task<IReadOnlyList<ProductView>> BuildProductViewsAsync(Guid tenantId, IReadOnlyList<Product> products, IReadOnlyList<ProductVariant> variants, CancellationToken cancellationToken)
+    {
+        if (products.Count == 0) return [];
+        var productIds = products.Select(x => x.Id).ToArray();
+        var variantIds = variants.Select(x => x.Id).ToArray();
+        var inventories = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").ToListAsync(cancellationToken);
+        var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).OrderByDescending(x => x.Status == "ACTIVE").ThenBy(x => x.Id).ToListAsync(cancellationToken);
+        var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.Enabled).ToListAsync(cancellationToken);
+        var connectionIds = profiles.Select(x => x.ConnectionId).Distinct().ToArray();
+        var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
+        var media = await (from item in db.ProductMedia.AsNoTracking()
+                           join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
+                           where item.TenantId == tenantId && productIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && asset.Classification == "PRODUCT_MEDIA_URL"
+                           orderby item.SortOrder
+                           select new { item.ProductId, item.VariantId, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+        var inventoryByVariant = inventories.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
+        var offerByVariant = offers.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
+        return products.Select(product =>
+        {
+            var productVariants = variants.Where(x => x.ProductId == product.Id).OrderBy(x => x.Sku).ToList();
+            var variantViews = productVariants.Select(variant =>
+            {
+                inventoryByVariant.TryGetValue(variant.Id, out var inventory); offerByVariant.TryGetValue(variant.Id, out var offer);
+                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock);
+            }).ToList();
+            var activePlatforms = profiles.Where(x => x.ProductId == product.Id).Select(x => connections.GetValueOrDefault(x.ConnectionId, "Platform")).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+            var image = media.Where(x => x.ProductId == product.Id && x.VariantId == null).Select(x => x.Url).FirstOrDefault() ?? media.Where(x => x.ProductId == product.Id).Select(x => x.Url).FirstOrDefault();
+            var prices = variantViews.Where(x => x.SalePrice is not null).Select(x => x.SalePrice!.Value).ToList();
+            var currency = variantViews.Select(x => x.Currency).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "TRY";
+            var modelCode = variantViews.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), prices.Count > 0 ? prices.Min() : null, currency, modelCode, activePlatforms);
+        }).ToList();
+    }
+
+    private static decimal? PositiveOrNull(decimal? value) => value is > 0 ? value : null;
 
     private async Task<ServiceError?> ValidateProductReferencesAsync(Guid tenantId, string title, Guid? categoryId, Guid? brandId, CancellationToken cancellationToken)
     {

@@ -85,6 +85,34 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         return offer is null ? NotFound<ChannelOfferView>() : ServiceResult<ChannelOfferView>.Ok(Map(offer));
     }
 
+    public async Task<ServiceResult<ChannelOfferView>> UpsertOfferAsync(Guid tenantId, Guid userId, UpsertChannelOfferCommand command, CancellationToken cancellationToken)
+    {
+        var existing = await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && x.VariantId == command.VariantId, cancellationToken);
+        if (existing is not null)
+            return await UpdateOfferAsync(tenantId, userId, existing.Id, existing.Version, new(command.ListPrice, command.SalePrice, command.Currency, command.VatRate, command.VatInclusion, command.RoundingMode, command.SafetyStock, command.Status, command.Reason), cancellationToken);
+
+        var connectionExists = await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == command.ConnectionId, cancellationToken);
+        var variantExists = await db.ProductVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == command.VariantId, cancellationToken);
+        if (!connectionExists || !variantExists) return Invalid<ChannelOfferView>(!connectionExists ? "connectionId" : "variantId", "Bağlantı veya varyant bulunamadı.");
+        if (command.ListPrice < 0 || command.SalePrice < 0 || command.ListPrice < command.SalePrice) return Invalid<ChannelOfferView>("salePrice", "Fiyatlar negatif olamaz ve liste fiyatı satış fiyatından küçük olamaz.");
+        var currency = command.Currency.Trim().ToUpperInvariant();
+        try { _ = Money.Create(command.SalePrice, currency); } catch (ArgumentException) { return Invalid<ChannelOfferView>("currency", "Currency üç büyük harften oluşmalıdır."); }
+        if (command.SafetyStock < 0 || command.VatRate < 0) return Invalid<ChannelOfferView>("safetyStock", "Güvenlik stoğu ve KDV negatif olamaz.");
+        if (string.IsNullOrWhiteSpace(command.Reason) || string.IsNullOrWhiteSpace(command.VatInclusion) || string.IsNullOrWhiteSpace(command.RoundingMode) || string.IsNullOrWhiteSpace(command.Status)) return Invalid<ChannelOfferView>("reason", "Fiyat değişikliği nedeni ve teklif politikası alanları zorunludur.");
+
+        var offer = new ChannelOffer
+        {
+            Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = command.ConnectionId, VariantId = command.VariantId,
+            ListPrice = decimal.Round(command.ListPrice, 4, MidpointRounding.ToEven), SalePrice = decimal.Round(command.SalePrice, 4, MidpointRounding.ToEven), Currency = currency,
+            VatRate = decimal.Round(command.VatRate, 4, MidpointRounding.ToEven), VatInclusion = command.VatInclusion.Trim(), RoundingMode = command.RoundingMode.Trim(),
+            SafetyStock = decimal.Round(command.SafetyStock, 4, MidpointRounding.ToEven), Status = command.Status.Trim(), PriceVersion = 1, Version = 1
+        };
+        db.ChannelOffers.Add(offer);
+        db.ChannelPriceHistory.Add(new ChannelPriceHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OfferId = offer.Id, PriceVersion = 1, ListPrice = offer.ListPrice, SalePrice = offer.SalePrice, Currency = offer.Currency, Reason = command.Reason.Trim(), ActorSource = $"USER:{userId:D}", EffectiveAt = timeProvider.GetUtcNow() });
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<ChannelOfferView>.Ok(Map(offer));
+    }
+
     public async Task<ServiceResult<ChannelOfferView>> UpdateOfferAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, UpdateChannelOfferCommand command, CancellationToken cancellationToken)
     {
         var offer = await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);

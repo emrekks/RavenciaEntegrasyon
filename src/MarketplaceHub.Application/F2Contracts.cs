@@ -13,8 +13,48 @@ public sealed record CategoryView(Guid Id, Guid? ParentId, string Name, string P
 public sealed record BrandView(Guid Id, string Name, bool IsActive, long Version);
 public sealed record AttributeValueView(Guid Id, string Value, int SortOrder, bool IsActive);
 public sealed record AttributeView(Guid Id, string Code, string Name, string DataType, string? SelectionMode, string? Unit, bool IsActive, long Version, IReadOnlyList<AttributeValueView> Values);
-public sealed record ProductVariantView(Guid Id, string Sku, string? Barcode, string? ModelCode, string OptionSignature, string Status, long Version);
-public sealed record ProductView(Guid Id, string Title, string Description, Guid? BrandId, Guid? CategoryId, string Status, DateTimeOffset UpdatedAt, long Version, IReadOnlyList<ProductVariantView> Variants);
+public sealed record ProductVariantView(
+    Guid Id,
+    string Sku,
+    string? Barcode,
+    string? ModelCode,
+    string OptionSignature,
+    string Status,
+    long Version,
+    decimal? Weight = null,
+    decimal? Width = null,
+    decimal? Height = null,
+    decimal? Length = null,
+    decimal OnHand = 0,
+    decimal Available = 0,
+    long? InventoryVersion = null,
+    Guid? OfferId = null,
+    decimal? ListPrice = null,
+    decimal? SalePrice = null,
+    string? Currency = null,
+    string? OfferStatus = null,
+    long? PriceVersion = null,
+    long? OfferVersion = null,
+    decimal? VatRate = null,
+    string? VatInclusion = null,
+    string? RoundingMode = null,
+    decimal? SafetyStock = null);
+public sealed record ProductView(
+    Guid Id,
+    string Title,
+    string Description,
+    Guid? BrandId,
+    Guid? CategoryId,
+    string Status,
+    DateTimeOffset UpdatedAt,
+    long Version,
+    IReadOnlyList<ProductVariantView> Variants,
+    string? PrimaryImageUrl = null,
+    decimal TotalStock = 0,
+    decimal? StartingPrice = null,
+    string Currency = "TRY",
+    string? ModelCode = null,
+    IReadOnlyList<string>? ActivePlatforms = null);
 public sealed record ListingProfileView(Guid Id, Guid ProductId, Guid ConnectionId, string? TitleOverride, string? DescriptionOverride, string? ExternalCategoryId, string? ExternalBrandId, int? DeliveryTimeDays, bool Enabled, string DesiredStatus, string ActualStatus, long Version);
 public sealed record PublicationLineView(Guid VariantId, string Sku, string? Barcode, string DesiredStatus, string ActualStatus, string? RejectionCode);
 public sealed record PublicationStatusView(Guid ProductId, Guid ConnectionId, Guid? ProfileId, string? DesiredStatus, string? ActualStatus, string? LastRejectionCode, Guid? LastJobId, string? LastJobStatus, IReadOnlyList<PublicationLineView> Lines);
@@ -26,7 +66,7 @@ public sealed record UpdateBrandCommand(string Name, bool IsActive);
 public sealed record CreateAttributeValueCommand(string Value, int SortOrder);
 public sealed record CreateAttributeCommand(string Code, string Name, string DataType, string? SelectionMode, string? Unit, IReadOnlyList<CreateAttributeValueCommand> Values);
 public sealed record AttributeRequirementCommand(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder);
-public sealed record CreateVariantCommand(string Sku, string? Barcode, string? ModelCode, IReadOnlyDictionary<string, string>? Options = null);
+public sealed record CreateVariantCommand(string Sku, string? Barcode, string? ModelCode, IReadOnlyDictionary<string, string>? Options = null, decimal? Weight = null, decimal? Width = null, decimal? Height = null, decimal? Length = null);
 public sealed record ProductAttributeCommand(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record CreateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<CreateVariantCommand> Variants, IReadOnlyList<ProductAttributeCommand>? Attributes = null);
 public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null);
@@ -84,6 +124,7 @@ public sealed record InventoryItemView(Guid Id, Guid VariantId, string Sku, stri
 public sealed record LedgerEntryView(Guid Id, string MovementType, decimal QuantityDelta, string SourceType, string SourceId, DateTimeOffset OccurredAt, string CorrelationId);
 public sealed record StockAdjustmentCommand(decimal QuantityDelta, string Reason, string SourceEventId);
 public sealed record ChannelOfferView(Guid Id, Guid ConnectionId, Guid VariantId, decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, long PriceVersion, long Version);
+public sealed record UpsertChannelOfferCommand(Guid ConnectionId, Guid VariantId, decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, string Reason);
 public sealed record UpdateChannelOfferCommand(decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, string Reason);
 
 public interface IInventoryService
@@ -91,6 +132,7 @@ public interface IInventoryService
     Task<PageResult<InventoryItemView>> ListAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken);
     Task<PageResult<LedgerEntryView>> LedgerAsync(Guid tenantId, Guid variantId, int limit, string? after, CancellationToken cancellationToken);
     Task<ServiceResult<InventoryItemView>> AdjustAsync(Guid tenantId, Guid userId, Guid variantId, StockAdjustmentCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<ChannelOfferView>> UpsertOfferAsync(Guid tenantId, Guid userId, UpsertChannelOfferCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ChannelOfferView>> GetOfferAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ChannelOfferView>> UpdateOfferAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, UpdateChannelOfferCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> ValidateExternalSyncAsync(Guid tenantId, string operation, CancellationToken cancellationToken);

@@ -123,6 +123,8 @@ public static class F2Endpoints
         });
         api.MapPost("/inventory/stock-sync-jobs", async (HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.ValidateExternalSyncAsync(tenant.TenantId, "STOCK_SYNC", http.RequestAborted)) : MissingContext(http));
+        api.MapPost("/channel-offers", async (UpsertChannelOfferCommand command, HttpContext http, IInventoryService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.UpsertOfferAsync(tenant.TenantId, tenant.UserId, command, http.RequestAborted), value => Results.Created($"/api/v1/channel-offers/{value.Id:D}", value)) : MissingContext(http));
         api.MapGet("/channel-offers/{id:guid}", async (Guid id, HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetOfferAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPatch("/channel-offers/{id:guid}", async (Guid id, UpdateChannelOfferCommand command, HttpContext http, IInventoryService service) =>

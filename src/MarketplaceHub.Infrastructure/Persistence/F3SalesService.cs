@@ -8,21 +8,68 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, TimeProvider timeProvider) : IF3SalesService
+public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IReturnPort returns, TimeProvider timeProvider) : IF3SalesService
 {
     public async Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
-        var afterId = Decode(after); var query = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId); if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0); if (!string.IsNullOrWhiteSpace(status)) query = query.Where(x => x.DerivedStatus == status.Trim().ToUpperInvariant());
-        var rows = await query.OrderBy(x => x.Id).Take(limit + 1).Select(x => new OrderListView(x.Id, x.OrderNumber, x.DerivedStatus, x.Currency, x.NetAmount, x.OrderedAt, db.OrderLines.Count(line => line.TenantId == tenantId && line.OrderId == x.Id), db.ShipmentPackages.Count(package => package.TenantId == tenantId && package.OrderId == x.Id), x.Version)).ToListAsync(cancellationToken);
+        var afterId = Decode(after);
+        var query = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId);
+        if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
+        if (!string.IsNullOrWhiteSpace(status)) query = query.Where(x => x.DerivedStatus == status.Trim().ToUpperInvariant());
+        var orders = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+        var orderIds = orders.Select(x => x.Id).ToArray();
+        var connectionIds = orders.Select(x => x.ConnectionId).Distinct().ToArray();
+        var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).ToListAsync(cancellationToken);
+        var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
+        var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
+        var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var imageUrls = await MediaUrls(tenantId, lines.Select(x => x.VariantId), cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var rows = orders.Select(order =>
+        {
+            var orderLines = lines.Where(x => x.OrderId == order.Id).ToList();
+            var package = packages.FirstOrDefault(x => x.OrderId == order.Id);
+            var invoice = invoices.FirstOrDefault(x => x.OrderId == order.Id && x.OriginalInvoiceId == null);
+            var connection = connections.GetValueOrDefault(order.ConnectionId);
+            var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+            var dueAt = OperationalDueAt(order.CustomerSnapshotJson);
+            var terminal = order.DerivedStatus is "DELIVERED" or "CANCELLED" or "RETURNED";
+            return new OrderListView(
+                order.Id, order.OrderNumber, order.DerivedStatus, order.Currency, order.NetAmount, order.OrderedAt,
+                orderLines.Count, packages.Count(x => x.OrderId == order.Id), order.Version,
+                order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
+                customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
+                !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabel(invoice),
+                package?.CargoProviderExternalId, package?.CargoTrackingNumber,
+                orderLines.Select(x => x.VariantId).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Value)).FirstOrDefault(x => x is not null),
+                orderLines.Sum(x => x.OrderedQuantity));
+        }).ToList();
         return Page(rows, limit, x => x.Id);
     }
 
     public async Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (order is null) return NotFound<OrderDetailView>();
-        var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).Select(x => new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus)).ToListAsync(cancellationToken);
+        var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        if (order is null) return NotFound<OrderDetailView>();
+        var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var variantIds = orderLines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
+        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var imageUrls = await MediaUrls(tenantId, variantIds.Select(x => (Guid?)x), cancellationToken);
+        var lines = orderLines.Select(x =>
+        {
+            var variant = x.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) : null;
+            return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode, variant?.OptionSignature, x.VariantId is { } imageVariantId ? imageUrls.GetValueOrDefault(imageVariantId) : null);
+        }).ToList();
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
-        return ServiceResult<OrderDetailView>.Ok(new(order.Id, order.OrderNumber, order.DerivedStatus, order.Currency, order.GrossAmount, order.DiscountAmount, order.NetAmount, order.OrderedAt, lines, packages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version));
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);
+        var invoice = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.OriginalInvoiceId == null).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+        return ServiceResult<OrderDetailView>.Ok(new(
+            order.Id, order.OrderNumber, order.DerivedStatus, order.Currency, order.GrossAmount, order.DiscountAmount, order.NetAmount, order.OrderedAt,
+            lines, packages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version,
+            order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
+            customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
+            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabel(invoice)));
     }
 
     public async Task<PageResult<ShipmentView>> ShipmentsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
@@ -93,15 +140,72 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
 
     public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
-        var afterId = Decode(after); var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId); if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0); if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ReturnClaimStatus>(status, true, out var parsed)) query = query.Where(x => x.Status == parsed);
-        var rows = await (from claim in query orderby claim.Id join order in db.Orders.AsNoTracking() on new { claim.TenantId, claim.OrderId } equals new { order.TenantId, OrderId = order.Id } select new { Claim = claim, order.OrderNumber }).Take(limit + 1).ToListAsync(cancellationToken);
-        return Page(rows.Select(x => new ReturnListView(x.Claim.Id, x.Claim.ExternalClaimId, x.OrderNumber, Wire(x.Claim.Status), x.Claim.RawStatus, x.Claim.ReasonText, x.Claim.ActionDueAt, x.Claim.Version)).ToList(), limit, x => x.Id);
+        var afterId = Decode(after);
+        var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId);
+        if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
+        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ReturnClaimStatus>(status, true, out var parsed)) query = query.Where(x => x.Status == parsed);
+        var claims = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+        var orderIds = claims.Select(x => x.OrderId).Distinct().ToArray();
+        var claimIds = claims.Select(x => x.Id).ToArray();
+        var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var returnLines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && claimIds.Contains(x.ClaimId)).ToListAsync(cancellationToken);
+        var orderLineIds = returnLines.Select(x => x.OrderLineId).Distinct().ToArray();
+        var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
+        var imageUrls = await MediaUrls(tenantId, orderLines.Values.Select(x => x.VariantId), cancellationToken);
+        var rows = claims.Select(claim =>
+        {
+            var order = orders.GetValueOrDefault(claim.OrderId);
+            var claimLines = returnLines.Where(x => x.ClaimId == claim.Id).ToList();
+            var package = packages.FirstOrDefault(x => x.OrderId == claim.OrderId);
+            var firstLine = claimLines.Select(x => orderLines.GetValueOrDefault(x.OrderLineId)).FirstOrDefault(x => x is not null);
+            var image = firstLine?.VariantId is { } variantId ? imageUrls.GetValueOrDefault(variantId) : null;
+            return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, claim.ActionDueAt, claim.Version,
+                order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson).Name,
+                order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", package?.CargoProviderExternalId, package?.CargoTrackingNumber, image, claimLines.Count);
+        }).ToList();
+        return Page(rows, limit, x => x.Id);
     }
 
     public async Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        var row = await (from claim in db.ReturnClaims.AsNoTracking() where claim.TenantId == tenantId && claim.Id == id join order in db.Orders.AsNoTracking() on new { claim.TenantId, claim.OrderId } equals new { order.TenantId, OrderId = order.Id } select new { Claim = claim, order.OrderNumber }).SingleOrDefaultAsync(cancellationToken); if (row is null) return NotFound<ReturnDetailView>();
-        var actions = await CapabilityValues(tenantId, row.Claim.ConnectionId, F3Capabilities.ReturnWrite, "allowedActions", cancellationToken); return ServiceResult<ReturnDetailView>.Ok(Map(row.Claim, row.OrderNumber, actions));
+        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        if (claim is null) return NotFound<ReturnDetailView>();
+        var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claim.OrderId, cancellationToken);
+        if (order is null) return NotFound<ReturnDetailView>();
+        var actions = await CapabilityValues(tenantId, claim.ConnectionId, F3Capabilities.ReturnWrite, "allowedActions", cancellationToken);
+        var sourceLines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var orderLineIds = sourceLines.Select(x => x.OrderLineId).ToArray();
+        var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var dispositions = await db.ReturnStockDispositions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == id).GroupBy(x => x.ReturnLineId).Select(x => new { ReturnLineId = x.Key, Quantity = x.Sum(y => y.Quantity) }).ToDictionaryAsync(x => x.ReturnLineId, x => x.Quantity, cancellationToken);
+        var variantIds = orderLines.Values.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
+        var inventoryVariants = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").Select(x => x.VariantId).ToListAsync(cancellationToken);
+        var imageUrls = await MediaUrls(tenantId, variantIds.Select(x => (Guid?)x), cancellationToken);
+        var lines = sourceLines.Select(line =>
+        {
+            var source = orderLines.GetValueOrDefault(line.OrderLineId);
+            var disposed = dispositions.GetValueOrDefault(line.Id);
+            return new ReturnLineView(line.Id, line.ExternalLineId, line.OrderLineId, source?.Sku ?? "—", source?.Barcode, source?.TitleSnapshot ?? "—", line.Quantity, disposed, Math.Max(0, line.Quantity - disposed), source?.UnitPrice ?? 0,
+                source?.VariantId is { } variantId ? imageUrls.GetValueOrDefault(variantId) : null,
+                source?.VariantId is { } mappedVariantId && inventoryVariants.Contains(mappedVariantId));
+        }).ToList();
+        var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
+        var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+        return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, claim.ActionDueAt, actions, claim.Version,
+            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, package?.CargoProviderExternalId, package?.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed));
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken)
+    {
+        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        if (claim is null) return NotFound<IReadOnlyList<ReturnIssueReason>>();
+        if (!await Supported(tenantId, claim.ConnectionId, F3Capabilities.ReturnRead, cancellationToken) && !await Supported(tenantId, claim.ConnectionId, F3Capabilities.ReturnWrite, cancellationToken))
+            return ServiceResult<IReadOnlyList<ReturnIssueReason>>.Fail("CAPABILITY_UNKNOWN", "İade ret nedenleri için doğrulanmış return capability gerekir.", 422);
+        var context = new AdapterContext(tenantId, claim.ConnectionId, correlationId, $"return-issue-reasons:{claim.ConnectionId:N}", timeProvider.GetUtcNow().AddSeconds(30));
+        var result = await returns.IssueReasonsAsync(context, cancellationToken);
+        return result.IsSuccess
+            ? ServiceResult<IReadOnlyList<ReturnIssueReason>>.Ok(result.Value!)
+            : ServiceResult<IReadOnlyList<ReturnIssueReason>>.Fail(result.Error!.Code, result.Error.SafeMessage, result.Error.HttpStatus ?? 502);
     }
 
     public Task<ServiceResult<Guid>> EnqueueReturnSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, F3Capabilities.ReturnRead, F3JobTypes.ReturnSync, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken);
@@ -193,10 +297,89 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
     private Task<bool> Supported(Guid tenantId, Guid connectionId, string code, CancellationToken cancellationToken) => db.PlatformCapabilities.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken);
     private async Task<bool> WritesEnabled(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) { if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false; var settings = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.SettingsJson).SingleOrDefaultAsync(cancellationToken); if (settings is null) return false; try { return JsonDocument.Parse(settings).RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True; } catch (JsonException) { return false; } }
     private async Task<IReadOnlyList<string>> CapabilityValues(Guid tenantId, Guid connectionId, string code, string property, CancellationToken cancellationToken) { var capability = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken); if (capability?.ConstraintsJson is null) return []; try { using var doc = JsonDocument.Parse(capability.ConstraintsJson); return doc.RootElement.TryGetProperty(property, out var values) && values.ValueKind == JsonValueKind.Array ? values.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList() : []; } catch (JsonException) { return []; } }
+    private async Task<Dictionary<Guid, string>> MediaUrls(Guid tenantId, IEnumerable<Guid?> variantIds, CancellationToken cancellationToken)
+    {
+        var ids = variantIds.Where(x => x is not null).Select(x => x!.Value).Distinct().ToArray();
+        if (ids.Length == 0) return [];
+        var rows = await (from media in db.ProductMedia.AsNoTracking()
+                          join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
+                          where media.TenantId == tenantId && media.VariantId != null && ids.Contains(media.VariantId.Value) && media.Status == "ACTIVE" && asset.Status == "ACTIVE" && asset.Classification == "PRODUCT_MEDIA_URL"
+                          orderby media.SortOrder
+                          select new { VariantId = media.VariantId!.Value, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+        return rows.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Url);
+    }
+
+    private static (string Name, string? Email, string? TaxOrIdentityNumber, string OrderType, bool IsMicroExport) Customer(string customerJson, string invoiceAddressJson)
+    {
+        var first = JsonText(customerJson, "customerFirstName", "firstName");
+        var last = JsonText(customerJson, "customerLastName", "lastName");
+        var name = string.Join(' ', new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        if (string.IsNullOrWhiteSpace(name)) name = JsonText(invoiceAddressJson, "fullName", "name", "company") ?? "—";
+        var email = JsonText(customerJson, "customerEmail", "email") ?? JsonText(invoiceAddressJson, "email");
+        var tax = JsonText(customerJson, "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber") ?? JsonText(invoiceAddressJson, "taxNumber", "identityNumber", "tcIdentityNumber");
+        var microText = JsonText(customerJson, "shipmentPackageType", "orderType");
+        var micro = JsonBool(customerJson, "micro", "microExport") || microText?.Contains("MICRO", StringComparison.OrdinalIgnoreCase) == true || microText?.Contains("İHRAC", StringComparison.OrdinalIgnoreCase) == true;
+        var commercial = JsonBool(customerJson, "commercial") || !string.IsNullOrWhiteSpace(JsonText(invoiceAddressJson, "company", "companyName", "taxOffice"));
+        return (name, email, tax, micro ? "MIKRO_IHRACAT" : commercial ? "KURUMSAL" : "BIREYSEL", micro);
+    }
+
+    private static DateTimeOffset? OperationalDueAt(string json) => JsonInstant(json, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate");
+
+    private static string InvoiceLabel(Invoice? invoice)
+    {
+        if (invoice is null) return "FATURA_BEKLIYOR";
+        if (!string.IsNullOrWhiteSpace(invoice.InvoiceNumber) || invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed) return "FATURA_KESILDI";
+        return invoice.Status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal ? "FATURA_IPTAL" : "FATURA_ISLENIYOR";
+    }
+
+    private static string? JsonText(string json, params string[] names)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
+            return FindText(document.RootElement, new HashSet<string>(names, StringComparer.OrdinalIgnoreCase));
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static string? FindText(JsonElement element, HashSet<string> names)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (names.Contains(property.Name) && property.Value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined or JsonValueKind.Object or JsonValueKind.Array))
+                {
+                    var value = property.Value.ToString();
+                    if (!string.IsNullOrWhiteSpace(value)) return value;
+                }
+                var nested = FindText(property.Value, names); if (!string.IsNullOrWhiteSpace(nested)) return nested;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array) foreach (var item in element.EnumerateArray()) { var nested = FindText(item, names); if (!string.IsNullOrWhiteSpace(nested)) return nested; }
+        return null;
+    }
+
+    private static bool JsonBool(string json, params string[] names)
+    {
+        var value = JsonText(json, names);
+        return bool.TryParse(value, out var parsed) && parsed || value is "1" or "YES" or "EVET";
+    }
+
+    private static DateTimeOffset? JsonInstant(string json, params string[] names)
+    {
+        var value = JsonText(json, names);
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (long.TryParse(value, out var milliseconds))
+        {
+            try { return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds); } catch (ArgumentOutOfRangeException) { }
+        }
+        return DateTimeOffset.TryParse(value, out var parsed) ? parsed : null;
+    }
+
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
-    private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version);
-    private static ReturnDetailView Map(ReturnClaim x, string orderNumber, IReadOnlyList<string> actions) => new(x.Id, x.ExternalClaimId, orderNumber, Wire(x.Status), x.RawStatus, x.ReasonCode, x.ReasonText, x.ActionDueAt, actions, x.Version);
+    private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId);
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);

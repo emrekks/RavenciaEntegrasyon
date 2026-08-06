@@ -231,6 +231,16 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         catch (JsonException) { return AdapterResult<RemoteReturnClaim>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
+    public async Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (authorized is null) return AdapterResult<IReadOnlyList<ReturnIssueReason>>.Failure(TrendyolErrorMapper.Configuration());
+        var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.ClaimIssueReasons, null, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<IReadOnlyList<ReturnIssueReason>>.Failure(response.Error!, response.RateLimit);
+        try { return AdapterResult<IReadOnlyList<ReturnIssueReason>>.Success(TrendyolJsonMapper.ReturnIssueReasons(response.Value!), response.RateLimit); }
+        catch (JsonException) { return AdapterResult<IReadOnlyList<ReturnIssueReason>>.Failure(TrendyolErrorMapper.Contract()); }
+    }
+
     public async Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized)) return AdapterResult<ReturnActionResult>.Failure(TrendyolErrorMapper.WriteClosed());

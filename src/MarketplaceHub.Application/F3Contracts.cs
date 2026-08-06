@@ -104,6 +104,7 @@ public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOr
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
 public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles);
 public sealed record ReturnActionResult(string ExternalClaimId, string Status, string? ExternalOperationId);
+public sealed record ReturnIssueReason(string Id, string Name, bool EvidenceRequired);
 public sealed record VerifiedWebhookEnvelope(string ExternalMessageId, string PayloadHash, string ResourceType, string RawJson);
 
 public interface IConnectionPort
@@ -148,6 +149,7 @@ public interface IReturnPort
 {
     Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteReturnClaim>> GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken);
+    Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken);
     Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken);
 }
 
@@ -192,15 +194,133 @@ public interface IF3ConnectionService
     Task<ServiceResult<CreatedWebhookSubscription>> CreateWebhookAsync(Guid tenantId, Guid id, CreateWebhookSubscriptionCommand command, CancellationToken cancellationToken);
 }
 
-public sealed record OrderListView(Guid Id, string OrderNumber, string DerivedStatus, string Currency, decimal NetAmount, DateTimeOffset OrderedAt, int LineCount, int PackageCount, long Version);
-public sealed record OrderLineView(Guid Id, string Sku, string? Barcode, string Title, decimal OrderedQuantity, decimal CancelledQuantity, decimal ShippedQuantity, decimal DeliveredQuantity, decimal ReturnedQuantity, decimal UnitPrice, decimal VatRate, string RawStatus);
-public sealed record ShipmentView(Guid Id, Guid OrderId, string OrderNumber, string ExternalPackageId, string Status, string RawStatus, string? CargoTrackingNumber, DateTimeOffset StatusOccurredAt, long Version);
-public sealed record OrderDetailView(Guid Id, string OrderNumber, string DerivedStatus, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, DateTimeOffset OrderedAt, IReadOnlyList<OrderLineView> Lines, IReadOnlyList<ShipmentView> Packages, long Version);
+public sealed record OrderListView(
+    Guid Id,
+    string OrderNumber,
+    string DerivedStatus,
+    string Currency,
+    decimal NetAmount,
+    DateTimeOffset OrderedAt,
+    int LineCount,
+    int PackageCount,
+    long Version,
+    Guid? ConnectionId = null,
+    string PlatformCode = "TRENDYOL",
+    string PlatformDisplayName = "Trendyol",
+    string CustomerName = "—",
+    string OrderType = "BIREYSEL",
+    bool IsMicroExport = false,
+    DateTimeOffset? ShipmentDueAt = null,
+    bool IsDeadlineCritical = false,
+    string InvoiceStatus = "FATURA_BEKLIYOR",
+    string? CargoProviderName = null,
+    string? CargoTrackingNumber = null,
+    string? PrimaryImageUrl = null,
+    decimal ProductQuantity = 0);
+public sealed record OrderLineView(
+    Guid Id,
+    string Sku,
+    string? Barcode,
+    string Title,
+    decimal OrderedQuantity,
+    decimal CancelledQuantity,
+    decimal ShippedQuantity,
+    decimal DeliveredQuantity,
+    decimal ReturnedQuantity,
+    decimal UnitPrice,
+    decimal VatRate,
+    string RawStatus,
+    Guid? VariantId = null,
+    string? ModelCode = null,
+    string? OptionSignature = null,
+    string? ImageUrl = null);
+public sealed record ShipmentView(
+    Guid Id,
+    Guid OrderId,
+    string OrderNumber,
+    string ExternalPackageId,
+    string Status,
+    string RawStatus,
+    string? CargoTrackingNumber,
+    DateTimeOffset StatusOccurredAt,
+    long Version,
+    string? CargoProviderName = null);
+public sealed record OrderDetailView(
+    Guid Id,
+    string OrderNumber,
+    string DerivedStatus,
+    string Currency,
+    decimal GrossAmount,
+    decimal DiscountAmount,
+    decimal NetAmount,
+    DateTimeOffset OrderedAt,
+    IReadOnlyList<OrderLineView> Lines,
+    IReadOnlyList<ShipmentView> Packages,
+    long Version,
+    Guid? ConnectionId = null,
+    string PlatformCode = "TRENDYOL",
+    string PlatformDisplayName = "Trendyol",
+    string CustomerName = "—",
+    string? CustomerEmail = null,
+    string? CustomerTaxOrIdentityNumber = null,
+    string OrderType = "BIREYSEL",
+    bool IsMicroExport = false,
+    string ShipmentAddressJson = "{}",
+    string InvoiceAddressJson = "{}",
+    DateTimeOffset? ShipmentDueAt = null,
+    string InvoiceStatus = "FATURA_BEKLIYOR");
 public sealed record ShipmentDetailView(ShipmentView Package, IReadOnlyList<string> AllowedActions, IReadOnlyList<string> SupportedLabelFormats, IReadOnlyList<ShipmentDocumentView> Documents);
 public sealed record ShipmentDocumentView(Guid Id, string DocumentKind, string Format, string Source, int DocumentVersion, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt);
 public sealed record ShipmentActionCommand(string Action, string PayloadJson);
-public sealed record ReturnListView(Guid Id, string ExternalClaimId, string OrderNumber, string Status, string RawStatus, string? ReasonText, DateTimeOffset? ActionDueAt, long Version);
-public sealed record ReturnDetailView(Guid Id, string ExternalClaimId, string OrderNumber, string Status, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, IReadOnlyList<string> AllowedActions, long Version);
+public sealed record ReturnLineView(
+    Guid Id,
+    string ExternalLineId,
+    Guid OrderLineId,
+    string Sku,
+    string? Barcode,
+    string Title,
+    decimal Quantity,
+    decimal DisposedQuantity,
+    decimal RemainingQuantity,
+    decimal UnitPrice,
+    string? ImageUrl,
+    bool HasInventoryMapping);
+public sealed record ReturnListView(
+    Guid Id,
+    string ExternalClaimId,
+    string OrderNumber,
+    string Status,
+    string RawStatus,
+    string? ReasonText,
+    DateTimeOffset? ActionDueAt,
+    long Version,
+    string CustomerName = "—",
+    DateTimeOffset? OrderedAt = null,
+    decimal OrderAmount = 0,
+    string Currency = "TRY",
+    string? CargoProviderName = null,
+    string? CargoTrackingNumber = null,
+    string? PrimaryImageUrl = null,
+    int ProductCount = 0);
+public sealed record ReturnDetailView(
+    Guid Id,
+    string ExternalClaimId,
+    string OrderNumber,
+    string Status,
+    string RawStatus,
+    string? ReasonCode,
+    string? ReasonText,
+    DateTimeOffset? ActionDueAt,
+    IReadOnlyList<string> AllowedActions,
+    long Version,
+    string CustomerName = "—",
+    DateTimeOffset? OrderedAt = null,
+    decimal OrderAmount = 0,
+    string Currency = "TRY",
+    string? CargoProviderName = null,
+    string? CargoTrackingNumber = null,
+    IReadOnlyList<ReturnLineView>? Lines = null,
+    bool StockDispositionAvailable = false);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);
 
@@ -216,6 +336,7 @@ public interface IF3SalesService
     Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
+    Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueReturnSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueReturnActionAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, ReturnDecisionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ApplyDispositionAsync(Guid tenantId, Guid userId, Guid claimId, ReturnDispositionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);

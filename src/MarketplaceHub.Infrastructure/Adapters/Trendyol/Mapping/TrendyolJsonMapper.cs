@@ -31,7 +31,12 @@ public static class TrendyolJsonMapper
             var rawStatusPackage = Text(package, "shipmentPackageStatus", "status"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
             var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber"), allocations, gross, discount, net);
             rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
-                Snapshot(package, "customerFirstName", "customerLastName", "customerEmail", "commercial"), Snapshot(package, "shipmentAddress"), Snapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText()));
+                Snapshot(package,
+                    "customerFirstName", "customerLastName", "customerEmail", "commercial", "micro", "microExport", "shipmentPackageType", "orderType",
+                    "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber",
+                    "estimatedDeliveryStartDate", "estimatedDeliveryEndDate", "agreedDeliveryDate", "lastDeliveryDate", "deliveryDate", "fastDelivery",
+                    "cargoProviderName", "cargoTrackingNumber", "cargoSenderNumber"),
+                Snapshot(package, "shipmentAddress"), Snapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText()));
         }
         return new(rows, NullText(root, "nextCursor"), Bool(root, "hasMore"));
     }
@@ -125,10 +130,32 @@ public static class TrendyolJsonMapper
                 {
                     var lineId = Text(item, "id"); var orderLineId = Text(item, "orderLineItemId"); if (lineId.Length > 0 && orderLineId.Length > 0) lines.Add(new(lineId, orderLineId, Decimal(item, "quantity")));
                 }
-            var status = ClaimStatus(claim); rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), null, Instant(claim, "lastModifiedDate") ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText()));
+            var status = ClaimStatus(claim); rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate"), Instant(claim, "lastModifiedDate") ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText()));
         }
         var page = Long(root, "page"); var totalPages = Long(root, "totalPages"); var hasMore = totalPages > 0 && page + 1 < totalPages;
         return new(rows, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore);
+    }
+
+
+    public static IReadOnlyList<ReturnIssueReason> ReturnIssueReasons(string json)
+    {
+        using var document = JsonDocument.Parse(json); var root = document.RootElement; var rows = new List<ReturnIssueReason>();
+        IEnumerable<JsonElement> items = root.ValueKind == JsonValueKind.Array
+            ? root.EnumerateArray()
+            : root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
+                ? content.EnumerateArray()
+                : root.TryGetProperty("claimIssueReasons", out var reasons) && reasons.ValueKind == JsonValueKind.Array
+                    ? reasons.EnumerateArray()
+                    : Enumerable.Empty<JsonElement>();
+        foreach (var item in items)
+        {
+            var id = Text(item, "id", "claimIssueReasonId", "reasonId");
+            var name = Text(item, "name", "description", "reason");
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) continue;
+            var evidenceRequired = BoolAny(item, "evidenceRequired", "isEvidenceRequired", "imageRequired", "isImageRequired") ?? id is not ("1651" or "451" or "2101");
+            rows.Add(new(id, name, evidenceRequired));
+        }
+        return rows.GroupBy(x => x.Id, StringComparer.Ordinal).Select(x => x.First()).OrderBy(x => x.Name, StringComparer.Create(new CultureInfo("tr-TR"), true)).ToList();
     }
 
     public static IReadOnlyList<RemoteReferenceItem> References(string resourceType, string json, string? parentExternalId)
@@ -173,5 +200,29 @@ public static class TrendyolJsonMapper
     private static decimal Decimal(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && (item.TryGetDecimal(out var result) || decimal.TryParse(item.ToString(), CultureInfo.InvariantCulture, out result))) return result; return 0; }
     private static long Long(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result) ? result : 0;
     private static bool Bool(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.True;
+    private static bool? BoolAny(JsonElement value, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!value.TryGetProperty(name, out var item)) continue;
+            if (item.ValueKind == JsonValueKind.True) return true;
+            if (item.ValueKind == JsonValueKind.False) return false;
+            if (bool.TryParse(item.ToString(), out var parsed)) return parsed;
+        }
+        return null;
+    }
     private static DateTimeOffset? Instant(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.TryGetInt64(out var milliseconds) ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) : null;
+    private static DateTimeOffset? FlexibleInstant(JsonElement value, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!value.TryGetProperty(name, out var item) || item.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) continue;
+            if (item.TryGetInt64(out var milliseconds))
+            {
+                try { return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds); } catch (ArgumentOutOfRangeException) { }
+            }
+            if (DateTimeOffset.TryParse(item.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) return parsed;
+        }
+        return null;
+    }
 }
