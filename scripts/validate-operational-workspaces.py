@@ -76,11 +76,11 @@ CHECKS: dict[str, tuple[str, list[str]]] = {
         [
             "Ürün adı, model, SKU veya barkod",
             "Hızlı stok/fiyat",
-            "Ürün görseli URL",
+            "Görsel URL listesi",
             "Kargo ölçüleri ve desi",
-            "Başlangıç stoğu",
+            "Varyant başlangıç stoğu",
             "/channel-offers",
-            "Yalnız yaprak kategori seçilebilir",
+            "Panel kategorisi",
         ],
     ),
     "dashboard": (

@@ -18,6 +18,17 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         return ServiceResult<ReferenceDataView>.Ok(new(snapshot.Id, snapshot.ResourceType, snapshot.FetchedAt, rows));
     }
 
+    public async Task<ServiceResult<IReadOnlyList<CatalogMappingView>>> ListMappingsAsync(Guid tenantId, string mappingType, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken)
+    {
+        if (!await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)) return NotFound<IReadOnlyList<CatalogMappingView>>();
+        var scope = string.IsNullOrWhiteSpace(scopeExternalId) ? "" : scopeExternalId.Trim();
+        var entities = await Query(mappingType).AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == scope)
+            .OrderBy(x => x.LocalId)
+            .ToListAsync(cancellationToken);
+        return ServiceResult<IReadOnlyList<CatalogMappingView>>.Ok(entities.Select(Map).ToList());
+    }
+
     public async Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken)
     {
         var scope = string.IsNullOrWhiteSpace(scopeExternalId) ? "" : scopeExternalId.Trim();
@@ -54,6 +65,17 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         mapping.SnapshotId = command.SnapshotId; mapping.ExternalId = command.ExternalId.Trim(); mapping.Status = command.Status.Trim(); mapping.VerifiedAt = timeProvider.GetUtcNow();
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<CatalogMappingView>.Ok(Map(mapping));
+    }
+
+    public async Task<ServiceResult<bool>> DeleteMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, long expectedVersion, CancellationToken cancellationToken)
+    {
+        var scope = string.IsNullOrWhiteSpace(scopeExternalId) ? "" : scopeExternalId.Trim();
+        var mapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == connectionId && x.ScopeExternalId == scope, cancellationToken);
+        if (mapping is null) return NotFound<bool>();
+        if (mapping.Version != expectedVersion) return ServiceResult<bool>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{mapping.Version}.", 412);
+        db.Remove(mapping);
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<bool>.Ok(true);
     }
 
     private IQueryable<CatalogMapping> Query(string type) => type switch

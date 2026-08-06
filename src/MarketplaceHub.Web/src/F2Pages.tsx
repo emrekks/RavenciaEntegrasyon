@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from './api'
@@ -84,30 +84,183 @@ export function ProductsPage() {
   </Page>
 }
 
+type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; attribute: Attribute }
+type VariantDraft = {
+  key: string
+  optionSignature: string
+  options: Record<string, string>
+  attributeValueIds: Record<string, string>
+  sku: string
+  barcode: string
+  stock: number
+  salePrice: number
+  listPrice: number
+}
+type ProductAttributePayload = { attributeId: string; valueId: string | null; textValue: string | null; numberValue: number | null; booleanValue: boolean | null; sortOrder: number }
+const MAX_VARIANTS = 100
+
+function buildVariantMatrix(requirements: CategoryRequirement[], variantAttributeIds: string[], selectedValueIds: Record<string, string[]>, baseSku: string, fallbackListPrice: number, fallbackSalePrice: number, initialStock: number) {
+  const axes = variantAttributeIds.map(attributeId => {
+    const requirement = requirements.find(item => item.attributeId === attributeId)
+    const selected = new Set(selectedValueIds[attributeId] ?? [])
+    return { requirement, values: requirement?.attribute.values.filter(value => selected.has(value.id)) ?? [] }
+  }).filter(axis => axis.requirement && axis.values.length)
+  if (!axes.length) return [] as VariantDraft[]
+  const count = axes.reduce((total, axis) => total * axis.values.length, 1)
+  if (count > MAX_VARIANTS) throw new Error(`En fazla ${MAX_VARIANTS} varyant oluşturabilirsiniz. Seçili kombinasyon sayısı: ${count}.`)
+  const combinations = axes.reduce<Array<{ options: Record<string, string>; attributeValueIds: Record<string, string> }>>((carry, axis) => {
+    if (!carry.length) return axis.values.map(value => ({ options: { [axis.requirement!.attribute.name]: value.value }, attributeValueIds: { [axis.requirement!.attributeId]: value.id } }))
+    return carry.flatMap(entry => axis.values.map(value => ({ options: { ...entry.options, [axis.requirement!.attribute.name]: value.value }, attributeValueIds: { ...entry.attributeValueIds, [axis.requirement!.attributeId]: value.id } })))
+  }, [])
+  const prefix = (baseSku || 'URUN').trim().replace(/\s+/g, '-').toLocaleUpperCase('tr-TR')
+  return combinations.map((entry, index) => ({
+    key: crypto.randomUUID(),
+    optionSignature: Object.entries(entry.options).map(([name, value]) => `${name}:${value}`).join('_'),
+    options: entry.options,
+    attributeValueIds: entry.attributeValueIds,
+    sku: `${prefix}-${index + 1}`,
+    barcode: '',
+    stock: initialStock,
+    salePrice: fallbackSalePrice,
+    listPrice: fallbackListPrice || fallbackSalePrice
+  }))
+}
+
+function productAttributePayload(requirement: CategoryRequirement, selectedIds: string[], typedValue: string, sortOrder: number): ProductAttributePayload[] {
+  if (selectedIds.length) return selectedIds.map((valueId, index) => ({ attributeId: requirement.attributeId, valueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: sortOrder * 100 + index }))
+  const typed = typedValue.trim()
+  if (!typed) return []
+  if (requirement.attribute.dataType === 'NUMBER') {
+    const value = Number(typed)
+    if (!Number.isFinite(value)) throw new Error(`${requirement.attribute.name} sayısal olmalıdır.`)
+    return [{ attributeId: requirement.attributeId, valueId: null, textValue: null, numberValue: value, booleanValue: null, sortOrder }]
+  }
+  if (requirement.attribute.dataType === 'BOOLEAN') {
+    const normalized = typed.toLocaleLowerCase('tr-TR')
+    if (!['true', 'false', 'evet', 'hayır', 'hayir', '1', '0'].includes(normalized)) throw new Error(`${requirement.attribute.name} için evet veya hayır seçin.`)
+    return [{ attributeId: requirement.attributeId, valueId: null, textValue: null, numberValue: null, booleanValue: ['true', 'evet', '1'].includes(normalized), sortOrder }]
+  }
+  return [{ attributeId: requirement.attributeId, valueId: null, textValue: typed, numberValue: null, booleanValue: null, sortOrder }]
+}
+
 export function NewProductPage() {
-  const [error, setError] = useState<unknown>(); const [created, setCreated] = useState<Product>(); const [notice, setNotice] = useState('')
+  const [error, setError] = useState<unknown>(); const [created, setCreated] = useState<Product>(); const [notice, setNotice] = useState(''); const [submitting, setSubmitting] = useState(false); const [categorySearch, setCategorySearch] = useState('')
+  const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', listPrice: '699.90', salePrice: '549.90', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '2', mediaUrls: '' })
+  const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([])
+  const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const categories = useQuery({ queryKey: ['categories', 'new-product'], queryFn: () => hubApi<PageData<Category>>('/catalog/categories?limit=200') })
   const brands = useQuery({ queryKey: ['brands', 'new-product'], queryFn: () => hubApi<PageData<Brand>>('/catalog/brands?limit=200') })
   const connections = useQuery({ queryKey: ['connections', 'new-product'], queryFn: () => hubApi<PageData<TrendyolConnection>>('/connections?limit=200') })
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError(undefined); setNotice(''); const data = new FormData(event.currentTarget); let productCreated: Product | undefined
-    try {
-      const product = await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ title: data.get('title'), description: data.get('description'), brandId: data.get('brandId') || null, categoryId: data.get('categoryId') || null, variants: [{ sku: data.get('sku'), barcode: data.get('barcode') || null, modelCode: data.get('modelCode') || null, weight: Number(data.get('weight')) || null, width: Number(data.get('width')) || null, height: Number(data.get('height')) || null, length: Number(data.get('length')) || null, options: { Renk: String(data.get('color') || ''), Beden: String(data.get('size') || '') } }] }) })
-      productCreated = product; setCreated(product); const variant = product.variants[0]; const completed: string[] = ['ürün']
-      const imageUrl = String(data.get('imageUrl') || '').trim(); if (imageUrl) { await hubApi('/files/product-media-url', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: null, url: imageUrl, mediaRole: 'PRIMARY', sortOrder: 0, altText: product.title }) }); completed.push('görsel') }
-      const initialStock = Number(data.get('initialStock') || 0); if (initialStock > 0) { await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: initialStock, reason: 'İlk ürün stoğu', sourceEventId: key() }) }); completed.push('stok') }
-      const connectionId = String(data.get('connectionId') || ''); const salePrice = Number(data.get('salePrice') || 0); const listPrice = Number(data.get('listPrice') || salePrice)
-      if (connectionId && salePrice > 0) { await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId, variantId: variant.id, listPrice, salePrice, currency: 'TRY', vatRate: Number(data.get('vatRate') || 20), vatInclusion: 'INCLUDED', roundingMode: 'HALF_EVEN', safetyStock: Number(data.get('safetyStock') || 0), status: 'ACTIVE', reason: 'İlk ürün fiyatı' }) }); completed.push('fiyat') }
-      setNotice(`${completed.join(', ')} kaydedildi.`)
-    } catch (reason) { setError(reason); if (productCreated) setNotice('Ürün oluşturuldu; sonraki adımlardan biri tamamlanamadı. Ürün detayından devam edin.') }
+  const requirements = useQuery({ queryKey: ['category-requirements', form.categoryId], queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`), enabled: !!form.categoryId, retry: false })
+  const leafCategories = categories.data?.items.filter(item => item.isLeaf && item.isActive) ?? []; const filteredLeafCategories = leafCategories.filter(item => !categorySearch.trim() || item.path.toLocaleLowerCase('tr-TR').includes(categorySearch.trim().toLocaleLowerCase('tr-TR'))); const activeBrands = brands.data?.items.filter(item => item.isActive) ?? []
+  const activeConnections = connections.data?.items.filter(item => item.status === 'ACTIVE' && item.platformCode === 'TRENDYOL') ?? []
+  const fallbackListPrice = Number(form.listPrice || 0); const fallbackSalePrice = Number(form.salePrice || 0); const initialStock = Number(form.initialStock || 0)
+  const desi = useMemo(() => { const width = Number(form.width); const length = Number(form.length); const height = Number(form.height); return width > 0 && length > 0 && height > 0 ? width * length * height / 3000 : 0 }, [form.width, form.length, form.height])
+  const mediaUrls = useMemo(() => form.mediaUrls.split(/\r?\n/).map(item => item.trim()).filter(Boolean), [form.mediaUrls])
+
+  function updateField(name: keyof typeof form, value: string) { setForm(current => ({ ...current, [name]: value })) }
+  function toggleAttributeValue(attributeId: string, valueId: string) {
+    const requirement = requirements.data?.find(item => item.attributeId === attributeId)
+    if (variantAttributeIds.includes(attributeId)) setVariantRows([])
+    setAttributeSelections(current => {
+      const values = current[attributeId] ?? []
+      if (values.includes(valueId)) return { ...current, [attributeId]: values.filter(item => item !== valueId) }
+      const variantAxis = variantAttributeIds.includes(attributeId)
+      const singleProductValue = requirement?.attribute.dataType === 'SINGLE_SELECT' && !variantAxis
+      return { ...current, [attributeId]: singleProductValue ? [valueId] : [...values, valueId] }
+    })
   }
-  const leafCategories = categories.data?.items.filter(item => item.isLeaf && item.isActive) ?? []; const activeBrands = brands.data?.items.filter(item => item.isActive) ?? []; const activeConnections = connections.data?.items.filter(item => item.status === 'ACTIVE') ?? []
-  return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><p className="lede page-lede">Trendyol yayınına temel olacak yerel ana ürünü, ilk varyantı, görseli, ölçüleri, stok ve fiyatını oluşturun.</p><form className="panel form-grid product-editor" onSubmit={submit}>
-    <div className="editor-section-title"><span>1</span><div><h2>Temel ürün bilgileri</h2><p>Yalnız yaprak kategori seçilebilir.</p></div></div><label>Başlık<input name="title" required maxLength={320} /></label><label>Açıklama<textarea name="description" required /></label><label>Yaprak kategori<select name="categoryId"><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label><label>Marka<select name="brandId"><option value="">Marka seçin</option>{activeBrands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Ürün görseli URL<input name="imageUrl" type="url" placeholder="https://.../urun.jpg" /></label>
-    <div className="editor-section-title"><span>2</span><div><h2>Varyant</h2><p>SKU, barkod, model, renk ve beden ürün eşleştirmesinin temelidir.</p></div></div><label>SKU<input name="sku" required /></label><label>Barkod<input name="barcode" /></label><label>Model kodu<input name="modelCode" /></label><label>Renk<input name="color" /></label><label>Beden<input name="size" /></label>
-    <div className="editor-section-title"><span>3</span><div><h2>Kargo ölçüleri ve desi</h2><p>Desi panelde en × boy × yükseklik / 3000 mantığıyla kargo kontrolünde kullanılır.</p></div></div><label>Ağırlık (kg)<input name="weight" type="number" min="0" step="0.01" /></label><label>En (cm)<input name="width" type="number" min="0" step="0.1" /></label><label>Boy (cm)<input name="length" type="number" min="0" step="0.1" /></label><label>Yükseklik (cm)<input name="height" type="number" min="0" step="0.1" /></label>
-    <div className="editor-section-title"><span>4</span><div><h2>Stok ve fiyat</h2><p>Fiyat, seçilen platform bağlantısına ait kanal teklifi olarak kaydedilir.</p></div></div><label>Başlangıç stoğu<input name="initialStock" type="number" min="0" step="1" defaultValue="0" /></label><label>Platform<select name="connectionId"><option value="">Fiyatı sonra ekle</option>{activeConnections.map(item => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label><label>Liste fiyatı<input name="listPrice" type="number" min="0" step="0.01" /></label><label>Satış fiyatı<input name="salePrice" type="number" min="0" step="0.01" /></label><label>KDV %<input name="vatRate" type="number" min="0" step="0.01" defaultValue="20" /></label><label>Güvenlik stoğu<input name="safetyStock" type="number" min="0" step="1" defaultValue="0" /></label>
-    <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />{notice && <p className="notice" role="status">{notice}</p>}<button>Ürünü oluştur</button>{created && <p className="success">Oluşturuldu: <Link to={`/products/${created.id}`}>ürünü aç</Link></p>}
+  function toggleVariantAttribute(attributeId: string) {
+    setVariantAttributeIds(current => current.includes(attributeId) ? current.filter(item => item !== attributeId) : [...current, attributeId])
+    setVariantRows([])
+  }
+  function generateVariants() {
+    try {
+      const generated = buildVariantMatrix(requirements.data ?? [], variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, initialStock)
+      setVariantRows(generated)
+      setNotice(generated.length ? `${generated.length} varyant satırı hazırlandı.` : 'Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.')
+    } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Varyantlar oluşturulamadı.') }
+  }
+  function clearVariants() { setVariantRows([]); setNotice('Oluşan varyant satırları temizlendi.') }
+  function updateVariantRow(keyValue: string, field: keyof VariantDraft, value: string) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, [field]: field === 'stock' || field === 'salePrice' || field === 'listPrice' ? Number(value || 0) : value })) }
+  function updateChannel(id: string) { setSelectedChannelIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]) }
+  function applyBulk() {
+    const stock = bulkStock === '' ? null : Number(bulkStock); const sale = bulkSalePrice === '' ? null : Number(bulkSalePrice); const list = bulkListPrice === '' ? null : Number(bulkListPrice)
+    setVariantRows(rows => rows.map(row => ({ ...row, stock: stock == null || !Number.isFinite(stock) ? row.stock : stock, salePrice: sale == null || !Number.isFinite(sale) ? row.salePrice : sale, listPrice: list == null || !Number.isFinite(list) ? row.listPrice : list })))
+    setNotice('Toplu stok ve fiyat değerleri varyantlara uygulandı.')
+  }
+
+  function rowsForSubmit() {
+    if (variantAttributeIds.length && !variantRows.length) throw new Error('Varyant özellikleri seçili. Önce “Ürünleri ekle” ile varyantları oluşturun.')
+    return variantRows.length ? variantRows : [{ key: crypto.randomUUID(), optionSignature: 'Tek Ürün', options: {}, attributeValueIds: {}, sku: (form.baseSku || form.modelCode || form.title || 'URUN').trim().replace(/\s+/g, '-').toLocaleUpperCase('tr-TR'), barcode: form.barcode, stock: initialStock, salePrice: fallbackSalePrice, listPrice: fallbackListPrice }]
+  }
+  function validate(rows: VariantDraft[]) {
+    const issues: string[] = []; const requirementList = requirements.data ?? []
+    if (!form.title.trim()) issues.push('Ürün adı zorunludur.'); if (!form.description.trim()) issues.push('Açıklama zorunludur.'); if (!form.categoryId) issues.push('Panel kategorisi zorunludur.')
+    for (const requirement of requirementList) {
+      const selectedCount = attributeSelections[requirement.attributeId]?.length ?? 0
+      if (!variantAttributeIds.includes(requirement.attributeId) && requirement.attribute.dataType === 'SINGLE_SELECT' && selectedCount > 1) issues.push(`${requirement.attribute.name} yalnız bir ürün değeri kabul eder.`)
+      if (!requirement.isRequired) continue
+      if (variantAttributeIds.includes(requirement.attributeId)) {
+        if (rows.some(row => !row.attributeValueIds[requirement.attributeId])) issues.push(`${requirement.attribute.name} tüm varyantlarda seçilmelidir.`)
+      } else if (!(attributeSelections[requirement.attributeId]?.length) && !(attributeTextValues[requirement.attributeId] ?? '').trim()) issues.push(`${requirement.attribute.name} zorunludur.`)
+    }
+    if (rows.length > MAX_VARIANTS) issues.push(`En fazla ${MAX_VARIANTS} varyant oluşturulabilir.`)
+    const skus = rows.map(row => row.sku.trim().toLocaleUpperCase('tr-TR')); if (skus.some(value => !value)) issues.push('Tüm varyantlarda stok kodu zorunludur.'); if (new Set(skus).size !== skus.length) issues.push('Stok kodları benzersiz olmalıdır.')
+    const signatures = rows.map(row => row.optionSignature); if (new Set(signatures).size !== signatures.length) issues.push('Aynı varyant kombinasyonu iki kez oluşturulamaz.')
+    const barcodes = rows.map(row => row.barcode.trim()).filter(Boolean); if (new Set(barcodes.map(value => value.toLocaleUpperCase('tr-TR'))).size !== barcodes.length) issues.push('Barkodlar benzersiz olmalıdır.')
+    if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')
+    if (selectedChannelIds.length) {
+      if (!form.brandId) issues.push('Trendyol yayını için marka zorunludur.'); if (!form.modelCode.trim() || form.modelCode.trim().length > 40) issues.push('Trendyol yayını için en fazla 40 karakterlik model kodu zorunludur.'); if (form.title.trim().length > 100) issues.push('Trendyol ürün başlığı en fazla 100 karakter olabilir.')
+      if (!mediaUrls.length) issues.push('Trendyol yayını için en az bir HTTPS görsel URL’si zorunludur.'); if (mediaUrls.length > 8) issues.push('Trendyol yayını için en fazla 8 görsel kullanılabilir.'); if (mediaUrls.some(url => !url.startsWith('https://'))) issues.push('Tüm görsel adresleri HTTPS olmalıdır.')
+      if (rows.some(row => !row.barcode.trim() || !/^[a-zA-Z0-9._-]+$/.test(row.barcode.trim()))) issues.push('Trendyol yayını için her varyantta geçerli ve benzersiz barkod zorunludur.'); if (rows.some(row => row.salePrice <= 0)) issues.push('Trendyol yayını için satış fiyatı sıfırdan büyük olmalıdır.')
+    }
+    if (issues.length) throw new Error(issues.join(' '))
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setError(undefined); setNotice(''); setSubmitting(true); let productCreated: Product | undefined
+    try {
+      const requirementList = requirements.data ?? []; const rows = rowsForSubmit(); validate(rows)
+      const globalAttributes = requirementList.filter(item => !variantAttributeIds.includes(item.attributeId)).flatMap((item, index) => productAttributePayload(item, attributeSelections[item.attributeId] ?? [], attributeTextValues[item.attributeId] ?? '', index))
+      const product = await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ title: form.title, description: form.description, brandId: form.brandId || null, categoryId: form.categoryId || null, attributes: globalAttributes, variants: rows.map((row, index) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null, weight: Number(form.weight) || null, width: Number(form.width) || null, height: Number(form.height) || null, length: Number(form.length) || null, options: row.options, attributes: Object.entries(row.attributeValueIds).map(([attributeId, valueId], attributeIndex) => ({ attributeId, valueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: index * 100 + attributeIndex })) })) }) })
+      productCreated = product; setCreated(product); const completed = ['ürün']; const warnings: string[] = []
+      for (const [index, url] of mediaUrls.entries()) await hubApi('/files/product-media-url', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: null, url, mediaRole: index === 0 ? 'PRIMARY' : 'GALLERY', sortOrder: index, altText: form.title }) })
+      if (mediaUrls.length) completed.push('görseller')
+      for (const [index, variant] of product.variants.entries()) {
+        const row = rows[index]
+        if (row.stock > 0) await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: row.stock, reason: 'İlk ürün stoğu', sourceEventId: key() }) })
+        for (const connectionId of selectedChannelIds) await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId, variantId: variant.id, listPrice: row.listPrice, salePrice: row.salePrice, currency: form.currency || 'TRY', vatRate: Number(form.vatRate || 0), vatInclusion: form.vatIncluded, roundingMode: 'HALF_EVEN', safetyStock: Number(form.safetyStock || 0), status: 'ACTIVE', reason: 'İlk ürün fiyatı' }) })
+      }
+      if (rows.some(row => row.stock > 0)) completed.push('stok'); if (selectedChannelIds.length) completed.push('kanal fiyatları')
+      for (const connectionId of selectedChannelIds) {
+        try {
+          await hubApi(`/products/${product.id}/listing-profiles/${connectionId}`, { method: 'PUT', body: JSON.stringify({ titleOverride: null, descriptionOverride: null, externalCategoryId: null, externalBrandId: null, deliveryTimeDays: null, enabled: true }) })
+          const jobId = await hubApi<string>(`/products/${product.id}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId }) })
+          completed.push(`yayın işi ${jobId}`)
+        } catch (reason) { warnings.push(reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.') }
+      }
+      setNotice(`${completed.join(', ')} kaydedildi.${warnings.length ? ` Yayın uyarısı: ${warnings.join(' ')}` : ''}`)
+    } catch (reason) { setError(reason); if (productCreated) setNotice('Ürün oluşturuldu; sonraki stok, fiyat, görsel veya yayın adımlarından biri tamamlanamadı. Ürün detayından devam edin.') } finally { setSubmitting(false) }
+  }
+
+  return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><p className="lede page-lede">Kategori özellikleri, varyant kombinasyonları, stok, fiyat ve Trendyol yayın kuyruğu tek ürün çalışma alanında yönetilir.</p><form className="product-creation-workspace" onSubmit={submit}>
+    <section className="panel product-step-card"><div className="editor-section-title"><span>1</span><div><h2>Temel ürün bilgileri</h2><p>Ürün kartının temel başlığı ve katalog bilgileri.</p></div></div><div className="product-step-grid"><label>Ürün adı<input value={form.title} onChange={event => updateField('title', event.target.value)} required maxLength={320} /></label><label>Marka<select value={form.brandId} onChange={event => updateField('brandId', event.target.value)}><option value="">Marka seçin</option>{activeBrands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="wide">Açıklama<textarea value={form.description} onChange={event => updateField('description', event.target.value)} required /></label><label>Panel kategorisi<input aria-label="Ürün kategorilerinde ara" value={categorySearch} onChange={event => setCategorySearch(event.target.value)} placeholder="Kategorilerde ara" /><select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setVariantRows([]) }}><option value="">Kategori seçin</option>{filteredLeafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label><label>Model kodu<input value={form.modelCode} onChange={event => updateField('modelCode', event.target.value)} /></label><label>Temel SKU<input value={form.baseSku} onChange={event => updateField('baseSku', event.target.value)} placeholder="RAV-BLUZ" /></label><label>Tek ürün barkodu<input value={form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder="Varyantsız üründe kullanılır" /></label></div></section>
+
+    <div className="product-layout-grid"><div className="product-main-stack">
+      <section className="panel product-step-card"><div className="editor-section-title"><span>2</span><div><h2>Fiyat, stok ve vergi</h2><p>Merkezi başlangıç değerleri varyant oluşturulurken satırlara uygulanır.</p></div></div><div className="product-step-grid"><label>Liste fiyatı<input value={form.listPrice} onChange={event => updateField('listPrice', event.target.value)} type="number" min="0" step="0.01" /></label><label>Satış fiyatı<input value={form.salePrice} onChange={event => updateField('salePrice', event.target.value)} type="number" min="0" step="0.01" /></label><label>Para birimi<select value={form.currency} onChange={event => updateField('currency', event.target.value)}><option>TRY</option><option>USD</option><option>EUR</option></select></label><label>KDV oranı<select value={form.vatRate} onChange={event => updateField('vatRate', event.target.value)}><option value="1">%1</option><option value="10">%10</option><option value="20">%20</option></select></label><label>KDV dahil mi<select value={form.vatIncluded} onChange={event => updateField('vatIncluded', event.target.value)}><option value="INCLUDED">Evet</option><option value="EXCLUDED">Hayır</option></select></label><label>Varyant başlangıç stoğu<input value={form.initialStock} onChange={event => updateField('initialStock', event.target.value)} type="number" min="0" step="1" /></label><label>Güvenlik stoğu<input value={form.safetyStock} onChange={event => updateField('safetyStock', event.target.value)} type="number" min="0" step="1" /></label></div></section>
+
+      <section className="panel product-step-card"><div className="editor-section-title"><span>3</span><div><h2>Kargo ölçüleri ve desi</h2><p>Desi, en × boy × yükseklik / 3000 formülüyle otomatik hesaplanır.</p></div></div><div className="product-step-grid"><label>Ağırlık (kg)<input value={form.weight} onChange={event => updateField('weight', event.target.value)} type="number" min="0" step="0.01" /></label><label>En (cm)<input value={form.width} onChange={event => updateField('width', event.target.value)} type="number" min="0" step="0.1" /></label><label>Boy (cm)<input value={form.length} onChange={event => updateField('length', event.target.value)} type="number" min="0" step="0.1" /></label><label>Yükseklik (cm)<input value={form.height} onChange={event => updateField('height', event.target.value)} type="number" min="0" step="0.1" /></label><div className="calculated-field"><small>Hesaplanan desi</small><strong>{desi ? desi.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : '—'}</strong></div></div></section>
+
+      <section className="panel product-step-card"><div className="editor-section-title"><span>4</span><div><h2>Görseller</h2><p>Trendyol yayını için internetten erişilebilen HTTPS adresleri gerekir.</p></div></div><div className="upload-ghost-box">{mediaUrls.length ? `${mediaUrls.length} görsel hazır` : 'Ürün görselleri'}</div><label>Görsel URL listesi<textarea value={form.mediaUrls} onChange={event => updateField('mediaUrls', event.target.value)} placeholder="Her satıra bir HTTPS görsel adresi girin" /></label>{mediaUrls.length > 0 && <div className="media-preview-strip">{mediaUrls.slice(0, 8).map((url, index) => <figure key={url}><img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} /><figcaption>{index === 0 ? 'Ana görsel' : `${index + 1}. görsel`}</figcaption></figure>)}</div>}</section>
+
+      <section className="panel product-step-card"><div className="editor-section-title"><span>5</span><div><h2>Ürün özellikleri</h2><p>Bilgiler kategori &amp; özellik eşleme sayfasındaki kategori özellik başlıklarından gelir.</p></div></div>{!form.categoryId ? <div className="unknown"><strong>Önce kategori seçin</strong><p>Kategori seçildiğinde o kategoriye bağlanan özellikler burada görünür.</p></div> : requirements.isLoading ? <p>Kategori özellikleri yükleniyor…</p> : requirements.isError ? <div className="unknown"><strong>Kategori özellikleri alınamadı</strong><p>Önce kategori eşleme ekranında ilgili kategorinin özellik başlıklarını hazırlayın.</p></div> : <div className="attribute-builder-list">{(requirements.data ?? []).sort((a, b) => a.displayOrder - b.displayOrder).map(item => <article className="attribute-builder-card" key={item.attributeId}><div className="attribute-builder-head"><label className="attribute-builder-toggle"><input type="checkbox" checked={variantAttributeIds.includes(item.attributeId)} onChange={() => toggleVariantAttribute(item.attributeId)} disabled={!item.attribute.values.length} /> <span>{item.attribute.name}{item.isRequired ? ' *' : ''}</span></label><small>{item.attribute.values.length} değer · {variantAttributeIds.includes(item.attributeId) ? 'varyant özelliği' : 'ürün özelliği'}</small></div>{item.attribute.values.length ? <div className="option-chip-list">{item.attribute.values.map(value => <button type="button" key={value.id} className={`option-chip ${(attributeSelections[item.attributeId] ?? []).includes(value.id) ? 'active' : ''}`} onClick={() => toggleAttributeValue(item.attributeId, value.id)}>{value.value}</button>)}</div> : item.attribute.dataType === 'BOOLEAN' ? <label>Değer<select value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))}><option value="">Seçin</option><option value="evet">Evet</option><option value="hayır">Hayır</option></select></label> : <label>Değer<input value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))} type={item.attribute.dataType === 'NUMBER' ? 'number' : 'text'} placeholder="Değer girin" /></label>}</article>)}</div>}</section>
+
+      <section className="panel product-step-card"><div className="editor-section-title"><span>6</span><div><h2>Ürün seçenek grupları</h2><p>İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</p></div></div><div className="variant-toolbar"><button type="button" onClick={generateVariants}>Ürünleri ekle</button><button type="button" className="secondary" onClick={clearVariants}>Oluşan varyantları temizle</button><span>{variantRows.length}/{MAX_VARIANTS} varyant</span></div>{variantRows.length > 0 && <div className="variant-bulk-editor"><input value={bulkStock} onChange={event => setBulkStock(event.target.value)} type="number" min="0" placeholder="Tüm stoklar" /><input value={bulkSalePrice} onChange={event => setBulkSalePrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm satış fiyatları" /><input value={bulkListPrice} onChange={event => setBulkListPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm liste fiyatları" /><button type="button" className="secondary" onClick={applyBulk}>Tümüne uygula</button></div>}<div className="variant-table-editor"><div className="variant-table-head"><span>Seçenek</span><span>Barkod</span><span>Stok kodu</span><span>Stok</span><span>Fiyat</span><span>Liste fiyatı</span><span>İşlem</span></div>{variantRows.length ? variantRows.map(row => <div className="variant-table-row" key={row.key}><input value={row.optionSignature} readOnly /><input value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" /><input value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" /><input value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" /><input value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /><input value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /><button type="button" className="secondary" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))}>Sil</button></div>) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini işaretleyip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}</div></section>
+    </div><aside className="panel publish-channel-panel"><div className="editor-section-title"><span>7</span><div><h2>Yayınlanacak kanallar</h2><p>Seçilen aktif kanallarda fiyat teklifi, listing profile ve yayın işi hazırlanır.</p></div></div><div className="channel-choice-list">{activeConnections.map(item => <label key={item.id} className="channel-choice"><input type="checkbox" checked={selectedChannelIds.includes(item.id)} onChange={() => updateChannel(item.id)} /> <span>{item.displayName}</span><small>{selectedChannelIds.includes(item.id) ? 'Seçildi' : 'Seçilmedi'}</small></label>)}{['Hepsiburada', 'Pazarama', 'N11', 'Shopify'].map(item => <label key={item} className="channel-choice disabled"><input type="checkbox" disabled /> <span>{item}</span><small>Entegrasyon bekliyor</small></label>)}{!activeConnections.length && <p>ACTIVE Trendyol bağlantısı bulunamadı.</p>}</div><div className="channel-help"><strong>Güvenli yayın</strong><p>Capability kanıtı veya dış yazma anahtarı kapalıysa ürün yerel olarak kaydolur; yayın işi uyarı olarak raporlanır.</p></div></aside></div>
+
+    <section className="product-submit-sticky"><div><strong>Ürün kayda hazır</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><button disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Ürünü kaydet'}</button></section>
+    <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />{notice && <p className="notice" role="status">{notice}</p>}{created && <p className="success">Oluşturuldu: <Link to={`/products/${created.id}`}>ürünü aç</Link></p>}
   </form></Page>
 }
 
@@ -118,7 +271,7 @@ export function ProductDetailPage() {
   const status = useQuery({ queryKey: ['publication-status', id, connectionId], queryFn: () => hubApi<PublicationStatus>(`/products/${id}/publication-status/${connectionId}`), enabled: !!id && !!connectionId, retry: false })
   const activeConnections = connections.data?.items.filter(item => item.platformCode === 'TRENDYOL' && item.status === 'ACTIVE') ?? []
   const refresh = async () => { await client.invalidateQueries({ queryKey: ['product', id] }); await client.invalidateQueries({ queryKey: ['products'] }) }
-  async function updateProduct(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!query.data) return; const data = new FormData(event.currentTarget); try { await hubApi(`/products/${id}`, { method: 'PATCH', headers: { 'If-Match': `"v${query.data.version}"` }, body: JSON.stringify({ title: data.get('title'), description: data.get('description'), brandId: query.data.brandId, categoryId: query.data.categoryId, attributes: [] }) }); setNotice('Ürün bilgileri güncellendi.'); await refresh() } catch (error) { setNotice(error instanceof Error ? error.message : 'Ürün güncellenemedi.') } }
+  async function updateProduct(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!query.data) return; const data = new FormData(event.currentTarget); try { await hubApi(`/products/${id}`, { method: 'PATCH', headers: { 'If-Match': `"v${query.data.version}"` }, body: JSON.stringify({ title: data.get('title'), description: data.get('description'), brandId: query.data.brandId, categoryId: query.data.categoryId }) }); setNotice('Ürün bilgileri güncellendi.'); await refresh() } catch (error) { setNotice(error instanceof Error ? error.message : 'Ürün güncellenemedi.') } }
   async function image(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!query.data) return; const data = new FormData(event.currentTarget); try { await hubApi('/files/product-media-url', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: query.data.id, variantId: null, url: data.get('imageUrl'), mediaRole: 'PRIMARY', sortOrder: 0, altText: query.data.title }) }); setNotice('Ana görsel güncellendi.'); await refresh() } catch (error) { setNotice(error instanceof Error ? error.message : 'Görsel güncellenemedi.') } }
   async function run(path: string, body: object) { try { setNotice(''); const jobId = await hubApi<string>(path, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify(body) }); setNotice(`İş kuyruğa alındı: ${jobId}`); await client.invalidateQueries({ queryKey: ['publication-status', id, connectionId] }) } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'İşlem tamamlanamadı.') } }
   return <Page title={query.data?.title ?? 'Ürün'} eyebrow="Ürün detayı">{query.isError ? <ErrorBox error={query.error} /> : !query.data ? <p>Yükleniyor…</p> : <>

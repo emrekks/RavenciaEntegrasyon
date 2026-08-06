@@ -104,7 +104,7 @@ test('maps a category-scoped attribute and its value in the unified mapping work
       valueSaved = true
       return json({ id: 'value-mapping-1', connectionId: 'connection-1', snapshotId: 'value-snapshot-1', localId: 'local-value-1', scopeExternalId: '14609/293', externalId: 'value-2', status: 'VERIFIED', version: 1 })
     }
-    if (url.includes('/api/v1/mappings/attribute-values/local-value-1')) return json(valueSaved ? { id: 'value-mapping-1', connectionId: 'connection-1', snapshotId: 'value-snapshot-1', localId: 'local-value-1', scopeExternalId: '14609/293', externalId: 'value-2', status: 'VERIFIED', version: 1 } : null)
+    if (url.includes('/api/v1/mappings/attribute-values?')) return json(valueSaved ? [{ id: 'value-mapping-1', connectionId: 'connection-1', snapshotId: 'value-snapshot-1', localId: 'local-value-1', scopeExternalId: '14609/293', externalId: 'value-2', status: 'VERIFIED', version: 1 }] : [])
     return Promise.resolve(new Response('{}', { status: 404, headers: { 'Content-Type': 'application/problem+json' } }))
   }) as typeof fetch
 
@@ -134,15 +134,13 @@ test('maps a category-scoped attribute and its value in the unified mapping work
   expect(await screen.findByText('Özellik eşlemesi doğrulandı ve kategori kapsamında kaydedildi.')).toBeInTheDocument()
   await waitFor(() => expect(JSON.parse(attributeBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', externalId: '293', status: 'VERIFIED' }))
 
-  expect(await screen.findByRole('heading', { name: 'Özellik değeri eşlemesi' })).toBeInTheDocument()
-  const localValue = screen.getByLabelText('Panel özellik değeri')
-  fireEvent.change(localValue, { target: { value: 'local-value-1' } })
-  const remoteValue = screen.getByLabelText('Trendyol özellik değeri')
+  expect(await screen.findByRole('heading', { name: 'Değer eşleştirmeleri' })).toBeInTheDocument()
+  const remoteValue = screen.getByLabelText('M Trendyol değeri')
   await within(remoteValue).findByRole('option', { name: 'M' })
   fireEvent.change(remoteValue, { target: { value: 'value-2' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Değer eşlemesini kaydet' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Tüm eşlemeleri kaydet' }))
 
-  expect(await screen.findByText('Özellik değeri eşlemesi doğrulandı.')).toBeInTheDocument()
+  expect(await screen.findByText('1 değer eşlemesi kaydedildi.')).toBeInTheDocument()
   expect(valueMappingUrl).toContain('/mappings/attribute-values/local-value-1')
   await waitFor(() => expect(JSON.parse(valueBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'value-snapshot-1', externalId: 'value-2', status: 'VERIFIED' }))
 })

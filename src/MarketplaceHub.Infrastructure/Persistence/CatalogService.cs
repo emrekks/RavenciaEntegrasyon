@@ -104,6 +104,43 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         db.AttributeDefinitions.Add(attribute); db.AttributeValues.AddRange(values); await db.SaveChangesAsync(cancellationToken); return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, values));
     }
 
+    public async Task<ServiceResult<AttributeView>> AddAttributeValuesAsync(Guid tenantId, Guid attributeId, IReadOnlyList<CreateAttributeValueCommand> values, CancellationToken cancellationToken)
+    {
+        var attribute = await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == attributeId && x.IsActive, cancellationToken);
+        if (attribute is null) return NotFound<AttributeView>();
+        if (attribute.DataType is not (AttributeDataType.SingleSelect or AttributeDataType.MultiSelect)) return Invalid<AttributeView>("values", "Yalnız seçim tipindeki özelliklere seçenek değeri eklenebilir.");
+        var normalized = values.Select(x => Normalize(x.Value)).ToArray();
+        if (normalized.Length == 0 || normalized.Any(string.IsNullOrWhiteSpace) || normalized.Distinct().Count() != normalized.Length) return Invalid<AttributeView>("values", "En az bir benzersiz ve boş olmayan seçenek değeri girin.");
+        var existing = await db.AttributeValues.Where(x => x.TenantId == tenantId && x.AttributeId == attributeId).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken);
+        if (existing.Any(x => normalized.Contains(x.NormalizedValue))) return Conflict<AttributeView>("ATTRIBUTE_VALUE_DUPLICATE", "Seçenek değerlerinden biri bu özellikte zaten var.");
+        var nextSort = existing.Count == 0 ? 0 : existing.Max(x => x.SortOrder) + 1;
+        var now = timeProvider.GetUtcNow();
+        var additions = values.Select((value, index) => new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenantId, AttributeId = attributeId, Value = value.Value.Trim(), NormalizedValue = Normalize(value.Value), SortOrder = nextSort + index, IsActive = true }).ToList();
+        db.AttributeValues.AddRange(additions); attribute.Version++; attribute.UpdatedAt = now; await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, existing.Concat(additions)));
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>> GetRequirementsAsync(Guid tenantId, Guid categoryId, CancellationToken cancellationToken)
+    {
+        if (!await db.Categories.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == categoryId, cancellationToken)) return NotFound<IReadOnlyList<CategoryAttributeRequirementView>>();
+        var requirements = await db.CategoryAttributeRequirements.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.CategoryId == categoryId)
+            .OrderBy(x => x.DisplayOrder)
+            .ToListAsync(cancellationToken);
+        var attributeIds = requirements.Select(x => x.AttributeId).Distinct().ToArray();
+        var attributes = await db.AttributeDefinitions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && attributeIds.Contains(x.Id))
+            .OrderBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+        var values = await db.AttributeValues.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && attributeIds.Contains(x.AttributeId) && x.IsActive)
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Value)
+            .ToListAsync(cancellationToken);
+        var attributeLookup = attributes.ToDictionary(x => x.Id, x => MapAttribute(x, values.Where(value => value.AttributeId == x.Id)));
+        var result = requirements.Where(x => attributeLookup.ContainsKey(x.AttributeId)).Select(x => new CategoryAttributeRequirementView(x.AttributeId, x.IsRequired, x.AllowsCustomValue, x.DisplayOrder, attributeLookup[x.AttributeId])).ToList();
+        return ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>.Ok(result);
+    }
+
     public async Task<ServiceResult<IReadOnlyList<AttributeRequirementCommand>>> ReplaceRequirementsAsync(Guid tenantId, Guid categoryId, long expectedVersion, IReadOnlyList<AttributeRequirementCommand> requirements, CancellationToken cancellationToken)
     {
         var category = await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == categoryId, cancellationToken); if (category is null) return NotFound<IReadOnlyList<AttributeRequirementCommand>>(); if (category.Version != expectedVersion) return Precondition<IReadOnlyList<AttributeRequirementCommand>>(category.Version);
@@ -124,15 +161,50 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     public async Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken)
     {
-        var validation = await ValidateProductReferencesAsync(tenantId, command.Title, command.CategoryId, command.BrandId, cancellationToken); if (validation is not null) return ServiceResult<ProductView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
-        var attributeValidation = await ValidateAttributesAsync(tenantId, command.CategoryId, command.Attributes ?? [], cancellationToken); if (attributeValidation is not null) return ServiceResult<ProductView>.Fail(attributeValidation.Code, attributeValidation.Message, attributeValidation.Status, attributeValidation.FieldErrors);
+        var validation = await ValidateProductReferencesAsync(tenantId, command.Title, command.CategoryId, command.BrandId, cancellationToken);
+        if (validation is not null) return ServiceResult<ProductView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
         if (command.Variants.Count == 0) return Invalid<ProductView>("variants", "Ürün en az bir satış varyantı ister.");
-        var normalizedSkus = command.Variants.Select(x => Normalize(x.Sku)).ToArray(); if (normalizedSkus.Any(string.IsNullOrWhiteSpace) || normalizedSkus.Distinct().Count() != normalizedSkus.Length) return Invalid<ProductView>("variants", "SKU boş veya tekrarlı olamaz.");
+        if (command.Variants.Count > 1000) return Invalid<ProductView>("variants", "Tek ürün kaydında en fazla 1000 varyant oluşturulabilir.");
+
+        var globalAssignments = command.Attributes ?? [];
+        var globalAttributeValidation = await ValidateAttributeValuesAsync(tenantId, globalAssignments, cancellationToken);
+        if (globalAttributeValidation is not null) return ServiceResult<ProductView>.Fail(globalAttributeValidation.Code, globalAttributeValidation.Message, globalAttributeValidation.Status, globalAttributeValidation.FieldErrors);
+        foreach (var variant in command.Variants)
+        {
+            var variantAttributeValidation = await ValidateAttributeValuesAsync(tenantId, variant.Attributes ?? [], cancellationToken);
+            if (variantAttributeValidation is not null) return ServiceResult<ProductView>.Fail(variantAttributeValidation.Code, variantAttributeValidation.Message, variantAttributeValidation.Status, variantAttributeValidation.FieldErrors);
+        }
+        if (command.CategoryId is Guid categoryId)
+        {
+            var requiredAttributeIds = await db.CategoryAttributeRequirements.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.CategoryId == categoryId && x.IsRequired)
+                .Select(x => x.AttributeId)
+                .ToListAsync(cancellationToken);
+            var globalIds = globalAssignments.Select(x => x.AttributeId).ToHashSet();
+            for (var index = 0; index < command.Variants.Count; index++)
+            {
+                var supplied = globalIds.Concat((command.Variants[index].Attributes ?? []).Select(x => x.AttributeId)).ToHashSet();
+                if (requiredAttributeIds.Any(id => !supplied.Contains(id)))
+                    return ServiceResult<ProductView>.Fail("REQUIRED_ATTRIBUTE_MISSING", $"{index + 1}. varyant için kategori zorunlu özellikleri eksik.", 422, new Dictionary<string, string[]> { ["variants"] = [$"{index + 1}. varyant için tüm zorunlu özellikleri seçin."] });
+            }
+        }
+
+        var normalizedSkus = command.Variants.Select(x => Normalize(x.Sku)).ToArray();
+        if (normalizedSkus.Any(string.IsNullOrWhiteSpace) || normalizedSkus.Distinct().Count() != normalizedSkus.Length) return Invalid<ProductView>("variants", "SKU boş veya tekrarlı olamaz.");
         if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && normalizedSkus.Contains(x.SkuNormalized), cancellationToken)) return Conflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "SKU başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
-        var normalizedBarcodes = command.Variants.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).Select(x => Normalize(x.Barcode!)).ToArray(); if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && normalizedBarcodes.Contains(x.BarcodeNormalized), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
-        var now = timeProvider.GetUtcNow(); var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, CreatedAt = now, UpdatedAt = now };
+        var normalizedBarcodes = command.Variants.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).Select(x => Normalize(x.Barcode!)).ToArray();
+        if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && normalizedBarcodes.Contains(x.BarcodeNormalized), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
+
+        var now = timeProvider.GetUtcNow();
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, CreatedAt = now, UpdatedAt = now };
         var variants = command.Variants.Select(variant => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = string.IsNullOrWhiteSpace(variant.Barcode) ? null : Normalize(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), CreatedAt = now, UpdatedAt = now }).ToList();
-        db.Products.Add(product); db.ProductVariants.AddRange(variants); db.ProductAttributeAssignments.AddRange((command.Attributes ?? []).Select(x => Assignment(tenantId, product.Id, x))); await EnsureMainInventoryAsync(tenantId, variants, cancellationToken); await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, product.Id, cancellationToken);
+        db.Products.Add(product);
+        db.ProductVariants.AddRange(variants);
+        db.ProductAttributeAssignments.AddRange(globalAssignments.Select(x => Assignment(tenantId, product.Id, null, x)));
+        for (var index = 0; index < variants.Count; index++) db.ProductAttributeAssignments.AddRange((command.Variants[index].Attributes ?? []).Select(x => Assignment(tenantId, product.Id, variants[index].Id, x)));
+        await EnsureMainInventoryAsync(tenantId, variants, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return await GetProductAsync(tenantId, product.Id, cancellationToken);
     }
 
     public async Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -147,8 +219,18 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         var product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>(); if (product.Version != expectedVersion) return Precondition<ProductView>(product.Version);
         var validation = await ValidateProductReferencesAsync(tenantId, command.Title, command.CategoryId, command.BrandId, cancellationToken); if (validation is not null) return ServiceResult<ProductView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
-        var attributeValidation = await ValidateAttributesAsync(tenantId, command.CategoryId, command.Attributes ?? [], cancellationToken); if (attributeValidation is not null) return ServiceResult<ProductView>.Fail(attributeValidation.Code, attributeValidation.Message, attributeValidation.Status, attributeValidation.FieldErrors);
-        product.Title = command.Title.Trim(); product.Description = command.Description.Trim(); product.CategoryId = command.CategoryId; product.BrandId = command.BrandId; product.Version++; product.UpdatedAt = timeProvider.GetUtcNow(); var currentAssignments = await db.ProductAttributeAssignments.Where(x => x.TenantId == tenantId && x.ProductId == id && x.VariantId == null).ToListAsync(cancellationToken); db.ProductAttributeAssignments.RemoveRange(currentAssignments); db.ProductAttributeAssignments.AddRange((command.Attributes ?? []).Select(x => Assignment(tenantId, id, x))); await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, id, cancellationToken);
+        if (command.Attributes is not null)
+        {
+            var attributeValidation = await ValidateAttributesAsync(tenantId, command.CategoryId, command.Attributes, cancellationToken); if (attributeValidation is not null) return ServiceResult<ProductView>.Fail(attributeValidation.Code, attributeValidation.Message, attributeValidation.Status, attributeValidation.FieldErrors);
+        }
+        product.Title = command.Title.Trim(); product.Description = command.Description.Trim(); product.CategoryId = command.CategoryId; product.BrandId = command.BrandId; product.Version++; product.UpdatedAt = timeProvider.GetUtcNow();
+        if (command.Attributes is not null)
+        {
+            var currentAssignments = await db.ProductAttributeAssignments.Where(x => x.TenantId == tenantId && x.ProductId == id && x.VariantId == null).ToListAsync(cancellationToken);
+            db.ProductAttributeAssignments.RemoveRange(currentAssignments);
+            db.ProductAttributeAssignments.AddRange(command.Attributes.Select(x => Assignment(tenantId, id, null, x)));
+        }
+        await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, id, cancellationToken);
     }
 
     public async Task<ServiceResult<ProductView>> ArchiveProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
@@ -378,19 +460,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     private async Task<ServiceError?> ValidateAttributesAsync(Guid tenantId, Guid? categoryId, IReadOnlyList<ProductAttributeCommand> assignments, CancellationToken cancellationToken)
     {
-        var ids = assignments.Select(x => x.AttributeId).Distinct().ToArray();
-        var definitions = await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id) && x.IsActive).ToDictionaryAsync(x => x.Id, cancellationToken);
-        if (definitions.Count != ids.Length) return new("ATTRIBUTE_INVALID", "Etkin olmayan veya bulunmayan ürün özelliği var.", 422, new Dictionary<string, string[]> { ["attributes"] = ["Tüm özellikler etkin ve aynı tenant içinde olmalıdır."] });
-        foreach (var assignment in assignments)
-        {
-            var textValue = string.IsNullOrWhiteSpace(assignment.TextValue) ? null : assignment.TextValue;
-            var count = new object?[] { assignment.ValueId, textValue, assignment.NumberValue, assignment.BooleanValue }.Count(x => x is not null);
-            if (count != 1) return new("ATTRIBUTE_TYPED_VALUE_REQUIRED", "Her özellik ataması exactly-one typed value ister.", 422, new Dictionary<string, string[]> { ["attributes"] = ["valueId, textValue, numberValue, booleanValue alanlarından tam biri dolu olmalıdır."] });
-            var definition = definitions[assignment.AttributeId];
-            var typeMatches = definition.DataType switch { AttributeDataType.Text => textValue is not null, AttributeDataType.Number => assignment.NumberValue is not null, AttributeDataType.Boolean => assignment.BooleanValue is not null, AttributeDataType.SingleSelect or AttributeDataType.MultiSelect => assignment.ValueId is not null, _ => false };
-            if (!typeMatches) return new("ATTRIBUTE_TYPE_MISMATCH", "Özellik değeri tanımlı veri tipiyle eşleşmiyor.", 422);
-            if (assignment.ValueId is Guid valueId && !await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.AttributeId == assignment.AttributeId && x.Id == valueId && x.IsActive, cancellationToken)) return new("ATTRIBUTE_VALUE_INVALID", "Seçim değeri özelliğe ait veya etkin değil.", 422);
-        }
+        var valueValidation = await ValidateAttributeValuesAsync(tenantId, assignments, cancellationToken);
+        if (valueValidation is not null) return valueValidation;
         if (categoryId is Guid category)
         {
             var required = await db.CategoryAttributeRequirements.AsNoTracking().Where(x => x.TenantId == tenantId && x.CategoryId == category && x.IsRequired).Select(x => x.AttributeId).ToListAsync(cancellationToken);
@@ -400,11 +471,37 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return null;
     }
 
-    private static ProductAttributeAssignment Assignment(Guid tenantId, Guid productId, ProductAttributeCommand value) => new()
+    private async Task<ServiceError?> ValidateAttributeValuesAsync(Guid tenantId, IReadOnlyList<ProductAttributeCommand> assignments, CancellationToken cancellationToken)
+    {
+        var ids = assignments.Select(x => x.AttributeId).Distinct().ToArray();
+        var definitions = await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id) && x.IsActive).ToDictionaryAsync(x => x.Id, cancellationToken);
+        if (definitions.Count != ids.Length) return new("ATTRIBUTE_INVALID", "Etkin olmayan veya bulunmayan ürün özelliği var.", 422, new Dictionary<string, string[]> { ["attributes"] = ["Tüm özellikler etkin ve aynı tenant içinde olmalıdır."] });
+        foreach (var group in assignments.GroupBy(x => x.AttributeId))
+        {
+            var definition = definitions[group.Key];
+            if (definition.DataType != AttributeDataType.MultiSelect && group.Count() > 1) return new("ATTRIBUTE_ASSIGNMENT_AMBIGUOUS", $"'{definition.Name}' yalnız bir değer kabul eder.", 422);
+            var selectedValues = group.Where(x => x.ValueId is not null).Select(x => x.ValueId!.Value).ToList();
+            if (selectedValues.Distinct().Count() != selectedValues.Count) return new("ATTRIBUTE_VALUE_DUPLICATE", $"'{definition.Name}' içinde aynı değer tekrarlanamaz.", 422);
+        }
+        foreach (var assignment in assignments)
+        {
+            var textValue = string.IsNullOrWhiteSpace(assignment.TextValue) ? null : assignment.TextValue;
+            var count = new object?[] { assignment.ValueId, textValue, assignment.NumberValue, assignment.BooleanValue }.Count(x => x is not null);
+            if (count != 1) return new("ATTRIBUTE_TYPED_VALUE_REQUIRED", "Her özellik ataması tam bir tipli değer ister.", 422, new Dictionary<string, string[]> { ["attributes"] = ["valueId, textValue, numberValue, booleanValue alanlarından tam biri dolu olmalıdır."] });
+            var definition = definitions[assignment.AttributeId];
+            var typeMatches = definition.DataType switch { AttributeDataType.Text => textValue is not null, AttributeDataType.Number => assignment.NumberValue is not null, AttributeDataType.Boolean => assignment.BooleanValue is not null, AttributeDataType.SingleSelect or AttributeDataType.MultiSelect => assignment.ValueId is not null, _ => false };
+            if (!typeMatches) return new("ATTRIBUTE_TYPE_MISMATCH", "Özellik değeri tanımlı veri tipiyle eşleşmiyor.", 422);
+            if (assignment.ValueId is Guid valueId && !await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.AttributeId == assignment.AttributeId && x.Id == valueId && x.IsActive, cancellationToken)) return new("ATTRIBUTE_VALUE_INVALID", "Seçim değeri özelliğe ait veya etkin değil.", 422);
+        }
+        return null;
+    }
+
+    private static ProductAttributeAssignment Assignment(Guid tenantId, Guid productId, Guid? variantId, ProductAttributeCommand value) => new()
     {
         Id = Guid.CreateVersion7(),
         TenantId = tenantId,
         ProductId = productId,
+        VariantId = variantId,
         AttributeId = value.AttributeId,
         ValueId = value.ValueId,
         TextValue = string.IsNullOrWhiteSpace(value.TextValue) ? null : value.TextValue.Trim(),

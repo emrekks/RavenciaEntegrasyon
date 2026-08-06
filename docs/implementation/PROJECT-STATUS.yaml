@@ -1,6 +1,6 @@
 schema_version: 1
 document_version: '7.3'
-updated_at: '2026-08-05'
+updated_at: '2026-08-06'
 active_scope:
 - TRENDYOL
 - TRENDYOL_EFATURAM
@@ -18,7 +18,7 @@ phases:
     evidence: docs/implementation/F1-evidence-log.md
   F2:
     title: Katalog ve envanter çekirdeği
-    status: READY_LOCAL
+    status: V9_CATALOG_WORKSPACE_CODED_STATIC_VERIFIED_DYNAMIC_REVALIDATION_REQUIRED
     evidence: docs/implementation/F2-evidence-log.md
   F3:
     title: Trendyol entegrasyonu kapanışı
@@ -64,7 +64,9 @@ features:
   trendyol_reference_read:
     status: CODED_STAGE_REVALIDATION_REQUIRED
   trendyol_mapping_workspace:
-    status: CODED_TESTS_UPDATED_DYNAMIC_REVALIDATION_REQUIRED
+    status: V9_CODED_STATIC_VERIFIED_BULK_MAPPING_AND_VALUE_WORKSPACE_DYNAMIC_REVALIDATION_REQUIRED
+  v9_product_variant_workspace:
+    status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   trendyol_product_create:
     status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   trendyol_product_create_approval_reconciliation:

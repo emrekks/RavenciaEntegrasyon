@@ -25,3 +25,13 @@ Doğrulama tarihi: 2026-07-31. Ortam: Windows 10 geliştirme makinesi, .NET 10 v
 F2 uygulama sonucu `READY_LOCAL`dır. Bu makinede Docker CLI/engine güncel oturumda bulunmadığından F2 image/Compose smoke tekrarlanmadı; F2 migration ve tüm persistence testleri doğrudan PostgreSQL 18.4 üzerinde geçti. F1'in mevcut container/backup kanıtı değiştirilmedi. Hedef Ubuntu Server, registry-pushed immutable digest, production PFX, off-host backup ve ölçülmüş RTO kanıtları sunucu kiralandığında tamamlanacaktır; production sonucu `BLOCKED_EXTERNAL`dır.
 
 Gerçek platform test hesapları ve resmî capability kanıtları gelene kadar capability `UNKNOWN`, `FeatureFlags__ExternalWrites=false`; publication, stock-sync ve price-sync dış etki üretmez. F3 ve sonrası açılmamıştır.
+
+## 2026-08-06 — v9 katalog ve varyant çalışma alanı
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Kategori özellik gereksinimi read API | CODED_STATIC_VERIFIED | Kategoriye bağlı özellik başlıkları ve değerleri ürün formuna tek modelle döner. |
+| Varyant seviyeli özellik kalıcılığı | CODED_STATIC_VERIFIED | Normal özellikler ürün, varyant özellikleri ilgili varyant kapsamında `ProductAttributeAssignment` olarak saklanır. |
+| Varyant matrisi ve doğrulama | TYPESCRIPT_STATIC_PASS | En fazla 100 UI kombinasyonu; yinelenen kombinasyon, SKU ve barkod engeli; toplu stok/fiyat uygulama. |
+| Güvenli yayın hazırlığı | CODED_STATIC_VERIFIED / STAGE_NOT_RUN | ACTIVE Trendyol bağlantısında teklifler, listing profile ve publication job zinciri; capability/write-switch fail-closed kalır. |
+| Dinamik suite | BLOCKED_ENVIRONMENT | Exact Node/npm registry ve .NET SDK yok; Vitest/Vite ve `dotnet test` çalıştırılamadı. |

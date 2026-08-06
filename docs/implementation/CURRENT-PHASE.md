@@ -1,6 +1,6 @@
 # Güncel Faz ve Devralma Durumu
 
-**Son güncelleme:** 2026-08-05
+**Son güncelleme:** 2026-08-06
 
 **Ana plan sürümü:** 7.3
 
@@ -14,11 +14,22 @@
 | --- | --- | --- |
 | F0 | `BASELINE_COMPLETE` | Mimari, bağımlılık, risk ve doğrulama temeli hazır. |
 | F1 | `HARDENING_CODED_DYNAMIC_REVALIDATION_REQUIRED` | Güvenlik/job/deployment sertleştirmesi kodlandı; exact runtime doğrulaması bekler. |
-| F2 | `READY_LOCAL` | Yerel katalog, ürün, import, stok ve fiyat çekirdeği hazır. |
+| F2 | `V9_CATALOG_WORKSPACE_CODED_STATIC_VERIFIED` | Yerel katalog çekirdeğine birleşik kategori/özellik/değer eşleme, kategori özellikleri, varyant matrisi ve güvenli yayın hazırlığı eklendi; exact runtime doğrulaması bekler. |
 | F3 | `CORE_CODE_COMPLETE_STATIC_VERIFIED` | Trendyol Türkiye CORE bağlantı, referans, mapping, Product V2 create/update/archive/approval, birleşik fiyat-stok, Order V2/stream, paket aksiyonu, takip numarası, ortak etiket, iade aksiyonu/evidence/read-back, webhook ve invoice-link sınırı kodlandı. Dynamic, Docker ve Stage kabulü bekler. |
 | F4 | `CODE_COMPLETE_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED` | Doğrudan API_USER auth, token kaynaklı mali kapsam, otomatik E-Fatura/E-Arşiv seçimi, provider-managed hesap, numeric status, PDF, E-Arşiv cancel, Trendyol link teslimi ve sade operatör UI kodlandı; exact runtime ve Stage kabulü bekler. |
 | F5 | `PLANNED_BLOCKED_BY_F3_F4_AND_REVALIDATION` | Production pilot, F3/F4 dış kabul kapıları geçmeden başlamaz. |
 | F6+ | `PLANNED` | Stabilizasyon, adapter registry ve sonraki platformlar. |
+
+## Bu teslimde kapanan v9 katalog işleri
+
+- Panel yaprak kategorisi ile Trendyol yaprak kategorisi eşleme ekranı referans görünüme göre yenilendi.
+- Kategoriye panel özellik başlığı bağlama, yeni özellik/seçenek oluşturma ve zorunlu/özel değer kuralları eklendi.
+- Trendyol kategori özellikleri ve değerleri, kategori kapsamında panel özellik/değerleriyle eşlenir; zorunlu eşleme ilerlemesi gösterilir.
+- Toplu mapping okuma endpoint'iyle kart başına N+1 API çağrıları kaldırıldı.
+- Ürün oluşturma ekranında kategori özellikleri doğrudan yüklenir; seçilen varyant özelliklerinin Kartezyen kombinasyonları oluşturulur.
+- Varyant satırlarında SKU, barkod, stok, satış/liste fiyatı düzenlenir; toplu değer uygulama ve tekrar kontrolü vardır.
+- Ürün ve varyant özellikleri doğru kapsamda kalıcılaştırılır; ACTIVE Trendyol kanalı seçildiğinde listing profile, teklifler ve güvenli yayın job'u hazırlanır.
+- Kaynak kabul kontrolleri statik olarak geçti; exact Node/.NET, PostgreSQL ve Stage kabulü bekler.
 
 ## Bu teslimde kapanan Trendyol işleri
 

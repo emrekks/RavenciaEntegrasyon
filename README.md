@@ -2,7 +2,7 @@
 
 > **Codex/devralma başlangıç noktası:** Önce [`AGENTS.md`](AGENTS.md), [`RAVENCIA-NIHAI-PROJE-BELGESI.md`](docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md), [`PROJECT-STATUS.yaml`](docs/implementation/PROJECT-STATUS.yaml) ve [`CURRENT-PHASE.md`](docs/implementation/CURRENT-PHASE.md) dosyalarını okuyun. Aktif durum `F3_CORE_CODE_COMPLETE_VALIDATION_PENDING / F4_CODE_COMPLETE_VALIDATION_PENDING / PRODUCTION_BLOCKED` olarak işaretlenmiştir.
 
-Ravencia MarketplaceHub, tek işletmenin Trendyol satış, ürün, sipariş, iade ve Trendyol E-Faturam süreçlerini aynı panelden yönetmesi için geliştirilen modüler monolit uygulamadır.
+Ravencia MarketplaceHub, tek işletmenin Trendyol satış, ürün, sipariş, iade ve Trendyol E-Faturam süreçlerini aynı panelden yönetmesi için geliştirilen modüler monolit uygulamadır. v9 katalog çalışma alanında kategori, özellik, değer ve varyant üretimi tek ürün akışında birleştirilmiştir.
 
 
 ## Yetkili nihai belge
@@ -32,7 +32,7 @@ Diğer pazaryerlerine ait adapter, UI seçeneği, Worker yönlendirmesi ve job t
 | Alan | Durum |
 | --- | --- |
 | Kimlik, oturum, MFA altyapısı, tenant sınırı | Yerel çekirdek hazır |
-| Yerel ürün/katalog/stok/fiyat modeli ve içe aktarım | Yerel çekirdek hazır |
+| Yerel ürün/katalog/stok/fiyat modeli ve içe aktarım | v9 katalog, kategori özellikleri ve varyant çalışma alanı kodlandı; statik doğrulama geçti |
 | Trendyol bağlantı, kategori/marka/özellik/değer okuma | Kodlandı; gerçek hesapla tekrar doğrulanmalı |
 | Trendyol ürün ve sipariş okuma | Kodlandı; gerçek hesapla kabul testi gerekli |
 | Trendyol Product V2 create/update/archive + approval | Kodlandı ve statik doğrulandı; dynamic/Stage kabulü gerekli |
@@ -42,6 +42,8 @@ Diğer pazaryerlerine ait adapter, UI seçeneği, Worker yönlendirmesi ve job t
 | Giden E-Fatura UUID durum sorgusu | Exact Stage/SIT endpoint kanıtı gelene kadar yapılandırma düzeyinde fail-closed |
 | Fatura linkini Trendyol’a iletme | Kodlandı; gerçek package ile Stage kabul testi gerekli |
 | Production kabulü | Engelli; dış hesap, mali karar, backup ve E2E kanıtları gerekiyor |
+
+v9 katalog işleyişi: [v9-catalog-workspace.md](docs/implementation/v9-catalog-workspace.md).
 
 “Adapter kodu var” ifadesi “production’da tamamen çalışıyor” anlamına gelmez. Güncel capability tablosu [capability-matrix.md](docs/platform-rules/capability-matrix.md), detaylı inceleme [2026-08-04-project-review.md](docs/reviews/2026-08-04-project-review.md) içindedir.
 

@@ -76,3 +76,13 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 | Operatör UI | TYPESCRIPT_PASS / VITEST_PLAYWRIGHT_NOT_RUN | Ürün, fiyat-stok, shipment, return ve capability evidence ekranları; `tsc --noEmit` exit 0. |
 | Backend dynamic suite | BLOCKED_ENVIRONMENT | .NET SDK ve Docker yok; başarı sayılmadı. |
 | Stage safe-write | BLOCKED_EXTERNAL | Credential, kontrollü fixture ve açık operasyon onayı yok. |
+
+## 2026-08-06 — v9 birleşik kategori/özellik/değer eşleme
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Toplu kategori kapsamlı mapping read | CODED_STATIC_VERIFIED | `GET /mappings/{type}` seçilen connection ve scope içindeki eşlemeleri tek istekte döndürür; N+1 sorgu kaldırıldı. |
+| Kategori özellik başlığı yönetimi | CODED_STATIC_VERIFIED | Panel kategorisine özellik bağlama, yeni seçimli özellik ve seçenek ekleme, zorunlu/özel değer kuralları vardır. |
+| Özellik/değer kartları | TYPESCRIPT_STATIC_PASS | Zorunlu/eşlenmemiş kart vurgusu, ilerleme sayacı ve tüm yerel değerleri tek kartta kaydetme akışı eklendi. |
+| Kaynak kabul kontrolleri | PASS_LOCAL_STATIC | v9 kabul betiği, operasyon kabul betiği, TSX syntax/semantic ve C# delimiter kontrolleri geçti. |
+| Trendyol Stage kabulü | BLOCKED_EXTERNAL | Gerçek Stage credential ve güncel kategori/özellik/değer snapshot'ı gereklidir. |

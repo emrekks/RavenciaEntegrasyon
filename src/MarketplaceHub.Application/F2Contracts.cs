@@ -66,7 +66,8 @@ public sealed record UpdateBrandCommand(string Name, bool IsActive);
 public sealed record CreateAttributeValueCommand(string Value, int SortOrder);
 public sealed record CreateAttributeCommand(string Code, string Name, string DataType, string? SelectionMode, string? Unit, IReadOnlyList<CreateAttributeValueCommand> Values);
 public sealed record AttributeRequirementCommand(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder);
-public sealed record CreateVariantCommand(string Sku, string? Barcode, string? ModelCode, IReadOnlyDictionary<string, string>? Options = null, decimal? Weight = null, decimal? Width = null, decimal? Height = null, decimal? Length = null);
+public sealed record CategoryAttributeRequirementView(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder, AttributeView Attribute);
+public sealed record CreateVariantCommand(string Sku, string? Barcode, string? ModelCode, IReadOnlyDictionary<string, string>? Options = null, decimal? Weight = null, decimal? Width = null, decimal? Height = null, decimal? Length = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null);
 public sealed record ProductAttributeCommand(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record CreateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<CreateVariantCommand> Variants, IReadOnlyList<ProductAttributeCommand>? Attributes = null);
 public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null);
@@ -84,6 +85,8 @@ public interface ICatalogService
     Task<ServiceResult<BrandView>> UpdateBrandAsync(Guid tenantId, Guid id, long expectedVersion, UpdateBrandCommand command, CancellationToken cancellationToken);
     Task<PageResult<AttributeView>> ListAttributesAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken);
     Task<ServiceResult<AttributeView>> CreateAttributeAsync(Guid tenantId, CreateAttributeCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<AttributeView>> AddAttributeValuesAsync(Guid tenantId, Guid attributeId, IReadOnlyList<CreateAttributeValueCommand> values, CancellationToken cancellationToken);
+    Task<ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>> GetRequirementsAsync(Guid tenantId, Guid categoryId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<AttributeRequirementCommand>>> ReplaceRequirementsAsync(Guid tenantId, Guid categoryId, long expectedVersion, IReadOnlyList<AttributeRequirementCommand> requirements, CancellationToken cancellationToken);
     Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken);
@@ -152,6 +155,8 @@ public sealed record UpsertCatalogMappingCommand(Guid ConnectionId, Guid Snapsho
 public interface IReferenceDataService
 {
     Task<ServiceResult<ReferenceDataView>> ListAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, CancellationToken cancellationToken);
+    Task<ServiceResult<IReadOnlyList<CatalogMappingView>>> ListMappingsAsync(Guid tenantId, string mappingType, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken);
     Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken);
     Task<ServiceResult<CatalogMappingView>> UpsertMappingAsync(Guid tenantId, string mappingType, Guid localId, long? expectedVersion, UpsertCatalogMappingCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<bool>> DeleteMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, long expectedVersion, CancellationToken cancellationToken);
 }

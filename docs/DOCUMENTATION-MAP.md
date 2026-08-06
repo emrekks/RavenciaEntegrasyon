@@ -11,8 +11,9 @@
 7. `implementation/F*-evidence-log.md`: test ve uygulama kanıtları.
 8. `implementation/traceability-matrix.md`: gereksinim-kod-test ilişkisi.
 9. `reviews/`: tarihli inceleme, doğrulama ve teslim raporları.
-10. `CHANGELOG.md`: kronolojik insan özeti.
-11. Kökteki `README.md` ve `AGENTS.md`: hızlı başlangıç ve Codex kuralları.
+10. `implementation/v9-catalog-workspace.md`: v9 katalog, kategori/özellik/değer eşleme ve varyant çalışma alanı.
+11. `CHANGELOG.md`: kronolojik insan özeti.
+12. Kökteki `README.md` ve `AGENTS.md`: hızlı başlangıç ve Codex kuralları.
 
 ## Tek işlemde güncelleme
 

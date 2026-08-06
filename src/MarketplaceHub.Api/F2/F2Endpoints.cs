@@ -44,6 +44,10 @@ public static class F2Endpoints
             Tenant(http) is { } tenant ? Results.Ok(await service.ListAttributesAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
         api.MapPost("/catalog/attributes", async (CreateAttributeCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateAttributeAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/catalog/attributes") : MissingContext(http));
+        api.MapPost("/catalog/attributes/{id:guid}/values", async (Guid id, IReadOnlyList<CreateAttributeValueCommand> command, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.AddAttributeValuesAsync(tenant.TenantId, id, command, http.RequestAborted), Results.Ok) : MissingContext(http));
+        api.MapGet("/catalog/categories/{id:guid}/attribute-requirements", async (Guid id, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant ? Result(await service.GetRequirementsAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPut("/catalog/categories/{id:guid}/attribute-requirements", async (Guid id, IReadOnlyList<AttributeRequirementCommand> command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.ReplaceRequirementsAsync(tenant.TenantId, id, version, command, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
 
@@ -147,6 +151,8 @@ public static class F2Endpoints
         foreach (var type in new[] { "categories", "brands", "attributes", "attribute-values" })
         {
             var routeType = type;
+            api.MapGet($"/mappings/{routeType}", async (Guid connectionId, string? scopeExternalId, HttpContext http, IReferenceDataService service) =>
+                Tenant(http) is { } tenant ? Result(await service.ListMappingsAsync(tenant.TenantId, routeType, connectionId, scopeExternalId, http.RequestAborted), Results.Ok) : Unauthorized(http));
             api.MapGet($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, Guid connectionId, string? scopeExternalId, HttpContext http, IReferenceDataService service) =>
                 Tenant(http) is { } tenant ? Result(await service.GetMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, http.RequestAborted), Results.Ok) : Unauthorized(http));
             api.MapPut($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, UpsertCatalogMappingCommand command, HttpContext http, IReferenceDataService service) =>
@@ -154,6 +160,8 @@ public static class F2Endpoints
                 if (Tenant(http) is not { } tenant) return Unauthorized(http); var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
                 return WithEtag(http, await service.UpsertMappingAsync(tenant.TenantId, routeType, localId, expected, command, http.RequestAborted), x => x.Version);
             });
+            api.MapDelete($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, Guid connectionId, string? scopeExternalId, HttpContext http, IReferenceDataService service) =>
+                Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeleteMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
         }
     }
 
