@@ -103,6 +103,7 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 
 | Kanıt | Durum | Not |
 | --- | --- | --- |
+| v10.2 beyaz navigasyon | PASS_LOCAL | Açık sidebar, aktif menü, hover, ikon ve mobil alt navigasyon renkleri güncellendi; 14/14 Vitest, TypeScript ve production build geçti. |
 | v10.1 görünür kabuk revizyonu | PASS_LOCAL | Koyu kurumsal navigasyon, üst bar, sayfa başlık yüzeyi, metrik/rapor kartları ve mobil alt navigasyon production CSS derlemesinde doğrulandı. |
 | Ortak görsel sistem | PASS_LOCAL | Sayfa başlığı, panel, form, buton, kart, boş durum ve responsive davranışlar ortak token ve ölçülerle hizalandı. |
 | Sipariş hızlı ayrıntısı | PASS_LOCAL | Açılır alan tekil sipariş sorgusunu yalnız açıldığında çalıştırır; müşteri, teslimat/fatura adresi, ürün, SKU, barkod, tutar ve kargo paketini gösterir. |

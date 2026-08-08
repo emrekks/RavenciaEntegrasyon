@@ -12,7 +12,7 @@
 
 **2026-08-08 production hotfix notu:** v9 paketi canlıya alındıktan sonraki tam sayfa yenilemesinde dashboard, bir sayfalı API cevabındaki eksik/null `items` alanında çalışma zamanı hatası verdi. Dashboard ve ürün çalışma alanı boş koleksiyona güvenli düşecek şekilde düzeltildi; production yeniden doğrulaması bekliyor.
 
-**2026-08-08 v10.1 UI notu:** Panel genelinde koyu kurumsal navigasyon, yenilenmiş üst bar, belirgin sayfa başlıkları, ortak yüzey, form, buton, kart ve responsive tasarım dili uygulandı. Sipariş satırı açılımı müşteri, teslimat/fatura adresi, ürün satırları, tutar ve kargo paketlerini lazy-load ayrıntı sorgusuyla gösterir. Yerel doğrulamada 14 Vitest, 3 Playwright, TypeScript ve production build geçti; Stage kabulü ve dış yazma blokajları değişmedi.
+**2026-08-08 v10.2 UI notu:** Panel genelinde beyaz kurumsal navigasyon, yenilenmiş üst bar, belirgin sayfa başlıkları, ortak yüzey, form, buton, kart ve responsive tasarım dili uygulandı. Sipariş satırı açılımı müşteri, teslimat/fatura adresi, ürün satırları, tutar ve kargo paketlerini lazy-load ayrıntı sorgusuyla gösterir. Yerel doğrulamada 14 Vitest, 3 Playwright, TypeScript ve production build geçti; Stage kabulü ve dış yazma blokajları değişmedi.
 
 ## Faz özeti
 

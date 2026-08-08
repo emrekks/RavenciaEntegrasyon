@@ -2,6 +2,7 @@
 
 ## 2026-08-08 — v10 birleşik profesyonel panel arayüzü
 
+- v10.2 geri bildirim düzenlemesinde sol navigasyon açık/beyaz temaya döndürüldü; aktif menü, hover ve ikon vurguları yeni tasarım diliyle korunur.
 - v10.1 görsel revizyonunda uygulama kabuğu belirgin biçimde yenilendi: koyu kurumsal sol navigasyon, yarı saydam üst bar, kart biçimli sayfa başlığı, vurgulu metrikler, modern rapor yüzeyleri ve mobil alt navigasyon eklendi.
 - Panel genelinde sayfa başlıkları, yüzeyler, formlar, butonlar, durum kartları, liste kartları ve responsive kırılımlar tek bir görsel sistemde hizalandı.
 - Sipariş kartlarının açılır ayrıntısı müşteri kimliği, teslimat ve fatura adresleri, ürün/SKU/barkod satırları, finansal özet ile kargo/takip bilgilerini tek çalışma alanında gösterir; ayrıntı yalnız açıldığında yüklenir.
