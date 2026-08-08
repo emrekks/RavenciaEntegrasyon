@@ -51,7 +51,7 @@ test('shows automatic invoice routing and saves only the manual package policy',
   globalThis.fetch = vi.fn((input, init) => {
     const url = String(input)
     if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-f4-policy' })
-    if (url.includes('/api/v1/connections')) return json({ items: [{ id: 'connection-1', platformCode: 'TRENDYOL_EFATURAM', displayName: 'E-Faturam Stage', status: 'ACTIVE' }], nextCursor: null, hasMore: false })
+    if (url.includes('/api/v1/connections')) return json({ items: [{ id: 'connection-1', platformCode: 'TRENDYOL_EFATURAM', displayName: 'E-Faturam Stage', status: 'ACTIVE', hasCredential: true }], nextCursor: null, hasMore: false })
     if (url.includes('/api/v1/billing/invoice-policies/connection-1') && init?.method === 'PUT') {
       policyRequest = init
       return json({ id: 'policy-1', providerConnectionId: 'connection-1', triggerState: 'MANUAL_CONFIRMED', packageScope: 'SHIPMENT_PACKAGE', dueRule: 'IMMEDIATE', roundingRule: 'LINE_HALF_AWAY_FROM_ZERO', adjustmentRule: 'REJECT_OVER_ONE_KURUS', autoSubmit: false, version: 2 })
@@ -73,7 +73,9 @@ test('shows automatic invoice routing and saves only the manual package policy',
   await within(provider).findByRole('option', { name: 'E-Faturam Stage' })
   fireEvent.change(provider, { target: { value: 'connection-1' } })
   await waitFor(() => expect(policyLoaded).toBe(true))
-  fireEvent.click(screen.getByRole('button', { name: 'Manuel paket politikasını kaydet' }))
+  const save = screen.getByRole('button', { name: 'Manuel paket politikasını kaydet' })
+  await waitFor(() => expect(save).toBeEnabled())
+  fireEvent.click(save)
 
   expect(await screen.findByRole('status')).toHaveTextContent('Manuel paket faturası politikası kaydedildi')
   await waitFor(() => expect(policyRequest).toBeDefined())

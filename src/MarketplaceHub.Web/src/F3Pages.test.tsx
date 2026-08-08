@@ -26,10 +26,10 @@ test('maps a local leaf category to the verified Trendyol snapshot', async () =>
 
   await screen.findByRole('option', { name: 'Trendyol Stage · seller-1' })
   fireEvent.change(screen.getByLabelText('Aktif Trendyol bağlantısı'), { target: { value: 'connection-1' } })
-  const local = await screen.findByLabelText('Panel yaprak kategorisi')
+  const local = await screen.findByRole('combobox', { name: 'Panel yaprak kategorisi' })
   await waitFor(() => expect(local).toBeEnabled())
   fireEvent.change(local, { target: { value: 'local-1' } })
-  const external = await screen.findByLabelText('Trendyol yaprak kategorisi')
+  const external = await screen.findByRole('combobox', { name: 'Trendyol yaprak kategorisi' })
   await waitFor(() => expect(screen.getByRole('option', { name: 'Kadın / Giyim / Elbise' })).toBeInTheDocument())
   fireEvent.change(external, { target: { value: 'external-1' } })
   fireEvent.click(await screen.findByRole('button', { name: 'Eşlemeyi doğrula ve kaydet' }))
@@ -128,8 +128,11 @@ test('maps a category-scoped attribute and its value in the unified mapping work
 
   const remoteAttribute = screen.getByLabelText('Trendyol kategori özelliği')
   await within(remoteAttribute).findByRole('option', { name: 'Beden · zorunlu' })
+  await waitFor(() => expect(remoteAttribute).toBeEnabled())
   fireEvent.change(remoteAttribute, { target: { value: '293' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Eşlemeyi doğrula ve kaydet' }))
+  const saveAttribute = screen.getByRole('button', { name: 'Eşlemeyi doğrula ve kaydet' })
+  await waitFor(() => expect(saveAttribute).toBeEnabled())
+  fireEvent.click(saveAttribute)
 
   expect(await screen.findByText('Özellik eşlemesi doğrulandı ve kategori kapsamında kaydedildi.')).toBeInTheDocument()
   await waitFor(() => expect(JSON.parse(attributeBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', externalId: '293', status: 'VERIFIED' }))

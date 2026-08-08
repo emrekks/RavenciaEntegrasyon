@@ -7,7 +7,9 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - Exact .NET `10.0.302` restore ve backend build: `PASS` (0 uyarı, 0 hata).
 - F3 shipment/common-label, return evidence ve fake adapter kontrat derleme uyumsuzlukları düzeltildi.
 - Docker/PostgreSQL testleri: `NOT_RUN / BLOCKED_ENVIRONMENT`.
-- Frontend davranış paketi: `FAILED_VALIDATION`; production ve Stage durumu yükseltilmedi.
+- Frontend typecheck, production build ve 13 Vitest davranış testi: `PASS`.
+- Docker gerektirmeyen backend testleri: `PASS` (Domain 32, Application 54, Adapter Contract 49, API Integration 2; toplam 137).
+- Production ve Stage durumu yükseltilmedi; Docker/PostgreSQL ve gerçek Stage kabulü bekliyor.
 
 | Kanıt | Durum | Not |
 | --- | --- | --- |

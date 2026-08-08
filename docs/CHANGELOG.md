@@ -5,7 +5,8 @@
 - F3 shipment hash metnindeki hatalı satır sonu, common-label hata akışındaki nullable erişim ve return evidence stream çağrısı düzeltildi.
 - Production hardening migration sınıfındaki yinelenen migration metadata kaldırıldı; tarihsel migration kimliği değiştirilmedi.
 - E-Faturam bağlantı görünüm modeli, fake adapter ve sözleşme testleri güncel uygulama kontratlarıyla hizalandı.
-- Backend build ve frontend typecheck geçti. Docker/PostgreSQL testleri yerel Docker bulunmadığı için `NOT_RUN`; güncel frontend davranış testlerindeki kalan uyumsuzluklar `FAILED_VALIDATION` olarak açık tutuldu.
+- Backend build, frontend typecheck, 137 Docker gerektirmeyen backend testi, 13 Vitest davranış testi ve frontend production build geçti. Docker/PostgreSQL testleri yerel Docker bulunmadığı için `NOT_RUN`; Stage ve production blokajı korunmuştur.
+- Kategori/özellik eşleme seçim yarışları, fatura politikası optimistic-concurrency yükleme kilidi ve güncel dönüş fixture sözleşmesi düzeltildi.
 
 ## 2026-08-06 — v9 katalog, kategori eşleme ve varyant çalışma alanı
 

@@ -36,7 +36,7 @@ test('creates cartesian variants with variant-scoped attributes and global multi
   renderPage(<NewProductPage />)
   fireEvent.change(await screen.findByLabelText('Ürün adı'), { target: { value: 'Kadın Desenli Bluz' } })
   fireEvent.change(screen.getByLabelText('Açıklama'), { target: { value: 'Ürün açıklaması' } })
-  fireEvent.change(screen.getByLabelText('Panel kategorisi'), { target: { value: 'category-1' } })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Panel kategorisi' }), { target: { value: 'category-1' } })
   fireEvent.change(screen.getByLabelText('Marka'), { target: { value: 'brand-1' } })
   fireEvent.change(screen.getByLabelText('Model kodu'), { target: { value: 'RAV-100' } })
   fireEvent.change(screen.getByLabelText('Temel SKU'), { target: { value: 'RAV-BLUZ' } })
@@ -93,7 +93,7 @@ test('loads category-scoped attribute mappings in one bulk request', async () =>
   const connection = await screen.findByLabelText('Aktif Trendyol bağlantısı')
   await within(connection).findByRole('option', { name: 'Trendyol · 2738' })
   fireEvent.change(connection, { target: { value: 'connection-1' } })
-  const category = await screen.findByLabelText('Panel yaprak kategorisi')
+  const category = await screen.findByRole('combobox', { name: 'Panel yaprak kategorisi' })
   fireEvent.change(category, { target: { value: 'category-1' } })
 
   expect(await screen.findByText('1/1 zorunlu özellik eşlendi')).toBeInTheDocument()

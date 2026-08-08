@@ -5,7 +5,8 @@
 ## 2026-08-08 yerel eşitleme doğrulaması
 
 - E-Faturam connection görünüm kontratına `hasCredential` alanı eklendi; frontend typecheck `PASS`.
-- Frontend davranış paketi kalan test uyumsuzlukları nedeniyle `FAILED_VALIDATION`; Stage ve production durumu yükseltilmedi.
+- Fatura politikası yüklenirken kaydetme kilidi ve güncel bağlantı fixture sözleşmesi düzeltildi; frontend typecheck, production build ve 13 Vitest davranış testi `PASS`.
+- Stage ve production durumu yükseltilmedi; Docker/PostgreSQL ve gerçek mali Stage kabulü bekliyor.
 
 | Kanıt | Durum | Not |
 | --- | --- | --- |

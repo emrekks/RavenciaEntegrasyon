@@ -56,7 +56,7 @@ test('queues an approved return decision without inventing unsupported actions',
   globalThis.fetch = vi.fn((input, init) => {
     const url = String(input)
     if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-return' })
-    if (url.endsWith('/api/v1/returns/return-1') && (!init?.method || init.method === 'GET')) return json({ id: 'return-1', externalClaimId: 'C-1', orderNumber: 'O-1', status: 'ACTION_REQUIRED', rawStatus: 'Created', reasonCode: 'R1', reasonText: 'Neden', actionDueAt: null, allowedActions: ['APPROVE'], version: 3 })
+    if (url.endsWith('/api/v1/returns/return-1') && (!init?.method || init.method === 'GET')) return json({ id: 'return-1', externalClaimId: 'C-1', orderNumber: 'O-1', customerName: 'Test Müşteri', orderedAt: '2026-08-05T00:00:00Z', orderAmount: 120, currency: 'TRY', status: 'ACTION_REQUIRED', rawStatus: 'Created', reasonCode: 'R1', reasonText: 'Neden', actionDueAt: null, cargoProviderName: null, cargoTrackingNumber: null, allowedActions: ['APPROVE'], stockDispositionAvailable: false, lines: [], version: 3 })
     if (url.endsWith('/api/v1/returns/return-1/actions') && init?.method === 'POST') { decisionBody = String(init.body); return json('decision-1', 202) }
     return json({}, 404)
   }) as typeof fetch
