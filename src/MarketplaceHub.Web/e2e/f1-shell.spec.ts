@@ -23,6 +23,6 @@ test('active shell exposes current operation and settings navigation with the li
   await settings.click()
   for (const label of ['Platformlar', 'Eşleştirme Ayarları', 'Faturalama', 'Sistem Ayarları']) await expect(page.getByRole('link', { name: label, exact: true })).toBeVisible()
 
-  await expect(page.getByText('Dış yazmalar kapalı')).toBeVisible()
+  await expect(page.getByText('Dış yazmalar bağlantı bazında korunur')).toBeVisible()
   await expect(page.getByText('Kontrollü entegrasyon modu')).toBeVisible()
 })

@@ -8,7 +8,7 @@
 
 **Genel durum:** `F3_CORE_CODE_COMPLETE_VALIDATION_PENDING / F4_CODE_COMPLETE_VALIDATION_PENDING / PRODUCTION_BLOCKED`
 
-**2026-08-08 doğrulama notu:** Backend build ve frontend typecheck `PASS`; 137 Docker gerektirmeyen backend testi, 13 Vitest davranış testi ve frontend production build `PASS`. İlk CI koşusunda PostgreSQL testleri 10/10 geçti; full-stack test eksik Chromium kurulumu nedeniyle bloklandı ve iş akışı düzeltildi. Format kapısındaki mevcut C# whitespace ihlalleri giderildi. Gerçek Stage kabulü bulunmadığından production blokajı değişmemiştir.
+**2026-08-08 doğrulama notu:** Tam kaynak doğrulama iş akışı `PASS`. Release hattında .NET/PostgreSQL/full-stack, format, typecheck, 13 Vitest ve production build kapıları geçti; son Playwright UI paketindeki güncel v9 uyumsuzlukları düzeltildi ve yerelde 3/3 `PASS`. Yeniden release doğrulaması bekleniyor; gerçek Stage kabulü bulunmadığından production blokajı değişmemiştir.
 
 ## Faz özeti
 

@@ -26,6 +26,7 @@ test('category-scoped attribute and value mappings complete in one workspace', a
       return json(attributeSaved ? { id: 'attribute-mapping-1', connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', localId: 'local-attribute-1', scopeExternalId: '14609', externalId: '293', status: 'VERIFIED', version: 1 } : null)
     }
     if (url.pathname === '/api/v1/reference-data/categories/14609/attributes/293/values') return json({ snapshotId: 'value-snapshot-1', resourceType: 'ATTRIBUTE_VALUES', fetchedAt: '2026-08-05T00:00:00Z', items: [{ externalId: 'value-2', parentExternalId: '293', name: 'M', path: 'M', depth: 0, isLeaf: true, isActive: true }] })
+    if (url.pathname === '/api/v1/mappings/attribute-values') return json([])
     if (url.pathname === '/api/v1/mappings/attribute-values/local-value-1') {
       if (request.method() === 'PUT') {
         valueBody = request.postDataJSON()
@@ -49,11 +50,10 @@ test('category-scoped attribute and value mappings complete in one workspace', a
   await expect(page.getByText('Özellik eşlemesi doğrulandı ve kategori kapsamında kaydedildi.')).toBeVisible()
   expect(attributeBody).toEqual({ connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', externalId: '293', status: 'VERIFIED' })
 
-  await expect(page.getByRole('heading', { name: 'Özellik değeri eşlemesi' })).toBeVisible()
-  await page.getByLabel('Panel özellik değeri').selectOption('local-value-1')
-  await page.getByLabel('Trendyol özellik değeri').selectOption('value-2')
-  await page.getByRole('button', { name: 'Değer eşlemesini kaydet' }).click()
+  await expect(page.getByRole('heading', { name: 'Değer eşleştirmeleri' })).toBeVisible()
+  await page.getByLabel('M Trendyol değeri').selectOption('value-2')
+  await page.getByRole('button', { name: 'Tüm eşlemeleri kaydet' }).click()
 
-  await expect(page.getByText('Özellik değeri eşlemesi doğrulandı.')).toBeVisible()
+  await expect(page.getByText('1 değer eşlemesi kaydedildi.')).toBeVisible()
   expect(valueBody).toEqual({ connectionId: 'connection-1', snapshotId: 'value-snapshot-1', externalId: 'value-2', status: 'VERIFIED' })
 })
