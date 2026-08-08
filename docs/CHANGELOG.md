@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-08 - v10.10 Stream cursor uyumluluğu
+
+- Trendyol sipariş Stream devam imleci kullanılırken ilk isteğe ait tarih filtreleri yeniden gönderilmez; Stage endpointinin 400 yanıtı engellenir.
+
 ## 2026-08-08 - v10.9 sipariş eşitleme dayanıklılığı
 
 - Salt-okunur sipariş eşitlemesinde, akış kaydından sonra tam paket sorgusunda bulunamayan tekil siparişler artık bütün işi bloklamaz; mevcut akış snapshot’ı idempotent olarak kaydedilir.

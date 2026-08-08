@@ -1,5 +1,14 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-08 — v10.10 Stream cursor filter uyumluluğu
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Production hata tekrarı | OBSERVED_PRODUCTION | v10.9 ile `REMOTE_ORDER_NOT_FOUND` geçildi; saklanmış `nextCursor` ile `lastModifiedStartDate` birlikte gönderildiğinde Stream endpointi HTTP 400 döndürdü. |
+| Yerel doğrulama | PASS_LOCAL | .NET build (0 hata, 0 uyarı), 49/49 Trendyol adapter contract testi ve dokümantasyon transaction doğrulaması geçti. |
+| İstek kuralı | PASS_LOCAL | İlk istek tarih aralığını taşır. Trendyol’un dönmüş olduğu devam imleci kullanıldığında tarih filtresi tekrar gönderilmez. |
+| Trendyol Stage | REVALIDATION_REQUIRED | Yeni imleç çağrısıyla salt-okunur eşitlemenin başarıyla tamamlanması ve snapshot read-back beklenir. |
+
 ## 2026-08-08 — v10.9 tam paket okuma bulunamadı toleransı
 
 | Kanıt | Durum | Not |
