@@ -4,11 +4,11 @@
 
 | Kanıt | Durum | Not |
 | --- | --- | --- |
-| Production read-back | OBSERVED_PRODUCTION | v10.10 imleç isteği tarih filtresi olmadan da eski saklanmış `nextCursor` için HTTP 400 döndürdü; Stage imlecinin süresi dolmuştur. |
+| Production read-back | PASS_PRODUCTION_READ | v10.10 imleç isteği tarih filtresi olmadan da eski saklanmış `nextCursor` için HTTP 400 döndürdü; v10.12 imleci temizleyerek son watermark’tan başladı ve `TRENDYOL_ORDER_SYNC` başarıyla tamamlandı. |
 | Yerel doğrulama | PASS_LOCAL | .NET build (0 hata, 0 uyarı), 49/49 Trendyol adapter contract testi ve dokümantasyon transaction doğrulaması geçti. |
 | Kurtarma kuralı | PASS_LOCAL | Sadece saklanmış, boş olmayan cursor ve HTTP 400 validation kombinasyonunda bir defa cursor temizlenir; son kalıcı watermark ile ilk sayfadan başlanır. |
 | Koruma | CODED | İkinci 400 veya başka hata sınıfı başarısız kalır; hata gizlenmez ve sonsuz döngü oluşmaz. |
-| Trendyol Stage | REVALIDATION_REQUIRED | Salt-okunur eşitleme sonucu ve snapshot read-back yeniden kaydedilmelidir. |
+| Trendyol Stage | PASS_READ_ONLY | 204 siparişte `agreedDeliveryDate`, `invoiceStatus` ve `micro` snapshot alanları kaydedildi. Fatura dağılımı: 33 `INVOICED`, 171 `NOTINVOICED`; bu veri kümesinde `micro=true` kayıt yoktur. |
 
 ## 2026-08-09 — v10.11 CI browser proof bekleme kararlılığı
 

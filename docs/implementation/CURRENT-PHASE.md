@@ -1,6 +1,6 @@
 # Güncel Faz ve Devralma Durumu
 
-**2026-08-09 v10.12 Stream cursor geçerlilik kurtarması:** Stage, daha önce saklanmış `nextCursor` değerini tarih filtresi olmadan da HTTP 400 ile reddetti. Salt-okunur eşitleme yalnız bu tanımlı durumda imleci bir kez temizler ve son kalıcı watermark’tan yeniden başlar; diğer validation/uzak hata durumları denetlenebilir biçimde başarısız kalır. .NET build, 49 adapter contract testi ve dokümantasyon transaction doğrulaması geçti; production read-back yeniden çalıştırılmalıdır.
+**2026-08-09 v10.12 Stream cursor geçerlilik kurtarması:** Stage, daha önce saklanmış `nextCursor` değerini tarih filtresi olmadan da HTTP 400 ile reddetti. Salt-okunur eşitleme yalnız bu tanımlı durumda imleci bir kez temizler ve son kalıcı watermark’tan yeniden başlar; diğer validation/uzak hata durumları denetlenebilir biçimde başarısız kalır. .NET build, 49 adapter contract testi ve dokümantasyon transaction doğrulaması geçti. Production salt-okunur job başarıyla tamamlandı; 204 siparişte termin/fatura/mikro alanları saklandı. Bu Stage örneğinde `micro=true` kayıt yoktur; etiket yalnız gerçek değer geldiğinde gösterilir.
 
 **2026-08-09 v10.11 CI tarayıcı kararlılığı:** v10.10 kaynak doğrulamasında, soğuk Vite modül derlemesi giriş formunun 30 saniyelik varsayılan Playwright süresini aştı. Tam uygulama kanıtı ağ sakinliğini ve 60 saniyelik sınırı bekler; işlevsel sipariş kodu değişmez. Node syntax, TypeScript ve dokümantasyon transaction doğrulaması geçti; tam CI ve production read-back yeniden çalıştırılmalıdır.
 
