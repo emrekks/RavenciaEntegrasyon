@@ -1,5 +1,15 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-08 — v10.9 tam paket okuma bulunamadı toleransı
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Production read-back | PASS_PARTIAL | Tam paket okuması ile 204 siparişte `micro`, `agreedDeliveryDate` ve `invoiceStatus` snapshot alanları kaydedildi. |
+| Yarış durumu | OBSERVED_PRODUCTION | Akış sayfasından gelen bir sipariş, takip eden tam paket okumada `REMOTE_ORDER_NOT_FOUND` döndürdü; pazar yeri tarafında listeden kalkmış paket, eşitlemenin tamamını blokladı. |
+| Yerel doğrulama | PASS_LOCAL | .NET build (0 hata, 0 uyarı), 49/49 Trendyol adapter contract testi ve dokümantasyon transaction doğrulaması geçti. |
+| Dayanıklılık | PASS_LOCAL | Sadece `NotFound` sınıfında akış kaydıyla devam edilir; kimlik doğrulama, hız sınırı, 5xx ve sözleşme hataları job retry/audit akışına aynen gider. |
+| Trendyol Stage | REVALIDATION_REQUIRED | Bu düzeltmeden sonra salt-okunur job başarısı ve alanların read-back sonucu yeniden kaydedilmelidir. |
+
 ## 2026-08-08 — v10.8 tam sipariş zenginleştirme
 
 | Kanıt | Durum | Not |

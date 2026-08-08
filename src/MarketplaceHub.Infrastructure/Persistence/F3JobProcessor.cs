@@ -865,8 +865,13 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
             foreach (var streamedOrder in result.Value!.Items)
             {
                 var fullOrder = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-hydrate:{streamedOrder.ExternalOrderId}"), streamedOrder.ExternalOrderId, cancellationToken);
-                if (!fullOrder.IsSuccess) throw JobProcessingException.FromAdapter(fullOrder.Error!);
-                await UpsertOrder(tenantId, connectionId, fullOrder.Value!, cancellationToken);
+                // A package may disappear between the stream page and its exact read (for example after a
+                // marketplace-side cancellation). Keep the stream record instead of aborting the whole
+                // read-only synchronization; all other adapter failures remain visible and retryable.
+                if (!fullOrder.IsSuccess && fullOrder.Error?.Class != AdapterErrorClass.NotFound)
+                    throw JobProcessingException.FromAdapter(fullOrder.Error!);
+
+                await UpsertOrder(tenantId, connectionId, fullOrder.IsSuccess ? fullOrder.Value! : streamedOrder, cancellationToken);
             }
             next = result.Value.NextCursor; cursor.OpaqueCursor = next; cursor.LastModifiedWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max() ?? cursor.LastModifiedWatermark; cursor.LastSuccessAt = timeProvider.GetUtcNow(); cursor.Version++; await db.SaveChangesAsync(cancellationToken); if (!result.Value.HasMore) break;
         } while (!cancellationToken.IsCancellationRequested);

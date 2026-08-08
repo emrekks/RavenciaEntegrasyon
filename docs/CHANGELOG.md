@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-08 - v10.9 sipariş eşitleme dayanıklılığı
+
+- Salt-okunur sipariş eşitlemesinde, akış kaydından sonra tam paket sorgusunda bulunamayan tekil siparişler artık bütün işi bloklamaz; mevcut akış snapshot’ı idempotent olarak kaydedilir.
+- Kimlik doğrulama, hız sınırı, uzak sunucu ve sözleşme hataları gizlenmez; retry/audit için işi başarısız yapmaya devam eder.
+
 ## 2026-08-08 - v10.8 tam sipariş veri zenginleştirme
 
 - Sipariş akış özetlerinin mikro ihracat, termin ve fatura kontrol verisini taşımadığı production teşhisiyle doğrulandı.
