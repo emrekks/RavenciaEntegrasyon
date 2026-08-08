@@ -9,6 +9,8 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - Docker/PostgreSQL testleri: `NOT_RUN / BLOCKED_ENVIRONMENT`.
 - Frontend typecheck, production build ve 13 Vitest davranış testi: `PASS`.
 - Docker gerektirmeyen backend testleri: `PASS` (Domain 32, Application 54, Adapter Contract 49, API Integration 2; toplam 137).
+- GitHub CI PostgreSQL integration paketi: `PASS` (10/10); ilk full-stack tarayıcı koşusu Chromium kurulumu eksikliği nedeniyle `BLOCKED_TOOLING`, iş akışı düzeltildi.
+- Çözüm geneli `dotnet format` whitespace ihlalleri giderildi; yeniden CI doğrulaması bekliyor.
 - Production ve Stage durumu yükseltilmedi; Docker/PostgreSQL ve gerçek Stage kabulü bekliyor.
 
 | Kanıt | Durum | Not |

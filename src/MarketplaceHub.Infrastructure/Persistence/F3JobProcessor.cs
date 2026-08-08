@@ -347,9 +347,22 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profileId, payloadHash, now, now.AddDays(7)));
         db.IntegrationJobs.Add(new IntegrationJob
         {
-            Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductApprovalReconcile, PayloadJson = payload, PayloadVersion = 1,
-            PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = 1, Status = JobStatus.Pending,
-            AvailableAt = now, MaxAttempts = 200, CorrelationId = correlationId, CreatedAt = now, Version = 1
+            Id = jobId,
+            TenantId = tenantId,
+            ConnectionId = connectionId,
+            JobType = F3JobTypes.ProductApprovalReconcile,
+            PayloadJson = payload,
+            PayloadVersion = 1,
+            PayloadHash = Hash(payload),
+            JobDedupKey = dedup,
+            EffectIdempotencyKey = dedup,
+            Priority = 1,
+            Status = JobStatus.Pending,
+            AvailableAt = now,
+            MaxAttempts = 200,
+            CorrelationId = correlationId,
+            CreatedAt = now,
+            Version = 1
         });
     }
 

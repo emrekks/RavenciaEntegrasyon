@@ -86,10 +86,10 @@ public sealed partial class F4BillingService(
 
         var variantIds = lines.Where(x => x.VariantId != null).Select(x => x.VariantId!.Value).Distinct().ToArray();
         var mediaRows = await (from media in db.ProductMedia.AsNoTracking()
-            join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
-            where media.TenantId == tenantId && media.VariantId != null && variantIds.Contains(media.VariantId.Value) && media.Status == "ACTIVE" && asset.Status == "ACTIVE" && asset.Classification == "PRODUCT_MEDIA_URL"
-            orderby media.SortOrder
-            select new { VariantId = media.VariantId!.Value, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+                               join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
+                               where media.TenantId == tenantId && media.VariantId != null && variantIds.Contains(media.VariantId.Value) && media.Status == "ACTIVE" && asset.Status == "ACTIVE" && asset.Classification == "PRODUCT_MEDIA_URL"
+                               orderby media.SortOrder
+                               select new { VariantId = media.VariantId!.Value, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         var mediaByVariant = mediaRows.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Url);
         var linesByOrder = lines.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
         var now = timeProvider.GetUtcNow();

@@ -1,8 +1,8 @@
-using MarketplaceHub.Application;
-using MarketplaceHub.Domain;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -102,10 +102,20 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
 
         var offer = new ChannelOffer
         {
-            Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = command.ConnectionId, VariantId = command.VariantId,
-            ListPrice = decimal.Round(command.ListPrice, 4, MidpointRounding.ToEven), SalePrice = decimal.Round(command.SalePrice, 4, MidpointRounding.ToEven), Currency = currency,
-            VatRate = decimal.Round(command.VatRate, 4, MidpointRounding.ToEven), VatInclusion = command.VatInclusion.Trim(), RoundingMode = command.RoundingMode.Trim(),
-            SafetyStock = decimal.Round(command.SafetyStock, 4, MidpointRounding.ToEven), Status = command.Status.Trim(), PriceVersion = 1, Version = 1
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ConnectionId = command.ConnectionId,
+            VariantId = command.VariantId,
+            ListPrice = decimal.Round(command.ListPrice, 4, MidpointRounding.ToEven),
+            SalePrice = decimal.Round(command.SalePrice, 4, MidpointRounding.ToEven),
+            Currency = currency,
+            VatRate = decimal.Round(command.VatRate, 4, MidpointRounding.ToEven),
+            VatInclusion = command.VatInclusion.Trim(),
+            RoundingMode = command.RoundingMode.Trim(),
+            SafetyStock = decimal.Round(command.SafetyStock, 4, MidpointRounding.ToEven),
+            Status = command.Status.Trim(),
+            PriceVersion = 1,
+            Version = 1
         };
         db.ChannelOffers.Add(offer);
         db.ChannelPriceHistory.Add(new ChannelPriceHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OfferId = offer.Id, PriceVersion = 1, ListPrice = offer.ListPrice, SalePrice = offer.SalePrice, Currency = offer.Currency, Reason = command.Reason.Trim(), ActorSource = $"USER:{userId:D}", EffectiveAt = timeProvider.GetUtcNow() });

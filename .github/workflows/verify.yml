@@ -55,7 +55,9 @@ jobs:
 
       - name: Install locked web dependencies
         working-directory: src/MarketplaceHub.Web
-        run: npm ci --ignore-scripts
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
 
       - name: Verify .NET solution
         run: |

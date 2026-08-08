@@ -315,9 +315,22 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var payload = JsonSerializer.Serialize(new ProductPublicationJobPayload(jobId, productId, profile.Id, "SUBMIT", draft.PayloadHash, draft.PayloadJson, null, null));
         db.IntegrationJobs.Add(new IntegrationJob
         {
-            Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductCreate, PayloadJson = payload, PayloadVersion = 1,
-            PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = 0, Status = JobStatus.Pending,
-            AvailableAt = timeProvider.GetUtcNow(), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow(), Version = 1
+            Id = jobId,
+            TenantId = tenantId,
+            ConnectionId = connectionId,
+            JobType = F3JobTypes.ProductCreate,
+            PayloadJson = payload,
+            PayloadVersion = 1,
+            PayloadHash = Hash(payload),
+            JobDedupKey = dedup,
+            EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}",
+            Priority = 0,
+            Status = JobStatus.Pending,
+            AvailableAt = timeProvider.GetUtcNow(),
+            MaxAttempts = 10,
+            CorrelationId = correlationId,
+            CreatedAt = timeProvider.GetUtcNow(),
+            Version = 1
         });
         try
         {
@@ -391,10 +404,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (!await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken) || !await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)) return NotFound<PublicationStatusView>();
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         IReadOnlyList<PublicationLineView> lines = profile is null ? Array.Empty<PublicationLineView>() : await (from listing in db.ChannelListingVariants.AsNoTracking()
-                                                  join variant in db.ProductVariants.AsNoTracking() on new { listing.TenantId, listing.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
-                                                  where listing.TenantId == tenantId && listing.ProfileId == profile.Id
-                                                  orderby variant.Sku
-                                                  select new PublicationLineView(variant.Id, variant.Sku, variant.Barcode, listing.DesiredStatus, listing.ActualStatus, listing.RejectionCode)).ToListAsync(cancellationToken);
+                                                                                                                 join variant in db.ProductVariants.AsNoTracking() on new { listing.TenantId, listing.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
+                                                                                                                 where listing.TenantId == tenantId && listing.ProfileId == profile.Id
+                                                                                                                 orderby variant.Sku
+                                                                                                                 select new PublicationLineView(variant.Id, variant.Sku, variant.Barcode, listing.DesiredStatus, listing.ActualStatus, listing.RejectionCode)).ToListAsync(cancellationToken);
         var createPrefix = $"product-create:{connectionId:N}:{productId:N}:";
         var hasProfile = profile is not null;
         var approvalPrefix = hasProfile ? $"product-approval:{connectionId:N}:{profile!.Id:N}:" : "";

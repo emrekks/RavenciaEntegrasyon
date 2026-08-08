@@ -99,7 +99,12 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
     {
         var canonical = JsonSerializer.Serialize(new
         {
-            Id = Guid.NewGuid(), InvoiceType = "TEMELFATURA", Currency = "TRY", Note = "YALNIZ: YÜZ YİRMİ TÜRK LİRASI", PayableTotal = 120m, IssuedAt = DateTimeOffset.UtcNow,
+            Id = Guid.NewGuid(),
+            InvoiceType = "TEMELFATURA",
+            Currency = "TRY",
+            Note = "YALNIZ: YÜZ YİRMİ TÜRK LİRASI",
+            PayableTotal = 120m,
+            IssuedAt = DateTimeOffset.UtcNow,
             Order = new { OrderNumber = "ORDER", OrderedAt = DateTimeOffset.UtcNow, CustomerSnapshotJson = "{}", InvoiceAddressSnapshotJson = JsonSerializer.Serialize(new { invoiceAddress = new { identityNumber = "١١١١١١١١١١١", countryCode = "TR", city = "İstanbul", district = "Kadıköy", fullAddress = "Adres" } }), ShipmentAddressSnapshotJson = "{}" },
             Package = (object?)null,
             Lines = new[] { new { LineSequence = 1, DescriptionSnapshot = "Ürün", SkuSnapshot = "SKU", UnitSnapshot = "ADET", Quantity = 1m, UnitPrice = 100m, DiscountAmount = 0m, VatRate = 20m, VatAmount = 20m, LineTotal = 120m } }
@@ -113,7 +118,12 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
     {
         var canonical = JsonSerializer.Serialize(new
         {
-            Id = Guid.NewGuid(), InvoiceType = "EARSIVFATURA", Currency = "TRY", Note = "YALNIZ: YÜZ YİRMİ TÜRK LİRASI", PayableTotal = 120m, IssuedAt = DateTimeOffset.UtcNow,
+            Id = Guid.NewGuid(),
+            InvoiceType = "EARSIVFATURA",
+            Currency = "TRY",
+            Note = "YALNIZ: YÜZ YİRMİ TÜRK LİRASI",
+            PayableTotal = 120m,
+            IssuedAt = DateTimeOffset.UtcNow,
             Order = new { OrderNumber = "ORDER", OrderedAt = DateTimeOffset.UtcNow, CustomerSnapshotJson = "{}", InvoiceAddressSnapshotJson = JsonSerializer.Serialize(new { invoiceAddress = new { identityNumber = "11111111111", countryCode = "TR", city = "İstanbul", district = "Kadıköy", fullAddress = "Adres" } }), ShipmentAddressSnapshotJson = "{}" },
             Package = new { ExternalPackageId = "P-1", CargoProviderExternalId = "UNMAPPED", StatusOccurredAt = DateTimeOffset.UtcNow },
             Lines = new[] { new { LineSequence = 1, DescriptionSnapshot = "Ürün", SkuSnapshot = "SKU", UnitSnapshot = "ADET", Quantity = 1m, UnitPrice = 100m, DiscountAmount = 0m, VatRate = 20m, VatAmount = 20m, LineTotal = 120m } }

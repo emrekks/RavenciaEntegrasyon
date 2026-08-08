@@ -242,9 +242,16 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
         if (missing.Length == 0) return;
         db.PlatformCapabilities.AddRange(missing.Select(code => new PlatformCapability
         {
-            Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.Id, Code = code,
-            SupportLevel = CapabilitySupportLevel.Unknown, ApiVersion = connection.ApiVersion, Environment = connection.Environment,
-            StoreScope = connection.ExternalStoreId, EvidenceNote = "Bu capability sonradan eklendi; Stage/SIT kanıtı bekleniyor.", Version = 1
+            Id = Guid.CreateVersion7(),
+            TenantId = connection.TenantId,
+            ConnectionId = connection.Id,
+            Code = code,
+            SupportLevel = CapabilitySupportLevel.Unknown,
+            ApiVersion = connection.ApiVersion,
+            Environment = connection.Environment,
+            StoreScope = connection.ExternalStoreId,
+            EvidenceNote = "Bu capability sonradan eklendi; Stage/SIT kanıtı bekleniyor.",
+            Version = 1
         }));
         await db.SaveChangesAsync(cancellationToken);
     }

@@ -78,9 +78,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     private static IntegrationJob NewJob(Guid tenantId, Guid? connectionId, string type, string dedup, string payload, DateTimeOffset availableAt, string correlationId) => new()
     {
-        Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = type, PayloadJson = payload, PayloadVersion = 1,
-        PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup,
-        AvailableAt = availableAt, CorrelationId = correlationId, Version = 1
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        ConnectionId = connectionId,
+        JobType = type,
+        PayloadJson = payload,
+        PayloadVersion = 1,
+        PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
+        JobDedupKey = dedup,
+        EffectIdempotencyKey = dedup,
+        AvailableAt = availableAt,
+        CorrelationId = correlationId,
+        Version = 1
     };
 
     private static int StableJitter(Guid policyId, long bucket, int maxSeconds)
