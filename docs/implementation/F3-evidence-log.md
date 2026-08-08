@@ -17,6 +17,7 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 
 | Kanıt | Durum | Not |
 | --- | --- | --- |
+| v10.3 sipariş referans tablosu | PASS_LOCAL | Sipariş durum sekmeleri, kompakt toolbar, kolonlu satır düzeni ve açılır detay görünümü güncellendi; 14/14 Vitest, TypeScript ve production build geçti. |
 | Adapter klasör sınırı | PASS_LOCAL | Yalnız Trendyol ve TrendyolEFaturam adapter klasörleri beklenir |
 | Connection scope | PASS_LOCAL | Service/UI/Worker yalnız `TRENDYOL` ve `TRENDYOL_EFATURAM` kabul eder |
 | Reference mapper/leaf guard | PASS_LOCAL | Scoped snapshot ve leaf category doğrulaması vardır |

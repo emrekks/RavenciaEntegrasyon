@@ -21,7 +21,7 @@ test('expands an order with customer, addresses, products, totals and shipment d
   }) as typeof fetch
 
   renderAt('/orders', '/orders', <OrdersPage />)
-  fireEvent.click(screen.getByRole('tab', { name: /İşleme Alınmış/ }))
+  fireEvent.click(screen.getByRole('tab', { name: /Hazırlanıyor/ }))
   fireEvent.click(await screen.findByText('Sipariş detaylarını göster'))
   expect(await screen.findByRole('heading', { name: 'Müşteri ve sipariş' })).toBeInTheDocument()
   expect(screen.getAllByText('Ayşe Yılmaz').length).toBeGreaterThan(0)
