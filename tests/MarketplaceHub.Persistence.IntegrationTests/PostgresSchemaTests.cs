@@ -285,7 +285,7 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
         {
             await using var requestDb = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options);
             var verifier = new FixedWebhookVerifier(new(externalMessageId, payloadHash, "ORDERS", "{\"content\":[]}"));
-            var service = new F3WebhookService(requestDb, hasher, verifier, null!, TimeProvider.System);
+            var service = new F3WebhookService(requestDb, hasher, verifier, TimeProvider.System);
             await gate.Task; var timer = System.Diagnostics.Stopwatch.StartNew();
             var result = await service.ReceiveAsync(connectionPublicId, routeToken, "{\"content\":[]}"u8.ToArray(), new Dictionary<string, string>(), $"parallel-{index}", cancellationToken);
             timer.Stop(); durations.Add(timer.Elapsed.TotalMilliseconds); return result;

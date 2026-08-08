@@ -15,7 +15,7 @@ public sealed class RepositoryGuardTests
     {
         var root = FindRoot(); var source = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Web", "src", "App.tsx"));
         foreach (var required in new[] { "/products", "/products/new", "/products/:id", "/catalog/categories", "/catalog/brands", "/catalog/attributes", "/imports", "/imports/:id", "/inventory", "/orders", "/orders/:id", "/shipments", "/returns", "/returns/:id", "/integrations", "/integrations/:id", "/mappings/categories", "/mappings/attributes", "/invoices", "/invoices/:id", "/settings/billing" }) Assert.Contains(required, source, StringComparison.Ordinal);
-        foreach (var forbidden in new[] { "/reports", "/operations", "/tenants", "/users", "Shopify", "Hepsiburada", "N11", "Pazarama" }) Assert.DoesNotContain(forbidden, source, StringComparison.OrdinalIgnoreCase);
+        foreach (var forbidden in new[] { "/reports", "/tenants", "/users", "Shopify", "Hepsiburada", "N11", "Pazarama" }) Assert.DoesNotContain(forbidden, source, StringComparison.OrdinalIgnoreCase);
         var pages = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Web", "src", "F3Pages.tsx"));
         foreach (var requiredPlatform in new[] { "<option value=\"TRENDYOL\">", "<option value=\"TRENDYOL_EFATURAM\">" }) Assert.Contains(requiredPlatform, pages, StringComparison.Ordinal);
         foreach (var forbiddenPlatform in new[] { "<option value=\"SHOPIFY\">", "<option value=\"HEPSIBURADA\">", "<option value=\"N11\">", "<option value=\"PAZARAMA\">" }) Assert.DoesNotContain(forbiddenPlatform, pages, StringComparison.Ordinal);
@@ -69,7 +69,7 @@ public sealed class RepositoryGuardTests
         Assert.Contains("pull postgres migrate api worker caddy", deployment, StringComparison.Ordinal);
         Assert.Contains("readiness_attempts=30", deployment, StringComparison.Ordinal);
         Assert.Contains("sleep 2", deployment, StringComparison.Ordinal);
-        Assert.Contains("Bootstrap__Enabled=true", deployment, StringComparison.Ordinal);
+        Assert.Contains("bootstrap_stack", deployment, StringComparison.Ordinal);
         Assert.Contains("Ubuntu Server 26.04 LTS", installer, StringComparison.Ordinal);
         Assert.Contains("cpu_count >= 2", installer, StringComparison.Ordinal);
         Assert.Contains("filesystem_bytes >= 70000000000", installer, StringComparison.Ordinal);

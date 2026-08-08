@@ -694,9 +694,10 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         var documentResult = await orders.GetCommonLabelAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:poll"), package.CargoTrackingNumber, cancellationToken);
         if (!documentResult.IsSuccess)
         {
-            var mapped = JobExecutionResult.FromAdapterError(documentResult.Error!);
-            if (mapped.Kind == JobCompletionKind.Retry || documentResult.Error!.Class == AdapterErrorClass.NotFound) return JobExecutionResult.Retry("COMMON_LABEL_PENDING", "Trendyol ortak etiket henüz hazır değil.", TimeSpan.FromSeconds(20), documentResult.Error.RemoteRequestId);
-            attempt.Status = mapped.Kind == JobCompletionKind.ManualReview ? "MANUAL_REVIEW" : "FAILED"; attempt.ErrorCode = documentResult.Error.Code; attempt.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return mapped;
+            var error = documentResult.Error!;
+            var mapped = JobExecutionResult.FromAdapterError(error);
+            if (mapped.Kind == JobCompletionKind.Retry || error.Class == AdapterErrorClass.NotFound) return JobExecutionResult.Retry("COMMON_LABEL_PENDING", "Trendyol ortak etiket henüz hazır değil.", TimeSpan.FromSeconds(20), error.RemoteRequestId);
+            attempt.Status = mapped.Kind == JobCompletionKind.ManualReview ? "MANUAL_REVIEW" : "FAILED"; attempt.ErrorCode = error.Code; attempt.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return mapped;
         }
         var document = documentResult.Value!;
         if (!string.Equals(document.Format, "ZPL", StringComparison.OrdinalIgnoreCase) || document.Content.Length == 0 || document.Content.LongLength > 5 * 1024 * 1024)

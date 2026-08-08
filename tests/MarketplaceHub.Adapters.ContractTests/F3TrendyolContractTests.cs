@@ -114,7 +114,7 @@ public sealed class F3TrendyolContractTests
             """;
         var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
         Assert.Equal("CLAIM-V2", claim.ExternalClaimId);
-        var line = Assert.Single(claim.Lines); Assert.Equal("CLAIM-LINE-V2", line.ExternalReturnLineId); Assert.Equal("ORDER-LINE-V2", line.ExternalOrderLineId);
+        var line = Assert.Single(claim.Lines); Assert.Equal("CLAIM-LINE-V2", line.ExternalLineId); Assert.Equal("ORDER-LINE-V2", line.ExternalOrderLineId);
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public sealed class F3TrendyolContractTests
         var composer = File.ReadAllText(Path.Combine(root, "src", "MarketplaceHub.Infrastructure", "Persistence", "ProductPublicationComposer.cs"));
         Assert.Contains("storeFrontCode", auth, StringComparison.Ordinal); Assert.Contains("TR", auth, StringComparison.Ordinal);
         Assert.Contains("/v2/orders", options, StringComparison.Ordinal); Assert.Contains("OrderStream", http, StringComparison.Ordinal);
-        Assert.Contains("channels = new[] { \"CORE\" }", composer, StringComparison.Ordinal);
+        Assert.Contains("[\"channels\"] = new[] { \"CORE\" }", composer, StringComparison.Ordinal);
         Assert.Contains("TRACKING_NUMBER", http, StringComparison.Ordinal);
         Assert.Contains("/tracking-details", options, StringComparison.Ordinal);
         Assert.Contains("Math.Clamp(page.Limit, 1, 100)", http, StringComparison.Ordinal);

@@ -2,6 +2,13 @@
 
 Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara ait tarihsel kayıtlar aktif kanıt sayılmaz.
 
+## 2026-08-08 yerel eşitleme doğrulaması
+
+- Exact .NET `10.0.302` restore ve backend build: `PASS` (0 uyarı, 0 hata).
+- F3 shipment/common-label, return evidence ve fake adapter kontrat derleme uyumsuzlukları düzeltildi.
+- Docker/PostgreSQL testleri: `NOT_RUN / BLOCKED_ENVIRONMENT`.
+- Frontend davranış paketi: `FAILED_VALIDATION`; production ve Stage durumu yükseltilmedi.
+
 | Kanıt | Durum | Not |
 | --- | --- | --- |
 | Adapter klasör sınırı | PASS_LOCAL | Yalnız Trendyol ve TrendyolEFaturam adapter klasörleri beklenir |

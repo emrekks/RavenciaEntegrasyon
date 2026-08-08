@@ -1,5 +1,12 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-08 — Yerel sürümün GitHub eşitleme öncesi derleme düzeltmeleri
+
+- F3 shipment hash metnindeki hatalı satır sonu, common-label hata akışındaki nullable erişim ve return evidence stream çağrısı düzeltildi.
+- Production hardening migration sınıfındaki yinelenen migration metadata kaldırıldı; tarihsel migration kimliği değiştirilmedi.
+- E-Faturam bağlantı görünüm modeli, fake adapter ve sözleşme testleri güncel uygulama kontratlarıyla hizalandı.
+- Backend build ve frontend typecheck geçti. Docker/PostgreSQL testleri yerel Docker bulunmadığı için `NOT_RUN`; güncel frontend davranış testlerindeki kalan uyumsuzluklar `FAILED_VALIDATION` olarak açık tutuldu.
+
 ## 2026-08-06 — v9 katalog, kategori eşleme ve varyant çalışma alanı
 
 - Panel kategorisi → Trendyol yaprak kategorisi → kategori özelliği → özellik değeri eşleme zinciri tek çalışma alanında birleştirildi.

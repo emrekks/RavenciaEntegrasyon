@@ -65,7 +65,7 @@ public static class F3Endpoints
         if (file.Length > maximumBytes) return Problem(http, new("EVIDENCE_TOO_LARGE", "İade kanıtı en fazla 10 MiB olabilir.", 413));
         if (file.ContentType is not ("application/pdf" or "image/jpeg" or "image/png")) return Problem(http, new("EVIDENCE_TYPE_UNSUPPORTED", "Yalnız PDF, JPEG veya PNG iade kanıtı kabul edilir.", 415));
 
-        await using var input = file.OpenReadStream(maximumBytes);
+        await using var input = file.OpenReadStream();
         await using var buffer = new MemoryStream((int)file.Length);
         await input.CopyToAsync(buffer, http.RequestAborted);
         if (buffer.Length != file.Length || buffer.Length > maximumBytes) return Problem(http, new("EVIDENCE_SIZE_MISMATCH", "Dosya boyutu doğrulanamadı.", 422));

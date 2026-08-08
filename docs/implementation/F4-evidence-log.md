@@ -2,6 +2,11 @@
 
 **Güncelleme:** 2026-08-05
 
+## 2026-08-08 yerel eşitleme doğrulaması
+
+- E-Faturam connection görünüm kontratına `hasCredential` alanı eklendi; frontend typecheck `PASS`.
+- Frontend davranış paketi kalan test uyumsuzlukları nedeniyle `FAILED_VALIDATION`; Stage ve production durumu yükseltilmedi.
+
 | Kanıt | Durum | Not |
 | --- | --- | --- |
 | Provider-managed connection | CODED_STATIC_VERIFIED / DYNAMIC_NOT_RUN | Mali hesap/seri/senaryo/kargo/ödeme ayarları kaldırıldı; connection settings yalnız dış-yazma anahtarını taşır. Eski JSON alanları data migration ve runtime sanitization ile temizlenir. |

@@ -105,6 +105,9 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
     Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) =>
         Result(ReturnClaim() with { ExternalClaimId = externalReturnId });
 
+    public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) =>
+        Result<IReadOnlyList<ReturnIssueReason>>([new("synthetic-reason", "Synthetic Reason", false)]);
+
     public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) =>
         Write(context, () => new ReturnActionResult(command.ExternalClaimId, "SYNTHETIC", $"fake-operation-{context.IdempotencyKey}"));
 
