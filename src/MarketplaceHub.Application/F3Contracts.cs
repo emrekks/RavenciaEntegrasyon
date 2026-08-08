@@ -216,7 +216,15 @@ public sealed record OrderListView(
     string? CargoProviderName = null,
     string? CargoTrackingNumber = null,
     string? PrimaryImageUrl = null,
-    decimal ProductQuantity = 0);
+    decimal ProductQuantity = 0,
+    string? CustomerEmail = null,
+    string? CustomerTaxOrIdentityNumber = null,
+    string ShipmentAddressJson = "{}",
+    string InvoiceAddressJson = "{}",
+    decimal GrossAmount = 0,
+    decimal DiscountAmount = 0,
+    IReadOnlyList<OrderLineView>? Lines = null,
+    IReadOnlyList<ShipmentView>? Packages = null);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,

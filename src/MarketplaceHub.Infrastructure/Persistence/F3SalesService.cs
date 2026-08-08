@@ -24,6 +24,8 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var imageUrls = await MediaUrls(tenantId, lines.Select(x => x.VariantId), cancellationToken);
+        var variantIds = lines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
+        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var now = timeProvider.GetUtcNow();
         var rows = orders.Select(order =>
         {
@@ -34,6 +36,12 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
             var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
             var dueAt = OperationalDueAt(order.CustomerSnapshotJson);
             var terminal = order.DerivedStatus is "DELIVERED" or "CANCELLED" or "RETURNED";
+            var lineViews = orderLines.Select(x =>
+            {
+                var variant = x.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) : null;
+                return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode, variant?.OptionSignature, x.VariantId is { } imageVariantId ? imageUrls.GetValueOrDefault(imageVariantId) : null);
+            }).ToList();
+            var packageViews = packages.Where(x => x.OrderId == order.Id).Select(x => Map(x, order.OrderNumber)).ToList();
             return new OrderListView(
                 order.Id, order.OrderNumber, order.DerivedStatus, order.Currency, order.NetAmount, order.OrderedAt,
                 orderLines.Count, packages.Count(x => x.OrderId == order.Id), order.Version,
@@ -42,7 +50,9 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
                 !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabel(invoice),
                 package?.CargoProviderExternalId, package?.CargoTrackingNumber,
                 orderLines.Select(x => x.VariantId).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Value)).FirstOrDefault(x => x is not null),
-                orderLines.Sum(x => x.OrderedQuantity));
+                orderLines.Sum(x => x.OrderedQuantity), customer.Email, customer.TaxOrIdentityNumber,
+                order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.GrossAmount, order.DiscountAmount,
+                lineViews, packageViews);
         }).ToList();
         return Page(rows, limit, x => x.Id);
     }

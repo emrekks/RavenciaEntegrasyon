@@ -12,7 +12,7 @@
 
 **2026-08-08 production hotfix notu:** v9 paketi canlıya alındıktan sonraki tam sayfa yenilemesinde dashboard, bir sayfalı API cevabındaki eksik/null `items` alanında çalışma zamanı hatası verdi. Dashboard ve ürün çalışma alanı boş koleksiyona güvenli düşecek şekilde düzeltildi; production yeniden doğrulaması bekliyor.
 
-**2026-08-08 v10.3 UI notu:** Panel genelinde beyaz kurumsal navigasyon korunarak sipariş ekranı referans düzene taşındı: kompakt durum sekmeleri, filtre çubuğu, tablo kolonları ve satır detay açılımı hizalandı. Yerel doğrulamada 14 Vitest, TypeScript ve production build geçti; Stage kabulü ve dış yazma blokajları değişmedi.
+**2026-08-08 v10.4 UI notu:** Beyaz kurumsal navigasyon korunarak sipariş ekranı referans operasyon tablosuna taşındı. Liste API’si ürün, SKU, barkod, varyant, görsel, alıcı, adres, tutar ve paket bilgilerini toplu döndürür; tablo kolonları gerçek verilerle doldurulur ve ayrıntı açılımı korunur. Backend build, 14 Vitest, TypeScript ve production build geçti; Stage kabulü ve dış yazma blokajları değişmedi.
 
 ## Faz özeti
 
