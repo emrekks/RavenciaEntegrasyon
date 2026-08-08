@@ -1,5 +1,12 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-08 — v10 birleşik profesyonel panel arayüzü
+
+- Panel genelinde sayfa başlıkları, yüzeyler, formlar, butonlar, durum kartları, liste kartları ve responsive kırılımlar tek bir görsel sistemde hizalandı.
+- Sipariş kartlarının açılır ayrıntısı müşteri kimliği, teslimat ve fatura adresleri, ürün/SKU/barkod satırları, finansal özet ile kargo/takip bilgilerini tek çalışma alanında gösterir; ayrıntı yalnız açıldığında yüklenir.
+- Ürün yayın kanalı alanı aktif kapsamla sınırlandı; kapsam dışı pazaryerleri kullanıcı arayüzünden kaldırıldı.
+- 14 Vitest davranış testi, TypeScript denetimi, production build ve 3 Playwright tarayıcı testi geçti. Stage ve dış yazma kabul kapıları değişmedi.
+
 ## 2026-08-08 — Yerel sürümün GitHub eşitleme öncesi derleme düzeltmeleri
 
 - Production v9 yenilemesinde saptanan eksik/null sayfalı API koleksiyonlarına karşı dashboard ve ürün çalışma alanı fail-safe hale getirildi; boş koleksiyonlar arayüzü düşürmeden gösterilir.

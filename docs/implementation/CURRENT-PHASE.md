@@ -2,7 +2,7 @@
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 7.3
+**Ana plan sürümü:** 7.4
 
 **Aktif ürün kapsamı:** `TRENDYOL Türkiye CORE` + `TRENDYOL_EFATURAM`
 
@@ -11,6 +11,8 @@
 **2026-08-08 doğrulama notu:** Önceki tam kaynak doğrulama iş akışı `PASS`. Release hattında .NET/PostgreSQL/full-stack, format, 13 Vitest, Playwright 3/3 ve production build kapıları doğrulandı; Playwright sunucu ayarındaki Node tipi bağımlılığı kaldırıldı. Yeniden release doğrulaması bekleniyor; gerçek Stage kabulü bulunmadığından production blokajı değişmemiştir.
 
 **2026-08-08 production hotfix notu:** v9 paketi canlıya alındıktan sonraki tam sayfa yenilemesinde dashboard, bir sayfalı API cevabındaki eksik/null `items` alanında çalışma zamanı hatası verdi. Dashboard ve ürün çalışma alanı boş koleksiyona güvenli düşecek şekilde düzeltildi; production yeniden doğrulaması bekliyor.
+
+**2026-08-08 v10 UI notu:** Panel genelinde ortak yüzey, boşluk, form, buton, kart ve responsive tasarım dili uygulandı. Sipariş satırı açılımı müşteri, teslimat/fatura adresi, ürün satırları, tutar ve kargo paketlerini lazy-load ayrıntı sorgusuyla gösterir. Yerel doğrulamada 14 Vitest, 3 Playwright, TypeScript ve production build geçti; Stage kabulü ve dış yazma blokajları değişmedi.
 
 ## Faz özeti
 

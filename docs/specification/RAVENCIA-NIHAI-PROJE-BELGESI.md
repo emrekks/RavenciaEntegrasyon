@@ -2,7 +2,7 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 7.3
+**Belge sürümü:** 7.4
 **Belge tarihi:** 5 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
@@ -406,7 +406,7 @@ Kullanıcı listede şunları görür:
 
 Kullanıcı sipariş numarası, SKU, barkod, ürün adı, paket kimliği veya takip numarasıyla arama yapabilmelidir. Durum, tarih, fatura, kargo ve hata filtresi bulunmalıdır. Toplu dışa aktarma yalnız yetkili role açılır.
 
-**Mevcut durum:** Sipariş listesi, temel durum filtreleri, arama, tutar, satır ve paket sayısı görünümü kodlanmıştır. Aktif kapsam yalnız Trendyol olduğundan “tüm kanallar” gibi yanıltıcı metinler kullanılmamalıdır.
+**Mevcut durum:** Sipariş listesi, temel durum filtreleri, arama, tutar, satır ve paket sayısı görünümü kodlanmıştır. Her sipariş kartı açıldığında tekil ayrıntı lazy-load edilir; müşteri, teslimat/fatura adresi, ürün/SKU/barkod, brüt-indirim-net tutar ve kargo paketi aynı düzen içinde gösterilir. Aktif kapsam yalnız Trendyol olduğundan “tüm kanallar” gibi yanıltıcı metinler kullanılmamalıdır.
 
 ## 7.9 Sipariş detayı
 

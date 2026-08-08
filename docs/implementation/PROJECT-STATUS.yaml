@@ -1,12 +1,12 @@
 schema_version: 1
-document_version: '7.3'
+document_version: '7.4'
 updated_at: '2026-08-08'
 active_scope:
 - TRENDYOL
 - TRENDYOL_EFATURAM
 overall_status: F3_CORE_CODE_COMPLETE_VALIDATION_PENDING_F4_CODE_COMPLETE_VALIDATION_PENDING_PRODUCTION_BLOCKED
 production_status: BLOCKED
-local_validation: V9_PRODUCTION_COLLECTION_FAILSAFE_HOTFIX_REVALIDATION_PENDING
+local_validation: V10_UNIFIED_UI_VITEST_14_PLAYWRIGHT_3_BUILD_PASS_PRODUCTION_DEPLOY_PENDING
 source_of_truth: docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md
 phases:
   F0:
@@ -57,7 +57,7 @@ features:
   pull_request_ci_gates:
     status: CODED_WORKFLOW_EXECUTION_REQUIRED
   dashboard:
-    status: CODED_BASIC
+    status: V10_UNIFIED_UI_LOCAL_DYNAMIC_VERIFIED
   job_operations_panel:
     status: CODED_STATIC_VERIFIED_DYNAMIC_REVALIDATION_REQUIRED
   local_catalog_import:
@@ -105,7 +105,7 @@ features:
   trendyol_capability_evidence:
     status: CODED_STATIC_VERIFIED_STAGE_EVIDENCE_REQUIRED
   trendyol_core_operator_ui:
-    status: CODED_TYPESCRIPT_VERIFIED_VITEST_PLAYWRIGHT_REVALIDATION_REQUIRED
+    status: V10_UNIFIED_UI_TYPESCRIPT_VITEST_PLAYWRIGHT_BUILD_PASS_STAGE_REVALIDATION_REQUIRED
 required_documents_on_status_change:
 - docs/implementation/PROJECT-STATUS.yaml
 - docs/implementation/CURRENT-PHASE.md

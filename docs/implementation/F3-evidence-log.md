@@ -99,3 +99,13 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 | Özellik/değer kartları | TYPESCRIPT_STATIC_PASS | Zorunlu/eşlenmemiş kart vurgusu, ilerleme sayacı ve tüm yerel değerleri tek kartta kaydetme akışı eklendi. |
 | Kaynak kabul kontrolleri | PASS_LOCAL_STATIC | v9 kabul betiği, operasyon kabul betiği, TSX syntax/semantic ve C# delimiter kontrolleri geçti. |
 | Trendyol Stage kabulü | BLOCKED_EXTERNAL | Gerçek Stage credential ve güncel kategori/özellik/değer snapshot'ı gereklidir. |
+## 2026-08-08 — v10 birleşik operatör arayüzü
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Ortak görsel sistem | PASS_LOCAL | Sayfa başlığı, panel, form, buton, kart, boş durum ve responsive davranışlar ortak token ve ölçülerle hizalandı. |
+| Sipariş hızlı ayrıntısı | PASS_LOCAL | Açılır alan tekil sipariş sorgusunu yalnız açıldığında çalıştırır; müşteri, teslimat/fatura adresi, ürün, SKU, barkod, tutar ve kargo paketini gösterir. |
+| Vitest | PASS_LOCAL | 5 dosyada 14/14 test geçti; sipariş ayrıntısının müşteri, adres, ürün, toplam ve kargo içeriği davranış testiyle doğrulandı. |
+| Playwright | PASS_LOCAL | 3/3 tarayıcı testi geçti. |
+| TypeScript ve production build | PASS_LOCAL | `npm run typecheck` ve `npm run build` exit code 0. |
+| Trendyol Stage | BLOCKED_EXTERNAL | Gerçek Stage kabulü ve dış yazma kanıtları bu UI teslimiyle değiştirilmedi. |
