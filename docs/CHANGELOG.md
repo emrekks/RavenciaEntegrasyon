@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-08 - v10.8 tam sipariş veri zenginleştirme
+
+- Sipariş akış özetlerinin mikro ihracat, termin ve fatura kontrol verisini taşımadığı production teşhisiyle doğrulandı.
+- Her akış siparişi, kaydedilmeden önce resmî tam paket sorgusuyla zenginleştirilir; `micro`, `agreedDeliveryDate`, `invoiceStatus` ve güvenli `invoiceLink` alanları saklanır.
+- Fatura durumu gerçek Trendyol kontrol sonucuna göre gösterilir; fatura linki mevcutsa doğrudan belgeye yönlendirilir.
+
 ## 2026-08-08 - v10.7 sipariş verisi, termin ve mikro ihracat görünümü
 
 - Sipariş numarası bağlantı olmaktan çıkarıldı; turuncu paket göstergesi ve tek tıklamayla kopyalama eklendi.

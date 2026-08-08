@@ -11,6 +11,8 @@ public sealed class F3TrendyolContractTests
         var json = Fixture("order-success.json"); var page = TrendyolJsonMapper.Orders(json); var order = Assert.Single(page.Items); var package = Assert.Single(order.Packages); var line = Assert.Single(order.Lines);
         Assert.False(page.HasMore); Assert.Equal("ORDER-ANON-001", order.ExternalOrderId); Assert.Equal("900001", package.ExternalPackageId); Assert.Equal(125.50m, package.NetAmount); Assert.Equal("SKU-ANON-001", line.Sku);
         Assert.Equal(125.50m, line.UnitPrice); Assert.Equal(20m, line.VatRate);
+        Assert.Contains("\"micro\":true", order.CustomerSnapshotJson, StringComparison.Ordinal); Assert.Contains("\"agreedDeliveryDate\":1762253500000", order.CustomerSnapshotJson, StringComparison.Ordinal);
+        Assert.Contains("\"invoiceStatus\":\"Invoiced\"", order.CustomerSnapshotJson, StringComparison.Ordinal); Assert.Contains("\"invoiceLink\":\"https://invoices.example.test/ORDER-ANON-001.pdf\"", order.CustomerSnapshotJson, StringComparison.Ordinal);
         Assert.DoesNotContain("@", json, StringComparison.Ordinal); Assert.DoesNotContain("+90", json, StringComparison.Ordinal); Assert.True(TrendyolContractGuard.HasContentArray(json));
     }
 

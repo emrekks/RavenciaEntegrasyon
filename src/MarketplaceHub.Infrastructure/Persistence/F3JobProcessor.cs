@@ -862,7 +862,12 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         do
         {
             var result = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync:{next}"), new(modifiedAfter, null), new(next, 200), cancellationToken); if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
-            foreach (var order in result.Value!.Items) await UpsertOrder(tenantId, connectionId, order, cancellationToken);
+            foreach (var streamedOrder in result.Value!.Items)
+            {
+                var fullOrder = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-hydrate:{streamedOrder.ExternalOrderId}"), streamedOrder.ExternalOrderId, cancellationToken);
+                if (!fullOrder.IsSuccess) throw JobProcessingException.FromAdapter(fullOrder.Error!);
+                await UpsertOrder(tenantId, connectionId, fullOrder.Value!, cancellationToken);
+            }
             next = result.Value.NextCursor; cursor.OpaqueCursor = next; cursor.LastModifiedWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max() ?? cursor.LastModifiedWatermark; cursor.LastSuccessAt = timeProvider.GetUtcNow(); cursor.Version++; await db.SaveChangesAsync(cancellationToken); if (!result.Value.HasMore) break;
         } while (!cancellationToken.IsCancellationRequested);
         return true;

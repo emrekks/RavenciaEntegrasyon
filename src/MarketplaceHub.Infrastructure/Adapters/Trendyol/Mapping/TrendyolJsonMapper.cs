@@ -35,7 +35,7 @@ public static class TrendyolJsonMapper
                     "customerFirstName", "customerLastName", "customerEmail", "customerPhone", "customerPhoneNumber", "phone", "phoneNumber", "commercial", "micro", "microExport", "shipmentPackageType", "orderType", "eInvoiceAvailable", "isEInvoice",
                     "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber",
                     "estimatedDeliveryStartDate", "estimatedDeliveryEndDate", "agreedDeliveryDate", "lastDeliveryDate", "deliveryDate", "fastDelivery",
-                    "cargoProviderName", "cargoTrackingNumber", "cargoSenderNumber"),
+                    "cargoProviderName", "cargoTrackingNumber", "cargoSenderNumber", "invoiceStatus", "invoiceNumber", "invoiceLink", "invoiceRejectedReasonKeys"),
                 Snapshot(package, "shipmentAddress"), Snapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText()));
         }
         return new(rows, NullText(root, "nextCursor"), Bool(root, "hasMore"));

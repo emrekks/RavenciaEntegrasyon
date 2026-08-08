@@ -50,12 +50,12 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
                 orderLines.Count, packages.Count(x => x.OrderId == order.Id), order.Version,
                 order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
                 customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
-                !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabel(invoice),
+                !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabel(invoice, order.CustomerSnapshotJson),
                 package?.CargoProviderExternalId, package?.CargoTrackingNumber,
                 orderLines.Select(x => x.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) : variantsBySku.GetValueOrDefault(x.Sku)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
                 orderLines.Sum(x => x.OrderedQuantity), customer.Email, customer.TaxOrIdentityNumber,
                 order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.GrossAmount, order.DiscountAmount,
-                lineViews, packageViews, invoice?.Id);
+                lineViews, packageViews, invoice?.Id, InvoiceDocumentUrl(order.CustomerSnapshotJson));
         }).ToList();
         return Page(rows, limit, x => x.Id);
     }
@@ -85,8 +85,8 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
             lines, packages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version,
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
-            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabel(invoice),
-            customer.Phone, customer.IsEInvoiceAvailable));
+            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabel(invoice, order.CustomerSnapshotJson),
+            customer.Phone, customer.IsEInvoiceAvailable, InvoiceDocumentUrl(order.CustomerSnapshotJson)));
     }
 
     public async Task<PageResult<ShipmentView>> ShipmentsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
@@ -343,11 +343,22 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
 
     private static DateTimeOffset? OperationalDueAt(string json) => JsonInstant(json, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate");
 
-    private static string InvoiceLabel(Invoice? invoice)
+    private static string InvoiceLabel(Invoice? invoice, string customerJson)
     {
+        var remote = JsonText(customerJson, "invoiceStatus")?.Trim().ToUpperInvariant();
+        if (remote is "INVOICED") return "FATURA_KESILDI";
+        if (remote is "RECEIVED") return "FATURA_KONTROLDE";
+        if (remote is "REJECTED") return "FATURA_REDDEDILDI";
+        if (remote is "NOTINVOICED") return "FATURA_BEKLIYOR";
         if (invoice is null) return "FATURA_BEKLIYOR";
         if (!string.IsNullOrWhiteSpace(invoice.InvoiceNumber) || invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed) return "FATURA_KESILDI";
         return invoice.Status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal ? "FATURA_IPTAL" : "FATURA_ISLENIYOR";
+    }
+
+    private static string? InvoiceDocumentUrl(string customerJson)
+    {
+        var value = JsonText(customerJson, "invoiceLink");
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
     }
 
     private static string? JsonText(string json, params string[] names)

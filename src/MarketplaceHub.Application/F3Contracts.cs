@@ -225,7 +225,8 @@ public sealed record OrderListView(
     decimal DiscountAmount = 0,
     IReadOnlyList<OrderLineView>? Lines = null,
     IReadOnlyList<ShipmentView>? Packages = null,
-    Guid? InvoiceId = null);
+    Guid? InvoiceId = null,
+    string? InvoiceDocumentUrl = null);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,
@@ -279,7 +280,8 @@ public sealed record OrderDetailView(
     DateTimeOffset? ShipmentDueAt = null,
     string InvoiceStatus = "FATURA_BEKLIYOR",
     string? CustomerPhone = null,
-    bool? IsEInvoiceAvailable = null);
+    bool? IsEInvoiceAvailable = null,
+    string? InvoiceDocumentUrl = null);
 public sealed record ShipmentDetailView(ShipmentView Package, IReadOnlyList<string> AllowedActions, IReadOnlyList<string> SupportedLabelFormats, IReadOnlyList<ShipmentDocumentView> Documents);
 public sealed record ShipmentDocumentView(Guid Id, string DocumentKind, string Format, string Source, int DocumentVersion, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt);
 public sealed record ShipmentActionCommand(string Action, string PayloadJson);

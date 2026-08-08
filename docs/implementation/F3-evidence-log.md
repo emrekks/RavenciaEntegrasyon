@@ -1,5 +1,15 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-08 — v10.8 tam sipariş zenginleştirme
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Production veri teşhisi | PASS_PRODUCTION_READ | 3.552 siparişte akış snapshot’ları yalnız müşteri/adres alanlarını taşıyordu; mikro, termin ve uzak fatura alanları yoktu. Yerel fatura kaydı sayısı 0 idi. |
+| Resmî tam paket read-back | BUILD_PASS | Akıştan gelen her sipariş, idempotent upsert öncesi `/v2/orders?orderNumber=…` tam paketiyle okunur. `micro`, `agreedDeliveryDate`, `invoiceStatus` ve HTTPS `invoiceLink` snapshot’a alınır. |
+| Fatura görünümü | BUILD_PASS | Uzak `Invoiced`, `Received`, `Rejected`, `NotInvoiced` durumları okunur; güvenli HTTPS fatura linki yalnız varsa “Faturayı Gör” olarak gösterilir. |
+| Yerel doğrulama | PASS_LOCAL | .NET build; 49 adapter contract testi; TypeScript; 14/14 Vitest; frontend production build exit code 0. |
+| Trendyol Stage | BLOCKED_EXTERNAL | Gerçek Stage/read-back yanıtıyla alanların kabulü bu değişiklikten sonra yeniden doğrulanmalıdır. |
+
 Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara ait tarihsel kayıtlar aktif kanıt sayılmaz.
 
 ## 2026-08-08 — v10.6 sipariş operasyon etkileşimleri
