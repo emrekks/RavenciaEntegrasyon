@@ -3,8 +3,8 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
 using MarketplaceHub.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Api.F4;
 
