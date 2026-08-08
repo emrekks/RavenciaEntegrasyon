@@ -1,5 +1,7 @@
 # Güncel Faz ve Devralma Durumu
 
+**2026-08-09 v10.11 CI tarayıcı kararlılığı:** v10.10 kaynak doğrulamasında, soğuk Vite modül derlemesi giriş formunun 30 saniyelik varsayılan Playwright süresini aştı. Tam uygulama kanıtı ağ sakinliğini ve 60 saniyelik sınırı bekler; işlevsel sipariş kodu değişmez. Node syntax, TypeScript ve dokümantasyon transaction doğrulaması geçti; tam CI ve production read-back yeniden çalıştırılmalıdır.
+
 **2026-08-08 v10.10 cursor uyumluluğu:** Production read-back, ilk 204 tam paket güncellemesinden sonra Stream `nextCursor` ile tarih filtresinin tekrar gönderilmesinde Trendyol Stage’in HTTP 400 döndürdüğünü gösterdi. İlk sayfa tarih aralığıyla, devam sayfaları yalnız cursor ile istenir. .NET build, 49 adapter contract testi ve dokümantasyon transaction doğrulaması geçti; production read-back yeniden çalıştırılmalıdır.
 
 **2026-08-08 v10.9 eşitleme dayanıklılığı:** Tam paket zenginleştirmesinde, akış sayfasından sonra pazar yeri tarafında kaldırılan tek bir sipariş bulunamazsa salt-okunur eşitleme artık tüm işi kesmez; akıştaki mevcut snapshot idempotent olarak korunur. Diğer uzak hata sınıfları retry/audit için işi başarısız yapmaya devam eder. .NET build, 49 adapter contract testi ve dokümantasyon transaction doğrulaması geçti; production read-back yeniden çalıştırılmalıdır.

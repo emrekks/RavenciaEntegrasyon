@@ -7,7 +7,8 @@ if (!ui || !connectionId) throw new Error('Full-stack E2E runtime coordinates ar
 const browser = await chromium.launch({ headless: true })
 try {
   const page = await browser.newPage()
-  await page.goto(ui)
+  page.setDefaultTimeout(60_000)
+  await page.goto(ui, { waitUntil: 'networkidle', timeout: 60_000 })
   await page.locator('input[name="email"]').fill('owner@fake.invalid')
   await page.locator('input[name="password"]').fill('Local-E2E-Only!9347')
   const loginResponse = page.waitForResponse(response => response.url().includes('/api/v1/auth/login'))

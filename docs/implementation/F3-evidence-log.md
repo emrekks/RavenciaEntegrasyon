@@ -1,5 +1,14 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-09 — v10.11 CI browser proof bekleme kararlılığı
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| GitHub kaynak doğrulaması | OBSERVED_CI_FAILURE | Tam çözüm .NET build ve Docker/PostgreSQL testleri geçti; browser proof, soğuk Vite derlemesinde giriş formu için 30 saniyelik varsayılan bekleme sınırına ulaştı. |
+| Yerel doğrulama | PASS_LOCAL | Node syntax, TypeScript ve dokümantasyon transaction doğrulaması geçti. |
+| Test dayanıklılığı | PASS_LOCAL | Browser proof ağ sakinliğini ve 60 saniyelik açık bekleme sınırını kullanır; uygulama davranışı değiştirilmez. |
+| Tam CI | REVALIDATION_REQUIRED | İmaj yayınından önce GitHub doğrulama hattı yeniden tamamlanmalıdır. |
+
 ## 2026-08-08 — v10.10 Stream cursor filter uyumluluğu
 
 | Kanıt | Durum | Not |

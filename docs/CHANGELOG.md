@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - v10.11 CI tarayıcı doğrulama kararlılığı
+
+- Tam uygulama tarayıcı kanıtı, soğuk Vite modül derlemesinde giriş ekranının hazır olmasını güvenli 60 saniyelik sınırla bekler.
+
 ## 2026-08-08 - v10.10 Stream cursor uyumluluğu
 
 - Trendyol sipariş Stream devam imleci kullanılırken ilk isteğe ait tarih filtreleri yeniden gönderilmez; Stage endpointinin 400 yanıtı engellenir.
