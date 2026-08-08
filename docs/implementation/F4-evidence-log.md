@@ -1,5 +1,12 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-09 — v10.15.1 CI biçimlendirme kaydı
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Repository formatter | PASS_LOCAL | Yeni manuel fatura belgesi endpointindeki import sırası `dotnet format MarketplaceHub.sln --verify-no-changes --no-restore` ile doğrulandı. Davranış veya dış etki değişmez. |
+| Tam GitHub release doğrulaması | PENDING | Kaynak ve belge transaction'ı yeniden CI hattında doğrulanmalıdır. |
+
 **Güncelleme:** 2026-08-05
 
 ## 2026-08-09 — v10.15 güvenli manuel fatura belgesi yükleme

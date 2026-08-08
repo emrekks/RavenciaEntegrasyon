@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - v10.15.1 CI biçimlendirme kaydı
+
+- Manuel fatura belgesi endpointinin import sırası repository formatter kurallarıyla hizalandı. Uygulama davranışı, veri şeması ve dış yazma kapıları değişmedi.
+
 ## 2026-08-09 - v10.15 sipariş filtreleri ve güvenli fatura belgesi yükleme
 
 - Sipariş filtreleri; geniş arama alanı, platform ve durum seçimleri ile görünür kaldı; listeleme durumu, tarih aralığı, kargo, fatura ve sayfa boyutu “Gelişmiş Filtreler” altında toplandı. Uygula/Temizle kontrolleri ve responsive düzen eklendi.
