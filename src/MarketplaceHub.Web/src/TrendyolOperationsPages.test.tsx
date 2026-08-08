@@ -12,23 +12,24 @@ const renderAt = (path: string, route: string, page: ReactNode) => {
   return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><Routes><Route path={route} element={page} /></Routes></MemoryRouter></QueryClientProvider>)
 }
 
-test('expands an order with customer, addresses, products, totals and shipment data', async () => {
+test('shows order information directly in the operational list without a detail expander', async () => {
   globalThis.fetch = vi.fn(input => {
     const url = String(input)
-    if (url.includes('/api/v1/orders?')) return json({ items: [{ id: 'order-1', orderNumber: 'T-1001', derivedStatus: 'PROCESSING', currency: 'TRY', netAmount: 549.9, orderedAt: '2026-08-08T10:00:00Z', lineCount: 1, packageCount: 1, version: 2, connectionId: 'connection-1', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol Mağaza', customerName: 'Ayşe Yılmaz', orderType: 'BIREYSEL', isMicroExport: false, shipmentDueAt: '2026-08-10T10:00:00Z', isDeadlineCritical: false, invoiceStatus: 'NOT_CREATED', cargoProviderName: 'Yurtiçi Kargo', cargoTrackingNumber: 'TRK-1', primaryImageUrl: null, productQuantity: 2 }], nextCursor: null, hasMore: false })
-    if (url.endsWith('/api/v1/orders/order-1')) return json({ id: 'order-1', orderNumber: 'T-1001', derivedStatus: 'PROCESSING', currency: 'TRY', grossAmount: 599.9, discountAmount: 50, netAmount: 549.9, orderedAt: '2026-08-08T10:00:00Z', connectionId: 'connection-1', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol Mağaza', customerName: 'Ayşe Yılmaz', customerEmail: 'ayse@example.com', customerTaxOrIdentityNumber: '11111111111', orderType: 'BIREYSEL', isMicroExport: false, shipmentAddressJson: '{"fullAddress":"Bağdat Cad. No: 10","district":"Kadıköy","city":"İstanbul","countryCode":"TR"}', invoiceAddressJson: '{"fullAddress":"Bağdat Cad. No: 10","district":"Kadıköy","city":"İstanbul","countryCode":"TR"}', shipmentDueAt: '2026-08-10T10:00:00Z', invoiceStatus: 'NOT_CREATED', lines: [{ id: 'line-1', sku: 'BLZ-M', barcode: '8690001', title: 'Kadın Desenli Bluz', orderedQuantity: 2, cancelledQuantity: 0, shippedQuantity: 0, deliveredQuantity: 0, returnedQuantity: 0, unitPrice: 274.95, vatRate: 10, rawStatus: 'Created', variantId: 'variant-1', modelCode: 'BLZ-1', optionSignature: 'M', imageUrl: null }], packages: [{ id: 'shipment-1', orderId: 'order-1', orderNumber: 'T-1001', externalPackageId: 'PKG-1', status: 'CREATED', rawStatus: 'Created', cargoTrackingNumber: 'TRK-1', cargoProviderName: 'Yurtiçi Kargo', statusOccurredAt: '2026-08-08T10:00:00Z', version: 1 }], version: 2 })
+    if (url.includes('/api/v1/orders?')) return json({ items: [{ id: 'order-1', orderNumber: 'T-1001', derivedStatus: 'PROCESSING', currency: 'TRY', grossAmount: 599.9, discountAmount: 50, netAmount: 549.9, orderedAt: '2026-08-08T10:00:00Z', lineCount: 1, packageCount: 1, version: 2, connectionId: 'connection-1', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol Mağaza', customerName: 'Ayşe Yılmaz', customerEmail: 'ayse@example.com', customerTaxOrIdentityNumber: '11111111111', orderType: 'BIREYSEL', isMicroExport: false, shipmentAddressJson: '{}', invoiceAddressJson: '{}', shipmentDueAt: '2026-08-10T10:00:00Z', isDeadlineCritical: false, invoiceStatus: 'FATURA_BEKLIYOR', cargoProviderName: 'Yurtiçi Kargo', cargoTrackingNumber: 'TRK-1', primaryImageUrl: null, productQuantity: 2, lines: [{ id: 'line-1', sku: 'BLZ-M', barcode: '8690001', title: 'Kadın Desenli Bluz', orderedQuantity: 2, cancelledQuantity: 0, shippedQuantity: 0, deliveredQuantity: 0, returnedQuantity: 0, unitPrice: 274.95, vatRate: 10, rawStatus: 'Created', variantId: 'variant-1', modelCode: 'BLZ-1', optionSignature: 'Renk: Lacivert | Beden: M', imageUrl: null }], packages: [{ id: 'shipment-1', orderId: 'order-1', orderNumber: 'T-1001', externalPackageId: 'PKG-1', status: 'CREATED', rawStatus: 'Created', cargoTrackingNumber: 'TRK-1', cargoProviderName: 'Yurtiçi Kargo', statusOccurredAt: '2026-08-08T10:00:00Z', version: 1 }] }], nextCursor: null, hasMore: false })
     return json({}, 404)
   }) as typeof fetch
 
   renderAt('/orders', '/orders', <OrdersPage />)
   fireEvent.click(screen.getByRole('tab', { name: /Hazırlanıyor/ }))
-  fireEvent.click(await screen.findByText('Sipariş detaylarını göster'))
-  expect(await screen.findByRole('heading', { name: 'Müşteri ve sipariş' })).toBeInTheDocument()
-  expect(screen.getAllByText('Ayşe Yılmaz').length).toBeGreaterThan(0)
-  expect(screen.getAllByText(/Bağdat Cad/).length).toBeGreaterThan(0)
+  expect(await screen.findByText('Sipariş Bilgileri')).toBeInTheDocument()
+  expect(screen.getByText(/Ayşe Yılmaz/)).toBeInTheDocument()
   expect(screen.getByText('Kadın Desenli Bluz')).toBeInTheDocument()
-  expect(screen.getAllByText('Yurtiçi Kargo').length).toBeGreaterThan(0)
-  expect(screen.getAllByText(/549,90/).length).toBeGreaterThan(0)
+  expect(screen.getByText('Model Kodu: BLZ-1')).toBeInTheDocument()
+  expect(screen.getByText('Renk: Lacivert')).toBeInTheDocument()
+  expect(screen.getByText('Beden: M')).toBeInTheDocument()
+  expect(screen.getAllByText('Yurtiçi Kargo').length).toBeGreaterThan(1)
+  expect(screen.getByText(/599,90/)).toBeInTheDocument()
+  expect(screen.queryByText('Sipariş detaylarını göster')).not.toBeInTheDocument()
 })
 
 test('queues Trendyol product update from the product publication workspace', async () => {

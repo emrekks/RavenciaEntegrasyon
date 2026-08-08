@@ -105,7 +105,7 @@ features:
   trendyol_capability_evidence:
     status: CODED_STATIC_VERIFIED_STAGE_EVIDENCE_REQUIRED
   trendyol_core_operator_ui:
-    status: V10_UNIFIED_UI_TYPESCRIPT_VITEST_PLAYWRIGHT_BUILD_PASS_STAGE_REVALIDATION_REQUIRED
+    status: V10_5_ORDER_OPERATIONS_UI_TYPESCRIPT_VITEST_BUILD_PASS_STAGE_REVALIDATION_REQUIRED
 required_documents_on_status_change:
 - docs/implementation/PROJECT-STATUS.yaml
 - docs/implementation/CURRENT-PHASE.md

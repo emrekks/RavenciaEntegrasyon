@@ -26,6 +26,13 @@
 | F5 | `PLANNED_BLOCKED_BY_F3_F4_AND_REVALIDATION` | Production pilot, F3/F4 dış kabul kapıları geçmeden başlamaz. |
 | F6+ | `PLANNED` | Stabilizasyon, adapter registry ve sonraki platformlar. |
 
+## 2026-08-08 — v10.5 sipariş operasyon görünümü
+
+- Sipariş listesi yatay taşmayı önleyen sıkı kolon ölçüleriyle yenilendi; açılır hızlı ayrıntı satırı kaldırıldı.
+- Arama; sipariş, paket, takip, müşteri, stok/model kodu, barkod ve ürün bilgilerini kapsar. Tarih aralığı, kargo firması, fatura durumu, sayfa boyutu ve seçimli toplu işlem yüzeyi eklendi.
+- Satırda renk/beden gibi varyant alanları ayrı gösterilir; model kodu açık adıyla, kargo durumu ise operasyonel kargo bilgisiyle gösterilir. Fatura durumları okunur kırmızı/yeşil etiketlere dönüştürüldü.
+- Frontend doğrulaması: TypeScript, Vitest 14/14 ve production build geçti. Node sürümü proje hedefinden `24.18.1` yerine `24.15.0` olduğundan bu sonuç exact-toolchain kanıtı değildir.
+
 ## Bu teslimde kapanan v9 katalog işleri
 
 - Panel yaprak kategorisi ile Trendyol yaprak kategorisi eşleme ekranı referans görünüme göre yenilendi.

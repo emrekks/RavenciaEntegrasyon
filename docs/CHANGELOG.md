@@ -1,5 +1,12 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-08 - v10.5 sipariş operasyon düzeni
+
+- Sipariş listesi tek, taşmasız operasyon tablosuna dönüştürüldü; açılır hızlı ayrıntı satırı ve Eşitleme merkezi bağlantısı kaldırıldı.
+- Sipariş/paket/takip/müşteri/stok/model/barkod araması ile tarih, kargo firması, fatura durumu, sayfa boyutu ve seçimli toplu işlem kontrolleri eklendi.
+- Varyant seçenekleri ayrı satırlarda, model kodu açık alan adıyla; fatura durumları da kırmızı/yeşil okunur etiketlerle gösterilir.
+- Frontend TypeScript, 14 Vitest ve production build başarıyla doğrulandı.
+
 ## 2026-08-08 — v10 birleşik profesyonel panel arayüzü
 
 - v10.4 sipariş listesi gerçek operasyon tablosuna dönüştürüldü. Liste API’si ürün satırları, SKU, barkod, model/seçenek, görsel, alıcı iletişim/vergi bilgisi, adres snapshotları, brüt/indirim tutarı ve paketleri tek sorguda döndürür; arayüz referanstaki sipariş/alıcı/bilgiler/fiyat/kargo/fatura/durum kolonlarını gerçek verilerle doldurur.
