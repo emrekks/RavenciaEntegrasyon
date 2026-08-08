@@ -1,5 +1,12 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-08 - v10.7 sipariş verisi, termin ve mikro ihracat görünümü
+
+- Sipariş numarası bağlantı olmaktan çıkarıldı; turuncu paket göstergesi ve tek tıklamayla kopyalama eklendi.
+- Trendyol snapshot’ındaki iç içe teslimat/fatura adresleri ve iletişim/mükellef alanları fatura penceresinde doğrudan sipariş ayrıntısı API’sinden çözülür.
+- Teslim terminini aşmış siparişlerde kalan süre yerine gün hesabı ve açık kargoya teslim uyarısı gösterilir.
+- Mikro ihracat siparişleri satır ve fatura alanında mavi etiketle ayrılır. Kesilmiş faturada “Faturayı Gör” bağlantısı ile fatura bilgileri/pasif silme menüsü sunulur.
+
 ## 2026-08-08 - v10.6 sipariş operasyon etkileşimleri
 
 - Sipariş satırına fatura işlemleri menüsü, fatura bilgileri penceresi, kesilmiş faturaya yönlendirme ve güvenli yükleme kontrolü eklendi.

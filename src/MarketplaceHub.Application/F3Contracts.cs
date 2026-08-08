@@ -277,7 +277,9 @@ public sealed record OrderDetailView(
     string ShipmentAddressJson = "{}",
     string InvoiceAddressJson = "{}",
     DateTimeOffset? ShipmentDueAt = null,
-    string InvoiceStatus = "FATURA_BEKLIYOR");
+    string InvoiceStatus = "FATURA_BEKLIYOR",
+    string? CustomerPhone = null,
+    bool? IsEInvoiceAvailable = null);
 public sealed record ShipmentDetailView(ShipmentView Package, IReadOnlyList<string> AllowedActions, IReadOnlyList<string> SupportedLabelFormats, IReadOnlyList<ShipmentDocumentView> Documents);
 public sealed record ShipmentDocumentView(Guid Id, string DocumentKind, string Format, string Source, int DocumentVersion, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt);
 public sealed record ShipmentActionCommand(string Action, string PayloadJson);

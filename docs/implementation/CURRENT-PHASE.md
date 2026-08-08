@@ -1,5 +1,7 @@
 # Güncel Faz ve Devralma Durumu
 
+**2026-08-08 v10.7 UI notu:** Sipariş numarası turuncu paket ve kopyalama denetimiyle bağlantısız gösterilir. Trendyol paket snapshot’ındaki iç içe teslimat/fatura adresleri ile iletişim/mükellef alanları doğrudan sipariş API’sinden fatura penceresine taşınır. Teslim terminini aşan açık siparişler gün sayılı gecikme uyarısı verir; mikro ihracat hem satırda hem fatura alanında mavi etiketlidir. Kesilmiş faturanın menüsü fatura bilgisi ve güvenli, pasif silme denetimine geçer. .NET build, TypeScript, 14/14 Vitest ve production frontend build geçti; Stage ve dış yazma blokajları değişmez.
+
 **Son güncelleme:** 2026-08-06
 
 **Ana plan sürümü:** 7.4

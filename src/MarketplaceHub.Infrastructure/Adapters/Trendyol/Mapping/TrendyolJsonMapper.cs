@@ -32,7 +32,7 @@ public static class TrendyolJsonMapper
             var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber"), allocations, gross, discount, net);
             rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
                 Snapshot(package,
-                    "customerFirstName", "customerLastName", "customerEmail", "commercial", "micro", "microExport", "shipmentPackageType", "orderType",
+                    "customerFirstName", "customerLastName", "customerEmail", "customerPhone", "customerPhoneNumber", "phone", "phoneNumber", "commercial", "micro", "microExport", "shipmentPackageType", "orderType", "eInvoiceAvailable", "isEInvoice",
                     "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber",
                     "estimatedDeliveryStartDate", "estimatedDeliveryEndDate", "agreedDeliveryDate", "lastDeliveryDate", "deliveryDate", "fastDelivery",
                     "cargoProviderName", "cargoTrackingNumber", "cargoSenderNumber"),

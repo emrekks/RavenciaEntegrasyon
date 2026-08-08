@@ -61,6 +61,17 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 | Exact frontend toolchain | BLOCKED_ENVIRONMENT | Mevcut ortam Node `22.16.0`/npm `10.9.2`; proje Node `24.18.1`/npm `11.12.1` ister. Varsayılan registry `zod@4.4.3` paketini 404 döndürdüğü için bağımlılıklar kurulamadı. |
 | Trendyol Stage mapping kabulü | BLOCKED_EXTERNAL | Gerçek Stage credential, güncel kategori/özellik/değer snapshot'ı ve kontrollü test verisi gerekir. |
 
+### 2026-08-08 — v10.7 sipariş verisi, termin ve mikro ihracat görünümü
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Trendyol snapshot alanları | BUILD_PASS | Sipariş mapper’ı telefon ve E-Fatura mükellefliği alanlarını saklar; mevcut iç içe adres snapshot’ları arayüz tarafından çözümlenir. |
+| Fatura bilgileri penceresi | BUILD_PASS | Pencere açıldığında `GET /orders/{id}` ile güncel sipariş ayrıntısı alınır; teslimat/fatura adresi, e-posta, telefon ve mükelleflik gösterilir. |
+| Termin gecikme uyarısı | BUILD_PASS | Açık siparişte `shipmentDueAt` geçmişteyse, geçmiş gün hesabıyla kargoya teslim uyarısı gösterilir. |
+| Mikro ihracat ve fatura menüsü | BUILD_PASS | Mikro ihracat satır/fatura etiketleri eklenir; kesilmiş faturada fatura bilgisi ve pasif silme denetimi gösterilir. |
+| Yerel doğrulama | PASS_LOCAL | .NET solution build, TypeScript, 14/14 Vitest ve frontend production build exit code 0. |
+| Trendyol Stage | BLOCKED_EXTERNAL | Gerçek sipariş payload’ı ve canlı/Stage fatura durum read-back kabulü gerekir. |
+
 ### 2026-08-05 - Product Create durable orchestration
 
 | Kanıt | Durum | Not |

@@ -85,7 +85,8 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
             lines, packages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version,
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
-            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabel(invoice)));
+            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabel(invoice),
+            customer.Phone, customer.IsEInvoiceAvailable));
     }
 
     public async Task<PageResult<ShipmentView>> ShipmentsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
@@ -324,18 +325,20 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         return rows.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Url);
     }
 
-    private static (string Name, string? Email, string? TaxOrIdentityNumber, string OrderType, bool IsMicroExport) Customer(string customerJson, string invoiceAddressJson)
+    private static (string Name, string? Email, string? Phone, string? TaxOrIdentityNumber, string OrderType, bool IsMicroExport, bool? IsEInvoiceAvailable) Customer(string customerJson, string invoiceAddressJson)
     {
         var first = JsonText(customerJson, "customerFirstName", "firstName");
         var last = JsonText(customerJson, "customerLastName", "lastName");
         var name = string.Join(' ', new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)));
         if (string.IsNullOrWhiteSpace(name)) name = JsonText(invoiceAddressJson, "fullName", "name", "company") ?? "—";
         var email = JsonText(customerJson, "customerEmail", "email") ?? JsonText(invoiceAddressJson, "email");
+        var phone = JsonText(customerJson, "customerPhone", "customerPhoneNumber", "phone", "phoneNumber") ?? JsonText(invoiceAddressJson, "phone", "phoneNumber", "mobilePhone");
         var tax = JsonText(customerJson, "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber") ?? JsonText(invoiceAddressJson, "taxNumber", "identityNumber", "tcIdentityNumber");
         var microText = JsonText(customerJson, "shipmentPackageType", "orderType");
         var micro = JsonBool(customerJson, "micro", "microExport") || microText?.Contains("MICRO", StringComparison.OrdinalIgnoreCase) == true || microText?.Contains("İHRAC", StringComparison.OrdinalIgnoreCase) == true;
         var commercial = JsonBool(customerJson, "commercial") || !string.IsNullOrWhiteSpace(JsonText(invoiceAddressJson, "company", "companyName", "taxOffice"));
-        return (name, email, tax, micro ? "MIKRO_IHRACAT" : commercial ? "KURUMSAL" : "BIREYSEL", micro);
+        var eInvoice = JsonNullableBool(customerJson, "eInvoiceAvailable", "isEInvoice") ?? JsonNullableBool(invoiceAddressJson, "eInvoiceAvailable", "isEInvoice");
+        return (name, email, phone, tax, micro ? "MIKRO_IHRACAT" : commercial ? "KURUMSAL" : "BIREYSEL", micro, eInvoice);
     }
 
     private static DateTimeOffset? OperationalDueAt(string json) => JsonInstant(json, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate");
@@ -379,6 +382,14 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
     {
         var value = JsonText(json, names);
         return bool.TryParse(value, out var parsed) && parsed || value is "1" or "YES" or "EVET";
+    }
+
+    private static bool? JsonNullableBool(string json, params string[] names)
+    {
+        var value = JsonText(json, names);
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (bool.TryParse(value, out var parsed)) return parsed;
+        return value is "1" or "YES" or "EVET" ? true : value is "0" or "NO" or "HAYIR" ? false : null;
     }
 
     private static DateTimeOffset? JsonInstant(string json, params string[] names)
