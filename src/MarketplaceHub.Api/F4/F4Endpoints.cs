@@ -1,5 +1,9 @@
+using System.Security.Cryptography;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
+using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 
 namespace MarketplaceHub.Api.F4;
@@ -22,6 +26,7 @@ public static class F4Endpoints
         api.MapPost("/invoices/{id:guid}/reconcile-jobs", async (Guid id, HttpContext http, IF4BillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueReconcileAsync(tenant.TenantId, id, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
         api.MapPost("/invoices/{id:guid}/marketplace-delivery-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IF4BillingService service, UserManager<ApplicationUser> users) => await EnqueueProtected(id, command, http, users, (tenant, _, key) => service.EnqueueDeliveryAsync(tenant, id, key, http.TraceIdentifier, http.RequestAborted), false));
         api.MapPost("/invoices/{id:guid}/cancellation-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IF4BillingService service, UserManager<ApplicationUser> users) => await EnqueueProtected(id, command, http, users, (tenant, version, key) => service.EnqueueCancellationAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted)));
+        api.MapPost("/invoices/{id:guid}/documents/manual", UploadManualInvoiceDocumentAsync).DisableAntiforgery();
         api.MapGet("/invoices/{invoiceId:guid}/documents/{documentId:guid}/content", async (Guid invoiceId, Guid documentId, HttpContext http, IF4BillingService service) => Tenant(http) is { } tenant ? Stream(await service.OpenDocumentAsync(tenant.TenantId, invoiceId, documentId, http.RequestAborted), http) : Unauthorized(http));
         return endpoints;
     }
@@ -31,6 +36,48 @@ public static class F4Endpoints
         var tenant = Tenant(http); if (tenant is null) return Unauthorized(http); var version = OptionalIfMatch(http, out var failure); if (failure is not null) return failure;
         return WithEtag(http, await service.UpsertPolicyAsync(tenant.TenantId, connectionId, version, command, http.RequestAborted), x => x.Version);
     }
+
+    private static async Task<IResult> UploadManualInvoiceDocumentAsync(Guid id, HttpContext http, AppDbContext db, IPrivateFileStorage storage, TimeProvider timeProvider)
+    {
+        const long maximumBytes = 10 * 1024 * 1024;
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
+        if (!http.Request.HasFormContentType) return Problem(http, new("INVOICE_DOCUMENT_FORM_REQUIRED", "multipart/form-data body gereklidir.", 400));
+        var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == id, http.RequestAborted);
+        if (invoice is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Fatura kaydı bulunamadı.", 404));
+        var form = await http.Request.ReadFormAsync(http.RequestAborted);
+        var file = form.Files.GetFile("file");
+        if (file is null || file.Length <= 0) return Problem(http, new("INVOICE_DOCUMENT_FILE_REQUIRED", "file alanında fatura belgesi gereklidir.", 400));
+        if (file.Length > maximumBytes) return Problem(http, new("INVOICE_DOCUMENT_TOO_LARGE", "Fatura belgesi en fazla 10 MiB olabilir.", 413));
+
+        await using var input = file.OpenReadStream();
+        await using var buffer = new MemoryStream((int)file.Length);
+        await input.CopyToAsync(buffer, http.RequestAborted);
+        var bytes = buffer.ToArray();
+        if (bytes.LongLength != file.Length || bytes.LongLength > maximumBytes) return Problem(http, new("INVOICE_DOCUMENT_SIZE_MISMATCH", "Dosya boyutu doğrulanamadı.", 422));
+        var mimeType = DetectInvoiceMimeType(bytes);
+        if (mimeType is null) return Problem(http, new("INVOICE_DOCUMENT_TYPE_UNSUPPORTED", "Yalnız PDF, JPEG veya PNG fatura belgesi kabul edilir.", 415));
+        var hash = Convert.ToHexString(SHA256.HashData(bytes));
+        var existing = await db.InvoiceDocuments.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.InvoiceId == id && x.DocumentType == "MANUAL_UPLOAD" && x.Sha256 == hash, http.RequestAborted);
+        if (existing is not null) return Results.Ok(new { existing.Id, existing.DocumentType, existing.Sha256, existing.CreatedAt, duplicate = true });
+
+        var assetId = Guid.CreateVersion7();
+        var extension = mimeType switch { "application/pdf" => ".pdf", "image/jpeg" => ".jpg", _ => ".png" };
+        buffer.Position = 0;
+        var stored = await storage.SaveAsync(tenant.TenantId, $"{assetId:N}{extension}", mimeType, buffer, maximumBytes, http.RequestAborted);
+        var now = timeProvider.GetUtcNow();
+        var document = new InvoiceDocument { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, InvoiceId = id, DocumentType = "MANUAL_UPLOAD", FileAssetId = assetId, Sha256 = hash, CreatedAt = now };
+        db.FileAssets.Add(new FileAsset { Id = assetId, TenantId = tenant.TenantId, Classification = "INVOICE_DOCUMENT_MANUAL", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = mimeType, SizeBytes = bytes.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = now });
+        db.InvoiceDocuments.Add(document);
+        db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = "INVOICE_DOCUMENT_MANUAL_UPLOAD", TargetType = "Invoice", TargetId = id.ToString("D"), Reason = $"{mimeType}:{bytes.LongLength}", CorrelationId = http.TraceIdentifier, CreatedAt = now });
+        await db.SaveChangesAsync(http.RequestAborted);
+        return Results.Created($"/api/v1/invoices/{id:D}/documents/{document.Id:D}/content", new { document.Id, document.DocumentType, document.Sha256, document.CreatedAt, duplicate = false });
+    }
+
+    private static string? DetectInvoiceMimeType(byte[] bytes) => bytes.Length >= 5 && bytes[..5].SequenceEqual("%PDF-"u8.ToArray()) ? "application/pdf"
+        : bytes.Length >= 3 && bytes[..3].SequenceEqual(new byte[] { 0xFF, 0xD8, 0xFF }) ? "image/jpeg"
+        : bytes.Length >= 8 && bytes[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }) ? "image/png"
+        : null;
 
     private static async Task<IResult> EnqueueProtected(Guid _, ConfirmedAction command, HttpContext http, UserManager<ApplicationUser> users, Func<Guid, long, string, Task<ServiceResult<Guid>>> enqueue, bool requireVersion = true)
     {

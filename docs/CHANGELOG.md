@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - v10.15 sipariş filtreleri ve güvenli fatura belgesi yükleme
+
+- Sipariş filtreleri; geniş arama alanı, platform ve durum seçimleri ile görünür kaldı; listeleme durumu, tarih aralığı, kargo, fatura ve sayfa boyutu “Gelişmiş Filtreler” altında toplandı. Uygula/Temizle kontrolleri ve responsive düzen eklendi.
+- Sipariş satırları görsel olarak küçük boşlukla ayrıldı; fatura menüsündeki “Fatura Yükle” artık taslak fatura akışından gerçek güvenli yükleme alanına ulaşır.
+- Manuel belge yükleme yalnız PDF/JPEG/PNG imzasını kabul eder, 10 MiB sınırı ve SHA-256 tekrar koruması uygular, private storage ile audit kaydı oluşturur. Bu işlem E‑Faturam'a gönderim veya Trendyol'a fatura linki iletimi başlatmaz.
+
 ## 2026-08-09 - v10.14 tekil sipariş salt-okunur yenileme
 
 - Trendyol bağlantı ekranına, yalnız girilen sipariş numarasını resmî API’den tekrar okuyan ve dış platforma yazmayan denetimli yenileme eklendi.

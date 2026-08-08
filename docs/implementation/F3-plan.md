@@ -20,6 +20,7 @@ Trendyol Türkiye CORE ürün, referans, sipariş, paket, iade, etiket, webhook 
 12. Webhook bounded ingress, verification, inbox ve reconciliation fallback.
 13. Invoice-link `SUBMITTED` sınırı; doğrulanmamış terminal query yerine manuel inceleme.
 14. Ürün, fiyat-stok, shipment, return ve capability evidence panel yüzeyleri.
+15. Sipariş operasyon ekranında kompakt filtre çalışma alanı, açık/gelişmiş filtre ayrımı ve taşmasız ayrı sipariş satırı yüzeyleri.
 
 ## Güvenlik ve tutarlılık kapıları
 

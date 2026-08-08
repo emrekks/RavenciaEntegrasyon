@@ -2,6 +2,16 @@
 
 **Güncelleme:** 2026-08-05
 
+## 2026-08-09 — v10.15 güvenli manuel fatura belgesi yükleme
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| API ve dosya güvenliği | PASS_LOCAL | `POST /invoices/{id}/documents/manual`, aktif tenant ve idempotency anahtarı ister; PDF/JPEG/PNG dosya imzasını, 10 MiB sınırını ve tenant fatura sahipliğini doğrular. |
+| Private arşiv ve audit | PASS_LOCAL | Belge `INVOICE_DOCUMENT_MANUAL` private asset olarak saklanır; SHA-256 ile yinelenen yükleme ikinci belge üretmez ve `INVOICE_DOCUMENT_MANUAL_UPLOAD` audit kaydı yazar. |
+| Dış etki sınırı | CODED | Manuel belge yükleme E‑Faturam submit, iptal veya Trendyol fatura-link delivery job'u oluşturmaz; elle yüklenen belge kalıcı dış URL sayılmaz. |
+| Yerel doğrulama | PASS_LOCAL | .NET solution build, API yüzey testi, TypeScript, 16/16 Vitest ve production web build geçti. |
+| Stage mali E2E | REVALIDATION_REQUIRED | Bu private upload için dış yazma yoktur; mevcut F4 Stage mali kabul kapıları değişmez. |
+
 ## 2026-08-08 yerel eşitleme doğrulaması
 
 - E-Faturam connection görünüm kontratına `hasCredential` alanı eklendi; frontend typecheck `PASS`.

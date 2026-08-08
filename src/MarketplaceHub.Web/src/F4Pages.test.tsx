@@ -45,6 +45,27 @@ test('requires explicit password confirmation and queues E-Faturam submission wi
   expect(JSON.parse(String(request?.body))).toEqual({ password: 'test-password', confirmed: true })
 })
 
+test('uploads a manual invoice document only to the private invoice archive', async () => {
+  let request: RequestInit | undefined
+  globalThis.fetch = vi.fn((input, init) => {
+    const url = String(input)
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-invoice-upload' })
+    if (url.endsWith('/api/v1/invoices/invoice-1') && (!init?.method || init.method === 'GET')) return json(invoiceDetail)
+    if (url.endsWith('/api/v1/invoices/invoice-1/documents/manual') && init?.method === 'POST') { request = init; return json({ duplicate: false }, 201) }
+    return json({ title: 'Bulunamadı' }, 404)
+  }) as typeof fetch
+
+  render(<QueryClientProvider client={client()}><MemoryRouter initialEntries={['/invoices/invoice-1?upload=1']}><Routes><Route path="/invoices/:id" element={<InvoiceDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+  const input = await screen.findByLabelText('Fatura belgesi seç')
+  fireEvent.change(input, { target: { files: [new File(['%PDF-1.7'], 'fatura.pdf', { type: 'application/pdf' })] } })
+  fireEvent.click(screen.getByRole('button', { name: 'Belgeyi yükle' }))
+  await waitFor(() => expect(request).toBeDefined())
+  expect(new Headers(request?.headers).get('Idempotency-Key')).toContain('invoice-document:invoice-1')
+  expect(new Headers(request?.headers).get('X-CSRF-TOKEN')).toBeTruthy()
+  expect(request?.body).toBeInstanceOf(FormData)
+  expect(await screen.findByRole('status')).toHaveTextContent('güvenli özel arşive yüklendi')
+})
+
 test('shows automatic invoice routing and saves only the manual package policy', async () => {
   let policyRequest: RequestInit | undefined
   let policyLoaded = false

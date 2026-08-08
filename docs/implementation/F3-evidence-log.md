@@ -1,5 +1,14 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-09 — v10.15 sipariş filtre çalışma alanı
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Filtre yüzeyi | PASS_LOCAL | Arama, platform ve sipariş durumu sık kullanılan yüzeyde; listeleme, tarih aralığı, kargo, fatura ve sayfa boyutu gelişmiş filtrelerde toplanır. Uygula/Temizle akışı client-side filtrelerin açıkça uygulanmasını sağlar. |
+| Operasyon listesi | PASS_LOCAL | Sipariş satırları küçük görsel boşlukla ayrılır; dar ekranda filtreler tek kolonlu responsive düzene geçer. |
+| Frontend doğrulaması | PASS_LOCAL | TypeScript, 5 dosyada 16/16 Vitest ve production web build geçti. |
+| Trendyol Stage | REVALIDATION_REQUIRED | Bu UI değişikliği dış yazma açmaz; gerçek Stage sipariş görünümüyle yeniden kabul gerekir. |
+
 ## 2026-08-09 — v10.14 tekil sipariş salt-okunur yenileme
 
 | Kanıt | Durum | Not |
