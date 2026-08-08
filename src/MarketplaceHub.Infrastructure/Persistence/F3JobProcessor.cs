@@ -858,10 +858,20 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
             return true;
         }
 
-        var cursor = await Cursor(tenantId, connectionId, "ORDERS", cancellationToken); var policy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ORDERS", cancellationToken); var modifiedAfter = cursor.LastModifiedWatermark?.Subtract(TimeSpan.FromSeconds(policy?.OverlapSeconds ?? 0)); var next = cursor.OpaqueCursor;
+        var cursor = await Cursor(tenantId, connectionId, "ORDERS", cancellationToken); var policy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ORDERS", cancellationToken); var modifiedAfter = cursor.LastModifiedWatermark?.Subtract(TimeSpan.FromSeconds(policy?.OverlapSeconds ?? 0)); var next = cursor.OpaqueCursor; var resetExpiredCursor = false;
         do
         {
-            var result = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync:{next}"), new(modifiedAfter, null), new(next, 200), cancellationToken); if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
+            var result = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync:{next}"), new(modifiedAfter, null), new(next, 200), cancellationToken);
+            if (!result.IsSuccess && !resetExpiredCursor && !string.IsNullOrWhiteSpace(next) && result.Error is { Class: AdapterErrorClass.Validation, HttpStatus: 400 })
+            {
+                // Stream cursors are short-lived in Stage. Restart once from the durable watermark when a
+                // previously persisted cursor expires; preserve all other validation failures for audit/retry.
+                next = null;
+                cursor.OpaqueCursor = null;
+                resetExpiredCursor = true;
+                continue;
+            }
+            if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
             foreach (var streamedOrder in result.Value!.Items)
             {
                 var fullOrder = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-hydrate:{streamedOrder.ExternalOrderId}"), streamedOrder.ExternalOrderId, cancellationToken);
