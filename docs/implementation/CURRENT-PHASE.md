@@ -1,5 +1,7 @@
 # Güncel Faz ve Devralma Durumu
 
+**2026-08-09 v10.14 tekil sipariş salt-okunur yenileme:** Aktif ve `ORDER_READ=SUPPORTED` Trendyol bağlantısında, operatör sipariş numarasını girerek yalnız o paketin resmî API’den yeniden okunmasını kuyruğa alabilir. Bu denetim dış platforma yazmaz; eski snapshotlardaki `3pByTrendyol`, fatura ve termin bilgisinin kontrollü read-back'i için kullanılır. Hedefli Vitest (6/6), TypeScript, production web build ve dokümantasyon transaction doğrulaması geçti.
+
 **2026-08-09 v10.13 Trendyol İhracat Partnerliği tanımı:** Resmî `getShipmentPackages` belgesine göre `3pByTrendyol=true` olduğunda API `micro=false` döner. Bu yine ihracat siparişidir; snapshot `3pByTrendyol` alanını saklar ve operasyon ekranında mikro ihracat etiketiyle gösterir. .NET build, 49 adapter contract testi ve dokümantasyon transaction doğrulaması geçti; production read-back yeniden çalıştırılmalıdır.
 
 **2026-08-09 v10.12 Stream cursor geçerlilik kurtarması:** Stage, daha önce saklanmış `nextCursor` değerini tarih filtresi olmadan da HTTP 400 ile reddetti. Salt-okunur eşitleme yalnız bu tanımlı durumda imleci bir kez temizler ve son kalıcı watermark’tan yeniden başlar; diğer validation/uzak hata durumları denetlenebilir biçimde başarısız kalır. .NET build, 49 adapter contract testi ve dokümantasyon transaction doğrulaması geçti. Production salt-okunur job başarıyla tamamlandı; 204 siparişte termin/fatura/mikro alanları saklandı. Bu Stage örneğinde `micro=true` kayıt yoktur; etiket yalnız gerçek değer geldiğinde gösterilir.

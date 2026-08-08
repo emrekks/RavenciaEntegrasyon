@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - v10.14 tekil sipariş salt-okunur yenileme
+
+- Trendyol bağlantı ekranına, yalnız girilen sipariş numarasını resmî API’den tekrar okuyan ve dış platforma yazmayan denetimli yenileme eklendi.
+
 ## 2026-08-09 - v10.13 Trendyol İhracat Partnerliği mikro etiketi
 
 - `3pByTrendyol=true` dönen Trendyol İhracat Partnerliği paketleri, API `micro=false` dönse de operasyon ekranında mikro ihracat olarak ayırt edilir.

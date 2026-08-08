@@ -183,3 +183,25 @@ test('uses only direct E-Faturam credentials and does not expose fiscal account 
   expect(headers.get('X-CSRF-TOKEN')).toBeTruthy()
   expect(JSON.parse(String(credentialRequest?.body))).toEqual({ email: 'owner@example.test', password: 'strong-password' })
 })
+
+test('queues a read-only refresh for one Trendyol order number', async () => {
+  let refreshBody = ''
+  globalThis.fetch = vi.fn((input, init) => {
+    const url = String(input)
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-order-refresh' })
+    if (url.endsWith('/api/v1/connections/connection-trendyol/capabilities')) return json([{ code: 'ORDER_READ', supportLevel: 'SUPPORTED', sourceUrl: 'https://developers.trendyol.com', verifiedAt: '2026-08-09T00:00:00Z', constraintsJson: null, version: 1 }])
+    if (url.endsWith('/api/v1/connections/connection-trendyol/order-sync-jobs') && init?.method === 'POST') { refreshBody = String(init.body); return json({ id: 'job-1' }) }
+    if (url.endsWith('/api/v1/connections/connection-trendyol')) return json({ id: 'connection-trendyol', publicId: 'public-trendyol', platformCode: 'TRENDYOL', environment: 'STAGE', displayName: 'Trendyol Stage', externalStoreId: 'seller-1', status: 'ACTIVE', apiVersion: 'V2', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, version: 1 })
+    return Promise.resolve(new Response('{}', { status: 404, headers: { 'Content-Type': 'application/problem+json' } }))
+  }) as typeof fetch
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/integrations/connection-trendyol']}><Routes><Route path="/integrations/:id" element={<IntegrationDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+
+  const input = await screen.findByLabelText('Sipariş numarasıyla yenile')
+  fireEvent.change(input, { target: { value: '1238693012' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Yalnız bu siparişi yenile' }))
+
+  expect(await screen.findByRole('status')).toHaveTextContent('İş kuyruğa alındı')
+  await waitFor(() => expect(JSON.parse(refreshBody)).toEqual({ externalOrderId: '1238693012' }))
+})
