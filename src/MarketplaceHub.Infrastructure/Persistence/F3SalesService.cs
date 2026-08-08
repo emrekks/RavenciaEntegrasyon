@@ -23,9 +23,12 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
         var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
-        var imageUrls = await MediaUrls(tenantId, lines.Select(x => x.VariantId), cancellationToken);
         var variantIds = lines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
-        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var lineSkus = lines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
+        var variantRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && (variantIds.Contains(x.Id) || lineSkus.Contains(x.Sku))).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var variants = variantRows.ToDictionary(x => x.Id, x => x);
+        var variantsBySku = variantRows.GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var imageUrls = await MediaUrls(tenantId, variantRows.Select(x => (Guid?)x.Id), cancellationToken);
         var now = timeProvider.GetUtcNow();
         var rows = orders.Select(order =>
         {
@@ -38,8 +41,8 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
             var terminal = order.DerivedStatus is "DELIVERED" or "CANCELLED" or "RETURNED";
             var lineViews = orderLines.Select(x =>
             {
-                var variant = x.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) : null;
-                return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode, variant?.OptionSignature, x.VariantId is { } imageVariantId ? imageUrls.GetValueOrDefault(imageVariantId) : null);
+                var variant = x.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) : variantsBySku.GetValueOrDefault(x.Sku);
+                return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode, variant?.OptionSignature, variant is null ? null : imageUrls.GetValueOrDefault(variant.Id));
             }).ToList();
             var packageViews = packages.Where(x => x.OrderId == order.Id).Select(x => Map(x, order.OrderNumber)).ToList();
             return new OrderListView(
@@ -49,10 +52,10 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
                 customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
                 !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabel(invoice),
                 package?.CargoProviderExternalId, package?.CargoTrackingNumber,
-                orderLines.Select(x => x.VariantId).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Value)).FirstOrDefault(x => x is not null),
+                orderLines.Select(x => x.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) : variantsBySku.GetValueOrDefault(x.Sku)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
                 orderLines.Sum(x => x.OrderedQuantity), customer.Email, customer.TaxOrIdentityNumber,
                 order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.GrossAmount, order.DiscountAmount,
-                lineViews, packageViews);
+                lineViews, packageViews, invoice?.Id);
         }).ToList();
         return Page(rows, limit, x => x.Id);
     }
@@ -63,12 +66,15 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         if (order is null) return NotFound<OrderDetailView>();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var variantIds = orderLines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
-        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
-        var imageUrls = await MediaUrls(tenantId, variantIds.Select(x => (Guid?)x), cancellationToken);
+        var lineSkus = orderLines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
+        var variantRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && (variantIds.Contains(x.Id) || lineSkus.Contains(x.Sku))).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var variants = variantRows.ToDictionary(x => x.Id, x => x);
+        var variantsBySku = variantRows.GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var imageUrls = await MediaUrls(tenantId, variantRows.Select(x => (Guid?)x.Id), cancellationToken);
         var lines = orderLines.Select(x =>
         {
-            var variant = x.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) : null;
-            return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode, variant?.OptionSignature, x.VariantId is { } imageVariantId ? imageUrls.GetValueOrDefault(imageVariantId) : null);
+            var variant = x.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) : variantsBySku.GetValueOrDefault(x.Sku);
+            return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode, variant?.OptionSignature, variant is null ? null : imageUrls.GetValueOrDefault(variant.Id));
         }).ToList();
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);

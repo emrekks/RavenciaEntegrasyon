@@ -1,5 +1,13 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-08 - v10.6 sipariş operasyon etkileşimleri
+
+- Sipariş satırına fatura işlemleri menüsü, fatura bilgileri penceresi, kesilmiş faturaya yönlendirme ve güvenli yükleme kontrolü eklendi.
+- İşlemler menüsü; işleme alma, görsel kargo firması değişim penceresi ve dış yazma başlatmayan pasif iptal seçeneğiyle düzenlendi.
+- İptal/mikro ihracat görsel vurguları, zaman metinleri, alıcı ve fatura alanı hizaları iyileştirildi; içerik yatay alanı azaltıldı.
+- Sipariş ürün görselleri artık doğrudan varyant bağı olmasa da yerel katalogda aynı stok koduyla eşleştirilir; görsel yoksa yanıltıcı bir görsel üretilmez.
+- Locked .NET restore + solution build, TypeScript, 14 Vitest ve frontend production build geçti. Stage dış yazma kapıları değişmedi.
+
 ## 2026-08-08 - v10.5 sipariş operasyon düzeni
 
 - Sipariş listesi tek, taşmasız operasyon tablosuna dönüştürüldü; açılır hızlı ayrıntı satırı ve Eşitleme merkezi bağlantısı kaldırıldı.

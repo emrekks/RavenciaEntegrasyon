@@ -2,6 +2,17 @@
 
 Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara ait tarihsel kayıtlar aktif kanıt sayılmaz.
 
+## 2026-08-08 — v10.6 sipariş operasyon etkileşimleri
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Fatura ve işlem menüleri | PASS_LOCAL | Fatura bilgileri penceresi, kesilmiş fatura yönlendirmesi, işleme alma/kargo değişimi görünümü ve dış yazma başlatmayan pasif iptal kontrolü eklendi. |
+| Sipariş görseli geri dönüşü | PASS_LOCAL | Sipariş satırı varyant kimliği yoksa aynı tenant içindeki stok koduyla katalog varyantı/görselini eşleştirir; eşleşme yoksa veri uydurulmaz. |
+| Görsel durum/hizalama | PASS_LOCAL | İptal kırmızı, mikro ihracat mavi satır vurgusu; iptal/taşıma/teslim zamanı ve alıcı/fatura hizaları güncellendi. |
+| .NET restore ve build | PASS_LOCAL | `dotnet restore MarketplaceHub.sln --locked-mode` ve `dotnet build MarketplaceHub.sln --no-restore`: 0 hata, 0 uyarı. |
+| Frontend doğrulaması | PASS_LOCAL | TypeScript, 5 dosyada 14/14 Vitest ve production build geçti. Node `24.15.0`; proje hedefi `24.18.1` olduğundan exact-toolchain değildir. |
+| Trendyol Stage | BLOCKED_EXTERNAL | Gerçek Stage kabulü ve dış yazma kanıtı bu UI teslimiyle değişmedi. |
+
 ## 2026-08-08 yerel eşitleme doğrulaması
 
 - Exact .NET `10.0.302` restore ve backend build: `PASS` (0 uyarı, 0 hata).

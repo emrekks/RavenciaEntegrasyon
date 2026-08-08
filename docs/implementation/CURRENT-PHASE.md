@@ -14,6 +14,14 @@
 
 **2026-08-08 v10.4 UI notu:** Beyaz kurumsal navigasyon korunarak sipariş ekranı referans operasyon tablosuna taşındı. Liste API’si ürün, SKU, barkod, varyant, görsel, alıcı, adres, tutar ve paket bilgilerini toplu döndürür; tablo kolonları gerçek verilerle doldurulur ve ayrıntı açılımı korunur. Backend build, 14 Vitest, TypeScript ve production build geçti; Stage kabulü ve dış yazma blokajları değişmedi.
 
+## 2026-08-08 — v10.6 sipariş operasyon etkileşimleri
+
+- Sipariş satırındaki fatura işlemleri; fatura oluşturma geçidi, fatura bilgileri penceresi ve yükleme için henüz etkin olmayan güvenli kontrol ile ayrıştırıldı. Kesilmiş faturalar ilgili fatura kaydına yönlendirilir.
+- İşlemler menüsüne işleme alma bağlantısı, görsel kargo firması değişim penceresi ve dış yazma başlatmayan pasif iptal seçeneği eklendi.
+- İptal ve mikro ihracat siparişleri sırasıyla kırmızı ve mavi sol vurguyla ayrılır; iptal, taşıma ve teslim zamanları operasyonel metinlerle gösterilir. Alıcı adı ve fatura alanı hizaları sıkılaştırıldı.
+- Sipariş satırları, doğrudan varyant bağının yanında yerel katalogdaki aynı stok kodunu da kullanarak ürün görseli/model/seçenek eşleştirmesi yapar. Katalogda eşleşen görsel yoksa yer tutucu bilinçli olarak korunur.
+- Yerel doğrulama: .NET locked restore + solution build, TypeScript, 14/14 Vitest ve frontend production build geçti. Frontend Node sürümü `24.15.0`, hedef `24.18.1` olduğundan exact-toolchain kanıtı değildir; Stage ve dış yazma kapıları değişmedi.
+
 ## Faz özeti
 
 | Faz | Durum | Açıklama |

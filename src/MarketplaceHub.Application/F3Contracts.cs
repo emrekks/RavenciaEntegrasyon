@@ -224,7 +224,8 @@ public sealed record OrderListView(
     decimal GrossAmount = 0,
     decimal DiscountAmount = 0,
     IReadOnlyList<OrderLineView>? Lines = null,
-    IReadOnlyList<ShipmentView>? Packages = null);
+    IReadOnlyList<ShipmentView>? Packages = null,
+    Guid? InvoiceId = null);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,
