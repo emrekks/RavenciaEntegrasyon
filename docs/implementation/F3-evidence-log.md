@@ -7,7 +7,7 @@
 | Operasyon yüzeyi | PASS_LOCAL | Aktif `ORDER_READ=SUPPORTED` bağlantıda sipariş numarası, mevcut salt-okunur `order-sync-jobs` akışına tekil `externalOrderId` olarak gönderilir. Hedefli Vitest 6/6, TypeScript ve production web build geçti. |
 | Koruma | CODED | UI yalnız zaten mevcut olan read job'ı kuyruğa alır; Trendyol'a yazma başlatmaz. |
 | Dokümantasyon | PASS_LOCAL | `verify-documentation-transaction.py --base fa08a1012fcd060888025ca38b3b1b1945478c05` geçti. |
-| Hedef read-back | PENDING | `1238693012` kaydı için `3pByTrendyol=true` alanı ve mikro ihracat etiketi canlıda doğrulanmalıdır. |
+| Hedef read-back | BLOCKED_REMOTE_NOT_FOUND | Canlı Stage bağlantısında `1238693012` için salt-okunur tekil iş `REMOTE_ORDER_NOT_FOUND` ile bloklandı; snapshot değiştirilmedi. Bu nedenle `3pByTrendyol=true` alanı ve mikro ihracat etiketi Stage'de henüz doğrulanamadı. |
 
 ## 2026-08-09 — v10.13 Trendyol İhracat Partnerliği mikro etiketi
 

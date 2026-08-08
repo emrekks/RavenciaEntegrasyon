@@ -1,6 +1,6 @@
 # Güncel Faz ve Devralma Durumu
 
-**2026-08-09 v10.14 tekil sipariş salt-okunur yenileme:** Aktif ve `ORDER_READ=SUPPORTED` Trendyol bağlantısında, operatör sipariş numarasını girerek yalnız o paketin resmî API’den yeniden okunmasını kuyruğa alabilir. Bu denetim dış platforma yazmaz; eski snapshotlardaki `3pByTrendyol`, fatura ve termin bilgisinin kontrollü read-back'i için kullanılır. Hedefli Vitest (6/6), TypeScript, production web build ve dokümantasyon transaction doğrulaması geçti.
+**2026-08-09 v10.14 tekil sipariş salt-okunur yenileme:** Aktif ve `ORDER_READ=SUPPORTED` Trendyol bağlantısında, operatör sipariş numarasını girerek yalnız o paketin resmî API’den yeniden okunmasını kuyruğa alabilir. Bu denetim dış platforma yazmaz; eski snapshotlardaki `3pByTrendyol`, fatura ve termin bilgisinin kontrollü read-back'i için kullanılır. Hedefli Vitest (6/6), TypeScript, production web build ve dokümantasyon transaction doğrulaması geçti. Canlı Stage bağlantısında `1238693012` için iş güvenli biçimde `REMOTE_ORDER_NOT_FOUND` ile bloklandı; yerel veri uydurulmadı.
 
 **2026-08-09 v10.13 Trendyol İhracat Partnerliği tanımı:** Resmî `getShipmentPackages` belgesine göre `3pByTrendyol=true` olduğunda API `micro=false` döner. Bu yine ihracat siparişidir; snapshot `3pByTrendyol` alanını saklar ve operasyon ekranında mikro ihracat etiketiyle gösterir. .NET build, 49 adapter contract testi ve dokümantasyon transaction doğrulaması geçti; production read-back yeniden çalıştırılmalıdır.
 

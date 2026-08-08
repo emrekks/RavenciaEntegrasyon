@@ -3,6 +3,7 @@
 ## 2026-08-09 - v10.14 tekil sipariş salt-okunur yenileme
 
 - Trendyol bağlantı ekranına, yalnız girilen sipariş numarasını resmî API’den tekrar okuyan ve dış platforma yazmayan denetimli yenileme eklendi.
+- Canlı Stage read-back'inde `1238693012` bulunamadığından kayıt değiştirilmedi; sonuç denetlenebilir `REMOTE_ORDER_NOT_FOUND` olarak tutuldu.
 
 ## 2026-08-09 - v10.13 Trendyol İhracat Partnerliği mikro etiketi
 
