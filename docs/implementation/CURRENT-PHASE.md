@@ -10,6 +10,8 @@
 
 **2026-08-08 doğrulama notu:** Önceki tam kaynak doğrulama iş akışı `PASS`. Release hattında .NET/PostgreSQL/full-stack, format, 13 Vitest, Playwright 3/3 ve production build kapıları doğrulandı; Playwright sunucu ayarındaki Node tipi bağımlılığı kaldırıldı. Yeniden release doğrulaması bekleniyor; gerçek Stage kabulü bulunmadığından production blokajı değişmemiştir.
 
+**2026-08-08 production hotfix notu:** v9 paketi canlıya alındıktan sonraki tam sayfa yenilemesinde dashboard, bir sayfalı API cevabındaki eksik/null `items` alanında çalışma zamanı hatası verdi. Dashboard ve ürün çalışma alanı boş koleksiyona güvenli düşecek şekilde düzeltildi; production yeniden doğrulaması bekliyor.
+
 ## Faz özeti
 
 | Faz | Durum | Açıklama |

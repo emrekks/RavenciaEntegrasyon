@@ -66,7 +66,7 @@ export function ProductsPage() {
   const client = useQueryClient(); const [search, setSearch] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState('')
   const query = useQuery({ queryKey: ['products'], queryFn: () => hubApi<PageData<Product>>('/products?limit=200') })
   const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => hubApi<PageData<TrendyolConnection>>('/connections?limit=200') })
-  const products = query.data?.items ?? []; const connections = connectionsQuery.data?.items.filter(item => item.status === 'ACTIVE') ?? []
+  const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(item => item.status === 'ACTIVE')
   const platforms = useMemo(() => [...new Set(products.flatMap(product => product.activePlatforms ?? []))].sort(), [products])
   const normalized = search.trim().toLocaleLowerCase('tr-TR')
   const visible = products.filter(product => {
@@ -152,8 +152,8 @@ export function NewProductPage() {
   const brands = useQuery({ queryKey: ['brands', 'new-product'], queryFn: () => hubApi<PageData<Brand>>('/catalog/brands?limit=200') })
   const connections = useQuery({ queryKey: ['connections', 'new-product'], queryFn: () => hubApi<PageData<TrendyolConnection>>('/connections?limit=200') })
   const requirements = useQuery({ queryKey: ['category-requirements', form.categoryId], queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`), enabled: !!form.categoryId, retry: false })
-  const leafCategories = categories.data?.items.filter(item => item.isLeaf && item.isActive) ?? []; const filteredLeafCategories = leafCategories.filter(item => !categorySearch.trim() || item.path.toLocaleLowerCase('tr-TR').includes(categorySearch.trim().toLocaleLowerCase('tr-TR'))); const activeBrands = brands.data?.items.filter(item => item.isActive) ?? []
-  const activeConnections = connections.data?.items.filter(item => item.status === 'ACTIVE' && item.platformCode === 'TRENDYOL') ?? []
+  const leafCategories = (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive); const filteredLeafCategories = leafCategories.filter(item => !categorySearch.trim() || item.path.toLocaleLowerCase('tr-TR').includes(categorySearch.trim().toLocaleLowerCase('tr-TR'))); const activeBrands = (brands.data?.items ?? []).filter(item => item.isActive)
+  const activeConnections = (connections.data?.items ?? []).filter(item => item.status === 'ACTIVE' && item.platformCode === 'TRENDYOL')
   const fallbackListPrice = Number(form.listPrice || 0); const fallbackSalePrice = Number(form.salePrice || 0); const initialStock = Number(form.initialStock || 0)
   const desi = useMemo(() => { const width = Number(form.width); const length = Number(form.length); const height = Number(form.height); return width > 0 && length > 0 && height > 0 ? width * length * height / 3000 : 0 }, [form.width, form.length, form.height])
   const mediaUrls = useMemo(() => form.mediaUrls.split(/\r?\n/).map(item => item.trim()).filter(Boolean), [form.mediaUrls])

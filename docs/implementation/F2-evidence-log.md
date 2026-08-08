@@ -1,5 +1,10 @@
 # F2 Kanıt Günlüğü
 
+## 2026-08-08 production v9 hotfix
+
+- Dashboard ve yeni ürün çalışma alanındaki sayfalı API koleksiyonları eksik/null `items` alanında boş listeye güvenli düşecek şekilde düzeltildi.
+- Canlı yenilemede görülen `undefined.filter` hatası yeniden release doğrulaması bekliyor; katalog veya runtime verisi değiştirilmedi.
+
 Doğrulama tarihi: 2026-07-31. Ortam: Windows 10 geliştirme makinesi, .NET 10 ve repository altında geçici/izole PostgreSQL 18.4 cluster'ı. Geçici cluster test sonunda düzgün kapatılıp silindi.
 
 | Kanıt | Sonuç | Ölçüm |

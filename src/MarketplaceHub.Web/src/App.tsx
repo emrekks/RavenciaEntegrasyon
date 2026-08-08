@@ -55,11 +55,11 @@ function Dashboard({ me }: { me: Me }) {
   const late = pending.filter(item => item.shipmentDueAt && new Date(item.shipmentDueAt) < now)
   const today = orderItems.filter(item => { const value = new Date(item.orderedAt); return value.getFullYear() === now.getFullYear() && value.getMonth() === now.getMonth() && value.getDate() === now.getDate() })
   const month = orderItems.filter(item => { const value = new Date(item.orderedAt); return value.getFullYear() === now.getFullYear() && value.getMonth() === now.getMonth() })
-  const pendingReturns = returns.data?.items.filter(item => ['REQUESTED', 'AWAITING_SHIPMENT', 'IN_TRANSIT', 'ACTION_REQUIRED', 'DISPUTED'].includes(item.status)).length ?? 0
-  const uninvoiced = invoices.data?.items.filter(item => !item.invoiceId && item.canCreateInvoice).length ?? 0
-  const dueSoon = invoices.data?.items.filter(item => !item.invoiceId && item.isDueSoon).length ?? 0
+  const pendingReturns = (returns.data?.items ?? []).filter(item => ['REQUESTED', 'AWAITING_SHIPMENT', 'IN_TRANSIT', 'ACTION_REQUIRED', 'DISPUTED'].includes(item.status)).length
+  const uninvoiced = (invoices.data?.items ?? []).filter(item => !item.invoiceId && item.canCreateInvoice).length
+  const dueSoon = (invoices.data?.items ?? []).filter(item => !item.invoiceId && item.isDueSoon).length
   const lowStock = productItems.filter(item => item.totalStock <= 5)
-  const verified = connections.data?.items.filter(item => item.status === 'VERIFIED' || item.status === 'ACTIVE').length ?? 0
+  const verified = (connections.data?.items ?? []).filter(item => item.status === 'VERIFIED' || item.status === 'ACTIVE').length
   const group = (values: string[]) => Object.entries(values.reduce<Record<string, number>>((acc, value) => { const label = value || 'Belirtilmemiş'; acc[label] = (acc[label] ?? 0) + 1; return acc }, {})).sort((a, b) => b[1] - a[1])
   const byPlatform = group(pending.map(item => item.platformDisplayName || 'Trendyol'))
   const byCargo = group(orderItems.map(item => item.cargoProviderName || 'Kargo bekleniyor'))
