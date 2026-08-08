@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - v10.13 Trendyol İhracat Partnerliği mikro etiketi
+
+- `3pByTrendyol=true` dönen Trendyol İhracat Partnerliği paketleri, API `micro=false` dönse de operasyon ekranında mikro ihracat olarak ayırt edilir.
+
 ## 2026-08-09 - v10.12 Stream cursor geçerlilik kurtarması
 
 - Süresi dolmuş Trendyol Stream imleci HTTP 400 döndürürse sipariş eşitleme, son kalıcı zaman damgasından bir kez güvenli başlangıç yapar; diğer platform hataları gizlenmez.

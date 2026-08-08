@@ -1,5 +1,14 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-09 — v10.13 Trendyol İhracat Partnerliği mikro etiketi
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Resmî kaynak | PASS_DOCUMENTED | `getShipmentPackages` belgesi, `3pByTrendyol=true` durumunda `micro=false` döndüğünü; bunun Trendyol İhracat Partnerliği paketi olduğunu belirtir. |
+| Yerel doğrulama | PASS_LOCAL | .NET build (0 hata, 0 uyarı), 49/49 Trendyol adapter contract testi ve dokümantasyon transaction doğrulaması geçti. |
+| Snapshot/eşleme | PASS_LOCAL | `3pByTrendyol` saklanır ve `micro`/`microExport` ile birlikte ihracat etiketi türetiminde değerlendirilir. |
+| Trendyol Stage | REVALIDATION_REQUIRED | Sipariş `1238693012` için tam paket read-back ile alanın ve ekran etiketinin doğrulanması beklenir. |
+
 ## 2026-08-09 — v10.12 Stream cursor geçerlilik kurtarması
 
 | Kanıt | Durum | Not |

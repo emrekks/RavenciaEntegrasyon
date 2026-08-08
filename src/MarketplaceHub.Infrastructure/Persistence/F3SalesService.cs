@@ -335,7 +335,9 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var phone = JsonText(customerJson, "customerPhone", "customerPhoneNumber", "phone", "phoneNumber") ?? JsonText(invoiceAddressJson, "phone", "phoneNumber", "mobilePhone");
         var tax = JsonText(customerJson, "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber") ?? JsonText(invoiceAddressJson, "taxNumber", "identityNumber", "tcIdentityNumber");
         var microText = JsonText(customerJson, "shipmentPackageType", "orderType");
-        var micro = JsonBool(customerJson, "micro", "microExport") || microText?.Contains("MICRO", StringComparison.OrdinalIgnoreCase) == true || microText?.Contains("İHRAC", StringComparison.OrdinalIgnoreCase) == true;
+        // Trendyol exports through its 3P partner model explicitly return micro=false. The documented
+        // 3pByTrendyol=true signal is still an export order and must be presented as such to operators.
+        var micro = JsonBool(customerJson, "micro", "microExport", "3pByTrendyol") || microText?.Contains("MICRO", StringComparison.OrdinalIgnoreCase) == true || microText?.Contains("İHRAC", StringComparison.OrdinalIgnoreCase) == true;
         var commercial = JsonBool(customerJson, "commercial") || !string.IsNullOrWhiteSpace(JsonText(invoiceAddressJson, "company", "companyName", "taxOffice"));
         var eInvoice = JsonNullableBool(customerJson, "eInvoiceAvailable", "isEInvoice") ?? JsonNullableBool(invoiceAddressJson, "eInvoiceAvailable", "isEInvoice");
         return (name, email, phone, tax, micro ? "MIKRO_IHRACAT" : commercial ? "KURUMSAL" : "BIREYSEL", micro, eInvoice);

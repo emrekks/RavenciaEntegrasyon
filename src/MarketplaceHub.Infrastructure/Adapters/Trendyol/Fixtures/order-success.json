@@ -11,6 +11,7 @@
       "currencyCode": "TRY",
       "commercial": false,
       "micro": true,
+      "3pByTrendyol": true,
       "agreedDeliveryDate": 1762253500000,
       "invoiceStatus": "Invoiced",
       "invoiceLink": "https://invoices.example.test/ORDER-ANON-001.pdf",
