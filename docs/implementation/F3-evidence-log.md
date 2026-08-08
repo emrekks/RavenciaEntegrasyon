@@ -12,6 +12,7 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - GitHub CI PostgreSQL integration paketi: `PASS` (10/10); ilk full-stack tarayıcı koşusu Chromium kurulumu eksikliği nedeniyle `BLOCKED_TOOLING`, iş akışı düzeltildi.
 - Çözüm geneli `dotnet format` whitespace ihlalleri giderildi; yeniden CI doğrulaması bekliyor.
 - Tam kaynak doğrulama iş akışı `PASS`; release Playwright paketindeki güncel UI/fixture uyumsuzlukları düzeltildi, yerel Playwright 3/3 `PASS` ve yeniden release koşusu bekliyor.
+- Playwright config typecheck blokajı ek Node tipi bağımlılığı eklenmeden giderildi; yeniden CI koşusu bekliyor.
 - Production ve Stage durumu yükseltilmedi; Docker/PostgreSQL ve gerçek Stage kabulü bekliyor.
 
 | Kanıt | Durum | Not |

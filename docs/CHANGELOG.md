@@ -4,6 +4,7 @@
 
 - Tam CI kapısında saptanan eksik Chromium kurulumu doğrulama iş akışına eklendi; çözüm genelindeki mevcut C# whitespace ihlalleri `dotnet format` ile giderildi.
 - Release E2E paketindeki güncel dashboard güvenlik metni, özellik-değeri liste fixture'ı ve özellik eşleme yükleme yarışı v9 arayüzüyle hizalandı.
+- Playwright web sunucusu yeniden kullanım ayarı frontend Node tiplerine ek bağımlılık oluşturmadan sabitlendi.
 - F3 shipment hash metnindeki hatalı satır sonu, common-label hata akışındaki nullable erişim ve return evidence stream çağrısı düzeltildi.
 - Production hardening migration sınıfındaki yinelenen migration metadata kaldırıldı; tarihsel migration kimliği değiştirilmedi.
 - E-Faturam bağlantı görünüm modeli, fake adapter ve sözleşme testleri güncel uygulama kontratlarıyla hizalandı.
