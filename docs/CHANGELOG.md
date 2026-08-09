@@ -1,5 +1,12 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-10 - Sipariş görseli ve operasyon satırı v10.22
+
+- Sipariş ürün görsellerinde barkod eşleştirmesi ve ürün ana görseline geri düşme eklendi.
+- Varyant seçenekleri için katalogdaki renk/beden imzası sipariş satırına taşındı.
+- Mikro ihracat fatura rozeti, kargoda aksiyon alanı ve sipariş filtre yüzeyi operasyon referanslarına göre sadeleştirildi.
+- Hızlı doğrulama: `MarketplaceHub.Infrastructure` derlemesi geçti; web typecheck yerel paketler olmadığı için `NOT_RUN`.
+
 ## 2026-08-09 - Sipariş tam liste yükleme
 
 - Sipariş ekranının yalnız ilk 200 API kaydını sayma hatası giderildi. Cursor ile gelen bütün yerel sipariş sayfaları birleştirilir; sekmeler, filtreler ve sayfalama tam yerel havuz üzerinden çalışır.

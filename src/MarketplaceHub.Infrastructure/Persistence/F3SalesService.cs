@@ -28,6 +28,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var variantRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && (variantIds.Contains(x.Id) || lineSkus.Contains(x.Sku))).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var variants = variantRows.ToDictionary(x => x.Id, x => x);
         var variantsBySku = variantRows.GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var variantsByBarcode = variantRows.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).GroupBy(x => x.Barcode!, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
         var imageUrls = await MediaUrls(tenantId, variantRows.Select(x => (Guid?)x.Id), cancellationToken);
         var now = timeProvider.GetUtcNow();
         var rows = orders.Select(order =>
@@ -41,7 +42,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
             var terminal = order.DerivedStatus is "DELIVERED" or "CANCELLED" or "RETURNED";
             var lineViews = orderLines.Select(x =>
             {
-                var variant = x.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) : variantsBySku.GetValueOrDefault(x.Sku);
+                var variant = ResolveVariant(x, variants, variantsBySku, variantsByBarcode);
                 return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode, variant?.OptionSignature, variant is null ? null : imageUrls.GetValueOrDefault(variant.Id));
             }).ToList();
             var packageViews = packages.Where(x => x.OrderId == order.Id).Select(x => Map(x, order.OrderNumber)).ToList();
@@ -52,7 +53,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
                 customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
                 !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabel(invoice, order.CustomerSnapshotJson),
                 package?.CargoProviderExternalId, package?.CargoTrackingNumber,
-                orderLines.Select(x => x.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) : variantsBySku.GetValueOrDefault(x.Sku)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
+                orderLines.Select(x => ResolveVariant(x, variants, variantsBySku, variantsByBarcode)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
                 orderLines.Sum(x => x.OrderedQuantity), customer.Email, customer.TaxOrIdentityNumber,
                 order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.GrossAmount, order.DiscountAmount,
                 lineViews, packageViews, invoice?.Id, InvoiceDocumentUrl(order.CustomerSnapshotJson));
@@ -70,10 +71,11 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var variantRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && (variantIds.Contains(x.Id) || lineSkus.Contains(x.Sku))).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var variants = variantRows.ToDictionary(x => x.Id, x => x);
         var variantsBySku = variantRows.GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var variantsByBarcode = variantRows.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).GroupBy(x => x.Barcode!, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
         var imageUrls = await MediaUrls(tenantId, variantRows.Select(x => (Guid?)x.Id), cancellationToken);
         var lines = orderLines.Select(x =>
         {
-            var variant = x.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) : variantsBySku.GetValueOrDefault(x.Sku);
+            var variant = ResolveVariant(x, variants, variantsBySku, variantsByBarcode);
             return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode, variant?.OptionSignature, variant is null ? null : imageUrls.GetValueOrDefault(variant.Id));
         }).ToList();
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
@@ -313,15 +315,20 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
     private Task<bool> Supported(Guid tenantId, Guid connectionId, string code, CancellationToken cancellationToken) => db.PlatformCapabilities.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken);
     private async Task<bool> WritesEnabled(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) { if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false; var settings = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.SettingsJson).SingleOrDefaultAsync(cancellationToken); if (settings is null) return false; try { return JsonDocument.Parse(settings).RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True; } catch (JsonException) { return false; } }
     private async Task<IReadOnlyList<string>> CapabilityValues(Guid tenantId, Guid connectionId, string code, string property, CancellationToken cancellationToken) { var capability = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken); if (capability?.ConstraintsJson is null) return []; try { using var doc = JsonDocument.Parse(capability.ConstraintsJson); return doc.RootElement.TryGetProperty(property, out var values) && values.ValueKind == JsonValueKind.Array ? values.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList() : []; } catch (JsonException) { return []; } }
+    private static ProductVariant? ResolveVariant(OrderLine line, IReadOnlyDictionary<Guid, ProductVariant> variants, IReadOnlyDictionary<string, ProductVariant> variantsBySku, IReadOnlyDictionary<string, ProductVariant> variantsByBarcode) =>
+        line.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) :
+        variantsBySku.GetValueOrDefault(line.Sku) ?? (!string.IsNullOrWhiteSpace(line.Barcode) ? variantsByBarcode.GetValueOrDefault(line.Barcode) : null);
+
     private async Task<Dictionary<Guid, string>> MediaUrls(Guid tenantId, IEnumerable<Guid?> variantIds, CancellationToken cancellationToken)
     {
         var ids = variantIds.Where(x => x is not null).Select(x => x!.Value).Distinct().ToArray();
         if (ids.Length == 0) return [];
-        var rows = await (from media in db.ProductMedia.AsNoTracking()
+        var rows = await (from variant in db.ProductVariants.AsNoTracking()
+                          join media in db.ProductMedia.AsNoTracking() on new { variant.TenantId, variant.ProductId } equals new { media.TenantId, media.ProductId }
                           join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
-                          where media.TenantId == tenantId && media.VariantId != null && ids.Contains(media.VariantId.Value) && media.Status == "ACTIVE" && asset.Status == "ACTIVE" && asset.Classification == "PRODUCT_MEDIA_URL"
-                          orderby media.SortOrder
-                          select new { VariantId = media.VariantId!.Value, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+                          where variant.TenantId == tenantId && ids.Contains(variant.Id) && (media.VariantId == null || media.VariantId == variant.Id) && media.Status == "ACTIVE" && asset.Status == "ACTIVE" && asset.Classification == "PRODUCT_MEDIA_URL"
+                          orderby media.VariantId == variant.Id ? 0 : 1, media.SortOrder
+                          select new { VariantId = variant.Id, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         return rows.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Url);
     }
 

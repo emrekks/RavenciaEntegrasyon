@@ -1,5 +1,14 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-10 — v10.22 sipariş satırı katalog geri düşümü
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Yerel etki | PASS | Dış API yazması yok; yalnız sipariş görünümü ve katalog medya çözümü değişti. |
+| Katalog eşleşmesi | CODED | ID/SKU yanında barkod; aktif varyant medyası yoksa aktif ürün ana görseli kullanılır. |
+| Hızlı derleme | PASS | `dotnet build src/MarketplaceHub.Infrastructure/MarketplaceHub.Infrastructure.csproj --no-restore` → 0 hata. |
+| Web typecheck | NOT_RUN | Yerel `node_modules` bulunmuyor. |
+
 ## 2026-08-09 — v10.21 sipariş cursor sayfalama
 
 | Kanıt | Durum | Not |
