@@ -34,6 +34,12 @@ test('creates cartesian variants with variant-scoped attributes and global multi
   }) as typeof fetch
 
   renderPage(<NewProductPage />)
+  expect(screen.queryByPlaceholderText('Kategorilerde ara')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Barkod')).toBeInTheDocument()
+  expect(screen.getByLabelText('Desi')).toHaveValue(1)
+  fireEvent.click(screen.getByRole('checkbox', { name: /Desiyi ölçülerden hesapla/ }))
+  expect(screen.getByLabelText('Ağırlık (kg)')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('checkbox', { name: /Desiyi ölçülerden hesapla/ }))
   fireEvent.change(await screen.findByLabelText('Ürün adı'), { target: { value: 'Kadın Desenli Bluz' } })
   fireEvent.change(screen.getByLabelText('Açıklama'), { target: { value: 'Ürün açıklaması' } })
   fireEvent.change(screen.getByRole('combobox', { name: 'Panel kategorisi' }), { target: { value: 'category-1' } })
@@ -61,6 +67,7 @@ test('creates cartesian variants with variant-scoped attributes and global multi
     expect.objectContaining({ attributeId: 'material-attribute', valueId: 'material-viscose' }),
   ])
   expect(productBody.variants).toHaveLength(2)
+  expect(productBody.variants[0]).toEqual(expect.objectContaining({ desi: 1, weight: null, width: null, height: null, length: null }))
   expect(productBody.variants[0].attributes).toEqual(expect.arrayContaining([
     expect.objectContaining({ attributeId: 'size-attribute' }),
     expect.objectContaining({ attributeId: 'color-attribute', valueId: 'color-white' }),

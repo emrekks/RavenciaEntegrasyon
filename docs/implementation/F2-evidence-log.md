@@ -40,3 +40,12 @@ Gerçek platform test hesapları ve resmî capability kanıtları gelene kadar c
 | Varyant matrisi ve doğrulama | TYPESCRIPT_STATIC_PASS | En fazla 100 UI kombinasyonu; yinelenen kombinasyon, SKU ve barkod engeli; toplu stok/fiyat uygulama. |
 | Güvenli yayın hazırlığı | CODED_STATIC_VERIFIED / STAGE_NOT_RUN | ACTIVE Trendyol bağlantısında teklifler, listing profile ve publication job zinciri; capability/write-switch fail-closed kalır. |
 | Dinamik suite | BLOCKED_ENVIRONMENT | Exact Node/npm registry ve .NET SDK yok; Vitest/Vite ve `dotnet test` çalıştırılamadı. |
+
+## 2026-08-09 — v10.20 ürün formu ve desi modeli
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Temel ürün alanları | PASS_LOCAL_WEB | Kategori arama kutusu kaldırıldı; ürün/marka/açıklama/kategori/model/SKU/Barkod alanları ortak grid içinde hizalandı. |
+| Doğrudan ve hesaplanan desi | PASS_LOCAL_WEB | Kapalı durumda Desi varsayılan `1`; açık durumda ağırlık ve ölçüler gösterilip `en × boy × yükseklik / 3000` sonucu gönderilir. |
+| Kalıcılık ve migration | CODED_BUILD_PASS | `ProductVariant.Desi` nullable `numeric(19,4)` olarak eklendi; migration yalnız sütun ekler, mevcut satırları dönüştürmez. |
+| Web ve .NET doğrulama | PASS_LOCAL_PARTIAL | 19/19 Vitest, TypeScript, Vite build, .NET build ve Docker gerektirmeyen 142 test geçti; PostgreSQL Testcontainers/full-stack `BLOCKED_ENVIRONMENT`. |

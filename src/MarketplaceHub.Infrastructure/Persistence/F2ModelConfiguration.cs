@@ -65,7 +65,7 @@ internal static class F2ModelConfiguration
             entity.ToTable("product_variants", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
             entity.Property(x => x.Sku).HasMaxLength(160); entity.Property(x => x.SkuNormalized).HasMaxLength(160); entity.Property(x => x.Barcode).HasMaxLength(160); entity.Property(x => x.BarcodeNormalized).HasMaxLength(160);
             entity.Property(x => x.OptionSignature).HasMaxLength(512); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
-            entity.Property(x => x.Weight).HasPrecision(19, 4); entity.Property(x => x.Width).HasPrecision(19, 4); entity.Property(x => x.Height).HasPrecision(19, 4); entity.Property(x => x.Length).HasPrecision(19, 4);
+            entity.Property(x => x.Weight).HasPrecision(19, 4); entity.Property(x => x.Width).HasPrecision(19, 4); entity.Property(x => x.Height).HasPrecision(19, 4); entity.Property(x => x.Length).HasPrecision(19, 4); entity.Property(x => x.Desi).HasPrecision(19, 4);
             entity.HasIndex(x => new { x.TenantId, x.SkuNormalized }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.BarcodeNormalized }).IsUnique();
             entity.HasOne<Product>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProductId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });

@@ -1,5 +1,7 @@
 # Güncel Faz ve Devralma Durumu
 
+**2026-08-09 v10.20 güvenlik, ürün/desi ve sipariş görünümü:** Sistem Ayarları ekranı mevcut MFA ve server-side session API'lerine bağlandı. Authenticator etkinleştirme parola yeniden doğrulaması, QR/kod onayı ve tek seferlik kurtarma kodlarını; oturum alanı tekil ve toplu bağlantı sonlandırmayı sunar. Yeni ürün formundaki ayrı kategori araması kaldırıldı, temel alanlar hizalandı, “Barkod” adı kullanıldı ve desi doğrudan varsayılan `1` olarak veya ölçülerden hesaplanarak kaydedilir. Nullable `ProductVariant.Desi` migration'ı mevcut veriyi değiştirmez. Sipariş ürün adedi rozeti sağ üste taşındı. 19/19 web testi, TypeScript, production web build, .NET build ve Docker gerektirmeyen 142 .NET testi geçti; Docker bulunmadığı için PostgreSQL Testcontainers/full-stack suite yerelde `BLOCKED_ENVIRONMENT`, tam CI beklenir.
+
 **2026-08-09 v10.19 sipariş operasyonu:** Ayrı sipariş detay sayfası kaldırıldı ve eski `/orders/:id` adresi sipariş listesine yönlendirildi. Satırdaki “Fatura Oluştur” işlemi API müşteri/adres/ürün/vergi verileriyle gönderim öncesi taslak özeti açar; devam yalnız yerel idempotent taslağı oluşturur, gerçek E-Faturam gönderimi mevcut parola + açık onay kapısında kalır. Toplu işlem menüsü istenen dört operasyonu uygunluk bilgileriyle sunar; desteklenmeyen dış yazmalar sahte başarı üretmez. Sekmeler, ürün görsel hizası, SVG navigasyon ikonları ve orta konumlu menü daraltma kontrolü yenilendi. 18/18 web testi, TypeScript, web production build ve .NET solution build geçti; tam CI ve canlı kabul beklenir.
 
 **2026-08-09 v10.18 eşleştirme merkezi:** Kategori ve marka eşleştirmeleri aynı iki sekmeli çalışma alanında hizalandı. Aktif kapsam dışındaki pazaryeri seçenekleri kaldırıldı; bağlantı, panel kaydı ve Trendyol referansı araması seçim kutularının içine taşındı. Kategori görünümünde panel kategorisi, isteğe bağlı üst kategoriyle aynı ekrandan oluşturulup otomatik seçilebilir. Bu yerel katalog yazımı Trendyol'a dış işlem başlatmaz. Hedefli 9/9 web testi ve TypeScript kontrolü geçti; tam CI ve canlı görsel kabul beklenir.
@@ -32,7 +34,7 @@
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 7.6
+**Ana plan sürümü:** 7.7
 
 **Aktif ürün kapsamı:** `TRENDYOL Türkiye CORE` + `TRENDYOL_EFATURAM`
 

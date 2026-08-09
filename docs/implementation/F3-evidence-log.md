@@ -260,3 +260,9 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - Durum sekmeleri, toplu işlem menüsü, SVG sidebar ikonları, menü daraltma kontrolü ve ürün görsel hizası güncellendi.
 - Doğrulama: Vitest 18/18 PASS, TypeScript PASS, Vite build PASS, .NET solution build PASS.
 - Dış sipariş/kargo yazımı canlı kontrolde çalıştırılmayacaktır; capability ve açık operasyon onayı kapıları korunur.
+
+## 2026-08-09 — v10.20 sipariş ürün adedi rozeti
+
+- Ürün satırındaki adet rozeti görsel/metin alanının solundan kaldırılıp ürün kartının sağ üst köşesine taşındı.
+- Yalnız CSS yerleşimi değişti; sipariş verisi, miktar hesabı ve Trendyol dış yazma kapıları değişmedi.
+- TypeScript, 19/19 Vitest ve production web build yerelde geçti; canlı görsel kabul deployment sonrasında yapılacaktır.

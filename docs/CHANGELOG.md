@@ -1,5 +1,13 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - v10.20 güvenlik, ürün/desi ve sipariş görünümü
+
+- Güvenlik ekranına mevcut API'lerle çalışan Authenticator etkinleştirme akışı, QR/kod onayı, tek gösterimli kurtarma kodları ve diğer oturumları tekil/toplu sonlandırma kontrolleri eklendi.
+- Yeni ürün ekranında kategori arama alanı kaldırıldı, temel ürün alanları hizalandı ve “Tek ürün barkodu” etiketi “Barkod” olarak sadeleştirildi.
+- Desi doğrudan girildiğinde varsayılan `1` olur; ölçü hesabı açılırsa ağırlık ve en/boy/yükseklik alanları görünür ve desi hesaplanır. Değer geriye uyumlu nullable migration ile varyantta saklanır.
+- Sipariş ürün adedi rozeti kartın sağ üst köşesine taşındı.
+- Yerel doğrulama: 19/19 Vitest, TypeScript, Vite production build, .NET solution build ve Docker gerektirmeyen 142 .NET testi PASS. Docker/Testcontainers suite yerel ortamda `BLOCKED_ENVIRONMENT`; full CI beklenir.
+
 ## 2026-08-09 - v10.19 sipariş fatura ön izlemesi ve operasyon menüsü
 
 - Ayrı sipariş detay ekranı kaldırıldı; eski detay URL'leri sipariş listesine güvenli biçimde döner.

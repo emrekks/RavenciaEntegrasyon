@@ -3036,6 +3036,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal?>("Desi")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
                     b.Property<decimal?>("Height")
                         .HasPrecision(19, 4)
                         .HasColumnType("numeric(19,4)");

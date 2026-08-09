@@ -88,5 +88,50 @@ function Dashboard({ me }: { me: Me }) {
     <div className="dashboard-panels"><article className="panel operation-card"><div className="panel-title"><div><h2>Sipariş süreci</h2><p>Yüklenen operasyon kayıtlarının durum özeti</p></div><span className="live-state"><i /> CANLI</span></div><div className="flow-grid"><Link to="/orders"><span>{pending.length}</span><strong>Bekleyen</strong><small>İşlem sırasındaki siparişler</small></Link><Link to="/orders"><span>{late.length}</span><strong>Geciken</strong><small>Termin aşımı</small></Link><Link to="/invoices"><span>{uninvoiced}</span><strong>Fatura bekliyor</strong><small>Kesilebilir kayıtlar</small></Link><Link to="/returns"><span>{pendingReturns}</span><strong>İade</strong><small>Aksiyon veya taşıma</small></Link><Link to="/products"><span>{lowStock.length}</span><strong>Stok riski</strong><small>5 ve altı</small></Link><Link to="/integrations"><span>{verified}</span><strong>Bağlantı</strong><small>Doğrulanmış veya aktif</small></Link></div></article><article className="panel safety-card"><p className="eyebrow">Güvenli çalışma</p><h2>Kontrollü entegrasyon modu</h2><p>Platform yazmaları; capability kanıtı, bağlantı anahtarı ve açık işlem onayı birlikte olmadan çalışmaz.</p><div className="safety-row"><span className="system-dot" /><div><strong>Yerel operasyon ekranları aktif</strong><small>Dış yazmalar bağlantı bazında korunur</small></div></div><Link className="text-link" to="/settings/security">Güvenlik ayarlarını görüntüle →</Link></article></div>
   </section>
 }
-function Security() { const status = useQuery({ queryKey: ['security'], queryFn: () => api<{ totpState: string; recoveryCodesRemaining: number }>('/security-status') }); const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => api<Array<{ id: string; state: string; current: boolean; lastSeenAt: string }>>('/sessions') }); return <section className="content"><p className="eyebrow">Ayarlar</p><h1>Güvenlik ve oturumlar</h1>{status.isLoading ? <Status title="Güvenlik durumu yükleniyor" /> : status.isError || !status.data ? <div role="alert" className="error">Güvenlik durumu alınamadı.</div> : <div className="panel"><h2>Authenticator</h2><p>Durum: <strong>{status.data.totpState}</strong></p><p>Kalan kurtarma kodu: <strong>{status.data.recoveryCodesRemaining}</strong></p></div>}<div className="panel"><h2>Oturumlar</h2>{sessions.isLoading ? <p>Yükleniyor…</p> : sessions.isError || !sessions.data ? <div role="alert" className="error">Oturumlar alınamadı.</div> : <ul className="sessions">{sessions.data.map(session => <li key={session.id}><span><strong>{session.current ? 'Bu cihaz' : 'Diğer oturum'}</strong><small>{session.state}</small></span><time>{new Date(session.lastSeenAt).toLocaleString('tr-TR')}</time></li>)}</ul>}</div></section> }
+type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
+type SecuritySession = { id: string; state: string; current: boolean; issuedAt: string; lastSeenAt: string; expiresAt: string }
+type MfaSetup = { otpauthUri: string; qrSvg: string; expiresAt: string }
+
+function Security() {
+  const client = useQueryClient()
+  const status = useQuery({ queryKey: ['security'], queryFn: () => api<SecurityStatus>('/security-status') })
+  const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => api<SecuritySession[]>('/sessions') })
+  const [mfaStep, setMfaStep] = useState<'closed' | 'password' | 'verify' | 'recovery'>('closed')
+  const [setup, setSetup] = useState<MfaSetup | null>(null); const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
+  const [busy, setBusy] = useState(false); const [message, setMessage] = useState('')
+  const activeOtherSessions = (sessions.data ?? []).filter(session => !session.current && session.state === 'ACTIVE')
+
+  async function prepareMfa(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setMessage('')
+    const data = new FormData(event.currentTarget)
+    try {
+      await api('/reauthenticate', { method: 'POST', body: JSON.stringify({ password: data.get('password') }) })
+      const enrollment = await api<MfaSetup>('/mfa/setup', { method: 'POST' })
+      setSetup(enrollment); setMfaStep('verify')
+    } catch { setMessage('Parola doğrulanamadı veya güvenli kurulum başlatılamadı.') } finally { setBusy(false) }
+  }
+  async function confirmMfa(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setMessage('')
+    const data = new FormData(event.currentTarget)
+    try {
+      const result = await api<{ recoveryCodes: string[] }>('/mfa/confirm', { method: 'POST', body: JSON.stringify({ code: data.get('code') }) })
+      setRecoveryCodes(result.recoveryCodes); setMfaStep('recovery'); await client.invalidateQueries({ queryKey: ['security'] })
+    } catch { setMessage('Doğrulama kodu geçersiz veya kurulum süresi dolmuş.') } finally { setBusy(false) }
+  }
+  async function revokeSession(id: string) {
+    if (!window.confirm('Bu oturumun bağlantısı sonlandırılsın mı?')) return
+    setMessage('')
+    try { await api(`/sessions/${id}/revoke`, { method: 'POST' }); await client.invalidateQueries({ queryKey: ['sessions'] }); setMessage('Oturum sonlandırıldı.') } catch { setMessage('Oturum sonlandırılamadı.') }
+  }
+  async function revokeOthers() {
+    if (!window.confirm('Bu cihaz dışındaki tüm aktif oturumlar sonlandırılsın mı?')) return
+    setMessage('')
+    try { await api('/sessions/revoke-others', { method: 'POST' }); await client.invalidateQueries({ queryKey: ['sessions'] }); setMessage('Diğer aktif oturumlar sonlandırıldı.') } catch { setMessage('Oturumlar sonlandırılamadı.') }
+  }
+
+  return <section className="content security-page"><div className="page-heading"><div><p className="eyebrow">Ayarlar</p><h1>Güvenlik ve oturumlar</h1><p className="lede">Hesabınızın ikinci doğrulama adımını ve açık oturumlarını yönetin.</p></div></div>{message && <div className="notice" role="status">{message}</div>}{status.isLoading ? <Status title="Güvenlik durumu yükleniyor" /> : status.isError || !status.data ? <div role="alert" className="error">Güvenlik durumu alınamadı.</div> : <div className="panel security-authenticator-card"><div><span className={`security-state ${status.data.totpState === 'ENABLED' ? 'enabled' : ''}`}>{status.data.totpState === 'ENABLED' ? 'Etkin' : 'Kapalı'}</span><h2>Authenticator</h2><p>Giriş sırasında telefonunuzdaki tek kullanımlık kodla hesabınızı koruyun.</p><small>Kalan kurtarma kodu: <strong>{status.data.recoveryCodesRemaining}</strong></small></div>{status.data.totpState === 'ENABLED' ? <span className="security-check" aria-label="Authenticator etkin">✓</span> : <button type="button" onClick={() => { setMessage(''); setMfaStep('password') }}>Authenticator’ı etkinleştir</button>}</div>}
+    <div className="panel security-sessions-card"><div className="panel-title"><div><h2>Oturumlar</h2><p>Hesabınıza bağlı cihazları ve son etkinliklerini görüntüleyin.</p></div>{activeOtherSessions.length > 0 && <button type="button" className="secondary danger-outline" onClick={() => void revokeOthers()}>Diğer tüm oturumları kapat</button>}</div>{sessions.isLoading ? <p>Yükleniyor…</p> : sessions.isError || !sessions.data ? <div role="alert" className="error">Oturumlar alınamadı.</div> : <ul className="sessions">{sessions.data.map(session => <li key={session.id} className={session.current ? 'current' : ''}><span className="session-device-icon" aria-hidden="true">{session.current ? '●' : '○'}</span><span><strong>{session.current ? 'Bu cihaz' : 'Diğer oturum'}</strong><small>{session.state === 'ACTIVE' ? 'Aktif' : 'Sonlandırıldı'} · Son etkinlik {new Date(session.lastSeenAt).toLocaleString('tr-TR')}</small><small>Bitiş {new Date(session.expiresAt).toLocaleString('tr-TR')}</small></span>{session.current ? <b>Mevcut oturum</b> : session.state === 'ACTIVE' ? <button type="button" className="secondary danger-outline" onClick={() => void revokeSession(session.id)}>Oturumu sonlandır</button> : <em>Kapalı</em>}</li>)}</ul>}</div>
+    {mfaStep !== 'closed' && <div className="workspace-modal-backdrop" role="presentation"><section className="workspace-modal security-modal" role="dialog" aria-modal="true" aria-labelledby="mfa-title"><header><div><h2 id="mfa-title">Authenticator kurulumu</h2><p>{mfaStep === 'password' ? 'Önce hesabın size ait olduğunu doğrulayın.' : mfaStep === 'verify' ? 'QR kodu uygulamanıza ekleyip üretilen kodu girin.' : 'Kurtarma kodlarını şimdi güvenli bir yerde saklayın.'}</p></div><button className="modal-close" type="button" aria-label="Kapat" onClick={() => setMfaStep('closed')}>×</button></header>{mfaStep === 'password' && <form className="security-modal-body" onSubmit={prepareMfa}><label>Mevcut parola<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>{busy ? 'Doğrulanıyor…' : 'Devam et'}</button></form>}{mfaStep === 'verify' && setup && <form className="security-modal-body mfa-verify" onSubmit={confirmMfa}><img src={`data:image/svg+xml;utf8,${encodeURIComponent(setup.qrSvg)}`} alt="Authenticator QR kodu" /><div><p>QR kodu Google Authenticator, Microsoft Authenticator veya uyumlu uygulamanızla tarayın.</p><details><summary>Kurulum anahtarını elle göster</summary><code>{setup.otpauthUri}</code></details><label>6 haneli doğrulama kodu<input name="code" inputMode="numeric" pattern="[0-9]{6}" autoComplete="one-time-code" required /></label><button disabled={busy}>{busy ? 'Kontrol ediliyor…' : 'Etkinleştir'}</button></div></form>}{mfaStep === 'recovery' && <div className="security-modal-body"><div className="recovery-code-grid">{recoveryCodes.map(code => <code key={code}>{code}</code>)}</div><p>Bu kodlar yalnızca bir kez gösterilir. Her kod tek kullanımlıktır.</p><button type="button" onClick={() => setMfaStep('closed')}>Kodları sakladım</button></div>}{message && <div className="error security-modal-error" role="alert">{message}</div>}</section></div>}
+  </section>
+}
 function Status({ title, detail }: { title: string; detail?: string }) { return <div className="status" role="status"><div className="spinner" /><strong>{title}</strong>{detail && <p>{detail}</p>}</div> }

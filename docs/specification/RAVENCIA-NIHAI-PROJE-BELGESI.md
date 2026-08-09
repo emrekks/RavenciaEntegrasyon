@@ -2,14 +2,16 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 7.6
-**Belge tarihi:** 5 Ağustos 2026
+**Belge sürümü:** 7.7
+**Belge tarihi:** 9 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
 **Güncel uygulama statüsü:** `F3_CORE_CODE_COMPLETE_VALIDATION_PENDING / F4_CODE_COMPLETE_VALIDATION_PENDING / PRODUCTION_BLOCKED`
 **Aktif entegrasyon kapsamı:** Trendyol ve Trendyol E-Faturam  
 **Ürün sahibi:** Ravencia  
 **Sistem adı:** Ravencia MarketplaceHub
+
+**v10.20 kullanıcı akışı notu:** Güvenlik ekranı mevcut backend MFA ve server-side session sözleşmelerine bağlanmıştır; Authenticator kurulumu parola ile yeniden doğrulama, QR/kod onayı ve tek gösterimli kurtarma kodlarıyla tamamlanır, diğer oturumlar tekil veya toplu sonlandırılabilir. Yeni ürün ekranında kategori arama kutusu kaldırılmış, temel alanlar hizalanmış, barkod adı sadeleştirilmiş ve desi doğrudan varsayılan `1` olarak girilebilir veya ölçülerden hesaplanabilir. Desi nullable, geriye uyumlu migration ile saklanır; eski katalog verileri değiştirilmez. Sipariş ürün adedi rozeti ürün kartının sağ üstündedir.
 
 **v10.19 kullanıcı akışı notu:** Sipariş operasyonu tek liste ekranında kalır; eski detay URL'si listeye yönlenir. Fatura oluşturma önce API kaynaklı müşteri/adres/ürün/KDV taslağını gösterir ve devam adımı yalnız idempotent yerel fatura taslağını açar. Provider submit işlemi parola, açık onay, capability ve dış yazma kapılarını atlayamaz. Toplu menü, istenen dört operasyonu seçili kayıt uygunluğuyla sunar ve desteklenmeyen dış sonucu başarı saymaz.
 

@@ -45,3 +45,11 @@ F1 yerel uygulama ve AWS production runtime'ı deployment açısından hazırdı
 | `F1-EV-024` job retry ve operatör takip modeli | CODED_STATIC_VERIFIED / DYNAMIC_NOT_RUN | Typed job sonucu, transient backoff, `MANUAL_REVIEW`, max-attempt `DEAD`, tenant-scope liste/ayrıntı/retry/cancel API ve panel ekranı eklendi. Exact .NET/PostgreSQL testleri bu ortamda çalıştırılmadı. |
 | `F1-EV-025` kimlik ve yetki sertleştirmesi | CODED_STATIC_VERIFIED / DYNAMIC_NOT_RUN | MFA için parola + ikinci faktörlü reauthentication, `ReauthenticatedAt`, rol bazlı write sınırı, CSRF token yenileme ve idempotency expiry temizliği eklendi. Migration/build/integration testleri bekliyor. |
 | `F1-EV-026` CI, bootstrap ve deployment sağlık kapıları | CODED_STATIC_VERIFIED / WORKFLOW_DOCKER_NOT_RUN | PR/push verify workflow'u, Git-base belge transaction kontrolü, one-shot bootstrap secret, Worker heartbeat ve frontend/API smoke eklendi. GitHub Actions ve Docker Compose koşusu bekliyor. |
+
+## 2026-08-09 — v10.20 MFA ve oturum yönetimi operatör ekranı
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Authenticator kurulum akışı | PASS_LOCAL_WEB | Mevcut parola ile `/reauthenticate`, ardından `/mfa/setup` QR verisi ve `/mfa/confirm` kurtarma kodları çalışan bileşen testiyle doğrulandı. |
+| Oturum sonlandırma | PASS_LOCAL_WEB | Mevcut oturum korunur; diğer oturum için teyitli tekil revoke ve toplu revoke denetimleri mevcut server-side session API'lerine bağlıdır. |
+| Dinamik backend/PostgreSQL suite | BLOCKED_ENVIRONMENT | Yerel makinede Docker engine yok; Testcontainers suite başarılı sayılmadı ve full CI kanıtı beklenir. |
