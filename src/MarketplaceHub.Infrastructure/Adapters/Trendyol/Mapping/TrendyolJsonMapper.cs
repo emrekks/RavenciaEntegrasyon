@@ -46,9 +46,11 @@ public static class TrendyolJsonMapper
         using var document = JsonDocument.Parse(json); var root = document.RootElement; var rows = new List<RemoteProduct>();
         foreach (var product in Content(root))
         {
-            var contentId = Text(product, "contentId");
+            var contentId = Text(product, "contentId", "id", "productMainId");
             if (product.TryGetProperty("variants", out var variants) && variants.ValueKind == JsonValueKind.Array)
                 foreach (var variant in variants.EnumerateArray()) rows.Add(new(contentId, NullText(variant, "variantId"), NullText(variant, "barcode"), NullText(variant, "stockCode"), product.GetRawText()));
+            else if (!string.IsNullOrWhiteSpace(NullText(product, "barcode")))
+                rows.Add(new(contentId, NullText(product, "variantId", "id"), NullText(product, "barcode"), NullText(product, "stockCode"), product.GetRawText()));
         }
         var currentPage = Long(root, "page");
         var pageSize = Math.Max(1, Long(root, "size"));

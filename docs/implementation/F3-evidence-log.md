@@ -1,5 +1,13 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-10 - v10.27 canli onayli urun sekli
+
+| Kanit | Durum | Not |
+| --- | --- | --- |
+| Dogrudan urun satiri | PASS_LOCAL | `content[]` icinde barkod, stok kodu ve `images[]` tasiyan canli cevap sekli kayipsiz eslenir. |
+| Geriye uyumluluk | PASS_LOCAL | Eski ic ice `variants[]` fixture davranisi korunur. |
+| Canli gorsel kabul | PENDING_DEPLOYMENT | Release sonrasi hedef barkod yeniden esitleme ve tarayici gorsel kontrolu beklenir. |
+
 ## 2026-08-10 - v10.26 sipariş satırı kaynak görseli
 
 | Kanıt | Durum | Not |

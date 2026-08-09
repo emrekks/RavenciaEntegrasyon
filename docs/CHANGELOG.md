@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-10 - Trendyol dogrudan urun satiri uyumlulugu v10.27
+
+- Onayli urun okumasinda hem eski `variants[]` yapisi hem de canli API'nin barkod ve gorseli dogrudan `content[]` satirinda verdigi yapi desteklenir.
+- Siparis zenginlestirmesi, bulunan barkodun HTTPS urun gorselini artik bos saymadan kaynak snapshot'a aktarir.
+
 ## 2026-08-10 - Sipariş kaynak görseli ve durum hücreleri v10.26
 
 - Trendyol sipariş satırının resmi kaynak snapshot'ı saklandı; renk/beden/model siparişten, görsel aynı barkodun salt-okunur onaylı ürün snapshot'ından alınarak yerel katalog eşleşmesinden bağımsız hale getirildi.

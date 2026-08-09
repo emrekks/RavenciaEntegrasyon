@@ -47,6 +47,19 @@ public sealed class F3TrendyolContractTests
     }
 
     [Fact]
+    public void Approved_product_direct_variant_shape_preserves_images_for_order_enrichment()
+    {
+        const string json = """
+            {"page":0,"size":1,"totalPages":1,"content":[{"id":810001,"productMainId":"PRODUCT-1","barcode":"8681358387092v6","stockCode":"merchantSku","images":[{"url":"https://cdn.example.test/products/bag.jpg"}]}]}
+            """;
+
+        var product = Assert.Single(TrendyolJsonMapper.Products(json).Items);
+        Assert.Equal("8681358387092v6", product.Barcode);
+        Assert.Equal("merchantSku", product.Sku);
+        Assert.Contains("https://cdn.example.test/products/bag.jpg", product.RawJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Product_approval_readback_distinguishes_approved_pending_and_rejected_rows()
     {
         var approved = TrendyolJsonMapper.ApprovedPublicationStatus(Fixture("product-approved.json"), "BARCODE-ANON-001");
