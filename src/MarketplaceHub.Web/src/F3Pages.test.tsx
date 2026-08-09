@@ -25,13 +25,12 @@ test('maps a local leaf category to the verified Trendyol snapshot', async () =>
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><MappingPage kind="categories" /></MemoryRouter></QueryClientProvider>)
 
-  await chooseSearchable('Aktif Trendyol bağlantısı', 'Trendyol Stage')
-  const local = await chooseSearchable('Panel yaprak kategorisi', 'Giyim / Elbise')
+  const local = await chooseSearchable('Panel kategorisi', 'Giyim / Elbise')
   await waitFor(() => expect(local).toHaveValue('Giyim / Elbise'))
   await chooseSearchable('Trendyol yaprak kategorisi', 'Kadın / Giyim / Elbise')
-  fireEvent.click(await screen.findByRole('button', { name: 'Eşleştirmeyi kaydet' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Eşle' }))
 
-  expect(await screen.findByRole('status')).toHaveTextContent('Kategori eşlemesi doğrulandı')
+  expect(await screen.findByRole('status')).toHaveTextContent('Kategori eşleşti')
   await waitFor(() => expect(JSON.parse(savedBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'snapshot-1', externalId: 'external-1', status: 'VERIFIED' }))
 })
 
@@ -51,13 +50,11 @@ test('creates and selects a panel category from the mapping workspace', async ()
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><MappingPage kind="categories" /></MemoryRouter></QueryClientProvider>)
 
-  fireEvent.click(await screen.findByRole('button', { name: '+ Yeni panel kategorisi oluştur' }))
   fireEvent.change(screen.getByLabelText('Yeni panel kategorisi adı'), { target: { value: 'Anne Bluz' } })
-  await chooseSearchable('Üst kategori (isteğe bağlı)', 'Giyim')
-  fireEvent.click(screen.getByRole('button', { name: 'Kategoriyi oluştur ve seç' }))
+  fireEvent.click(screen.getByRole('button', { name: '+ Kategori ekle' }))
 
-  expect(await screen.findByRole('status')).toHaveTextContent('Giyim / Anne Bluz')
-  expect(JSON.parse(createdBody)).toEqual({ name: 'Anne Bluz', parentId: 'parent-1' })
+  expect(await screen.findByRole('status')).toHaveTextContent('Anne Bluz')
+  expect(JSON.parse(createdBody)).toEqual({ name: 'Anne Bluz', parentId: null })
 })
 
 test('shows only the two ADR-016 integrations in active connection UI', async () => {
@@ -157,7 +154,7 @@ test('maps a category-scoped attribute and its value in the unified mapping work
   fireEvent.click(saveAttribute)
 
   expect(await screen.findByText('Özellik eşlemesi doğrulandı ve kategori kapsamında kaydedildi.')).toBeInTheDocument()
-  await waitFor(() => expect(JSON.parse(attributeBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', externalId: '293', status: 'VERIFIED' }))
+  await waitFor(() => expect(JSON.parse(attributeBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', scopeExternalId: '14609', externalId: '293', status: 'VERIFIED' }))
 
   expect(await screen.findByRole('heading', { name: 'Değer eşleştirmeleri' })).toBeInTheDocument()
   const remoteValue = screen.getByLabelText('M Trendyol değeri')
@@ -167,7 +164,7 @@ test('maps a category-scoped attribute and its value in the unified mapping work
 
   expect(await screen.findByText('1 değer eşlemesi kaydedildi.')).toBeInTheDocument()
   expect(valueMappingUrl).toContain('/mappings/attribute-values/local-value-1')
-  await waitFor(() => expect(JSON.parse(valueBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'value-snapshot-1', externalId: 'value-2', status: 'VERIFIED' }))
+  await waitFor(() => expect(JSON.parse(valueBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'value-snapshot-1', scopeExternalId: '14609/293', externalId: 'value-2', status: 'VERIFIED' }))
 })
 
 

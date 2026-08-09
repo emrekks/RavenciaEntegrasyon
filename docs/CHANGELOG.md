@@ -1,11 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
-## 2026-08-10 - Eşleştirme merkezi v10.23
+## 2026-08-10 - Eşleştirme merkezi v10.24
 
 - Kategori eşleştirme deneyimi hesap seçimi yerine Trendyol platform kapsamına alındı; yerel kategoriler tek seviyede eklenir, baloncuklardan seçilir veya arşivlenir.
 - Mevcut bir özelliğe seçenek değeri ekleme ve seçili özelliğin anlık özetini gösterme akışı düzeltildi.
 - Kategoriye bağlı özellik ve değer eşlemelerinde kapsam kimliği korunarak kayıtların görünür kalması sağlandı.
-- Hızlı doğrulama: Yerel web bağımlılıkları olmadığından TypeScript `NOT_RUN`; ayrıntılı web testleri çalıştırılmadı.
+- Hızlı doğrulama: TypeScript, 19/19 Vitest ve production web derlemesi geçti; exact GitHub toolchain release hattı yeniden çalıştırılacak.
 
 ## 2026-08-10 - Sipariş görseli ve operasyon satırı v10.22
 

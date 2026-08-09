@@ -97,9 +97,8 @@ test('loads category-scoped attribute mappings in one bulk request', async () =>
   }) as typeof fetch
 
   renderPage(<MappingPage kind="categories" />)
-  const connection = await screen.findByRole('combobox', { name: 'Aktif Trendyol bağlantısı' })
-  fireEvent.focus(connection); fireEvent.change(connection, { target: { value: 'Trendyol' } }); fireEvent.keyDown(connection, { key: 'Enter' })
-  const category = await screen.findByRole('combobox', { name: 'Panel yaprak kategorisi' })
+  const category = await screen.findByRole('combobox', { name: 'Panel kategorisi' })
+  await waitFor(() => expect(category).toBeEnabled())
   fireEvent.focus(category); fireEvent.change(category, { target: { value: 'Giyim / Bluz' } }); fireEvent.keyDown(category, { key: 'Enter' })
 
   expect(await screen.findByText('1/1 zorunlu özellik eşlendi')).toBeInTheDocument()
