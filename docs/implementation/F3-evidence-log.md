@@ -1,5 +1,13 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-09 — v10.17 mikro ihracat termin ve kabuk görünümü
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Mikro termin canlı snapshot | BLOCKED_REMOTE_DATA | `1238693012` ve `1238692471` için `agreedDeliveryDate`, `estimatedDeliveryStartDate`, `estimatedDeliveryEndDate`, `lastDeliveryDate` ve `deliveryDate` alanlarının tamamı canlı Stage snapshotında `null`; uygulama tarih uydurmaz. |
+| Resmî sözleşme | VERIFIED_DOC | Trendyol `getShipmentPackages` örneği mikro ihracatta `agreedDeliveryDate` ve tahmini teslim tarihlerini tanımlar: https://developers.trendyol.com/v2.0/docs/get-order-packages-getshipmentpackages |
+| Kabuk ve detay UI | PASS_TARGETED | Kalıcı ikon menüsü ve kaldırılan sipariş özet kartı hedefli App/sipariş testleriyle doğrulandı. |
+
 ## 2026-08-09 — v10.16.1 mikro ihracat etiketi yerleşimi
 
 | Kanıt | Durum | Not |

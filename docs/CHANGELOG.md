@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - v10.17 kapanabilir menü ve termin veri şeffaflığı
+
+- Masaüstü yan menü kullanıcı tercihini saklayarak ikon görünümüne daraltılabilir ve tekrar genişletilebilir; mobil navigasyon korunur.
+- Sipariş detay sayfasındaki büyük, tekrarlayan sipariş özet kartı kaldırıldı; müşteri, adres, ürün ve paket bölümleri korunur.
+- Mikro ihracat termin alanı boşsa “Termin zamanı bekleniyor” yerine “Trendyol termin bilgisi göndermedi” yazılır. Resmî tarih geldiğinde kalan süre/gecikme hesabı değişmeden çalışır; sahte tarih üretilmez.
+
 ## 2026-08-09 - v10.16.1 mikro ihracat etiketi yerleşimi
 
 - “Mikro ihracat” rozeti sipariş bilgileri sütunundan kaldırılıp fatura sütununa taşındı; uzun “Mikro İhracat Faturası” metni kaldırıldı.
