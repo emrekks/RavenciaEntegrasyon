@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - v10.16.1 mikro ihracat etiketi yerleşimi
+
+- “Mikro ihracat” rozeti sipariş bilgileri sütunundan kaldırılıp fatura sütununa taşındı; uzun “Mikro İhracat Faturası” metni kaldırıldı.
+- Mikro ihracat satırının mavi çizgisi ve algılama davranışı korundu.
+
 ## 2026-08-09 - v10.16 sipariş menüsü ve mikro ihracat görünümü
 
 - Sipariş satırı menüleri görünür pencere boşluğuna göre aşağı/yukarı açılır; açık satır komşu siparişlerin altında kalmaz.

@@ -2,7 +2,7 @@
 
 > **Codex/devralma başlangıç noktası:** Önce [`AGENTS.md`](AGENTS.md), [`RAVENCIA-NIHAI-PROJE-BELGESI.md`](docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md), [`PROJECT-STATUS.yaml`](docs/implementation/PROJECT-STATUS.yaml) ve [`CURRENT-PHASE.md`](docs/implementation/CURRENT-PHASE.md) dosyalarını okuyun. Aktif durum `F3_CORE_CODE_COMPLETE_VALIDATION_PENDING / F4_CODE_COMPLETE_VALIDATION_PENDING / PRODUCTION_BLOCKED` olarak işaretlenmiştir.
 
-Ravencia MarketplaceHub, tek işletmenin Trendyol satış, ürün, sipariş, iade ve Trendyol E-Faturam süreçlerini aynı panelden yönetmesi için geliştirilen modüler monolit uygulamadır. v10 panel arayüzü ortak sayfa, form ve kart düzeni kullanır; sipariş satırında müşteri, adres, ürün, tutar ve kargo ayrıntıları birlikte gösterilir. Sipariş işlem menüleri görünür alana göre yönlenir; mikro ihracat resmî platform alanları ve belgelenmiş tarihsel partner sinyaliyle ayırt edilir. Katalog çalışma alanında kategori, özellik, değer ve varyant üretimi tek ürün akışında birleştirilmiştir.
+Ravencia MarketplaceHub, tek işletmenin Trendyol satış, ürün, sipariş, iade ve Trendyol E-Faturam süreçlerini aynı panelden yönetmesi için geliştirilen modüler monolit uygulamadır. v10 panel arayüzü ortak sayfa, form ve kart düzeni kullanır; sipariş satırında müşteri, adres, ürün, tutar ve kargo ayrıntıları birlikte gösterilir. Sipariş işlem menüleri görünür alana göre yönlenir; mikro ihracat resmî platform alanları ve belgelenmiş tarihsel partner sinyaliyle ayırt edilir, mavi satır çizgisiyle ve yalnız fatura sütunundaki kısa rozetle gösterilir. Katalog çalışma alanında kategori, özellik, değer ve varyant üretimi tek ürün akışında birleştirilmiştir.
 
 
 ## Yetkili nihai belge

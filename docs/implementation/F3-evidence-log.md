@@ -1,5 +1,11 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-09 — v10.16.1 mikro ihracat etiketi yerleşimi
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Tekil fatura rozeti | CODED | “Mikro ihracat” yalnız fatura sütununda gösterilir; sipariş bilgileri sütunundaki tekrar ve uzun etiket kaldırılmıştır. |
+
 ## 2026-08-09 — v10.16 sipariş menüsü ve mikro ihracat geri uyumluluğu
 
 | Kanıt | Durum | Not |

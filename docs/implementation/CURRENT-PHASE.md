@@ -1,5 +1,7 @@
 # Güncel Faz ve Devralma Durumu
 
+**2026-08-09 v10.16.1 mikro ihracat etiketi yerleşimi:** Sipariş bilgileri sütunundaki yinelenen “Mikro ihracat” rozeti kaldırıldı. Aynı kısa etiket yalnız fatura sütununda gösterilir; uzun “Mikro İhracat Faturası” metni kullanılmaz. Mavi mikro ihracat satır çizgisi ve veri algılama kuralları değişmez.
+
 **2026-08-09 v10.16 sipariş menüsü ve mikro ihracat geri uyumluluğu:** Sipariş satırındaki fatura/işlem menüleri görünür alana göre aşağı veya yukarı açılır; açık satır taşma sırasında üst katmanda tutulur. Ürün metinleri dikey ortalanır ve “Fatura Bilgileri” adı “Fatura & Adres Bilgileri” olarak netleştirilir. Resmî `micro`/`3pByTrendyol` alanları bulunmayan tarihsel Stage kayıtlarında yalnız tam PM3–Arvato partner kimliği dar bir geri uyumluluk sinyali olarak kabul edilir; sipariş numarası sabitlenmez. .NET build, hedefli 5/5 backend testi, TypeScript ve 4/4 sipariş Vitest testi geçti; tam CI/Stage yeniden doğrulaması beklenir.
 
 **2026-08-09 v10.15.1 CI işlem kaydı:** v10.15 fatura belgesi endpointindeki import sırası repository formatter'ıyla hizalandı. Davranış, veri şeması ve dış yazma kapıları değişmedi. Yerelde formatter doğrulaması geçti; tam GitHub release doğrulaması yeniden bekleniyor.

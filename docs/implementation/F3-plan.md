@@ -1,5 +1,7 @@
 # F3 — Trendyol Türkiye CORE Tamamlama Planı
 
+- [x] 17. Mikro ihracat rozetini yalnız fatura sütununda kısa adla göster; mavi satır göstergesini koru.
+
 ## Hedef
 
 Trendyol Türkiye CORE ürün, referans, sipariş, paket, iade, etiket, webhook ve fatura-link akışlarını idempotent, fail-closed ve uzlaştırılabilir biçimde tamamlamak.
