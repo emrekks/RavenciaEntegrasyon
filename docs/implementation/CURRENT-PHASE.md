@@ -48,7 +48,7 @@
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 7.7
+**Ana plan sürümü:** 7.8
 
 **Aktif ürün kapsamı:** `TRENDYOL Türkiye CORE` + `TRENDYOL_EFATURAM`
 
