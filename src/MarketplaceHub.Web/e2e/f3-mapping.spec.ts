@@ -48,12 +48,12 @@ test('category-scoped attribute and value mappings complete in one workspace', a
   await page.getByRole('button', { name: 'Eşlemeyi doğrula ve kaydet' }).click()
 
   await expect(page.getByText('Özellik eşlemesi doğrulandı ve kategori kapsamında kaydedildi.')).toBeVisible()
-  expect(attributeBody).toEqual({ connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', externalId: '293', status: 'VERIFIED' })
+  expect(attributeBody).toEqual({ connectionId: 'connection-1', snapshotId: 'attribute-snapshot-1', scopeExternalId: '14609', externalId: '293', status: 'VERIFIED' })
 
   await expect(page.getByRole('heading', { name: 'Değer eşleştirmeleri' })).toBeVisible()
   await page.getByLabel('M Trendyol değeri').selectOption('value-2')
   await page.getByRole('button', { name: 'Tüm eşlemeleri kaydet' }).click()
 
   await expect(page.getByText('1 değer eşlemesi kaydedildi.')).toBeVisible()
-  expect(valueBody).toEqual({ connectionId: 'connection-1', snapshotId: 'value-snapshot-1', externalId: 'value-2', status: 'VERIFIED' })
+  expect(valueBody).toEqual({ connectionId: 'connection-1', snapshotId: 'value-snapshot-1', scopeExternalId: '14609/293', externalId: 'value-2', status: 'VERIFIED' })
 })

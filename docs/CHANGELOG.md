@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-10 - Eşleştirme yayın doğrulaması v10.25
+
+- Kategori kapsamlı özellik/değer eşleştirmesinin uçtan uca testi, gerçek kayıt gövdelerindeki `scopeExternalId` ile hizalandı.
+- Hızlı doğrulama: Playwright 3/3 geçti; yeni immutable image release hattı bu commit için tekrar çalıştırılacaktır.
+
 ## 2026-08-10 - Eşleştirme merkezi v10.24
 
 - Kategori eşleştirme deneyimi hesap seçimi yerine Trendyol platform kapsamına alındı; yerel kategoriler tek seviyede eklenir, baloncuklardan seçilir veya arşivlenir.

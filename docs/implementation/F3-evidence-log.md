@@ -1,5 +1,12 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-10 — v10.25 eşleştirme yayın doğrulaması
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Uçtan uca kapsam | PASS_LOCAL | Kategori kapsamlı özellik ve değer eşleştirmesi, `scopeExternalId` gövdesini doğrulayarak Playwright'ta 3/3 geçti. |
+| Yayın hattı | RETRY_REQUIRED | v10.24 imaj hattı, eski E2E beklentisi kapsam alanını beklemediği için durdu; kod davranışı değil, güncellenen test beklentisi bu kayıtta düzeltildi. |
+
 ## 2026-08-10 — v10.24 eşleştirme merkezi işlev düzeltmesi
 
 | Kanıt | Durum | Not |
