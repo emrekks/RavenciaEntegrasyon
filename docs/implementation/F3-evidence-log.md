@@ -1,5 +1,14 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-09 — v10.21 sipariş cursor sayfalama
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Yerel kayıt sayımı | VERIFIED_READ_ONLY | Production PostgreSQL'de `sales.orders` toplamı 3.618'dir; panelin `limit=200` isteği yalnız ilk sayfayı kullandığı için ekranda 200 görünüyordu. |
+| Tam yerel liste | CODED | Web istemcisi `/orders` cursor devam sayfalarını 200'lük parçalarla birleştirir; sekmeler, filtreler ve sayfalama tüm yerel havuzdan hesaplanır. Eksik veya tekrar eden cursor hata üretir. |
+| Dış etki | NOT_APPLICABLE | Değişiklik yalnız yerel salt-okunur listeleme davranışıdır; Trendyol'a yazma yapmaz. |
+| Hızlı doğrulama | NOT_RUN | Bu çalışma ortamında web bağımlılıkları bulunmadığı için TypeScript komutu başlatılamadı (`tsc` yok); ayrıntılı test hızlı doğrulama politikası uyarınca ertelendi. |
+
 ## 2026-08-09 — v10.17 mikro ihracat termin ve kabuk görünümü
 
 | Kanıt | Durum | Not |
