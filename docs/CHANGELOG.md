@@ -1,5 +1,13 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - v10.19 sipariş fatura ön izlemesi ve operasyon menüsü
+
+- Ayrı sipariş detay ekranı kaldırıldı; eski detay URL'leri sipariş listesine güvenli biçimde döner.
+- “Fatura Oluştur” müşteri, adres, satır, KDV ve toplamları API'den alan bir taslak özeti açar; gerçek provider gönderimi parola ve açık onay kapısında kalır.
+- Toplu işlemler menüsüne İşleme Al, Kargo Firmasını Değiştir, Toplu Fatura Kes ve Kargo Stickerlarını Yazdır seçenekleri eklendi; capability doğrulanmayan dış işlem başarı gibi gösterilmez.
+- Sipariş sekmeleri “İşleme Alınanlar” ve “İptal” olarak sadeleştirildi; ürün görselleri ortalandı, sidebar SVG ikonları ve orta kenar daraltma kontrolü yenilendi.
+- Yerel doğrulama: 18/18 Vitest, TypeScript, Vite production build ve .NET solution build PASS. Full CI/canlı kabul beklenir.
+
 ## 2026-08-09 - v10.18 kategori ve marka eşleştirme merkezi
 
 - Eşleştirme ekranı “Kategori” ve “Marka” olmak üzere iki tutarlı sekmeye ayrıldı; kapsam dışı pazaryeri düğmeleri kaldırıldı.

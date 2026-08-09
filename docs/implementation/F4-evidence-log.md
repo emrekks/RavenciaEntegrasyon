@@ -48,3 +48,9 @@
 ## Production kararı
 
 Kod kapanışı production kabulü değildir. Capability evidence, exact runtime suite ve Stage E2E olmadan global/connection write anahtarları kapalı kalır.
+## 2026-08-09 — v10.19 fatura taslak ön izlemesi
+
+- Sipariş satırındaki “Fatura Oluştur”, API kaynaklı müşteri, fatura adresi, satır, KDV ve tutar özetini modalde gösterir.
+- Devam adımı yalnız mevcut idempotent `/invoices` taslak endpoint'ini çağırır; gerçek E-Faturam submit parola + açık onay akışında kalır.
+- Doğrulama: ilgili web davranış testi dahil Vitest 18/18 PASS, TypeScript ve production build PASS.
+- Stage/provider gerçek fatura gönderimi `NOT_RUN`; canlı görsel testte mali dış yazma başlatılmayacaktır.

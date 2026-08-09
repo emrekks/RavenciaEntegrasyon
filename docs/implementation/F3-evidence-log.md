@@ -254,3 +254,9 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 | Panel kategorisi oluşturma | PASS_LOCAL | Mevcut `POST /catalog/categories` endpointi kategori adı ve isteğe bağlı üst kategoriyle çağrılır; yeni kategori otomatik seçilir, dış platform yazımı yoktur. |
 | Hedefli web testi | PASS_LOCAL | `F3Pages.test.tsx` ve `CatalogWorkspacePages.test.tsx` toplam 9/9 geçti; TypeScript kontrolü geçti. |
 | Trendyol Stage / canlı görsel kabul | NOT_RUN | Tam CI ve production browser doğrulaması deployment sonrasında yapılacaktır. |
+## 2026-08-09 — v10.19 tek ekran sipariş operasyonu
+
+- Ayrı sipariş detay sayfası kaldırıldı; eski route listeye yönlenir.
+- Durum sekmeleri, toplu işlem menüsü, SVG sidebar ikonları, menü daraltma kontrolü ve ürün görsel hizası güncellendi.
+- Doğrulama: Vitest 18/18 PASS, TypeScript PASS, Vite build PASS, .NET solution build PASS.
+- Dış sipariş/kargo yazımı canlı kontrolde çalıştırılmayacaktır; capability ve açık operasyon onayı kapıları korunur.
