@@ -1,5 +1,14 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-10 — v10.23 eşleştirme merkezi işlev düzeltmesi
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Yerel katalog yazımı | CODED | Tek seviye panel kategorisi oluşturma ve arşivleme yalnız yerel kataloğa yazar; Trendyol'a dış yazma başlatmaz. |
+| Özellik değerleri | CODED | Kategoriye zaten eklenmiş özellikte girilen yeni seçenekler, kuralı yeniden eklemeye çalışmadan değer listesine kaydedilir. |
+| Kapsamlı eşleme | CODED | Kategori özelliği ve değer eşlemeleri `scopeExternalId` ile kaydedilir; aynı Trendyol alanı farklı kategorilerde çakışmaz. |
+| Hızlı doğrulama | NOT_RUN | Yerel `node_modules` bulunmadığı için TypeScript başlatılamadı (`tsc` yok); ayrıntılı web testleri hızlı doğrulama politikası uyarınca çalıştırılmadı. |
+
 ## 2026-08-10 — v10.22 sipariş satırı katalog geri düşümü
 
 | Kanıt | Durum | Not |
