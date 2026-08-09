@@ -597,22 +597,25 @@ UI önce yapılıp arka planı boş bırakılmaz. Adapter metodu bulunup applica
 
 Çalıştırılmamış test “geçti” olarak yazılamaz. Ortam veya credential yoksa durum `NOT_RUN`, `BLOCKED_EXTERNAL` veya `BLOCKED_ENVIRONMENT` olarak kaydedilir. Bir test başarısızsa hata düzeltilmeden capability veya faz durumu yükseltilmez.
 
-## 9.2 Token tasarruflu fakat güvenilir test düzeni
+## 9.2 Hızlı geliştirme odaklı test düzeni
 
-Codex'in her küçük değişiklikten sonra bütün solution logunu konuşma bağlamına taşıması gereksiz token tüketir. Bunun yerine değişiklik etkisine göre katmanlı doğrulama yapılır:
+Günlük geliştirmede ayrıntılı testler her küçük değişiklikten sonra otomatik çalıştırılmaz. Kullanıcı, tam doğrulamayı uygun bir aşamada ayrıca ister. Bu yaklaşım test sonucunu uydurmaz; çalıştırılmayan kontroller açıkça `NOT_RUN` kalır.
 
 ### Seviye A - Hızlı ön kontrol
 
-Her anlamlı değişiklikte:
+UI/metin/CSS düzenlemesinde:
 
-- Format/syntax kontrolü
-- İlgili proje build'i
-- Değişen modülün hedefli unit testleri
-- Repository ve dokümantasyon tutarlılık kontrolü
+- Değişen ekranın görsel veya davranış önizlemesi
+- Yalnız hata riski varsa ilgili derleme ya da hedefli test
+
+İşlevsel değişiklikte:
+
+- Etkilenen proje build'i veya en küçük hedefli test
+- Migration, güvenlik, mali işlem veya dış yazma değişikliğinde ilgili hedefli doğrulama
 
 ### Seviye B - Modül doğrulaması
 
-Bir iş tamamlanırken:
+Kullanıcı talep ettiğinde veya bir modül için teslim kanıtı gerektiğinde:
 
 - İlgili test projesi
 - Gerekli integration/contract test filtresi
@@ -621,7 +624,7 @@ Bir iş tamamlanırken:
 
 ### Seviye C - Faz/commit çıkış kapısı
 
-Faz kapanışı, release adayı, tag veya production öncesinde:
+Kullanıcının açık talebi, faz kapanışı, release adayı, tag veya production öncesinde:
 
 - Locked restore
 - Tüm solution build
@@ -648,9 +651,9 @@ Faz kapanışı, release adayı, tag veya production öncesinde:
 - İlk hata bulununca gerekli bağlam alınır; ilgisiz log yüklenmez.
 - `--no-restore` ve `--no-build` uygun sıralamada kullanılır.
 - Değişmeyen dependency restore tekrar tekrar yapılmaz.
-- Hedefli `--filter` testleri geliştirme döngüsünde kullanılır; tam suite faz kapısında zorunludur.
+- Hedefli `--filter` testleri işlevsel değişikliklerde tercih edilir; tam suite yalnız kullanıcı talebi veya teslim kapısında çalıştırılır.
 - Test kanıtı tarih, commit, komut, ortam ve sonuçla evidence loga yazılır.
-- Token tasarrufu test kapsamını azaltmak için değil, gereksiz çıktıyı azaltmak için kullanılır.
+- Hız için ayrıntılı test ertelenebilir; ertelenen kontrol başarılı sayılmaz ve uygun teslim aşamasında kullanıcı talebiyle tamamlanır.
 
 ## 9.4 Test katmanları
 

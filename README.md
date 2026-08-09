@@ -57,6 +57,8 @@ v9 katalog işleyişi: [v9-catalog-workspace.md](docs/implementation/v9-catalog-
 
 ## Doğrulama
 
+Günlük geliştirmede bu tam komut listesi otomatik çalıştırılmaz. UI/metin değişikliklerinde ekran önizlemesi, işlevsel değişikliklerde ise etkilenen proje için en küçük build veya hedefli test yeterlidir. Aşağıdaki tam doğrulama; kullanıcı istediğinde, release/tag veya production deploy öncesinde çalıştırılır.
+
 Kaynak ağacını derlemeden önce:
 
 ```bash

@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - Günlük hızlı doğrulama politikası
+
+- Günlük UI/metin/CSS değişikliklerinde tam solution ve tam web testleri otomatik koşul olmaktan çıkarıldı; ekran önizlemesi ve gerektiğinde en küçük ilgili build/hedefli test uygulanır.
+- Güvenlik, migration, mali işlem ve dış API yazmalarında ilgili hedefli doğrulama korunur. Tam doğrulama kullanıcı talebi, faz kapanışı, release/tag veya production deploy öncesinde yürütülür.
+- Çalıştırılmayan ayrıntılı kontroller `NOT_RUN` olarak kalır ve başarılı kabul edilmez.
+
 ## 2026-08-09 - v10.20 güvenlik, ürün/desi ve sipariş görünümü
 
 - Güvenlik ekranına mevcut API'lerle çalışan Authenticator etkinleştirme akışı, QR/kod onayı, tek gösterimli kurtarma kodları ve diğer oturumları tekil/toplu sonlandırma kontrolleri eklendi.

@@ -33,16 +33,16 @@ Bu dosya repository kökünün tamamı için geçerlidir.
 
 Bir iş yalnız kod bulunduğu için tamamlanmış sayılmaz. Durumu yükseltmeden önce kabul kriterini, hedefli testleri, gerekiyorsa Stage kanıtını, audit/operasyon görünürlüğünü ve ilgili evidence kaydını doğrula. Çalıştırılamayan testi `NOT_RUN` veya `BLOCKED_*` olarak yaz; başarılı gösterme.
 
-## Token tasarruflu test yöntemi
+## Hızlı geliştirme ve test yöntemi
 
-Geliştirme döngüsünde değişiklik etkisine uygun en küçük güvenilir test kümesini kullan:
+Günlük geliştirme akışı hızlı tutulur. Her küçük UI/metin/CSS değişikliğinde tam solution, tüm backend testleri veya tüm web testleri otomatik çalıştırılmaz.
 
-1. Syntax/format ve ilgili proje build'i.
-2. Değişen modülün hedefli unit/application testleri.
-3. Gerekli integration/contract/web testleri.
-4. Faz, commit çıkış kapısı, tag veya release öncesinde tam solution ve web testleri.
+1. Görsel veya metin değişikliğinde: değişen ekranı yerelde/canlı önizlemede kontrol et; derleme veya test yalnız hata riski varsa çalıştırılır.
+2. İşlevsel kod değişikliğinde: yalnız etkilenen proje build'i veya en küçük hedefli test çalıştırılır.
+3. Kimlik doğrulama, yetkilendirme, migration, para/fatura, veri kaybı riski veya dış API yazması içeren değişiklikte: ilgili hedefli build/test zorunludur; başarısız sonuç gizlenmez.
+4. Tam solution/web/entegrasyon doğrulaması yalnız kullanıcı açıkça istediğinde, faz kapanışında, release/tag öncesinde veya production deploy öncesinde çalıştırılır.
 
-Tam test çıktısını konuşma bağlamına kopyalama. Logu evidence dosyasına veya geçici artefakta yaz; kullanıcıya exit code, test sayısı, başarısız test adı ve evidence yolunu özetle. Token tasarrufu test atlamak için kullanılamaz.
+Çalıştırılmayan ayrıntılı testler `NOT_RUN` olarak kaydedilir; başarılı gösterilmez. Tam test çıktısını konuşma bağlamına kopyalama. Kullanıcıya yalnız çalıştırılan kontrolün özeti ve varsa bilinen riski bildir.
 
 Tam doğrulama komutları:
 
