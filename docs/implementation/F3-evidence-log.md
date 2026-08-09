@@ -1,5 +1,16 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-10 - v10.26 sipariş satırı kaynak görseli
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Trendyol satır snapshot'ı | PASS_LOCAL | Satır ham JSON'u kalıcı saklanır; renk/beden/model siparişten, görsel aynı barkodun salt-okunur onaylı ürün snapshot'ından okunur. |
+| Geriye uyumlu migration | PASS_LOCAL | Nullable `SourceSnapshotJson` alanı eklendi; mevcut sipariş verisi silinmez veya yeniden yazılmaz. |
+| Sipariş UI | PASS_LOCAL | Fatura hücresi referansla hizalandı; SHIPPED satırında yalnız Kargo Takip/İşlem Yapılamaz kalır; başlık sticky olur. |
+| Test/derleme | PASS_LOCAL_WITH_ENV_BLOCK | Solution build, Docker gerektirmeyen testler, TypeScript, 19/19 web testi ve production build geçti; Docker/Testcontainers `BLOCKED_ENVIRONMENT`. |
+| Canlı veri zenginleştirme | PENDING_DEPLOYMENT | Eski satırlar salt-okunur sipariş eşitlemesiyle kaynak snapshot kazanır. |
+
+
 ## 2026-08-10 — v10.25 eşleştirme yayın doğrulaması
 
 | Kanıt | Durum | Not |

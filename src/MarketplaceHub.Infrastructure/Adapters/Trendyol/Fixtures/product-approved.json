@@ -8,6 +8,9 @@
     {
       "contentId": 800001,
       "productMainId": "PRODUCT-ANON-001",
+      "images": [
+        { "url": "https://cdn.example.test/products/anon-001.jpg" }
+      ],
       "variants": [
         { "variantId": 810001, "barcode": "BARCODE-ANON-001", "stockCode": "SKU-ANON-001" }
       ]

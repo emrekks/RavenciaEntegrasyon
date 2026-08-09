@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
 public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthenticationHandler authentication, IConfiguration configuration, TimeProvider timeProvider, ILogger<TrendyolHttpClient> logger)
-    : IConnectionPort, IReferenceDataPort, IProductPort, IInventoryPricePort, IOrderPort, IReturnPort, IInvoiceMarketplacePort
+    : IConnectionPort, IReferenceDataPort, IProductPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IReturnPort, IInvoiceMarketplacePort
 {
     private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
 
@@ -75,6 +75,14 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         if (filter.ModifiedAfter is not null) { query.Add("startDate=" + filter.ModifiedAfter.Value.ToUnixTimeMilliseconds()); query.Add("dateQueryType=VARIANT_MODIFIED_DATE"); }
         var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.ApprovedProducts(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', query), null, cancellationToken); if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteProduct>>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<AdapterPageResult<RemoteProduct>>.Success(TrendyolJsonMapper.Products(response.Value!), response.RateLimit); } catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteProduct>>.Failure(TrendyolErrorMapper.Contract()); }
+    }
+
+    public async Task<AdapterResult<RemoteProduct?>> FindByBarcodeAsync(AdapterContext context, string barcode, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemoteProduct?>.Failure(TrendyolErrorMapper.Configuration());
+        var encodedBarcode = Uri.EscapeDataString(barcode.Trim());
+        var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.ApprovedProducts(authorized.Connection.ExternalStoreId) + $"?barcode={encodedBarcode}&size=1&page=0", null, cancellationToken); if (!response.IsSuccess) return AdapterResult<RemoteProduct?>.Failure(response.Error!, response.RateLimit);
+        try { return AdapterResult<RemoteProduct?>.Success(TrendyolJsonMapper.Products(response.Value!).Items.FirstOrDefault(), response.RateLimit); } catch (JsonException) { return AdapterResult<RemoteProduct?>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
     public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) =>

@@ -43,7 +43,8 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
             var lineViews = orderLines.Select(x =>
             {
                 var variant = ResolveVariant(x, variants, variantsBySku, variantsByBarcode);
-                return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode, variant?.OptionSignature, variant is null ? null : imageUrls.GetValueOrDefault(variant.Id));
+                var source = SourceLine(x.SourceSnapshotJson);
+                return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id)));
             }).ToList();
             var packageViews = packages.Where(x => x.OrderId == order.Id).Select(x => Map(x, order.OrderNumber)).ToList();
             return new OrderListView(
@@ -76,7 +77,8 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var lines = orderLines.Select(x =>
         {
             var variant = ResolveVariant(x, variants, variantsBySku, variantsByBarcode);
-            return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode, variant?.OptionSignature, variant is null ? null : imageUrls.GetValueOrDefault(variant.Id));
+            var source = SourceLine(x.SourceSnapshotJson);
+            return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id)));
         }).ToList();
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);
@@ -376,6 +378,50 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var value = JsonText(customerJson, "invoiceLink");
         return Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
     }
+
+    private static SourceLineView SourceLine(string? json)
+    {
+        var snapshot = json ?? "{}";
+        var image = SourceImageUrl(snapshot);
+        if (!Uri.TryCreate(image, UriKind.Absolute, out var imageUri) || imageUri.Scheme != Uri.UriSchemeHttps) image = null;
+        var color = JsonText(snapshot, "productColor", "color", "colorName");
+        var size = JsonText(snapshot, "productSize", "size", "sizeName");
+        var options = new List<string>();
+        if (!string.IsNullOrWhiteSpace(color)) options.Add($"Renk: {color}");
+        if (!string.IsNullOrWhiteSpace(size)) options.Add($"Beden: {size}");
+        return new(image, JsonText(snapshot, "productCode", "modelCode"), options.Count == 0 ? null : string.Join(" | ", options));
+    }
+
+    private static string? SourceImageUrl(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
+            return FindImageUrl(document.RootElement) ?? JsonText(json, "productImageUrl", "imageUrl", "productImage", "image");
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static string? FindImageUrl(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (property.Name.Equals("images", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.Array)
+                    foreach (var image in property.Value.EnumerateArray())
+                    {
+                        var url = image.ValueKind == JsonValueKind.Object && image.TryGetProperty("url", out var value) ? value.ToString() : image.ToString();
+                        if (!string.IsNullOrWhiteSpace(url)) return url;
+                    }
+                var nested = FindImageUrl(property.Value); if (!string.IsNullOrWhiteSpace(nested)) return nested;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array) foreach (var item in element.EnumerateArray()) { var nested = FindImageUrl(item); if (!string.IsNullOrWhiteSpace(nested)) return nested; }
+        return null;
+    }
+
+    private sealed record SourceLineView(string? ImageUrl, string? ModelCode, string? OptionSignature);
 
     private static string? JsonText(string json, params string[] names)
     {

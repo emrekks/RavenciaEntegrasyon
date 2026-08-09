@@ -68,6 +68,7 @@ public sealed class OrderLine
     public required string Sku { get; set; }
     public string? Barcode { get; set; }
     public required string TitleSnapshot { get; set; }
+    public string? SourceSnapshotJson { get; set; }
     public decimal OrderedQuantity { get; set; }
     public decimal CancelledQuantity { get; set; }
     public decimal ShippedQuantity { get; set; }

@@ -1,5 +1,12 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-10 - Sipariş kaynak görseli ve durum hücreleri v10.26
+
+- Trendyol sipariş satırının resmi kaynak snapshot'ı saklandı; renk/beden/model siparişten, görsel aynı barkodun salt-okunur onaylı ürün snapshot'ından alınarak yerel katalog eşleşmesinden bağımsız hale getirildi.
+- Nullable migration mevcut sipariş verisini korur; eski kayıtlar deployment sonrası salt-okunur sipariş eşitlemesiyle zenginleşir.
+- Fatura hücresi referans görseline yaklaştırıldı, kargodaki gereksiz İşlemler menüsü kaldırıldı ve tablo başlığı sabitlendi.
+- Doğrulama: solution build, Docker gerektirmeyen testler, TypeScript, 19/19 web testi ve production web build geçti; Docker/Testcontainers yerelde `BLOCKED_ENVIRONMENT`.
+
 ## 2026-08-10 - Eşleştirme yayın doğrulaması v10.25
 
 - Kategori kapsamlı özellik/değer eşleştirmesinin uçtan uca testi, gerçek kayıt gövdelerindeki `scopeExternalId` ile hizalandı.

@@ -847,6 +847,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
 
     private async Task<bool> SyncOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
+        var productSnapshots = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         string? externalOrderId = null;
         try { using var payload = JsonDocument.Parse(payloadJson); if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString(); }
         catch (JsonException) { return false; }
@@ -854,7 +855,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         {
             var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
             if (!single.IsSuccess) throw JobProcessingException.FromAdapter(single.Error!);
-            await UpsertOrder(tenantId, connectionId, single.Value!, cancellationToken);
+            await UpsertOrder(tenantId, connectionId, await EnrichOrderLineSources(tenantId, connectionId, correlationId, single.Value!, productSnapshots, cancellationToken), cancellationToken);
             return true;
         }
 
@@ -881,11 +882,37 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
                 if (!fullOrder.IsSuccess && fullOrder.Error?.Class != AdapterErrorClass.NotFound)
                     throw JobProcessingException.FromAdapter(fullOrder.Error!);
 
-                await UpsertOrder(tenantId, connectionId, fullOrder.IsSuccess ? fullOrder.Value! : streamedOrder, cancellationToken);
+                var hydratedOrder = fullOrder.IsSuccess ? fullOrder.Value! : streamedOrder;
+                await UpsertOrder(tenantId, connectionId, await EnrichOrderLineSources(tenantId, connectionId, correlationId, hydratedOrder, productSnapshots, cancellationToken), cancellationToken);
             }
             next = result.Value.NextCursor; cursor.OpaqueCursor = next; cursor.LastModifiedWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max() ?? cursor.LastModifiedWatermark; cursor.LastSuccessAt = timeProvider.GetUtcNow(); cursor.Version++; await db.SaveChangesAsync(cancellationToken); if (!result.Value.HasMore) break;
         } while (!cancellationToken.IsCancellationRequested);
         return true;
+    }
+
+    private async Task<RemoteOrder> EnrichOrderLineSources(Guid tenantId, Guid connectionId, string correlationId, RemoteOrder remote, Dictionary<string, string?> cache, CancellationToken cancellationToken)
+    {
+        if (products is not IProductVisualLookupPort visualLookup) return remote;
+        var enriched = new List<RemoteOrderLine>(remote.Lines.Count);
+        foreach (var line in remote.Lines)
+        {
+            if (string.IsNullOrWhiteSpace(line.Barcode)) { enriched.Add(line); continue; }
+            if (!cache.TryGetValue(line.Barcode, out var productJson))
+            {
+                var result = await visualLookup.FindByBarcodeAsync(Context(tenantId, connectionId, correlationId, $"order-product:{line.Barcode}"), line.Barcode, cancellationToken);
+                productJson = result.IsSuccess ? result.Value?.RawJson : null;
+                cache[line.Barcode] = productJson;
+            }
+            enriched.Add(string.IsNullOrWhiteSpace(productJson) ? line : line with { SourceSnapshotJson = MergeSourceSnapshots(line.SourceSnapshotJson, productJson) });
+        }
+        return remote with { Lines = enriched };
+    }
+
+    private static string MergeSourceSnapshots(string lineJson, string productJson)
+    {
+        using var line = JsonDocument.Parse(string.IsNullOrWhiteSpace(lineJson) ? "{}" : lineJson);
+        using var product = JsonDocument.Parse(string.IsNullOrWhiteSpace(productJson) ? "{}" : productJson);
+        return JsonSerializer.Serialize(new { orderLine = line.RootElement.Clone(), product = product.RootElement.Clone() });
     }
 
     private async Task<bool> IngestWebhook(Guid tenantId, Guid connectionId, string payloadJson, CancellationToken cancellationToken)
@@ -908,7 +935,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         foreach (var remoteLine in remote.Lines)
         {
             var line = await db.OrderLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken); if (line is null) { line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = remoteLine.ExternalLineId, Sku = remoteLine.Sku, TitleSnapshot = remoteLine.Title, RawStatus = remoteLine.RawStatus, Version = 1 }; db.OrderLines.Add(line); }
-            line.Sku = remoteLine.Sku; line.Barcode = remoteLine.Barcode; line.TitleSnapshot = remoteLine.Title; line.OrderedQuantity = remoteLine.Quantity; line.UnitPrice = remoteLine.UnitPrice; line.VatRate = remoteLine.VatRate; line.RawStatus = remoteLine.RawStatus; if (db.Entry(line).State != EntityState.Added) line.Version++; lines[remoteLine.ExternalLineId] = line;
+            line.Sku = remoteLine.Sku; line.Barcode = remoteLine.Barcode; line.TitleSnapshot = remoteLine.Title; line.SourceSnapshotJson = remoteLine.SourceSnapshotJson; line.OrderedQuantity = remoteLine.Quantity; line.UnitPrice = remoteLine.UnitPrice; line.VatRate = remoteLine.VatRate; line.RawStatus = remoteLine.RawStatus; if (db.Entry(line).State != EntityState.Added) line.Version++; lines[remoteLine.ExternalLineId] = line;
         }
         foreach (var remotePackage in remote.Packages)
         {

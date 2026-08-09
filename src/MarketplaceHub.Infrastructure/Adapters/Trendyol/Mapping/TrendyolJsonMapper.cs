@@ -21,7 +21,7 @@ public static class TrendyolJsonMapper
                 {
                     var externalLineId = Text(line, "lineId", "id"); if (string.IsNullOrWhiteSpace(externalLineId)) continue;
                     var quantity = Decimal(line, "quantity"); var rawStatus = Text(line, "orderLineItemStatusName");
-                    lines.Add(new(externalLineId, Text(line, "stockCode", "merchantSku"), NullText(line, "barcode"), Text(line, "productName"), quantity, Decimal(line, "lineUnitPrice", "price", "amount"), Decimal(line, "vatRate", "vatBaseAmount"), rawStatus));
+                    lines.Add(new(externalLineId, Text(line, "stockCode", "merchantSku"), NullText(line, "barcode"), Text(line, "productName"), quantity, Decimal(line, "lineUnitPrice", "price", "amount"), Decimal(line, "vatRate", "vatBaseAmount"), rawStatus, line.GetRawText()));
                     allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
                 }
             }
@@ -48,7 +48,7 @@ public static class TrendyolJsonMapper
         {
             var contentId = Text(product, "contentId");
             if (product.TryGetProperty("variants", out var variants) && variants.ValueKind == JsonValueKind.Array)
-                foreach (var variant in variants.EnumerateArray()) rows.Add(new(contentId, NullText(variant, "variantId"), NullText(variant, "barcode"), NullText(variant, "stockCode"), variant.GetRawText()));
+                foreach (var variant in variants.EnumerateArray()) rows.Add(new(contentId, NullText(variant, "variantId"), NullText(variant, "barcode"), NullText(variant, "stockCode"), product.GetRawText()));
         }
         var currentPage = Long(root, "page");
         var pageSize = Math.Max(1, Long(root, "size"));
