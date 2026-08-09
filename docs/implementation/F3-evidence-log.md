@@ -245,3 +245,12 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 | Playwright | PASS_LOCAL | 3/3 tarayıcı testi geçti. |
 | TypeScript ve production build | PASS_LOCAL | `npm run typecheck` ve `npm run build` exit code 0. |
 | Trendyol Stage | BLOCKED_EXTERNAL | Gerçek Stage kabulü ve dış yazma kanıtları bu UI teslimiyle değiştirilmedi. |
+## 2026-08-09 — v10.18 kategori ve marka eşleştirme merkezi
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| İki sekmeli tutarlı UI | PASS_LOCAL | Kategori ve Marka görünümleri aynı karşılıklı panel/Trendyol kart düzenini kullanır; aktif kapsam dışı platform seçenekleri kaldırıldı. |
+| Aranabilir seçim kutuları | PASS_LOCAL | Bağlantı, panel kategorisi/markası ve Trendyol referansı klavye destekli combobox içinde filtrelenir. |
+| Panel kategorisi oluşturma | PASS_LOCAL | Mevcut `POST /catalog/categories` endpointi kategori adı ve isteğe bağlı üst kategoriyle çağrılır; yeni kategori otomatik seçilir, dış platform yazımı yoktur. |
+| Hedefli web testi | PASS_LOCAL | `F3Pages.test.tsx` ve `CatalogWorkspacePages.test.tsx` toplam 9/9 geçti; TypeScript kontrolü geçti. |
+| Trendyol Stage / canlı görsel kabul | NOT_RUN | Tam CI ve production browser doğrulaması deployment sonrasında yapılacaktır. |

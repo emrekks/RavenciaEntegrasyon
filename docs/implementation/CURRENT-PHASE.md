@@ -1,5 +1,7 @@
 # Güncel Faz ve Devralma Durumu
 
+**2026-08-09 v10.18 eşleştirme merkezi:** Kategori ve marka eşleştirmeleri aynı iki sekmeli çalışma alanında hizalandı. Aktif kapsam dışındaki pazaryeri seçenekleri kaldırıldı; bağlantı, panel kaydı ve Trendyol referansı araması seçim kutularının içine taşındı. Kategori görünümünde panel kategorisi, isteğe bağlı üst kategoriyle aynı ekrandan oluşturulup otomatik seçilebilir. Bu yerel katalog yazımı Trendyol'a dış işlem başlatmaz. Hedefli 9/9 web testi ve TypeScript kontrolü geçti; tam CI ve canlı görsel kabul beklenir.
+
 **2026-08-09 v10.17 menü ve termin görünürlüğü:** Sol menü masaüstünde kalıcı tercihle 82 px ikon görünümüne daraltılıp tekrar açılabilir; mobil alt menü değişmez. Sipariş detayındaki yinelenen büyük özet kartı kaldırıldı. Resmî Trendyol paket sözleşmesi mikro ihracatta `agreedDeliveryDate`/`estimatedDeliveryEndDate` alanlarını tanımlar; ancak canlı Stage `1238693012` ve `1238692471` snapshotlarında desteklenen beş termin alanının tamamı `null` olduğundan tarih üretilmez ve “Trendyol termin bilgisi göndermedi” açıklaması gösterilir. Hedefli 6/6 web testi geçti; tam CI ve Stage gerçek tarih read-back'i beklenir.
 
 **2026-08-09 v10.16.1 mikro ihracat etiketi yerleşimi:** Sipariş bilgileri sütunundaki yinelenen “Mikro ihracat” rozeti kaldırıldı. Aynı kısa etiket yalnız fatura sütununda gösterilir; uzun “Mikro İhracat Faturası” metni kullanılmaz. Mavi mikro ihracat satır çizgisi ve veri algılama kuralları değişmez.
@@ -28,7 +30,7 @@
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 7.4
+**Ana plan sürümü:** 7.5
 
 **Aktif ürün kapsamı:** `TRENDYOL Türkiye CORE` + `TRENDYOL_EFATURAM`
 

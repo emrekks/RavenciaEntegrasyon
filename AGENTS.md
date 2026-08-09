@@ -2,6 +2,11 @@
 
 Bu dosya repository kökünün tamamı için geçerlidir.
 
+## Güncel kullanıcı arayüzü notu
+
+- Eşleştirme merkezi yalnız aktif `TRENDYOL` kapsamını gösterir; kategori ve marka iki ana sekmedir.
+- Panel kategorisi eşleştirme ekranından oluşturulabilir. Bu yerel katalog işlemidir; Trendyol dış yazma kapılarını açmaz.
+
 ## Başlamadan önce zorunlu okuma sırası
 
 1. `docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md`

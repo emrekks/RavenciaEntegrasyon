@@ -5,6 +5,7 @@ import { expect, test, vi } from 'vitest'
 import { BrandMappingPage, IntegrationDetailPage, IntegrationsPage, MappingPage } from './F3Pages'
 
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+async function chooseSearchable(label: string, option: string) { const input = await screen.findByRole('combobox', { name: label }); await waitFor(() => expect(input).toBeEnabled()); fireEvent.focus(input); fireEvent.change(input, { target: { value: option } }); await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThan(0)); fireEvent.keyDown(input, { key: 'Enter' }); return input }
 
 test('maps a local leaf category to the verified Trendyol snapshot', async () => {
   let savedBody = ''
@@ -24,18 +25,39 @@ test('maps a local leaf category to the verified Trendyol snapshot', async () =>
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><MappingPage kind="categories" /></MemoryRouter></QueryClientProvider>)
 
-  await screen.findByRole('option', { name: 'Trendyol Stage · seller-1' })
-  fireEvent.change(screen.getByLabelText('Aktif Trendyol bağlantısı'), { target: { value: 'connection-1' } })
-  const local = await screen.findByRole('combobox', { name: 'Panel yaprak kategorisi' })
-  await waitFor(() => expect(local).toBeEnabled())
-  fireEvent.change(local, { target: { value: 'local-1' } })
-  const external = await screen.findByRole('combobox', { name: 'Trendyol yaprak kategorisi' })
-  await waitFor(() => expect(screen.getByRole('option', { name: 'Kadın / Giyim / Elbise' })).toBeInTheDocument())
-  fireEvent.change(external, { target: { value: 'external-1' } })
-  fireEvent.click(await screen.findByRole('button', { name: 'Eşlemeyi doğrula ve kaydet' }))
+  await chooseSearchable('Aktif Trendyol bağlantısı', 'Trendyol Stage')
+  const local = await chooseSearchable('Panel yaprak kategorisi', 'Giyim / Elbise')
+  await waitFor(() => expect(local).toHaveValue('Giyim / Elbise'))
+  await chooseSearchable('Trendyol yaprak kategorisi', 'Kadın / Giyim / Elbise')
+  fireEvent.click(await screen.findByRole('button', { name: 'Eşleştirmeyi kaydet' }))
 
   expect(await screen.findByRole('status')).toHaveTextContent('Kategori eşlemesi doğrulandı')
   await waitFor(() => expect(JSON.parse(savedBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'snapshot-1', externalId: 'external-1', status: 'VERIFIED' }))
+})
+
+test('creates and selects a panel category from the mapping workspace', async () => {
+  let createdBody = ''
+  globalThis.fetch = vi.fn((input, init) => {
+    const url = String(input)
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-category-create' })
+    if (url.includes('/api/v1/connections?')) return json({ items: [{ id: 'connection-1', platformCode: 'TRENDYOL', environment: 'STAGE', displayName: 'Trendyol Stage', externalStoreId: '2738', status: 'ACTIVE' }], nextCursor: null, hasMore: false })
+    if (url.includes('/api/v1/catalog/categories?')) return json({ items: [{ id: 'parent-1', name: 'Giyim', path: 'Giyim', depth: 0, isLeaf: false, isActive: true, version: 1 }], nextCursor: null, hasMore: false })
+    if (url.includes('/api/v1/catalog/attributes?')) return json({ items: [], nextCursor: null, hasMore: false })
+    if (url.includes('/attribute-requirements')) return json([])
+    if (url.endsWith('/api/v1/catalog/categories') && init?.method === 'POST') { createdBody = String(init.body); return json({ id: 'new-1', name: 'Anne Bluz', path: 'Giyim / Anne Bluz', depth: 1, isLeaf: true, isActive: true, version: 1 }) }
+    if (url.includes('/api/v1/reference-data/categories?')) return json({ snapshotId: 'snapshot-1', resourceType: 'CATEGORIES', fetchedAt: '2026-08-04T00:00:00Z', items: [] })
+    return json({})
+  }) as typeof fetch
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  render(<QueryClientProvider client={client}><MemoryRouter><MappingPage kind="categories" /></MemoryRouter></QueryClientProvider>)
+
+  fireEvent.click(await screen.findByRole('button', { name: '+ Yeni panel kategorisi oluştur' }))
+  fireEvent.change(screen.getByLabelText('Yeni panel kategorisi adı'), { target: { value: 'Anne Bluz' } })
+  await chooseSearchable('Üst kategori (isteğe bağlı)', 'Giyim')
+  fireEvent.click(screen.getByRole('button', { name: 'Kategoriyi oluştur ve seç' }))
+
+  expect(await screen.findByRole('status')).toHaveTextContent('Giyim / Anne Bluz')
+  expect(JSON.parse(createdBody)).toEqual({ name: 'Anne Bluz', parentId: 'parent-1' })
 })
 
 test('shows only the two ADR-016 integrations in active connection UI', async () => {
@@ -66,11 +88,11 @@ test('maps a local brand to the verified Trendyol brand snapshot', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><BrandMappingPage /></MemoryRouter></QueryClientProvider>)
 
-  const brandSection = (await screen.findByRole('heading', { name: 'Marka eşlemeleri' })).closest('section')!; const page = within(brandSection)
-  const connection = await page.findByLabelText('Marka için aktif Trendyol bağlantısı'); await within(connection).findByRole('option', { name: 'Trendyol Stage · seller-1' }); fireEvent.change(connection, { target: { value: 'connection-1' } })
-  const local = await page.findByLabelText('Panel markası'); await waitFor(() => expect(local).toBeEnabled()); fireEvent.change(local, { target: { value: 'local-brand-1' } })
-  const external = await page.findByLabelText('Trendyol markası'); await within(external).findByRole('option', { name: 'Ravencia' }); fireEvent.change(external, { target: { value: 'external-brand-1' } })
-  fireEvent.click(page.getByRole('button', { name: 'Eşlemeyi doğrula ve kaydet' }))
+  const brandSection = (await screen.findByRole('heading', { name: 'Eşleştirme Merkezi' })).closest('section')!; const page = within(brandSection)
+  await chooseSearchable('Marka için aktif Trendyol bağlantısı', 'Trendyol Stage')
+  await chooseSearchable('Panel markası', 'Ravencia')
+  await chooseSearchable('Trendyol markası', 'Ravencia')
+  fireEvent.click(page.getByRole('button', { name: 'Eşleştirmeyi kaydet' }))
 
   expect(await page.findByRole('status')).toHaveTextContent('Marka eşlemesi doğrulandı')
   await waitFor(() => expect(JSON.parse(savedBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'brand-snapshot-1', externalId: 'external-brand-1', status: 'VERIFIED' }))

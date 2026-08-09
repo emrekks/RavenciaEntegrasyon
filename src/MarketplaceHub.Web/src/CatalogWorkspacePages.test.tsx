@@ -90,11 +90,10 @@ test('loads category-scoped attribute mappings in one bulk request', async () =>
   }) as typeof fetch
 
   renderPage(<MappingPage kind="categories" />)
-  const connection = await screen.findByLabelText('Aktif Trendyol bağlantısı')
-  await within(connection).findByRole('option', { name: 'Trendyol · 2738' })
-  fireEvent.change(connection, { target: { value: 'connection-1' } })
+  const connection = await screen.findByRole('combobox', { name: 'Aktif Trendyol bağlantısı' })
+  fireEvent.focus(connection); fireEvent.change(connection, { target: { value: 'Trendyol' } }); fireEvent.keyDown(connection, { key: 'Enter' })
   const category = await screen.findByRole('combobox', { name: 'Panel yaprak kategorisi' })
-  fireEvent.change(category, { target: { value: 'category-1' } })
+  fireEvent.focus(category); fireEvent.change(category, { target: { value: 'Giyim / Bluz' } }); fireEvent.keyDown(category, { key: 'Enter' })
 
   expect(await screen.findByText('1/1 zorunlu özellik eşlendi')).toBeInTheDocument()
   expect(calls.filter(url => url.includes('/api/v1/mappings/attributes?'))).toHaveLength(1)

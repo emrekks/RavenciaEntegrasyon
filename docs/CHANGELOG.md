@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - v10.18 kategori ve marka eşleştirme merkezi
+
+- Eşleştirme ekranı “Kategori” ve “Marka” olmak üzere iki tutarlı sekmeye ayrıldı; kapsam dışı pazaryeri düğmeleri kaldırıldı.
+- Panel ve Trendyol tarafları karşılıklı kartlarda hizalandı. Bağlantı, kategori ve marka aramaları klavye destekli seçim kutularının içine alındı.
+- Kategori sekmesine kategori adı ve isteğe bağlı üst kategori alanlarıyla yerel panel kategorisi oluşturma eklendi; yeni kayıt otomatik seçilir ve Trendyol'a dış yazma yapılmaz.
+
 ## 2026-08-09 - v10.17 kapanabilir menü ve termin veri şeffaflığı
 
 - Masaüstü yan menü kullanıcı tercihini saklayarak ikon görünümüne daraltılabilir ve tekrar genişletilebilir; mobil navigasyon korunur.

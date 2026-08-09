@@ -1,5 +1,7 @@
 # F3 — Trendyol Türkiye CORE Tamamlama Planı
 
+- [x] 19. Kategori ve marka eşleştirmelerini iki tutarlı sekmede birleştir; aramayı seçim kutularına taşı; panel kategorisini eşleştirme ekranından güvenli yerel işlemle oluştur.
+
 - [x] 18. Sol menüyü kalıcı ikon görünümüne daraltılabilir yap; yinelenen sipariş detay özetini kaldır; eksik Stage terminini açık veri eksikliği olarak göster.
 
 - [x] 17. Mikro ihracat rozetini yalnız fatura sütununda kısa adla göster; mavi satır göstergesini koru.

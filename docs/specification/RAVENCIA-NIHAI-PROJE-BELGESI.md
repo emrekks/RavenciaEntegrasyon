@@ -2,7 +2,7 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 7.4
+**Belge sürümü:** 7.5
 **Belge tarihi:** 5 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
@@ -10,6 +10,8 @@
 **Aktif entegrasyon kapsamı:** Trendyol ve Trendyol E-Faturam  
 **Ürün sahibi:** Ravencia  
 **Sistem adı:** Ravencia MarketplaceHub
+
+**v10.18 kullanıcı akışı notu:** Eşleştirme merkezi yalnız aktif Trendyol kapsamını sunar. Kategori ve marka sekmeleri aynı karşılıklı panel/Trendyol düzenini, aranabilir seçim kutularını ve güvenli yerel mapping kaydını kullanır. Panel kategorisi eşleştirme ekranından oluşturulabilir; bu işlem Trendyol'a dış yazma değildir.
 
 ---
 
