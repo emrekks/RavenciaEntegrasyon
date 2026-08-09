@@ -406,7 +406,7 @@ Kullanıcı listede şunları görür:
 
 Kullanıcı sipariş numarası, SKU, barkod, ürün adı, paket kimliği veya takip numarasıyla arama yapabilmelidir. Durum, tarih, fatura, kargo ve hata filtresi bulunmalıdır. Toplu dışa aktarma yalnız yetkili role açılır.
 
-**Mevcut durum:** Sipariş listesi, temel durum filtreleri, arama, tutar, satır ve paket sayısı görünümü kodlanmıştır. Her sipariş kartı açıldığında tekil ayrıntı lazy-load edilir; müşteri, teslimat/fatura adresi, ürün/SKU/barkod, brüt-indirim-net tutar ve kargo paketi aynı düzen içinde gösterilir. Aktif kapsam yalnız Trendyol olduğundan “tüm kanallar” gibi yanıltıcı metinler kullanılmamalıdır.
+**Mevcut durum:** Sipariş listesi; kompakt açık/gelişmiş filtreleri, arama, tutar, satır ve paket sayısı görünümünü aynı operasyon yüzeyinde sunar. Müşteri, teslimat/fatura adresi, ürün/SKU/barkod, brüt-indirim-net tutar ve kargo paketi aynı satır düzeninde gösterilir. Satır işlem menüleri görünür alana göre aşağı/yukarı yönlenir. Mikro ihracat öncelikle resmî platform alanlarından; bu alanları taşımayan tarihsel Stage kayıtlarında yalnız belgelenmiş PM3–Arvato partner kimliğinden türetilir ve sipariş numarası sabitlenmez. Aktif kapsam yalnız Trendyol olduğundan “tüm kanallar” gibi yanıltıcı metinler kullanılmamalıdır.
 
 ## 7.9 Sipariş detayı
 

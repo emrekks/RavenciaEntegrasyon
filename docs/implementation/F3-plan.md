@@ -21,6 +21,7 @@ Trendyol Türkiye CORE ürün, referans, sipariş, paket, iade, etiket, webhook 
 13. Invoice-link `SUBMITTED` sınırı; doğrulanmamış terminal query yerine manuel inceleme.
 14. Ürün, fiyat-stok, shipment, return ve capability evidence panel yüzeyleri.
 15. Sipariş operasyon ekranında kompakt filtre çalışma alanı, açık/gelişmiş filtre ayrımı ve taşmasız ayrı sipariş satırı yüzeyleri.
+16. Sipariş satırı menülerinde viewport-aware yukarı/aşağı yerleşim, ürün bilgi hizası ve tarihsel PM3–Arvato ihracat partneri snapshot geri uyumluluğu.
 
 ## Güvenlik ve tutarlılık kapıları
 

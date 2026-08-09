@@ -15,7 +15,7 @@ const renderAt = (path: string, route: string, page: ReactNode) => {
 test('shows order information directly in the operational list without a detail expander', async () => {
   globalThis.fetch = vi.fn(input => {
     const url = String(input)
-    if (url.includes('/api/v1/orders?')) return json({ items: [{ id: 'order-1', orderNumber: 'T-1001', derivedStatus: 'PROCESSING', currency: 'TRY', grossAmount: 599.9, discountAmount: 50, netAmount: 549.9, orderedAt: '2026-08-08T10:00:00Z', lineCount: 1, packageCount: 1, version: 2, connectionId: 'connection-1', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol Mağaza', customerName: 'Ayşe Yılmaz', customerEmail: 'ayse@example.com', customerTaxOrIdentityNumber: '11111111111', orderType: 'BIREYSEL', isMicroExport: false, shipmentAddressJson: '{}', invoiceAddressJson: '{}', shipmentDueAt: '2026-08-10T10:00:00Z', isDeadlineCritical: false, invoiceStatus: 'FATURA_BEKLIYOR', cargoProviderName: 'Yurtiçi Kargo', cargoTrackingNumber: 'TRK-1', primaryImageUrl: null, productQuantity: 2, lines: [{ id: 'line-1', sku: 'BLZ-M', barcode: '8690001', title: 'Kadın Desenli Bluz', orderedQuantity: 2, cancelledQuantity: 0, shippedQuantity: 0, deliveredQuantity: 0, returnedQuantity: 0, unitPrice: 274.95, vatRate: 10, rawStatus: 'Created', variantId: 'variant-1', modelCode: 'BLZ-1', optionSignature: 'Renk: Lacivert | Beden: M', imageUrl: null }], packages: [{ id: 'shipment-1', orderId: 'order-1', orderNumber: 'T-1001', externalPackageId: 'PKG-1', status: 'CREATED', rawStatus: 'Created', cargoTrackingNumber: 'TRK-1', cargoProviderName: 'Yurtiçi Kargo', statusOccurredAt: '2026-08-08T10:00:00Z', version: 1 }] }], nextCursor: null, hasMore: false })
+    if (url.includes('/api/v1/orders?')) return json({ items: [{ id: 'order-1', orderNumber: 'T-1001', derivedStatus: 'PROCESSING', currency: 'TRY', grossAmount: 599.9, discountAmount: 50, netAmount: 549.9, orderedAt: '2026-08-08T10:00:00Z', lineCount: 1, packageCount: 1, version: 2, connectionId: 'connection-1', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol Mağaza', customerName: 'Ayşe Yılmaz', customerEmail: 'ayse@example.com', customerTaxOrIdentityNumber: '11111111111', orderType: 'MIKRO_IHRACAT', isMicroExport: true, shipmentAddressJson: '{}', invoiceAddressJson: '{}', shipmentDueAt: '2026-08-10T10:00:00Z', isDeadlineCritical: false, invoiceStatus: 'FATURA_BEKLIYOR', cargoProviderName: 'Yurtiçi Kargo', cargoTrackingNumber: 'TRK-1', primaryImageUrl: null, productQuantity: 2, lines: [{ id: 'line-1', sku: 'BLZ-M', barcode: '8690001', title: 'Kadın Desenli Bluz', orderedQuantity: 2, cancelledQuantity: 0, shippedQuantity: 0, deliveredQuantity: 0, returnedQuantity: 0, unitPrice: 274.95, vatRate: 10, rawStatus: 'Created', variantId: 'variant-1', modelCode: 'BLZ-1', optionSignature: 'Renk: Lacivert | Beden: M', imageUrl: null }], packages: [{ id: 'shipment-1', orderId: 'order-1', orderNumber: 'T-1001', externalPackageId: 'PKG-1', status: 'CREATED', rawStatus: 'Created', cargoTrackingNumber: 'TRK-1', cargoProviderName: 'Yurtiçi Kargo', statusOccurredAt: '2026-08-08T10:00:00Z', version: 1 }] }], nextCursor: null, hasMore: false })
     return json({}, 404)
   }) as typeof fetch
 
@@ -28,6 +28,11 @@ test('shows order information directly in the operational list without a detail 
   expect(screen.getByText('Renk: Lacivert')).toBeInTheDocument()
   expect(screen.getByText('Beden: M')).toBeInTheDocument()
   expect(screen.getAllByText('Yurtiçi Kargo')).toHaveLength(1)
+  expect(screen.getByText('Mikro ihracat')).toBeInTheDocument()
+  expect(screen.getByText('Mikro İhracat Faturası')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Fatura işlemleri⌄' }))
+  expect(screen.getByRole('menuitem', { name: 'Fatura & Adres Bilgileri' })).toBeInTheDocument()
+  expect(screen.getByRole('menu')).toHaveClass('opens-down')
   fireEvent.click(screen.getByRole('button', { name: /Gelişmiş Filtreler/ }))
   expect(screen.getByLabelText('Kargo')).toBeInTheDocument()
   expect(screen.getByLabelText('Fatura')).toBeInTheDocument()

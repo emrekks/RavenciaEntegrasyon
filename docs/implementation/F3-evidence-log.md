@@ -1,5 +1,15 @@
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-09 — v10.16 sipariş menüsü ve mikro ihracat geri uyumluluğu
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Menü yerleşimi | PASS_LOCAL | Açık sipariş satırı üst katmana alınır; fatura ve işlem menüleri tetikleyicinin altındaki boşluk yeterliyse aşağı, değilse yukarı açılır. Mobil sabit alt yüzey korunur. |
+| Ürün ve fatura metni | PASS_LOCAL | Ürün bilgi bloğu dikey ortalanır; menü ve pencere adı “Fatura & Adres Bilgileri” olur. |
+| Mikro ihracat geri uyumluluğu | PASS_LOCAL | Öncelik resmî `micro`, `microExport`, `3pByTrendyol` ve sipariş tipi alanlarındadır. Bu alanları taşımayan tarihsel Stage snapshotlarında yalnız PM3 ile Arvato kimliğinin birlikte bulunması ihracat partneri sinyalidir; sipariş numarası sabitlenmez. |
+| Doğrulama | PASS_LOCAL | .NET solution build 0 hata/0 uyarı, hedefli backend 5/5, TypeScript ve sipariş ekranı Vitest 4/4 geçti. |
+| Stage | REVALIDATION_REQUIRED | `1238692471` mevcut snapshotı resmî mikro alanlarını taşımıyor; canlı API read-back bulunana kadar dar tarihsel partner geri uyumluluğu kullanılır. |
+
 ## 2026-08-09 — v10.15 sipariş filtre çalışma alanı
 
 | Kanıt | Durum | Not |

@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - v10.16 sipariş menüsü ve mikro ihracat görünümü
+
+- Sipariş satırı menüleri görünür pencere boşluğuna göre aşağı/yukarı açılır; açık satır komşu siparişlerin altında kalmaz.
+- Ürün bilgi metinleri dikey ortalandı ve “Fatura Bilgileri” adı “Fatura & Adres Bilgileri” olarak güncellendi.
+- Resmî mikro ihracat alanlarını taşımayan eski Stage snapshotları için yalnız PM3–Arvato ihracat partneri kimliğine dayalı dar geri uyumluluk eklendi; mavi satır ve fatura etiketi bu türetilmiş değeri kullanır.
+
 ## 2026-08-09 - v10.15.1 CI biçimlendirme kaydı
 
 - Manuel fatura belgesi endpointinin import sırası repository formatter kurallarıyla hizalandı. Uygulama davranışı, veri şeması ve dış yazma kapıları değişmedi.

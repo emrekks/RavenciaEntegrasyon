@@ -17,6 +17,7 @@ Bu dosya repository kökünün tamamı için geçerlidir.
 - Yalnız `TRENDYOL` ve `TRENDYOL_EFATURAM` aktiftir.
 - F3/F4 kapanışı, F5 pilot, F6 stabilizasyon ve F7 adapter-registry çıkış kapıları geçmeden yeni pazaryeri adapterı, route, menü, job türü veya capability satırı ekleme.
 - F3 ve F4 kod kapanışlarını geri açma; sıradaki iş exact runtime/Stage kabulü ve ardından kontrollü F5 production pilotudur.
+- Sipariş UI’sinde menüler görünür alana göre yönlenir; mikro ihracat türetiminde sipariş numarası sabitlenmez, resmî alanlar ve dar belgelenmiş partner geri uyumluluğu kullanılır.
 - Uygulanmış migration dosyalarını silme veya yeniden adlandırma.
 - Dış yazmaları kanıt ve açık operasyon onayı olmadan etkinleştirme.
 - Adapter metodunun bulunmasını “tam çalışır” veya “production-ready” kabul etme.

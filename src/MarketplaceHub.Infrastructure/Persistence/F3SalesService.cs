@@ -337,11 +337,18 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var microText = JsonText(customerJson, "shipmentPackageType", "orderType");
         // Trendyol exports through its 3P partner model explicitly return micro=false. The documented
         // 3pByTrendyol=true signal is still an export order and must be presented as such to operators.
-        var micro = JsonBool(customerJson, "micro", "microExport", "3pByTrendyol") || microText?.Contains("MICRO", StringComparison.OrdinalIgnoreCase) == true || microText?.Contains("İHRAC", StringComparison.OrdinalIgnoreCase) == true;
+        // Historical Stage snapshots may predate the export flags while retaining Trendyol's
+        // documented PM3/Arvato export-partner identity. Keep that narrow legacy signal so
+        // existing export orders are not presented as domestic orders.
+        var legacyExportPartner = IsLegacyTrendyolExportPartner(name);
+        var micro = JsonBool(customerJson, "micro", "microExport", "3pByTrendyol") || microText?.Contains("MICRO", StringComparison.OrdinalIgnoreCase) == true || microText?.Contains("İHRAC", StringComparison.OrdinalIgnoreCase) == true || legacyExportPartner;
         var commercial = JsonBool(customerJson, "commercial") || !string.IsNullOrWhiteSpace(JsonText(invoiceAddressJson, "company", "companyName", "taxOffice"));
         var eInvoice = JsonNullableBool(customerJson, "eInvoiceAvailable", "isEInvoice") ?? JsonNullableBool(invoiceAddressJson, "eInvoiceAvailable", "isEInvoice");
         return (name, email, phone, tax, micro ? "MIKRO_IHRACAT" : commercial ? "KURUMSAL" : "BIREYSEL", micro, eInvoice);
     }
+
+    internal static bool IsLegacyTrendyolExportPartner(string name) =>
+        name.Contains("PM3", StringComparison.OrdinalIgnoreCase) && name.Contains("ARVATO", StringComparison.OrdinalIgnoreCase);
 
     private static DateTimeOffset? OperationalDueAt(string json) => JsonInstant(json, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate");
 
