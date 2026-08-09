@@ -10,6 +10,16 @@ type OrderLine = { id: string; sku: string; barcode: string | null; title: strin
 type Order = { id: string; orderNumber: string; derivedStatus: string; currency: string; grossAmount: number; discountAmount: number; netAmount: number; orderedAt: string; lineCount: number; packageCount: number; version: number; connectionId: string | null; platformCode: string; platformDisplayName: string; customerName: string; customerEmail: string | null; customerTaxOrIdentityNumber: string | null; orderType: string; isMicroExport: boolean; shipmentAddressJson: string; invoiceAddressJson: string; shipmentDueAt: string | null; isDeadlineCritical: boolean; invoiceStatus: string; invoiceId: string | null; invoiceDocumentUrl: string | null; cargoProviderName: string | null; cargoTrackingNumber: string | null; primaryImageUrl: string | null; productQuantity: number; lines: OrderLine[] | null; packages: Shipment[] | null }
 type OrderFilters = { search: string; status: string; platform: string; listing: string; cargo: string; invoice: string; dateFrom: string; dateTo: string }
 const initialOrderFilters: OrderFilters = { search: '', status: 'ALL', platform: 'ALL', listing: 'ALL', cargo: 'ALL', invoice: 'ALL', dateFrom: '', dateTo: '' }
+async function loadAllOrders(): Promise<Page<Order>> {
+  const items: Order[] = []; const seenCursors = new Set<string>(); let after: string | null = null
+  while (true) {
+    const params = new URLSearchParams({ limit: '200' }); if (after) params.set('after', after)
+    const page = await hubApi<Page<Order>>(`/orders?${params}`); items.push(...page.items)
+    if (!page.hasMore) return { items, nextCursor: null, hasMore: false }
+    if (!page.nextCursor || seenCursors.has(page.nextCursor)) throw new Error('Sipariş listesinin devam sayfası güvenli biçimde alınamadı.')
+    seenCursors.add(page.nextCursor); after = page.nextCursor
+  }
+}
 type OrderDetail = { id: string; orderNumber: string; derivedStatus: string; currency: string; grossAmount: number; discountAmount: number; netAmount: number; orderedAt: string; connectionId: string | null; platformCode: string; platformDisplayName: string; customerName: string; customerEmail: string | null; customerPhone: string | null; customerTaxOrIdentityNumber: string | null; orderType: string; isMicroExport: boolean; isEInvoiceAvailable: boolean | null; shipmentAddressJson: string; invoiceAddressJson: string; shipmentDueAt: string | null; invoiceStatus: string; invoiceDocumentUrl: string | null; lines: OrderLine[]; packages: Shipment[]; version: number }
 type CreatedInvoice = { id: string }
 type Shipment = { id: string; orderId: string; orderNumber: string; externalPackageId: string; status: string; rawStatus: string; cargoTrackingNumber: string | null; cargoProviderName: string | null; statusOccurredAt: string; version: number }
@@ -156,7 +166,7 @@ export function IntegrationDetailPage() {
 export function OrdersPage() {
   const client = useQueryClient()
   const [filterForm, setFilterForm] = useState<OrderFilters>(initialOrderFilters); const [filters, setFilters] = useState<OrderFilters>(initialOrderFilters); const [advancedFilters, setAdvancedFilters] = useState(false); const [pageSize, setPageSize] = useState(20); const [page, setPage] = useState(1); const [selectedIds, setSelectedIds] = useState<string[]>([]); const [menu, setMenu] = useState<{ orderId: string; kind: 'invoice' | 'actions' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [bulkNotice, setBulkNotice] = useState(''); const [invoiceInfoOrder, setInvoiceInfoOrder] = useState<Order | null>(null); const [invoiceDraftOrder, setInvoiceDraftOrder] = useState<Order | null>(null); const [courierOrder, setCourierOrder] = useState<Order | null>(null)
-  const query = useQuery({ queryKey: ['orders'], queryFn: () => hubApi<Page<Order>>('/orders?limit=200') })
+  const query = useQuery({ queryKey: ['orders'], queryFn: loadAllOrders })
   const connections = useQuery({ queryKey: ['connections', 'orders-invoice'], queryFn: () => hubApi<Page<Connection>>('/connections?limit=200') })
   const provider = connections.data?.items.find(x => x.platformCode === 'TRENDYOL_EFATURAM' && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? null
   const statuses = [['ALL', 'Tümü'], ['NEW', 'Yeni'], ['PROCESSING', 'İşleme Alınanlar'], ['SHIPPED', 'Kargoda'], ['DELIVERED', 'Teslim Edildi'], ['CANCELLED', 'İptal']] as const

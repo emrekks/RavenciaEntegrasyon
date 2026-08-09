@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-09 - Sipariş tam liste yükleme
+
+- Sipariş ekranının yalnız ilk 200 API kaydını sayma hatası giderildi. Cursor ile gelen bütün yerel sipariş sayfaları birleştirilir; sekmeler, filtreler ve sayfalama tam yerel havuz üzerinden çalışır.
+- Bu değişiklik salt-okunur panel listelemesidir; Trendyol'a yazma yapmaz. Ayrıntılı test, hızlı doğrulama politikası gereği `NOT_RUN` durumundadır.
+
 ## 2026-08-09 - Günlük hızlı doğrulama politikası
 
 - Günlük UI/metin/CSS değişikliklerinde tam solution ve tam web testleri otomatik koşul olmaktan çıkarıldı; ekran önizlemesi ve gerektiğinde en küçük ilgili build/hedefli test uygulanır.
