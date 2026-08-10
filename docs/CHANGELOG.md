@@ -290,3 +290,7 @@ Bu dosya kullanıcı ve geliştirici açısından anlamlı proje değişiklikler
 - Siparis listesi ilk acilista `Yeni` durumunu secili getirir; kullanici diger sekmelere ve tum kayitlara gecmeye devam edebilir.
 - Urun adet rozeti urun gorseli cercevesinin sag ust kosesine sabitlendi ve mikro ihracat fatura etiketindeki bilgi ikonu kaldirildi.
 - Degisiklik yalniz listeleme varsayimi ve CSS sunumudur; siparis verisi veya dis platform yazma kapilari degismedi.
+
+## 2026-08-10 - Uctan uca test port izolasyonu v10.30-r3
+
+- Tam yigin tarayici kaniti sabit `5173` portu yerine calisma aninda ayrilan bos localhost portunu kullanir; paralel CI islerinin yanlis Vite oturumuna baglanma riski kaldirildi.

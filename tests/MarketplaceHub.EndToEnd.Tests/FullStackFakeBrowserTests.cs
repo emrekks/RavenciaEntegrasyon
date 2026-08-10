@@ -1,6 +1,7 @@
 extern alias MarketplaceHubApi;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Sockets;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
@@ -112,7 +113,7 @@ public sealed class FullStackFakeBrowserTests : IAsyncLifetime
         await SeedAsync(factory.Services, connectionId, cancellationToken);
         var apiAddress = new Uri(factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single());
 
-        const int uiPort = 5173;
+        var uiPort = GetFreeTcpPort();
         vite = StartVite(root, uiPort, apiAddress);
         var ui = new Uri($"http://127.0.0.1:{uiPort}");
         await WaitUntilReadyAsync(ui, vite, cancellationToken);
@@ -159,6 +160,15 @@ public sealed class FullStackFakeBrowserTests : IAsyncLifetime
         var info = new ProcessStartInfo("node", $"node_modules/vite/bin/vite.js --host 127.0.0.1 --port {port} --strictPort") { WorkingDirectory = Path.Combine(root, "src", "MarketplaceHub.Web"), UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         info.Environment["VITE_API_PROXY"] = api.ToString().TrimEnd('/');
         return Process.Start(info) ?? throw new InvalidOperationException("Vite could not be started.");
+    }
+
+    private static int GetFreeTcpPort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
     }
 
     private static Process StartBrowserProof(string root, Uri ui, Guid connectionId)

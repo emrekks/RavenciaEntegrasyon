@@ -332,3 +332,8 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - Varsayilan siparis durum filtresi `NEW` olarak ayarlandi; sekme ve filtre degistirme davranisi korundu.
 - Urun miktar rozeti gorsel cercevesinin sag ust kosesine hizalandi ve mikro ihracat fatura etiketindeki bilgi ikonu kaldirildi.
 - Ayrintili test: `NOT_RUN`; hizli hedefli kaynak/diff kontrolu ve deployment sonrasi canli tarayici kabulu planlandi.
+
+## 2026-08-10 — v10.30-r3 CI port izolasyonu
+
+- Yayin hattinda .NET build 0 hata, diger test gruplari 177/177 PASS; full-stack tarayici kaniti sabit `5173` portunda iki kez giris formunu bulamadi.
+- E2E Vite sunucusu bos localhost portuna alindi; yeniden yayin kaniti bekleniyor.
