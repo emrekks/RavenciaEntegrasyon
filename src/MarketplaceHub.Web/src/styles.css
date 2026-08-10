@@ -388,3 +388,13 @@ button,.button-link{min-height:42px;padding:.72rem 1rem;border-radius:10px;backg
 @media(max-width:1400px){
   .order-reference-head,.order-reference-grid{grid-template-columns:32px minmax(128px,.78fr) minmax(85px,.48fr) minmax(210px,1.55fr) minmax(68px,.34fr) minmax(100px,.5fr) minmax(116px,.56fr) minmax(120px,.58fr)}
 }
+/* v10.30 order list alignment refinements */
+.orders-page .order-reference-products .quantity-bubble{
+  left:61px;
+  top:6px;
+  transform:translateX(-50%);
+}
+.orders-page .order-reference-invoice .micro-invoice-chip::before{
+  display:none;
+  content:none;
+}

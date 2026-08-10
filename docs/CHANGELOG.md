@@ -284,3 +284,9 @@ Bu dosya kullanıcı ve geliştirici açısından anlamlı proje değişiklikler
 ## Önceki tarihsel kararlar
 
 Önceki ayrıntılı kararlar `docs/adr/`, faz evidence logları ve Git commit/tag geçmişinde korunur.
+
+## 2026-08-10 - Siparis varsayilan Yeni sekmesi ve rozet hizasi v10.30
+
+- Siparis listesi ilk acilista `Yeni` durumunu secili getirir; kullanici diger sekmelere ve tum kayitlara gecmeye devam edebilir.
+- Urun adet rozeti urun gorseli cercevesinin sag ust kosesine sabitlendi ve mikro ihracat fatura etiketindeki bilgi ikonu kaldirildi.
+- Degisiklik yalniz listeleme varsayimi ve CSS sunumudur; siparis verisi veya dis platform yazma kapilari degismedi.

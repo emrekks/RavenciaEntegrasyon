@@ -326,3 +326,9 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - Ürün satırındaki adet rozeti görsel/metin alanının solundan kaldırılıp ürün kartının sağ üst köşesine taşındı.
 - Yalnız CSS yerleşimi değişti; sipariş verisi, miktar hesabı ve Trendyol dış yazma kapıları değişmedi.
 - TypeScript, 19/19 Vitest ve production web build yerelde geçti; canlı görsel kabul deployment sonrasında yapılacaktır.
+
+## 2026-08-10 — v10.30 siparis liste sunumu
+
+- Varsayilan siparis durum filtresi `NEW` olarak ayarlandi; sekme ve filtre degistirme davranisi korundu.
+- Urun miktar rozeti gorsel cercevesinin sag ust kosesine hizalandi ve mikro ihracat fatura etiketindeki bilgi ikonu kaldirildi.
+- Ayrintili test: `NOT_RUN`; hizli hedefli kaynak/diff kontrolu ve deployment sonrasi canli tarayici kabulu planlandi.
