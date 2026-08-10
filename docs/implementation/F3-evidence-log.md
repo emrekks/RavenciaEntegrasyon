@@ -1,3 +1,9 @@
+## 2026-08-11 - v10.35-r3 yayın kapısı kaydı
+
+- Fatura işlemleri menüsünün görünen başlığı ile erişilebilir adı eşit tutuldu: `Fatura işlemleri`.
+- Hedefli `TrendyolOperationsPages.test.tsx` kontrolü `4/4 PASS`.
+- Tam web regresyonu, Stage ve canlı kabul bu dar test hizalamasında `NOT_RUN`; yayın hattı sonucu ayrıca kaydedilecektir.
+
 ## 2026-08-10 - v10.29 gorsel CSP ve tablo sikilastirma
 
 | Kanit | Durum | Not |

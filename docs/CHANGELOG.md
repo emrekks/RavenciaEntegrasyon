@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - v10.35-r3 yayın kapısı kaydı
+
+- Fatura işlemleri menüsünün görünen başlığı ve erişilebilir adı aynı tutuldu: `Fatura işlemleri`.
+- Hedefli `TrendyolOperationsPages.test.tsx` kontrolü `4/4 PASS`.
+- Tam suite, Stage ve canlı kabul `NOT_RUN`; bu kayıt yalnızca yayın kapısındaki test hizalamasını belgeler.
+
 ## 2026-08-11 - Hedefli eşleştirme, iade ve fatura taslağı iyileştirmesi v10.35
 
 - Kategori özellik kartları seçeneklerini kalıcı olarak gösterir; seçilen özelliğe değer ekleme ve tekil değeri pasifleştirme akışı sadeleştirildi.
