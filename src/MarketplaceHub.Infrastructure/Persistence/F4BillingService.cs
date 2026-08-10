@@ -168,10 +168,21 @@ public sealed partial class F4BillingService(
             var packageAllocations = await db.PackageLineAllocations.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.PackageId == selectedPackageId)
                 .ToListAsync(cancellationToken);
-            packageQuantities = packageAllocations.GroupBy(x => x.OrderLineId)
+            var allocatedQuantities = packageAllocations.GroupBy(x => x.OrderLineId)
                 .ToDictionary(x => x.Key, x => x.OrderByDescending(y => EventSequence(y.SourceEventId)).First().AllocatedQuantity);
-            orderLines = orderLines.Where(x => packageQuantities.GetValueOrDefault(x.Id) > 0).ToList();
-            if (orderLines.Count == 0) return Invalid<InvoiceDetailView>("packageId", "Seçilen pakette faturalanabilir sipariş kalemi bulunamadı.");
+            var allocatedLines = orderLines.Where(x => allocatedQuantities.GetValueOrDefault(x.Id) > 0).ToList();
+            if (allocatedLines.Count > 0)
+            {
+                packageQuantities = allocatedQuantities;
+                orderLines = allocatedLines;
+            }
+            else
+            {
+                // Legacy package syncs may predate allocation persistence. The package/order ownership
+                // was verified above, so retain the positive order lines rather than creating an empty draft.
+                orderLines = orderLines.Where(x => x.OrderedQuantity - x.CancelledQuantity > 0).ToList();
+                if (orderLines.Count == 0) return Invalid<InvoiceDetailView>("packageId", "Seçilen pakette faturalanabilir sipariş kalemi bulunamadı.");
+            }
         }
         else
         {

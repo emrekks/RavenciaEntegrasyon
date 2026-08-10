@@ -66,3 +66,9 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 - Sipariş menüsündeki Fatura Yükle, gerektiğinde yalnız yerel idempotent taslak oluşturur ve dosyayı mevcut `/invoices/{id}/documents/manual` endpointine gönderir.
 - PDF/JPEG/JPG/PNG ve 10 MB istemci sınırı uygulanır; provider submit, müşteri gönderimi ve pazaryeri dış yazması tetiklenmez.
 - TypeScript PASS; mevcut backend dosya imzası/depolama davranışı değiştirilmedi. Stage/provider ve tam mali suite `NOT_RUN`.
+
+## 2026-08-11 — v10.35 eski paket allocation geri kazanımı
+
+- Fatura taslağında paket-sipariş sahipliği zaten doğrulandıktan sonra allocation kaydı yoksa pozitif, iptal edilmemiş sipariş satırları kullanılır. Bu yalnız eski eşitleme verisi için geri uyumluluktur.
+- Allocation var olduğunda mevcut miktar paylaştırma kuralları değişmeden korunur. İptal edilmiş veya pozitif miktarı olmayan satırlar taslağa girmez.
+- Hedefli API build `PASS`; E-Faturam provider submit ve Stage mali kabulü `NOT_RUN`.

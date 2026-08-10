@@ -128,6 +128,20 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, existing.Concat(additions)));
     }
 
+    public async Task<ServiceResult<AttributeView>> DeactivateAttributeValueAsync(Guid tenantId, Guid attributeId, Guid valueId, CancellationToken cancellationToken)
+    {
+        var attribute = await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == attributeId && x.IsActive, cancellationToken);
+        if (attribute is null) return ServiceResult<AttributeView>.Fail("ATTRIBUTE_NOT_FOUND", "Özellik bulunamadı.", 404);
+        var value = await db.AttributeValues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == valueId && x.AttributeId == attributeId, cancellationToken);
+        if (value is null) return ServiceResult<AttributeView>.Fail("ATTRIBUTE_VALUE_NOT_FOUND", "Seçenek değeri bulunamadı.", 404);
+        value.IsActive = false;
+        attribute.Version++;
+        attribute.UpdatedAt = timeProvider.GetUtcNow();
+        await db.SaveChangesAsync(cancellationToken);
+        var values = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && x.AttributeId == attributeId).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken);
+        return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, values));
+    }
+
     public async Task<ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>> GetRequirementsAsync(Guid tenantId, Guid categoryId, CancellationToken cancellationToken)
     {
         if (!await db.Categories.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == categoryId, cancellationToken)) return NotFound<IReadOnlyList<CategoryAttributeRequirementView>>();

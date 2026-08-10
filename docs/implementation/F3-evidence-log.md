@@ -372,6 +372,14 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - Özellik eşleme hedef kategorisi kullanıcı tarafından seçilir; teknik Trendyol ad önekleri kaynak snapshot değiştirilmeden yalnız sunumda temizlenir.
 - Özellik oluşturma ve değer ekleme ayrıldı; marka çalışma alanı platform odaklı yerel kayıt/çip düzenine taşındı.
 - TypeScript PASS, hedefli F3 Vitest 7/7 PASS. Stage referans kabulü ve tam release hattı `NOT_RUN`.
+
+## 2026-08-11 — v10.35 hedefli çalışma alanı düzenlemesi
+
+- Kategori özellik kartlarındaki değerler kategori seçildiğinde görünür kalır; kullanıcı seçtiği karta üstteki alanla değer ekler, değeri çarpı aksiyonuyla pasifleştirir.
+- Tekrarlanan değer uyarıları sayfanın geneli yerine ilgili özellik bölümünde gösterilir. Kart seçimi yalnız kenarlık geri bildirimi kullanır.
+- Kategori/marka eşleştirme başlıkları ve arama alanları sadeleştirildi; Trendyol kaynak kaydı değiştirilmedi.
+- İadeler ekranında mevcut Trendyol iade-eşitleme endpointine yalnız okuma kuyruğu başlatan aksiyon eklendi.
+- Hedefli web typecheck `PASS`; Stage iade kabulü ve tam web regresyonu `NOT_RUN`.
 # 2026-08-11 - Eşleştirme ve sipariş kaynak alanları hızlı kabulü
 
 - Metin olarak başlayan yerel özelliğe ilk seçenek ekleme akışı seçim tipine güvenli dönüşümle onarıldı.

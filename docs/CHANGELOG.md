@@ -1,5 +1,13 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - Hedefli eşleştirme, iade ve fatura taslağı iyileştirmesi v10.35
+
+- Kategori özellik kartları seçeneklerini kalıcı olarak gösterir; seçilen özelliğe değer ekleme ve tekil değeri pasifleştirme akışı sadeleştirildi.
+- Eşleştirme çalışma alanındaki gereksiz başlıklar, durum etiketleri ve iç içe görsel çerçeveler azaltıldı.
+- İade listesine yalnız okuma eşitleme işini kuyruğa alan kullanıcı aksiyonu eklendi.
+- Allocation kaydı eksik eski paketlerde, doğrulanmış sipariş satırlarıyla fatura taslağı geri kazanılır; provider submit kapıları değişmedi.
+- Hedefli API build ve web typecheck `PASS`; tam suite, Stage ve canlı kabul `NOT_RUN`.
+
 ## 2026-08-11 - Ürün çalışma alanı ve referans veri sağlamlaştırması v10.34
 
 - Yeni ürün ekranında açıklama alanı HTML araçları ve güvenli ön izleme ile zenginleştirildi; dosyadan ürün görseli yükleme, varsayılan 50 sipariş ve stok/desi yerleşimi güncellendi.

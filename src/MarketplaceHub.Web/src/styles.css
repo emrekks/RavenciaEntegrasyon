@@ -413,6 +413,34 @@ button,.button-link{min-height:42px;padding:.72rem 1rem;border-radius:10px;backg
 .product-image-modal>img{display:block;width:100%;max-height:calc(100vh - 150px);padding:0 24px 24px;object-fit:contain}
 .orders-page .order-reference-invoice.invoice-pending>span:not(.micro-invoice-chip):before{display:none;content:none;margin:0}
 @media(max-width:620px){.session-bulk-actions{justify-content:flex-start}.product-image-modal>img{padding:0 16px 16px}}
+
+/* v10.35: compact mapping controls and direct option management */
+.mapping-workspace-heading{padding-bottom:10px}
+.mapping-console{gap:14px;padding:16px}
+.mapping-console>header{display:none}
+.mapping-workspace .searchable-select{gap:4px}
+.mapping-workspace .searchable-select-control{min-height:40px;border-radius:8px}
+.mapping-workspace .searchable-select-control input{height:38px}
+.mapping-workspace .searchable-select-control button{height:34px;width:34px}
+.mapping-workspace .searchable-select.open .searchable-select-control{box-shadow:none}
+.category-chip-list{min-height:0;gap:5px;padding:0}
+.category-chip-list>span{min-height:27px}
+.category-chip-list>span>button{min-height:25px;padding:3px 8px}
+.attribute-feedback{margin:0;padding:8px 10px;color:#a13c2d;background:#fff4ef;border:1px solid #f1c4b9;border-radius:7px;font-size:.72rem}
+.attribute-summary-card.selectable{display:grid;grid-template-columns:minmax(145px,.3fr) minmax(0,1fr);align-items:start;gap:14px}
+.attribute-summary-card.selectable.selected{background:#edf8f5;border-color:#168273;box-shadow:0 0 0 2px rgba(22,130,115,.1)}
+.attribute-summary-card.selectable.selected:before{display:none;content:none}
+.attribute-summary-title{display:grid;gap:3px}
+.attribute-summary-title p{margin:0;color:#667a75;font-size:.7rem}
+.attribute-value-list{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
+.attribute-value-list>span{display:inline-flex;align-items:center;gap:4px;padding:4px 6px 4px 8px;color:#28463f;background:#fff;border:1px solid #c9ddd7;border-radius:999px;font-size:.68rem}
+.attribute-value-list button{display:grid;place-items:center;width:16px;min-height:16px;padding:0;color:#8a3d37;background:transparent;border:0;border-radius:50%;box-shadow:none;font-size:.9rem;line-height:1}
+.attribute-value-list button:hover{color:#fff;background:#c84940;transform:none}
+.orders-page .order-reference-products>article{gap:3px}
+.orders-page .order-reference-invoice .invoice-document-link{min-height:20px;padding:2px 5px;line-height:1.1}
+.orders-page .order-reference-invoice .row-menu{width:100%}
+.orders-page .order-reference-invoice .row-menu-trigger{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:22px;padding:2px 5px}
+@media(max-width:700px){.attribute-summary-card.selectable{grid-template-columns:1fr}.mapping-console{padding:12px}}
 .product-description-field{grid-column:1/-1}.rich-text-preview{display:block;width:100%;min-height:140px;border:0}
 .product-edit-overview{align-items:stretch}.product-edit-form{display:grid;gap:14px}.product-edit-form>label{display:grid;gap:7px}.product-edit-media{align-items:stretch}.product-edit-media>form{display:grid;align-content:start;gap:14px}.mapping-side.remote .searchable-select-menu{width:min(620px,calc(100vw - 48px));max-height:360px}.mapping-side.remote .searchable-select-menu button{padding:10px 12px}.mapping-side.remote .searchable-select-menu button strong{font-size:.76rem}.mapping-side.remote .searchable-select-menu button small{font-size:.64rem}
 /* Compact invoice upload and attribute-entry controls */

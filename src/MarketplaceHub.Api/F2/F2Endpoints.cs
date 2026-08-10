@@ -46,6 +46,8 @@ public static class F2Endpoints
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateAttributeAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/catalog/attributes") : MissingContext(http));
         api.MapPost("/catalog/attributes/{id:guid}/values", async (Guid id, IReadOnlyList<CreateAttributeValueCommand> command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.AddAttributeValuesAsync(tenant.TenantId, id, command, http.RequestAborted), Results.Ok) : MissingContext(http));
+        api.MapDelete("/catalog/attributes/{id:guid}/values/{valueId:guid}", async (Guid id, Guid valueId, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant ? Result(await service.DeactivateAttributeValueAsync(tenant.TenantId, id, valueId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/catalog/categories/{id:guid}/attribute-requirements", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.GetRequirementsAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPut("/catalog/categories/{id:guid}/attribute-requirements", async (Guid id, IReadOnlyList<AttributeRequirementCommand> command, HttpContext http, ICatalogService service) =>

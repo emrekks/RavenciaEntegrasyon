@@ -162,3 +162,10 @@
 # 2026-08-11 hızlı geliştirme notu
 
 Ürün oluşturma ve Trendyol eşleştirme çalışma alanındaki kullanıcı geri bildirimleri hedefli olarak uygulanmaktadır. Tam regresyon çalıştırılmadı (`NOT_RUN`); F3/F4 kapanış durumu ve dış yazma kapıları değişmedi.
+
+## 2026-08-11 — v10.35 hedefli eşleştirme, iade ve fatura taslağı iyileştirmesi
+
+- Eşleştirme ekranında kategoriye bağlı özellik değerleri kalıcı gösterilir; seçilen özelliğe üstteki alan üzerinden değer eklenir ve tekil değerler pasifleştirilebilir.
+- İade ekranına yalnız okuma amaçlı eşitleme işini kuyruğa alan kullanıcı aksiyonu eklendi. Dış platforma yazma yapılmaz.
+- Eski paket eşitlemelerinde allocation kaydı bulunmadığında, sipariş-paket sahipliği doğrulandıktan sonra pozitif sipariş satırları fatura taslağına geri kazanımlı biçimde eklenir.
+- Hedefli API build ve web typecheck `PASS`; Stage/canlı kabul ile provider işlemleri `NOT_RUN` durumundadır.
