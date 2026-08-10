@@ -342,3 +342,9 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 
 - Sabit ve dinamik portla iki denemede de UI giris locator'i 60 saniye bekledi; asil siparis akisi baslamadi.
 - Kanit oturumu ayni `/api/v1/auth/login` endpointiyle acilir; dashboard ve devamindaki browser/API/Postgres/worker/siparis liste akisi korunur.
+
+## 2026-08-10 — v10.30-r5 full-stack kanit CSRF bootstrap
+
+- Full-stack tarayici kaniti login isteginden once `/api/v1/auth/csrf` ile cookie/token ciftini alir ve `X-CSRF-TOKEN` basligini gonderir.
+- `node --check src/MarketplaceHub.Web/e2e/full-stack-fake.mjs`: PASS.
+- Exact release hatti sonucu bekleniyor; production auth davranisi degistirilmedi.

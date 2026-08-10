@@ -8,7 +8,13 @@ const browser = await chromium.launch({ headless: true })
 try {
   const page = await browser.newPage()
   page.setDefaultTimeout(60_000)
+  const csrfResponse = await page.request.get(`${ui}/api/v1/auth/csrf`)
+  const csrfBody = await csrfResponse.json()
+  if (csrfResponse.status() !== 200 || !csrfBody.token) {
+    throw new Error(`CSRF bootstrap failed: ${csrfResponse.status()} ${JSON.stringify(csrfBody)}`)
+  }
   const login = await page.request.post(`${ui}/api/v1/auth/login`, {
+    headers: { 'X-CSRF-TOKEN': csrfBody.token },
     data: { email: 'owner@fake.invalid', password: 'Local-E2E-Only!9347' },
   })
   const loginBody = await login.text()

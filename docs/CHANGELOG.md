@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-10 - Full-stack kanit CSRF bootstrap v10.30-r5
+
+- CI tarayici kaniti, oturum acma isteginden once uygulamanin CSRF anahtarini alip ayni guvenlik akisiyla giris yapar; production davranisi degismez.
+- Hizli kontrol: E2E betigi soz dizimi ve repository diff kontrolu gecti; exact release dogrulamasi yeniden calistirilacaktir.
+
 ## 2026-08-10 - Siparis gorsel CSP ve kompakt tablo v10.29
 
 - Panel guvenlik politikasinda yalniz resmi Trendyol gorsel kaynagi `https://cdn.dsmcdn.com` icin `img-src` izni eklendi; diger dis kaynaklar kapali kalir.
