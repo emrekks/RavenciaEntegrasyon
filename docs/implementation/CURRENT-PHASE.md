@@ -1,5 +1,7 @@
 # Güncel Faz ve Devralma Durumu
 
+**2026-08-10 siparis gorsel CSP v10.29:** Trendyol kaynak snapshot'inda bulunan HTTPS gorsellerin tarayicida CSP nedeniyle kirik gorunmesi giderildi. `img-src` yalniz resmi `https://cdn.dsmcdn.com` kaynagina acildi. Fatura rozetleri dar kolona sigacak sekilde kompaktlastirildi ve baslik-ilk siparis boslugu kaldirildi. Degisiklik CSS/Caddy kapsamlidir; detayli test `NOT_RUN`, hedefli header ve tarayici gorsel kabulu release sonrasinda yapilacaktir.
+
 **2026-08-10 siparis kaynak gorseli v10.27:** Trendyol onayli urun cevabinin canlida kullandigi dogrudan varyant satiri sekli, eski ic ice `variants[]` sekliyle birlikte okunur. Barkodla bulunan kaydin `images[]` alani siparis satiri kaynak snapshot'ina aktarilir; boylece API'de var olan urun gorseli yer tutucu olarak kalmaz. Dar kapsamli adapter sozlesme testi eklendi; canli kabul yeniden esitleme sonrasinda tamamlanacaktir.
 
 **2026-08-10 sipariş kaynak satırı v10.26:** Trendyol paket satırının ham snapshot'ı sipariş satırında kalıcı saklanır. Renk, beden ve model kodu sipariş kaynağından; görsel ise aynı barkodun salt-okunur Trendyol onaylı ürün snapshot'ından alınır ve yalnız HTTPS URL kabul edilir. Fatura hücresi referans düzenine hizalandı, kargodaki satırın ikincil işlem menüsü kaldırıldı ve tablo başlığı kaydırmada sabitlendi. Migration mevcut sipariş tutarlarına/durumlarına dokunmaz; eski satırların zenginleşmesi için deployment sonrası salt-okunur yeniden eşitleme gerekir. Solution build, Docker gerektirmeyen testler, TypeScript, 19/19 web testi ve production web build geçti; yerel Docker/Testcontainers testleri `BLOCKED_ENVIRONMENT`.
@@ -48,7 +50,7 @@
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 7.8
+**Ana plan sürümü:** 7.9
 
 **Aktif ürün kapsamı:** `TRENDYOL Türkiye CORE` + `TRENDYOL_EFATURAM`
 

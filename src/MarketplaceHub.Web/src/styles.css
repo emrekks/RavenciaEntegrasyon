@@ -379,3 +379,12 @@ button,.button-link{min-height:42px;padding:.72rem 1rem;border-radius:10px;backg
 .orders-page .order-reference-invoice .row-menu{width:auto;margin-top:1px}.orders-page .order-reference-invoice .row-menu-trigger{min-height:24px;padding:3px 7px;color:#152235;background:#fff;border:1px solid #8793a0;border-radius:3px;font-size:.58rem;font-weight:750}
 .orders-page .order-reference-row.shipped .order-reference-actions{align-content:center;justify-content:center;gap:6px;padding:8px}.orders-page .order-reference-row.shipped .order-reference-actions .row-menu{display:none}.orders-page .order-reference-row.shipped .order-reference-actions .cargo-track-action{width:100%;min-height:26px}.orders-page .order-reference-row.shipped .order-reference-actions .cargo-action-unavailable{width:100%}
 @media(max-width:700px){.orders-page .order-reference-head{top:0}}
+
+/* v10.29: keep the reference header attached to its first order and fit compact invoice labels. */
+.orders-page .order-reference-head{margin-bottom:-6px;border-bottom-right-radius:0;border-bottom-left-radius:0}
+.orders-page .order-reference-head+.order-reference-row{border-top-left-radius:0;border-top-right-radius:0}
+.orders-page .order-reference-invoice .micro-invoice-chip,
+.orders-page .order-reference-invoice>span:not(.micro-invoice-chip){max-width:100%;padding-right:4px;padding-left:4px;font-size:.51rem;white-space:nowrap}
+@media(max-width:1400px){
+  .order-reference-head,.order-reference-grid{grid-template-columns:32px minmax(128px,.78fr) minmax(85px,.48fr) minmax(210px,1.55fr) minmax(68px,.34fr) minmax(100px,.5fr) minmax(116px,.56fr) minmax(120px,.58fr)}
+}

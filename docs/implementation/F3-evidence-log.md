@@ -1,3 +1,10 @@
+## 2026-08-10 - v10.29 gorsel CSP ve tablo sikilastirma
+
+| Kanit | Durum | Not |
+| --- | --- | --- |
+| Trendyol CDN CSP | PASS_STATIC | `img-src` yalniz `https://cdn.dsmcdn.com` ile genisletildi; genel HTTPS wildcard acilmadi. |
+| Fatura ve tablo CSS | PASS_STATIC | Rozetler kompakt, baslik ile ilk siparis bitisik; detayli tarayici kabul release sonrasina `NOT_RUN` kaydedildi. |
+
 # F3 Trendyol Kanıt Günlüğü
 
 ## 2026-08-10 - v10.27 canli onayli urun sekli

@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-10 - Siparis gorsel CSP ve kompakt tablo v10.29
+
+- Panel guvenlik politikasinda yalniz resmi Trendyol gorsel kaynagi `https://cdn.dsmcdn.com` icin `img-src` izni eklendi; diger dis kaynaklar kapali kalir.
+- Fatura rozetleri dar kolonda tek satira sigacak bicimde kompaktlastirildi ve tablo basligi ilk siparise bitisik hale getirildi.
+
 ## 2026-08-10 - Trendyol dogrudan urun satiri uyumlulugu v10.27
 
 - Onayli urun okumasinda hem eski `variants[]` yapisi hem de canli API'nin barkod ve gorseli dogrudan `content[]` satirinda verdigi yapi desteklenir.
