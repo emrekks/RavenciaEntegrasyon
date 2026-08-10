@@ -38,28 +38,14 @@ Bir iş yalnız kod bulunduğu için tamamlanmış sayılmaz. Durumu yükseltmed
 
 Günlük geliştirme akışı hızlı tutulur. Her küçük UI/metin/CSS değişikliğinde tam solution, tüm backend testleri veya tüm web testleri otomatik çalıştırılmaz.
 
-1. Görsel veya metin değişikliğinde: değişen ekranı yerelde/canlı önizlemede kontrol et; derleme veya test yalnız hata riski varsa çalıştırılır.
-2. İşlevsel kod değişikliğinde: yalnız etkilenen proje build'i veya en küçük hedefli test çalıştırılır.
-3. Kimlik doğrulama, yetkilendirme, migration, para/fatura, veri kaybı riski veya dış API yazması içeren değişiklikte: ilgili hedefli build/test zorunludur; başarısız sonuç gizlenmez.
-4. Tam solution/web/entegrasyon doğrulaması yalnız kullanıcı açıkça istediğinde, faz kapanışında, release/tag öncesinde veya production deploy öncesinde çalıştırılır.
+1. Görsel, metin, hizalama veya CSS değişikliğinde otomatik test ya da build çalıştırma; yalnız değişen ekranı hızlıca önizle.
+2. Olağan işlevsel değişiklikte varsayılan kontrol kısa manuel smoke kontroldür. Build/test ancak değişiklik derleme riski taşıyorsa veya somut bir sorun görülürse yalnız ilgili kapsamda çalıştırılır.
+3. Kimlik doğrulama, yetkilendirme, migration, para/fatura, dosya yükleme, veri kaybı riski veya dış API yazması içeren değişiklikte en küçük ilgili hedefli kontrol zorunludur; başarısız sonuç gizlenmez.
+4. Tam solution/web/entegrasyon doğrulaması günlük geliştirme sırasında çalıştırılmaz. Yalnız kullanıcı açıkça istediğinde, release/tag veya production deploy öncesinde çalıştırılır.
 
 Çalıştırılmayan ayrıntılı testler `NOT_RUN` olarak kaydedilir; başarılı gösterilmez. Tam test çıktısını konuşma bağlamına kopyalama. Kullanıcıya yalnız çalıştırılan kontrolün özeti ve varsa bilinen riski bildir.
 
-Tam doğrulama komutları:
-
-```bash
-python3 scripts/verify-repository-cleanliness.py
-python3 scripts/verify-documentation-transaction.py
-dotnet restore MarketplaceHub.sln --locked-mode
-dotnet build MarketplaceHub.sln --no-restore
-dotnet test MarketplaceHub.sln --no-build --no-restore
-dotnet format MarketplaceHub.sln --verify-no-changes --no-restore
-cd src/MarketplaceHub.Web
-npm ci --ignore-scripts
-npm run typecheck
-npm test -- --run
-npm run build
-```
+Tam doğrulama komutlarını günlük iş akışına ekleme; mevcut CI/release hattı gerektiğinde bunları merkezi olarak yürütür.
 
 ## Dokümantasyon transaction kuralı
 

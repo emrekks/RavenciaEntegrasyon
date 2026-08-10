@@ -2,7 +2,7 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 8.2
+**Belge sürümü:** 8.3
 **Belge tarihi:** 10 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
@@ -610,10 +610,11 @@ UI/metin/CSS düzenlemesinde:
 - Değişen ekranın görsel veya davranış önizlemesi
 - Yalnız hata riski varsa ilgili derleme ya da hedefli test
 
-İşlevsel değişiklikte:
+Olağan işlevsel değişiklikte:
 
-- Etkilenen proje build'i veya en küçük hedefli test
-- Migration, güvenlik, mali işlem veya dış yazma değişikliğinde ilgili hedefli doğrulama
+- Varsayılan olarak kısa manuel smoke kontrol
+- Build/test yalnız somut hata, belirgin derleme riski veya kullanıcı talebinde
+- Migration, güvenlik, mali işlem, dosya yükleme, veri kaybı veya dış yazma değişikliğinde en küçük ilgili hedefli doğrulama
 
 ### Seviye B - Modül doğrulaması
 
@@ -624,9 +625,9 @@ Kullanıcı talep ettiğinde veya bir modül için teslim kanıtı gerektiğinde
 - İlgili web typecheck ve component testleri
 - Migration/schema kontrolü
 
-### Seviye C - Faz/commit çıkış kapısı
+### Seviye C - Release/production çıkış kapısı
 
-Kullanıcının açık talebi, faz kapanışı, release adayı, tag veya production öncesinde:
+Kullanıcının açık talebi, release adayı, tag veya production öncesinde mevcut CI hattında:
 
 - Locked restore
 - Tüm solution build

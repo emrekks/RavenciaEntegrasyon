@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-10 - Hızlı geliştirme doğrulama politikası v8.3
+
+- Günlük UI ve olağan işlevsel geliştirmelerde otomatik test/build zorunluluğu kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılan oldu.
+- Hedefli doğrulama yalnız somut hata/derleme riski ile güvenlik, migration, mali işlem, dosya yükleme, veri kaybı ve dış yazma alanlarında korunur.
+- Tam doğrulama kullanıcı talebi veya release/production kapısında mevcut CI hattına bırakıldı.
+
 ## 2026-08-10 - Guvenlik, eslestirme ve siparis gorseli v10.32
 
 - Sonlandirilmis oturum kayitlari kullanici bazinda tek tek veya toplu silinebilir; aktif ve mevcut oturumlar silme endpointlerinden korunur.
