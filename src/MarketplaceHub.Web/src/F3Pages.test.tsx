@@ -86,7 +86,6 @@ test('maps a local brand to the verified Trendyol brand snapshot', async () => {
   render(<QueryClientProvider client={client}><MemoryRouter><BrandMappingPage /></MemoryRouter></QueryClientProvider>)
 
   const brandSection = (await screen.findByRole('heading', { name: 'Eşleştirme Merkezi' })).closest('section')!; const page = within(brandSection)
-  await chooseSearchable('Marka için aktif Trendyol bağlantısı', 'Trendyol Stage')
   await chooseSearchable('Panel markası', 'Ravencia')
   await chooseSearchable('Trendyol markası', 'Ravencia')
   fireEvent.click(page.getByRole('button', { name: 'Eşleştirmeyi kaydet' }))

@@ -1,5 +1,13 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-10 - Eşleştirme ve manuel fatura yükleme v10.33
+
+- Kategori özellik eşlemesinde hedef panel kategorisi açıkça seçilir; Trendyol teknik `[A-TDG]`/`[TDG]` önekleri yalnız sunumda temizlenir.
+- Özellik oluşturma ile seçili özelliğe değer ekleme ayrı butonlara ayrıldı; yinelenen seçim alanı ve ön izleme kaldırıldı.
+- Marka eşleştirmesi kategoriyle aynı platform odaklı düzene alındı; yerel marka ekleme ve kaldırılabilir seçim baloncukları eklendi.
+- Sipariş satırındaki Fatura Yükle işlemi PDF/JPEG/JPG/PNG dosyasını özel depolamadaki mevcut manuel belge endpointine gönderir; provider submit veya pazaryeri dış yazması başlatmaz.
+- Hızlı kontrol: TypeScript PASS, hedefli F3 Vitest 7/7 PASS. Tam suite, Stage ve canlı kabul `NOT_RUN`.
+
 ## 2026-08-10 - Hızlı geliştirme doğrulama politikası v8.3
 
 - Günlük UI ve olağan işlevsel geliştirmelerde otomatik test/build zorunluluğu kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılan oldu.

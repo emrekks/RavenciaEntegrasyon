@@ -367,3 +367,8 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - Yerel ozellik karti tiklanarak secilir ve ustteki deger alani secili ozellige yazar. Eksik kategori ozellik verisi icin ayni calisma alaninda guvenli reference-sync isi baslatilir.
 - Siparis urun gorselleri modalde buyutulebilir; fatura bekleme rozeti metin olarak korunurken unlem pseudo ikonu kaldirilir.
 - Web TypeScript PASS, Vitest 19/19 PASS; Stage reference-sync ve canli gorsel kabul `NOT_RUN`.
+# 2026-08-10 — v10.33 kategori/marka eşleştirme akışı
+
+- Özellik eşleme hedef kategorisi kullanıcı tarafından seçilir; teknik Trendyol ad önekleri kaynak snapshot değiştirilmeden yalnız sunumda temizlenir.
+- Özellik oluşturma ve değer ekleme ayrıldı; marka çalışma alanı platform odaklı yerel kayıt/çip düzenine taşındı.
+- TypeScript PASS, hedefli F3 Vitest 7/7 PASS. Stage referans kabulü ve tam release hattı `NOT_RUN`.

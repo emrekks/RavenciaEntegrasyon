@@ -1,5 +1,7 @@
 # Güncel Faz ve Devralma Durumu
 
+**2026-08-10 eşleştirme ve manuel fatura yükleme v10.33:** Kategori özellik eşlemesinde panel kategorisi açıkça seçilebilir ve teknik Trendyol başlık önekleri arayüzden temizlenir. Özellik/değer ekleme aksiyonları ayrıldı; marka alanı hesap seçimi göstermeyen kategori tipi oluşturma/çip düzenine geçti. Sipariş fatura menüsü, yerel taslak gerektiğinde idempotent oluşturup PDF/JPEG/JPG/PNG dosyasını mevcut güvenli manuel belge endpointine yükleyen ayrı pencereye bağlandı. Provider submit ve pazaryeri dış yazma kapıları değişmedi. TypeScript ve hedefli 7/7 F3 testi geçti; tam suite, Stage ve canlı kabul `NOT_RUN`.
+
 **2026-08-10 siparis gorsel CSP v10.29:** Trendyol kaynak snapshot'inda bulunan HTTPS gorsellerin tarayicida CSP nedeniyle kirik gorunmesi giderildi. `img-src` yalniz resmi `https://cdn.dsmcdn.com` kaynagina acildi. Fatura rozetleri dar kolona sigacak sekilde kompaktlastirildi ve baslik-ilk siparis boslugu kaldirildi. Degisiklik CSS/Caddy kapsamlidir; detayli test `NOT_RUN`, hedefli header ve tarayici gorsel kabulu release sonrasinda yapilacaktir.
 
 **2026-08-10 siparis kaynak gorseli v10.27:** Trendyol onayli urun cevabinin canlida kullandigi dogrudan varyant satiri sekli, eski ic ice `variants[]` sekliyle birlikte okunur. Barkodla bulunan kaydin `images[]` alani siparis satiri kaynak snapshot'ina aktarilir; boylece API'de var olan urun gorseli yer tutucu olarak kalmaz. Dar kapsamli adapter sozlesme testi eklendi; canli kabul yeniden esitleme sonrasinda tamamlanacaktir.

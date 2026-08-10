@@ -61,3 +61,8 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 - Devam adımı yalnız mevcut idempotent `/invoices` taslak endpoint'ini çağırır; gerçek E-Faturam submit parola + açık onay akışında kalır.
 - Doğrulama: ilgili web davranış testi dahil Vitest 18/18 PASS, TypeScript ve production build PASS.
 - Stage/provider gerçek fatura gönderimi `NOT_RUN`; canlı görsel testte mali dış yazma başlatılmayacaktır.
+# 2026-08-10 — v10.33 siparişten manuel fatura belgesi yükleme
+
+- Sipariş menüsündeki Fatura Yükle, gerektiğinde yalnız yerel idempotent taslak oluşturur ve dosyayı mevcut `/invoices/{id}/documents/manual` endpointine gönderir.
+- PDF/JPEG/JPG/PNG ve 10 MB istemci sınırı uygulanır; provider submit, müşteri gönderimi ve pazaryeri dış yazması tetiklenmez.
+- TypeScript PASS; mevcut backend dosya imzası/depolama davranışı değiştirilmedi. Stage/provider ve tam mali suite `NOT_RUN`.
