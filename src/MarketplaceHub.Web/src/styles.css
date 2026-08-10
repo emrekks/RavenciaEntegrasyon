@@ -400,3 +400,16 @@ button,.button-link{min-height:42px;padding:.72rem 1rem;border-radius:10px;backg
   display:none;
   content:none;
 }
+
+/* v10.32 session cleanup, mapping selection and order image preview */
+.session-bulk-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.legacy-attribute-select{display:none!important}
+.attribute-summary-card.selectable{cursor:pointer;transition:border-color .15s ease,background .15s ease,box-shadow .15s ease}
+.attribute-summary-card.selectable:hover,.attribute-summary-card.selectable.selected{background:#edf8f5;border-color:#168273;box-shadow:0 0 0 2px rgba(22,130,115,.1)}
+.attribute-summary-card.selectable.selected:before{content:'Seçili';align-self:center;padding:4px 7px;color:#11675c;background:#d9f1eb;border-radius:999px;font-size:.61rem;font-weight:800}
+.product-image-button{display:grid;place-items:center;width:max-content;min-height:0;padding:0;background:transparent;border:0;border-radius:3px;box-shadow:none;cursor:zoom-in}
+.product-image-button:hover{background:transparent;box-shadow:0 0 0 3px rgba(22,130,115,.16);transform:none}
+.product-image-modal{width:min(820px,calc(100vw - 32px));overflow:hidden}
+.product-image-modal>img{display:block;width:100%;max-height:calc(100vh - 150px);padding:0 24px 24px;object-fit:contain}
+.orders-page .order-reference-invoice.invoice-pending>span:not(.micro-invoice-chip):before{display:none;content:none;margin:0}
+@media(max-width:620px){.session-bulk-actions{justify-content:flex-start}.product-image-modal>img{padding:0 16px 16px}}

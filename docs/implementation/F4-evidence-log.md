@@ -48,6 +48,12 @@
 ## Production kararı
 
 Kod kapanışı production kabulü değildir. Capability evidence, exact runtime suite ve Stage E2E olmadan global/connection write anahtarları kapalı kalır.
+## 2026-08-10 — v10.32 faturalama ayar yüzeyi sadeleştirmesi
+
+- Kullanılmayan genel faturalama ayarları kullanıcı menüsünden kaldırıldı; eski `/settings/billing` adresi sistem ayarlarına yönlenir.
+- Fatura oluşturma, yükleme ve provider submit onay kapıları değiştirilmedi; dış yazma açılmadı.
+- Web TypeScript ve Vitest PASS; provider/Stage mali akışı `NOT_RUN`.
+
 ## 2026-08-09 — v10.19 fatura taslak ön izlemesi
 
 - Sipariş satırındaki “Fatura Oluştur”, API kaynaklı müşteri, fatura adresi, satır, KDV ve tutar özetini modalde gösterir.

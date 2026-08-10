@@ -1,5 +1,13 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-10 - Guvenlik, eslestirme ve siparis gorseli v10.32
+
+- Sonlandirilmis oturum kayitlari kullanici bazinda tek tek veya toplu silinebilir; aktif ve mevcut oturumlar silme endpointlerinden korunur.
+- Kullanilmayan faturalama ayarlari menuden kaldirildi ve eski adres guvenli bicimde sistem ayarlarina yonlenir.
+- Trendyol kategori yollarindaki `[TDG]` sunum onekleri temizlendi; yerel ozellik kartlari tiklanarak secilir, secilen ozellige deger eklenebilir ve eksik kategori ozellik snapshot'i ayni ekrandan esitlenebilir.
+- Siparis urun gorselleri buyutulebilir; fatura bekleme rozetindeki unlem ikonu kaldirildi.
+- Hizli dogrulama: API hedefli build PASS, web TypeScript PASS, Vitest 19/19 PASS. Stage/canli kabul ve tam release hatti `NOT_RUN`.
+
 ## 2026-08-10 - Siparis adet rozeti gorsel cercevesi v10.31
 
 - Urun miktar rozeti satir koordinatindan ayrilarak dogrudan urun gorseli kapsayicisinin sag ust kosesine baglandi.

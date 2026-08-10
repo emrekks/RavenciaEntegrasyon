@@ -8,6 +8,7 @@ Bu dosya repository kökünün tamamı için geçerlidir.
 - Panel kategorisi eşleştirme ekranından oluşturulabilir. Bu yerel katalog işlemidir; Trendyol dış yazma kapılarını açmaz.
 - Sipariş detay route'u kullanıcı arayüzünde yoktur; eski `/orders/:id` adresi listeye döner. Fatura ön izlemesi yalnız yerel taslak oluşturabilir; provider submit için parola ve açık onay kapısı korunur.
 - Güvenlik ekranı mevcut MFA/session endpointlerine bağlıdır; canlı kabulte MFA etkinleştirme veya oturum iptali kullanıcı onayı olmadan tetiklenmez. Yeni ürün ekranında desi doğrudan veya ölçülerden hesaplanır ve nullable varyant alanında saklanır.
+- Sonlandırılmış oturum kayıtları kullanıcı kapsamlı tekil/toplu silinebilir; aktif veya mevcut oturum silinemez. Genel faturalama ayar sayfası kullanıcı menüsünde yoktur.
 
 ## Başlamadan önce zorunlu okuma sırası
 

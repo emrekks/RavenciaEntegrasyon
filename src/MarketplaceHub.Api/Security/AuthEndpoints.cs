@@ -32,6 +32,8 @@ public static class AuthEndpoints
         group.MapPost("/recovery-codes/regenerate", RecoveryRegenerateAsync);
         group.MapPost("/sessions/{id:guid}/revoke", RevokeSessionAsync);
         group.MapPost("/sessions/revoke-others", RevokeOthersAsync);
+        group.MapDelete("/sessions/{id:guid}", DeleteClosedSessionAsync);
+        group.MapDelete("/sessions/closed", DeleteClosedSessionsAsync);
         return group;
     }
 
@@ -209,6 +211,25 @@ public static class AuthEndpoints
     {
         var current = RequireSession(context, SessionState.Active); if (current is null) return Forbidden();
         await db.UserSessions.Where(x => x.UserId == current.UserId && x.Id != current.Id && x.State != SessionState.Revoked).ExecuteUpdateAsync(x => x.SetProperty(s => s.State, SessionState.Revoked).SetProperty(s => s.RevokedAt, time.GetUtcNow()), context.RequestAborted);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> DeleteClosedSessionAsync(Guid id, HttpContext context, AppDbContext db)
+    {
+        var current = RequireSession(context, SessionState.Active); if (current is null) return Forbidden();
+        if (id == current.Id) return Results.Problem(statusCode: 409, title: "Current session cannot be deleted");
+        var deleted = await db.UserSessions
+            .Where(x => x.Id == id && x.UserId == current.UserId && x.State == SessionState.Revoked)
+            .ExecuteDeleteAsync(context.RequestAborted);
+        return deleted == 1 ? Results.NoContent() : Results.Problem(statusCode: 409, title: "Only closed sessions can be deleted");
+    }
+
+    private static async Task<IResult> DeleteClosedSessionsAsync(HttpContext context, AppDbContext db)
+    {
+        var current = RequireSession(context, SessionState.Active); if (current is null) return Forbidden();
+        await db.UserSessions
+            .Where(x => x.UserId == current.UserId && x.Id != current.Id && x.State == SessionState.Revoked)
+            .ExecuteDeleteAsync(context.RequestAborted);
         return Results.NoContent();
     }
 

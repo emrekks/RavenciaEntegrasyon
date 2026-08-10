@@ -2,14 +2,16 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 8.1
-**Belge tarihi:** 9 Ağustos 2026
+**Belge sürümü:** 8.2
+**Belge tarihi:** 10 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
 **Güncel uygulama statüsü:** `F3_CORE_CODE_COMPLETE_VALIDATION_PENDING / F4_CODE_COMPLETE_VALIDATION_PENDING / PRODUCTION_BLOCKED`
 **Aktif entegrasyon kapsamı:** Trendyol ve Trendyol E-Faturam  
 **Ürün sahibi:** Ravencia  
 **Sistem adı:** Ravencia MarketplaceHub
+
+**v10.32 kullanıcı akışı notu:** Sonlandırılmış oturum kayıtları güvenlik ekranından tekil veya toplu temizlenebilir; aktif ve mevcut oturumlar bu silme işlemine kapalıdır. Kullanılmayan genel faturalama ayar sayfası menüden kaldırılmıştır. Eşleştirme merkezinde Trendyol kategori adları kaynak önekleri olmadan gösterilir, özellik kartı tıklanarak seçilir ve eksik kategori özellik verisi aynı çalışma alanından güvenli reference-sync kuyruğuna alınabilir. Sipariş ürün görselleri büyütülebilir; fatura bekleme durumu sade metin rozetiyle sunulur.
 
 **v10.20 kullanıcı akışı notu:** Güvenlik ekranı mevcut backend MFA ve server-side session sözleşmelerine bağlanmıştır; Authenticator kurulumu parola ile yeniden doğrulama, QR/kod onayı ve tek gösterimli kurtarma kodlarıyla tamamlanır, diğer oturumlar tekil veya toplu sonlandırılabilir. Yeni ürün ekranında kategori arama kutusu kaldırılmış, temel alanlar hizalanmış, barkod adı sadeleştirilmiş ve desi doğrudan varsayılan `1` olarak girilebilir veya ölçülerden hesaplanabilir. Desi nullable, geriye uyumlu migration ile saklanır; eski katalog verileri değiştirilmez. Sipariş ürün adedi rozeti ürün kartının sağ üstündedir.
 

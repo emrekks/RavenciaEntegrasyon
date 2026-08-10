@@ -360,3 +360,10 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - Canli v10.30-r6 kontrolu: varsayilan `Yeni` PASS; mikro ihracat pseudo ikonu `display:none/content:none` PASS.
 - Adet rozeti artik urun gorseliyle ayni `reference-product-media` kapsayicisinda ve cercevenin sag ustune sabitlenir.
 - Ayrintili web paketi kullanici hizli test talebi geregi `NOT_RUN`; exact release hatti production oncesi zorunludur.
+
+## 2026-08-10 — v10.32 eslestirme ve siparis gorsel etkilesimi
+
+- Trendyol kategori yollarindaki `[TDG]` sunum onekleri kullanici arayuzunde temizlenir; kaynak snapshot degismez.
+- Yerel ozellik karti tiklanarak secilir ve ustteki deger alani secili ozellige yazar. Eksik kategori ozellik verisi icin ayni calisma alaninda guvenli reference-sync isi baslatilir.
+- Siparis urun gorselleri modalde buyutulebilir; fatura bekleme rozeti metin olarak korunurken unlem pseudo ikonu kaldirilir.
+- Web TypeScript PASS, Vitest 19/19 PASS; Stage reference-sync ve canli gorsel kabul `NOT_RUN`.

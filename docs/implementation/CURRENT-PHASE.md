@@ -50,7 +50,7 @@
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 8.1
+**Ana plan sürümü:** 8.2
 
 **Aktif ürün kapsamı:** `TRENDYOL Türkiye CORE` + `TRENDYOL_EFATURAM`
 
@@ -151,3 +151,5 @@
 **2026-08-10 full-stack kanit atomik CSRF v10.30-r6:** Oturum kaniti gectikten sonra siparis esitleme POST istegi, dashboard istemcisinin eszamanli token yenilemesinden ayrilarak ayni request context icinde tek CSRF ciftini kullanir. Production guvenlik davranisi degismez.
 
 **2026-08-10 siparis adet rozeti gorsel cercevesi v10.31:** Canli geometri kontrolunde rozet yatayda dogru olsa da dikeyde satir koordinatina bagliydi. Gorsel ve rozet ayni konumlu kapsayiciya alinarak adet rozeti gorsel cercevesinin sag ustune sabitlendi.
+
+**2026-08-10 guvenlik, eslestirme ve siparis gorseli v10.32:** Sonlandirilmis oturumlar icin kullanici kapsamli tekil/toplu silme eklendi; aktif ve mevcut oturum silinemez. Kullanilmayan faturalama ayarlari menuden kaldirildi. Trendyol kategori sunumundaki TDG onekleri temizlendi, ozellik karti secimi ve kategori ozellik snapshot esitleme kurtarma akisi eklendi. Siparis gorselleri buyutulebilir ve fatura bekleme ikonu kaldirildi. Hedefli API build, TypeScript ve Vitest PASS; Stage/canli kabul `NOT_RUN`.
