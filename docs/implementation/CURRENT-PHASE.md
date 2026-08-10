@@ -50,7 +50,7 @@
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 8.0
+**Ana plan sürümü:** 8.1
 
 **Aktif ürün kapsamı:** `TRENDYOL Türkiye CORE` + `TRENDYOL_EFATURAM`
 
@@ -149,3 +149,5 @@
 **2026-08-10 full-stack kanit CSRF bootstrap v10.30-r5:** CI kaniti auth isteginden once CSRF cookie/token ciftini uygulamanin resmi endpointinden alir. Degisiklik yalniz test bootstrap akisini production guvenlik sozlesmesiyle hizalar.
 
 **2026-08-10 full-stack kanit atomik CSRF v10.30-r6:** Oturum kaniti gectikten sonra siparis esitleme POST istegi, dashboard istemcisinin eszamanli token yenilemesinden ayrilarak ayni request context icinde tek CSRF ciftini kullanir. Production guvenlik davranisi degismez.
+
+**2026-08-10 siparis adet rozeti gorsel cercevesi v10.31:** Canli geometri kontrolunde rozet yatayda dogru olsa da dikeyde satir koordinatina bagliydi. Gorsel ve rozet ayni konumlu kapsayiciya alinarak adet rozeti gorsel cercevesinin sag ustune sabitlendi.

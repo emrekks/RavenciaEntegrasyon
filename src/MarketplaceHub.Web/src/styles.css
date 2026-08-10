@@ -390,10 +390,12 @@ button,.button-link{min-height:42px;padding:.72rem 1rem;border-radius:10px;backg
 }
 /* v10.30 order list alignment refinements */
 .orders-page .order-reference-products .quantity-bubble{
-  left:61px;
-  top:6px;
-  transform:translateX(-50%);
+  right:-8px;
+  left:auto;
+  top:-8px;
+  transform:none;
 }
+.orders-page .reference-product-media{position:relative;display:grid;width:max-content;align-self:center;justify-self:center}
 .orders-page .order-reference-invoice .micro-invoice-chip::before{
   display:none;
   content:none;

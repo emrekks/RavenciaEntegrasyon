@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-10 - Siparis adet rozeti gorsel cercevesi v10.31
+
+- Urun miktar rozeti satir koordinatindan ayrilarak dogrudan urun gorseli kapsayicisinin sag ust kosesine baglandi.
+- Varsayilan `Yeni` filtresi ve ikonsuz mikro ihracat fatura etiketi korunur.
+
 ## 2026-08-10 - Full-stack kanit atomik CSRF v10.30-r6
 
 - CI siparis esitleme kaniti, dashboard yuklenirken olusan eszamanli CSRF yenileme yarisindan ayrildi; istek tek request context ve tek token ile gonderilir.

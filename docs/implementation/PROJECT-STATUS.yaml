@@ -1,12 +1,12 @@
 schema_version: 1
-document_version: '8.0'
+document_version: '8.1'
 updated_at: '2026-08-10'
 active_scope:
 - TRENDYOL
 - TRENDYOL_EFATURAM
 overall_status: F3_CORE_CODE_COMPLETE_VALIDATION_PENDING_F4_CODE_COMPLETE_VALIDATION_PENDING_PRODUCTION_BLOCKED
 production_status: BLOCKED
-local_validation: V10_30_R6_ORDER_UI_STATIC_PASS_E2E_ATOMIC_CSRF_RELEASE_VALIDATION_PENDING
+local_validation: V10_31_ORDER_QUANTITY_MEDIA_ANCHOR_STATIC_PASS_RELEASE_VALIDATION_PENDING
 source_of_truth: docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md
 phases:
   F0:

@@ -354,3 +354,9 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - r5 oturum acmayi gecti; siparis esitleme istegi dashboard yuklenirken yenilenen CSRF cookie nedeniyle `REQUEST_VERIFICATION_FAILED` verdi.
 - Eslestirme isi POST'u tek Playwright request context icinde yeni alinmis token ile atomik hale getirildi.
 - Production middleware ve endpoint davranisi degistirilmedi; exact release sonucu bekleniyor.
+
+## 2026-08-10 — v10.31 siparis adet rozeti gorsel cercevesi
+
+- Canli v10.30-r6 kontrolu: varsayilan `Yeni` PASS; mikro ihracat pseudo ikonu `display:none/content:none` PASS.
+- Adet rozeti artik urun gorseliyle ayni `reference-product-media` kapsayicisinda ve cercevenin sag ustune sabitlenir.
+- Ayrintili web paketi kullanici hizli test talebi geregi `NOT_RUN`; exact release hatti production oncesi zorunludur.
