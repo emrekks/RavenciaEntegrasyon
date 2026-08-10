@@ -21,7 +21,8 @@ test('active shell exposes current operation and settings navigation with the li
 
   const settings = page.getByRole('button', { name: 'Ayarlar' })
   await settings.click()
-  for (const label of ['Platformlar', 'Eşleştirme Ayarları', 'Faturalama', 'Sistem Ayarları']) await expect(page.getByRole('link', { name: label, exact: true })).toBeVisible()
+  for (const label of ['Platformlar', 'Eşleştirme Ayarları', 'Sistem Ayarları']) await expect(page.getByRole('link', { name: label, exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Faturalama', exact: true })).toHaveCount(0)
 
   await expect(page.getByText('Dış yazmalar bağlantı bazında korunur')).toBeVisible()
   await expect(page.getByText('Kontrollü entegrasyon modu')).toBeVisible()

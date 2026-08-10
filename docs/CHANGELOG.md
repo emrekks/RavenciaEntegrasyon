@@ -6,6 +6,7 @@
 - Kullanilmayan faturalama ayarlari menuden kaldirildi ve eski adres guvenli bicimde sistem ayarlarina yonlenir.
 - Trendyol kategori yollarindaki `[TDG]` sunum onekleri temizlendi; yerel ozellik kartlari tiklanarak secilir, secilen ozellige deger eklenebilir ve eksik kategori ozellik snapshot'i ayni ekrandan esitlenebilir.
 - Siparis urun gorselleri buyutulebilir; fatura bekleme rozetindeki unlem ikonu kaldirildi.
+- Uygulama kabugu E2E beklentisi, kaldirilan Faturalama menusuyle ayni kapsama getirildi.
 - Hizli dogrulama: API hedefli build PASS, web TypeScript PASS, Vitest 19/19 PASS. Stage/canli kabul ve tam release hatti `NOT_RUN`.
 
 ## 2026-08-10 - Siparis adet rozeti gorsel cercevesi v10.31
