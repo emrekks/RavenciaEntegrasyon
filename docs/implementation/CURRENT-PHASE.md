@@ -143,3 +143,5 @@
 **2026-08-10 siparis liste sunumu v10.30:** Siparis ekrani ilk acilista `Yeni` durumunu gosterir. Urun miktar rozeti gorselin sag ust kosesine sabitlendi; mikro ihracat fatura rozetindeki bilgi ikonu kaldirildi. Degisiklik salt-okunur liste sunumudur; detayli test `NOT_RUN`, hizli hedefli web kontrolu uygulanacaktir.
 
 **2026-08-10 CI port izolasyonu v10.30-r3:** Full-stack tarayici kaniti sabit Vite portu yerine bos localhost portu kullanir. Iki yayin denemesinde giris ekraninin bulunamamasina yol acan paralel port cakismasi dar kapsamli olarak giderildi.
+
+**2026-08-10 full-stack kanit oturumu v10.30-r4:** CI tarayici kanitindaki giris formu locator zaman asimi kaldirildi. Test ayni auth endpointiyle oturum acip asil full-stack siparis akisini tarayicida surdurur; production giris davranisi degismez.

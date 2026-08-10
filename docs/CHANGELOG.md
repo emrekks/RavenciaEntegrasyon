@@ -294,3 +294,7 @@ Bu dosya kullanıcı ve geliştirici açısından anlamlı proje değişiklikler
 ## 2026-08-10 - Uctan uca test port izolasyonu v10.30-r3
 
 - Tam yigin tarayici kaniti sabit `5173` portu yerine calisma aninda ayrilan bos localhost portunu kullanir; paralel CI islerinin yanlis Vite oturumuna baglanma riski kaldirildi.
+
+## 2026-08-10 - Full-stack kanit oturum sadelestirmesi v10.30-r4
+
+- Full-stack tarayici kaniti oturumu UI alanlarini beklemek yerine ayni gercek auth endpointi uzerinden acar; ardindan dashboard, siparis kuyrugu, veritabani, worker ve liste gorunurlugunu tarayicida dogrular.

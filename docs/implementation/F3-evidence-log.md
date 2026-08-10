@@ -337,3 +337,8 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 
 - Yayin hattinda .NET build 0 hata, diger test gruplari 177/177 PASS; full-stack tarayici kaniti sabit `5173` portunda iki kez giris formunu bulamadi.
 - E2E Vite sunucusu bos localhost portuna alindi; yeniden yayin kaniti bekleniyor.
+
+## 2026-08-10 — v10.30-r4 full-stack kanit oturumu
+
+- Sabit ve dinamik portla iki denemede de UI giris locator'i 60 saniye bekledi; asil siparis akisi baslamadi.
+- Kanit oturumu ayni `/api/v1/auth/login` endpointiyle acilir; dashboard ve devamindaki browser/API/Postgres/worker/siparis liste akisi korunur.

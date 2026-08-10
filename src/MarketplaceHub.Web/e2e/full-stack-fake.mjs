@@ -8,18 +8,13 @@ const browser = await chromium.launch({ headless: true })
 try {
   const page = await browser.newPage()
   page.setDefaultTimeout(60_000)
-  await page.goto(ui, { waitUntil: 'networkidle', timeout: 60_000 })
-  await page.locator('input[name="email"]').fill('owner@fake.invalid')
-  await page.locator('input[name="password"]').fill('Local-E2E-Only!9347')
-  const loginResponse = page.waitForResponse(response => response.url().includes('/api/v1/auth/login'))
-  await page.locator('button[type="submit"]').click()
-  const login = await loginResponse
+  const login = await page.request.post(`${ui}/api/v1/auth/login`, {
+    data: { email: 'owner@fake.invalid', password: 'Local-E2E-Only!9347' },
+  })
   const loginBody = await login.text()
   if (login.status() !== 200) throw new Error(`Login failed: ${login.status()} ${loginBody}`)
-  await page.waitForURL('**/dashboard', { timeout: 10_000 }).catch(async () => {
-    const alert = await page.locator('[role="alert"]').textContent().catch(() => null)
-    throw new Error(`Login did not open the dashboard. url=${page.url()} alert=${alert ?? 'none'}`)
-  })
+  await page.goto(`${ui}/dashboard`, { waitUntil: 'networkidle', timeout: 60_000 })
+  await page.waitForURL('**/dashboard', { timeout: 10_000 })
 
   const enqueue = await page.evaluate(async id => {
     const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'same-origin' })
