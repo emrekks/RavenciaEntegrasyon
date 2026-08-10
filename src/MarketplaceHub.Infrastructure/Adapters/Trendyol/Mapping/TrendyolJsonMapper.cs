@@ -29,7 +29,7 @@ public static class TrendyolJsonMapper
             var discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
             var net = Decimal(package, "packageTotalPrice", "totalPrice");
             var rawStatusPackage = Text(package, "shipmentPackageStatus", "status"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
-            var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber"), allocations, gross, discount, net);
+            var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net);
             rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
                 Snapshot(package,
                     "customerFirstName", "customerLastName", "customerEmail", "customerPhone", "customerPhoneNumber", "phone", "phoneNumber", "commercial", "micro", "microExport", "3pByTrendyol", "shipmentPackageType", "orderType", "eInvoiceAvailable", "isEInvoice",
@@ -170,7 +170,7 @@ public static class TrendyolJsonMapper
         }
         else if (resourceType == "CATEGORY_ATTRIBUTES" && root.TryGetProperty("categoryAttributes", out var attributes) && attributes.ValueKind == JsonValueKind.Array)
         {
-            foreach (var item in attributes.EnumerateArray()) if (item.TryGetProperty("attribute", out var attribute)) rows.Add(new(resourceType, Text(attribute, "id"), parentExternalId, Text(attribute, "name"), Text(attribute, "name"), 0, true, true, item.GetRawText(), Bool(item, "required"), Bool(item, "allowCustom"), Bool(item, "allowMultipleAttributeValues")));
+            foreach (var item in attributes.EnumerateArray()) if (item.TryGetProperty("attribute", out var attribute)) rows.Add(new(resourceType, Text(attribute, "id"), parentExternalId, Text(attribute, "name"), Text(attribute, "name"), 0, true, true, item.GetRawText(), Bool(item, "required") || Bool(item, "isRequired"), Bool(item, "allowCustom") || Bool(item, "allowsCustomValue"), Bool(item, "allowMultipleAttributeValues") || Bool(item, "allowsMultipleValues")));
         }
         else if (resourceType == "ATTRIBUTE_VALUES")
         {
@@ -201,7 +201,13 @@ public static class TrendyolJsonMapper
     private static string? NullText(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.ToString(); return null; }
     private static decimal Decimal(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && (item.TryGetDecimal(out var result) || decimal.TryParse(item.ToString(), CultureInfo.InvariantCulture, out result))) return result; return 0; }
     private static long Long(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result) ? result : 0;
-    private static bool Bool(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.True;
+    private static bool Bool(JsonElement value, string name)
+    {
+        if (!value.TryGetProperty(name, out var item)) return false;
+        return item.ValueKind == JsonValueKind.True
+            || item.ValueKind == JsonValueKind.String && bool.TryParse(item.GetString(), out var parsed) && parsed
+            || item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var number) && number != 0;
+    }
     private static bool? BoolAny(JsonElement value, params string[] names)
     {
         foreach (var name in names)

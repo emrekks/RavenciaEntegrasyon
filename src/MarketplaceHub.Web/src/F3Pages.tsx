@@ -41,7 +41,7 @@ function SearchableSelect({ label, value, options, placeholder, disabled = false
   const [open, setOpen] = useState(false)
   useEffect(() => { setQuery(selected?.label ?? '') }, [selected?.label])
   const normalized = query.trim().toLocaleLowerCase('tr-TR')
-  const filtered = options.filter(option => !normalized || `${option.label} ${option.description ?? ''}`.toLocaleLowerCase('tr-TR').includes(normalized)).slice(0, 100)
+  const filtered = options.filter(option => !normalized || `${option.label} ${option.description ?? ''}`.toLocaleLowerCase('tr-TR').includes(normalized)).slice(0, normalized ? 500 : 100)
   function choose(option: SearchOption) { onChange(option.value); setQuery(option.label); setOpen(false) }
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === 'Escape') setOpen(false)
@@ -197,7 +197,7 @@ export function IntegrationDetailPage() {
 
 export function OrdersPage() {
   const client = useQueryClient()
-  const [filterForm, setFilterForm] = useState<OrderFilters>(initialOrderFilters); const [filters, setFilters] = useState<OrderFilters>(initialOrderFilters); const [advancedFilters, setAdvancedFilters] = useState(false); const [pageSize, setPageSize] = useState(20); const [page, setPage] = useState(1); const [selectedIds, setSelectedIds] = useState<string[]>([]); const [menu, setMenu] = useState<{ orderId: string; kind: 'invoice' | 'actions' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [bulkNotice, setBulkNotice] = useState(''); const [invoiceInfoOrder, setInvoiceInfoOrder] = useState<Order | null>(null); const [invoiceDraftOrder, setInvoiceDraftOrder] = useState<Order | null>(null); const [invoiceUploadOrder, setInvoiceUploadOrder] = useState<Order | null>(null); const [courierOrder, setCourierOrder] = useState<Order | null>(null)
+  const [filterForm, setFilterForm] = useState<OrderFilters>(initialOrderFilters); const [filters, setFilters] = useState<OrderFilters>(initialOrderFilters); const [advancedFilters, setAdvancedFilters] = useState(false); const [pageSize, setPageSize] = useState(50); const [page, setPage] = useState(1); const [selectedIds, setSelectedIds] = useState<string[]>([]); const [menu, setMenu] = useState<{ orderId: string; kind: 'invoice' | 'actions' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [bulkNotice, setBulkNotice] = useState(''); const [invoiceInfoOrder, setInvoiceInfoOrder] = useState<Order | null>(null); const [invoiceDraftOrder, setInvoiceDraftOrder] = useState<Order | null>(null); const [invoiceUploadOrder, setInvoiceUploadOrder] = useState<Order | null>(null); const [courierOrder, setCourierOrder] = useState<Order | null>(null)
   const query = useQuery({ queryKey: ['orders'], queryFn: loadAllOrders })
   const connections = useQuery({ queryKey: ['connections', 'orders-invoice'], queryFn: () => hubApi<Page<Connection>>('/connections?limit=200') })
   const provider = connections.data?.items.find(x => x.platformCode === 'TRENDYOL_EFATURAM' && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? null

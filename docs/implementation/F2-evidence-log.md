@@ -49,3 +49,8 @@ Gerçek platform test hesapları ve resmî capability kanıtları gelene kadar c
 | Doğrudan ve hesaplanan desi | PASS_LOCAL_WEB | Kapalı durumda Desi varsayılan `1`; açık durumda ağırlık ve ölçüler gösterilip `en × boy × yükseklik / 3000` sonucu gönderilir. |
 | Kalıcılık ve migration | CODED_BUILD_PASS | `ProductVariant.Desi` nullable `numeric(19,4)` olarak eklendi; migration yalnız sütun ekler, mevcut satırları dönüştürmez. |
 | Web ve .NET doğrulama | PASS_LOCAL_PARTIAL | 19/19 Vitest, TypeScript, Vite build, .NET build ve Docker gerektirmeyen 142 test geçti; PostgreSQL Testcontainers/full-stack `BLOCKED_ENVIRONMENT`. |
+# 2026-08-11 - Ürün oluşturma çalışma alanı hızlı kabulü
+
+- HTML açıklama editörü güvenli iframe ön izlemesiyle eklendi; açıklama temel bilgiler kartının sonuna taşındı.
+- JPEG/PNG dosyaları ürün kaydından sonra mevcut özel medya endpointine yüklenir; varyant kombinasyon mantığı korunur.
+- Web production build ve typecheck: `PASS`; web testleri `19/19 PASS`; production bağımlılık taraması `0 vulnerability`. Ayrıntılı tarayıcı/Stage kabulü: `NOT_RUN`.

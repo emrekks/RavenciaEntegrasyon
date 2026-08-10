@@ -372,3 +372,8 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - Özellik eşleme hedef kategorisi kullanıcı tarafından seçilir; teknik Trendyol ad önekleri kaynak snapshot değiştirilmeden yalnız sunumda temizlenir.
 - Özellik oluşturma ve değer ekleme ayrıldı; marka çalışma alanı platform odaklı yerel kayıt/çip düzenine taşındı.
 - TypeScript PASS, hedefli F3 Vitest 7/7 PASS. Stage referans kabulü ve tam release hattı `NOT_RUN`.
+# 2026-08-11 - Eşleştirme ve sipariş kaynak alanları hızlı kabulü
+
+- Metin olarak başlayan yerel özelliğe ilk seçenek ekleme akışı seçim tipine güvenli dönüşümle onarıldı.
+- Kategori zorunluluk ve kargo sağlayıcı alanları için dar, belgeli geri uyumluluk okuması genişletildi; eksik değer uydurulmaz.
+- Solution build ve format: `PASS`; Docker gerektirmeyen .NET testleri `143 PASS`; yerel Docker kapalı olduğundan 19 Testcontainers testi `BLOCKED_ENVIRONMENT`; web typecheck, `19/19` test ve production build `PASS`. Canlı kabul deployment sonrasına bırakıldı.

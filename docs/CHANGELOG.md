@@ -1,5 +1,12 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - Ürün çalışma alanı ve referans veri sağlamlaştırması v10.34
+
+- Yeni ürün ekranında açıklama alanı HTML araçları ve güvenli ön izleme ile zenginleştirildi; dosyadan ürün görseli yükleme, varsayılan 50 sipariş ve stok/desi yerleşimi güncellendi.
+- Değersiz oluşturulan metin özelliklerine ilk seçenek eklendiğinde özellik seçim tipine geçirilerek seçili özelliğe değer ekleme akışı onarıldı.
+- Trendyol kategori zorunluluk bayraklarının alternatif gösterimleri ve atanan kargo sağlayıcı/takip alanlarının belgeli geri uyumlu adları okunur hale getirildi.
+- Marka aramasında sorgulu sonuç sınırı genişletildi. Web ve hedefli Infrastructure derlemeleri `PASS`; tam suite, Stage ve canlı kabul `NOT_RUN`.
+
 ## 2026-08-10 - Eşleştirme ve manuel fatura yükleme v10.33
 
 - Kategori özellik eşlemesinde hedef panel kategorisi açıkça seçilir; Trendyol teknik `[A-TDG]`/`[TDG]` önekleri yalnız sunumda temizlenir.

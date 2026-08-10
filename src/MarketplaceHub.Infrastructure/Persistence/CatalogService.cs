@@ -108,7 +108,15 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         var attribute = await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == attributeId && x.IsActive, cancellationToken);
         if (attribute is null) return NotFound<AttributeView>();
-        if (attribute.DataType is not (AttributeDataType.SingleSelect or AttributeDataType.MultiSelect)) return Invalid<AttributeView>("values", "Yalnız seçim tipindeki özelliklere seçenek değeri eklenebilir.");
+        if (attribute.DataType == AttributeDataType.Text)
+        {
+            attribute.DataType = AttributeDataType.SingleSelect;
+            attribute.SelectionMode = "SINGLE";
+        }
+        else if (attribute.DataType is not (AttributeDataType.SingleSelect or AttributeDataType.MultiSelect))
+        {
+            return Invalid<AttributeView>("values", "Yalnız metin veya seçim tipindeki özelliklere seçenek değeri eklenebilir.");
+        }
         var normalized = values.Select(x => Normalize(x.Value)).ToArray();
         if (normalized.Length == 0 || normalized.Any(string.IsNullOrWhiteSpace) || normalized.Distinct().Count() != normalized.Length) return Invalid<AttributeView>("values", "En az bir benzersiz ve boş olmayan seçenek değeri girin.");
         var existing = await db.AttributeValues.Where(x => x.TenantId == tenantId && x.AttributeId == attributeId).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken);

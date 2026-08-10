@@ -159,3 +159,6 @@
 **2026-08-10 guvenlik, eslestirme ve siparis gorseli v10.32:** Sonlandirilmis oturumlar icin kullanici kapsamli tekil/toplu silme eklendi; aktif ve mevcut oturum silinemez. Kullanilmayan faturalama ayarlari menuden kaldirildi. Trendyol kategori sunumundaki TDG onekleri temizlendi, ozellik karti secimi ve kategori ozellik snapshot esitleme kurtarma akisi eklendi. Siparis gorselleri buyutulebilir ve fatura bekleme ikonu kaldirildi. Hedefli API build, TypeScript ve Vitest PASS; Stage/canli kabul `NOT_RUN`.
 
 **2026-08-10 v10.32-r2 belge kapisi duzeltmesi:** Uygulama kabugu E2E beklentisi kaldirilan Faturalama menusuyle esitlendi. Ilk r1 etiketi dokumantasyon transaction kapisinda durdu; canliya cikmadi. Yeni exact release sonucu bekleniyor.
+# 2026-08-11 hızlı geliştirme notu
+
+Ürün oluşturma ve Trendyol eşleştirme çalışma alanındaki kullanıcı geri bildirimleri hedefli olarak uygulanmaktadır. Tam regresyon çalıştırılmadı (`NOT_RUN`); F3/F4 kapanış durumu ve dış yazma kapıları değişmedi.
