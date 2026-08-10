@@ -33,7 +33,7 @@ test('shows order information directly in the operational list without a detail 
   expect(screen.getByText('Mikro İhracat Faturası')).toBeInTheDocument()
   expect(screen.getByText('Trendyol termin bilgisi göndermedi')).toBeInTheDocument()
   expect(screen.getByText('Mikro İhracat Faturası').closest('.order-reference-invoice')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Fatura işlemleri⌄' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Fatura işlemleri' }))
   expect(screen.getByRole('menuitem', { name: 'Fatura & Adres Bilgileri' })).toBeInTheDocument()
   expect(screen.getByRole('menu')).toHaveClass('opens-down')
   fireEvent.click(screen.getByRole('menuitem', { name: 'Fatura Oluştur' }))
