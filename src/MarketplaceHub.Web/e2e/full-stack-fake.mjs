@@ -22,18 +22,14 @@ try {
   await page.goto(`${ui}/dashboard`, { waitUntil: 'networkidle', timeout: 60_000 })
   await page.waitForURL('**/dashboard', { timeout: 10_000 })
 
-  const enqueue = await page.evaluate(async id => {
-    const csrfResponse = await fetch('/api/v1/auth/csrf', { credentials: 'same-origin' })
-    const { token } = await csrfResponse.json()
-    const response = await fetch(`/api/v1/connections/${id}/order-sync-jobs`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'browser-fake-order-sync', 'X-CSRF-TOKEN': token },
-      body: JSON.stringify({ externalOrderId: null }),
-    })
-    return { status: response.status, body: await response.text() }
-  }, connectionId)
-  if (enqueue.status !== 202) throw new Error(`Order sync enqueue failed: ${enqueue.status} ${enqueue.body}`)
+  const enqueueCsrfResponse = await page.request.get(`${ui}/api/v1/auth/csrf`)
+  const enqueueCsrfBody = await enqueueCsrfResponse.json()
+  const enqueue = await page.request.post(`${ui}/api/v1/connections/${connectionId}/order-sync-jobs`, {
+    headers: { 'Idempotency-Key': 'browser-fake-order-sync', 'X-CSRF-TOKEN': enqueueCsrfBody.token },
+    data: { externalOrderId: null },
+  })
+  const enqueueBody = await enqueue.text()
+  if (enqueue.status() !== 202) throw new Error(`Order sync enqueue failed: ${enqueue.status()} ${enqueueBody}`)
 
   const orderId = await page.evaluate(async () => {
     for (let attempt = 0; attempt < 40; attempt++) {

@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-10 - Full-stack kanit atomik CSRF v10.30-r6
+
+- CI siparis esitleme kaniti, dashboard yuklenirken olusan eszamanli CSRF yenileme yarisindan ayrildi; istek tek request context ve tek token ile gonderilir.
+- Production guvenlik kurallari degismedi; exact release dogrulamasi yeniden calistirilacaktir.
+
 ## 2026-08-10 - Full-stack kanit CSRF bootstrap v10.30-r5
 
 - CI tarayici kaniti, oturum acma isteginden once uygulamanin CSRF anahtarini alip ayni guvenlik akisiyla giris yapar; production davranisi degismez.

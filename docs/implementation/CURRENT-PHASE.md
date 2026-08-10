@@ -147,3 +147,5 @@
 **2026-08-10 full-stack kanit oturumu v10.30-r4:** CI tarayici kanitindaki giris formu locator zaman asimi kaldirildi. Test ayni auth endpointiyle oturum acip asil full-stack siparis akisini tarayicida surdurur; production giris davranisi degismez.
 
 **2026-08-10 full-stack kanit CSRF bootstrap v10.30-r5:** CI kaniti auth isteginden once CSRF cookie/token ciftini uygulamanin resmi endpointinden alir. Degisiklik yalniz test bootstrap akisini production guvenlik sozlesmesiyle hizalar.
+
+**2026-08-10 full-stack kanit atomik CSRF v10.30-r6:** Oturum kaniti gectikten sonra siparis esitleme POST istegi, dashboard istemcisinin eszamanli token yenilemesinden ayrilarak ayni request context icinde tek CSRF ciftini kullanir. Production guvenlik davranisi degismez.

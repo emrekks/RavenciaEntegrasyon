@@ -348,3 +348,9 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - Full-stack tarayici kaniti login isteginden once `/api/v1/auth/csrf` ile cookie/token ciftini alir ve `X-CSRF-TOKEN` basligini gonderir.
 - `node --check src/MarketplaceHub.Web/e2e/full-stack-fake.mjs`: PASS.
 - Exact release hatti sonucu bekleniyor; production auth davranisi degistirilmedi.
+
+## 2026-08-10 — v10.30-r6 full-stack kanit atomik CSRF
+
+- r5 oturum acmayi gecti; siparis esitleme istegi dashboard yuklenirken yenilenen CSRF cookie nedeniyle `REQUEST_VERIFICATION_FAILED` verdi.
+- Eslestirme isi POST'u tek Playwright request context icinde yeni alinmis token ile atomik hale getirildi.
+- Production middleware ve endpoint davranisi degistirilmedi; exact release sonucu bekleniyor.
