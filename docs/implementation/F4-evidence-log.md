@@ -53,6 +53,7 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 - Kullanılmayan genel faturalama ayarları kullanıcı menüsünden kaldırıldı; eski `/settings/billing` adresi sistem ayarlarına yönlenir.
 - Fatura oluşturma, yükleme ve provider submit onay kapıları değiştirilmedi; dış yazma açılmadı.
 - Web TypeScript ve Vitest PASS; provider/Stage mali akışı `NOT_RUN`.
+- Uygulama kabugu E2E kontrolu kaldirilan Faturalama menusuyle esitlendi; r1 dokumantasyon kapisinda durdu ve canliya cikmadi. r2 exact release `PENDING`.
 
 ## 2026-08-09 — v10.19 fatura taslak ön izlemesi
 
