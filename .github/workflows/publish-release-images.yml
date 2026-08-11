@@ -27,6 +27,8 @@ jobs:
 
       - name: Verify approved main commit and source gate
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python3 scripts/verify-repository-cleanliness.py

@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-11 - v10.37-r3 release token bağlamı
+
+`release-2026-08-11-v10.37-r2` koşusunun gerçek job logu, source-gate curl çağrısından önce `GITHUB_TOKEN: unbound variable` hatasını gösterdi. GitHub'ın yerleşik tokenı yalnız bu adıma `github.token` bağlamından aktarıldı; workflow düzeyindeki yetki `actions: read`, `contents: read`, `packages: write` ile sınırlı kaldı. Exact source workflow kontrolü, immutable image, provenance/SBOM ve digest güvenliği değişmedi. Yeni main CI ve r3 release koşusu bekleniyor.
+
 ## 2026-08-11 - v10.37-r2 immutable release kapısı
 
 `release-2026-08-11-v10.37` etiketi, başarılı source CI'a rağmen Checks API'nin workflow adı yerine `verify` job adını döndürmesi nedeniyle imaj buildinden önce fail-closed durdu. Kapı; exact `verify.yml` workflow koşularında aynı SHA, `main`, `push` ve `success` şartlarını Actions API ile doğrulayacak biçimde düzeltildi. Canlı GitHub Actions API sorgusu doğru source koşusunu döndürdü ve repository guard testleri `5/5` geçti. Required status check adı, immutable imaj, provenance/SBOM ve digest kontrolleri değişmedi. Yeni main CI ve `v10.37-r2` release koşusu bekleniyor.

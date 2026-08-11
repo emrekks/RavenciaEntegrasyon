@@ -45,6 +45,7 @@ public sealed class RepositoryGuardTests
         Assert.Contains("docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c", workflow, StringComparison.Ordinal);
         Assert.Contains("version: v0.34.1", workflow, StringComparison.Ordinal);
         Assert.Contains("actions: read", workflow, StringComparison.Ordinal);
+        Assert.Contains("GITHUB_TOKEN: ${{ github.token }}", workflow, StringComparison.Ordinal);
         Assert.Contains("git merge-base --is-ancestor", workflow, StringComparison.Ordinal);
         Assert.Contains("actions/workflows/verify.yml/runs", workflow, StringComparison.Ordinal);
         Assert.Contains(".head_branch == \"main\"", workflow, StringComparison.Ordinal);

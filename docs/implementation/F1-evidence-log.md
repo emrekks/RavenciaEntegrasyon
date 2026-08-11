@@ -7,6 +7,12 @@
 - Canlı GitHub Actions API sorgusu `31499027863` source koşusunu doğru SHA/branch/event/conclusion ile döndürdü; repository guard testleri `5/5` geçti.
 - Required status check adı, image build/push, provenance/SBOM, digest doğrulaması ve release concurrency davranışı değiştirilmedi; r2 CI/release kanıtı bekleniyor.
 
+## 2026-08-11 - F1-EV-029 immutable release token r3
+
+- R2 job logu source-gate adımında `GITHUB_TOKEN: unbound variable` hatasını kanıtladı; build/push adımları çalışmadı.
+- Yerleşik `github.token` yalnız source-gate adımına aktarıldı; workflow izinleri `actions: read`, `contents: read`, `packages: write` ile sınırlıdır.
+- Exact `verify.yml` source koşusu, provenance/SBOM, digest doğrulaması ve iptal edilmeyen release concurrency korunur; r3 koşusu bekleniyor.
+
 Doğrulama tarihi: 2026-07-31. Ortam: Windows geliştirme makinesi üzerinde Docker Desktop Linux/amd64; hedef Ubuntu Server değildir.
 
 | Kanıt | Sonuç | Ölçüm |

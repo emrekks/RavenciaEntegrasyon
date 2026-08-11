@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - v10.37-r3 release token bağlamı
+
+- R2 release kapısının `GITHUB_TOKEN: unbound variable` ile imaj buildinden önce durduğu job logundan doğrulandı.
+- Yerleşik GitHub tokenı yalnız source-gate adımına aktarıldı; `actions: read` en az izni, exact workflow doğrulaması ve tüm immutable image güvenlik kontrolleri korundu.
+
 ## 2026-08-11 - v10.37-r2 release kaynak kapısı düzeltmesi
 
 - Immutable release kapısı, Checks API'deki job adını workflow adı sanan hatalı eşleşmeden çıkarıldı.
