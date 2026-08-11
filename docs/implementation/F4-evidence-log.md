@@ -1,5 +1,11 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 — Stage operator real-reason messaging
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Kullanıcı nedeni | CODED_TARGETED_VALIDATED | F4 write gate olumsuz sonucu artık capability desteği yok diye sunulmaz; dış yazmanın bağlantıda etkin olmadığı gerçek nedeni döner. Infrastructure build 0 hata/uyarı ve Web typecheck geçti. |
+
 ## 2026-08-12 — Manual runtime capability query removal
 
 | Kanıt | Durum | Not |

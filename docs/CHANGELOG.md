@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Stage operator real-reason messaging
+
+- Fatura ve ürün yayın yüzeylerindeki capability temelli engel metinleri, Stage manuel çalışma ve Production write switch davranışını doğru ifade edecek şekilde güncellendi.
+
 ## 2026-08-12 - Stage operator action visibility
 
 - Gönderi ve iade ekranları Stage manuel aksiyonlarını capability kaydı eksikliği yüzünden gizlemeyi bıraktı. Production dış-yazma switch ve ilgili teknik/mali doğrulamalar değişmedi.

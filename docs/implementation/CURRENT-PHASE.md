@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - Stage operator real-reason messaging
+
+Fatura ve ürün yayın yüzeyleri capability kanıtı eksikliğini işlem engeli gibi göstermez. Stage manuel işlemlerinin doğrudan sağlayıcıya gittiği, Production’ın ise aktif bağlantı ve dış-yazma anahtarlarıyla korunduğu kullanıcıya açık biçimde gösterilir.
+
 ## 2026-08-12 - Stage operator action visibility
 
 Gönderi/iade detayları, manuel Stage işlemlerini artık capability kaydı eksik diye gizlemez. Geçerli Stage bağlantısında paket işlemleri, PDF etiket denemesi ve `ACTION_REQUIRED` iadede onay/ret görünür; input, idempotency, provider yanıtı ve iade ret nedeni/kanıt kuralları korunur. Production görünümü mevcut write güvenlik davranışında kalır.

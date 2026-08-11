@@ -429,6 +429,6 @@ public sealed partial class F4BillingService(
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
     private static ServiceResult<T> PreconditionRequired<T>() => ServiceResult<T>.Fail("PRECONDITION_REQUIRED", "Mevcut kayıt için If-Match gereklidir.", 428);
-    private static ServiceResult<T> CapabilityUnknown<T>(string capability) => ServiceResult<T>.Fail("CAPABILITY_NOT_SUPPORTED", $"{capability} doğrulanmadığı için dış işlem kapalıdır.", 422);
+    private static ServiceResult<T> CapabilityUnknown<T>(string capability) => ServiceResult<T>.Fail("EXTERNAL_WRITE_NOT_ENABLED", "Bu bağlantıda dış yazma işlemi etkin değil.", 422);
 
 }
