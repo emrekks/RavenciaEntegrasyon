@@ -4,14 +4,14 @@ Bu runbook, onaylı bir Git commit'inden production adayına ait Linux/amd64 uyg
 
 ## Ön koşullar
 
-- Yayınlanacak commit `main` dalında olmalı ve yerel locked restore, build, test, web build ve repository guard seti geçmelidir.
+- Yayınlanacak commit `main` dalında olmalı ve `Verify source changes` GitHub kontrolünü başarıyla tamamlamış olmalıdır. Bu kontrol locked restore, build, test, format, web build ve repository guard setini exact runtime ile çalıştırır.
 - GitHub Actions repository için etkin olmalı; workflow'un GitHub Container Registry'ye yazabilmesi için `packages: write` izni korunmalıdır.
 - Gerçek secret, `.env`, PFX, platform credential veya fixture workflow'a eklenmez. Yayın akışı yalnız GitHub'ın kısa ömürlü `GITHUB_TOKEN` değerini registry oturumu için kullanır.
 
 ## Yayın
 
 1. GitHub'da **Actions → Publish immutable release images → Run workflow** yoluyla `main` dalındaki onaylı commit'i seç.
-2. Akış önce exact SDK/runtime ile locked .NET restore, build, bütün testler, format kontrolü ve web `npm ci`/typecheck/test/build kapılarını çalıştırır. Bu kapılardan biri geçmeden registry oturumu açılmaz ve imaj yayınlanmaz.
+2. Akış, commit'in `main` üzerinde olduğunu ve aynı commit için başarılı `Verify source changes` kontrolü bulunduğunu GitHub Checks API ile doğrular. Doğrulama yoksa registry oturumu açılmaz ve imaj yayınlanmaz; kaynak testleri tag'de ikinci kez çalıştırılmaz.
 3. Akışın iki imajı da başarıyla oluşturmasını bekle. Uygulama `Dockerfile`, production edge ise yalnız `deploy/caddy/Dockerfile.production` üzerinden oluşturulur.
 4. Job özetindeki Git commit'i ve iki `name@sha256:...` değerini release kaydına kopyala:
    - `MARKETPLACEHUB_APP_IMAGE`

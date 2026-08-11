@@ -153,7 +153,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM"), cancellationToken);
         if (connection is null) return NotFound<IReadOnlyList<CapabilityView>>();
         await EnsureCapabilityRowsAsync(connection, cancellationToken);
-        var rows = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).OrderBy(x => x.Code).Select(x => new CapabilityView(x.Code, x.SupportLevel.ToString().ToUpperInvariant(), x.ApiVersion, x.Environment, x.StoreScope, x.SourceUrl, x.VerifiedAt, x.ConstraintsJson, x.Version)).ToListAsync(cancellationToken);
+        var rows = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).OrderBy(x => x.Code).Select(x => new CapabilityView(x.Code, x.SupportLevel.ToString().ToUpperInvariant(), x.ApiVersion, x.Environment, x.StoreScope, x.SourceUrl, x.VerifiedAt, x.ConstraintsJson, x.EvidenceNote, x.Version)).ToListAsync(cancellationToken);
         return ServiceResult<IReadOnlyList<CapabilityView>>.Ok(rows);
     }
 
@@ -194,7 +194,7 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
         capability.EvidenceNote = command.EvidenceNote.Trim(); capability.FixtureChecksum = checksum; capability.ConstraintsJson = command.ConstraintsJson; capability.VerifiedAt = command.VerifiedAt; capability.Version++;
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = actorUserId, Action = "CAPABILITY_EVIDENCE_RECORDED", TargetType = "PlatformCapability", TargetId = capability.Id.ToString("D"), Reason = $"{normalizedCode}:{support}", CorrelationId = correlationId, CreatedAt = now });
         await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<CapabilityView>.Ok(new(capability.Code, capability.SupportLevel.ToString().ToUpperInvariant(), capability.ApiVersion, capability.Environment, capability.StoreScope, capability.SourceUrl, capability.VerifiedAt, capability.ConstraintsJson, capability.Version));
+        return ServiceResult<CapabilityView>.Ok(new(capability.Code, capability.SupportLevel.ToString().ToUpperInvariant(), capability.ApiVersion, capability.Environment, capability.StoreScope, capability.SourceUrl, capability.VerifiedAt, capability.ConstraintsJson, capability.EvidenceNote, capability.Version));
     }
 
     public async Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> SyncPoliciesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)

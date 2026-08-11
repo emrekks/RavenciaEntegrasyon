@@ -1,5 +1,15 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-11 - v10.36 iade eşitleme ve referans çalışma alanı
+
+Uzak Trendyol iade claim'i yerelde henüz bulunmayan siparişe bağlı olduğunda, iade kaydı sessizce kaybedilmez: aynı sipariş önce salt-okunur exact read ile içeri alınır, başarılı ilişkilendirmeden sonra claim saklanır. Sipariş uzakta da yoksa mevcut audit kaydı ve fail-closed davranış korunur. İade ekranı; tüm iade, talep, kargo, aksiyon, onay/red, analiz, ihtilaf ve askı sekmeleri; müşteri/sipariş/iade kodu/barkod/sebep/tarih filtreleri ve referans sütun düzeniyle yenilendi. Dış iade aksiyonu veya capability kapıları değiştirilmedi. Infrastructure build, Trendyol adapter sözleşme testi `50/50`, iade operasyonları web testi `4/4` ve web typecheck `PASS`; gerçek Stage return-read kabulü `NOT_RUN`.
+
+**2026-08-11 Stage teşhisi:** Bağlı Trendyol Stage hesabında `TRENDYOL_CONNECTION_TEST` işi `SUCCEEDED` oldu; ORDER/PRODUCT/REFERENCE read destekli kalırken `RETURN_READ` gerçek claims probu başarısız olduğundan `UNKNOWN` kaldı. Read capability kapısı kaldırılmadı. Capability API/UI artık probe evidence notunu da taşır; dağıtılan sürümde hata kodu operatöre görünür olacaktır. Bu teşhis değişikliğinin Stage tekrar koşusu `NOT_RUN`.
+
+## 2026-08-11 - CI trigger tekrarı azaltma
+
+`Verify source changes` artık yalnız pull request ve `main` push'larında çalışır; `release-*` tag push'u aynı kaynak doğrulamasını ikinci kez başlatmaz. Tam doğrulama setine Playwright E2E de `main` kapısında eklendi. Immutable image yayın akışı, tag/manuel commit'in `main` üzerinde olduğunu ve aynı SHA için başarılı `Verify source changes` GitHub check kaydı bulunduğunu doğrulamadan registry oturumu açmaz. İki immutable image build/push, provenance/SBOM ve digest doğrulaması korunur; release concurrency iptal edilmez. YAML ve workflow bağımlılık denetimi yerelde beklemektedir (`NOT_RUN`).
+
 ## 2026-08-11 - v10.35-r3 yayın kapısı kaydı
 
 Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlendi; hedefli F3 bileşen testi `4/4 PASS` verdi. Tam regresyon, Stage ve canlı kabul `NOT_RUN` durumundadır; bu kayıt yalnızca yayın kapısındaki test hizalamasını belgeler.

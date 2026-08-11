@@ -3,6 +3,8 @@ name: Verify source changes
 on:
   pull_request:
   push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -74,3 +76,4 @@ jobs:
           npm run typecheck
           npm test
           npm run build
+          npm run test:e2e

@@ -1,5 +1,23 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - Stage iade probe teşhisi
+
+- Başarısız salt-okunur capability proplarının evidence notu artık capability API ve bağlantı ekranında görünür; `RETURN_READ` gibi `UNKNOWN` kayıtların hata kodu saklanmaz.
+- Bağlı Trendyol Stage hesabında bağlantı testi başarılı, ancak claims endpointi probu `RETURN_READ=UNKNOWN` bıraktı. Güvenlik kapısı kaldırılmadı veya capability kanıtsız biçimde destekli yapılmadı.
+
+## 2026-08-11 - İade eşitleme ve referans çalışma alanı v10.36
+
+- Yerelde bulunmayan siparişe ait uzak iade claim'i, sipariş salt-okunur exact read ile başarıyla alındıktan sonra ilişkilendirilir; uzak sipariş bulunamazsa sahte/bağlantısız iade kaydı oluşturulmaz ve audit kaydı korunur.
+- İadeler ekranı referanstaki durum sekmeleri, müşteri/sipariş/iade kodu/barkod/sebep/tarih filtreleri ve sipariş–alıcı–ürün–kargo–fatura–neden–durum sütunlarıyla yenilendi.
+- External write, onay/ret kapıları ve capability gereksinimleri değişmedi. Infrastructure build, Trendyol adapter sözleşme testi `50/50`, iade operasyonları web testi `4/4` ve web typecheck `PASS`; Stage return-read kabulü `NOT_RUN`.
+
+## 2026-08-11 - CI ve immutable release tetikleyici sadeleştirmesi
+
+- `Verify source changes` push tetikleyicisi yalnız `main` ile sınırlandı; aynı commit'e eklenen `release-*` etiketi artık kaynak testlerini ikinci kez çalıştırmaz.
+- Locked .NET/web doğrulaması, format ve Playwright E2E kontrolü `main` kapısında tek seferde korunur.
+- Immutable image yayın akışı, `main` üzerinde bulunan ve başarılı `Verify source changes` check'i olan commit olmadan registry'ye giriş/publish yapmaz; SHA etiketli app/edge imajları, provenance/SBOM ve digest doğrulaması korunur.
+- Normal CI concurrency yeni `main` commit'i geldiğinde eski koşuyu iptal etmeye devam eder; release publish koşuları iptal edilmez.
+
 ## 2026-08-11 - v10.35-r3 yayın kapısı kaydı
 
 - Fatura işlemleri menüsünün görünen başlığı ve erişilebilir adı aynı tutuldu: `Fatura işlemleri`.

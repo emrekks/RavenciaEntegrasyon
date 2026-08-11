@@ -1,12 +1,12 @@
 schema_version: 1
 document_version: '8.4'
-updated_at: '2026-08-10'
+updated_at: '2026-08-11'
 active_scope:
 - TRENDYOL
 - TRENDYOL_EFATURAM
 overall_status: F3_CORE_CODE_COMPLETE_VALIDATION_PENDING_F4_CODE_COMPLETE_VALIDATION_PENDING_PRODUCTION_BLOCKED
 production_status: BLOCKED
-local_validation: V10_33_MAPPING_AND_MANUAL_INVOICE_UPLOAD_TYPESCRIPT_AND_F3_TARGETED_PASS_RELEASE_VALIDATION_PENDING
+local_validation: V10_36_RETURN_SYNC_ORDER_HYDRATION_REFERENCE_WORKSPACE_AND_CAPABILITY_PROBE_DIAGNOSTICS_TYPESCRIPT_INFRASTRUCTURE_BUILD_PASS_STAGE_RETURN_READ_UNKNOWN
 source_of_truth: docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md
 phases:
   F0:
@@ -111,4 +111,4 @@ required_documents_on_status_change:
 - docs/implementation/CURRENT-PHASE.md
 - docs/CHANGELOG.md
 - relevant_phase_evidence_log
-last_targeted_ui_update: "2026-08-11-v10.35-r3"
+last_targeted_ui_update: "2026-08-11-v10.36-returns-reference-workspace"

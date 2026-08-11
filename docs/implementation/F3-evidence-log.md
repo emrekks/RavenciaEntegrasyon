@@ -1,3 +1,15 @@
+## 2026-08-11 - v10.36 iade eşitleme ve referans çalışma alanı
+
+- Return sync, yerelde eksik olan bağlı siparişi yalnız exact remote read ile hydrate eder; sipariş bulunamazsa claim üretmek yerine mevcut `RETURN_ORDER_NOT_FOUND` audit davranışını korur.
+- İade ekranı referans sekme, filtre ve ayrıntılı satır düzenine taşındı.
+- Infrastructure build 0 hata/0 uyarı, Trendyol adapter sözleşme testi `50/50`, iade operasyonları web testi `4/4` ve web typecheck `PASS`; gerçek Trendyol Stage return-read henüz çalıştırılmadı (`NOT_RUN`).
+
+## 2026-08-11 - Stage iade capability teşhisi
+
+- Bağlı Stage hesabında `TRENDYOL_CONNECTION_TEST` işi `SUCCEEDED` (job correlation `206e125b45d042b4981f527b8fb81ad1`); ORDER_READ, PRODUCT_READ ve REFERENCE_READ destekliyken claims probu `RETURN_READ=UNKNOWN` bıraktı.
+- `CapabilityView` probe evidence notunu API ve bağlantı ekranına taşır; unknown durumunun adapter hata kodu dağıtım sonrası doğrudan görülebilir. Read gate fail-closed kaldı; capability manuel olarak `SUPPORTED` yapılmadı.
+- Infrastructure build 0 hata/0 uyarı ve web typecheck `PASS`; teşhis sürümünün gerçek Stage tekrar koşusu `NOT_RUN`.
+
 ## 2026-08-11 - v10.35-r3 yayın kapısı kaydı
 
 - Fatura işlemleri menüsünün görünen başlığı ile erişilebilir adı eşit tutuldu: `Fatura işlemleri`.

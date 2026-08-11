@@ -182,7 +182,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
             var image = firstLine?.VariantId is { } variantId ? imageUrls.GetValueOrDefault(variantId) : null;
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, claim.ActionDueAt, claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson).Name,
-                order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", package?.CargoProviderExternalId, package?.CargoTrackingNumber, image, claimLines.Count);
+                order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", package?.CargoProviderExternalId, package?.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode);
         }).ToList();
         return Page(rows, limit, x => x.Id);
     }

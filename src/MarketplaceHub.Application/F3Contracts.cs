@@ -164,7 +164,7 @@ public interface IWebhookVerifier
 }
 
 public sealed record ConnectionView(Guid Id, Guid PublicId, string PlatformCode, string Environment, string DisplayName, string ExternalStoreId, string Status, string ApiVersion, DateTimeOffset? LastTestedAt, DateTimeOffset? LastSuccessAt, string? LastErrorCode, bool HasCredential, long Version);
-public sealed record CapabilityView(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string? SourceUrl, DateTimeOffset? VerifiedAt, string? ConstraintsJson, long Version);
+public sealed record CapabilityView(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string? SourceUrl, DateTimeOffset? VerifiedAt, string? ConstraintsJson, string? EvidenceNote, long Version);
 public sealed record RecordCapabilityEvidenceCommand(string SupportLevel, string SourceUrl, string SourceVersion, string Environment, string StoreScope, string EvidenceNote, string? FixtureChecksum, string? ConstraintsJson, DateTimeOffset VerifiedAt);
 public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null);
 public sealed record UpdateConnectionCommand(string DisplayName, string? UserAgentIdentity);
@@ -319,7 +319,8 @@ public sealed record ReturnListView(
     string? CargoProviderName = null,
     string? CargoTrackingNumber = null,
     string? PrimaryImageUrl = null,
-    int ProductCount = 0);
+    int ProductCount = 0,
+    string? PrimaryBarcode = null);
 public sealed record ReturnDetailView(
     Guid Id,
     string ExternalClaimId,
