@@ -14,6 +14,7 @@
 - Resmî fixture ile yeni Stage siparişi ve salt-okunur order-sync başarıyla tamamlandı. Uzak `ReadyToShip` durumunun canonical eşlemesi eklendi; daha önce bu açık yazım fail-closed `ManualReview` üretiyordu. Normal dış yazma ve production davranışı değişmedi.
 - Daha önce kaydedilmiş aynı raw kaynak olayındaki yanlış `ManualReview` projeksiyonu, yalnız tanınan canonical duruma idempotent olarak iyileştirilebilir hale getirildi. Bu yol dış çağrı veya yeni history olayı üretmez.
 - Sağlayıcının aynı paket/raw durumda olay zamanını değiştirebildiği gerçek Stage eşitlemesiyle görüldü. Dar yerel projeksiyon onarımı event kimliğinden bağımsız, ancak yalnız aynı paket/raw durum ve `ManualReview` kaydıyla sınırlı hale getirildi.
+- Boş order-line listeli tekrar yanıtlarındaki erken dönüş, güvenli paket canonical projeksiyon onarımını engelliyordu. Optimizasyon kaldırıldı; idempotency ve miktar kontrolleri yerinde bırakıldı.
 
 ## 2026-08-11 - v10.41 iade ürün satırı eşlemesi
 
