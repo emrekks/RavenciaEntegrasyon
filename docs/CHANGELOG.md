@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - CI zaman aşımı güvenlik sınırı
+
+- Kaynak doğrulama işi için 45 dakikalık fail-closed zaman sınırı eklendi. Bağımlılık veya tarayıcı kurulumu takılırsa iş belirsiz biçimde devam etmez; concurrency yeni ana dal commitinde eski CI'ı iptal etmeye devam eder.
+
 ## 2026-08-11 - Denetlenebilir Stage etiket capability canary
 
 - Kanıtsız `SUPPORTED` işaretleme yerine yalnız Owner/Admin için dar kapsamlı Stage etiket canary akışı eklendi.
