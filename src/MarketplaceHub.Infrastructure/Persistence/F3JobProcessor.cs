@@ -684,20 +684,26 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         catch (JsonException) { return JobExecutionResult.Blocked("CAPABILITY_PROBE_PAYLOAD_INVALID", "Stage capability canary payloadı geçersiz."); }
         if (payload is null || payload.JobId == Guid.Empty || payload.PackageId == Guid.Empty || payload.ActorUserId == Guid.Empty || payload.CapabilityCode is not (F3Capabilities.LabelRead or F3Capabilities.LabelWrite)) return JobExecutionResult.Blocked("CAPABILITY_PROBE_PAYLOAD_INVALID", "Stage capability canary zorunlu alanları geçersiz.");
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
-        if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Blocked("STAGE_CONNECTION_REQUIRED", "Capability canary yalnız Trendyol STAGE bağlantısında çalışır.");
+        if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) || !string.Equals(connection.ExternalStoreId, "2738", StringComparison.Ordinal)) return JobExecutionResult.Blocked("STAGE_CONNECTION_REQUIRED", "Capability canary yalnız Trendyol STAGE seller 2738 bağlantısında çalışır.");
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.PackageId && x.ConnectionId == connectionId, cancellationToken);
         if (package is null || string.IsNullOrWhiteSpace(package.CargoTrackingNumber)) return JobExecutionResult.Blocked("CAPABILITY_PROBE_TARGET_INVALID", "Canary için takip numaralı Stage paketi bulunamadı.");
-        if (payload.CapabilityCode == F3Capabilities.LabelWrite && package.Status.ToString() is not ("ReadyToShip" or "Processing")) return JobExecutionResult.Blocked("STAGE_LABEL_PACKAGE_NOT_READY", "LABEL_WRITE canary yalnız Picking/Processing veya ReadyToShip Stage paketi üzerinde çalışır.");
         var context = Context(tenantId, connectionId, correlationId, $"stage-capability-probe:{payload.JobId:N}") with { IsStageCapabilityProbe = true };
         if (payload.CapabilityCode == F3Capabilities.LabelWrite)
         {
+            var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.OrderId, cancellationToken);
+            var latestFixture = await db.AuditLogs.AsNoTracking().Where(x => x.TenantId == tenantId && x.Action == "STAGE_TEST_ORDER_CREATED" && x.TargetType == "StageTestOrder").OrderByDescending(x => x.CreatedAt).Select(x => x.TargetId).FirstOrDefaultAsync(cancellationToken);
+            if (order is null || !string.Equals(order.OrderNumber, latestFixture, StringComparison.Ordinal)) return JobExecutionResult.Blocked("STAGE_LABEL_FRESH_FIXTURE_REQUIRED", "LABEL_WRITE canary yalnız en son oluşturulan auditli Stage Test Order paketi üzerinde çalışır.");
+            var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == package.OrderId).Select(x => new { x.ExternalLineId, x.OrderedQuantity }).ToListAsync(cancellationToken);
+            if (lines.Count != 1 || !long.TryParse(lines[0].ExternalLineId, out var lineId) || lines[0].OrderedQuantity <= 0 || lines[0].OrderedQuantity != decimal.Truncate(lines[0].OrderedQuantity) || lines[0].OrderedQuantity > int.MaxValue) return JobExecutionResult.Blocked("STAGE_LABEL_PICKING_PAYLOAD_INVALID", "Taze Stage fixture için tek ve geçerli satır kimliği/miktarı gerekir.");
+            var picking = await orders.ExecutePackageActionAsync(context, new PackageActionCommand(package.ExternalPackageId, "PICKING", JsonSerializer.Serialize(new { lines = new[] { new { lineId, quantity = (int)lines[0].OrderedQuantity } }, @params = new { }, status = "Picking" })), cancellationToken);
+            if (!picking.IsSuccess) throw JobProcessingException.FromAdapter(picking.Error!);
             var created = await orders.CreateCommonLabelAsync(context, new CommonLabelRequest(package.CargoTrackingNumber, payload.BoxQuantity, payload.VolumetricHeight), cancellationToken);
             if (!created.IsSuccess) throw JobProcessingException.FromAdapter(created.Error!);
         }
         var document = await orders.GetCommonLabelAsync(context, package.CargoTrackingNumber, cancellationToken);
         if (!document.IsSuccess) throw JobProcessingException.FromAdapter(document.Error!);
         var hash = Convert.ToHexString(SHA256.HashData(document.Value!.Content));
-        var codes = payload.CapabilityCode == F3Capabilities.LabelWrite ? new[] { F3Capabilities.LabelRead, F3Capabilities.LabelWrite } : new[] { F3Capabilities.LabelRead };
+        var codes = payload.CapabilityCode == F3Capabilities.LabelWrite ? new[] { F3Capabilities.LabelRead, F3Capabilities.LabelWrite, F3Capabilities.ShipmentWrite } : new[] { F3Capabilities.LabelRead };
         var now = timeProvider.GetUtcNow();
         foreach (var code in codes)
         {
@@ -708,8 +714,10 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
             capability.SourceVersion = "V2";
             capability.Environment = connection.Environment;
             capability.StoreScope = connection.ExternalStoreId;
-            capability.ConstraintsJson = JsonSerializer.Serialize(new { formats = new[] { document.Value.Format } });
-            capability.EvidenceNote = $"{code} Stage canary gerçek paket/etiket read-back ile başarılı; private fixture SHA-256 kaydedildi.";
+            capability.ConstraintsJson = code == F3Capabilities.ShipmentWrite ? JsonSerializer.Serialize(new { allowedActions = new[] { "PICKING" } }) : JsonSerializer.Serialize(new { formats = new[] { document.Value.Format } });
+            capability.EvidenceNote = code == F3Capabilities.ShipmentWrite
+                ? "SHIPMENT_WRITE Stage canary, en son auditli test fixture üzerinde resmî PICKING isteğini ve ardından ortak etiket create/read-back zincirini başarıyla doğruladı."
+                : $"{code} Stage canary gerçek paket/etiket read-back ile başarılı; private fixture SHA-256 kaydedildi.";
             capability.FixtureChecksum = hash;
             capability.VerifiedAt = now;
             capability.Version++;

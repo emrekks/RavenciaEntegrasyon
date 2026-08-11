@@ -169,7 +169,7 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
 
     public async Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken)
     {
-        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized)) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.WriteClosed());
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized, context)) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.WriteClosed());
         if (string.IsNullOrWhiteSpace(command.ExternalPackageId)) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Contract());
         var action = command.Action.Trim().ToUpperInvariant();
         var seller = authorized.Connection.ExternalStoreId;
@@ -316,7 +316,9 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
 
     private bool CanWrite(TrendyolRequestContext context, AdapterContext? adapterContext = null) =>
         (GlobalWritesEnabled && context.ExternalWritesEnabled)
-        || (adapterContext?.IsStageCapabilityProbe == true && string.Equals(context.Connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase));
+        || (adapterContext?.IsStageCapabilityProbe == true
+            && string.Equals(context.Connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(context.Connection.ExternalStoreId, "2738", StringComparison.Ordinal));
     private static CapabilityEvidence SupportedEvidence(string code, ConnectionIdentity identity, string sourceUrl, string note, DateTimeOffset verifiedAt) =>
         new(code, "SUPPORTED", "V2", identity.Environment, identity.ExternalStoreId, sourceUrl, "2026-08-04", null, null, note, null, verifiedAt);
 

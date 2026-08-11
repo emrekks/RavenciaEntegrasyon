@@ -2,6 +2,8 @@
 
 ## 2026-08-11 - Stage capability canary sonucu
 
+Resmî ortak etiket sözleşmesi, create çağrısının paket `Picking` veya `Invoiced` durumuna beslendikten sonra yapılmasını ister. Taze test paketi `ReadyToShip` döndüğü için ilk create isteği doğru endpoint ve gövdeyle `400` reddi aldı; bu kanıt `LABEL_WRITE` için yeterli değildi. Canary artık yalnız en son auditli Stage Test Order, `STAGE/2738` ve tek doğrulanmış satır üzerinde önce resmî `Picking` payloadını gönderir, sonra ortak etiket create → read-back zincirini çalıştırır. Bu dar istisna genel/production dış-yazma anahtarlarını açmaz; başarılı olursa yalnız `PICKING` shipment-write aksiyonu ile label kanıtları güncellenir.
+
 Taze paketin ilk sync'i, eski canonical eşleme nedeniyle aynı kaynak olayını `ManualReview` olarak saklamıştı. İdempotent upsert, geçmişte kaydedilmiş aynı raw event için yalnız `ManualReview → tanınan canonical durum` projeksiyonunu güvenle iyileştirir; yeni dış çağrı, yeni durum olayı veya sıralama bypass'ı üretmez. Eşitleme ardından label write canary tekrar bekleniyor.
 
 Gerçek yeniden eşitleme, sağlayıcının aynı paket/raw durum için olay zamanını değiştirdiğini gösterdi; event kimliği bu nedenle farklılaştı ve normal sıralama kapısı `ManualReview` durumunu korudu. Onarım, yalnız aynı paket ve aynı raw durum için `ManualReview → tanınan canonical durum` projeksiyonuna genişletildi; yeni dış etki veya history kaydı üretilmez.

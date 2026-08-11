@@ -20,6 +20,7 @@
 - Sağlayıcının aynı paket/raw durumda olay zamanını değiştirebildiği gerçek Stage eşitlemesiyle görüldü. Dar yerel projeksiyon onarımı event kimliğinden bağımsız, ancak yalnız aynı paket/raw durum ve `ManualReview` kaydıyla sınırlı hale getirildi.
 - Boş order-line listeli tekrar yanıtlarındaki erken dönüş, güvenli paket canonical projeksiyon onarımını engelliyordu. Optimizasyon kaldırıldı; idempotency ve miktar kontrolleri yerinde bırakıldı.
 - Boş satırlı tekrarlar ayrıca ilk satır-miktar korumasından da dönüyordu. Bu cevaplar yalnız mevcut paketin yerel canonical onarımı için işlenir; satırlı cevaplarda miktar bütünlüğü doğrulaması değişmedi.
+- Resmî ortak etiket sözleşmesi create çağrısından önce `Picking` veya `Invoiced` ister. İlk taze `ReadyToShip` denemesi bu nedenle platform tarafından reddedildi. Canary yalnız son auditli `STAGE/2738` Test Order fixture’ında tek geçerli satırla önce resmî `Picking` isteğini, sonra label create/read-back zincirini çalıştıracak şekilde daraltıldı. Bu yol genel veya production dış-yazma anahtarlarını açmaz; gerçek kabul olmadan capability yükseltmez.
 
 ## 2026-08-11 - v10.41 iade ürün satırı eşlemesi
 
