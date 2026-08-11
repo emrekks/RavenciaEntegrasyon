@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - v10.43 CI biçimlendirme düzeltmesi
+
+Stage manuel runtime refactorunun ilk main CI koşusu, yalnız yeni policy testindeki satır biçiminden başarısız oldu; uygulama kodu veya runtime davranışı hatası yoktu. Test, repository formatter beklentisine göre düzenlendi. Solution build ve ilgili policy testleri tekrar geçti; yeni source CI koşusu bekleniyor.
+
 ## 2026-08-11 - Stage manuel runtime sınırı
 
 Stage bağlantılarında normal manuel read/write artık capability evidence, fixture SHA, connection write switch, mali policy onayı, `AUTO_*`, parola yeniden doğrulaması veya ek açık onay nedeniyle bloke olmaz. Bu istisna yalnız `STAGE` + `ACTIVE` bağlantı ve manuel job bağlamı için geçerlidir; teknik payload doğrulama, idempotency, concurrency, audit ve provider hata işleme korunur. Endpoint seçimi `STAGE`/`PRODUCTION` dışındaki environment değerlerinde fail-closed’dur; Stage ve Production base URL’leri HTTPS ve birbirinden farklı olmak zorundadır. Production read/write, capability, global/connection write switch, mali policy, parola/onay ve mevcut otomatik akış korumalarını sürdürür. Gerçek Stage kabulü bu değişiklikten sonra yeniden çalıştırılacaktır.
@@ -122,7 +126,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 8.5
+**Ana plan sürümü:** 8.6
 
 **2026-08-10 hızlı geliştirme politikası v8.3:** Günlük UI ve olağan işlevsel değişikliklerde otomatik test/build kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılandır. Hedefli kontrol yalnız somut sorun/derleme riski ya da güvenlik, migration, mali işlem, dosya yükleme, veri kaybı ve dış yazma gibi riskli alanlarda çalıştırılır. Tam doğrulama kullanıcı talebi veya release/production kapısına bırakılır.
 

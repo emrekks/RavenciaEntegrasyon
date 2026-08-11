@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - CI policy testi biçimlendirmesi
+
+- Stage runtime policy testindeki yalnız biçimsel satır düzeni repository formatter beklentisine göre düzeltildi. Davranış, güvenlik sınırı ve provider çağrıları değişmedi.
+
 ## 2026-08-11 - Stage manuel çalışma yolu
 
 - Ortak runtime politikası Stage-manual, automatic ve Production akışlarını ayırdı. Aktif Stage bağlantısındaki normal manuel read/write, capability/evidence/fixture SHA, connection write switch, fiscal-policy, `AUTO_*`, re-auth ve ek onay kapılarına takılmaz.

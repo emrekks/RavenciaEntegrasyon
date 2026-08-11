@@ -1,3 +1,7 @@
+## 2026-08-12 — v10.43 CI format correction
+
+- İlk source CI yalnız `IntegrationRuntimePolicyTests` satır biçiminden başarısız oldu. Test düzenlendi; solution build ve üç policy testi PASS, yeni source CI bekleniyor.
+
 ## 2026-08-11 — Stage manual runtime refactor
 
 - **Kapsam:** Trendyol STAGE/ACTIVE bağlantısındaki manuel read, return action, shipment action, common label, product ve price/inventory job enqueue yolları.

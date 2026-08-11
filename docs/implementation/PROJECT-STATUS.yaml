@@ -1,6 +1,6 @@
 schema_version: 1
-document_version: '8.5'
-updated_at: '2026-08-11'
+document_version: '8.6'
+updated_at: '2026-08-12'
 active_scope:
 - TRENDYOL
 - TRENDYOL_EFATURAM

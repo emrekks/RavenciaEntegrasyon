@@ -40,7 +40,14 @@ public sealed class IntegrationRuntimePolicyTests
 
     private static PlatformConnection Connection(string environment, string status) => new()
     {
-        Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), PublicId = Guid.NewGuid(), PlatformCode = "TRENDYOL", Environment = environment,
-        DisplayName = "test", ExternalStoreId = "test", Status = status, ApiVersion = "V2"
+        Id = Guid.NewGuid(),
+        TenantId = Guid.NewGuid(),
+        PublicId = Guid.NewGuid(),
+        PlatformCode = "TRENDYOL",
+        Environment = environment,
+        DisplayName = "test",
+        ExternalStoreId = "test",
+        Status = status,
+        ApiVersion = "V2"
     };
 }
