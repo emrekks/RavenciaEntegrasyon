@@ -686,7 +686,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Blocked("STAGE_CONNECTION_REQUIRED", "Capability canary yalnız Trendyol STAGE bağlantısında çalışır.");
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.PackageId && x.ConnectionId == connectionId, cancellationToken);
         if (package is null || string.IsNullOrWhiteSpace(package.CargoTrackingNumber)) return JobExecutionResult.Blocked("CAPABILITY_PROBE_TARGET_INVALID", "Canary için takip numaralı Stage paketi bulunamadı.");
-        if (payload.CapabilityCode == F3Capabilities.LabelWrite && !string.Equals(package.Status.ToString(), "ReadyToShip", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Blocked("STAGE_LABEL_PACKAGE_NOT_READY", "LABEL_WRITE canary yalnız ReadyToShip Stage paketi üzerinde çalışır.");
+        if (payload.CapabilityCode == F3Capabilities.LabelWrite && package.Status.ToString() is not ("ReadyToShip" or "Processing")) return JobExecutionResult.Blocked("STAGE_LABEL_PACKAGE_NOT_READY", "LABEL_WRITE canary yalnız Picking/Processing veya ReadyToShip Stage paketi üzerinde çalışır.");
         var context = Context(tenantId, connectionId, correlationId, $"stage-capability-probe:{payload.JobId:N}") with { IsStageCapabilityProbe = true };
         if (payload.CapabilityCode == F3Capabilities.LabelWrite)
         {

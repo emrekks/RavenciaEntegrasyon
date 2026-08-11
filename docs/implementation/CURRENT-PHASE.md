@@ -1,8 +1,8 @@
 # Güncel Faz ve Devralma Durumu
 
-## 2026-08-11 - Stage capability canary başlangıcı
+## 2026-08-11 - Stage capability canary sonucu
 
-Capability `UNKNOWN` kayıtlarını kanıtsız biçimde `SUPPORTED` yapmak yerine, yalnız Owner/Admin tarafından başlatılabilen ve yalnız Trendyol `STAGE` paketinde çalışan auditli etiket canary akışı eklendi. `LABEL_READ` gerçek ortak etiket read-back'ini, `LABEL_WRITE` ise önce create sonra read-back'i çalıştırır; başarılı sonuçta dönen etiket içeriğinin SHA-256 değeri, resmi kaynak URL'si, format kısıtı ve audit kaydıyla capability yükseltilir. Normal production/external-write anahtarları değişmez. Yerel build ve web typecheck geçti; Stage yürütme, gerçek `ReadyToShip` paketi üzerinde sıradadır.
+Capability `UNKNOWN` kayıtları kanıtsız biçimde `SUPPORTED` yapılmadı. Owner/Admin tarafından başlatılan Trendyol `STAGE` etiket canary'si, paket `92257909` / takip `7250000170335942` üzerinde gerçek ortak etiket read-back'iyle başarılı oldu: `LABEL_READ=SUPPORTED`, resmi kaynak URL'si, Stage/store kapsamı, format kısıtı, audit kaydı ve 64 karakterlik SHA-256 fixture kanıtı saklandı. Aynı pakette `LABEL_WRITE` isteği uzaktaki gerçek durumun `Invoiced` olması nedeniyle `REMOTE_REQUEST_REJECTED` ile fail-closed engellendi ve `UNKNOWN` kaldı. Resmî Trendyol Stage belgesindeki seller `2738`, sipariş `1238522676`, takip `7260000167037306` `Picking` fixture'ı yerelde bulundu; canary kuralı, yalnız Stage kapsamında `Picking/Processing` veya `ReadyToShip` paketlerine daraltıldı. Normal production/external-write anahtarları değişmedi.
 
 ## 2026-08-11 - v10.41 iade satırı bağlantısı
 

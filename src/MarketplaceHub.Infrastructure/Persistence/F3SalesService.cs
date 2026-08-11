@@ -169,7 +169,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         if (boxQuantity is < 1 or > 50 || volumetricHeight <= 0 || volumetricHeight > 10000) return Invalid<Guid>("probe", "Koli adedi 1-50, desi/hacim 0-10000 arasında olmalıdır.");
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.ConnectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
         if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("STAGE_CONNECTION_REQUIRED", "Capability canary yalnız Trendyol STAGE bağlantısında çalışır.", 422);
-        if (capability == F3Capabilities.LabelWrite && !string.Equals(package.Status.ToString(), "ReadyToShip", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("STAGE_LABEL_PACKAGE_NOT_READY", "LABEL_WRITE canary yalnız ReadyToShip Stage paketi üzerinde çalışır.", 422);
+        if (capability == F3Capabilities.LabelWrite && package.Status.ToString() is not ("ReadyToShip" or "Processing")) return ServiceResult<Guid>.Fail("STAGE_LABEL_PACKAGE_NOT_READY", "LABEL_WRITE canary yalnız Picking/Processing veya ReadyToShip Stage paketi üzerinde çalışır.", 422);
         var normalizedKey = idempotencyKey.Trim();
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.CapabilityProbe && x.EffectIdempotencyKey == normalizedKey, cancellationToken);
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);

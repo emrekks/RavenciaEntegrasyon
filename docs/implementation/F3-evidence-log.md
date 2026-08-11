@@ -443,7 +443,9 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 | Kanıt | Durum | Not |
 | --- | --- | --- |
 | Dar Stage test kapısı | CODED_TARGETED_VALIDATED | Owner/Admin yalnız `LABEL_READ`/`LABEL_WRITE` için takip numaralı Stage paketi seçebilir; production bağlantısı, diğer capability'ler ve normal dış-yazma akışı kabul edilmez. |
-| Write izolasyonu | CODED_TARGETED_VALIDATED | `LABEL_WRITE` canary yalnız `ReadyToShip` Stage paketinde create → read-back yapar. Global/connection external-write switch'i değişmez; normal iş akışları bu istisnayı kullanamaz. |
+| Write izolasyonu | CODED_TARGETED_VALIDATED | `LABEL_WRITE` canary yalnız `Picking/Processing` veya `ReadyToShip` Stage paketinde create → read-back yapar. Global/connection external-write switch'i değişmez; normal iş akışları bu istisnayı kullanamaz. |
 | Evidence kaydı | CODED_TARGETED_VALIDATED | Başarıda resmi endpoint, Stage/store scope, etiket formatı, dönen gerçek etiket içeriğinin SHA-256 değeri ve audit kaydı yazılır; hata halinde capability `UNKNOWN` kalır. |
 | Yerel doğrulama | PASS_TARGETED | `dotnet build MarketplaceHub.sln --no-restore` 0 hata/0 uyarı; `npm.cmd run typecheck` PASS. |
-| Gerçek Stage canary | PENDING_STAGE_EXECUTION | Dağıtım sonrası ReadyToShip paketi üzerinde çalıştırılacak; gerçek sonuç olmadan capability yükseltilmemiştir. |
+| `LABEL_READ` gerçek Stage canary | PASS_STAGE | 2026-08-11 16:40:39 UTC: Paket `92257909` / takip `7250000170335942` ortak etiket read-back'i `SUCCEEDED`; `LABEL_READ=SUPPORTED`, resmi kaynak URL'si, Stage/store kapsamı, audit kaydı ve 64 karakterlik SHA-256 fixture checksum saklandı. |
+| `LABEL_WRITE` gerçek Stage canary | BLOCKED_REMOTE_FIXTURE | Aynı yerel `ReadyToShip` paketin uzaktaki platform durumu `Invoiced` olduğundan create isteği `REMOTE_REQUEST_REJECTED` ile fail-closed engellendi. `LABEL_WRITE` elle yükseltilmedi; gerçek uzak `ReadyToShip` Stage paketi beklenir. |
+| Resmî Stage write fixture | READY_FOR_STAGE_EXECUTION | Trendyol belgesindeki seller `2738`, sipariş `1238522676`, takip `7260000167037306` yerel paket `92038607` olarak bulundu ve uzaktaki durum `Picking` doğrulandı. Dar canary kuralı bu resmi Stage senaryosunu kapsar; production yazma kapısı değişmez. |
