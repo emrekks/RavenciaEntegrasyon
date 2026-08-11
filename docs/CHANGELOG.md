@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Scheduled salt-okunur capability ayrımı
+
+- Scheduler, aktif Trendyol bağlantılarının `ORDERS`, `RETURNS` ve `REFERENCE_DATA` salt-okunur sync işlerini `UNKNOWN` capability nedeniyle artık sessizce atlamaz. Policy interval/jitter, dedup ve mevcut hata/retry davranışı korunur; dış write veya `AUTO_*` kapsamı genişlemez.
+
 ## 2026-08-12 - Manuel runtime capability/evidence ayrımı
 
 - Catalog, fiyat-stok, Trendyol shipment/label/return/sync ve E-Faturam fatura yollarında capability/evidence, fixture SHA ve release kaydı normal manuel runtime kapısı olmaktan çıkarıldı. `UNKNOWN` kayıtlar diagnostics ve release kabulü için korunur.

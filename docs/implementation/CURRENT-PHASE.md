@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - Scheduled salt-okunur capability ayrımı
+
+Scheduler içindeki `ORDERS`, `RETURNS` ve `REFERENCE_DATA` read politikaları artık `UNKNOWN` capability nedeniyle sessizce atlanmaz. Aktif bağlantı, policy interval/jitter ve durable dedup korunur; provider read hataları mevcut retry/audit akışına gider. Bu sadece salt-okunur otomatik sync kapsamıdır; dış write, `AUTO_*` ve Production switch davranışını açmaz. Infrastructure derlemesi 0 hata/uyarı geçti.
+
 ## 2026-08-12 - Manuel runtime capability/evidence ayrımı
 
 Gate–route–service–job envanteri sonrasında Catalog, Inventory, F3 Sales ve F4 Billing manuel enqueue yollarındaki capability/evidence runtime kapıları kaldırıldı. `UNKNOWN` capability artık Stage veya Production manuel read/write işini durdurmaz; destek kaydı diagnostics ve release kabulü olarak korunur. Production dış yazmasında master + connection switch, etkin connection/credential, input doğrulama, idempotency, provider response/reconciliation ve audit korunur; Stage’de switch, fiscal policy, re-auth ve açık onay aranmaz. Hedefli `IntegrationRuntimePolicyTests` 3/3 ve Infrastructure build 0 hata/uyarı geçti. Otomatik işlerin `AUTO_*` ayrımı ve gerçek Stage kabul senaryoları ayrıca `NOT_RUN` durumundadır.
@@ -156,7 +160,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 9.4
+**Ana plan sürümü:** 9.5
 
 **2026-08-10 hızlı geliştirme politikası v8.3:** Günlük UI ve olağan işlevsel değişikliklerde otomatik test/build kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılandır. Hedefli kontrol yalnız somut sorun/derleme riski ya da güvenlik, migration, mali işlem, dosya yükleme, veri kaybı ve dış yazma gibi riskli alanlarda çalıştırılır. Tam doğrulama kullanıcı talebi veya release/production kapısına bırakılır.
 

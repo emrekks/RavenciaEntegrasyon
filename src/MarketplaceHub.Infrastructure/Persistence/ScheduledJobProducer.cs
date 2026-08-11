@@ -23,10 +23,6 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         {
             var definition = Definition(row.Policy.ResourceType, row.Connection.Id);
             if (definition is null) continue;
-            var capabilitySupported = await db.PlatformCapabilities.AsNoTracking().AnyAsync(x =>
-                x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.Code == definition.Value.Capability &&
-                x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken);
-            if (!capabilitySupported) continue;
 
             var interval = Math.Clamp(row.Policy.IntervalSeconds, 60, 86_400);
             var latest = await db.IntegrationJobs.AsNoTracking()
@@ -68,11 +64,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         }
     }
 
-    private static (string JobType, string Capability, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId) => resourceType switch
+    private static (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId) => resourceType switch
     {
-        "ORDERS" => (F3JobTypes.OrderSync, F3Capabilities.OrderRead, $"scheduled:orders:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null })),
-        "RETURNS" => (F3JobTypes.ReturnSync, F3Capabilities.ReturnRead, $"scheduled:returns:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
-        "REFERENCE_DATA" => (F3JobTypes.ReferenceSync, F3Capabilities.ReferenceRead, $"scheduled:reference:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })),
+        "ORDERS" => (F3JobTypes.OrderSync, $"scheduled:orders:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null })),
+        "RETURNS" => (F3JobTypes.ReturnSync, $"scheduled:returns:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
+        "REFERENCE_DATA" => (F3JobTypes.ReferenceSync, $"scheduled:reference:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })),
         _ => null
     };
 
