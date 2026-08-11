@@ -27,13 +27,13 @@ public sealed class TrendyolAuthenticationHandler(AppDbContext db, IDataProtecti
         return new(connection, baseAddress, payload.ApiKey, payload.ApiSecret, settings.UserAgentIdentity, settings.ExternalWritesEnabled);
     }
 
-    public static HttpRequestMessage Create(TrendyolRequestContext context, HttpMethod method, string relativePath, HttpContent? content = null)
+    public static HttpRequestMessage Create(TrendyolRequestContext context, HttpMethod method, string relativePath, HttpContent? content = null, bool includeStoreFrontCode = true)
     {
         var request = new HttpRequestMessage(method, new Uri(context.BaseAddress, relativePath)) { Content = content };
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{context.ApiKey}:{context.ApiSecret}")));
         request.Headers.UserAgent.ParseAdd(context.UserAgentIdentity);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.TryAddWithoutValidation("storeFrontCode", "TR");
+        if (includeStoreFrontCode) request.Headers.TryAddWithoutValidation("storeFrontCode", "TR");
         return request;
     }
 

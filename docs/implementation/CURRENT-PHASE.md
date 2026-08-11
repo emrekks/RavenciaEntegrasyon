@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-11 - v10.38 Trendyol Türkiye claims Stage fallback
+
+R3 production deployment başarıyla tamamlandı; yeni app/edge digestleri, migration, API readiness, Worker health ve frontend asset kontrolleri geçti. Güncel paketle Stage bağlantı testi `17:34:46` tarihinde tekrarlandı ve yalnız `RETURN_READ`, resmî claims GET çağrısında `REMOTE_RESOURCE_NOT_FOUND`/HTTP 404 bıraktı. Türkiye V2 getClaims referansında `storeFrontCode` headerı tanımlanmadığından canonical TR başlıklı GET korunup yalnız 404 durumunda aynı salt-okunur endpoint başlıksız bir kez yeniden denenir. Yazma çağrıları, secrets ve dış yazma kapıları değişmedi. Trendyol adapter sözleşme testleri `50/50` geçti; CI/release/deployment ve Stage yeniden kabulü bekleniyor.
+
 ## 2026-08-11 - v10.37-r3 release token bağlamı
 
 `release-2026-08-11-v10.37-r2` koşusunun gerçek job logu, source-gate curl çağrısından önce `GITHUB_TOKEN: unbound variable` hatasını gösterdi. GitHub'ın yerleşik tokenı yalnız bu adıma `github.token` bağlamından aktarıldı; workflow düzeyindeki yetki `actions: read`, `contents: read`, `packages: write` ile sınırlı kaldı. Main source CI `#125` başarıyla tamamlandı; `release-2026-08-11-v10.37-r3` immutable publish `#116` source kapısı, app/edge build-push, provenance/SBOM ve digest doğrulamalarını geçirdi. App `sha256:69fba5c25a395cb0fe449040677c37c9c60842c8d6e6d73fc3fc48f2bacca6ed`, edge `sha256:02de6da2a569282ce033d72bedf1e391709f6f88168aefc66f2097a6fb6185dd`. `panel.ravencia.com` hedefi `63.180.140.51` olarak çözüldü; yerel SSH anahtarı/agent ve AWS Console oturumu bulunmadığından deployment `BLOCKED_TARGET_ACCESS`, Stage return-read yeniden kabulü `NOT_RUN` kaldı. Dış yazmalar değiştirilmedi.

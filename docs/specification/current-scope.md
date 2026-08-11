@@ -3,7 +3,7 @@
 > Ayrıntılı ve yetkili ürün/teknik çerçeve: `RAVENCIA-NIHAI-PROJE-BELGESI.md`. Bu dosya günlük kapsam özetidir.
 
 **Karar tarihi:** 2026-08-04  
-**Karar:** Aktif entegrasyon geliştirmesi Trendyol Türkiye `CORE` storefront ve Trendyol E-Faturam ile sınırlıdır.
+**Karar:** Aktif entegrasyon geliştirmesi Trendyol Türkiye `CORE` storefront ve Trendyol E-Faturam ile sınırlıdır. Türkiye V2 claims okuması canonical `storeFrontCode=TR` isteğinde HTTP 404 verirse, resmî Türkiye getClaims referansına uygun olarak yalnız aynı salt-okunur endpoint başlıksız bir kez yeniden denenebilir; bu istisna yazma yollarına uygulanmaz.
 
 ## 1. Aktif entegrasyonlar
 

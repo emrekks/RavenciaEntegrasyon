@@ -354,7 +354,7 @@ Kodlanan CORE kapsamı şunlardır:
 - Trendyol invoice-link teslimi `SUBMITTED` ara durumu ve manuel teyit sınırı. Resmî terminal query kanıtı olmadan sahte `CONFIRMED` üretilmez.
 - Ürün, envanter, shipment, return ve capability evidence operatör ekranları.
 
-Bu kapanış `storeFrontCode=TR` ve ürün payload'ında `channels=["CORE"]` ile Türkiye CORE mağaza kapsamıdır. `LUXE`, uluslararası storefront veya farklı kanal kimlikleri ayrı ADR, capability evidence, fixture ve kabul testi olmadan etkin değildir. Trendyol E-Faturam mali sağlayıcı kapanışı F4'tür ve F3 CORE kod kapanışına dahil değildir.
+Bu kapanış `storeFrontCode=TR` ve ürün payload'ında `channels=["CORE"]` ile Türkiye CORE mağaza kapsamıdır. Türkiye V2 claims GET çağrısı bu header ile HTTP 404 verirse yalnız aynı resmî salt-okunur endpoint başlıksız bir kez yeniden denenebilir; yazma yolları bu fallback kapsamına girmez. `LUXE`, uluslararası storefront veya farklı kanal kimlikleri ayrı ADR, capability evidence, fixture ve kabul testi olmadan etkin değildir. Trendyol E-Faturam mali sağlayıcı kapanışı F4'tür ve F3 CORE kod kapanışına dahil değildir.
 
 **Durum:** `CODE_COMPLETE_STATIC_VERIFIED / DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED / PRODUCTION_BLOCKED`.
 

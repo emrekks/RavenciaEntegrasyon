@@ -1,3 +1,9 @@
+## 2026-08-11 - v10.38 Türkiye claims Stage 404 fallback
+
+- R3 production deployment sonrası Stage capability testi `17:34:46` tarihinde yenilendi; CONNECTION/ORDER/PRODUCT/REFERENCE read `SUPPORTED`, claims GET `REMOTE_RESOURCE_NOT_FOUND`/HTTP 404 ve `RETURN_READ=UNKNOWN` kaldı.
+- Resmî Türkiye V2 getClaims referansı storefront headerı tanımlamaz. Canonical `storeFrontCode=TR` GET korunarak yalnız claims read 404 sonrası aynı endpoint başlıksız bir kez denenir; yazma yollarına fallback eklenmedi.
+- Trendyol adapter sözleşme testleri `50/50` geçti. Merkezi CI, immutable release, deployment ve gerçek Stage yeniden kabulü bekleniyor; capability elle yükseltilmedi.
+
 ## 2026-08-11 - v10.37 Trendyol resmî iade satırı uyumluluğu
 
 - Resmî getClaims sözleşmesindeki `items[].claimItems[]` alanı iade satırı, durum ve neden eşlemesine eklendi; tarihsel düz `items[]` ve doğrudan `claimItems[]` geri uyumluluğu korundu.

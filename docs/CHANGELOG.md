@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - v10.38 Trendyol Türkiye claims Stage fallback
+
+- Güncel r3 paketinin gerçek Stage capability testi, claims GET için `REMOTE_RESOURCE_NOT_FOUND`/HTTP 404 kanıtladı.
+- Canonical `storeFrontCode=TR` GET korunarak yalnız claims okumasında 404 sonrası aynı resmî V2 Türkiye endpoint'i başlıksız bir kez denenir; yazma çağrıları ve diğer endpointler değişmedi.
+
 ## 2026-08-11 - v10.37-r3 release token bağlamı
 
 - R2 release kapısının `GITHUB_TOKEN: unbound variable` ile imaj buildinden önce durduğu job logundan doğrulandı.
