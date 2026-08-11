@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - E-Faturam Stage credential yenileme görünürlüğü
+
+- E-Faturam bağlantısında `EFATURAM_CONFIGURATION_UNAVAILABLE` son test kodu varsa UI, mevcut şifreli kaydın kullanılabilir olduğu izlenimini vermez. Stage için gerekli partner ve müşteri credential rotation adımını açıklar; secret veya kişisel veri göstermez.
+
 ## 2026-08-12 - E-Faturam Stage yapılandırma tespiti
 
 - Yeni runtime'daki normal `EFATURAM_CONNECTION_TEST`, kayıtlı eski `EMAIL_PASSWORD` payload'ının güncel partner + müşteri oturum sözleşmesi için yeterli olmadığını `EFATURAM_CONFIGURATION_UNAVAILABLE` ile fail-closed gösterdi. Bu durum Stage onay/capability kapısı değildir; şifreli credential, partner ve müşteri kimliğiyle yenilenmelidir. Secret okunmadı veya loglanmadı.

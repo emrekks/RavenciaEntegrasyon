@@ -177,7 +177,7 @@ test('stores the provider-required E-Faturam partner and customer credentials wi
       credentialRequest = init
       return json({})
     }
-    if (url.endsWith('/api/v1/connections/connection-ef')) return json({ id: 'connection-ef', publicId: 'public-ef', platformCode: 'TRENDYOL_EFATURAM', environment: 'STAGE', displayName: 'E-Faturam Stage', externalStoreId: '100001', status: 'VERIFIED', apiVersion: '1.0.0', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, version: 4 })
+    if (url.endsWith('/api/v1/connections/connection-ef')) return json({ id: 'connection-ef', publicId: 'public-ef', platformCode: 'TRENDYOL_EFATURAM', environment: 'STAGE', displayName: 'E-Faturam Stage', externalStoreId: '100001', status: 'VERIFIED', apiVersion: '1.0.0', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: 'EFATURAM_CONFIGURATION_UNAVAILABLE', hasCredential: true, version: 4 })
     return Promise.resolve(new Response('{}', { status: 404, headers: { 'Content-Type': 'application/problem+json' } }))
   }) as typeof fetch
 
@@ -185,6 +185,8 @@ test('stores the provider-required E-Faturam partner and customer credentials wi
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/integrations/connection-ef']}><Routes><Route path="/integrations/:id" element={<IntegrationDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
 
   expect(await screen.findByRole('heading', { name: 'E-Faturam müşteri kapsamı otomatik alınır' })).toBeInTheDocument()
+  expect(screen.getByText('Yenileme gerekli')).toBeInTheDocument()
+  expect(screen.getByText('Stage credential eski şemada. Partner ve müşteri bilgileriyle yenileyin.')).toBeInTheDocument()
   expect(screen.queryByText('E-Faturam mali hesap ayarları')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('E-Fatura senaryosu')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Kargo tüzel kimlik eşlemeleri')).not.toBeInTheDocument()

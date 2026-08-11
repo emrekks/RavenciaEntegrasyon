@@ -1,5 +1,11 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 — Stage credential renewal UI
+
+- **Davranış:** Son test kodu `EFATURAM_CONFIGURATION_UNAVAILABLE` olan E-Faturam kaydında credential kartı `Yenileme gerekli` ve Stage partner + müşteri credential açıklamasını gösterir.
+- **Güvenlik:** Credential değerleri, eski payload alanları veya sağlayıcı tokenı gösterilmez. UI yalnız mevcut API hata kodunu kullanıcıya anlaşılır aksiyon olarak çevirir.
+- **Doğrulama:** `F3Pages.test.tsx` 7/7 ve TypeScript `PASS_LOCAL`.
+
 ## 2026-08-12 — Stage connection smoke sonucu
 
 - **Çalıştırılan iş:** Paneldeki normal `Bağlantıyı test et` eylemi `EFATURAM_CONNECTION_TEST` olarak enqueue edildi.

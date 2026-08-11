@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - E-Faturam Stage credential durum görünürlüğü
+
+E-Faturam bağlantısında şifreli credential kaydı bulunup güncel müşteri oturum şemasına uymadığında panel artık yanıltıcı `Şifreli kayıtlı` etiketi göstermez. `Yenileme gerekli` durumu ve partner + müşteri bilgileriyle Stage credential rotation açıklaması görünür; hiçbir secret veya eski credential alanı gösterilmez. Hedefli web testi ve TypeScript kontrolü geçti.
+
 ## 2026-08-12 - E-Faturam Stage credential payload sonucu
 
 Yeni deploy'da normal `EFATURAM_CONNECTION_TEST` çalıştırıldı ve `EFATURAM_CONFIGURATION_UNAVAILABLE` ile güvenli biçimde bloke oldu. İçeriği okunmadan doğrulanan aktif şifreli credential kaydı `2026-08-02` tarihli `EMAIL_PASSWORD` payload'ıdır; güncel müşteri oturum sözleşmesinin partner e-posta/parola ile müşteri e-posta/parola/VKN alanlarını içermeden geçerli sayılması mümkün değildir. Bu bir capability veya onay kapısı değildir; Stage hesabının güncel beş alanla credential rotation'ı gerekir. Credential içeriği gösterilmedi, üretim güvenlikleri değiştirilmedi.
@@ -138,7 +142,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 8.9
+**Ana plan sürümü:** 9.0
 
 **2026-08-10 hızlı geliştirme politikası v8.3:** Günlük UI ve olağan işlevsel değişikliklerde otomatik test/build kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılandır. Hedefli kontrol yalnız somut sorun/derleme riski ya da güvenlik, migration, mali işlem, dosya yükleme, veri kaybı ve dış yazma gibi riskli alanlarda çalıştırılır. Tam doğrulama kullanıcı talebi veya release/production kapısına bırakılır.
 
