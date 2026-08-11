@@ -1,5 +1,11 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - Stage operasyon yüzeyi ve taze sipariş kabulü
+
+Panelde Stage bağlantısı artık yanlış biçimde kapalı dış yazma veya zorunlu safe-write kanıtı göstermez. Manuel Stage işlemleri aktif bağlantı, credential, teknik girdi doğrulaması, tekrar koruması ve sağlayıcı yanıt doğrulamasıyla çalışır; teknik capability/evidence kayıtları normal kullanıcı yüzeyinden kaldırılıp İşlem Takibi/diagnostics yüzeyinde tutulur. Production kartı master + bağlantı write switch korumasını göstermeye devam eder.
+
+Normal panel akışından yeni `TRENDYOL_STAGE_TEST_ORDER` işi `2a51b03fb93a4815ac872e75bc2ff42b`, ardından yalnız o sipariş için `TRENDYOL_ORDER_SYNC` işi `81789fc3d09c47bc971f01348f2a8a8d` ilk denemede `SUCCEEDED` oldu. Oluşturulan sipariş `1507428594`, paket `92287436`, takip numarası `7250000170858397` ve yerel/uzak durum `ReadyToShip` olarak doğrulandı. Taşıyıcı `Yurtiçi Kargo Marketplace` olduğundan common-label sözleşmesine uymuyor; güvenli `LABEL_WRITE` canary gönderilmedi ve capability yükseltilmedi. Uygun Aras/TEX Stage fixture kabulü `NOT_RUN` kalır.
+
 ## 2026-08-12 - Stage operator real-reason messaging
 
 Fatura ve ürün yayın yüzeyleri capability kanıtı eksikliğini işlem engeli gibi göstermez. Stage manuel işlemlerinin doğrudan sağlayıcıya gittiği, Production’ın ise aktif bağlantı ve dış-yazma anahtarlarıyla korunduğu kullanıcıya açık biçimde gösterilir.

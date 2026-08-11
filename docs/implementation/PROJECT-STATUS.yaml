@@ -6,7 +6,7 @@ active_scope:
 - TRENDYOL_EFATURAM
 overall_status: F3_CORE_CODE_COMPLETE_VALIDATION_PENDING_F4_CODE_COMPLETE_VALIDATION_PENDING_PRODUCTION_BLOCKED
 production_status: BLOCKED
-local_validation: V10_53_STAGE_OPERATOR_REAL_REASON_MESSAGING_INFRASTRUCTURE_BUILD_AND_WEB_TYPECHECK_PASS
+local_validation: V10_54_STAGE_OPERATION_SURFACE_WEB_TYPECHECK_AND_DOCUMENTATION_TRANSACTION_PASS
 source_of_truth: docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md
 phases:
   F0:
@@ -111,4 +111,4 @@ required_documents_on_status_change:
 - docs/implementation/CURRENT-PHASE.md
 - docs/CHANGELOG.md
 - relevant_phase_evidence_log
-last_targeted_ui_update: "2026-08-11-efaturam-partner-customer-stage-auth"
+last_targeted_ui_update: "2026-08-12-stage-operation-surface"

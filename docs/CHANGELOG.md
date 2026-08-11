@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Stage operasyon yüzeyi ve taze sipariş kabulü
+
+- Stage bağlantı özeti artık dış yazmayı kapalı veya capability kanıtına bağlı göstermez; manuel denemelerin aktif bağlantı, credential, teknik doğrulama, tekrar koruması ve sağlayıcı yanıt denetimiyle çalıştığını açıkça gösterir. Teknik capability/evidence ayrıntıları normal kullanıcı ekranından kaldırılıp İşlem Takibi/diagnostics yüzeyinde tutulur. Production write switch korumaları değişmedi.
+- Panelden oluşturulan taze Stage siparişi `1507428594` ve buna bağlı scoped order sync ilk denemede başarıyla tamamlandı. Paket `92287436` Yurtiçi Kargo Marketplace olduğu için common-label sözleşmesi kapsamına girmez; desteklenmeyen taşıyıcıya `LABEL_WRITE` çağrısı gönderilmedi ve capability elle yükseltilmedi.
+
 ## 2026-08-12 - Stage operator real-reason messaging
 
 - Fatura ve ürün yayın yüzeylerindeki capability temelli engel metinleri, Stage manuel çalışma ve Production write switch davranışını doğru ifade edecek şekilde güncellendi.
