@@ -2,6 +2,8 @@
 
 ## 2026-08-11 - Stage capability canary sonucu
 
+Resmî örnek sözleşmesiyle oluşturulan yeni Stage Test Order `1265633895`, salt-okunur order-sync ile paket `92286944` / takip `7250000170847858` olarak alındı. Uzak durum `ReadyToShip` idi; yerel canonical durum eşlemesinde bu açık yazım eksik olduğu için paket fail-closed `ManualReview` kaldı. `ReadyToShip` eşlemesi yalnız `ReadyToShip` yerel durumuna eklendi; dış yazma kapsamı değişmedi. Eşitleme ve label create → read-back kabulü tekrar bekleniyor.
+
 İlk gerçek Test Order işi, Worker F3 dispatch allow-list'inde yeni job tipi eksik olduğundan `UNSUPPORTED_JOB_TYPE` ile dış çağrı yapmadan terminal kaldı. Allow-list düzeltildi. İkinci gerçek Stage isteği `REMOTE_SERVER_ERROR` ile döndü; resmi Test Order örneğiyle karşılaştırılarak adres sözleşmesindeki alanlar ve resmi örnek test barkodu tamamlandı. Capability durumu değişmedi ve yeni Stage yürütmesi bekleniyor.
 
 Capability `UNKNOWN` kayıtları kanıtsız biçimde `SUPPORTED` yapılmadı. Owner/Admin tarafından başlatılan Trendyol `STAGE` etiket canary'si, paket `92257909` / takip `7250000170335942` üzerinde gerçek ortak etiket read-back'iyle başarılı oldu: `LABEL_READ=SUPPORTED`, resmi kaynak URL'si, Stage/store kapsamı, format kısıtı, audit kaydı ve 64 karakterlik SHA-256 fixture kanıtı saklandı. `LABEL_WRITE` için tarihsel fixture'lar uzaktan reddedildi ve `UNKNOWN` kaldı. Bunu çözmek için yalnız Stage seller `2738` kapsamında, resmî test barkoduyla, tek denemelik ve auditli taze Test Order job'u eklendi. Yeni sipariş read-sync ile alınıp dönen güncel takip numarasında create → read-back geçmeden `LABEL_WRITE` destekli yapılmayacak. Normal production/external-write anahtarları değişmedi.
