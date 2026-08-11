@@ -136,6 +136,17 @@ public sealed class F3TrendyolContractTests
     }
 
     [Fact]
+    public void Current_nested_return_contract_links_claim_item_to_parent_order_line()
+    {
+        const string json = """
+            {"page":0,"totalPages":1,"content":[{"claimId":"CLAIM-V2","orderNumber":"O-1","lastModifiedDate":1762253993685,"items":[{"orderLine":{"id":10524304},"claimItems":[{"id":"CLAIM-LINE-V2","orderLineItemId":57322050,"claimItemStatus":{"name":"Created"}}]}]}]}
+            """;
+        var line = Assert.Single(Assert.Single(TrendyolJsonMapper.Returns(json).Items).Lines);
+        Assert.Equal("CLAIM-LINE-V2", line.ExternalLineId);
+        Assert.Equal("10524304", line.ExternalOrderLineId);
+    }
+
+    [Fact]
     public void Source_contract_uses_storefront_header_v2_orders_core_channel_and_tracking_details_write()
     {
         var root = FindRoot();

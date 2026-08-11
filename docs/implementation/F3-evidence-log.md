@@ -1,3 +1,9 @@
+## 2026-08-11 - v10.41 Stage iade ürün satırı kanıtı
+
+- v10.40 immutable deployment sonrası önceki return-sync retry işi 4/6 denemede `SUCCEEDED`; panel toplam 23 paket (`1 REQUESTED`, `20 CANCELLED`, `2 DISPUTED`) gösterdi.
+- Credential ve müşteri verisi yazdırmayan şema probu `items[].orderLine` ve nested `claimItems[]` alanlarını doğruladı. Aynı satırda parent order line id `10524304`, claim item orderLineItemId `57322050`; yerel sipariş satırı `ExternalLineId=10524304` idi.
+- Mapper claim action line id'yi nested claim item'dan, sipariş bağı kimliğini parent `orderLine.id` alanından alır. Hedefli sözleşme testi farklı iki kimliği sabitler; yeniden sync mevcut claim'lere eksik ürün satırlarını idempotent ekleyecektir.
+
 ## 2026-08-11 - v10.40 Stage return-sync süre kanıtı
 
 - v10.39 deployment sonrası bağlantı testi `18:06:42` tarihinde `RETURN_READ=SUPPORTED` üretti.

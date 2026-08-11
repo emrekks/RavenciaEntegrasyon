@@ -127,11 +127,11 @@ public static class TrendyolJsonMapper
         {
             var claimId = Text(claim, "claimId", "id"); var orderNumber = Text(claim, "orderNumber"); if (claimId.Length == 0 || orderNumber.Length == 0) continue;
             var lines = new List<RemoteReturnLine>();
-            foreach (var item in ClaimItems(claim))
+            foreach (var (item, externalOrderLineId) in ClaimLinePairs(claim))
             {
-                var lineId = Text(item, "id"); var orderLineId = Text(item, "orderLineItemId"); var quantity = Decimal(item, "quantity");
+                var lineId = Text(item, "id"); var quantity = Decimal(item, "quantity");
                 if (quantity <= 0) quantity = 1;
-                if (lineId.Length > 0 && orderLineId.Length > 0) lines.Add(new(lineId, orderLineId, quantity));
+                if (lineId.Length > 0 && externalOrderLineId.Length > 0) lines.Add(new(lineId, externalOrderLineId, quantity));
             }
             var status = ClaimStatus(claim); rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate"), Instant(claim, "lastModifiedDate") ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText()));
         }
@@ -208,6 +208,25 @@ public static class TrendyolJsonMapper
 
             // Historical fixtures exposed claim items directly in the items array.
             if (item.TryGetProperty("id", out _) && item.TryGetProperty("orderLineItemId", out _)) yield return item;
+        }
+    }
+    private static IEnumerable<(JsonElement ClaimItem, string ExternalOrderLineId)> ClaimLinePairs(JsonElement claim)
+    {
+        if (claim.TryGetProperty("claimItems", out var directClaimItems) && directClaimItems.ValueKind == JsonValueKind.Array)
+            foreach (var claimItem in directClaimItems.EnumerateArray()) yield return (claimItem, Text(claimItem, "orderLineItemId"));
+
+        if (!claim.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array) yield break;
+        foreach (var item in items.EnumerateArray())
+        {
+            if (item.TryGetProperty("claimItems", out var nestedClaimItems) && nestedClaimItems.ValueKind == JsonValueKind.Array)
+            {
+                var parentOrderLineId = item.TryGetProperty("orderLine", out var orderLine) ? Text(orderLine, "id", "lineId") : "";
+                foreach (var claimItem in nestedClaimItems.EnumerateArray())
+                    yield return (claimItem, parentOrderLineId.Length > 0 ? parentOrderLineId : Text(claimItem, "orderLineItemId"));
+                continue;
+            }
+
+            if (item.TryGetProperty("id", out _) && item.TryGetProperty("orderLineItemId", out _)) yield return (item, Text(item, "orderLineItemId"));
         }
     }
     private static string ClaimStatus(JsonElement claim) { if (claim.TryGetProperty("claimItemStatus", out var value)) return value.ValueKind == JsonValueKind.Object ? Text(value, "name") : value.ToString(); foreach (var item in ClaimItems(claim)) if (item.TryGetProperty("claimItemStatus", out var status)) return status.ValueKind == JsonValueKind.Object ? Text(status, "name") : status.ToString(); return ""; }

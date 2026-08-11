@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - v10.41 iade ürün satırı eşlemesi
+
+- v10.40 Stage eşitlemesi `SUCCEEDED` oldu ve panelde 23 iade gösterildi; claim satırları yerel sipariş satırına bağlanmadığı için ürün adedi 0 kaldı.
+- Gerçek Stage şeması nested `items[].orderLine.id=10524304` ile `claimItems[].orderLineItemId=57322050` değerlerinin farklı kimlikler olduğunu kanıtladı.
+- Claim aksiyon kimliği `claimItems[].id` olarak korunurken yerel sipariş satırı eşlemesi parent `orderLine.id` üzerinden yapılır; tarihsel düz cevap geri uyumluluğu korunur.
+
 ## 2026-08-11 - v10.40 Stage iade okuma süre sınırı
 
 - v10.39 Stage capability kabulü `RETURN_READ=SUPPORTED` üretti; ilk tam return-sync sekiz durum çağrısı sırayla çalışırken `REMOTE_TIMEOUT` ile güvenli retry'ye girdi.

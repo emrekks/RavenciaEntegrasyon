@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-11 - v10.41 iade satırı bağlantısı
+
+v10.40 CI `#129`, release `#119`, deployment/readiness ve return-sync kabulü geçti; panelde 23 gerçek Stage iadesi görünür. Nested claim satırındaki `orderLine.id` ile `claimItem.orderLineItemId` farklı olduğundan ürünler 0 görünüyordu. Gerçek şema ve yerel DB karşılaştırmasıyla sipariş bağı parent `orderLine.id` alanına düzeltildi; claim action kimliği değişmedi. Hedefli test/release/deploy ve idempotent yeniden eşitleme bekleniyor.
+
 ## 2026-08-11 - v10.40 Stage return-sync süre düzeltmesi
 
 v10.39 CI `#128`, immutable release `#118`, deployment/readiness ve Stage capability kabulü geçti; `RETURN_READ` gerçek kanıtla `SUPPORTED`. İlk tam iade eşitlemesi sekiz status çağrısını sırayla beklerken `REMOTE_TIMEOUT` ile güvenli retry'ye girdi. Yalnız Stage 404 fallback'indeki bağımsız GET çağrıları paralelleştirildi; production ve dış yazma davranışı değişmedi. Hedefli test/release/Stage sync yeniden kabulü bekleniyor.
