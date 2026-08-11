@@ -8,6 +8,8 @@ Gerçek yeniden eşitleme, sağlayıcının aynı paket/raw durum için olay zam
 
 Sonraki gerçek re-sync, boş order-line listeli tekrar yanıtında erken dönüş optimizasyonunun paket projeksiyonuna ulaşmayı engellediğini gösterdi. Bu optimizasyon kaldırıldı; mevcut idempotent history, miktar bütünlüğü ve dar `ManualReview` onarım koşulları korunuyor.
 
+Taze paketin yeniden eşitlemesi, boş satırlı cevapların en baştaki satır-miktar korumasından da geri döndüğünü gösterdi. Boş satır yalnız mevcut siparişin local projection onarımı için kabul edilir; satır varsa mevcut miktar bütünlüğü kapısı değişmeden çalışır. Onarım, order'ın önceki remote zamanı nedeniyle update edilmese dahi yalnız tanınan local raw package durumunu `ManualReview`den canonical duruma dönüştürür.
+
 Resmî örnek sözleşmesiyle oluşturulan yeni Stage Test Order `1265633895`, salt-okunur order-sync ile paket `92286944` / takip `7250000170847858` olarak alındı. Uzak durum `ReadyToShip` idi; yerel canonical durum eşlemesinde bu açık yazım eksik olduğu için paket fail-closed `ManualReview` kaldı. `ReadyToShip` eşlemesi yalnız `ReadyToShip` yerel durumuna eklendi; dış yazma kapsamı değişmedi. Eşitleme ve label create → read-back kabulü tekrar bekleniyor.
 
 İlk gerçek Test Order işi, Worker F3 dispatch allow-list'inde yeni job tipi eksik olduğundan `UNSUPPORTED_JOB_TYPE` ile dış çağrı yapmadan terminal kaldı. Allow-list düzeltildi. İkinci gerçek Stage isteği `REMOTE_SERVER_ERROR` ile döndü; resmi Test Order örneğiyle karşılaştırılarak adres sözleşmesindeki alanlar ve resmi örnek test barkodu tamamlandı. Capability durumu değişmedi ve yeni Stage yürütmesi bekleniyor.

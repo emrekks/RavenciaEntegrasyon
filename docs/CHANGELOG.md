@@ -19,6 +19,7 @@
 - Daha önce kaydedilmiş aynı raw kaynak olayındaki yanlış `ManualReview` projeksiyonu, yalnız tanınan canonical duruma idempotent olarak iyileştirilebilir hale getirildi. Bu yol dış çağrı veya yeni history olayı üretmez.
 - Sağlayıcının aynı paket/raw durumda olay zamanını değiştirebildiği gerçek Stage eşitlemesiyle görüldü. Dar yerel projeksiyon onarımı event kimliğinden bağımsız, ancak yalnız aynı paket/raw durum ve `ManualReview` kaydıyla sınırlı hale getirildi.
 - Boş order-line listeli tekrar yanıtlarındaki erken dönüş, güvenli paket canonical projeksiyon onarımını engelliyordu. Optimizasyon kaldırıldı; idempotency ve miktar kontrolleri yerinde bırakıldı.
+- Boş satırlı tekrarlar ayrıca ilk satır-miktar korumasından da dönüyordu. Bu cevaplar yalnız mevcut paketin yerel canonical onarımı için işlenir; satırlı cevaplarda miktar bütünlüğü doğrulaması değişmedi.
 
 ## 2026-08-11 - v10.41 iade ürün satırı eşlemesi
 
