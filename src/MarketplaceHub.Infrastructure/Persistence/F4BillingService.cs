@@ -301,6 +301,20 @@ public sealed partial class F4BillingService(
     }
 
     public Task<ServiceResult<Guid>> EnqueueSubmitAsync(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken) => EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, F4JobTypes.InvoiceSubmit, F4Capabilities.InvoiceSubmit, [InvoiceStatus.Ready], InvoiceStatus.Submitting, cancellationToken);
+    public async Task<ServiceResult<Guid>> EnqueueStageCapabilityProbeAsync(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        if (invoice is null) return NotFound<Guid>();
+        if (invoice.Version != expectedVersion) return Precondition<Guid>(invoice.Version);
+        if (invoice.Status != InvoiceStatus.Ready || invoice.InvoiceType != "EARSIVFATURA" || !string.IsNullOrWhiteSpace(invoice.ExternalReference)) return ServiceResult<Guid>.Fail("STAGE_INVOICE_FIXTURE_INVALID", "Canary yalnız gönderilmemiş, Ready durumundaki E-Arşiv test taslağında çalışır.", 409);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
+        var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
+        var hasFixtureAudit = await db.AuditLogs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Action == "STAGE_TEST_ORDER_CREATED" && x.TargetType == "StageTestOrder" && x.TargetId == orderNumber, cancellationToken);
+        if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) || !hasFixtureAudit) return ServiceResult<Guid>.Fail("STAGE_INVOICE_FIXTURE_REQUIRED", "Canary yalnız auditli Stage Test Order faturasında çalışır.", 422);
+        invoice.Status = InvoiceStatus.Submitting; invoice.IssuedAt ??= timeProvider.GetUtcNow(); invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "EFATURAM_STAGE_CAPABILITY_PROBE_ENQUEUED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = "auditli-stage-test-order", CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
+        return await AddJob(invoice, F4JobTypes.StageCapabilityProbe, idempotencyKey, correlationId, cancellationToken);
+    }
     public async Task<ServiceResult<Guid>> EnqueueCancellationAsync(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
         var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);

@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - Denetlenebilir E-Faturam Stage mali canary
+
+- E-Arşiv için ayrı, durable Stage canary eklendi. Yalnız en son auditli Stage Test Order'dan türetilmiş gönderilmemiş `Ready` taslağı kabul eder.
+- Canary gerçek submit → status → private PDF zincirini kanıtlamadan capability yükseltmez; başarılı kanıt yalnız `INVOICE_SUBMIT`, `INVOICE_STATUS_READ` ve `INVOICE_DOCUMENT_READ` için SHA-256/audit kaydıyla saklanır.
+- Genel dış-yazma, bağlantı dış-yazma ve otomatik fatura anahtarları açılmadı. Normal submit, iptal ve Trendyol invoice-link delivery yolları değişmedi; iptal/delivery bu canary kapsamı dışındadır.
+
 ## 2026-08-11 - CI zaman aşımı güvenlik sınırı
 
 - Kaynak doğrulama işi için 45 dakikalık fail-closed zaman sınırı eklendi. Bağımlılık veya tarayıcı kurulumu takılırsa iş belirsiz biçimde devam etmez; concurrency yeni ana dal commitinde eski CI'ı iptal etmeye devam eder.

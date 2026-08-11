@@ -201,6 +201,12 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 4. Invoice-link için resmî terminal query kanıtlanırsa reconciliation; kanıtlanmazsa onaylı manuel teyit prosedürü.
 5. F4 exact runtime/Stage mali E2E, backup/restore ve production pilotu.
 
+## 2026-08-11 — E-Faturam Stage canary hazırlığı
+
+- E-Arşiv submit/status/PDF kabulü için ayrı durable canary eklendi. İş yalnız `TRENDYOL_EFATURAM` `STAGE` bağlantısındaki, `STAGE_TEST_ORDER_CREATED` audit izli siparişten üretilmiş gönderilmemiş `Ready` taslağı kabul eder.
+- Canary, normal `ExternalWrites`, bağlantı dış-yazma ve otomatik-fatura anahtarlarını açmaz; normal submit/iptal/delivery yolları değişmeden fail-closed kalır.
+- Başarı ancak gerçek submit → status → private PDF zincirinden sonra ilgili üç capability’yi kanıtla yükseltir. İptal ve Trendyol invoice-link delivery bu canary kapsamı dışındadır.
+
 ## Production blockerları
 
 - Exact backend ve frontend dinamik suite sonucu yok.

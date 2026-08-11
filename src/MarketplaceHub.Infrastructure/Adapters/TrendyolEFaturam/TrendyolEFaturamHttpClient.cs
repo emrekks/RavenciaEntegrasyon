@@ -38,7 +38,7 @@ public sealed class TrendyolEFaturamHttpClient(
     {
         var configured = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (configured is null) return AdapterResult<InvoiceSubmissionResult>.Failure(TrendyolEFaturamErrorMapper.Configuration());
-        if (!CanWrite(configured)) return AdapterResult<InvoiceSubmissionResult>.Failure(TrendyolEFaturamErrorMapper.Unsupported("E-Faturam dış gönderim izinleri kapalı."));
+        if (!CanWrite(configured, context)) return AdapterResult<InvoiceSubmissionResult>.Failure(TrendyolEFaturamErrorMapper.Unsupported("E-Faturam dış gönderim izinleri kapalı."));
         var access = await AcquireAccess(configured, cancellationToken);
         if (!access.IsSuccess) return AdapterResult<InvoiceSubmissionResult>.Failure(access.Error!, access.RateLimit);
         string officialPayload;
@@ -128,7 +128,7 @@ public sealed class TrendyolEFaturamHttpClient(
     {
         var configured = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (configured is null) return AdapterResult<InvoiceCancellationResult>.Failure(TrendyolEFaturamErrorMapper.Configuration());
-        if (!CanWrite(configured)) return AdapterResult<InvoiceCancellationResult>.Failure(TrendyolEFaturamErrorMapper.Unsupported("E-Faturam dış gönderim izinleri kapalı."));
+        if (!CanWrite(configured, context)) return AdapterResult<InvoiceCancellationResult>.Failure(TrendyolEFaturamErrorMapper.Unsupported("E-Faturam dış gönderim izinleri kapalı."));
         var access = await AcquireAccess(configured, cancellationToken);
         if (!access.IsSuccess) return AdapterResult<InvoiceCancellationResult>.Failure(access.Error!, access.RateLimit);
         var uuid = command.EttnUuid ?? command.ExternalReference;
@@ -170,7 +170,9 @@ public sealed class TrendyolEFaturamHttpClient(
         catch (HttpRequestException) { return AdapterResult<string>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_NETWORK_ERROR", "E-Faturam ağına güvenli bağlantı kurulamadı.", null, TimeSpan.FromSeconds(5), null)); }
     }
 
-    private bool CanWrite(TrendyolEFaturamRequestContext context) => GlobalWritesEnabled && context.ExternalWritesEnabled;
+    private bool CanWrite(TrendyolEFaturamRequestContext configured, AdapterContext context) =>
+        (GlobalWritesEnabled && configured.ExternalWritesEnabled)
+        || (context.IsStageCapabilityProbe && string.Equals(configured.Connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase));
 
     private async Task<AdapterResult<AuthorizedResponse>> SendAuthorized(TrendyolEFaturamRequestContext context, string token, HttpMethod method, string endpoint, HttpContent? content, CancellationToken cancellationToken)
     {

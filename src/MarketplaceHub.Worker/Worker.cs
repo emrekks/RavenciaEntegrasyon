@@ -142,7 +142,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             return await processor.ProcessAsync(job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, cancellationToken);
         }
 
-        if (job.JobType is F4JobTypes.ConnectionTest or F4JobTypes.InvoiceSubmit or F4JobTypes.InvoiceReconcile or F4JobTypes.InvoiceDocumentFetch or F4JobTypes.MarketplaceDelivery or F4JobTypes.InvoiceCancellation or F4JobTypes.InvoiceDueScan)
+        if (job.JobType is F4JobTypes.ConnectionTest or F4JobTypes.InvoiceSubmit or F4JobTypes.InvoiceReconcile or F4JobTypes.InvoiceDocumentFetch or F4JobTypes.MarketplaceDelivery or F4JobTypes.InvoiceCancellation or F4JobTypes.InvoiceDueScan or F4JobTypes.StageCapabilityProbe)
         {
             var processor = services.GetRequiredService<IF4JobProcessor>();
             return await processor.ProcessAsync(job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, cancellationToken);

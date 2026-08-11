@@ -48,6 +48,15 @@
 ## Production kararı
 
 Kod kapanışı production kabulü değildir. Capability evidence, exact runtime suite ve Stage E2E olmadan global/connection write anahtarları kapalı kalır.
+
+## 2026-08-11 — auditli E-Faturam Stage canary hazırlığı
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Canary kapsamı | CODED_STATIC_VERIFIED | İş yalnız auditli `STAGE_TEST_ORDER_CREATED` siparişine bağlı, gönderilmemiş `Ready` E-Arşiv taslağını kabul eder. Eski veya production kaynaklı taslaklar hedef dışıdır. |
+| Güvenlik sınırı | CODED_STATIC_VERIFIED | Genel/connection dış-yazma ve otomatik-fatura anahtarları kapalı kalır; Stage istisnası yalnız canary `AdapterContext` işaretinde uygulanır. Normal submit, iptal ve Trendyol link delivery davranışı değişmez. |
+| Submit/status/PDF | RUNTIME_AND_STAGE_EVIDENCE_REQUIRED | Gerçek Stage canary başarılı olmadan `INVOICE_SUBMIT`, `INVOICE_STATUS_READ` veya `INVOICE_DOCUMENT_READ` `SUPPORTED` yapılmayacaktır. |
+| Cancel/delivery | OUT_OF_SCOPE | İptal ve marketplace invoice-link delivery ayrı dış-yazma kabul senaryolarıdır; bu canary onları çalıştırmaz veya yükseltmez. |
 ## 2026-08-10 — v10.32 faturalama ayar yüzeyi sadeleştirmesi
 
 - Kullanılmayan genel faturalama ayarları kullanıcı menüsünden kaldırıldı; eski `/settings/billing` adresi sistem ayarlarına yönlenir.

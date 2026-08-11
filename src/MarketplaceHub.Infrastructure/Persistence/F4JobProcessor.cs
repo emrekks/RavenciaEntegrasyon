@@ -24,6 +24,7 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
                 F4JobTypes.MarketplaceDelivery => await Deliver(tenantId, payloadJson, correlationId, cancellationToken),
                 F4JobTypes.InvoiceCancellation => await Cancel(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
                 F4JobTypes.InvoiceDueScan => await ScanDue(tenantId, cancellationToken),
+                F4JobTypes.StageCapabilityProbe => await StageCapabilityProbe(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
                 _ => false
             };
             return succeeded
@@ -65,7 +66,7 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         return true;
     }
 
-    private async Task<bool> Submit(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    private async Task<bool> Submit(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken, bool isStageCapabilityProbe = false)
     {
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice is null || invoice.ProviderConnectionId != connectionId || invoice.Status != InvoiceStatus.Submitting) return false;
@@ -86,7 +87,8 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         });
         var hash = Hash(canonical); var started = timeProvider.GetUtcNow();
         var attempt = new InvoiceSubmissionAttempt { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, AttemptNumber = await NextAttempt(tenantId, invoice.Id, cancellationToken), RequestHash = hash, Outcome = "STARTED", StartedAt = started };
-        var result = await provider.SubmitAsync(Context(tenantId, connectionId, correlationId, invoice.IdempotencyKey), new(invoice.Id, invoice.Id.ToString("N"), invoice.InvoiceType, invoice.Currency, canonical, hash), cancellationToken);
+        var context = Context(tenantId, connectionId, correlationId, invoice.IdempotencyKey) with { IsStageCapabilityProbe = isStageCapabilityProbe };
+        var result = await provider.SubmitAsync(context, new(invoice.Id, invoice.Id.ToString("N"), invoice.InvoiceType, invoice.Currency, canonical, hash), cancellationToken);
         attempt.CompletedAt = timeProvider.GetUtcNow();
         if (result.IsSuccess)
         {
@@ -295,6 +297,39 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         db.FileAssets.Add(new FileAsset { Id = assetId, TenantId = tenantId, Classification = "INVOICE_DOCUMENT", RelativePath = stored, OriginalNameSafe = Path.GetFileName(document.FileName), MimeType = document.MimeType, SizeBytes = document.Content.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() });
         db.InvoiceDocuments.Add(new InvoiceDocument { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, DocumentType = document.DocumentKind, FileAssetId = assetId, Sha256 = hash, ExternalDocumentId = document.ExternalDocumentId, PermanentUrl = document.PermanentUrl, CreatedAt = timeProvider.GetUtcNow() });
         invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++; await db.SaveChangesAsync(cancellationToken); return true;
+    }
+
+    private async Task<bool> StageCapabilityProbe(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
+        if (invoice is null || connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) || invoice.ProviderConnectionId != connectionId || invoice.InvoiceType != "EARSIVFATURA") return false;
+        var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
+        if (!await db.AuditLogs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Action == "STAGE_TEST_ORDER_CREATED" && x.TargetType == "StageTestOrder" && x.TargetId == orderNumber, cancellationToken))
+            throw new JobProcessingException(JobExecutionResult.Blocked("STAGE_INVOICE_FIXTURE_REQUIRED", "Canary yalnız auditli Stage Test Order faturasında çalışır."));
+        if (invoice.Status == InvoiceStatus.Submitting && string.IsNullOrWhiteSpace(invoice.ExternalReference)) await Submit(tenantId, connectionId, payloadJson, correlationId, cancellationToken, true);
+        invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
+        if (invoice is null) return false;
+        if (invoice.Status == InvoiceStatus.Submitted) await Reconcile(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
+        invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
+        if (invoice is null || invoice.Status != InvoiceStatus.Accepted) return false;
+        if (!await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.DocumentType == "PDF", cancellationToken)) await FetchDocument(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
+        var checksum = await db.InvoiceDocuments.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.DocumentType == "PDF").OrderByDescending(x => x.CreatedAt).Select(x => x.Sha256).FirstOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(checksum)) return false;
+        var now = timeProvider.GetUtcNow();
+        foreach (var code in new[] { F4Capabilities.InvoiceSubmit, F4Capabilities.InvoiceStatusRead, F4Capabilities.InvoiceDocumentRead })
+        {
+            var capability = await db.PlatformCapabilities.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code, cancellationToken);
+            if (capability is null) continue;
+            capability.SupportLevel = CapabilitySupportLevel.Supported;
+            capability.SourceUrl = code == F4Capabilities.InvoiceSubmit ? "https://developers.trendyolefaturam.com/OpenApi/eAr%C5%9Fiv/create-e-archive" : code == F4Capabilities.InvoiceStatusRead ? "https://developers.trendyolefaturam.com/OpenApi/eAr%C5%9Fiv/get-e-archive-status" : "https://developers.trendyolefaturam.com/OpenApi/Di%C4%9Fer/get-permanent-document-download-url";
+            capability.SourceVersion = "1.0.0"; capability.Environment = connection.Environment; capability.StoreScope = connection.ExternalStoreId;
+            capability.EvidenceNote = $"Auditli Stage Test Order E-Arşiv canary submit/status/PDF zinciri başarıyla doğrulandı; private fixture SHA-256 kaydedildi.";
+            capability.FixtureChecksum = checksum; capability.VerifiedAt = now; capability.Version++;
+            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "EFATURAM_STAGE_CAPABILITY_PROBE_SUCCEEDED", TargetType = "PlatformCapability", TargetId = capability.Id.ToString("D"), Reason = $"{code}:invoice:{invoice.Id:D}", CorrelationId = correlationId, CreatedAt = now });
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     private async Task<bool> ScanDue(Guid tenantId, CancellationToken cancellationToken)
