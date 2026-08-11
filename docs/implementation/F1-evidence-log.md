@@ -1,5 +1,12 @@
 # F1 Kanıt Günlüğü
 
+## 2026-08-12 - F1-EV-030 fail-closed deploy Compose runtime
+
+- Hedef Ubuntu'da kullanıcı Docker Compose `5.3.1`, root Docker Compose ise onaylı `2.40.2` sürümünü raporladı.
+- `deploy.sh --validate-only`, kullanıcı ikilisini gördüğünde exact-version kapısında fail-closed durdu; immutable image kaydı ve çalışan servisler değiştirilmedi.
+- Script compose pull/up/config ve worker inspect için tutarlı `sudo docker` kullanımına geçirildi. Hedefte `sudo docker compose ... config --quiet` `PASS` verdi.
+- Kaynak CI, immutable release ve deploy/readiness kabulü bu değişiklikten sonra yeniden çalıştırılmalıdır.
+
 ## 2026-08-11 - F1-EV-028 immutable release source gate r2
 
 - `release-2026-08-11-v10.37` source kapısı, GitHub Checks API'nin workflow adı yerine `verify` job adını döndürmesi nedeniyle imaj buildinden önce fail-closed durdu.

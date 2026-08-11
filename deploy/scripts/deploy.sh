@@ -46,8 +46,8 @@ for required_part in Host=postgres Database=marketplacehub Username=marketplaceh
 done
 unset credential_key connection
 
-compose=(docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
-compose_version="$(docker compose version --short)"
+compose=(sudo docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+compose_version="$(sudo docker compose version --short)"
 [[ "$compose_version" == "2.40.2" ]] || { echo "Exact Docker Compose 2.40.2 is required; detected $compose_version." >&2; exit 1; }
 "${compose[@]}" config --quiet
 echo "Production configuration passed fail-closed validation."
@@ -74,7 +74,7 @@ done
 
 worker_id="$("${compose[@]}" ps -q worker)"
 [[ -n "$worker_id" ]] || { echo "Worker container was not created." >&2; exit 1; }
-worker_health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$worker_id")"
+worker_health="$(sudo docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$worker_id")"
 [[ "$worker_health" == "healthy" ]] || { echo "Worker is not healthy: $worker_health" >&2; exit 1; }
 
 html="$(curl --connect-timeout 3 --max-time 8 --silent --show-error --fail "$site_address/")"

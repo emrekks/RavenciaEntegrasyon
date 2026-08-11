@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - Fail-closed deploy Compose runtime düzeltmesi
+
+Ubuntu hedefte kullanıcı Compose eklentisi `5.3.1`, root'un onaylı eklentisi ise `2.40.2` olarak ayrıştı. Deploy scripti exact `2.40.2` şartını kontrol ederken kullanıcı eklentisini çağırdığı için `--validate-only` doğru biçimde fail-closed durdu; image kaydı veya çalışan servis değiştirilmedi. Script artık compose ve worker inspect çağrılarını tutarlı olarak `sudo docker` üzerinden yapar. Hedefte bu onaylı ikili ile compose configuration `PASS` verdi. Değişiklik kaynak CI/release/deploy kabulü bekliyor.
+
 ## 2026-08-12 - Stage operasyon yüzeyi ve taze sipariş kabulü
 
 Panelde Stage bağlantısı artık yanlış biçimde kapalı dış yazma veya zorunlu safe-write kanıtı göstermez. Manuel Stage işlemleri aktif bağlantı, credential, teknik girdi doğrulaması, tekrar koruması ve sağlayıcı yanıt doğrulamasıyla çalışır; teknik capability/evidence kayıtları normal kullanıcı yüzeyinden kaldırılıp İşlem Takibi/diagnostics yüzeyinde tutulur. Production kartı master + bağlantı write switch korumasını göstermeye devam eder.

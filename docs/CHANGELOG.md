@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Fail-closed deploy Compose runtime
+
+- Deploy scripti exact Docker Compose sürümünü kontrol ederken compose/config/pull/up/inspect çağrılarını aynı onaylı root Docker ikilisi üzerinden çalıştıracak şekilde düzeltildi. Kullanıcı ve root eklentileri farklıysa sürüm kapısı artık yanlış ikiliyi seçmez.
+- Hedef Ubuntu'da kullanıcı Compose `5.3.1`, root Compose `2.40.2` idi; eski script güvenli olarak fail-closed durdu ve çalışan servisler değiştirilmedi. Yeni immutable release/deploy kabulü bekleniyor.
+
 ## 2026-08-12 - Stage operasyon yüzeyi ve taze sipariş kabulü
 
 - Stage bağlantı özeti artık dış yazmayı kapalı veya capability kanıtına bağlı göstermez; manuel denemelerin aktif bağlantı, credential, teknik doğrulama, tekrar koruması ve sağlayıcı yanıt denetimiyle çalıştığını açıkça gösterir. Teknik capability/evidence ayrıntıları normal kullanıcı ekranından kaldırılıp İşlem Takibi/diagnostics yüzeyinde tutulur. Production write switch korumaları değişmedi.
