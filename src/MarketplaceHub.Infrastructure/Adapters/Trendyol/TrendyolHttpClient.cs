@@ -413,7 +413,11 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         try
         {
             using var response = await clients.CreateClient("Trendyol").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token); var retryAfter = response.Headers.RetryAfter?.Delta; var rate = new RateLimitMetadata(null, response.Headers.RetryAfter?.Date, retryAfter); var remoteRequestId = response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null;
-            if (!response.IsSuccessStatusCode) return AdapterResult<string>.Failure(TrendyolErrorMapper.FromStatus(response.StatusCode, retryAfter, remoteRequestId), rate);
+            if (!response.IsSuccessStatusCode)
+            {
+                var vendorCode = TrendyolErrorMapper.SafeVendorCode(await response.Content.ReadAsStringAsync(linked.Token));
+                return AdapterResult<string>.Failure(TrendyolErrorMapper.FromStatus(response.StatusCode, retryAfter, remoteRequestId, vendorCode), rate);
+            }
             return AdapterResult<string>.Success(await response.Content.ReadAsStringAsync(linked.Token), rate);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return AdapterResult<string>.Failure(new(AdapterErrorClass.TransientNetwork, "REMOTE_TIMEOUT", "Platform isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(5), null)); }

@@ -21,6 +21,7 @@
 - Boş order-line listeli tekrar yanıtlarındaki erken dönüş, güvenli paket canonical projeksiyon onarımını engelliyordu. Optimizasyon kaldırıldı; idempotency ve miktar kontrolleri yerinde bırakıldı.
 - Boş satırlı tekrarlar ayrıca ilk satır-miktar korumasından da dönüyordu. Bu cevaplar yalnız mevcut paketin yerel canonical onarımı için işlenir; satırlı cevaplarda miktar bütünlüğü doğrulaması değişmedi.
 - Resmî ortak etiket sözleşmesi create çağrısından önce `Picking` veya `Invoiced` ister. İlk taze `ReadyToShip` denemesi bu nedenle platform tarafından reddedildi. Canary yalnız son auditli `STAGE/2738` Test Order fixture’ında tek geçerli satırla önce resmî `Picking` isteğini, sonra label create/read-back zincirini çalıştıracak şekilde daraltıldı. Bu yol genel veya production dış-yazma anahtarlarını açmaz; gerçek kabul olmadan capability yükseltmez.
+- Taze fixture’daki resmî `Picking` çağrısı da uzak platformda fail-closed reddedildi. Teşhis için başarısız Trendyol JSON yanıtından yalnız `code`/`errorCode` içindeki harfli ve güvenli karakterli sağlayıcı kodu alınır; ham gövde, hata mesajı, takip numarası ve credential saklanmaz.
 
 ## 2026-08-11 - v10.41 iade ürün satırı eşlemesi
 
