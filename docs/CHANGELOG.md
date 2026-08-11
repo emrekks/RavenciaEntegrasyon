@@ -10,6 +10,7 @@
 - Taze fixture, yalnız `STAGE/2738` ve resmî test barkodunda tek denemelik durable job olarak eklendi; normal dış yazma ve production anahtarları bu istisnadan ayrı tutuldu.
 - Stage Test Order yanıtındaki sipariş numarası string veya sayı olsa da güvenli sözleşme okumasıyla işlenebilir.
 - İlk gerçek Test Order işinde Worker dispatch allow-list'inin yeni job tipini içermediği görüldü. İş dış çağrı yapmadan fail-closed durdu; `TRENDYOL_STAGE_TEST_ORDER` F3 yönlendirmesine eklendi. Capability ve dış-yazma güvenlik kapıları değişmedi.
+- Worker düzeltmesinden sonraki ilk gerçek Stage Test Order isteği `REMOTE_SERVER_ERROR` döndürdü. Yalnız dar test fixture'ı, Trendyol'un resmî örnek sözleşmesindeki tam adres alanları ve `9900000000486` test barkoduyla hizalandı; capability yükseltilmedi.
 
 ## 2026-08-11 - v10.41 iade ürün satırı eşlemesi
 
