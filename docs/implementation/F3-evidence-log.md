@@ -3,6 +3,8 @@
 - v10.40 immutable deployment sonrası önceki return-sync retry işi 4/6 denemede `SUCCEEDED`; panel toplam 23 paket (`1 REQUESTED`, `20 CANCELLED`, `2 DISPUTED`) gösterdi.
 - Credential ve müşteri verisi yazdırmayan şema probu `items[].orderLine` ve nested `claimItems[]` alanlarını doğruladı. Aynı satırda parent order line id `10524304`, claim item orderLineItemId `57322050`; yerel sipariş satırı `ExternalLineId=10524304` idi.
 - Mapper claim action line id'yi nested claim item'dan, sipariş bağı kimliğini parent `orderLine.id` alanından alır. Hedefli sözleşme testi farklı iki kimliği sabitler; yeniden sync mevcut claim'lere eksik ürün satırlarını idempotent ekleyecektir.
+- Adapter sözleşme testleri `51/51`, source CI `#130`, immutable release `#120` ve v10.41 deployment/readiness geçti. App digest `sha256:95d2b607f4d830bcd0bcf83b5b1b6b03bcc69f7f563b4e58b4487ca7c155c0f0`, edge digest `sha256:9ca9c78012e4fff39245d846c8218ff052f1f504bfb0b77cff67b11f42ac1603`.
+- Yalnız Stage bağlantısının `RETURNS` incremental cursor'u kontrollü olarak sıfırlanıp tam salt-okunur backfill çalıştırıldı; iş `92dc03f1bca241e49687a5aad9987dcd` ilk denemede `SUCCEEDED`. Panel 25 paket gösterdi; tüm kayıtlar 1–5 ürün içeriyor ve `0 ürün` sayısı sıfır.
 
 ## 2026-08-11 - v10.40 Stage return-sync süre kanıtı
 

@@ -5,6 +5,7 @@
 - v10.40 Stage eşitlemesi `SUCCEEDED` oldu ve panelde 23 iade gösterildi; claim satırları yerel sipariş satırına bağlanmadığı için ürün adedi 0 kaldı.
 - Gerçek Stage şeması nested `items[].orderLine.id=10524304` ile `claimItems[].orderLineItemId=57322050` değerlerinin farklı kimlikler olduğunu kanıtladı.
 - Claim aksiyon kimliği `claimItems[].id` olarak korunurken yerel sipariş satırı eşlemesi parent `orderLine.id` üzerinden yapılır; tarihsel düz cevap geri uyumluluğu korunur.
+- CI `#130`, immutable release `#120`, production deployment/readiness ve tam Stage backfill geçti. Panel 25 iade paketini tümünde 1–5 ürünle gösterir; `0 ürün` kalan kayıt yoktur.
 
 ## 2026-08-11 - v10.40 Stage iade okuma süre sınırı
 
