@@ -42,12 +42,13 @@ public sealed class RepositoryGuardTests
         Assert.Contains("name@sha256", workflow, StringComparison.Ordinal);
         Assert.Contains("runs-on: ubuntu-24.04", workflow, StringComparison.Ordinal);
         Assert.Contains("actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803", workflow, StringComparison.Ordinal);
-        Assert.Contains("actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68", workflow, StringComparison.Ordinal);
-        Assert.Contains("actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e", workflow, StringComparison.Ordinal);
         Assert.Contains("docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c", workflow, StringComparison.Ordinal);
         Assert.Contains("version: v0.34.1", workflow, StringComparison.Ordinal);
-        Assert.Contains("dotnet test MarketplaceHub.sln --no-build --no-restore", workflow, StringComparison.Ordinal);
-        Assert.Contains("npm run build", workflow, StringComparison.Ordinal);
+        Assert.Contains("checks: read", workflow, StringComparison.Ordinal);
+        Assert.Contains("git merge-base --is-ancestor", workflow, StringComparison.Ordinal);
+        Assert.Contains("Verify source changes", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet test MarketplaceHub.sln --no-build --no-restore", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("npm run build", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain(":latest", workflow, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ubuntu-latest", workflow, StringComparison.OrdinalIgnoreCase);
     }

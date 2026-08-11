@@ -8,7 +8,7 @@ Uzak Trendyol iade claim'i yerelde henüz bulunmayan siparişe bağlı olduğund
 
 ## 2026-08-11 - CI trigger tekrarı azaltma
 
-`Verify source changes` artık yalnız pull request ve `main` push'larında çalışır; `release-*` tag push'u aynı kaynak doğrulamasını ikinci kez başlatmaz. Tam doğrulama setine Playwright E2E de `main` kapısında eklendi. Immutable image yayın akışı, tag/manuel commit'in `main` üzerinde olduğunu ve aynı SHA için başarılı `Verify source changes` GitHub check kaydı bulunduğunu doğrulamadan registry oturumu açmaz. İki immutable image build/push, provenance/SBOM ve digest doğrulaması korunur; release concurrency iptal edilmez. YAML ve workflow bağımlılık denetimi yerelde beklemektedir (`NOT_RUN`).
+`Verify source changes` artık yalnız pull request ve `main` push'larında çalışır; `release-*` tag push'u aynı kaynak doğrulamasını ikinci kez başlatmaz. Tam doğrulama setine Playwright E2E de `main` kapısında eklendi. Immutable image yayın akışı, tag/manuel commit'in `main` üzerinde olduğunu ve aynı SHA için başarılı `Verify source changes` GitHub check kaydı bulunduğunu doğrulamadan registry oturumu açmaz. İki immutable image build/push, provenance/SBOM ve digest doğrulaması korunur; release concurrency iptal edilmez. İlk GitHub doğrulama koşusu, eski release doğrulama testinin kaldırılan yinelenen .NET/web komutlarını beklemesi nedeniyle başarısız oldu; test, yeni fail-closed source-gate sözleşmesini doğrulayacak biçimde güncellendi ve yeniden koşu bekliyor.
 
 ## 2026-08-11 - v10.35-r3 yayın kapısı kaydı
 

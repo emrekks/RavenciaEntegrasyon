@@ -17,6 +17,7 @@
 - Locked .NET/web doğrulaması, format ve Playwright E2E kontrolü `main` kapısında tek seferde korunur.
 - Immutable image yayın akışı, `main` üzerinde bulunan ve başarılı `Verify source changes` check'i olan commit olmadan registry'ye giriş/publish yapmaz; SHA etiketli app/edge imajları, provenance/SBOM ve digest doğrulaması korunur.
 - Normal CI concurrency yeni `main` commit'i geldiğinde eski koşuyu iptal etmeye devam eder; release publish koşuları iptal edilmez.
+- Release repository guard testi, artık release'te tekrar .NET/web test komutu beklemek yerine zorunlu `main` soy-ağacı ve başarılı kaynak check kapısını denetler; ilk GitHub koşusunun bu eski beklentiden kaynaklanan başarısızlığı için yeniden doğrulama beklenir.
 
 ## 2026-08-11 - v10.35-r3 yayın kapısı kaydı
 
