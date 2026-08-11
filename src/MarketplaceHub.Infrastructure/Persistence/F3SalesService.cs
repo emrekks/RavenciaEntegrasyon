@@ -103,7 +103,13 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
     public async Task<ServiceResult<ShipmentDetailView>> ShipmentAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
         var row = await (from package in db.ShipmentPackages.AsNoTracking() where package.TenantId == tenantId && package.Id == id join order in db.Orders.AsNoTracking() on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id } select new { Package = package, order.OrderNumber }).SingleOrDefaultAsync(cancellationToken); if (row is null) return NotFound<ShipmentDetailView>();
-        var actions = await CapabilityValues(tenantId, row.Package.ConnectionId, F3Capabilities.ShipmentWrite, "allowedActions", cancellationToken); var formats = await CapabilityValues(tenantId, row.Package.ConnectionId, F3Capabilities.LabelRead, "formats", cancellationToken);
+        var stage = await IsStageConnection(tenantId, row.Package.ConnectionId, cancellationToken);
+        var actions = stage
+            ? ShipmentActions
+            : await CapabilityValues(tenantId, row.Package.ConnectionId, F3Capabilities.ShipmentWrite, "allowedActions", cancellationToken);
+        var formats = stage
+            ? StageLabelFormats
+            : await CapabilityValues(tenantId, row.Package.ConnectionId, F3Capabilities.LabelRead, "formats", cancellationToken);
         var documents = await db.ShipmentDocuments.AsNoTracking().Where(x => x.TenantId == tenantId && x.PackageId == id).OrderByDescending(x => x.DocumentVersion).Select(x => new ShipmentDocumentView(x.Id, x.DocumentKind, x.Format, x.Source, x.DocumentVersion, x.CreatedAt, x.ExpiresAt)).ToListAsync(cancellationToken);
         return ServiceResult<ShipmentDetailView>.Ok(new(Map(row.Package, row.OrderNumber), actions, formats, documents));
     }
@@ -237,7 +243,9 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         if (claim is null) return NotFound<ReturnDetailView>();
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claim.OrderId, cancellationToken);
         if (order is null) return NotFound<ReturnDetailView>();
-        var actions = await CapabilityValues(tenantId, claim.ConnectionId, F3Capabilities.ReturnWrite, "allowedActions", cancellationToken);
+        var actions = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken) && claim.Status == ReturnClaimStatus.ActionRequired
+            ? ReturnActions
+            : await CapabilityValues(tenantId, claim.ConnectionId, F3Capabilities.ReturnWrite, "allowedActions", cancellationToken);
         var sourceLines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var orderLineIds = sourceLines.Select(x => x.OrderLineId).ToArray();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
@@ -308,6 +316,10 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         if (disposition == ReturnStockDispositionKind.Pass) { item.OnHand += command.Quantity; item.Available = Math.Max(0, item.OnHand - item.Reserved); item.ProjectionVersion++; item.Version++; db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = "RETURN_PASS", QuantityDelta = command.Quantity, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = idempotencyKey, IdempotencyKey = idempotencyKey, OccurredAt = now, RecordedAt = now, ActorUserId = userId, CorrelationId = correlationId }); }
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "RETURN_STOCK_DISPOSITION", TargetType = "ReturnClaim", TargetId = claimId.ToString("D"), Reason = command.Reason.Trim(), CorrelationId = correlationId, CreatedAt = now }); await db.SaveChangesAsync(cancellationToken); return await ReturnAsync(tenantId, claimId, cancellationToken);
     }
+
+    private static readonly IReadOnlyList<string> ShipmentActions = ["PICKING", "INVOICED", "TRACKING_NUMBER", "CANCEL_ITEMS", "SPLIT", "MULTI_SPLIT", "CHANGE_CARGO_PROVIDER", "ALTERNATIVE_DELIVERY", "MANUAL_DELIVER", "MANUAL_RETURN"];
+    private static readonly IReadOnlyList<string> StageLabelFormats = ["PDF"];
+    private static readonly IReadOnlyList<string> ReturnActions = ["APPROVE", "REJECT"];
 
     private static ServiceError? ValidateShipmentAction(ShipmentPackage package, string action, string payloadJson)
     {

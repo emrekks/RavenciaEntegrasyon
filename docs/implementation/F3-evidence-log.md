@@ -77,6 +77,12 @@
 
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-12 — Stage operator action visibility refactor
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Manuel Stage görünürlüğü | CODED_TARGETED_VALIDATED | Shipment/return UI, runtime tarafından kabul edilen Stage manuel işlemlerini capability/evidence durumu nedeniyle gizlemez. Provider gerçek destek/cevabı ve teknik doğrulama korunur. Infrastructure build 0 hata/uyarı, Web typecheck ve `F3Pages.test.tsx` 7/7 geçti. |
+
 ## 2026-08-10 - v10.27 canli onayli urun sekli
 
 | Kanit | Durum | Not |

@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - Stage operator action visibility
+
+Gönderi/iade detayları, manuel Stage işlemlerini artık capability kaydı eksik diye gizlemez. Geçerli Stage bağlantısında paket işlemleri, PDF etiket denemesi ve `ACTION_REQUIRED` iadede onay/ret görünür; input, idempotency, provider yanıtı ve iade ret nedeni/kanıt kuralları korunur. Production görünümü mevcut write güvenlik davranışında kalır.
+
 ## 2026-08-12 - Manual runtime capability query removal
 
 F4 read/write policy ve Trendyol read enqueue yolu artık karar sonucu kullanılmayan `PlatformCapabilities` sorgusunu da yapmaz. Stage manuel akışında capability/evidence kayıt deposu erişimi runtime blocker değildir; Production için environment, aktif bağlantı, global/connection write switch ve diğer işlem güvenlikleri korunur.

@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Stage operator action visibility
+
+- Gönderi ve iade ekranları Stage manuel aksiyonlarını capability kaydı eksikliği yüzünden gizlemeyi bıraktı. Production dış-yazma switch ve ilgili teknik/mali doğrulamalar değişmedi.
+
 ## 2026-08-12 - Manual runtime capability query removal
 
 - F4 fatura read/write ve Trendyol manuel read akışları, karar sonucunu etkilemeyen capability deposu sorgusundan ayrıldı. Stage capability/evidence eksikliği veya bu deponun erişilebilirliği runtime blocker değildir; production dış-yazma switch davranışı değişmedi.
