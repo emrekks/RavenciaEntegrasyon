@@ -5,7 +5,7 @@
 - `SUPPORTED`: Resmî kaynak, tarihli environment/store scope kanıtı ve gerekli fixture vardır.
 - `UNKNOWN`: Kod bulunabilir; güvenli dış çalışma kanıtı yoktur.
 - `NOT_SUPPORTED`: Platform veya proje kararı desteklemez.
-- Read kanıtı write yetkisi değildir. Write için global + connection anahtarı ve Stage/SIT SHA-256 fixture evidence zorunludur.
+- Read kanıtı write yetkisi değildir. Production write için global + connection anahtarı, capability ve denetlenebilir evidence zorunludur. Aktif STAGE bağlantısındaki manuel read/write denemesi bunlara takılmaz; credential, endpoint sınırı, teknik doğrulama, idempotency ve audit korunur.
 
 ## Trendyol Türkiye CORE
 
@@ -43,6 +43,8 @@ Gönderen mali hesap E-Faturam tarafından yönetilir. Panel yalnız doğrudan A
 | Trendyol invoice delivery | Uygulandı | Provider permanent URL ve gerçek package E2E; terminal teyit kanıtı yoksa manuel review |
 
 ## Açılma kuralı
+
+Production’da capability `UNKNOWN` iken API/UI dış iş oluşturamaz. Evidence endpoint'i yalnız Owner/Administrator tarafından ETag ve audit ile güncellenir; resmî HTTPS kaynak, environment/store eşleşmesi ve write için fixture SHA-256 gerekir. Aktif STAGE bağlantısında manuel işlem bu kanıtı üretmek için çalıştırılabilir; `UNKNOWN` durumunu kendiliğinden `SUPPORTED` yapmaz.
 
 Capability `UNKNOWN` iken API/UI dış iş oluşturamaz. Evidence endpoint'i yalnız Owner/Administrator tarafından ETag ve audit ile güncellenir; platforma göre `developers.trendyol.com` veya `developers.trendyolefaturam.com` resmî HTTPS kaynağı, environment/store bire bir eşleşmesi ve write için 64 haneli fixture SHA-256 ister.
 

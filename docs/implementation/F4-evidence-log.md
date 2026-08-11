@@ -1,5 +1,12 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-11 — Stage manual runtime refactor
+
+- **Kapsam:** Trendyol E-Faturam STAGE/ACTIVE bağlantısında validate, submit, reconcile, cancel ve delivery akışları.
+- **Kanıt:** normal Stage submit artık özel capability-probe job’una bağlı değildir; service, endpoint ve adapter katmanlarında capability/evidence, fiscal-policy, connection write-switch, `AUTO_*`, parola/re-auth ve açık onay runtime blocker değildir. Production’da bu korumalar korunur.
+- **Korunanlar:** canonical mali payload doğrulama, ETag, idempotency, audit, provider response/error handling, permanent-link ve state-machine kontrolleri.
+- **Doğrulama:** solution build ve web typecheck PASS; gerçek Stage E-Faturam smoke henüz çalıştırılmadı.
+
 ## 2026-08-09 — v10.15.1 CI biçimlendirme kaydı
 
 | Kanıt | Durum | Not |

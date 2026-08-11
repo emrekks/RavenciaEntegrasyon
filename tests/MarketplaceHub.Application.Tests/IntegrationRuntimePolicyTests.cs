@@ -1,0 +1,46 @@
+using MarketplaceHub.Domain;
+
+namespace MarketplaceHub.Application.Tests;
+
+public sealed class IntegrationRuntimePolicyTests
+{
+    private static readonly AdapterContext Manual = new(Guid.NewGuid(), Guid.NewGuid(), "test", "test", DateTimeOffset.UtcNow);
+    private static readonly AdapterContext Automatic = Manual with { Operation = IntegrationOperation.Automatic };
+
+    [Fact]
+    public void Active_stage_manual_write_bypasses_evidence_and_write_switches()
+    {
+        var connection = Connection("STAGE", "ACTIVE");
+        Assert.True(IntegrationRuntimePolicy.AllowsManualRead(connection, capabilitySupported: false));
+        Assert.True(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, globalWritesEnabled: false, connectionWritesEnabled: false, capabilitySupported: false));
+        Assert.False(IntegrationRuntimePolicy.AllowsManualWrite(connection, Automatic, globalWritesEnabled: true, connectionWritesEnabled: true, capabilitySupported: true));
+        Assert.False(IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection));
+    }
+
+    [Fact]
+    public void Production_remains_fail_closed_without_all_write_gates()
+    {
+        var connection = Connection("PRODUCTION", "ACTIVE");
+        Assert.False(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, true, false));
+        Assert.False(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, false, true));
+        Assert.True(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, true, true));
+        Assert.True(IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection));
+    }
+
+    [Fact]
+    public void Endpoint_resolution_rejects_unknown_or_crossed_environment()
+    {
+        var stage = new Uri("https://stage.example.test/");
+        var production = new Uri("https://api.example.test/");
+        Assert.True(IntegrationRuntimePolicy.TryResolveBaseAddress("STAGE", stage, production, out var resolved));
+        Assert.Equal(stage, resolved);
+        Assert.False(IntegrationRuntimePolicy.TryResolveBaseAddress("UNKNOWN", stage, production, out _));
+        Assert.False(IntegrationRuntimePolicy.TryResolveBaseAddress("STAGE", stage, stage, out _));
+    }
+
+    private static PlatformConnection Connection(string environment, string status) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), PublicId = Guid.NewGuid(), PlatformCode = "TRENDYOL", Environment = environment,
+        DisplayName = "test", ExternalStoreId = "test", Status = status, ApiVersion = "V2"
+    };
+}

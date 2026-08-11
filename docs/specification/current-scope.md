@@ -14,6 +14,10 @@
 
 UI bağlantı seçicisi, API servisleri, DI kayıtları ve Worker yönlendirmesi bu iki kodla sınırlandırılır.
 
+### Stage manuel çalışma sınırı
+
+Aktif `STAGE` bağlantısında manuel read/write denemeleri capability/evidence/fixture SHA, connection write switch, fiscal-policy approval, `AUTO_*`, re-auth veya ek açık onay ile engellenmez. Teknik sözleşme doğrulama, credential, idempotency, concurrency, audit ve provider hata işleme korunur. `PRODUCTION` akışı capability ve evidence, global + connection write switch, mali policy, re-auth/açık onay ve otomatik iş bayrakları olmadan çalışmaz. Environment yalnız `STAGE` veya `PRODUCTION` olabilir; endpoint/credential sınırı aksi durumda fail-closed’dur.
+
 ## 2. Aktif ürün hedefi
 
 Sistem aşağıdaki uçtan uca akışı güvenilir biçimde tamamlamalıdır:

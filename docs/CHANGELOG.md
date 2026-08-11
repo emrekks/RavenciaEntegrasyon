@@ -1,5 +1,12 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - Stage manuel çalışma yolu
+
+- Ortak runtime politikası Stage-manual, automatic ve Production akışlarını ayırdı. Aktif Stage bağlantısındaki normal manuel read/write, capability/evidence/fixture SHA, connection write switch, fiscal-policy, `AUTO_*`, re-auth ve ek onay kapılarına takılmaz.
+- Normal E-Faturam submit/iptal/teslim endpointleri Stage’de parola ve açık onay istemez; Production endpointleri aynı parola + açık onay korumasını sürdürür. Teknik doğrulama, ETag, idempotency, audit ve provider cevabı kontrolleri kaldırılmadı.
+- Trendyol read, iade aksiyonu, shipment/label, ürün ve fiyat-stok manuel işleri için Stage istisnası uygulandı; Production capability ve write-switch kapıları korundu. Capability ekranı Stage’de kanıt formunu normal operatör akışından kaldırır.
+- Adapter credential yükleyicileri yalnız `STAGE` veya `PRODUCTION` environment değerini kabul eder; Stage/Production HTTPS endpointleri aynı olamaz. Böylece yanlış environment veya endpoint yapılandırması fail-closed kalır.
+
 ## 2026-08-11 - Denetlenebilir E-Faturam Stage mali canary
 
 - E-Arşiv için ayrı, durable Stage canary eklendi. Yalnız sabitlenmiş E-Faturam Stage test hesabındaki mali doğrulaması geçmiş gönderilmemiş `Ready` taslağı kabul eder; sıfır tutarlı Test Order mali fixture kabul edilmez.

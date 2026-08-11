@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
@@ -23,7 +24,7 @@ public sealed class TrendyolAuthenticationHandler(AppDbContext db, IDataProtecti
         try { payload = JsonSerializer.Deserialize<CredentialPayload>(_protector.Unprotect(credential.ProtectedPayload)); settings = JsonSerializer.Deserialize<ConnectionSettings>(connection.SettingsJson); }
         catch (Exception exception) when (exception is CryptographicException or JsonException) { return null; }
         if (payload is null || settings is null || string.IsNullOrWhiteSpace(settings.UserAgentIdentity)) return null;
-        var baseAddress = connection.Environment == "PRODUCTION" ? options.Value.ProductionBaseAddress : options.Value.StageBaseAddress;
+        if (!IntegrationRuntimePolicy.TryResolveBaseAddress(connection.Environment, options.Value.StageBaseAddress, options.Value.ProductionBaseAddress, out var baseAddress)) return null;
         return new(connection, baseAddress, payload.ApiKey, payload.ApiSecret, settings.UserAgentIdentity, settings.ExternalWritesEnabled);
     }
 

@@ -1,3 +1,10 @@
+## 2026-08-11 — Stage manual runtime refactor
+
+- **Kapsam:** Trendyol STAGE/ACTIVE bağlantısındaki manuel read, return action, shipment action, common label, product ve price/inventory job enqueue yolları.
+- **Kanıt:** `IntegrationRuntimePolicy` Stage manuel bağlamında capability/evidence/fixture/write-switch kontrollerini runtime blocker olmaktan çıkarır; Production yolunda capability + global/connection write switch korunur. Adapter write guard aynı ayrımı tekrar uygular.
+- **Korunanlar:** credential, HTTPS endpoint environment boundary, ACTIVE connection, payload doğrulama, idempotency, concurrency, audit, provider hata/retry davranışı.
+- **Doğrulama:** solution build ve web typecheck PASS; gerçek Stage smoke henüz çalıştırılmadı.
+
 ## 2026-08-11 - v10.41 Stage iade ürün satırı kanıtı
 
 - v10.40 immutable deployment sonrası önceki return-sync retry işi 4/6 denemede `SUCCEEDED`; panel toplam 23 paket (`1 REQUESTED`, `20 CANCELLED`, `2 DISPUTED`) gösterdi.

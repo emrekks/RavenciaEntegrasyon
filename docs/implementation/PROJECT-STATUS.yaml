@@ -1,5 +1,5 @@
 schema_version: 1
-document_version: '8.4'
+document_version: '8.5'
 updated_at: '2026-08-11'
 active_scope:
 - TRENDYOL
@@ -63,7 +63,7 @@ features:
   local_catalog_import:
     status: READY_LOCAL
   trendyol_reference_read:
-    status: CODED_STAGE_REVALIDATION_REQUIRED
+    status: STAGE_MANUAL_RUNTIME_ENABLED_PRODUCTION_EVIDENCE_GATED
   trendyol_mapping_workspace:
     status: V10_32_PLATFORM_CATEGORY_WORKSPACE_CLICK_SELECTION_REFERENCE_SYNC_RECOVERY_AND_SCOPED_VALUE_MAPPING_TARGETED_VERIFIED_DYNAMIC_REVALIDATION_REQUIRED
   v9_product_variant_workspace:
@@ -89,11 +89,11 @@ features:
   efaturam_automatic_invoice_routing:
     status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   efaturam_submit:
-    status: STAGE_TEST_ACCOUNT_CANARY_PARTNER_CUSTOMER_AUTH_RUNTIME_AND_EVIDENCE_REQUIRED
+    status: STAGE_MANUAL_RUNTIME_ENABLED_PARTNER_CUSTOMER_AUTH_REQUIRED_PRODUCTION_GATED
   efaturam_status_cancel:
-    status: STAGE_TEST_ACCOUNT_CANARY_CODED_RUNTIME_AND_EVIDENCE_REQUIRED
+    status: STAGE_MANUAL_RUNTIME_ENABLED_PRODUCTION_GATED
   secure_invoice_pdf:
-    status: STAGE_TEST_ACCOUNT_CANARY_CODED_RUNTIME_AND_EVIDENCE_REQUIRED
+    status: STAGE_MANUAL_RUNTIME_ENABLED_PRODUCTION_GATED
   trendyol_invoice_delivery:
     status: CODED_SUBMITTED_MANUAL_CONFIRMATION_REQUIRED
   efaturam_operator_ui:

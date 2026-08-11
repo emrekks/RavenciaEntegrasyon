@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -43,7 +44,7 @@ public sealed class TrendyolEFaturamAuthenticationHandler(AppDbContext db, IData
             || string.IsNullOrWhiteSpace(payload.CustomerPassword)
             || string.IsNullOrWhiteSpace(payload.CustomerTaxId)
             || !TrendyolEFaturamContractGuard.IsTaxIdFormat(payload.CustomerTaxId)) return null;
-        var baseAddress = connection.Environment == "PRODUCTION" ? options.Value.ProductionBaseAddress : options.Value.StageBaseAddress;
+        if (!IntegrationRuntimePolicy.TryResolveBaseAddress(connection.Environment, options.Value.StageBaseAddress, options.Value.ProductionBaseAddress, out var baseAddress)) return null;
         return new(connection, baseAddress, payload, settings);
     }
 }

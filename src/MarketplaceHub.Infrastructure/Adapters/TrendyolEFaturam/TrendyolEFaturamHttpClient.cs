@@ -200,10 +200,8 @@ public sealed class TrendyolEFaturamHttpClient(
     }
 
     private bool CanWrite(TrendyolEFaturamRequestContext configured, AdapterContext context) =>
-        (GlobalWritesEnabled && configured.ExternalWritesEnabled)
-        || (context.IsStageCapabilityProbe
-            && string.Equals(configured.Connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(configured.Connection.ExternalStoreId, "Ravencia - Ravencia", StringComparison.Ordinal));
+        IntegrationRuntimePolicy.IsManualStage(configured.Connection, context)
+        || (IntegrationRuntimePolicy.IsProduction(configured.Connection) && GlobalWritesEnabled && configured.ExternalWritesEnabled);
 
     private async Task<AdapterResult<AuthorizedResponse>> SendAuthorized(TrendyolEFaturamRequestContext context, string token, HttpMethod method, string endpoint, HttpContent? content, CancellationToken cancellationToken)
     {
