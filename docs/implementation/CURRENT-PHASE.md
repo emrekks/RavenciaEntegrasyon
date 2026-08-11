@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - v10.44 Stage submit web regression testi
+
+Invoice detay testi, Production fatura gönderiminde parola ve açık onayın gerekli olduğunu açıkça işaretler. Ayrı Stage fixture'ı normal `submit-jobs` yolunun parola/onay olmadan kuyruğa alındığını doğrular; eski özel canary yolu normal Stage operasyonunun ön koşulu değildir. Yeni source CI doğrulaması bekleniyor.
+
 ## 2026-08-12 - v10.43 CI biçimlendirme düzeltmesi
 
 Stage manuel runtime refactorunun ilk main CI koşusu, yalnız yeni policy testindeki satır biçiminden başarısız oldu; uygulama kodu veya runtime davranışı hatası yoktu. Test, repository formatter beklentisine göre düzenlendi. Solution build ve ilgili policy testleri tekrar geçti; yeni source CI koşusu bekleniyor.
@@ -126,7 +130,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 8.6
+**Ana plan sürümü:** 8.7
 
 **2026-08-10 hızlı geliştirme politikası v8.3:** Günlük UI ve olağan işlevsel değişikliklerde otomatik test/build kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılandır. Hedefli kontrol yalnız somut sorun/derleme riski ya da güvenlik, migration, mali işlem, dosya yükleme, veri kaybı ve dış yazma gibi riskli alanlarda çalıştırılır. Tam doğrulama kullanıcı talebi veya release/production kapısına bırakılır.
 

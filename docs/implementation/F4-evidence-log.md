@@ -1,5 +1,11 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 — Stage normal submit web doğrulaması
+
+- **Kapsam:** Invoice detail ekranında Production hassas onay göstergesi ve STAGE manuel normal submit davranışı.
+- **Kanıt:** Production fixture `requiresSensitiveConfirmation: true` ile parola + açık onay kapısını korur. Stage fixture aynı normal `submit-jobs` yolunda bu alanı `false` taşır; istek boş parola/açık-onayla, ETag ve idempotency başlıklarıyla kuyruğa alınır.
+- **Durum:** Yerel hedefli web testi ve source CI yeniden doğrulanacaktır; gerçek Stage provider smoke ayrı kabul kaydı olarak bekler.
+
 ## 2026-08-11 — Stage manual runtime refactor
 
 - **Kapsam:** Trendyol E-Faturam STAGE/ACTIVE bağlantısında validate, submit, reconcile, cancel ve delivery akışları.

@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Stage normal fatura gönderim testi
+
+- Web testi Production fatura gönderimindeki parola/açık-onay koşulunu explicit olarak taşır. Ayrı Stage fixture'ı normal `submit-jobs` endpointinin parola veya açık onay olmadan kullanılabildiğini; ETag ve idempotency başlıklarının korunduğunu doğrular.
+
 ## 2026-08-12 - CI policy testi biçimlendirmesi
 
 - Stage runtime policy testindeki yalnız biçimsel satır düzeni repository formatter beklentisine göre düzeltildi. Davranış, güvenlik sınırı ve provider çağrıları değişmedi.

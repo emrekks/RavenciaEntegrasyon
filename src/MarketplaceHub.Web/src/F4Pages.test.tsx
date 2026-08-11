@@ -13,7 +13,7 @@ const invoiceDetail = {
   discountTotal: 0, taxTotal: 20, payableTotal: 120, note: 'YALNIZ: YÜZ YİRMİ TÜRK LİRASI', invoiceNumber: null,
   ettnUuid: null, dueAt: null, issuedAt: null, lastErrorCode: null, createdAt: '2026-08-05T12:00:00Z', version: 3,
   lines: [{ id: 'line-1', lineSequence: 1, description: 'Ürün', sku: 'SKU-1', unit: 'ADET', quantity: 1, unitPrice: 100, discountAmount: 0, vatRate: 20, vatAmount: 20, lineTotal: 120 }],
-  documents: [], attempts: [], deliveries: [], allowedActions: ['VALIDATE', 'SUBMIT']
+  documents: [], attempts: [], deliveries: [], allowedActions: ['VALIDATE', 'SUBMIT'], requiresSensitiveConfirmation: true
 }
 
 test('requires explicit password confirmation and queues E-Faturam submission with concurrency headers', async () => {
@@ -47,7 +47,7 @@ test('requires explicit password confirmation and queues E-Faturam submission wi
 
 test('queues the Stage financial canary without password only for its separately scoped endpoint', async () => {
   let request: RequestInit | undefined
-  const canary = { ...invoiceDetail, allowedActions: ['STAGE_CAPABILITY_PROBE'] }
+  const canary = { ...invoiceDetail, allowedActions: ['STAGE_CAPABILITY_PROBE'], requiresSensitiveConfirmation: false }
   globalThis.fetch = vi.fn((input, init) => {
     const url = String(input)
     if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-f4-canary' })
@@ -62,6 +62,26 @@ test('queues the Stage financial canary without password only for its separately
   await waitFor(() => expect(request).toBeDefined())
   expect(new Headers(request?.headers).get('If-Match')).toBe('"v3"')
   expect(request?.body).toBeUndefined()
+})
+
+test('queues a manual Stage E-Faturam submission without password confirmation', async () => {
+  let request: RequestInit | undefined
+  const stageInvoice = { ...invoiceDetail, allowedActions: ['SUBMIT'], requiresSensitiveConfirmation: false }
+  globalThis.fetch = vi.fn((input, init) => {
+    const url = String(input)
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-f4-stage-submit' })
+    if (url.endsWith('/api/v1/invoices/invoice-1') && (!init?.method || init.method === 'GET')) return json(stageInvoice)
+    if (url.endsWith('/api/v1/invoices/invoice-1/submit-jobs') && init?.method === 'POST') { request = init; return json({ jobId: 'job-stage-submit' }, 202) }
+    return json({ title: 'Not found' }, 404)
+  }) as typeof fetch
+  render(<QueryClientProvider client={client()}><MemoryRouter initialEntries={['/invoices/invoice-1']}><Routes><Route path="/invoices/:id" element={<InvoiceDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+  const submit = await screen.findByRole('button', { name: /Faturam/ })
+  expect(submit).toBeEnabled()
+  fireEvent.click(submit)
+  await waitFor(() => expect(request).toBeDefined())
+  expect(new Headers(request?.headers).get('If-Match')).toBe('"v3"')
+  expect(new Headers(request?.headers).get('Idempotency-Key')).toBeTruthy()
+  expect(JSON.parse(String(request?.body))).toEqual({ password: '', confirmed: false })
 })
 
 test('uploads a manual invoice document only to the private invoice archive', async () => {
