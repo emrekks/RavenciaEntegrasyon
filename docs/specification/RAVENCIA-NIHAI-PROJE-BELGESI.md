@@ -2,7 +2,7 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 9.3
+**Belge sürümü:** 9.4
 **Belge tarihi:** 10 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
@@ -13,7 +13,7 @@
 
 **v10.32 kullanıcı akışı notu:** Sonlandırılmış oturum kayıtları güvenlik ekranından tekil veya toplu temizlenebilir; aktif ve mevcut oturumlar bu silme işlemine kapalıdır. Kullanılmayan genel faturalama ayar sayfası menüden kaldırılmıştır. Eşleştirme merkezinde Trendyol kategori adları kaynak önekleri olmadan gösterilir, özellik kartı tıklanarak seçilir ve eksik kategori özellik verisi aynı çalışma alanından güvenli reference-sync kuyruğuna alınabilir. Sipariş ürün görselleri büyütülebilir; fatura bekleme durumu sade metin rozetiyle sunulur.
 
-**v10.42 Stage manuel çalışma notu:** Aktif Stage bağlantısındaki manuel read/write, capability/evidence/fixture SHA, connection write switch, mali policy onayı, `AUTO_*`, re-auth veya ek açık onay kapılarında durmaz. Credential, endpoint ortam sınırı, teknik sözleşme doğrulama, idempotency, concurrency, audit ve sağlayıcı hata işleme korunur. Production’daki capability/evidence, global + connection switch, mali policy, re-auth/açık onay ve otomatik iş kontrolleri aynen devam eder; Stage ve Production endpointleri ayrı HTTPS adresleri olmak zorundadır.
+**v10.46 manuel runtime notu:** Aktif `STAGE` ve `PRODUCTION` bağlantılarında manuel read/write capability/evidence/fixture SHA/release kaydıyla durmaz; bu kayıtlar diagnostics ve release kabulünde saklanır. Stage’de ek write switch, mali policy, re-auth veya açık onay aranmaz. Production manuel write için yetkilendirme, master + connection external-write switch, etkin bağlantı/credential, input, idempotency, provider doğrulaması, reconciliation ve audit zorunludur. Otomatik write bunlara ek ilgili `AUTO_*` bayrağını ister. Environment ve HTTPS endpoint sınırı fail-closed kalır.
 
 **v10.33 kullanıcı akışı notu:** Özellik eşleme hedef kategorisi açıkça seçilir; teknik Trendyol başlık önekleri yalnız sunumda temizlenir. Özellik oluşturma ve seçili özelliğe değer ekleme ayrıdır. Marka eşleştirmesi hesap seçimi göstermeyen platform çalışma alanında yerel marka baloncuklarıyla yürütülür. Siparişten manuel fatura dosyası yükleme, mevcut özel depolama endpointini kullanır ve provider submit başlatmaz.
 

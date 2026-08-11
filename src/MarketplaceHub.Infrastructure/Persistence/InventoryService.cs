@@ -168,10 +168,8 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE", cancellationToken);
         if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için ACTIVE Trendyol bağlantısı gerekir.", 422);
-        var capabilities = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.Code == F3Capabilities.InventoryWrite || x.Code == F3Capabilities.PriceWrite) && x.SupportLevel == CapabilitySupportLevel.Supported).Select(x => x.Code).ToListAsync(cancellationToken);
-        var stage = IntegrationRuntimePolicy.IsStage(connection);
-        if (!stage && (!capabilities.Contains(F3Capabilities.InventoryWrite) || !capabilities.Contains(F3Capabilities.PriceWrite))) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "INVENTORY_WRITE ve PRICE_WRITE Stage/SIT kanıtı olmadan birleşik iş oluşturulmaz.", 422);
-        if (!stage && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!; var dedup = $"price-inventory:{connectionId:N}:{draft.PayloadHash}";

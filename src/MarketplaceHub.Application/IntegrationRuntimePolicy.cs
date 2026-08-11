@@ -11,15 +11,16 @@ public static class IntegrationRuntimePolicy
 {
     public static bool IsStage(PlatformConnection connection) => string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase);
     public static bool IsProduction(PlatformConnection connection) => string.Equals(connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase);
+    public static bool IsSupportedEnvironment(PlatformConnection connection) => IsStage(connection) || IsProduction(connection);
     public static bool IsManualStage(PlatformConnection connection, AdapterContext context) =>
         IsStage(connection) && string.Equals(connection.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) && context.Operation == IntegrationOperation.Manual;
 
     public static bool AllowsManualRead(PlatformConnection connection, bool capabilitySupported) =>
-        IsStage(connection) || (IsProduction(connection) && capabilitySupported);
+        IsStage(connection) || IsProduction(connection);
 
     public static bool AllowsManualWrite(PlatformConnection connection, AdapterContext context, bool globalWritesEnabled, bool connectionWritesEnabled, bool capabilitySupported) =>
         IsManualStage(connection, context)
-        || (IsProduction(connection) && globalWritesEnabled && connectionWritesEnabled && capabilitySupported);
+        || (IsProduction(connection) && globalWritesEnabled && connectionWritesEnabled);
 
     public static bool RequiresSensitiveConfirmation(PlatformConnection connection) => !IsStage(connection);
 

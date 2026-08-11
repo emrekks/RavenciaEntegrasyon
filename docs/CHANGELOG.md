@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Manuel runtime capability/evidence ayrımı
+
+- Catalog, fiyat-stok, Trendyol shipment/label/return/sync ve E-Faturam fatura yollarında capability/evidence, fixture SHA ve release kaydı normal manuel runtime kapısı olmaktan çıkarıldı. `UNKNOWN` kayıtlar diagnostics ve release kabulü için korunur.
+- Production manuel dış yazmada master + connection switch, aktif connection/credential, doğrulama, idempotency, provider response/reconciliation ve audit korunur. Stage manuel akışı switch, fiscal policy, re-auth ve açık onay istemez. Hedefli policy testi 3/3 ve Infrastructure build geçti.
+- Repository-geneli formatter, değiştirilmemiş dosyalardaki CRLF→LF `ENDOFLINE` ihlalleri nedeniyle `BLOCKED_REPOSITORY_LINE_ENDINGS` kaldı; geniş mekanik dönüşüm yapılmadı.
+
 ## 2026-08-12 - Ortak etiket taşıyıcı uygunluk koruması
 
 - Gerçek Stage Test Order paketinin `Yurtiçi Kargo Marketplace` taşıyıcısı, Trendyol'un yalnız Aras Kargo veya TEX için tanımladığı common-label sözleşmesine uygun değildir. `LABEL_WRITE` capability canary ve normal common-label kuyruğu artık uyumsuz taşıyıcıda uzak sağlayıcı çağrısı yapmadan `COMMON_LABEL_CARRIER_UNSUPPORTED` ile fail-closed sonlanır.

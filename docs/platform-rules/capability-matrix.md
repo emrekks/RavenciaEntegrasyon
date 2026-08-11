@@ -5,7 +5,7 @@
 - `SUPPORTED`: Resmî kaynak, tarihli environment/store scope kanıtı ve gerekli fixture vardır.
 - `UNKNOWN`: Kod bulunabilir; güvenli dış çalışma kanıtı yoktur.
 - `NOT_SUPPORTED`: Platform veya proje kararı desteklemez.
-- Read kanıtı write yetkisi değildir. Production write için global + connection anahtarı, capability ve denetlenebilir evidence zorunludur. Aktif STAGE bağlantısındaki manuel read/write denemesi bunlara takılmaz; credential, endpoint sınırı, teknik doğrulama, idempotency ve audit korunur.
+- Read kanıtı write yetkisi değildir. Capability/evidence kayıtları diagnostics ve release kabulünde zorunludur; manuel runtime için ek kapı değildir. Production write global + connection anahtarını, aktif credentialı, teknik doğrulamayı, idempotency ve audit'i zorunlu tutar. Aktif STAGE bağlantısındaki manuel read/write denemesi switch/evidence kapılarına takılmaz.
 
 ## Trendyol Türkiye CORE
 
@@ -44,9 +44,9 @@ Gönderen mali hesap E-Faturam tarafından yönetilir. Panel yalnız doğrudan A
 
 ## Açılma kuralı
 
-Production’da capability `UNKNOWN` iken API/UI dış iş oluşturamaz. Evidence endpoint'i yalnız Owner/Administrator tarafından ETag ve audit ile güncellenir; resmî HTTPS kaynak, environment/store eşleşmesi ve write için fixture SHA-256 gerekir. Aktif STAGE bağlantısında manuel işlem bu kanıtı üretmek için çalıştırılabilir; `UNKNOWN` durumunu kendiliğinden `SUPPORTED` yapmaz.
+Capability `UNKNOWN` diagnostics/release kabulünde görünür kalır fakat Stage veya Production manuel API/UI işini tek başına kapatmaz. Evidence endpoint'i yalnız Owner/Administrator tarafından ETag ve audit ile güncellenir; resmî HTTPS kaynak, environment/store eşleşmesi ve write için fixture SHA-256 gerekir. Aktif STAGE bağlantısında manuel işlem bu kanıtı üretebilir; `UNKNOWN` durumunu kendiliğinden `SUPPORTED` yapmaz.
 
-Capability `UNKNOWN` iken API/UI dış iş oluşturamaz. Evidence endpoint'i yalnız Owner/Administrator tarafından ETag ve audit ile güncellenir; platforma göre `developers.trendyol.com` veya `developers.trendyolefaturam.com` resmî HTTPS kaynağı, environment/store bire bir eşleşmesi ve write için 64 haneli fixture SHA-256 ister.
+Production otomatik işler ilgili `AUTO_*` bayrağını ayrıca ister; manuel işlemlerde capability/evidence ayrı bir runtime kapısı değildir. Evidence endpoint'i yalnız Owner/Administrator tarafından ETag ve audit ile güncellenir; platforma göre `developers.trendyol.com` veya `developers.trendyolefaturam.com` resmî HTTPS kaynağı, environment/store bire bir eşleşmesi ve write için 64 haneli fixture SHA-256 ister.
 
 ## Kanal sınırı
 

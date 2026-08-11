@@ -284,9 +284,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         if (connection is null || connection.PlatformCode != "TRENDYOL" || connection.Status != "ACTIVE") return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın yalnız ACTIVE Trendyol bağlantısında yapılabilir.", 422);
-        var stage = IntegrationRuntimePolicy.IsStage(connection);
-        if (!stage && !await db.PlatformCapabilities.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == F3Capabilities.ProductWrite && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "PRODUCT_WRITE capability Stage/SIT kanıtı olmadan yayın işi oluşturulmaz.", 422);
-        if (!stage && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Yayın yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
 
         var draftResult = await new ProductPublicationComposer(db).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (!draftResult.Succeeded) return ServiceResult<Guid>.Fail(draftResult.Error!.Code, draftResult.Error.Message, draftResult.Error.Status, draftResult.Error.FieldErrors);
@@ -376,9 +375,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         if (connection is null || connection.PlatformCode != "TRENDYOL" || connection.Status != "ACTIVE") return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Güncelleme yalnız ACTIVE Trendyol bağlantısında yapılabilir.", 422);
-        var stage = IntegrationRuntimePolicy.IsStage(connection);
-        if (!stage && !await db.PlatformCapabilities.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == F3Capabilities.ProductWrite && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "PRODUCT_WRITE capability Stage/SIT kanıtı olmadan güncelleme işi oluşturulmaz.", 422);
-        if (!stage && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Güncelleme yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
 
         var build = await new ProductUpdateComposer(db).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
@@ -404,9 +402,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         if (connection is null || connection.PlatformCode != "TRENDYOL" || connection.Status != "ACTIVE") return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Arşiv işlemi yalnız ACTIVE Trendyol bağlantısında yapılabilir.", 422);
-        var stage = IntegrationRuntimePolicy.IsStage(connection);
-        if (!stage && !await db.PlatformCapabilities.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == F3Capabilities.ProductWrite && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken)) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "PRODUCT_WRITE capability Stage/SIT kanıtı olmadan arşiv işi oluşturulmaz.", 422);
-        if (!stage && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Arşiv işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var build = await new ProductArchiveComposer(db).BuildAsync(tenantId, productId, connectionId, archived, cancellationToken);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!; var dedup = $"product-archive:{connectionId:N}:{productId:N}:{archived}:{draft.PayloadHash}";

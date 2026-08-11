@@ -1,5 +1,11 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - Manuel runtime capability/evidence ayrımı
+
+Gate–route–service–job envanteri sonrasında Catalog, Inventory, F3 Sales ve F4 Billing manuel enqueue yollarındaki capability/evidence runtime kapıları kaldırıldı. `UNKNOWN` capability artık Stage veya Production manuel read/write işini durdurmaz; destek kaydı diagnostics ve release kabulü olarak korunur. Production dış yazmasında master + connection switch, etkin connection/credential, input doğrulama, idempotency, provider response/reconciliation ve audit korunur; Stage’de switch, fiscal policy, re-auth ve açık onay aranmaz. Hedefli `IntegrationRuntimePolicyTests` 3/3 ve Infrastructure build 0 hata/uyarı geçti. Otomatik işlerin `AUTO_*` ayrımı ve gerçek Stage kabul senaryoları ayrıca `NOT_RUN` durumundadır.
+
+Repository-geneli `dotnet format MarketplaceHub.sln --verify-no-changes --no-restore` bu değişiklikten bağımsız mevcut CRLF→LF `ENDOFLINE` ihlalleri nedeniyle çalışmadı; ilk hata değiştirilmemiş `src/MarketplaceHub.Domain/CatalogModels.cs` dosyasındadır ve hata aynı biçimde çok sayıda değiştirilmemiş dosyaya yayılır. Geniş satır-sonu dönüşümü bu refactor kapsamına alınmadı; formatter sonucu `BLOCKED_REPOSITORY_LINE_ENDINGS` olarak kaydedildi.
+
 ## 2026-08-12 - Ortak etiket Stage fixture taşıyıcı sınırı
 
 Taze Trendyol Stage Test Order `1265633895` paketinin güvenli metaverisi taşıyıcının `Yurtiçi Kargo Marketplace` olduğunu doğruladı. Trendyol'un resmî common-label sözleşmesi yalnız Trendyol öder Aras Kargo veya TEX gönderilerinde geçerlidir; bu nedenle geçmiş `LABEL_WRITE` denemelerindeki `REMOTE_REQUEST_REJECTED` sonucu bir capability kanıtı değildir. Kuyruğa alma ve worker katmanı artık uyumsuz taşıyıcıyı uzak `Picking`/label çağrısından önce `COMMON_LABEL_CARRIER_UNSUPPORTED` ile fail-closed durdurur. `CommonLabelCarrierPolicyTests` 7/7 geçti. `LABEL_WRITE` ile `SHIPMENT_WRITE` elle yükseltilmedi; uygun taşıyıcılı gerçek Stage fixture kabulü `NOT_RUN`dır. Production capability, global/connection write-switch, idempotency ve audit kontrolleri değişmedi.
@@ -150,7 +156,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 9.3
+**Ana plan sürümü:** 9.4
 
 **2026-08-10 hızlı geliştirme politikası v8.3:** Günlük UI ve olağan işlevsel değişikliklerde otomatik test/build kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılandır. Hedefli kontrol yalnız somut sorun/derleme riski ya da güvenlik, migration, mali işlem, dosya yükleme, veri kaybı ve dış yazma gibi riskli alanlarda çalıştırılır. Tam doğrulama kullanıcı talebi veya release/production kapısına bırakılır.
 

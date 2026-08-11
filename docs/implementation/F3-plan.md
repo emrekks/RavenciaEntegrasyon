@@ -32,9 +32,8 @@ Trendyol Türkiye CORE ürün, referans, sipariş, paket, iade, etiket, webhook 
 
 ## Güvenlik ve tutarlılık kapıları
 
-- Her write capability için `SUPPORTED` ve tarihli environment/store scope evidence gerekir.
-- Write capability evidence'ında SHA-256 Stage/SIT fixture checksum zorunludur.
-- Global ve connection external-write anahtarları birlikte açık olmalıdır.
+- Capability/evidence ve fixture checksum diagnostics/release kabulü içindir; manuel runtime enqueue kapısı değildir.
+- Production manuel write için global ve connection external-write anahtarları birlikte açık olmalıdır; Stage manuel write bunları gerektirmez.
 - Her dış yazma deterministic idempotency key ve `ExternalEffectRecord` fence kullanır.
 - Belirsiz ağ/5xx sonucu otomatik duplicate write üretmez; `MANUAL_REVIEW` olur.
 - Batch satır sonuçları barkod/contentId/stockCode ile korunur.

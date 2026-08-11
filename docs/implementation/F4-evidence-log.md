@@ -80,6 +80,15 @@
 
 Kod kapanışı production kabulü değildir. Capability evidence, exact runtime suite ve Stage E2E olmadan global/connection write anahtarları kapalı kalır.
 
+## 2026-08-12 — Manuel runtime capability/evidence ayrımı
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| F4 enqueue/runtime | CODED_TARGETED_VALIDATED | Fatura submit, cancel, reconcile ve marketplace delivery için `UNKNOWN` capability/evidence artık manuel Stage veya Production işlemini tek başına kapatmaz. Production master + connection write switch, aktif connection/credential, input/ETag/idempotency, provider response/reconciliation ve audit kontrolleri korunur. |
+| Stage onay sınırı | CODED_TARGETED_VALIDATED | Stage endpointleri parola ve açık onay istemez; credential, teknik mali doğrulama ve provider hata işleme korunur. Fiscal policy yalnız Production doğrulamasında ek şarttır. |
+| Hedefli doğrulama | PASS_LOCAL | `IntegrationRuntimePolicyTests` 3/3 ve Infrastructure build 0 hata/uyarı geçti. Gerçek E-Faturam credential rotation ve provider E2E `NOT_RUN`dır. |
+| Repository formatter | BLOCKED_REPOSITORY_LINE_ENDINGS | Solution formatter, değiştirilmeyen dosyalar dahil repository-geneli CRLF→LF `ENDOFLINE` ihlalleri nedeniyle çalışmadı. Bu refactor kapsamı dışında geniş satır-sonu dönüşümü yapılmadı. |
+
 ## 2026-08-11 — auditli E-Faturam Stage canary hazırlığı
 
 | Kanıt | Durum | Not |

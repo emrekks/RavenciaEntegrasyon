@@ -21,7 +21,7 @@ public sealed class IntegrationRuntimePolicyTests
     public void Production_remains_fail_closed_without_all_write_gates()
     {
         var connection = Connection("PRODUCTION", "ACTIVE");
-        Assert.False(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, true, false));
+        Assert.True(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, true, false));
         Assert.False(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, false, true));
         Assert.True(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, true, true));
         Assert.True(IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection));
