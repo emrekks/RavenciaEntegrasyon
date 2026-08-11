@@ -9,6 +9,7 @@
 - Trendyol dokümanındaki tarihsel `Picking` Stage fixture'ı da create isteğinde reddedildi; güncel write kanıtı için resmi Stage Test Order API ile taze fixture oluşturma yolu ayrıca uygulanacaktır.
 - Taze fixture, yalnız `STAGE/2738` ve resmî test barkodunda tek denemelik durable job olarak eklendi; normal dış yazma ve production anahtarları bu istisnadan ayrı tutuldu.
 - Stage Test Order yanıtındaki sipariş numarası string veya sayı olsa da güvenli sözleşme okumasıyla işlenebilir.
+- İlk gerçek Test Order işinde Worker dispatch allow-list'inin yeni job tipini içermediği görüldü. İş dış çağrı yapmadan fail-closed durdu; `TRENDYOL_STAGE_TEST_ORDER` F3 yönlendirmesine eklendi. Capability ve dış-yazma güvenlik kapıları değişmedi.
 
 ## 2026-08-11 - v10.41 iade ürün satırı eşlemesi
 
