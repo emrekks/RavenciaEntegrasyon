@@ -4,6 +4,8 @@
 
 Capability `UNKNOWN` kayıtları kanıtsız biçimde `SUPPORTED` yapılmadı. Owner/Admin tarafından başlatılan Trendyol `STAGE` etiket canary'si, paket `92257909` / takip `7250000170335942` üzerinde gerçek ortak etiket read-back'iyle başarılı oldu: `LABEL_READ=SUPPORTED`, resmi kaynak URL'si, Stage/store kapsamı, format kısıtı, audit kaydı ve 64 karakterlik SHA-256 fixture kanıtı saklandı. `LABEL_WRITE` için tarihsel fixture'lar uzaktan reddedildi ve `UNKNOWN` kaldı. Bunu çözmek için yalnız Stage seller `2738` kapsamında, resmî test barkoduyla, tek denemelik ve auditli taze Test Order job'u eklendi. Yeni sipariş read-sync ile alınıp dönen güncel takip numarasında create → read-back geçmeden `LABEL_WRITE` destekli yapılmayacak. Normal production/external-write anahtarları değişmedi.
 
+Test Order yanıtındaki `orderNumber` alanı resmi Stage servisinde JSON metni veya sayısı olarak dönse de kayıpsız okunacak şekilde uyumlu hale getirildi; Infrastructure hedefli derlemesi geçti.
+
 ## 2026-08-11 - v10.41 iade satırı bağlantısı
 
 v10.40 CI `#129`, release `#119`, deployment/readiness ve return-sync kabulü geçti; panelde 23 gerçek Stage iadesi görünür. Nested claim satırındaki `orderLine.id` ile `claimItem.orderLineItemId` farklı olduğundan ürünler 0 görünüyordu. Gerçek şema ve yerel DB karşılaştırmasıyla sipariş bağı parent `orderLine.id` alanına düzeltildi; claim action kimliği değişmedi. Hedefli test/release/deploy ve idempotent yeniden eşitleme bekleniyor.
