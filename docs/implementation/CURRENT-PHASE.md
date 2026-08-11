@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - E-Faturam Stage credential payload sonucu
+
+Yeni deploy'da normal `EFATURAM_CONNECTION_TEST` çalıştırıldı ve `EFATURAM_CONFIGURATION_UNAVAILABLE` ile güvenli biçimde bloke oldu. İçeriği okunmadan doğrulanan aktif şifreli credential kaydı `2026-08-02` tarihli `EMAIL_PASSWORD` payload'ıdır; güncel müşteri oturum sözleşmesinin partner e-posta/parola ile müşteri e-posta/parola/VKN alanlarını içermeden geçerli sayılması mümkün değildir. Bu bir capability veya onay kapısı değildir; Stage hesabının güncel beş alanla credential rotation'ı gerekir. Credential içeriği gösterilmedi, üretim güvenlikleri değiştirilmedi.
+
 ## 2026-08-12 - v10.44 immutable deployment ve Stage iade kabulü
 
 `ed2dfc9` kaynak CI'si başarıyla tamamlandı; `release-2026-08-12-v10.44` immutable release'i app `sha256:214a3bc4614c0573a3915eba3705abff4814b6c7b6a8d2607bf6300f3742334a` ve edge `sha256:1dcd2fd246d71b80a817cf690f7b5c6309995eb72fc3a8bc96ab2b0fa8722ad3` digestleriyle yayımlandı. Hedef Ubuntu sunucusunda taze geri dönüş yedeği ve checksum kontrolü sonrası migration, API/Worker/Caddy deploy edildi; `/health/ready` 200 ve bütün servisler healthy. Panelde normal `TRENDYOL_RETURN_SYNC` manuel Stage read işi `8542af70a19c4464b78273ee54c9fd16` ilk denemede `SUCCEEDED`; iade ekranı 25 paketi ürün satırlarıyla gösterdi. Production dış yazma güvenlikleri değiştirilmedi; E-Faturam gerçek Stage provider smoke hâlâ `NOT_RUN`dır.
@@ -134,7 +138,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 8.8
+**Ana plan sürümü:** 8.9
 
 **2026-08-10 hızlı geliştirme politikası v8.3:** Günlük UI ve olağan işlevsel değişikliklerde otomatik test/build kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılandır. Hedefli kontrol yalnız somut sorun/derleme riski ya da güvenlik, migration, mali işlem, dosya yükleme, veri kaybı ve dış yazma gibi riskli alanlarda çalıştırılır. Tam doğrulama kullanıcı talebi veya release/production kapısına bırakılır.
 

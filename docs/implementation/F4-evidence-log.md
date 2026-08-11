@@ -1,5 +1,11 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 — Stage connection smoke sonucu
+
+- **Çalıştırılan iş:** Paneldeki normal `Bağlantıyı test et` eylemi `EFATURAM_CONNECTION_TEST` olarak enqueue edildi.
+- **Sonuç:** `BLOCKED_CONFIGURATION` / `EFATURAM_CONFIGURATION_UNAVAILABLE`. Aktif şifreli `EMAIL_PASSWORD` kaydının varlığı ve `2026-08-02` oluşturulma zamanı secret içeriği okunmadan doğrulandı; kayıt, güncel partner + müşteri oturum şemasından öncedir.
+- **Karar:** Stage manuel runtime kapıları kaldırılmıştır; sağlayıcının zorunlu partner e-posta/parola ve müşteri e-posta/parola/VKN credential alanları olmadan güvenli auth yapılmaz. Bu alanlarla credential rotation sonrası connection smoke ve mali submit kabulü yeniden koşulacaktır. Production korumaları değişmedi.
+
 ## 2026-08-12 — Stage normal submit web doğrulaması
 
 - **Kapsam:** Invoice detail ekranında Production hassas onay göstergesi ve STAGE manuel normal submit davranışı.

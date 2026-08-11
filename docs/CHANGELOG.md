@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - E-Faturam Stage yapılandırma tespiti
+
+- Yeni runtime'daki normal `EFATURAM_CONNECTION_TEST`, kayıtlı eski `EMAIL_PASSWORD` payload'ının güncel partner + müşteri oturum sözleşmesi için yeterli olmadığını `EFATURAM_CONFIGURATION_UNAVAILABLE` ile fail-closed gösterdi. Bu durum Stage onay/capability kapısı değildir; şifreli credential, partner ve müşteri kimliğiyle yenilenmelidir. Secret okunmadı veya loglanmadı.
+
 ## 2026-08-12 - v10.44 immutable yayın, deploy ve Stage iade kabulü
 
 - Başarılı main source CI sonrasında `release-2026-08-12-v10.44` yalnız immutable app/edge imajlarını yayımladı. Ubuntu hedefte taze geri dönüş yedeği, fail-closed Compose doğrulaması, migration, readiness ve worker health kontrolleri geçti.
