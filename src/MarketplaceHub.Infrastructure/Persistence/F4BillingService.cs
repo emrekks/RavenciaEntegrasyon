@@ -367,6 +367,7 @@ public sealed partial class F4BillingService(
     {
         var actions = new List<string>(); if (invoice.Status is InvoiceStatus.Draft or InvoiceStatus.ValidationFailed) actions.Add("VALIDATE");
         if (invoice.Status == InvoiceStatus.Ready && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, F4Capabilities.InvoiceSubmit, cancellationToken)) actions.Add("SUBMIT");
+        if (invoice.Status == InvoiceStatus.Ready && invoice.InvoiceType == "EARSIVFATURA" && string.IsNullOrWhiteSpace(invoice.ExternalReference) && await StageCapabilityProbeAllowed(invoice.TenantId, invoice.ProviderConnectionId, cancellationToken)) actions.Add("STAGE_CAPABILITY_PROBE");
         if (invoice.Status is (InvoiceStatus.UnknownResult or InvoiceStatus.Submitted) && await CapabilitySupported(invoice.TenantId, invoice.ProviderConnectionId, F4Capabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
         if (invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed) && invoice.PackageId is not null)
         {
@@ -385,6 +386,7 @@ public sealed partial class F4BillingService(
         var settings = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.SettingsJson).SingleOrDefaultAsync(cancellationToken);
         if (settings is null) return false; try { return JsonDocument.Parse(settings).RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True; } catch (JsonException) { return false; }
     }
+    private Task<bool> StageCapabilityProbeAllowed(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL_EFATURAM" && x.Environment == "STAGE" && x.ExternalStoreId == "Ravencia - Ravencia", cancellationToken);
     private Task<bool> CapabilitySupported(Guid tenantId, Guid connectionId, string code, CancellationToken cancellationToken) => db.PlatformCapabilities.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken);
     private async Task<bool> AutoInvoiceEnabled(Guid tenantId, CancellationToken cancellationToken) => await db.FeatureFlags.AsNoTracking().AnyAsync(x => x.Key == "AUTO_INVOICE_ENABLED" && x.Enabled, cancellationToken);
     private InvoicePartySnapshot Snapshot(Invoice invoice, string role, string content, DateTimeOffset now) => new() { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, InvoiceId = invoice.Id, Role = role, ProtectedContent = _partyProtector.Protect(content), ContentHash = Hash(content), CreatedAt = now };
