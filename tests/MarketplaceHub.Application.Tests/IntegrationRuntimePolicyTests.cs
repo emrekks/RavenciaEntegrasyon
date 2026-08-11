@@ -11,9 +11,9 @@ public sealed class IntegrationRuntimePolicyTests
     public void Active_stage_manual_write_bypasses_evidence_and_write_switches()
     {
         var connection = Connection("STAGE", "ACTIVE");
-        Assert.True(IntegrationRuntimePolicy.AllowsManualRead(connection, capabilitySupported: false));
-        Assert.True(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, globalWritesEnabled: false, connectionWritesEnabled: false, capabilitySupported: false));
-        Assert.False(IntegrationRuntimePolicy.AllowsManualWrite(connection, Automatic, globalWritesEnabled: true, connectionWritesEnabled: true, capabilitySupported: true));
+        Assert.True(IntegrationRuntimePolicy.AllowsManualRead(connection));
+        Assert.True(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, globalWritesEnabled: false, connectionWritesEnabled: false));
+        Assert.False(IntegrationRuntimePolicy.AllowsManualWrite(connection, Automatic, globalWritesEnabled: true, connectionWritesEnabled: true));
         Assert.False(IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection));
     }
 
@@ -21,9 +21,9 @@ public sealed class IntegrationRuntimePolicyTests
     public void Production_remains_fail_closed_without_all_write_gates()
     {
         var connection = Connection("PRODUCTION", "ACTIVE");
-        Assert.True(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, true, false));
-        Assert.False(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, false, true));
-        Assert.True(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, true, true));
+        Assert.True(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, true));
+        Assert.False(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, false));
+        Assert.True(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, true, true));
         Assert.True(IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection));
     }
 

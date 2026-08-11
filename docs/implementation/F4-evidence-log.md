@@ -1,5 +1,11 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 — Manual runtime capability query removal
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Runtime dependency removal | CODED_TARGETED_VALIDATED | Capability sonucu policy tarafından kullanılmadığı halde yapılan F4 capability sorgusu kaldırıldı. Read/write policy aktif connection ve environment sınırına dayanır; Production write switch kontrolü korunur. `IntegrationRuntimePolicyTests` 3/3 ve Infrastructure build 0 hata/uyarı geçti. |
+
 ## 2026-08-12 — E-Faturam status endpoint configuration refactor
 
 | Kanıt | Durum | Not |

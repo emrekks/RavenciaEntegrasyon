@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Manual runtime capability query removal
+
+- F4 fatura read/write ve Trendyol manuel read akışları, karar sonucunu etkilemeyen capability deposu sorgusundan ayrıldı. Stage capability/evidence eksikliği veya bu deponun erişilebilirliği runtime blocker değildir; production dış-yazma switch davranışı değişmedi.
+
 ## 2026-08-12 - E-Faturam status endpoint configuration refactor
 
 - Giden e-Fatura durum sorgusunda eksik endpoint yolu capability/evidence runtime kapısı olmaktan çıkarıldı; teknik `EFATURAM_EINVOICE_STATUS_PATH_NOT_CONFIGURED` olarak ayrıştırıldı.

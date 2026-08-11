@@ -15,10 +15,10 @@ public static class IntegrationRuntimePolicy
     public static bool IsManualStage(PlatformConnection connection, AdapterContext context) =>
         IsStage(connection) && string.Equals(connection.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) && context.Operation == IntegrationOperation.Manual;
 
-    public static bool AllowsManualRead(PlatformConnection connection, bool capabilitySupported) =>
+    public static bool AllowsManualRead(PlatformConnection connection) =>
         IsStage(connection) || IsProduction(connection);
 
-    public static bool AllowsManualWrite(PlatformConnection connection, AdapterContext context, bool globalWritesEnabled, bool connectionWritesEnabled, bool capabilitySupported) =>
+    public static bool AllowsManualWrite(PlatformConnection connection, AdapterContext context, bool globalWritesEnabled, bool connectionWritesEnabled) =>
         IsManualStage(connection, context)
         || (IsProduction(connection) && globalWritesEnabled && connectionWritesEnabled);
 

@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - Manual runtime capability query removal
+
+F4 read/write policy ve Trendyol read enqueue yolu artık karar sonucu kullanılmayan `PlatformCapabilities` sorgusunu da yapmaz. Stage manuel akışında capability/evidence kayıt deposu erişimi runtime blocker değildir; Production için environment, aktif bağlantı, global/connection write switch ve diğer işlem güvenlikleri korunur.
+
 ## 2026-08-12 - E-Faturam status endpoint configuration ayrımı
 
 `INVOICE_STATUS_READ` için eksik outgoing e-Fatura sorgu yolu capability/evidence kapısı değil, sağlayıcı endpoint konfigürasyonudur. Manuel Stage istek geçerli göreli yol kaydedildiğinde ek onay veya evidence olmadan sağlayıcıya gider. Yol boş ya da geçersizken adapter endpoint tahmini yapmaz; bu teknik konfigürasyon eksikliği fail-closed kalır. Production environment/credential sınırı ve write kontrolleri değişmez.

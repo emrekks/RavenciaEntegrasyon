@@ -389,22 +389,20 @@ public sealed partial class F4BillingService(
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status == "ACTIVE", cancellationToken);
         if (connection is null) return false;
-        var supported = await CapabilitySupported(tenantId, connectionId, capability, cancellationToken);
         var enabled = ConnectionWritesEnabled(connection.SettingsJson);
         var manual = new AdapterContext(tenantId, connectionId, "runtime-gate", "runtime-gate", timeProvider.GetUtcNow());
-        return IntegrationRuntimePolicy.AllowsManualWrite(connection, manual, configuration.GetValue<bool>("FeatureFlags:ExternalWrites"), enabled, supported);
+        return IntegrationRuntimePolicy.AllowsManualWrite(connection, manual, configuration.GetValue<bool>("FeatureFlags:ExternalWrites"), enabled);
     }
     private async Task<bool> ReadGate(Guid tenantId, Guid connectionId, string capability, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status == "ACTIVE", cancellationToken);
-        return connection is not null && IntegrationRuntimePolicy.AllowsManualRead(connection, await CapabilitySupported(tenantId, connectionId, capability, cancellationToken));
+        return connection is not null && IntegrationRuntimePolicy.AllowsManualRead(connection);
     }
     private static bool ConnectionWritesEnabled(string settings)
     {
         try { return JsonDocument.Parse(settings).RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True; }
         catch (JsonException) { return false; }
     }
-    private Task<bool> CapabilitySupported(Guid tenantId, Guid connectionId, string code, CancellationToken cancellationToken) => db.PlatformCapabilities.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken);
     private InvoicePartySnapshot Snapshot(Invoice invoice, string role, string content, DateTimeOffset now) => new() { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, InvoiceId = invoice.Id, Role = role, ProtectedContent = _partyProtector.Protect(content), ContentHash = Hash(content), CreatedAt = now };
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private static string Normalize(string value) => value.Trim().ToUpperInvariant();
