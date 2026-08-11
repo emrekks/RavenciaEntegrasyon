@@ -1,3 +1,10 @@
+## 2026-08-11 - v10.37 Trendyol resmî iade satırı uyumluluğu
+
+- Resmî getClaims sözleşmesindeki `items[].claimItems[]` alanı iade satırı, durum ve neden eşlemesine eklendi; tarihsel düz `items[]` ve doğrudan `claimItems[]` geri uyumluluğu korundu.
+- Resmî örnekte miktar alanı bulunmadığından her claim item varsayılan `1` adet kabul edilir.
+- Solution build, Trendyol adapter sözleşme testleri `50/50`, web testleri `19/19`, typecheck ve production web build geçti. Yerel Docker motoru kapalı olduğundan Testcontainers grupları `BLOCKED_TOOLING`; Linux CI sonucu bekleniyor. Yerel Python bulunmadığından documentation transaction kontrolü de CI'ya bırakıldı.
+- Stage bağlantı testi `SUCCEEDED` (correlation `b9738ca506b74e9fb4f44045ad77c12f`); dağıtılmış eski sürüm `RETURN_READ=UNKNOWN` bıraktı. Güncel kodun hedefli testi ve Stage yeniden kabulü bekleniyor; capability elle yükseltilmedi.
+
 ## 2026-08-11 - v10.36 iade eşitleme ve referans çalışma alanı
 
 - Return sync, yerelde eksik olan bağlı siparişi yalnız exact remote read ile hydrate eder; sipariş bulunamazsa claim üretmek yerine mevcut `RETURN_ORDER_NOT_FOUND` audit davranışını korur.

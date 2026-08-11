@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - v10.37 Trendyol iade claimItems uyumluluğu
+
+- Trendyol getClaims resmî cevabındaki `items[].claimItems[]`, tarihsel düz `items[]` ve doğrudan `claimItems[]` desteği korunarak iade satırı, durum ve neden eşlemesine alındı.
+- Resmî satırda miktar bulunmadığında claim item tek ürün satırı kabul edilerek `1` adet saklanır; sıfır miktarlı görünmez iade satırı üretilmez.
+- Yeni Stage bağlantı testi başarılı tamamlandı; dağıtılmış eski sürümde `RETURN_READ` hâlâ `UNKNOWN`, güncel paketle Stage yeniden kabulü bekleniyor. Dış yazma kapıları değişmedi.
+
 ## 2026-08-11 - Stage iade probe teşhisi
 
 - Başarısız salt-okunur capability proplarının evidence notu artık capability API ve bağlantı ekranında görünür; `RETURN_READ` gibi `UNKNOWN` kayıtların hata kodu saklanmaz.

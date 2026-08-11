@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-11 - v10.37 Trendyol resmi iade satırı sözleşmesi
+
+Trendyol getClaims cevabının güncel resmî `items[].claimItems[]` alanı, tarihsel düz `items[]` ve doğrudan `claimItems[]` geri uyumluluğu korunarak iade eşleyicisine eklendi. Resmî cevap miktar alanı göndermediğinde her claim item tek iade satırı olarak `1` adet kabul edilir; durum ve iade nedeni de aynı resmî satır koleksiyonundan okunur. Solution build, Trendyol adapter sözleşme testleri `50/50`, web testleri `19/19`, typecheck ve production web build `PASS`; Docker motoru kapalı olduğundan Testcontainers grupları yerelde `BLOCKED_TOOLING`, Linux CI bekleniyor. Bağlı Stage hesabında yeni bağlantı testi `SUCCEEDED` (correlation `b9738ca506b74e9fb4f44045ad77c12f`), fakat dağıtılmış eski sürüm `RETURN_READ=UNKNOWN` bırakmıştır. Güncel sürümün Stage dağıtım/yeniden kabulü beklenir; dış yazmalar kapalıdır.
+
 ## 2026-08-11 - v10.36 iade eşitleme ve referans çalışma alanı
 
 Uzak Trendyol iade claim'i yerelde henüz bulunmayan siparişe bağlı olduğunda, iade kaydı sessizce kaybedilmez: aynı sipariş önce salt-okunur exact read ile içeri alınır, başarılı ilişkilendirmeden sonra claim saklanır. Sipariş uzakta da yoksa mevcut audit kaydı ve fail-closed davranış korunur. İade ekranı; tüm iade, talep, kargo, aksiyon, onay/red, analiz, ihtilaf ve askı sekmeleri; müşteri/sipariş/iade kodu/barkod/sebep/tarih filtreleri ve referans sütun düzeniyle yenilendi. Dış iade aksiyonu veya capability kapıları değiştirilmedi. Infrastructure build, Trendyol adapter sözleşme testi `50/50`, iade operasyonları web testi `4/4` ve web typecheck `PASS`; gerçek Stage return-read kabulü `NOT_RUN`.

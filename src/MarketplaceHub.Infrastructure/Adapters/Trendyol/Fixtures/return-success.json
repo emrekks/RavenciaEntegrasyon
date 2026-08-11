@@ -10,11 +10,19 @@
       "lastModifiedDate": 1762253993685,
       "items": [
         {
-          "id": "CLAIM-LINE-ANON-001",
-          "orderLineItemId": "700001",
-          "quantity": 1,
-          "claimItemStatus": { "name": "Created" },
-          "customerClaimItemReason": { "name": "ANON-REASON", "code": "ANON" }
+          "orderLine": {
+            "id": "700001",
+            "barcode": "ANON-BARCODE-001",
+            "merchantSku": "ANON-SKU-001"
+          },
+          "claimItems": [
+            {
+              "id": "CLAIM-LINE-ANON-001",
+              "orderLineItemId": "700001",
+              "claimItemStatus": { "name": "Created" },
+              "customerClaimItemReason": { "name": "ANON-REASON", "code": "ANON" }
+            }
+          ]
         }
       ]
     }

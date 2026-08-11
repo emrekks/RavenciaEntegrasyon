@@ -43,7 +43,7 @@ public sealed class F3TrendyolContractTests
     [Fact]
     public void Product_and_return_fixtures_map_only_documented_identifiers()
     {
-        var product = Assert.Single(TrendyolJsonMapper.Products(Fixture("product-approved.json")).Items); Assert.Contains("https://cdn.example.test/products/anon-001.jpg", product.RawJson, StringComparison.Ordinal); var claim = Assert.Single(TrendyolJsonMapper.Returns(Fixture("return-success.json")).Items); Assert.Equal("CLAIM-ANON-001", claim.ExternalClaimId); Assert.Equal("Created", claim.RawStatus); Assert.Single(claim.Lines);
+        var product = Assert.Single(TrendyolJsonMapper.Products(Fixture("product-approved.json")).Items); Assert.Contains("https://cdn.example.test/products/anon-001.jpg", product.RawJson, StringComparison.Ordinal); var claim = Assert.Single(TrendyolJsonMapper.Returns(Fixture("return-success.json")).Items); Assert.Equal("CLAIM-ANON-001", claim.ExternalClaimId); Assert.Equal("Created", claim.RawStatus); var line = Assert.Single(claim.Lines); Assert.Equal(1, line.Quantity); Assert.Equal("ANON", claim.ReasonCode);
     }
 
     [Fact]
