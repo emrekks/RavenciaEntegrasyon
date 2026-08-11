@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Ortak etiket taşıyıcı uygunluk koruması
+
+- Gerçek Stage Test Order paketinin `Yurtiçi Kargo Marketplace` taşıyıcısı, Trendyol'un yalnız Aras Kargo veya TEX için tanımladığı common-label sözleşmesine uygun değildir. `LABEL_WRITE` capability canary ve normal common-label kuyruğu artık uyumsuz taşıyıcıda uzak sağlayıcı çağrısı yapmadan `COMMON_LABEL_CARRIER_UNSUPPORTED` ile fail-closed sonlanır.
+- Bu koruma Stage manuel çalışma kolaylığını veya Production güvenliklerini gevşetmez. Uygun taşıyıcılı gerçek Stage fixture başarılı create/read-back kanıtı üretmeden `LABEL_WRITE` ve `SHIPMENT_WRITE` `UNKNOWN` kalır.
+
 ## 2026-08-12 - v10.45 E-Faturam Stage renewal UI deployment
 
 - Başarılı source CI ve immutable publish sonrasında credential yenileme görünürlüğü Ubuntu hedefe deploy edildi. Taze backup, migration, API/Worker/Caddy health, frontend asset ve `/health/ready` kontrolleri geçti.
