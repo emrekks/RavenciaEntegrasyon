@@ -1,3 +1,9 @@
+## 2026-08-12 — v10.44 Stage return runtime acceptance
+
+- **Release/deploy:** `ed2dfc9` source CI PASS; `release-2026-08-12-v10.44` immutable publish PASS. App `sha256:214a3bc4614c0573a3915eba3705abff4814b6c7b6a8d2607bf6300f3742334a`, edge `sha256:1dcd2fd246d71b80a817cf690f7b5c6309995eb72fc3a8bc96ab2b0fa8722ad3`; hedefte migration, API/Worker/Caddy health ve `/health/ready` 200 PASS.
+- **Stage read kanıtı:** Paneldeki normal `İadeleri eşitle` operasyonu `TRENDYOL_RETURN_SYNC` job'u `8542af70a19c4464b78273ee54c9fd16` olarak enqueue edildi ve `1/6` denemede `SUCCEEDED` oldu. İade ekranı 25 paketi, durum sekmelerini ve 1–5 ürün satırını gösterdi.
+- **Korunan sınır:** Bu kabul yalnız Stage salt-okunur return sync'tir. Production endpoint/credential boundary, external-write switch, authorization, idempotency, audit ve yazma güvenlikleri değiştirilmedi.
+
 ## 2026-08-12 — v10.43 CI format correction
 
 - İlk source CI yalnız `IntegrationRuntimePolicyTests` satır biçiminden başarısız oldu. Test düzenlendi; solution build ve üç policy testi PASS, yeni source CI bekleniyor.

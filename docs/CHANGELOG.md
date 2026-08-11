@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - v10.44 immutable yayın, deploy ve Stage iade kabulü
+
+- Başarılı main source CI sonrasında `release-2026-08-12-v10.44` yalnız immutable app/edge imajlarını yayımladı. Ubuntu hedefte taze geri dönüş yedeği, fail-closed Compose doğrulaması, migration, readiness ve worker health kontrolleri geçti.
+- Panelden başlatılan normal salt-okunur `TRENDYOL_RETURN_SYNC` işi `8542af70a19c4464b78273ee54c9fd16` ilk denemede başarılı oldu; İadeler ekranı 25 paketi ve ürün satırlarını gösteriyor. Production dış yazma kapıları değiştirilmedi.
+
 ## 2026-08-12 - Stage normal fatura gönderim testi
 
 - Web testi Production fatura gönderimindeki parola/açık-onay koşulunu explicit olarak taşır. Ayrı Stage fixture'ı normal `submit-jobs` endpointinin parola veya açık onay olmadan kullanılabildiğini; ETag ve idempotency başlıklarının korunduğunu doğrular.
