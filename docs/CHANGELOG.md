@@ -12,6 +12,7 @@
 - İlk gerçek Test Order işinde Worker dispatch allow-list'inin yeni job tipini içermediği görüldü. İş dış çağrı yapmadan fail-closed durdu; `TRENDYOL_STAGE_TEST_ORDER` F3 yönlendirmesine eklendi. Capability ve dış-yazma güvenlik kapıları değişmedi.
 - Worker düzeltmesinden sonraki ilk gerçek Stage Test Order isteği `REMOTE_SERVER_ERROR` döndürdü. Yalnız dar test fixture'ı, Trendyol'un resmî örnek sözleşmesindeki tam adres alanları ve `9900000000486` test barkoduyla hizalandı; capability yükseltilmedi.
 - Resmî fixture ile yeni Stage siparişi ve salt-okunur order-sync başarıyla tamamlandı. Uzak `ReadyToShip` durumunun canonical eşlemesi eklendi; daha önce bu açık yazım fail-closed `ManualReview` üretiyordu. Normal dış yazma ve production davranışı değişmedi.
+- Daha önce kaydedilmiş aynı raw kaynak olayındaki yanlış `ManualReview` projeksiyonu, yalnız tanınan canonical duruma idempotent olarak iyileştirilebilir hale getirildi. Bu yol dış çağrı veya yeni history olayı üretmez.
 
 ## 2026-08-11 - v10.41 iade ürün satırı eşlemesi
 
