@@ -383,6 +383,20 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new(uniqueClaims, nextCursor, hasMore), rateLimit);
     }
 
+    public async Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (authorized is null) return AdapterResult<StageTestOrderResult>.Failure(TrendyolErrorMapper.Configuration());
+        if (!context.IsStageCapabilityProbe || !string.Equals(authorized.Connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) || !string.Equals(authorized.Connection.ExternalStoreId, "2738", StringComparison.Ordinal)) return AdapterResult<StageTestOrderResult>.Failure(TrendyolErrorMapper.WriteClosed());
+        if (string.IsNullOrWhiteSpace(barcode)) return AdapterResult<StageTestOrderResult>.Failure(TrendyolErrorMapper.Contract());
+        var address = new { addressText = "Stage test address", city = "Istanbul", district = "Kadikoy", email = "stage.fixture@example.invalid", neighborhood = "Test", phone = "5301234567", postalCode = "34710" };
+        var body = JsonContent.Create(new { customer = new { customerFirstName = "Stage", customerLastName = "Fixture" }, invoiceAddress = new { address.addressText, address.city, address.district, address.email, invoiceFirstName = "Stage", invoiceLastName = "Fixture", address.neighborhood, address.phone, address.postalCode }, lines = new[] { new { barcode, quantity = 1, discountPercentage = 0, trendyolDiscountPercentage = 0 } }, seller = new { sellerId = 2738 }, shippingAddress = new { address.addressText, address.city, address.district, address.email, address.neighborhood, address.phone, address.postalCode, shippingFirstName = "Stage", shippingLastName = "Fixture" }, commercial = false });
+        var response = await SendAsync(authorized, HttpMethod.Post, TrendyolEndpoints.StageTestOrder, body, cancellationToken, configure: request => request.Headers.TryAddWithoutValidation("sellerId", authorized.Connection.ExternalStoreId));
+        if (!response.IsSuccess) return AdapterResult<StageTestOrderResult>.Failure(response.Error!, response.RateLimit);
+        try { using var document = JsonDocument.Parse(response.Value!); var orderNumber = document.RootElement.GetProperty("orderNumber").GetString(); return string.IsNullOrWhiteSpace(orderNumber) ? AdapterResult<StageTestOrderResult>.Failure(TrendyolErrorMapper.Contract()) : AdapterResult<StageTestOrderResult>.Success(new(orderNumber), response.RateLimit); }
+        catch (JsonException) { return AdapterResult<StageTestOrderResult>.Failure(TrendyolErrorMapper.Contract()); }
+    }
+
     private async Task<AdapterResult<string>> SendClaimsReadAsync(TrendyolRequestContext context, string endpoint, CancellationToken cancellationToken)
     {
         var response = await SendAsync(context, HttpMethod.Get, endpoint, null, cancellationToken);
@@ -391,9 +405,9 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         return await SendAsync(context, HttpMethod.Get, endpoint, null, cancellationToken, includeStoreFrontCode: false);
     }
 
-    private async Task<AdapterResult<string>> SendAsync(TrendyolRequestContext context, HttpMethod method, string endpoint, HttpContent? content, CancellationToken cancellationToken, bool includeStoreFrontCode = true)
+    private async Task<AdapterResult<string>> SendAsync(TrendyolRequestContext context, HttpMethod method, string endpoint, HttpContent? content, CancellationToken cancellationToken, bool includeStoreFrontCode = true, Action<HttpRequestMessage>? configure = null)
     {
-        using var request = TrendyolAuthenticationHandler.Create(context, method, endpoint, content, includeStoreFrontCode); using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); linked.CancelAfter(TimeSpan.FromSeconds(30));
+        using var request = TrendyolAuthenticationHandler.Create(context, method, endpoint, content, includeStoreFrontCode); configure?.Invoke(request); using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); linked.CancelAfter(TimeSpan.FromSeconds(30));
         try
         {
             using var response = await clients.CreateClient("Trendyol").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token); var retryAfter = response.Headers.RetryAfter?.Delta; var rate = new RateLimitMetadata(null, response.Headers.RetryAfter?.Date, retryAfter); var remoteRequestId = response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null;

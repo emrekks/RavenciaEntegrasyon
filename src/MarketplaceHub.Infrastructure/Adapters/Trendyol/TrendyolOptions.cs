@@ -32,6 +32,7 @@ internal static class TrendyolEndpoints
     public static string ShipmentManualDeliver(string sellerId, string packageId) => ShipmentPackage(sellerId, packageId) + "/manual-deliver";
     public static string ShipmentManualReturn(string sellerId, string packageId) => ShipmentPackage(sellerId, packageId) + "/manual-return";
     public static string CommonLabel(string sellerId, string cargoTrackingNumber) => $"sellers/{Uri.EscapeDataString(sellerId)}/common-label/{Uri.EscapeDataString(cargoTrackingNumber)}";
+    public const string StageTestOrder = "test/order/orders/core";
     public static string Claims(string sellerId) => $"order/sellers/{Uri.EscapeDataString(sellerId)}/claims";
     public static string ApproveClaim(string sellerId, string claimId) => $"order/sellers/{Uri.EscapeDataString(sellerId)}/claims/{Uri.EscapeDataString(claimId)}/items/approve";
     public const string ClaimIssueReasons = "order/claim-issue-reasons";

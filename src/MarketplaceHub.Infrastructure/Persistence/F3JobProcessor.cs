@@ -24,6 +24,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
             if (jobType == F3JobTypes.PriceInventorySync) return await SyncPriceInventory(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
             if (jobType == F3JobTypes.CommonLabel) return await CommonLabel(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
             if (jobType == F3JobTypes.CapabilityProbe) return await LabelCapabilityProbe(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            if (jobType == F3JobTypes.StageTestOrder) return await CreateStageTestOrder(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
             var succeeded = jobType switch
             {
                 F3JobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -714,6 +715,21 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
             capability.Version++;
             db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = payload.ActorUserId, Action = "CAPABILITY_STAGE_PROBE_SUCCEEDED", TargetType = "PlatformCapability", TargetId = capability.Id.ToString("D"), Reason = $"{code}:package:{package.Id:D}", CorrelationId = correlationId, CreatedAt = now });
         }
+        await db.SaveChangesAsync(cancellationToken);
+        return JobExecutionResult.Success();
+    }
+
+    private async Task<JobExecutionResult> CreateStageTestOrder(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        StageTestOrderJobPayload? payload;
+        try { payload = JsonSerializer.Deserialize<StageTestOrderJobPayload>(payloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }); }
+        catch (JsonException) { return JobExecutionResult.Blocked("STAGE_TEST_ORDER_PAYLOAD_INVALID", "Stage test siparişi payloadı geçersiz."); }
+        if (payload is null || payload.JobId == Guid.Empty || payload.ActorUserId == Guid.Empty || string.IsNullOrWhiteSpace(payload.Barcode)) return JobExecutionResult.Blocked("STAGE_TEST_ORDER_PAYLOAD_INVALID", "Stage test siparişi zorunlu alanları eksik.");
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
+        if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) || !string.Equals(connection.ExternalStoreId, "2738", StringComparison.Ordinal)) return JobExecutionResult.Blocked("STAGE_TEST_ORDER_SCOPE_REQUIRED", "Stage test siparişi yalnız Trendyol STAGE seller 2738 kapsamındadır.");
+        var result = await orders.CreateStageTestOrderAsync(Context(tenantId, connectionId, correlationId, $"stage-test-order:{payload.JobId:N}") with { IsStageCapabilityProbe = true }, payload.Barcode, cancellationToken);
+        if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = payload.ActorUserId, Action = "STAGE_TEST_ORDER_CREATED", TargetType = "StageTestOrder", TargetId = result.Value!.OrderNumber, Reason = "fresh-label-write-fixture", CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
         await db.SaveChangesAsync(cancellationToken);
         return JobExecutionResult.Success();
     }

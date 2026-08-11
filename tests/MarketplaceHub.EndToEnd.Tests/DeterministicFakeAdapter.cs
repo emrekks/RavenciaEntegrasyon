@@ -99,6 +99,9 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
     public Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken) =>
         Result(new CommonLabelDocument(cargoTrackingNumber, "ZPL", System.Text.Encoding.UTF8.GetBytes("^XA^FO20,20^FDSYNTHETIC^FS^XZ")));
 
+    public Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) =>
+        Write(context, () => new StageTestOrderResult("synthetic-stage-order"));
+
     Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> IReturnPort.PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) =>
         Result(Page(ReturnClaim()));
 
