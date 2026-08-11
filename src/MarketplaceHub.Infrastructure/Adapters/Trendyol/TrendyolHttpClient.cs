@@ -228,7 +228,11 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
     public async Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Configuration()); var query = new List<string> { $"size={page.Limit}", $"page={Page(page.Cursor)}" }; if (window.ModifiedAfter is not null) query.Add("startDate=" + window.ModifiedAfter.Value.ToUnixTimeMilliseconds()); if (window.ModifiedBefore is not null) query.Add("endDate=" + window.ModifiedBefore.Value.ToUnixTimeMilliseconds());
-        var response = await SendClaimsReadAsync(authorized, TrendyolEndpoints.Claims(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', query), cancellationToken); if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(response.Error!, response.RateLimit);
+        var endpoint = TrendyolEndpoints.Claims(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', query);
+        var response = await SendAsync(authorized, HttpMethod.Get, endpoint, null, cancellationToken);
+        if (response.Error?.HttpStatus == (int)HttpStatusCode.NotFound && string.Equals(authorized.Connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase))
+            return await PollStageClaimsByStatusAsync(authorized, endpoint, page, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(TrendyolJsonMapper.Returns(response.Value!), response.RateLimit); } catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
@@ -237,7 +241,7 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemoteReturnClaim>.Failure(TrendyolErrorMapper.Configuration());
         if (string.IsNullOrWhiteSpace(externalReturnId)) return AdapterResult<RemoteReturnClaim>.Failure(TrendyolErrorMapper.Contract());
         var endpoint = TrendyolEndpoints.Claims(authorized.Connection.ExternalStoreId) + "?claimIds=" + Uri.EscapeDataString(externalReturnId);
-        var response = await SendClaimsReadAsync(authorized, endpoint, cancellationToken); if (!response.IsSuccess) return AdapterResult<RemoteReturnClaim>.Failure(response.Error!, response.RateLimit);
+        var response = await SendAsync(authorized, HttpMethod.Get, endpoint, null, cancellationToken); if (!response.IsSuccess) return AdapterResult<RemoteReturnClaim>.Failure(response.Error!, response.RateLimit);
         try
         {
             var page = TrendyolJsonMapper.Returns(response.Value!);
@@ -349,6 +353,32 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         return true;
     }
     private static bool TryParts(string? value, out string categoryId, out string attributeId) { var parts = value?.Split('/', 2, StringSplitOptions.RemoveEmptyEntries) ?? []; categoryId = parts.ElementAtOrDefault(0) ?? ""; attributeId = parts.ElementAtOrDefault(1) ?? ""; return parts.Length == 2; }
+
+    private async Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollStageClaimsByStatusAsync(TrendyolRequestContext context, string endpoint, AdapterPageRequest page, CancellationToken cancellationToken)
+    {
+        logger.LogWarning("Trendyol Stage claims GET returned order.not.found without a status filter; retrying documented read statuses individually.");
+        string[] statuses = ["Created", "WaitingInAction", "WaitingFraudCheck", "Accepted", "Cancelled", "Rejected", "Unresolved", "InAnalysis"];
+        var claims = new List<RemoteReturnClaim>();
+        var hasMore = false;
+        RateLimitMetadata? rateLimit = null;
+        foreach (var status in statuses)
+        {
+            var response = await SendAsync(context, HttpMethod.Get, endpoint + "&claimItemStatus=" + status, null, cancellationToken);
+            rateLimit = response.RateLimit ?? rateLimit;
+            if (response.Error?.HttpStatus == (int)HttpStatusCode.NotFound) continue;
+            if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(response.Error!, response.RateLimit);
+            try
+            {
+                var result = TrendyolJsonMapper.Returns(response.Value!);
+                claims.AddRange(result.Items);
+                hasMore |= result.HasMore;
+            }
+            catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Contract(), response.RateLimit); }
+        }
+        var uniqueClaims = claims.GroupBy(x => x.ExternalClaimId, StringComparer.OrdinalIgnoreCase).Select(x => x.First()).OrderByDescending(x => x.LastModifiedAt).ToArray();
+        var nextCursor = hasMore ? (Page(page.Cursor) + 1).ToString(CultureInfo.InvariantCulture) : null;
+        return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new(uniqueClaims, nextCursor, hasMore), rateLimit);
+    }
 
     private async Task<AdapterResult<string>> SendClaimsReadAsync(TrendyolRequestContext context, string endpoint, CancellationToken cancellationToken)
     {

@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-11 - v10.39 Stage claims durum filtresi
+
+v10.38 release `#117` başarıyla üretildi ve app `sha256:64dd84776130d8d7a04ca134cd9bbd43c5437fa8f271094e4af67a30c1d8b90d`, edge `sha256:532a406a07cdf076d30881ca2d1375729004467437f362bf349c7b02a6565b7a` digestleriyle sunucuya dağıtıldı; readiness HTTP 200. Stage testi header fallback'in 404'ü değiştirmediğini gösterdi. Credential göstermeyen hedefli probe, aynı endpoint'in `claimItemStatus=Created` ile HTTP 200 ve gerçek claim cevabı verdiğini kanıtladı. Adapter yalnız Stage filtresiz 404 durumunda resmî claim statülerini ayrı sorgulayacak şekilde düzeltildi; production ve dış yazmalar değişmedi. Adapter testleri `50/50 PASS`; yeni CI/release/deploy ve Stage kabulü bekleniyor.
+
 ## 2026-08-11 - v10.38 Trendyol Türkiye claims Stage fallback
 
 R3 production deployment başarıyla tamamlandı; yeni app/edge digestleri, migration, API readiness, Worker health ve frontend asset kontrolleri geçti. Güncel paketle Stage bağlantı testi `17:34:46` tarihinde tekrarlandı ve yalnız `RETURN_READ`, resmî claims GET çağrısında `REMOTE_RESOURCE_NOT_FOUND`/HTTP 404 bıraktı. Türkiye V2 getClaims referansında `storeFrontCode` headerı tanımlanmadığından canonical TR başlıklı GET korunup yalnız 404 durumunda aynı salt-okunur endpoint başlıksız bir kez yeniden denenir. Yazma çağrıları, secrets ve dış yazma kapıları değişmedi. Trendyol adapter sözleşme testleri `50/50` geçti; CI/release/deployment ve Stage yeniden kabulü bekleniyor.

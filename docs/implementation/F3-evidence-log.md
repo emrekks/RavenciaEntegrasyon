@@ -1,3 +1,10 @@
+## 2026-08-11 - v10.39 Stage getClaims durum filtresi kanıtı
+
+- Credential göstermeyen salt-okunur runtime probunda filtresiz, `size/page` filtreli ve storefront başlıksız Stage istekleri aynı `SupplierApiDomainNotFoundException` / `order.not.found` 404 sonucunu verdi.
+- Aynı resmî endpoint `size=50&page=0&claimItemStatus=Created` ile storefront başlığından bağımsız HTTP 200 ve 1439 bayt claim cevabı döndürdü. Sorunun auth, endpoint veya storefront değil, Stage'in filtresiz claims davranışı olduğu kanıtlandı.
+- Adapter yalnız `STAGE` + filtresiz 404 koşulunda `Created`, `WaitingInAction`, `WaitingFraudCheck`, `Accepted`, `Cancelled`, `Rejected`, `Unresolved`, `InAnalysis` durumlarını salt-okunur sorgular. Production tek canonical çağrı ve tüm write kapıları korunur.
+- Hedefli adapter sözleşme testleri `50/50 PASS`; CI, immutable release, deployment ve Stage capability/sync yeniden kabulü bekleniyor.
+
 ## 2026-08-11 - v10.38 Türkiye claims Stage 404 fallback
 
 - R3 production deployment sonrası Stage capability testi `17:34:46` tarihinde yenilendi; CONNECTION/ORDER/PRODUCT/REFERENCE read `SUPPORTED`, claims GET `REMOTE_RESOURCE_NOT_FOUND`/HTTP 404 ve `RETURN_READ=UNKNOWN` kaldı.

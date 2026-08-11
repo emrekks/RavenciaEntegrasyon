@@ -48,4 +48,4 @@ Capability `UNKNOWN` iken API/UI dış iş oluşturamaz. Evidence endpoint'i yal
 
 ## Kanal sınırı
 
-Bu matris `storeFrontCode=TR` ve `channels=["CORE"]` kapsamındadır. Türkiye V2 claims GET çağrısı bu header ile HTTP 404 verirse yalnız aynı salt-okunur resmî endpoint başlıksız bir kez yeniden denenebilir; write endpointleri bu fallback kapsamına girmez. LUXE veya uluslararası storefront ayrı ADR/evidence olmadan desteklenmez.
+Bu matris `storeFrontCode=TR` ve `channels=["CORE"]` kapsamındadır. Production Türkiye V2 claims GET tek canonical çağrıyı kullanır. Yalnız Stage filtresiz çağrısı `order.not.found` 404 verirse aynı resmî salt-okunur endpoint resmî claim durumlarıyla ayrı sorgulanır; write endpointleri bu fallback kapsamına girmez. LUXE veya uluslararası storefront ayrı ADR/evidence olmadan desteklenmez.

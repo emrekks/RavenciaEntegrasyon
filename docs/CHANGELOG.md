@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - v10.39 Trendyol Stage durum bazlı iade okuması
+
+- Gerçek Stage probu, filtresiz getClaims isteğinin `SupplierApiDomainNotFoundException/order.not.found` ile 404 verdiğini; aynı resmî endpoint'in `claimItemStatus=Created` ile 200 ve claim içeriği döndürdüğünü kanıtladı.
+- Production canonical tek çağrı korunur. Yalnız Stage filtresiz çağrısı 404 verdiğinde sekiz resmî claim durumu salt-okunur olarak ayrı ayrı sorgulanır; durum bazında 404 boş sonuç sayılır, başarılı claim'ler kimliğe göre tekilleştirilir.
+- Trendyol adapter sözleşme testleri `50/50` geçti. Yazma çağrıları, secrets ve production davranışı değiştirilmedi.
+
 ## 2026-08-11 - v10.38 Trendyol Türkiye claims Stage fallback
 
 - Güncel r3 paketinin gerçek Stage capability testi, claims GET için `REMOTE_RESOURCE_NOT_FOUND`/HTTP 404 kanıtladı.
