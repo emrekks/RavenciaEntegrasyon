@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - E-Faturam status endpoint configuration ayrımı
+
+`INVOICE_STATUS_READ` için eksik outgoing e-Fatura sorgu yolu capability/evidence kapısı değil, sağlayıcı endpoint konfigürasyonudur. Manuel Stage istek geçerli göreli yol kaydedildiğinde ek onay veya evidence olmadan sağlayıcıya gider. Yol boş ya da geçersizken adapter endpoint tahmini yapmaz; bu teknik konfigürasyon eksikliği fail-closed kalır. Production environment/credential sınırı ve write kontrolleri değişmez.
+
 ## 2026-08-12 - Fatura otomatik read-back capability ayrımı
 
 Fatura submit, kabul ve iptal sonrasında oluşan reconciliation/PDF read-back işleri capability kanıtı yok diye artık atlanmaz. İşler yalnız salt-okunur provider çağrılarıdır; durable dedup korunur ve dış write/`AUTO_*` kapsamı genişlemez. Infrastructure derlemesi 0 hata/uyarı geçti.

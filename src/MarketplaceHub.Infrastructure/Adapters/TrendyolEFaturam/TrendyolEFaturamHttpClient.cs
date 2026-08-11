@@ -69,14 +69,15 @@ public sealed class TrendyolEFaturamHttpClient(
         }
         else
         {
-            // The public documentation does not expose a stable UUID-based outgoing E-Invoice
-            // status path. The exact Stage/SIT-proven relative path must be configured by an
-            // operator; otherwise the adapter fails closed instead of guessing an endpoint.
+            // The provider does not publish a stable UUID-based outgoing E-Invoice status path.
+            // This is endpoint configuration, not capability evidence: manual Stage requests are
+            // allowed to reach the provider as soon as a validated relative path is configured.
+            // Until then the adapter fails closed rather than guessing an endpoint.
             if (string.IsNullOrWhiteSpace(_options.OutgoingInvoiceStatusPath))
                 return AdapterResult<InvoiceRemoteStatus>.Failure(new(
-                    AdapterErrorClass.NotSupported,
-                    "EFATURAM_EINVOICE_STATUS_EVIDENCE_REQUIRED",
-                    "Giden E-Fatura durum sorgusu için doğrulanmış Stage/SIT endpoint kanıtı ve yapılandırması gereklidir.",
+                    AdapterErrorClass.Validation,
+                    "EFATURAM_EINVOICE_STATUS_PATH_NOT_CONFIGURED",
+                    "Giden E-Fatura durum sorgusu için sağlayıcının güncel göreli endpoint yolu yapılandırılmalıdır.",
                     null, null, null));
             var search = new
             {

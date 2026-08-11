@@ -7,8 +7,8 @@ public sealed class TrendyolEFaturamOptions
     public Uri ProductionBaseAddress { get; init; } = new("https://apigateway.trendyolecozum.com/");
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
     public string[] DocumentAllowedHosts { get; init; } = [];
-    // Exact outgoing E-Invoice status/search path must be supplied only after Stage/SIT evidence.
-    // It intentionally defaults to null so an undocumented endpoint can never be called in production.
+    // Exact outgoing E-Invoice status/search path is provider endpoint configuration. It
+    // intentionally defaults to null so no environment guesses an undocumented endpoint.
     public string? OutgoingInvoiceStatusPath { get; init; }
 }
 

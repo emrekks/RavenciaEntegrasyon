@@ -1,5 +1,12 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 — E-Faturam status endpoint configuration refactor
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Runtime gate ayrımı | CODED_TARGETED_VALIDATED | E-Fatura outgoing status path boşluğu `EVIDENCE_REQUIRED` değil `PATH_NOT_CONFIGURED` olarak döner. Manuel Stage işlemleri capability/evidence sebebiyle bloke edilmez; bilinmeyen endpoint tahmin edilmez. Infrastructure build 0 hata/uyarı geçti. |
+| Gerçek Stage kabulü | NOT_RUN | Partner/müşteri Stage credential rotasyonu ve sağlayıcının güncel relative status endpoint yolu olmadan gerçek isteği başlatılamaz. |
+
 ## 2026-08-12 — v10.45 renewal UI live acceptance
 
 - **Release/deploy:** `f9aa981` source CI PASS; `release-2026-08-12-v10.45` immutable publish PASS. App `sha256:3d17517d9271cde298c4d96ec70066ab7264a810ae52877e1ab565ee0f4681af`, edge `sha256:38edd3d7c8704d1a55bf82defbf4937d14db1c9b6f331f1110035bf28cc2fd36` Ubuntu hedefte healthy çalışıyor.

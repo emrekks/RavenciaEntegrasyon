@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - E-Faturam status endpoint configuration refactor
+
+- Giden e-Fatura durum sorgusunda eksik endpoint yolu capability/evidence runtime kapısı olmaktan çıkarıldı; teknik `EFATURAM_EINVOICE_STATUS_PATH_NOT_CONFIGURED` olarak ayrıştırıldı.
+- Adapter Stage veya production ortamında belgelenmemiş bir endpoint tahmin etmez. Geçerli sağlayıcı yolu ve credential olmadan işlem teknik nedenle fail-closed kalır; production yazma sınırları değişmedi.
+
 ## 2026-08-12 - Fatura otomatik read-back capability ayrımı
 
 - Fatura submit/kabul/iptal sonrası reconciliation ve PDF read-back işleri capability evidence yokluğunda artık atlanmaz. Bu salt-okunur zincir external write veya `AUTO_*` davranışını değiştirmez; durable dedup korunur.
