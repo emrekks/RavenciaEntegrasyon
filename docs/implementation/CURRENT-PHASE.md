@@ -203,7 +203,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 ## 2026-08-11 — E-Faturam Stage canary hazırlığı
 
-- E-Arşiv submit/status/PDF kabulü için ayrı durable canary eklendi. İş yalnız `TRENDYOL_EFATURAM` `STAGE` bağlantısındaki, `STAGE_TEST_ORDER_CREATED` audit izli siparişten üretilmiş gönderilmemiş `Ready` taslağı kabul eder.
+- E-Arşiv submit/status/PDF kabulü için ayrı durable canary eklendi. İş yalnız sabitlenmiş `TRENDYOL_EFATURAM` `STAGE` test hesabındaki gönderilmemiş, mali doğrulaması geçmiş `Ready` E-Arşiv taslağını kabul eder. Taze Stage Test Order'ın sıfır tutarlı mali fixture üretemediği gerçek doğrulamayla görüldü; mali hesap kuralları gevşetilmedi.
 - Canary, normal `ExternalWrites`, bağlantı dış-yazma ve otomatik-fatura anahtarlarını açmaz; normal submit/iptal/delivery yolları değişmeden fail-closed kalır.
 - Başarı ancak gerçek submit → status → private PDF zincirinden sonra ilgili üç capability’yi kanıtla yükseltir. İptal ve Trendyol invoice-link delivery bu canary kapsamı dışındadır.
 

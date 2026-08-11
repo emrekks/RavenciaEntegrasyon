@@ -304,9 +304,8 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
         if (invoice is null || connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) || invoice.ProviderConnectionId != connectionId || invoice.InvoiceType != "EARSIVFATURA") return false;
-        var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
-        if (!await db.AuditLogs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Action == "STAGE_TEST_ORDER_CREATED" && x.TargetType == "StageTestOrder" && x.TargetId == orderNumber, cancellationToken))
-            throw new JobProcessingException(JobExecutionResult.Blocked("STAGE_INVOICE_FIXTURE_REQUIRED", "Canary yalnız auditli Stage Test Order faturasında çalışır."));
+        if (!string.Equals(connection.ExternalStoreId, "Ravencia - Ravencia", StringComparison.Ordinal))
+            throw new JobProcessingException(JobExecutionResult.Blocked("STAGE_INVOICE_FIXTURE_REQUIRED", "Canary yalnız sabitlenmiş E-Faturam Stage test hesabında çalışır."));
         if (invoice.Status == InvoiceStatus.Submitting && string.IsNullOrWhiteSpace(invoice.ExternalReference)) await Submit(tenantId, connectionId, payloadJson, correlationId, cancellationToken, true);
         invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice is null) return false;

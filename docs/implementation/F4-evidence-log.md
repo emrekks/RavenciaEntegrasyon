@@ -53,7 +53,7 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 
 | Kanıt | Durum | Not |
 | --- | --- | --- |
-| Canary kapsamı | CODED_STATIC_VERIFIED | İş yalnız auditli `STAGE_TEST_ORDER_CREATED` siparişine bağlı, gönderilmemiş `Ready` E-Arşiv taslağını kabul eder. Eski veya production kaynaklı taslaklar hedef dışıdır. |
+| Canary kapsamı | CODED_STATIC_VERIFIED | İş yalnız sabitlenmiş E-Faturam `STAGE` test hesabındaki mali doğrulaması geçmiş, gönderilmemiş `Ready` E-Arşiv taslağını kabul eder. Production bağlantısı hedef dışıdır. Taze Test Order sıfır tutarlı olduğundan mali doğrulama gevşetilmemiştir. |
 | Güvenlik sınırı | CODED_STATIC_VERIFIED | Genel/connection dış-yazma ve otomatik-fatura anahtarları kapalı kalır; Stage istisnası yalnız canary `AdapterContext` işaretinde uygulanır. Normal submit, iptal ve Trendyol link delivery davranışı değişmez. |
 | Submit/status/PDF | RUNTIME_AND_STAGE_EVIDENCE_REQUIRED | Gerçek Stage canary başarılı olmadan `INVOICE_SUBMIT`, `INVOICE_STATUS_READ` veya `INVOICE_DOCUMENT_READ` `SUPPORTED` yapılmayacaktır. |
 | Cancel/delivery | OUT_OF_SCOPE | İptal ve marketplace invoice-link delivery ayrı dış-yazma kabul senaryolarıdır; bu canary onları çalıştırmaz veya yükseltmez. |

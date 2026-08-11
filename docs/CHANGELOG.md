@@ -2,7 +2,7 @@
 
 ## 2026-08-11 - Denetlenebilir E-Faturam Stage mali canary
 
-- E-Arşiv için ayrı, durable Stage canary eklendi. Yalnız en son auditli Stage Test Order'dan türetilmiş gönderilmemiş `Ready` taslağı kabul eder.
+- E-Arşiv için ayrı, durable Stage canary eklendi. Yalnız sabitlenmiş E-Faturam Stage test hesabındaki mali doğrulaması geçmiş gönderilmemiş `Ready` taslağı kabul eder; sıfır tutarlı Test Order mali fixture kabul edilmez.
 - Canary gerçek submit → status → private PDF zincirini kanıtlamadan capability yükseltmez; başarılı kanıt yalnız `INVOICE_SUBMIT`, `INVOICE_STATUS_READ` ve `INVOICE_DOCUMENT_READ` için SHA-256/audit kaydıyla saklanır.
 - Genel dış-yazma, bağlantı dış-yazma ve otomatik fatura anahtarları açılmadı. Normal submit, iptal ve Trendyol invoice-link delivery yolları değişmedi; iptal/delivery bu canary kapsamı dışındadır.
 
