@@ -44,9 +44,12 @@ public sealed class RepositoryGuardTests
         Assert.Contains("actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803", workflow, StringComparison.Ordinal);
         Assert.Contains("docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c", workflow, StringComparison.Ordinal);
         Assert.Contains("version: v0.34.1", workflow, StringComparison.Ordinal);
-        Assert.Contains("checks: read", workflow, StringComparison.Ordinal);
+        Assert.Contains("actions: read", workflow, StringComparison.Ordinal);
         Assert.Contains("git merge-base --is-ancestor", workflow, StringComparison.Ordinal);
-        Assert.Contains("Verify source changes", workflow, StringComparison.Ordinal);
+        Assert.Contains("actions/workflows/verify.yml/runs", workflow, StringComparison.Ordinal);
+        Assert.Contains(".head_branch == \"main\"", workflow, StringComparison.Ordinal);
+        Assert.Contains(".event == \"push\"", workflow, StringComparison.Ordinal);
+        Assert.Contains(".conclusion == \"success\"", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("dotnet test MarketplaceHub.sln --no-build --no-restore", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("npm run build", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain(":latest", workflow, StringComparison.OrdinalIgnoreCase);

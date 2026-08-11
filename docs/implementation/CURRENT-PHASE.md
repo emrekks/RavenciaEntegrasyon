@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-11 - v10.37-r2 immutable release kapısı
+
+`release-2026-08-11-v10.37` etiketi, başarılı source CI'a rağmen Checks API'nin workflow adı yerine `verify` job adını döndürmesi nedeniyle imaj buildinden önce fail-closed durdu. Kapı; exact `verify.yml` workflow koşularında aynı SHA, `main`, `push` ve `success` şartlarını Actions API ile doğrulayacak biçimde düzeltildi. Canlı GitHub Actions API sorgusu doğru source koşusunu döndürdü ve repository guard testleri `5/5` geçti. Required status check adı, immutable imaj, provenance/SBOM ve digest kontrolleri değişmedi. Yeni main CI ve `v10.37-r2` release koşusu bekleniyor.
+
 ## 2026-08-11 - v10.37 Trendyol resmi iade satırı sözleşmesi
 
 Trendyol getClaims cevabının güncel resmî `items[].claimItems[]` alanı, tarihsel düz `items[]` ve doğrudan `claimItems[]` geri uyumluluğu korunarak iade eşleyicisine eklendi. Resmî cevap miktar alanı göndermediğinde her claim item tek iade satırı olarak `1` adet kabul edilir; durum ve iade nedeni de aynı resmî satır koleksiyonundan okunur. Solution build, Trendyol adapter sözleşme testleri `50/50`, web testleri `19/19`, typecheck ve production web build `PASS`; Docker motoru kapalı olduğundan Testcontainers grupları yerelde `BLOCKED_TOOLING`, Linux CI bekleniyor. Bağlı Stage hesabında yeni bağlantı testi `SUCCEEDED` (correlation `b9738ca506b74e9fb4f44045ad77c12f`), fakat dağıtılmış eski sürüm `RETURN_READ=UNKNOWN` bırakmıştır. Güncel sürümün Stage dağıtım/yeniden kabulü beklenir; dış yazmalar kapalıdır.

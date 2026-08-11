@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - v10.37-r2 release kaynak kapısı düzeltmesi
+
+- Immutable release kapısı, Checks API'deki job adını workflow adı sanan hatalı eşleşmeden çıkarıldı.
+- Release artık exact `verify.yml` workflow'unda aynı SHA için `main` + `push` + `success` koşullarını GitHub Actions API üzerinden fail-closed doğrular; required status check ve image/digest güvenliği değişmedi.
+
 ## 2026-08-11 - v10.37 Trendyol iade claimItems uyumluluğu
 
 - Trendyol getClaims resmî cevabındaki `items[].claimItems[]`, tarihsel düz `items[]` ve doğrudan `claimItems[]` desteği korunarak iade satırı, durum ve neden eşlemesine alındı.

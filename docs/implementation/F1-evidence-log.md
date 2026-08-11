@@ -1,5 +1,12 @@
 # F1 Kanıt Günlüğü
 
+## 2026-08-11 - F1-EV-028 immutable release source gate r2
+
+- `release-2026-08-11-v10.37` source kapısı, GitHub Checks API'nin workflow adı yerine `verify` job adını döndürmesi nedeniyle imaj buildinden önce fail-closed durdu.
+- Kapı, exact `verify.yml` workflow koşularında aynı SHA + `main` + `push` + `success` şartlarını GitHub Actions API ile doğrulayacak şekilde düzeltildi.
+- Canlı GitHub Actions API sorgusu `31499027863` source koşusunu doğru SHA/branch/event/conclusion ile döndürdü; repository guard testleri `5/5` geçti.
+- Required status check adı, image build/push, provenance/SBOM, digest doğrulaması ve release concurrency davranışı değiştirilmedi; r2 CI/release kanıtı bekleniyor.
+
 Doğrulama tarihi: 2026-07-31. Ortam: Windows geliştirme makinesi üzerinde Docker Desktop Linux/amd64; hedef Ubuntu Server değildir.
 
 | Kanıt | Sonuç | Ölçüm |
