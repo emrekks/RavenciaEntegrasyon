@@ -45,7 +45,7 @@ test('requires explicit password confirmation and queues E-Faturam submission wi
   expect(JSON.parse(String(request?.body))).toEqual({ password: 'test-password', confirmed: true })
 })
 
-test('queues the Stage financial canary through the same password and confirmation gate', async () => {
+test('queues the Stage financial canary without password only for its separately scoped endpoint', async () => {
   let request: RequestInit | undefined
   const canary = { ...invoiceDetail, allowedActions: ['STAGE_CAPABILITY_PROBE'] }
   globalThis.fetch = vi.fn((input, init) => {
@@ -57,13 +57,11 @@ test('queues the Stage financial canary through the same password and confirmati
   }) as typeof fetch
   render(<QueryClientProvider client={client()}><MemoryRouter initialEntries={['/invoices/invoice-1']}><Routes><Route path="/invoices/:id" element={<InvoiceDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
   const run = await screen.findByRole('button', { name: 'Stage mali canary çalıştır' })
-  expect(run).toBeDisabled()
-  fireEvent.change(screen.getByLabelText('Hesap parolası'), { target: { value: 'test-password' } })
-  fireEvent.click(screen.getByLabelText('Bu dış mali işlemi açıkça onaylıyorum.'))
+  expect(run).toBeEnabled()
   fireEvent.click(run)
   await waitFor(() => expect(request).toBeDefined())
   expect(new Headers(request?.headers).get('If-Match')).toBe('"v3"')
-  expect(JSON.parse(String(request?.body))).toEqual({ password: 'test-password', confirmed: true })
+  expect(request?.body).toBeUndefined()
 })
 
 test('uploads a manual invoice document only to the private invoice archive', async () => {

@@ -205,7 +205,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 - E-Arşiv submit/status/PDF kabulü için ayrı durable canary eklendi. İş yalnız sabitlenmiş `TRENDYOL_EFATURAM` `STAGE` test hesabındaki gönderilmemiş, mali doğrulaması geçmiş `Ready` E-Arşiv taslağını kabul eder. Taze Stage Test Order'ın sıfır tutarlı mali fixture üretemediği gerçek doğrulamayla görüldü; mali hesap kuralları gevşetilmedi.
 - Canary, normal `ExternalWrites`, bağlantı dış-yazma ve otomatik-fatura anahtarlarını açmaz; normal submit/iptal/delivery yolları değişmeden fail-closed kalır.
-- Paneldeki `Stage mali canary çalıştır` eylemi yalnız bu Stage hesabı ve uygun taslakta görünür; normal mali işlemle aynı parola + açık onay + ETag/idempotency kapısından geçer.
+- Paneldeki `Stage mali canary çalıştır` eylemi yalnız bu Stage hesabı ve uygun taslakta görünür; kullanıcı onayıyla parola/açık-onay istemez. ETag/idempotency ve sabit test hesabı denetimleri kalır. Normal mali işlem yolları parola + açık-onay kapısından geçmeye devam eder.
 - Başarı ancak gerçek submit → status → private PDF zincirinden sonra ilgili üç capability’yi kanıtla yükseltir. İptal ve Trendyol invoice-link delivery bu canary kapsamı dışındadır.
 
 ## Production blockerları

@@ -5,7 +5,7 @@
 - E-Arşiv için ayrı, durable Stage canary eklendi. Yalnız sabitlenmiş E-Faturam Stage test hesabındaki mali doğrulaması geçmiş gönderilmemiş `Ready` taslağı kabul eder; sıfır tutarlı Test Order mali fixture kabul edilmez.
 - Canary gerçek submit → status → private PDF zincirini kanıtlamadan capability yükseltmez; başarılı kanıt yalnız `INVOICE_SUBMIT`, `INVOICE_STATUS_READ` ve `INVOICE_DOCUMENT_READ` için SHA-256/audit kaydıyla saklanır.
 - Genel dış-yazma, bağlantı dış-yazma ve otomatik fatura anahtarları açılmadı. Normal submit, iptal ve Trendyol invoice-link delivery yolları değişmedi; iptal/delivery bu canary kapsamı dışındadır.
-- Canary eylemi panelde yalnız uygun Stage taslakta gösterilir ve mevcut parola + açık onay + ETag/idempotency kapısından geçer; server içinden güvenlik kapısı atlanmaz.
+- Kullanıcı onayıyla canary eylemi panelde yalnız uygun sabitlenmiş Stage taslakta parola/açık-onay istemeden çalışır; ETag/idempotency ve test hesabı sınırı korunur. Normal ve production mali endpointlerindeki parola/açık-onay kapısı değişmedi.
 
 ## 2026-08-11 - CI zaman aşımı güvenlik sınırı
 

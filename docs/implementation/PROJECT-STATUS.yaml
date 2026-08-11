@@ -97,7 +97,7 @@ features:
   trendyol_invoice_delivery:
     status: CODED_SUBMITTED_MANUAL_CONFIRMATION_REQUIRED
   efaturam_operator_ui:
-    status: STAGE_MALI_CANARY_REAUTH_UI_CODED_LOCAL_VERIFIED_RUNTIME_REQUIRED
+    status: STAGE_MALI_CANARY_PASSWORDLESS_UI_CODED_LOCAL_VERIFIED_RUNTIME_REQUIRED
   efaturam_einvoice_status:
     status: FAIL_CLOSED_STAGE_ENDPOINT_EVIDENCE_REQUIRED
   trendyol_return_read_write:
