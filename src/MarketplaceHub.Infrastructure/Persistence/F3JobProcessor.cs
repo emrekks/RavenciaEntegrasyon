@@ -23,6 +23,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
             if (jobType == F3JobTypes.ProductArchive) return await ArchiveProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
             if (jobType == F3JobTypes.PriceInventorySync) return await SyncPriceInventory(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
             if (jobType == F3JobTypes.CommonLabel) return await CommonLabel(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            if (jobType == F3JobTypes.CapabilityProbe) return await LabelCapabilityProbe(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
             var succeeded = jobType switch
             {
                 F3JobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -673,6 +674,48 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
         await db.SaveChangesAsync(cancellationToken);
         if (failed == 0) return JobExecutionResult.Success();
         return success == 0 ? JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Trendyol fiyat-stok batch içindeki tüm satırları reddetti.", payload.ExternalOperationId) : JobExecutionResult.ManualReview("PRICE_INVENTORY_PARTIAL_FAILURE", "Trendyol fiyat-stok batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
+    }
+
+    private async Task<JobExecutionResult> LabelCapabilityProbe(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        CapabilityProbeJobPayload? payload;
+        try { payload = JsonSerializer.Deserialize<CapabilityProbeJobPayload>(payloadJson, JsonOptions); }
+        catch (JsonException) { return JobExecutionResult.Blocked("CAPABILITY_PROBE_PAYLOAD_INVALID", "Stage capability canary payloadı geçersiz."); }
+        if (payload is null || payload.JobId == Guid.Empty || payload.PackageId == Guid.Empty || payload.ActorUserId == Guid.Empty || payload.CapabilityCode is not (F3Capabilities.LabelRead or F3Capabilities.LabelWrite)) return JobExecutionResult.Blocked("CAPABILITY_PROBE_PAYLOAD_INVALID", "Stage capability canary zorunlu alanları geçersiz.");
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
+        if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Blocked("STAGE_CONNECTION_REQUIRED", "Capability canary yalnız Trendyol STAGE bağlantısında çalışır.");
+        var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.PackageId && x.ConnectionId == connectionId, cancellationToken);
+        if (package is null || string.IsNullOrWhiteSpace(package.CargoTrackingNumber)) return JobExecutionResult.Blocked("CAPABILITY_PROBE_TARGET_INVALID", "Canary için takip numaralı Stage paketi bulunamadı.");
+        if (payload.CapabilityCode == F3Capabilities.LabelWrite && !string.Equals(package.Status.ToString(), "ReadyToShip", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Blocked("STAGE_LABEL_PACKAGE_NOT_READY", "LABEL_WRITE canary yalnız ReadyToShip Stage paketi üzerinde çalışır.");
+        var context = Context(tenantId, connectionId, correlationId, $"stage-capability-probe:{payload.JobId:N}") with { IsStageCapabilityProbe = true };
+        if (payload.CapabilityCode == F3Capabilities.LabelWrite)
+        {
+            var created = await orders.CreateCommonLabelAsync(context, new CommonLabelRequest(package.CargoTrackingNumber, payload.BoxQuantity, payload.VolumetricHeight), cancellationToken);
+            if (!created.IsSuccess) throw JobProcessingException.FromAdapter(created.Error!);
+        }
+        var document = await orders.GetCommonLabelAsync(context, package.CargoTrackingNumber, cancellationToken);
+        if (!document.IsSuccess) throw JobProcessingException.FromAdapter(document.Error!);
+        var hash = Convert.ToHexString(SHA256.HashData(document.Value!.Content));
+        var codes = payload.CapabilityCode == F3Capabilities.LabelWrite ? new[] { F3Capabilities.LabelRead, F3Capabilities.LabelWrite } : new[] { F3Capabilities.LabelRead };
+        var now = timeProvider.GetUtcNow();
+        foreach (var code in codes)
+        {
+            var capability = await db.PlatformCapabilities.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code, cancellationToken);
+            if (capability is null) continue;
+            capability.SupportLevel = CapabilitySupportLevel.Supported;
+            capability.SourceUrl = code == F3Capabilities.LabelRead ? "https://developers.trendyol.com/v2.0/docs/common-label-barcode-get-integration" : "https://developers.trendyol.com/v2.0/docs/common-label-barcode-request-createcommonlabel";
+            capability.SourceVersion = "V2";
+            capability.Environment = connection.Environment;
+            capability.StoreScope = connection.ExternalStoreId;
+            capability.ConstraintsJson = JsonSerializer.Serialize(new { formats = new[] { document.Value.Format } });
+            capability.EvidenceNote = $"{code} Stage canary gerçek paket/etiket read-back ile başarılı; private fixture SHA-256 kaydedildi.";
+            capability.FixtureChecksum = hash;
+            capability.VerifiedAt = now;
+            capability.Version++;
+            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = payload.ActorUserId, Action = "CAPABILITY_STAGE_PROBE_SUCCEEDED", TargetType = "PlatformCapability", TargetId = capability.Id.ToString("D"), Reason = $"{code}:package:{package.Id:D}", CorrelationId = correlationId, CreatedAt = now });
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        return JobExecutionResult.Success();
     }
 
     private async Task<JobExecutionResult> CommonLabel(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)

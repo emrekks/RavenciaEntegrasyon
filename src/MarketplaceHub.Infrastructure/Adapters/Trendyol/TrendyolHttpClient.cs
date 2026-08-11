@@ -203,7 +203,7 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
 
     public async Task<AdapterResult<bool>> CreateCommonLabelAsync(AdapterContext context, CommonLabelRequest request, CancellationToken cancellationToken)
     {
-        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<bool>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized)) return AdapterResult<bool>.Failure(TrendyolErrorMapper.WriteClosed());
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<bool>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized, context)) return AdapterResult<bool>.Failure(TrendyolErrorMapper.WriteClosed());
         if (string.IsNullOrWhiteSpace(request.CargoTrackingNumber) || request.BoxQuantity < 1 || request.VolumetricHeight <= 0) return AdapterResult<bool>.Failure(TrendyolErrorMapper.Contract());
         var body = JsonContent.Create(new { format = "ZPL", boxQuantity = request.BoxQuantity, volumetricHeight = request.VolumetricHeight });
         var response = await SendAsync(authorized, HttpMethod.Post, TrendyolEndpoints.CommonLabel(authorized.Connection.ExternalStoreId, request.CargoTrackingNumber), body, cancellationToken);
@@ -314,7 +314,9 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         }
     }
 
-    private bool CanWrite(TrendyolRequestContext context) => GlobalWritesEnabled && context.ExternalWritesEnabled;
+    private bool CanWrite(TrendyolRequestContext context, AdapterContext? adapterContext = null) =>
+        (GlobalWritesEnabled && context.ExternalWritesEnabled)
+        || (adapterContext?.IsStageCapabilityProbe == true && string.Equals(context.Connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase));
     private static CapabilityEvidence SupportedEvidence(string code, ConnectionIdentity identity, string sourceUrl, string note, DateTimeOffset verifiedAt) =>
         new(code, "SUPPORTED", "V2", identity.Environment, identity.ExternalStoreId, sourceUrl, "2026-08-04", null, null, note, null, verifiedAt);
 

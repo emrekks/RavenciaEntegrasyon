@@ -438,3 +438,12 @@ Bu dosya yalnız tekrar üretilebilir kanıtları içerir. Önceki platformlara 
 - Metin olarak başlayan yerel özelliğe ilk seçenek ekleme akışı seçim tipine güvenli dönüşümle onarıldı.
 - Kategori zorunluluk ve kargo sağlayıcı alanları için dar, belgeli geri uyumluluk okuması genişletildi; eksik değer uydurulmaz.
 - Solution build ve format: `PASS`; Docker gerektirmeyen .NET testleri `143 PASS`; yerel Docker kapalı olduğundan 19 Testcontainers testi `BLOCKED_ENVIRONMENT`; web typecheck, `19/19` test ve production build `PASS`. Canlı kabul deployment sonrasına bırakıldı.
+# 2026-08-11 - Stage label capability canary
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Dar Stage test kapısı | CODED_TARGETED_VALIDATED | Owner/Admin yalnız `LABEL_READ`/`LABEL_WRITE` için takip numaralı Stage paketi seçebilir; production bağlantısı, diğer capability'ler ve normal dış-yazma akışı kabul edilmez. |
+| Write izolasyonu | CODED_TARGETED_VALIDATED | `LABEL_WRITE` canary yalnız `ReadyToShip` Stage paketinde create → read-back yapar. Global/connection external-write switch'i değişmez; normal iş akışları bu istisnayı kullanamaz. |
+| Evidence kaydı | CODED_TARGETED_VALIDATED | Başarıda resmi endpoint, Stage/store scope, etiket formatı, dönen gerçek etiket içeriğinin SHA-256 değeri ve audit kaydı yazılır; hata halinde capability `UNKNOWN` kalır. |
+| Yerel doğrulama | PASS_TARGETED | `dotnet build MarketplaceHub.sln --no-restore` 0 hata/0 uyarı; `npm.cmd run typecheck` PASS. |
+| Gerçek Stage canary | PENDING_STAGE_EXECUTION | Dağıtım sonrası ReadyToShip paketi üzerinde çalıştırılacak; gerçek sonuç olmadan capability yükseltilmemiştir. |

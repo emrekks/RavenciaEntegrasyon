@@ -83,7 +83,7 @@ features:
   trendyol_cargo_change:
     status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   trendyol_label:
-    status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
+    status: STAGE_CAPABILITY_CANARY_CODED_TARGETED_VALIDATED_EXECUTION_PENDING
   efaturam_provider_managed_account:
     status: CODED_STATIC_VERIFIED_TOKEN_SCOPE_STAGE_REVALIDATION_REQUIRED
   efaturam_automatic_invoice_routing:

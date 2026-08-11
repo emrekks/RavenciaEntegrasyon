@@ -20,6 +20,7 @@ public static class F3JobTypes
     public const string ProductArchive = "TRENDYOL_PRODUCT_ARCHIVE";
     public const string PriceInventorySync = "TRENDYOL_PRICE_INVENTORY_SYNC";
     public const string CommonLabel = "TRENDYOL_COMMON_LABEL";
+    public const string CapabilityProbe = "TRENDYOL_CAPABILITY_PROBE";
 }
 
 public static class F3Capabilities
@@ -53,7 +54,7 @@ public enum AdapterErrorClass
     InternalBug
 }
 
-public sealed record AdapterContext(Guid TenantId, Guid ConnectionId, string CorrelationId, string IdempotencyKey, DateTimeOffset DeadlineUtc);
+public sealed record AdapterContext(Guid TenantId, Guid ConnectionId, string CorrelationId, string IdempotencyKey, DateTimeOffset DeadlineUtc, bool IsStageCapabilityProbe = false);
 public sealed record AdapterError(AdapterErrorClass Class, string Code, string SafeMessage, int? HttpStatus, TimeSpan? RetryAfter, string? RemoteRequestId);
 public sealed record RateLimitMetadata(int? Remaining, DateTimeOffset? ResetAt, TimeSpan? RetryAfter);
 public sealed record AdapterResult<T>(bool IsSuccess, T? Value, AdapterError? Error, RateLimitMetadata? RateLimit)
@@ -98,6 +99,7 @@ public sealed record PackageActionResult(string ExternalPackageId, string Status
 public sealed record CommonLabelRequest(string CargoTrackingNumber, int BoxQuantity, decimal VolumetricHeight);
 public sealed record CommonLabelDocument(string CargoTrackingNumber, string Format, byte[] Content);
 public sealed record CommonLabelJobPayload(Guid JobId, Guid PackageId, string Phase, int BoxQuantity, decimal VolumetricHeight, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
+public sealed record CapabilityProbeJobPayload(Guid JobId, Guid PackageId, Guid ActorUserId, string CapabilityCode, int BoxQuantity, decimal VolumetricHeight, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
 public sealed record ReturnPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore);
 public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity);
 public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson);
@@ -353,6 +355,7 @@ public interface IF3SalesService
     Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueShipmentActionAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<Guid>> EnqueueLabelCapabilityProbeAsync(Guid tenantId, Guid actorUserId, Guid packageId, long expectedVersion, string capabilityCode, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken);

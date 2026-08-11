@@ -158,6 +158,29 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         db.ShipmentDocumentAttempts.Add(new ShipmentDocumentAttempt { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, IdempotencyKey = normalizedKey, Status = "PENDING", CreatedAt = now }); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
     }
 
+    public async Task<ServiceResult<Guid>> EnqueueLabelCapabilityProbeAsync(Guid tenantId, Guid actorUserId, Guid packageId, long expectedVersion, string capabilityCode, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+        if (package is null) return NotFound<Guid>();
+        if (package.Version != expectedVersion) return Precondition<Guid>(package.Version);
+        if (string.IsNullOrWhiteSpace(package.CargoTrackingNumber)) return ServiceResult<Guid>.Fail("CARGO_TRACKING_REQUIRED", "Stage etiket capability testi için takip numarası gerekir.", 422);
+        var capability = capabilityCode.Trim().ToUpperInvariant();
+        if (capability is not (F3Capabilities.LabelRead or F3Capabilities.LabelWrite)) return Invalid<Guid>("capabilityCode", "Bu Stage canary yalnız LABEL_READ veya LABEL_WRITE için kullanılabilir.");
+        if (boxQuantity is < 1 or > 50 || volumetricHeight <= 0 || volumetricHeight > 10000) return Invalid<Guid>("probe", "Koli adedi 1-50, desi/hacim 0-10000 arasında olmalıdır.");
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.ConnectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
+        if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("STAGE_CONNECTION_REQUIRED", "Capability canary yalnız Trendyol STAGE bağlantısında çalışır.", 422);
+        if (capability == F3Capabilities.LabelWrite && !string.Equals(package.Status.ToString(), "ReadyToShip", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("STAGE_LABEL_PACKAGE_NOT_READY", "LABEL_WRITE canary yalnız ReadyToShip Stage paketi üzerinde çalışır.", 422);
+        var normalizedKey = idempotencyKey.Trim();
+        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.CapabilityProbe && x.EffectIdempotencyKey == normalizedKey, cancellationToken);
+        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
+        var now = timeProvider.GetUtcNow(); var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new CapabilityProbeJobPayload(jobId, package.Id, actorUserId, capability, boxQuantity, decimal.Round(volumetricHeight, 2, MidpointRounding.ToEven), now, now.AddMinutes(15)));
+        var job = NewJob(tenantId, package.ConnectionId, F3JobTypes.CapabilityProbe, $"stage-capability-probe:{package.Id}:{capability}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedKey)))}", payload, correlationId);
+        job.Id = jobId; job.EffectIdempotencyKey = normalizedKey; job.MaxAttempts = 1; db.IntegrationJobs.Add(job);
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = actorUserId, Action = "CAPABILITY_STAGE_PROBE_ENQUEUED", TargetType = "PlatformCapability", TargetId = package.ConnectionId.ToString("D"), Reason = $"{capability}:package:{package.Id:D}", CorrelationId = correlationId, CreatedAt = now });
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<Guid>.Ok(jobId);
+    }
+
     public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
         var afterId = Decode(after);

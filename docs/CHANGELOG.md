@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - Denetlenebilir Stage etiket capability canary
+
+- Kanıtsız `SUPPORTED` işaretleme yerine yalnız Owner/Admin için dar kapsamlı Stage etiket canary akışı eklendi.
+- `LABEL_READ`, gerçek ortak etiket read-back'ini; `LABEL_WRITE`, yalnız `ReadyToShip` Stage paketinde create → read-back zincirini çalıştırır.
+- Başarılı testte gerçek etiket içeriğinin SHA-256 kanıtı, format kısıtı, resmi kaynak ve audit kaydı capability’ye eklenir. Production ve normal dış-yazma davranışı değişmedi.
+
 ## 2026-08-11 - v10.41 iade ürün satırı eşlemesi
 
 - v10.40 Stage eşitlemesi `SUCCEEDED` oldu ve panelde 23 iade gösterildi; claim satırları yerel sipariş satırına bağlanmadığı için ürün adedi 0 kaldı.

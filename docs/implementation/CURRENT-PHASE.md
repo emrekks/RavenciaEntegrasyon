@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-11 - Stage capability canary başlangıcı
+
+Capability `UNKNOWN` kayıtlarını kanıtsız biçimde `SUPPORTED` yapmak yerine, yalnız Owner/Admin tarafından başlatılabilen ve yalnız Trendyol `STAGE` paketinde çalışan auditli etiket canary akışı eklendi. `LABEL_READ` gerçek ortak etiket read-back'ini, `LABEL_WRITE` ise önce create sonra read-back'i çalıştırır; başarılı sonuçta dönen etiket içeriğinin SHA-256 değeri, resmi kaynak URL'si, format kısıtı ve audit kaydıyla capability yükseltilir. Normal production/external-write anahtarları değişmez. Yerel build ve web typecheck geçti; Stage yürütme, gerçek `ReadyToShip` paketi üzerinde sıradadır.
+
 ## 2026-08-11 - v10.41 iade satırı bağlantısı
 
 v10.40 CI `#129`, release `#119`, deployment/readiness ve return-sync kabulü geçti; panelde 23 gerçek Stage iadesi görünür. Nested claim satırındaki `orderLine.id` ile `claimItem.orderLineItemId` farklı olduğundan ürünler 0 görünüyordu. Gerçek şema ve yerel DB karşılaştırmasıyla sipariş bağı parent `orderLine.id` alanına düzeltildi; claim action kimliği değişmedi. Hedefli test/release/deploy ve idempotent yeniden eşitleme bekleniyor.
