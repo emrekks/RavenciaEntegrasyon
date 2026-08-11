@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - Fatura otomatik read-back capability ayrımı
+
+Fatura submit, kabul ve iptal sonrasında oluşan reconciliation/PDF read-back işleri capability kanıtı yok diye artık atlanmaz. İşler yalnız salt-okunur provider çağrılarıdır; durable dedup korunur ve dış write/`AUTO_*` kapsamı genişlemez. Infrastructure derlemesi 0 hata/uyarı geçti.
+
 ## 2026-08-12 - Scheduled salt-okunur capability ayrımı
 
 Scheduler içindeki `ORDERS`, `RETURNS` ve `REFERENCE_DATA` read politikaları artık `UNKNOWN` capability nedeniyle sessizce atlanmaz. Aktif bağlantı, policy interval/jitter ve durable dedup korunur; provider read hataları mevcut retry/audit akışına gider. Bu sadece salt-okunur otomatik sync kapsamıdır; dış write, `AUTO_*` ve Production switch davranışını açmaz. Infrastructure derlemesi 0 hata/uyarı geçti.
@@ -160,7 +164,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 9.5
+**Ana plan sürümü:** 9.6
 
 **2026-08-10 hızlı geliştirme politikası v8.3:** Günlük UI ve olağan işlevsel değişikliklerde otomatik test/build kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılandır. Hedefli kontrol yalnız somut sorun/derleme riski ya da güvenlik, migration, mali işlem, dosya yükleme, veri kaybı ve dış yazma gibi riskli alanlarda çalıştırılır. Tam doğrulama kullanıcı talebi veya release/production kapısına bırakılır.
 

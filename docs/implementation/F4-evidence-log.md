@@ -88,6 +88,7 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 | Stage onay sınırı | CODED_TARGETED_VALIDATED | Stage endpointleri parola ve açık onay istemez; credential, teknik mali doğrulama ve provider hata işleme korunur. Fiscal policy yalnız Production doğrulamasında ek şarttır. |
 | Hedefli doğrulama | PASS_LOCAL | `IntegrationRuntimePolicyTests` 3/3 ve Infrastructure build 0 hata/uyarı geçti. Gerçek E-Faturam credential rotation ve provider E2E `NOT_RUN`dır. |
 | Repository formatter | BLOCKED_REPOSITORY_LINE_ENDINGS | Solution formatter, değiştirilmeyen dosyalar dahil repository-geneli CRLF→LF `ENDOFLINE` ihlalleri nedeniyle çalışmadı. Bu refactor kapsamı dışında geniş satır-sonu dönüşümü yapılmadı. |
+| Otomatik read-back capability ayrımı | CODED_TARGETED_VALIDATED | Submit/kabul/iptal sonrası reconciliation ve PDF read-back işleri artık capability evidence yokluğunda atlanmaz. İşler salt-okunurdur; durable dedup korunur, dış write veya `AUTO_*` kapsamı genişlemez. Infrastructure derlemesi 0 hata/uyarı geçti. |
 
 ## 2026-08-11 — auditli E-Faturam Stage canary hazırlığı
 

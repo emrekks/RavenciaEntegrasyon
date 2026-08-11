@@ -94,7 +94,7 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         {
             attempt.Outcome = "SUCCEEDED"; attempt.ExternalReference = result.Value!.ExternalReference; attempt.RemoteRequestId = result.Value.RemoteRequestId;
             invoice.ExternalReference = result.Value.ExternalReference; invoice.InvoiceNumber = result.Value.InvoiceNumber; invoice.EttnUuid = result.Value.EttnUuid; invoice.IssuedAt ??= started; invoice.Status = InvoiceStatus.Submitted; invoice.LastErrorCode = null;
-            await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, F4JobTypes.InvoiceReconcile, F4Capabilities.InvoiceStatusRead, "after-submit", correlationId, cancellationToken);
+            await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, F4JobTypes.InvoiceReconcile, "after-submit", correlationId, cancellationToken);
         }
         else
         {
@@ -144,7 +144,7 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
             case "ACCEPTED":
                 invoice.Status = InvoiceStatus.Accepted;
                 invoice.LastErrorCode = null;
-                await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, F4JobTypes.InvoiceDocumentFetch, F4Capabilities.InvoiceDocumentRead, "after-acceptance", correlationId, cancellationToken);
+                await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, F4JobTypes.InvoiceDocumentFetch, "after-acceptance", correlationId, cancellationToken);
                 break;
             case "REJECTED":
                 invoice.Status = cancellationPending ? InvoiceStatus.CancellationRejected : InvoiceStatus.Rejected;
@@ -353,7 +353,7 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
             invoice.Status = result.Value!.CanonicalStatus == "CANCELLED" ? InvoiceStatus.Cancelled : InvoiceStatus.CancellationPending;
             invoice.LastErrorCode = null;
             if (invoice.Status == InvoiceStatus.CancellationPending)
-                await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, F4JobTypes.InvoiceReconcile, F4Capabilities.InvoiceStatusRead, "after-cancellation", correlationId, cancellationToken);
+                await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, F4JobTypes.InvoiceReconcile, "after-cancellation", correlationId, cancellationToken);
         }
         else
         {
@@ -372,9 +372,8 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         return true;
     }
 
-    private async Task EnqueueAutomaticJob(Guid tenantId, Guid connectionId, Guid invoiceId, string jobType, string capability, string suffix, string correlationId, CancellationToken cancellationToken)
+    private async Task EnqueueAutomaticJob(Guid tenantId, Guid connectionId, Guid invoiceId, string jobType, string suffix, string correlationId, CancellationToken cancellationToken)
     {
-        if (!await db.PlatformCapabilities.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == capability && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken)) return;
         var dedup = $"{jobType}:{invoiceId}:{suffix}";
         if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken)) return;
         var payload = JsonSerializer.Serialize(new { invoiceId });

@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Fatura otomatik read-back capability ayrımı
+
+- Fatura submit/kabul/iptal sonrası reconciliation ve PDF read-back işleri capability evidence yokluğunda artık atlanmaz. Bu salt-okunur zincir external write veya `AUTO_*` davranışını değiştirmez; durable dedup korunur.
+
 ## 2026-08-12 - Scheduled salt-okunur capability ayrımı
 
 - Scheduler, aktif Trendyol bağlantılarının `ORDERS`, `RETURNS` ve `REFERENCE_DATA` salt-okunur sync işlerini `UNKNOWN` capability nedeniyle artık sessizce atlamaz. Policy interval/jitter, dedup ve mevcut hata/retry davranışı korunur; dış write veya `AUTO_*` kapsamı genişlemez.
