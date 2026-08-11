@@ -1,3 +1,9 @@
+## 2026-08-11 - v10.40 Stage return-sync süre kanıtı
+
+- v10.39 deployment sonrası bağlantı testi `18:06:42` tarihinde `RETURN_READ=SUPPORTED` üretti.
+- İlk tam `TRENDYOL_RETURN_SYNC` denemesi sekiz status read çağrısının sıralı toplam süresinde `REMOTE_TIMEOUT` oldu ve `RETRY_SCHEDULED` durumuna geçti; kalıcı veya uydurma iade kaydı oluşmadı.
+- Stage'e özel, bağımsız ve salt-okunur status çağrıları `Task.WhenAll` ile paralelleştirildi. Production canonical read, dış yazmalar ve fail-closed hata davranışı değişmedi.
+
 ## 2026-08-11 - v10.39 Stage getClaims durum filtresi kanıtı
 
 - Credential göstermeyen salt-okunur runtime probunda filtresiz, `size/page` filtreli ve storefront başlıksız Stage istekleri aynı `SupplierApiDomainNotFoundException` / `order.not.found` 404 sonucunu verdi.

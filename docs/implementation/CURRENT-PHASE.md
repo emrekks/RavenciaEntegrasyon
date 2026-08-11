@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-11 - v10.40 Stage return-sync süre düzeltmesi
+
+v10.39 CI `#128`, immutable release `#118`, deployment/readiness ve Stage capability kabulü geçti; `RETURN_READ` gerçek kanıtla `SUPPORTED`. İlk tam iade eşitlemesi sekiz status çağrısını sırayla beklerken `REMOTE_TIMEOUT` ile güvenli retry'ye girdi. Yalnız Stage 404 fallback'indeki bağımsız GET çağrıları paralelleştirildi; production ve dış yazma davranışı değişmedi. Hedefli test/release/Stage sync yeniden kabulü bekleniyor.
+
 ## 2026-08-11 - v10.39 Stage claims durum filtresi
 
 v10.38 release `#117` başarıyla üretildi ve app `sha256:64dd84776130d8d7a04ca134cd9bbd43c5437fa8f271094e4af67a30c1d8b90d`, edge `sha256:532a406a07cdf076d30881ca2d1375729004467437f362bf349c7b02a6565b7a` digestleriyle sunucuya dağıtıldı; readiness HTTP 200. Stage testi header fallback'in 404'ü değiştirmediğini gösterdi. Credential göstermeyen hedefli probe, aynı endpoint'in `claimItemStatus=Created` ile HTTP 200 ve gerçek claim cevabı verdiğini kanıtladı. Adapter yalnız Stage filtresiz 404 durumunda resmî claim statülerini ayrı sorgulayacak şekilde düzeltildi; production ve dış yazmalar değişmedi. Adapter testleri `50/50 PASS`; yeni CI/release/deploy ve Stage kabulü bekleniyor.

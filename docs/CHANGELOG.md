@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-11 - v10.40 Stage iade okuma süre sınırı
+
+- v10.39 Stage capability kabulü `RETURN_READ=SUPPORTED` üretti; ilk tam return-sync sekiz durum çağrısı sırayla çalışırken `REMOTE_TIMEOUT` ile güvenli retry'ye girdi.
+- Yalnız Stage 404 fallback'indeki bağımsız salt-okunur durum çağrıları aynı anda başlatılır; production, yazma kapıları ve retry davranışı değişmez.
+
 ## 2026-08-11 - v10.39 Trendyol Stage durum bazlı iade okuması
 
 - Gerçek Stage probu, filtresiz getClaims isteğinin `SupplierApiDomainNotFoundException/order.not.found` ile 404 verdiğini; aynı resmî endpoint'in `claimItemStatus=Created` ile 200 ve claim içeriği döndürdüğünü kanıtladı.

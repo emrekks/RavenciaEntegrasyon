@@ -148,6 +148,7 @@ public sealed class F3TrendyolContractTests
         Assert.Contains("PollStageClaimsByStatusAsync", http, StringComparison.Ordinal);
         Assert.Contains("claimItemStatus=", http, StringComparison.Ordinal);
         Assert.Contains("WaitingInAction", http, StringComparison.Ordinal);
+        Assert.Contains("Task.WhenAll", http, StringComparison.Ordinal);
         Assert.Contains("/v2/orders", options, StringComparison.Ordinal); Assert.Contains("OrderStream", http, StringComparison.Ordinal);
         Assert.Contains("[\"channels\"] = new[] { \"CORE\" }", composer, StringComparison.Ordinal);
         Assert.Contains("TRACKING_NUMBER", http, StringComparison.Ordinal);

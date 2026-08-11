@@ -361,9 +361,10 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         var claims = new List<RemoteReturnClaim>();
         var hasMore = false;
         RateLimitMetadata? rateLimit = null;
-        foreach (var status in statuses)
+        var responses = await Task.WhenAll(statuses.Select(status =>
+            SendAsync(context, HttpMethod.Get, endpoint + "&claimItemStatus=" + status, null, cancellationToken)));
+        foreach (var response in responses)
         {
-            var response = await SendAsync(context, HttpMethod.Get, endpoint + "&claimItemStatus=" + status, null, cancellationToken);
             rateLimit = response.RateLimit ?? rateLimit;
             if (response.Error?.HttpStatus == (int)HttpStatusCode.NotFound) continue;
             if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(response.Error!, response.RateLimit);
