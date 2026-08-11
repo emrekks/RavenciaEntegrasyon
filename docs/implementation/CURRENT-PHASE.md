@@ -2,7 +2,7 @@
 
 ## 2026-08-12 - Ortak etiket Stage fixture taşıyıcı sınırı
 
-Taze Trendyol Stage Test Order `1265633895` paketinin güvenli metaverisi taşıyıcının `Yurtiçi Kargo Marketplace` olduğunu doğruladı. Trendyol'un resmî common-label sözleşmesi yalnız Trendyol öder Aras Kargo veya TEX gönderilerinde geçerlidir; bu nedenle geçmiş `LABEL_WRITE` denemelerindeki `REMOTE_REQUEST_REJECTED` sonucu bir capability kanıtı değildir. Kuyruğa alma ve worker katmanı artık uyumsuz taşıyıcıyı uzak `Picking`/label çağrısından önce `COMMON_LABEL_CARRIER_UNSUPPORTED` ile fail-closed durdurur. `LABEL_WRITE` ile `SHIPMENT_WRITE` elle yükseltilmedi; uygun taşıyıcılı gerçek Stage fixture kabulü `NOT_RUN`dır. Production capability, global/connection write-switch, idempotency ve audit kontrolleri değişmedi.
+Taze Trendyol Stage Test Order `1265633895` paketinin güvenli metaverisi taşıyıcının `Yurtiçi Kargo Marketplace` olduğunu doğruladı. Trendyol'un resmî common-label sözleşmesi yalnız Trendyol öder Aras Kargo veya TEX gönderilerinde geçerlidir; bu nedenle geçmiş `LABEL_WRITE` denemelerindeki `REMOTE_REQUEST_REJECTED` sonucu bir capability kanıtı değildir. Kuyruğa alma ve worker katmanı artık uyumsuz taşıyıcıyı uzak `Picking`/label çağrısından önce `COMMON_LABEL_CARRIER_UNSUPPORTED` ile fail-closed durdurur. `CommonLabelCarrierPolicyTests` 7/7 geçti. `LABEL_WRITE` ile `SHIPMENT_WRITE` elle yükseltilmedi; uygun taşıyıcılı gerçek Stage fixture kabulü `NOT_RUN`dır. Production capability, global/connection write-switch, idempotency ve audit kontrolleri değişmedi.
 
 ## 2026-08-12 - v10.45 E-Faturam credential renewal UI deployment
 
@@ -150,7 +150,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 9.2
+**Ana plan sürümü:** 9.3
 
 **2026-08-10 hızlı geliştirme politikası v8.3:** Günlük UI ve olağan işlevsel değişikliklerde otomatik test/build kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılandır. Hedefli kontrol yalnız somut sorun/derleme riski ya da güvenlik, migration, mali işlem, dosya yükleme, veri kaybı ve dış yazma gibi riskli alanlarda çalıştırılır. Tam doğrulama kullanıcı talebi veya release/production kapısına bırakılır.
 
