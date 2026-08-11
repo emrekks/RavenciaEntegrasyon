@@ -4,6 +4,8 @@
 
 Taze paketin ilk sync'i, eski canonical eşleme nedeniyle aynı kaynak olayını `ManualReview` olarak saklamıştı. İdempotent upsert, geçmişte kaydedilmiş aynı raw event için yalnız `ManualReview → tanınan canonical durum` projeksiyonunu güvenle iyileştirir; yeni dış çağrı, yeni durum olayı veya sıralama bypass'ı üretmez. Eşitleme ardından label write canary tekrar bekleniyor.
 
+Gerçek yeniden eşitleme, sağlayıcının aynı paket/raw durum için olay zamanını değiştirdiğini gösterdi; event kimliği bu nedenle farklılaştı ve normal sıralama kapısı `ManualReview` durumunu korudu. Onarım, yalnız aynı paket ve aynı raw durum için `ManualReview → tanınan canonical durum` projeksiyonuna genişletildi; yeni dış etki veya history kaydı üretilmez.
+
 Resmî örnek sözleşmesiyle oluşturulan yeni Stage Test Order `1265633895`, salt-okunur order-sync ile paket `92286944` / takip `7250000170847858` olarak alındı. Uzak durum `ReadyToShip` idi; yerel canonical durum eşlemesinde bu açık yazım eksik olduğu için paket fail-closed `ManualReview` kaldı. `ReadyToShip` eşlemesi yalnız `ReadyToShip` yerel durumuna eklendi; dış yazma kapsamı değişmedi. Eşitleme ve label create → read-back kabulü tekrar bekleniyor.
 
 İlk gerçek Test Order işi, Worker F3 dispatch allow-list'inde yeni job tipi eksik olduğundan `UNSUPPORTED_JOB_TYPE` ile dış çağrı yapmadan terminal kaldı. Allow-list düzeltildi. İkinci gerçek Stage isteği `REMOTE_SERVER_ERROR` ile döndü; resmi Test Order örneğiyle karşılaştırılarak adres sözleşmesindeki alanlar ve resmi örnek test barkodu tamamlandı. Capability durumu değişmedi ve yeni Stage yürütmesi bekleniyor.

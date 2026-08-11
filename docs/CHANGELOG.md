@@ -13,6 +13,7 @@
 - Worker düzeltmesinden sonraki ilk gerçek Stage Test Order isteği `REMOTE_SERVER_ERROR` döndürdü. Yalnız dar test fixture'ı, Trendyol'un resmî örnek sözleşmesindeki tam adres alanları ve `9900000000486` test barkoduyla hizalandı; capability yükseltilmedi.
 - Resmî fixture ile yeni Stage siparişi ve salt-okunur order-sync başarıyla tamamlandı. Uzak `ReadyToShip` durumunun canonical eşlemesi eklendi; daha önce bu açık yazım fail-closed `ManualReview` üretiyordu. Normal dış yazma ve production davranışı değişmedi.
 - Daha önce kaydedilmiş aynı raw kaynak olayındaki yanlış `ManualReview` projeksiyonu, yalnız tanınan canonical duruma idempotent olarak iyileştirilebilir hale getirildi. Bu yol dış çağrı veya yeni history olayı üretmez.
+- Sağlayıcının aynı paket/raw durumda olay zamanını değiştirebildiği gerçek Stage eşitlemesiyle görüldü. Dar yerel projeksiyon onarımı event kimliğinden bağımsız, ancak yalnız aynı paket/raw durum ve `ManualReview` kaydıyla sınırlı hale getirildi.
 
 ## 2026-08-11 - v10.41 iade ürün satırı eşlemesi
 
