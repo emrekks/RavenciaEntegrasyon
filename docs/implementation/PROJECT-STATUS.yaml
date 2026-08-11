@@ -1,5 +1,5 @@
 schema_version: 1
-document_version: '8.4'
+document_version: '8.5'
 updated_at: '2026-08-11'
 active_scope:
 - TRENDYOL
@@ -83,7 +83,7 @@ features:
   trendyol_cargo_change:
     status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   trendyol_label:
-    status: LABEL_READ_STAGE_SUPPORTED_FRESH_TEST_ORDER_PICKING_CREATE_READBACK_PENDING_LABEL_AND_SHIPMENT_WRITE
+    status: LABEL_READ_STAGE_SUPPORTED_FRESH_TEST_ORDER_PICKING_REJECTED_SAFE_VENDOR_CODE_DIAGNOSIS_PENDING_LABEL_AND_SHIPMENT_WRITE
   efaturam_provider_managed_account:
     status: CODED_STATIC_VERIFIED_TOKEN_SCOPE_STAGE_REVALIDATION_REQUIRED
   efaturam_automatic_invoice_routing:
