@@ -2,7 +2,7 @@
 
 ## 2026-08-11 - v10.37-r3 release token bağlamı
 
-`release-2026-08-11-v10.37-r2` koşusunun gerçek job logu, source-gate curl çağrısından önce `GITHUB_TOKEN: unbound variable` hatasını gösterdi. GitHub'ın yerleşik tokenı yalnız bu adıma `github.token` bağlamından aktarıldı; workflow düzeyindeki yetki `actions: read`, `contents: read`, `packages: write` ile sınırlı kaldı. Exact source workflow kontrolü, immutable image, provenance/SBOM ve digest güvenliği değişmedi. Yeni main CI ve r3 release koşusu bekleniyor.
+`release-2026-08-11-v10.37-r2` koşusunun gerçek job logu, source-gate curl çağrısından önce `GITHUB_TOKEN: unbound variable` hatasını gösterdi. GitHub'ın yerleşik tokenı yalnız bu adıma `github.token` bağlamından aktarıldı; workflow düzeyindeki yetki `actions: read`, `contents: read`, `packages: write` ile sınırlı kaldı. Main source CI `#125` başarıyla tamamlandı; `release-2026-08-11-v10.37-r3` immutable publish `#116` source kapısı, app/edge build-push, provenance/SBOM ve digest doğrulamalarını geçirdi. App `sha256:69fba5c25a395cb0fe449040677c37c9c60842c8d6e6d73fc3fc48f2bacca6ed`, edge `sha256:02de6da2a569282ce033d72bedf1e391709f6f88168aefc66f2097a6fb6185dd`. `panel.ravencia.com` hedefi `63.180.140.51` olarak çözüldü; yerel SSH anahtarı/agent ve AWS Console oturumu bulunmadığından deployment `BLOCKED_TARGET_ACCESS`, Stage return-read yeniden kabulü `NOT_RUN` kaldı. Dış yazmalar değiştirilmedi.
 
 ## 2026-08-11 - v10.37-r2 immutable release kapısı
 

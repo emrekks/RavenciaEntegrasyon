@@ -11,7 +11,8 @@
 
 - R2 job logu source-gate adımında `GITHUB_TOKEN: unbound variable` hatasını kanıtladı; build/push adımları çalışmadı.
 - Yerleşik `github.token` yalnız source-gate adımına aktarıldı; workflow izinleri `actions: read`, `contents: read`, `packages: write` ile sınırlıdır.
-- Exact `verify.yml` source koşusu, provenance/SBOM, digest doğrulaması ve iptal edilmeyen release concurrency korunur; r3 koşusu bekleniyor.
+- Main source CI `#125` `PASS`; r3 immutable release `#116` source kapısı, provenance/SBOM ve digest doğrulamasıyla `PASS`. App digest `sha256:69fba5c25a395cb0fe449040677c37c9c60842c8d6e6d73fc3fc48f2bacca6ed`, edge digest `sha256:02de6da2a569282ce033d72bedf1e391709f6f88168aefc66f2097a6fb6185dd`.
+- Hedef `panel.ravencia.com` / `63.180.140.51`; yerel SSH agent/anahtarı ve AWS Console oturumu yok, public-key SSH reddedildi. Deployment `BLOCKED_TARGET_ACCESS`; mevcut runtime değiştirilmedi.
 
 Doğrulama tarihi: 2026-07-31. Ortam: Windows geliştirme makinesi üzerinde Docker Desktop Linux/amd64; hedef Ubuntu Server değildir.
 

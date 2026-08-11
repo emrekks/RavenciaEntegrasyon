@@ -4,6 +4,7 @@
 
 - R2 release kapısının `GITHUB_TOKEN: unbound variable` ile imaj buildinden önce durduğu job logundan doğrulandı.
 - Yerleşik GitHub tokenı yalnız source-gate adımına aktarıldı; `actions: read` en az izni, exact workflow doğrulaması ve tüm immutable image güvenlik kontrolleri korundu.
+- Main source CI `#125` ve immutable release `#116` başarılı tamamlandı; app/edge imajları digest ile yayımlandı. Çalışan sunucuya deployment, bu çalışma ortamında SSH/AWS oturumu bulunmadığı için uygulanmadı.
 
 ## 2026-08-11 - v10.37-r2 release kaynak kapısı düzeltmesi
 
