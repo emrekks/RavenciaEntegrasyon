@@ -6,6 +6,7 @@
 - `LABEL_READ`, gerçek ortak etiket read-back'ini; `LABEL_WRITE`, yalnız `ReadyToShip` Stage paketinde create → read-back zincirini çalıştırır.
 - Başarılı testte gerçek etiket içeriğinin SHA-256 kanıtı, format kısıtı, resmi kaynak ve audit kaydı capability’ye eklenir. Production ve normal dış-yazma davranışı değişmedi.
 - Gerçek Stage read-back canary başarılı oldu ve `LABEL_READ` destekli kaydedildi. `LABEL_WRITE` aynı kaydın uzaktaki `Invoiced` durumu nedeniyle fail-closed kaldı; capability kanıtsız olarak yükseltilmedi.
+- Trendyol dokümanındaki tarihsel `Picking` Stage fixture'ı da create isteğinde reddedildi; güncel write kanıtı için resmi Stage Test Order API ile taze fixture oluşturma yolu ayrıca uygulanacaktır.
 
 ## 2026-08-11 - v10.41 iade ürün satırı eşlemesi
 
