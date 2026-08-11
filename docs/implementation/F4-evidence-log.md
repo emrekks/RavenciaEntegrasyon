@@ -28,8 +28,8 @@
 | Kanıt | Durum | Not |
 | --- | --- | --- |
 | Provider-managed connection | CODED_STATIC_VERIFIED / DYNAMIC_NOT_RUN | Mali hesap/seri/senaryo/kargo/ödeme ayarları kaldırıldı; connection settings yalnız dış-yazma anahtarını taşır. Eski JSON alanları data migration ve runtime sanitization ile temizlenir. |
-| API_USER sign-in | CODED_STATIC_VERIFIED / STAGE_NOT_RUN | Doğrudan `signIn`, `x-access-token`, exact API version ve şifreli e-posta/parola uygulanmıştır. |
-| Token fiscal scope | CODED_STATIC_VERIFIED / STAGE_NOT_RUN | `companyId/userId` sign-in JWT kapsamından okunur; scope yoksa `EFATURAM_TOKEN_SCOPE_MISSING` ile fail-closed durur. |
+| Partner → customer sign-in | CODED_STATIC_VERIFIED / STAGE_REVALIDATION_REQUIRED | Partner `signIn` tokenı yalnız `customerSignIn` isteğinde kullanılır. Şifreli credential kaydı partner e-posta/parolası ile müşteri e-posta/parolası ve 10/11 haneli müşteri VKN/TCKN'sini taşır; hiçbir değer yanıtta veya ayarda gösterilmez. |
+| Customer fiscal scope | CODED_STATIC_VERIFIED / STAGE_REVALIDATION_REQUIRED | `companyId`, `userId` ve müşteri `accessToken` yalnız resmi `customerSignIn` yanıtından alınır. Eksik/biçimsiz yanıt `EFATURAM_CUSTOMER_SIGNIN_CONTRACT_INVALID` ile fail-closed durur. |
 | Automatic invoice type | CODED_STATIC_VERIFIED / STAGE_NOT_RUN | `commercial && eInvoiceAvailable` => `TEMELFATURA`; diğer siparişler => `EARSIVFATURA`. Ayrı taxpayer sorgusu veya senaryo ayarı yoktur. |
 | E-Fatura/E-Arşiv create | CODED_STATIC_VERIFIED / STAGE_NOT_RUN | Kuruş payload, deterministic hash, provider varsayılan serisi ve `source=WEB` uygulanmıştır. |
 | E-Arşiv internet satışı | CODED_STATIC_VERIFIED / STAGE_NOT_RUN | Payment/delivery kullanıcı ayarı değildir; Trendyol siparişi ve resmî carrier kataloğundan otomatik üretilir. Bilinmeyen sağlayıcı bloklanır. |
@@ -58,6 +58,16 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 | Operatör yüzeyi | PASS_LOCAL | Canary yalnız sabitlenmiş Stage test hesabındaki uygun `Ready` taslakta görünür; kullanıcı onayıyla parola/açık-onay istemez. ETag/idempotency ve Stage hesap sınırı korunur; normal mali işlem endpointleri parola/açık-onay ister. |
 | Submit/status/PDF | RUNTIME_AND_STAGE_EVIDENCE_REQUIRED | Gerçek Stage canary başarılı olmadan `INVOICE_SUBMIT`, `INVOICE_STATUS_READ` veya `INVOICE_DOCUMENT_READ` `SUPPORTED` yapılmayacaktır. |
 | Cancel/delivery | OUT_OF_SCOPE | İptal ve marketplace invoice-link delivery ayrı dış-yazma kabul senaryolarıdır; bu canary onları çalıştırmaz veya yükseltmez. |
+
+## 2026-08-11 — Stage canary auth sözleşmesi düzeltmesi
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Sağlayıcı sözleşmesi | OFFICIAL_DOCUMENTATION_VERIFIED | Resmî Trendyol E-Faturam marketplace rehberi, partner `signIn` sonrası müşteri adına `customerSignIn` kullanılmasını; müşteri yanıtındaki `companyId`/`userId` değerlerinin sonraki mali çağrılarda zorunlu olmasını belirtir. |
+| Kod düzeltmesi | CODED_STATIC_VERIFIED | Eski JWT token kapsamı çıkarımı kaldırıldı. Partner tokenı müşteri oturumu için header'da kalır; mali çağrılar yalnız müşteri `accessToken` ile yapılır. |
+| Credential rotasyonu | REQUIRED_BEFORE_STAGE_RETRY | Önceki tek e-posta/parola kaydı artık sözleşmeye yeterli değildir. Stage bağlantısına partner ve müşteri test hesapları ile müşteri VKN/TCKN şifreli olarak yeniden kaydedilmeden canary tekrar çalıştırılmaz. |
+| Önceki canary sonucu | SAFE_PRE_SUBMIT_FAILURE | `EFATURAM_TOKEN_SCOPE_MISSING` sağlayıcı mali create isteğinden önce oluştu; dış referans/ETTN/belge üretilmedi. Aynı Stage taslak yalnız bu hata kodunda ve dış referans boşken denetlenebilir tekil replay kabul eder. |
+| Capability durumu | UNKNOWN | Başarılı gerçek submit → status → PDF zinciri henüz oluşmadı; `INVOICE_SUBMIT`, `INVOICE_STATUS_READ` ve `INVOICE_DOCUMENT_READ` yükseltilmedi. |
 ## 2026-08-10 — v10.32 faturalama ayar yüzeyi sadeleştirmesi
 
 - Kullanılmayan genel faturalama ayarları kullanıcı menüsünden kaldırıldı; eski `/settings/billing` adresi sistem ayarlarına yönlenir.

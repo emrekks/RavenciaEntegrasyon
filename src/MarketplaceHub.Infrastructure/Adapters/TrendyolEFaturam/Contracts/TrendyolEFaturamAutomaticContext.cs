@@ -72,38 +72,26 @@ public static class TrendyolCarrierCatalog
     }
 }
 
-public static class TrendyolEFaturamAccessTokenScope
+public static class TrendyolEFaturamCustomerAccess
 {
-    public static bool TryRead(string token, out long companyId, out long userId)
+    public static bool TryRead(string responseBody, out TrendyolEFaturamAccessContext access)
     {
-        companyId = 0;
-        userId = 0;
-        if (string.IsNullOrWhiteSpace(token)) return false;
-        var parts = token.Split('.');
-        if (parts.Length < 2) return false;
+        access = null!;
+        if (string.IsNullOrWhiteSpace(responseBody)) return false;
         try
         {
-            var payload = parts[1].Replace('-', '+').Replace('_', '/');
-            payload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
-            using var document = JsonDocument.Parse(Convert.FromBase64String(payload));
-            Find(document.RootElement, ref companyId, ref userId, 0);
-            return companyId > 0 && userId > 0;
+            using var document = JsonDocument.Parse(responseBody);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("companyId", out var companyValue) || !TryLong(companyValue, out var companyId)
+                || !root.TryGetProperty("userId", out var userValue) || !TryLong(userValue, out var userId)
+                || !root.TryGetProperty("accessToken", out var tokenValue) || tokenValue.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(tokenValue.GetString()) || companyId <= 0 || userId <= 0) return false;
+            access = new(tokenValue.GetString()!, companyId, userId);
+            return true;
         }
-        catch (Exception exception) when (exception is FormatException or JsonException)
+        catch (JsonException)
         {
             return false;
-        }
-    }
-
-    private static void Find(JsonElement element, ref long companyId, ref long userId, int depth)
-    {
-        if (depth > 5 || element.ValueKind != JsonValueKind.Object) return;
-        foreach (var property in element.EnumerateObject())
-        {
-            var key = new string(property.Name.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
-            if (key == "companyid" && TryLong(property.Value, out var company)) companyId = company;
-            else if (key == "userid" && TryLong(property.Value, out var user)) userId = user;
-            else if (property.Value.ValueKind == JsonValueKind.Object) Find(property.Value, ref companyId, ref userId, depth + 1);
         }
     }
 

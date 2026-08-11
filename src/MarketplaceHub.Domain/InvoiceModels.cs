@@ -38,7 +38,8 @@ public static class InvoiceStateMachine
             [InvoiceStatus.MarketplacePending] = [InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed],
             [InvoiceStatus.MarketplaceFailed] = [InvoiceStatus.MarketplacePending, InvoiceStatus.ManualReview],
             [InvoiceStatus.Completed] = [InvoiceStatus.CancellationPending, InvoiceStatus.AdjustmentRequired],
-            [InvoiceStatus.CancellationPending] = [InvoiceStatus.Cancelled, InvoiceStatus.CancellationRejected]
+            [InvoiceStatus.CancellationPending] = [InvoiceStatus.Cancelled, InvoiceStatus.CancellationRejected],
+            [InvoiceStatus.ManualReview] = [InvoiceStatus.Submitting]
         };
 
     public static bool CanTransition(InvoiceStatus current, InvoiceStatus next) =>

@@ -242,3 +242,6 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 - İade ekranına yalnız okuma amaçlı eşitleme işini kuyruğa alan kullanıcı aksiyonu eklendi. Dış platforma yazma yapılmaz.
 - Eski paket eşitlemelerinde allocation kaydı bulunmadığında, sipariş-paket sahipliği doğrulandıktan sonra pozitif sipariş satırları fatura taslağına geri kazanımlı biçimde eklenir.
 - Hedefli API build ve web typecheck `PASS`; Stage/canlı kabul ile provider işlemleri `NOT_RUN` durumundadır.
+## 2026-08-11 — E-Faturam Stage customerSignIn düzeltmesi
+
+Gerçek Stage mali canary, eski `signIn` tokenından mali kapsam çıkarımı denemesinde create çağrısından önce `EFATURAM_TOKEN_SCOPE_MISSING` ile durdu; dış fatura, ETTN, belge veya delivery oluşmadı. Resmî sağlayıcı sözleşmesi incelendi: partner `signIn` tokenı ile müşteri `customerSignIn` çağrısı yapılır; `companyId`, `userId` ve mali access token yalnız bu müşteri yanıtından alınır. Kod buna göre düzeltildi. Partner/müşteri Stage credential'ları ve müşteri VKN/TCKN'si yalnız şifreli credential kaydında tutulacak, arayüzde tekrar gösterilmeyecektir. Önceki tek-credential kaydı sözleşmeye yeterli değildir; doğru Stage test hesapları kaydedilip bağlantı testi geçmeden canary yeniden çalıştırılmaz. Normal ve production submit/iptal/delivery kapıları değişmedi. Capability satırları `UNKNOWN` kalır.

@@ -85,11 +85,11 @@ features:
   trendyol_label:
     status: LABEL_READ_STAGE_SUPPORTED_FRESH_TEST_ORDER_PICKING_REJECTED_SAFE_VENDOR_CODE_DIAGNOSIS_PENDING_LABEL_AND_SHIPMENT_WRITE
   efaturam_provider_managed_account:
-    status: CODED_STATIC_VERIFIED_TOKEN_SCOPE_STAGE_REVALIDATION_REQUIRED
+    status: PARTNER_CUSTOMER_AUTH_CODED_STATIC_VERIFIED_STAGE_CREDENTIAL_ROTATION_AND_REVALIDATION_REQUIRED
   efaturam_automatic_invoice_routing:
     status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   efaturam_submit:
-    status: STAGE_TEST_ACCOUNT_CANARY_CODED_RUNTIME_AND_EVIDENCE_REQUIRED
+    status: STAGE_TEST_ACCOUNT_CANARY_PARTNER_CUSTOMER_AUTH_RUNTIME_AND_EVIDENCE_REQUIRED
   efaturam_status_cancel:
     status: STAGE_TEST_ACCOUNT_CANARY_CODED_RUNTIME_AND_EVIDENCE_REQUIRED
   secure_invoice_pdf:
@@ -111,4 +111,4 @@ required_documents_on_status_change:
 - docs/implementation/CURRENT-PHASE.md
 - docs/CHANGELOG.md
 - relevant_phase_evidence_log
-last_targeted_ui_update: "2026-08-11-v10.36-returns-reference-workspace"
+last_targeted_ui_update: "2026-08-11-efaturam-partner-customer-stage-auth"

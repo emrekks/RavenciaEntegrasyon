@@ -1,4 +1,3 @@
-using System.Text;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Mapping;
 
@@ -41,20 +40,19 @@ public sealed class F4TrendyolEFaturamContractTests
     }
 
     [Fact]
-    public void Fiscal_scope_is_read_from_signin_jwt_instead_of_user_settings()
+    public void Fiscal_scope_is_read_from_customer_signin_response_instead_of_user_settings()
     {
-        var token = Jwt("""{"scope":{"companyId":"10","userId":20}}""");
-        Assert.True(TrendyolEFaturamAccessTokenScope.TryRead(token, out var companyId, out var userId));
-        Assert.Equal(10, companyId);
-        Assert.Equal(20, userId);
+        Assert.True(TrendyolEFaturamCustomerAccess.TryRead("""{"companyId":10,"userId":20,"accessToken":"customer-token"}""", out var access));
+        Assert.Equal(10, access.CompanyId);
+        Assert.Equal(20, access.UserId);
     }
 
     [Theory]
     [InlineData("")]
-    [InlineData("not-a-jwt")]
-    [InlineData("header.invalid-base64.signature")]
-    public void Invalid_signin_token_does_not_create_a_fiscal_scope(string token) =>
-        Assert.False(TrendyolEFaturamAccessTokenScope.TryRead(token, out _, out _));
+    [InlineData("not-json")]
+    [InlineData("{\"companyId\":10,\"userId\":20}")]
+    public void Invalid_customer_signin_response_does_not_create_a_fiscal_scope(string response) =>
+        Assert.False(TrendyolEFaturamCustomerAccess.TryRead(response, out _));
 
     [Theory]
     [InlineData("TEXMP", "8590921777")]
@@ -81,13 +79,6 @@ public sealed class F4TrendyolEFaturamContractTests
     {
         Assert.True(TrendyolEFaturamContractGuard.IsTaxIdFormat("1234567890"));
         Assert.False(TrendyolEFaturamContractGuard.IsTaxIdFormat("123456789"));
-    }
-
-    private static string Jwt(string payload)
-    {
-        static string Segment(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        var header = Segment("""{"alg":"none"}""");
-        return $"{header}.{Segment(payload)}.";
     }
 
     private static string Fixture(string name) => File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Infrastructure", "Adapters", "TrendyolEFaturam", "Fixtures", name));

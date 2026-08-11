@@ -446,3 +446,8 @@ Bu dosya kullanıcı ve geliştirici açısından anlamlı proje değişiklikler
 ## 2026-08-10 - Full-stack kanit oturum sadelestirmesi v10.30-r4
 
 - Full-stack tarayici kaniti oturumu UI alanlarini beklemek yerine ayni gercek auth endpointi uzerinden acar; ardindan dashboard, siparis kuyrugu, veritabani, worker ve liste gorunurlugunu tarayicida dogrular.
+## 2026-08-11 - E-Faturam partner → müşteri Stage auth düzeltmesi
+
+- Sağlayıcının resmî marketplace sözleşmesine uygun olarak mali kapsam, `signIn` JWT'sinden çıkarılmak yerine partner `signIn` ardından `customerSignIn` yanıtından alınır. Müşteri `companyId`, `userId` ve access token yalnız bu yanıtla kullanılır.
+- E-Faturam credential kaydı partner ve müşteri Stage hesaplarını, ayrıca müşteri VKN/TCKN'sini şifreli saklayacak şekilde genişletildi. Değerler API/UI yanıtlarında yeniden gösterilmez; eski tek-credential kaydı fail-closed kalır ve Stage retry öncesi rotasyon gerekir.
+- Canary dış-yazma istisnası yalnız sabit Stage hesabına bağlı kalır. Önceki token kapsamı hatası provider create çağrısından önce gerçekleştiği ve dış referans oluşmadığı için yalnız bu hata kodundaki aynı taslağa tekil denetlenebilir replay tanımlandı. Capability yükseltmesi yapılmadı.

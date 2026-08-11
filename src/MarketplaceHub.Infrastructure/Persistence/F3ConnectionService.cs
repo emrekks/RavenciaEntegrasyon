@@ -107,15 +107,20 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
         TrendyolEFaturamCredentialPayload? efaturamCredential = null;
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
         {
-            if (string.IsNullOrWhiteSpace(command.Email) || string.IsNullOrWhiteSpace(command.Password))
-                return Invalid<ConnectionView>("credential", "E-Faturam hesabı için e-posta ve parola zorunludur.");
-            efaturamCredential = new(command.Email.Trim(), command.Password);
+            if (string.IsNullOrWhiteSpace(command.Email) || string.IsNullOrWhiteSpace(command.Password)
+                || string.IsNullOrWhiteSpace(command.CustomerEmail) || string.IsNullOrWhiteSpace(command.CustomerPassword)
+                || string.IsNullOrWhiteSpace(command.CustomerTaxId))
+                return Invalid<ConnectionView>("credential", "E-Faturam partner ve müşteri hesabı ile müşteri VKN/TCKN bilgisi zorunludur.");
+            var customerTaxId = command.CustomerTaxId.Trim();
+            if (!TrendyolEFaturamContractGuard.IsTaxIdFormat(customerTaxId))
+                return Invalid<ConnectionView>("customerTaxId", "Müşteri VKN/TCKN 10 veya 11 rakam olmalıdır.");
+            efaturamCredential = new(command.Email.Trim(), command.Password, command.CustomerEmail.Trim(), command.CustomerPassword, customerTaxId);
         }
         var now = timeProvider.GetUtcNow(); var current = await db.PlatformCredentials.Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.RevokedAt == null).ToListAsync(cancellationToken); foreach (var item in current) { item.RevokedAt = now; item.Version++; }
         var payload = connection.PlatformCode == "TRENDYOL"
             ? JsonSerializer.Serialize(new CredentialPayload(command.ApiKey!, command.ApiSecret!))
             : JsonSerializer.Serialize(efaturamCredential!);
-        var hint = connection.PlatformCode == "TRENDYOL" ? Mask(command.ApiKey!) : MaskEmail(efaturamCredential!.Email!);
+        var hint = connection.PlatformCode == "TRENDYOL" ? Mask(command.ApiKey!) : MaskEmail(efaturamCredential!.PartnerEmail!);
         var credentialType = connection.PlatformCode == "TRENDYOL" ? "BASIC" : "EMAIL_PASSWORD";
         db.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, CredentialType = credentialType, ProtectedPayload = _credentialProtector.Protect(payload), MaskedHint = hint, CreatedAt = now, Version = 1 });
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")

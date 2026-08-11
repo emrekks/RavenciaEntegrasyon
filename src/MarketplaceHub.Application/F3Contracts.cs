@@ -181,7 +181,10 @@ public sealed record CredentialCommand(
     string? Password = null,
     string? AccessToken = null,
     string? ClientSecret = null,
-    string? Username = null);
+    string? Username = null,
+    string? CustomerEmail = null,
+    string? CustomerPassword = null,
+    string? CustomerTaxId = null);
 public sealed record SyncPolicyView(Guid Id, string ResourceType, int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled, long Version);
 public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);

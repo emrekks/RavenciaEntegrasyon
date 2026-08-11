@@ -36,7 +36,13 @@ public sealed class TrendyolEFaturamAuthenticationHandler(AppDbContext db, IData
             return null;
         }
 
-        if (payload is null || settings is null || string.IsNullOrWhiteSpace(payload.Email) || string.IsNullOrWhiteSpace(payload.Password)) return null;
+        if (payload is null || settings is null
+            || string.IsNullOrWhiteSpace(payload.PartnerEmail)
+            || string.IsNullOrWhiteSpace(payload.PartnerPassword)
+            || string.IsNullOrWhiteSpace(payload.CustomerEmail)
+            || string.IsNullOrWhiteSpace(payload.CustomerPassword)
+            || string.IsNullOrWhiteSpace(payload.CustomerTaxId)
+            || !TrendyolEFaturamContractGuard.IsTaxIdFormat(payload.CustomerTaxId)) return null;
         var baseAddress = connection.Environment == "PRODUCTION" ? options.Value.ProductionBaseAddress : options.Value.StageBaseAddress;
         return new(connection, baseAddress, payload, settings);
     }
