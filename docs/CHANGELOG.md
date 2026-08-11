@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - v10.45 E-Faturam Stage renewal UI deployment
+
+- Başarılı source CI ve immutable publish sonrasında credential yenileme görünürlüğü Ubuntu hedefe deploy edildi. Taze backup, migration, API/Worker/Caddy health, frontend asset ve `/health/ready` kontrolleri geçti.
+- Canlı E-Faturam Stage ekranı eski credential şeması için `Yenileme gerekli` durumunu ve güvenli yönlendirmeyi gösteriyor. Production dış yazma kapıları veya secret görünürlüğü değişmedi.
+
 ## 2026-08-12 - E-Faturam Stage credential yenileme görünürlüğü
 
 - E-Faturam bağlantısında `EFATURAM_CONFIGURATION_UNAVAILABLE` son test kodu varsa UI, mevcut şifreli kaydın kullanılabilir olduğu izlenimini vermez. Stage için gerekli partner ve müşteri credential rotation adımını açıklar; secret veya kişisel veri göstermez.

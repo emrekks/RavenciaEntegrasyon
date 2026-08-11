@@ -1,5 +1,11 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 — v10.45 renewal UI live acceptance
+
+- **Release/deploy:** `f9aa981` source CI PASS; `release-2026-08-12-v10.45` immutable publish PASS. App `sha256:3d17517d9271cde298c4d96ec70066ab7264a810ae52877e1ab565ee0f4681af`, edge `sha256:38edd3d7c8704d1a55bf82defbf4937d14db1c9b6f331f1110035bf28cc2fd36` Ubuntu hedefte healthy çalışıyor.
+- **Canlı UI smoke:** E-Faturam STAGE detail ekranı `Yenileme gerekli`, partner + müşteri credential açıklaması ve mevcut `EFATURAM_CONFIGURATION_UNAVAILABLE` kodunu gösterdi. Secret veya eski credential içeriği görünmedi.
+- **Kalan kabul:** Güncel Stage partner ve müşteri credential rotation'ı sağlanmadan gerçek provider connection/submit/status/PDF/cancel smoke `BLOCKED_CONFIGURATION` kalır.
+
 ## 2026-08-12 — Stage credential renewal UI
 
 - **Davranış:** Son test kodu `EFATURAM_CONFIGURATION_UNAVAILABLE` olan E-Faturam kaydında credential kartı `Yenileme gerekli` ve Stage partner + müşteri credential açıklamasını gösterir.
