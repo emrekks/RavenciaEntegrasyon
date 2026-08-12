@@ -107,9 +107,14 @@ public sealed class F3ConnectionService(AppDbContext db, CursorCodec cursors, ID
         TrendyolEFaturamCredentialPayload? efaturamCredential = null;
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
         {
-            if (string.IsNullOrWhiteSpace(command.Email) || string.IsNullOrWhiteSpace(command.Password))
-                return Invalid<ConnectionView>("credential", "E-Faturam hesap e-postası ve parolası zorunludur.");
-            efaturamCredential = new(command.Email.Trim(), command.Password);
+            if (string.IsNullOrWhiteSpace(command.Email) || string.IsNullOrWhiteSpace(command.Password)
+                || string.IsNullOrWhiteSpace(command.CustomerEmail) || string.IsNullOrWhiteSpace(command.CustomerPassword)
+                || string.IsNullOrWhiteSpace(command.CustomerTaxId))
+                return Invalid<ConnectionView>("credential", "E-Faturam partner ve Stage test müşteri hesabı ile müşteri VKN/TCKN zorunludur.");
+            var customerTaxId = command.CustomerTaxId.Trim();
+            if (!TrendyolEFaturamContractGuard.IsTaxIdFormat(customerTaxId))
+                return Invalid<ConnectionView>("customerTaxId", "Müşteri VKN/TCKN 10 veya 11 rakam olmalıdır.");
+            efaturamCredential = new(command.Email.Trim(), command.Password, command.CustomerEmail.Trim(), command.CustomerPassword, customerTaxId);
         }
         var now = timeProvider.GetUtcNow(); var current = await db.PlatformCredentials.Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.RevokedAt == null).ToListAsync(cancellationToken); foreach (var item in current) { item.RevokedAt = now; item.Version++; }
         var payload = connection.PlatformCode == "TRENDYOL"

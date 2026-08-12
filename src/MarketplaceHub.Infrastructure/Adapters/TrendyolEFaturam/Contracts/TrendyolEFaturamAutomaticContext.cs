@@ -139,3 +139,24 @@ public static class TrendyolEFaturamDirectAccountAccess
             && long.TryParse(value.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out result);
     }
 }
+
+public static class TrendyolEFaturamCustomerAccess
+{
+    public static bool TryRead(string responseBody, out TrendyolEFaturamAccessContext access)
+    {
+        access = null!;
+        if (string.IsNullOrWhiteSpace(responseBody)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("companyId", out var company) || !company.TryGetInt64(out var companyId)
+                || !root.TryGetProperty("userId", out var user) || !user.TryGetInt64(out var userId)
+                || !root.TryGetProperty("accessToken", out var token) || token.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(token.GetString()) || companyId <= 0 || userId <= 0) return false;
+            access = new(token.GetString()!, companyId, userId);
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+}

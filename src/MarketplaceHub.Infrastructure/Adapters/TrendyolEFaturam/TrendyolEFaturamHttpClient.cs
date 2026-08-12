@@ -142,13 +142,7 @@ public sealed class TrendyolEFaturamHttpClient(
     {
         var login = await SignIn(context, context.Credential.Email!, context.Credential.Password!, cancellationToken);
         if (!login.IsSuccess) return AdapterResult<TrendyolEFaturamAccessContext>.Failure(login.Error!, login.RateLimit);
-        if (!TrendyolEFaturamDirectAccountAccess.TryRead(login.Value!, out var access))
-            return AdapterResult<TrendyolEFaturamAccessContext>.Failure(new(
-                AdapterErrorClass.ContractViolation,
-                "EFATURAM_SIGNIN_SCOPE_MISSING",
-                "E-Faturam doÄŸrudan hesap oturumu gerekli firma/kullanÄ±cÄ± kapsamÄ±nÄ± iÃ§ermiyor.",
-                null, null, null), login.RateLimit);
-        return AdapterResult<TrendyolEFaturamAccessContext>.Success(access, login.RateLimit);
+        return await CustomerSignIn(context, login.Value!, cancellationToken);
     }
 
     private async Task<AdapterResult<string>> SignIn(TrendyolEFaturamRequestContext context, string email, string password, CancellationToken cancellationToken)
@@ -170,6 +164,28 @@ public sealed class TrendyolEFaturamHttpClient(
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return AdapterResult<string>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_TIMEOUT", "E-Faturam bağlantı isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(5), null)); }
         catch (HttpRequestException) { return AdapterResult<string>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_NETWORK_ERROR", "E-Faturam ağına güvenli bağlantı kurulamadı.", null, TimeSpan.FromSeconds(5), null)); }
     }
+    private async Task<AdapterResult<TrendyolEFaturamAccessContext>> CustomerSignIn(TrendyolEFaturamRequestContext context, string partnerToken, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(context.BaseAddress, TrendyolEFaturamEndpoints.CustomerSignIn)) { Content = JsonContent.Create(new { email = context.Credential.CustomerEmail, password = context.Credential.CustomerPassword, taxId = context.Credential.CustomerTaxId }) };
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.TryAddWithoutValidation("x-access-token", partnerToken);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        linked.CancelAfter(RequestTimeout);
+        try
+        {
+            using var response = await clients.CreateClient("TrendyolEFaturam").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token);
+            var retryAfter = response.Headers.RetryAfter?.Delta;
+            var rate = new RateLimitMetadata(null, response.Headers.RetryAfter?.Date, retryAfter);
+            var remoteId = response.Headers.TryGetValues("x-request-id", out var ids) ? ids.FirstOrDefault() : null;
+            if (!response.IsSuccessStatusCode) return AdapterResult<TrendyolEFaturamAccessContext>.Failure(TrendyolEFaturamErrorMapper.FromStatus(response.StatusCode, retryAfter, remoteId), rate);
+            var body = await response.Content.ReadAsStringAsync(linked.Token);
+            if (!TrendyolEFaturamCustomerAccess.TryRead(body, out var access)) return AdapterResult<TrendyolEFaturamAccessContext>.Failure(new(AdapterErrorClass.ContractViolation, "EFATURAM_CUSTOMER_SIGNIN_CONTRACT_INVALID", "E-Faturam müşteri oturumu gerekli firma/kullanıcı kapsamını döndürmedi.", null, null, remoteId), rate);
+            return AdapterResult<TrendyolEFaturamAccessContext>.Success(access, rate);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return AdapterResult<TrendyolEFaturamAccessContext>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_TIMEOUT", "E-Faturam müşteri oturumu zaman aşımına uğradı.", null, TimeSpan.FromSeconds(5), null)); }
+        catch (HttpRequestException) { return AdapterResult<TrendyolEFaturamAccessContext>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_NETWORK_ERROR", "E-Faturam müşteri oturumu için güvenli bağlantı kurulamadı.", null, TimeSpan.FromSeconds(5), null)); }
+    }
+
     private bool CanWrite(TrendyolEFaturamRequestContext configured, AdapterContext context) =>
         IntegrationRuntimePolicy.IsManualStage(configured.Connection, context)
         || (IntegrationRuntimePolicy.IsProduction(configured.Connection) && GlobalWritesEnabled && configured.ExternalWritesEnabled);

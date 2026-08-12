@@ -39,7 +39,11 @@ public sealed class TrendyolEFaturamAuthenticationHandler(AppDbContext db, IData
 
         if (payload is null || settings is null
             || string.IsNullOrWhiteSpace(payload.Email)
-            || string.IsNullOrWhiteSpace(payload.Password)) return null;
+            || string.IsNullOrWhiteSpace(payload.Password)
+            || string.IsNullOrWhiteSpace(payload.CustomerEmail)
+            || string.IsNullOrWhiteSpace(payload.CustomerPassword)
+            || string.IsNullOrWhiteSpace(payload.CustomerTaxId)
+            || !TrendyolEFaturamContractGuard.IsTaxIdFormat(payload.CustomerTaxId)) return null;
         if (!IntegrationRuntimePolicy.TryResolveBaseAddress(connection.Environment, options.Value.StageBaseAddress, options.Value.ProductionBaseAddress, out var baseAddress)) return null;
         return new(connection, baseAddress, payload, settings);
     }

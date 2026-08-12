@@ -1,5 +1,13 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 - Sağlayıcı yetki sözleşmesi hizalaması
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Partner → müşteri auth | CODED_TARGETED_VALIDATED | Resmî provider akışı geri eklendi: partner sign-in token'ı yalnız customerSignIn'da kullanılır; gerçek fatura çağrıları customer access token, companyId ve userId ile yapılır. Credential UI/persistence partner + Stage test müşteri/VKN alanlarını şifreli saklar. |
+| Yerel doğrulama | PASS_LOCAL | E-Faturam contract testleri 38/38, Infrastructure build 0 hata/uyarı ve web typecheck geçti. |
+| Gerçek Stage kabulü | BLOCKED_PROVIDER_API_ACCOUNT | Partner ve Stage test müşteri credential'ı henüz sağlanmadı; mevcut tekil hesap credential'ı yeniden kullanılmadı. |
+
 ## 2026-08-12 - VERIFIED Stage manual gate düzeltmesi
 
 | Kanıt | Durum | Not |

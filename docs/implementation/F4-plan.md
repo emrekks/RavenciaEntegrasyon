@@ -10,10 +10,10 @@ Resmî Trendyol E-Faturam pazaryeri API'si, fatura çağrılarında partner `sig
 
 ## Kodlanan kapsam
 
-1. Doğrudan `API_USER` `signIn`, `x-access-token` ve şifreli e-posta/parola.
-2. `companyId/userId` değerlerinin sign-in tokenından okunması; mali hesap/seri ayarlarının panel ve persistence dışına çıkarılması; eski connection settings verilerinin migration ile temizlenmesi.
+1. Partner `signIn`, customerSignIn müşteri token'ı (`x-access-token`) ve şifreli partner + Stage test müşteri credential'ı.
+2. `companyId/userId` değerlerinin customerSignIn yanıtından okunması; mali hesap/seri ayarlarının panel ve persistence dışına çıkarılması; eski connection settings verilerinin migration ile temizlenmesi.
 3. `commercial && eInvoiceAvailable` ile otomatik `TEMELFATURA`; diğer siparişlerde `EARSIVFATURA`.
-4. Ayrı taxpayer sorgusu, Temel/Ticari seçim ve partner/customerSignIn yüzeylerinin kaldırılması.
+4. Ayrı taxpayer sorgusu ve Temel/Ticari seçiminin kaldırılması; provider zorunluluğu olan partner/customerSignIn yetki zincirinin korunması.
 5. E-Arşiv internet satışı için gereken payment/delivery alanlarının Trendyol siparişi ve resmî carrier kataloğundan otomatik üretilmesi.
 6. Kuruş dönüşümü, satır/toplam denklemi, pozitif faturalanabilir miktar filtresi, yalnız tutarı içeren Türkçe not ve deterministic request hash.
 7. Durable submit → status reconcile → document fetch → Trendyol link delivery akışı.
