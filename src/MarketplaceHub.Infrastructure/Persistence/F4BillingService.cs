@@ -387,7 +387,7 @@ public sealed partial class F4BillingService(
 
     private async Task<bool> WriteGates(Guid tenantId, Guid connectionId, string capability, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status == "ACTIVE", cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         if (connection is null) return false;
         var enabled = ConnectionWritesEnabled(connection.SettingsJson);
         var manual = new AdapterContext(tenantId, connectionId, "runtime-gate", "runtime-gate", timeProvider.GetUtcNow());
@@ -395,7 +395,7 @@ public sealed partial class F4BillingService(
     }
     private async Task<bool> ReadGate(Guid tenantId, Guid connectionId, string capability, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status == "ACTIVE", cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         return connection is not null && IntegrationRuntimePolicy.AllowsManualRead(connection);
     }
     private static bool ConnectionWritesEnabled(string settings)

@@ -16,10 +16,10 @@ Trendyol siparişi/paketi için provider hesabındaki mali kapsamı kullanarak d
 8. Resmî sayısal status kataloğu; unknown sonuçta manuel inceleme.
 9. Kalıcı PDF URL, güvenli indirme ve private immutable storage.
 10. E-Arşiv iptal submit → status reconcile; E-Fatura için otomatik iptal yok.
-11. Duplicate submit/delivery koruması, ETag, idempotency ve parola + açık onay.
+11. Duplicate submit/delivery koruması ve ETag/idempotency. Parola + açık onay yalnız Production mali write için zorunludur; manuel Stage write ek onay istemez.
 12. Panelde yalnız credential, otomatik belge türü açıklaması, manuel package policy, filtre, submit/reconcile/deliver/cancel, belge erişimi ve capability evidence yüzeyleri.
 13. Operatörün PDF/JPEG/PNG fatura belgesini dosya imzası doğrulaması, SHA-256 tekrar koruması ve audit kaydıyla private storage'a eklemesi; bu akış provider submit veya marketplace link teslimi oluşturmaz.
-14. Sipariş listesinden API kaynaklı müşteri/adres/ürün/KDV özeti gösteren fatura ön izleme; devam adımı idempotent yerel taslak oluşturur, provider submit parola ve açık onay gerektirmeye devam eder.
+14. Sipariş listesinden API kaynaklı müşteri/adres/ürün/KDV özeti gösteren fatura ön izleme; devam adımı idempotent yerel taslak oluşturur. Provider submit, Stage'de ek onay istemez; Production'da parola ve açık onay gerektirir.
 
 ## Dış kabul kapısı
 

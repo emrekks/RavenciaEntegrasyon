@@ -18,6 +18,19 @@ public sealed class IntegrationRuntimePolicyTests
     }
 
     [Fact]
+    public void Verified_stage_connection_is_operational_only_for_manual_stage_flows()
+    {
+        var stage = Connection("STAGE", "VERIFIED");
+        var production = Connection("PRODUCTION", "VERIFIED");
+
+        Assert.True(IntegrationRuntimePolicy.AllowsManualRead(stage));
+        Assert.True(IntegrationRuntimePolicy.AllowsManualWrite(stage, Manual, globalWritesEnabled: false, connectionWritesEnabled: false));
+        Assert.False(IntegrationRuntimePolicy.AllowsManualWrite(stage, Automatic, globalWritesEnabled: true, connectionWritesEnabled: true));
+        Assert.False(IntegrationRuntimePolicy.AllowsManualRead(production));
+        Assert.False(IntegrationRuntimePolicy.AllowsManualWrite(production, Manual, globalWritesEnabled: true, connectionWritesEnabled: true));
+    }
+
+    [Fact]
     public void Production_remains_fail_closed_without_all_write_gates()
     {
         var connection = Connection("PRODUCTION", "ACTIVE");

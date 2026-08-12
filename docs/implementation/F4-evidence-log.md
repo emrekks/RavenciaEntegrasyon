@@ -1,5 +1,12 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 - VERIFIED Stage manual gate düzeltmesi
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Gate ayrımı | CODED_TARGETED_VALIDATION_PENDING | Başarılı connection testinin bıraktığı `VERIFIED` Stage bağlantısı artık manuel submit/status/cancel için operasyonel kabul edilir. Bu yalnız Stage manuel akışıdır; otomatik iş, DRAFT bağlantı ve Production `VERIFIED` bağlantısı fail-closed kalır. |
+| Gerçek Stage submit kabulü | PENDING | Hazır yerel E-Arşiv taslağı ile provider submit, status/PDF/cancel zinciri release/deploy sonrasında çalıştırılacaktır. |
+
 ## 2026-08-12 - Tekil E-Faturam hesap kimlik doğrulaması
 
 | Kanıt | Durum | Not |

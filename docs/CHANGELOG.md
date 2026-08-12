@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - VERIFIED Stage E-Faturam manuel işlemleri
+
+- Başarılı connection testinden sonra `VERIFIED` kalan Stage E-Faturam bağlantısı, F4 fatura gate'inde yanlışlıkla pasif sayılıyordu. `VERIFIED` artık yalnız Stage manuel read/write akışında operasyonel kabul edilir; normal submit, status/reconcile ve E-Arşiv cancel görünür/kuyruğa alınabilir.
+- Production `VERIFIED` bağlantı yine fail-closed kalır. Production read/write için `ACTIVE`; write için ayrıca global ve bağlantı dış-yazma switch'leri, yeniden doğrulama, idempotency, input/provider validation ve audit zinciri korunur.
+
 ## 2026-08-12 - E-Faturam tekil hesap credential akışı
 
 - Partner/alt müşteri credential sözleşmesi kaldırıldı. E-Faturam tekil hesap e-postası ve parolasıyla doğrudan oturum açar; firma ve kullanıcı kapsamı yalnız sağlayıcı token'ından fail-closed okunur.
