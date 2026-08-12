@@ -1,5 +1,11 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-13 - CI test altyapısı bağımlılık düzeltmesi
+
+- **Finding:** Locked restore, Testcontainers'ın geçişli `SSH.NET 2025.1.0` paketi için `GHSA-q939-rpr3-3284` yüksek önem dereceli advisory'sini hata olarak bildirdi.
+- **Remediation:** Merkezi geçişli pin `SSH.NET 2026.0.0` olarak güncellendi. Advisory bastırılmadı ve uygulamanın E-Faturam çalışma zamanı bağımlılıkları ya da Stage/Production transaction güvenlikleri değiştirilmedi.
+- **Verification:** Locked restore, çözüm build/test ve formatter yeniden doğrulanacaktır.
+
 ## 2026-08-13 - Taze token korumalı-endpoint teşhisi
 
 - **Official contract review:** The official API_USER guide specifies direct `signIn` for invoice create/cancel/query on `https://stage-apigateway.trendyolefaturam.com`, with `x-access-token` for protected API calls. The active direct-account implementation matches those endpoints and headers.

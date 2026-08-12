@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-13 - Test altyapısı SSH bağımlılığı güvenlik düzeltmesi
+
+- Testcontainers'ın geçişli `SSH.NET 2025.1.0` bağımlılığı, güvenlik advisory'sindeki düzeltme sürümü `2026.0.0` ile merkezi olarak pinlendi. CI'ın vulnerability-as-error denetimi korunur; güvenlik uyarısı bastırılmadı.
+- Kilitli restore, çözüm build/test ve formatter doğrulaması yeniden çalıştırılacaktır. Production runtime paketi ve dış yazma güvenlikleri etkilenmez.
+
 ## 2026-08-13 - E-Faturam taze token teşhis düzeltmesi
 
 - Başarılı doğrudan `signIn` sonrasında korumalı endpointten gelen `401`, artık giriş hatası gibi değil `EFATURAM_ACCESS_TOKEN_REJECTED` olarak kaydedilir. Bu, sağlayıcıdaki hesap API yetkisinin doğrulanması gerektiğini doğru biçimde gösterir; istek tekrar gönderilmez.
