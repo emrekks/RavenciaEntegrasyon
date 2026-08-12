@@ -175,3 +175,10 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 - Fatura taslağında paket-sipariş sahipliği zaten doğrulandıktan sonra allocation kaydı yoksa pozitif, iptal edilmemiş sipariş satırları kullanılır. Bu yalnız eski eşitleme verisi için geri uyumluluktur.
 - Allocation var olduğunda mevcut miktar paylaştırma kuralları değişmeden korunur. İptal edilmiş veya pozitif miktarı olmayan satırlar taslağa girmez.
 - Hedefli API build `PASS`; E-Faturam provider submit ve Stage mali kabulü `NOT_RUN`.
+## 2026-08-12 — Partner/müşteri credential form regresyonu
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Form sözleşmesi | PASS_LOCAL | E-Faturam bağlantı formu, provider sözleşmesindeki partner e-posta/parola ile Stage test müşteri e-posta/parola ve 10/11 haneli VKN/TCKN alanlarını gönderir. Eski tekil credential alanları artık geçerli payload üretmez. |
+| Hedefli web doğrulaması | PASS_LOCAL | `npm.cmd test -- --run` ile 5 dosyada 21/21 Vitest, `npm.cmd run typecheck` ve `npm.cmd run build` geçti. Playwright 3/3 senaryo geçti; yerel başlatıcı süreci süre aşımında kapanmadığı için komut sonucu `NOT_RUN` olarak ayrı tutulur. |
+| Stage provider kabulü | BLOCKED_EXTERNAL_CREDENTIALS | Önceki tekil hesap kaydı, resmi partner → müşteri API zinciri için yeterli değildir. Şifreli partner ve Stage test müşteri API credential'ları ile VKN/TCKN yenilenmeden bağlantı smoke veya mali submit tekrarlanmaz. |
