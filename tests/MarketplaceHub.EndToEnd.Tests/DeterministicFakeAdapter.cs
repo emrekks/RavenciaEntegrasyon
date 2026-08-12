@@ -14,6 +14,7 @@ public enum FakeScenario
     Timeout,
     Validation,
     HydrationValidation,
+    HierarchicalReferences,
     ContractViolation
 }
 
@@ -38,7 +39,13 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
         ]);
 
     public Task<AdapterResult<AdapterPageResult<RemoteReferenceItem>>> ReadAsync(AdapterContext context, ReferenceResource resource, AdapterPageRequest page, CancellationToken cancellationToken) =>
-        Result(Page(resource.ResourceType == "CATEGORY_ATTRIBUTES"
+        scenario == FakeScenario.HierarchicalReferences && resource.ResourceType == "CATEGORIES"
+            ? Result(new AdapterPageResult<RemoteReferenceItem>(
+            [
+                new("CATEGORIES", "root-category", null, "Root Category", "Root Category", 0, false, true, "{}"),
+                new("CATEGORIES", "leaf-category", "root-category", "Leaf Category", "Root Category / Leaf Category", 1, true, true, "{}")
+            ], null, false))
+            : Result(Page(resource.ResourceType == "CATEGORY_ATTRIBUTES"
             ? new RemoteReferenceItem(resource.ResourceType, "synthetic-reference", resource.ParentExternalId, "Synthetic Reference", "Synthetic Reference", 0, true, true, "{}", true, true, false)
             : new RemoteReferenceItem(resource.ResourceType, "synthetic-reference", resource.ParentExternalId, "Synthetic Reference", "Synthetic Reference", 0, true, true, "{}")));
 

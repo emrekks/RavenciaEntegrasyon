@@ -77,6 +77,14 @@
 
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-12 - v10.55 canlı Stage kabulü ve kategori ağaç scope tanısı
+
+- Source CI `31599817178` ve immutable publish `31600192757`: `PASS`; v10.55 app/edge digest deploy, migration, tüm servis health ve readiness `200`: `PASS`. Backup `20260812T131446Z` database/private-volume checksumları: `PASS`.
+- Connection test `daca33547a604b58ba9f3b2efb32daef`, order sync `ff2fa68c4dbb441bab5253a3326c2522`, brand sync `5ed2142619fd4657a040006ca6024705`: `SUCCEEDED`, ilk deneme.
+- Category sync `0882d3d6fa004f47978b5e7876a10b55`: `REFERENCE_CONTRACT_INVALID`. Gerçek neden provider değil, flattened kategori child kayıtlarının parent kimliğini kök request scope ile karşılaştıran yerel gate idi.
+- Kategori scope doğrulaması parent kimliğinin aynı yanıt kümesinde varlığını ve self-parent yasağını kontrol edecek şekilde düzeltildi. Brand ve scoped attribute/value kaynaklarında exact scope eşitliği korunur; orphan, duplicate, boş kimlik/ad ve bozuk resource type fail-closed kalır.
+- Infrastructure build ve EndToEnd test projesi build: `PASS`. Yeni PostgreSQL hiyerarşi regresyonunun runtime sonucu: `CI_PENDING` (yerel Docker motoru kapalı).
+
 ## 2026-08-12 - Stage order hydration fallback ve referans hata ayrıştırması
 
 - Trendyol Stage bağlantı testi `8838053f02264cf1aa13ea675b4262e6` ve marka referansı `f5ef22cb565f4ef6a28bb5803d48a142` ilk denemede `SUCCEEDED`.

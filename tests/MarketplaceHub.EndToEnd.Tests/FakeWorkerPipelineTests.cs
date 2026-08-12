@@ -238,6 +238,30 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         Assert.Equal(1, await db.AttributeMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localAttributeId && x.ScopeExternalId == "synthetic-reference", cancellationToken));
     }
 
+    [Fact]
+    public async Task Category_reference_sync_accepts_valid_parent_child_hierarchy()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var tenantId = Guid.Parse("65555555-5555-5555-5555-555555555555");
+        var connectionId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+        var clock = new MutableTimeProvider(Now);
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options);
+        await db.Database.MigrateAsync(cancellationToken);
+        db.Tenants.Add(new Tenant { Id = tenantId, Code = "category-hierarchy", DisplayName = "Category Hierarchy", CreatedAt = Now, UpdatedAt = Now });
+        db.PlatformConnections.Add(new PlatformConnection { Id = connectionId, PublicId = Guid.NewGuid(), TenantId = tenantId, PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Category hierarchy", ExternalStoreId = "synthetic-store", Status = "ACTIVE", ApiVersion = "v2", Version = 1 });
+        await db.SaveChangesAsync(cancellationToken);
+
+        var fake = new DeterministicFakeAdapter(FakeScenario.HierarchicalReferences, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, fake, null!, clock);
+        var result = await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"CATEGORIES\"}", "category-hierarchy-correlation", cancellationToken);
+
+        Assert.True(result.Succeeded);
+        var items = await db.ReferenceItems.Where(x => x.TenantId == tenantId).OrderBy(x => x.Depth).ToListAsync(cancellationToken);
+        Assert.Equal(2, items.Count);
+        Assert.Null(items[0].ParentExternalId);
+        Assert.Equal(items[0].ExternalId, items[1].ParentExternalId);
+    }
+
 
     [Fact]
     public async Task Product_create_job_submits_polls_and_persists_row_results()

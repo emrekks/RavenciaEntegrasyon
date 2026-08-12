@@ -840,9 +840,14 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
 
         cancellationToken.ThrowIfCancellationRequested();
         if (items.Count == 0 && resourceType is "CATEGORIES" or "BRANDS") throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", $"Trendyol {resourceType} salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
-        if (items.Any(x => !string.Equals(x.ResourceType, resourceType, StringComparison.Ordinal) || !string.Equals(x.ParentExternalId ?? "", parentExternalId ?? "", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(x.ExternalId) || string.IsNullOrWhiteSpace(x.Name))) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
+        if (items.Any(x => !string.Equals(x.ResourceType, resourceType, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(x.ExternalId) || string.IsNullOrWhiteSpace(x.Name))) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
         var ordered = items.OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
         if (ordered.Select(x => x.ExternalId).Distinct(StringComparer.Ordinal).Count() != ordered.Count) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_IDENTIFIERS_DUPLICATE", "Referans yanıtı yinelenen uzak kimlik içeriyor."));
+        var identifiers = ordered.Select(x => x.ExternalId).ToHashSet(StringComparer.Ordinal);
+        var scopeIsValid = resourceType == "CATEGORIES"
+            ? ordered.All(x => x.ParentExternalId is null || (!string.Equals(x.ExternalId, x.ParentExternalId, StringComparison.Ordinal) && identifiers.Contains(x.ParentExternalId)))
+            : ordered.All(x => string.Equals(x.ParentExternalId ?? "", parentExternalId ?? "", StringComparison.Ordinal));
+        if (!scopeIsValid) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Referans yanıtı geçerli kapsam veya kategori hiyerarşisi sağlamıyor."));
         var canonical = JsonSerializer.Serialize(ordered.Select(x => new { x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive, x.IsRequired, x.AllowsCustomValue, x.AllowsMultipleValues }));
         var contentHash = Hash(canonical);
         var now = timeProvider.GetUtcNow();

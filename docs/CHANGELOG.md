@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Trendyol kategori ağacı scope doğrulaması
+
+- Kategori referans ağacındaki child satırlar artık kök request scope'u ile yanlış karşılaştırılmaz. Her non-root parent kimliğinin aynı normalize cevap kümesinde bulunması ve satırın kendisine parent olmaması zorunludur.
+- Brand, category-attribute ve attribute-value exact scope kontrolleri; duplicate/orphan/boş zorunlu alan fail-closed davranışı korunur.
+- v10.55 canlı kabulünde connection, sipariş ve marka senkronları ilk denemede başarılı oldu; kategori tanı kodu hatalı yerel gate'i ayırdı. Yeni hiyerarşi düzeltmesi buildlerden geçti ve Linux CI/runtime kabulü bekliyor.
+
 ## 2026-08-12 - Trendyol sipariş stream fallback ve referans tanı kodları
 
 - Salt-okunur sipariş stream'inde gelen kayıt, opsiyonel exact hydration isteği `NotFound` veya `Validation/400` döndürürse kaybedilmez; stream kaydı saklanır ve iş başına tek audit üretilir. Diğer provider hataları mevcut fail-closed/retry davranışını korur.
