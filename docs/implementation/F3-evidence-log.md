@@ -1,3 +1,11 @@
+## 2026-08-12 — v10.60 approval retry alignment deployment
+
+- **CI/release:** Source CI `31620941782` and immutable publish `31621351060` `PASS`; release tag `release-2026-08-12-v10.60` resolves to `163327f`.
+- **Backup/rollback:** `20260812T171539Z` database/private-volume set SHA-256 and `pg_restore --list` `PASS`; immutable rollback copy `deploy/backups/20260812T171539Z-v10.60` retained.
+- **Deploy:** App `sha256:4365d0b97db9ac56e9b4c0356a91e6c3900e32c62db0b7b2805e654145854d18`, edge `sha256:2edf42576cad4b2c646cf2cbfc206510daab40ef780c52080169d211d459fdcb`; migration exit `0`, API/Worker/Caddy/PostgreSQL healthy, external readiness `200`, deploy frontend asset smoke `PASS`.
+- **Durable runtime:** Existing Stage correlation `f9c945309efe4bf9acdd13dcd246b2aa` survived deployment and made its ninth provider read-back. It remains `PRODUCT_APPROVAL_PENDING / RETRY_SCHEDULED`; no duplicate create was submitted. Terminal approval remains `BLOCKED_PROVIDER_APPROVAL` until Trendyol returns a terminal listing state.
+- **Not run:** PostgreSQL Testcontainers execution remains `NOT_RUN_SCOPED_RUNNER_REQUIRED`; isolated Ubuntu Docker Release publish and EndToEnd test-project compile passed, but production Docker socket/host network was not delegated to a test runner.
+
 ## 2026-08-12 — Product approval seven-day retry alignment
 
 - **Finding:** The payload's seven-day deadline is authoritative. Although an approval result requests a five-minute retry, `JobRetryPolicy` applies jittered exponential backoff and the live sixth attempt was scheduled for `18:11 UTC`; the current `200` cap therefore does not exhaust before the deadline. Retention must nevertheless remain independent of that scheduler detail.

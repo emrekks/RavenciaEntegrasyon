@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - v10.60 immutable deployment
+
+- `163327f` source CI `31620941782` ve `release-2026-08-12-v10.60` immutable publish `31621351060` geçti. Checksum/doğrulanmış `20260812T171539Z-v10.60` rollback seti sonrasında digest-pinned app/edge imajları deploy edildi.
+- Migration `0`; API, Worker, Caddy ve PostgreSQL healthy; dış readiness `200` ve deploy script frontend asset smoke `PASS`.
+- Mevcut Stage ürün approval read-back işi deployment boyunca korundu ve `PRODUCT_APPROVAL_PENDING` olarak yeniden denendi. Trendyol terminal onayı gelene kadar bu kabul `BLOCKED_PROVIDER_APPROVAL`; E-Faturam mali E2E de sağlayıcı invoice API kapsamı beklediği için `BLOCKED_PROVIDER_API_SCOPE` kalır.
+
 ## 2026-08-12 - Trendyol ürün approval deadline hizalaması
 
 - Yedi günlük approval deadline'ı scheduler ayrıntısından bağımsızlaştırıldı. Worker'ın mevcut jitter'lı geri çekilmesiyle `200` deneme zaten deadline'dan önce tükenmez; yeni reconciliation işleri nominal beş dakikalık pencereyi de kapsayan `2017` limitini kullanır. Deadline sonunda mevcut `PRODUCT_APPROVAL_DEADLINE_EXPIRED / MANUAL_REVIEW` akışı çalışır.

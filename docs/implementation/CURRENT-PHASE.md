@@ -1,5 +1,11 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - v10.60 ürün approval retry alignment deployment kabulü
+
+`163327f` source CI `31620941782` ve `release-2026-08-12-v10.60` immutable publish `31621351060` geçti. `20260812T171539Z` PostgreSQL/private-volume backup seti için iki SHA-256 kaydı ve `pg_restore --list` doğrulandı; rollback kopyası `deploy/backups/20260812T171539Z-v10.60` olarak saklandı. App `sha256:4365d0b97db9ac56e9b4c0356a91e6c3900e32c62db0b7b2805e654145854d18`, edge `sha256:2edf42576cad4b2c646cf2cbfc206510daab40ef780c52080169d211d459fdcb` olarak deploy edildi. Migration exit `0`; API, Worker, Caddy ve PostgreSQL healthy; dış readiness `200`; deploy script'in frontend asset doğrulaması geçti.
+
+Yeni ürün approval reconciliation işleri, mevcut retry backoff davranışı daha sık polling'e değişse dahi yedi günlük payload deadline'ından önce deneme limitine ulaşmayacak `2017` üst sınırını kullanır. Önceden oluşturulmuş Stage ürün approval işi `f9c945309efe4bf9acdd13dcd246b2aa`, deployment boyunca korundu ve dokuzuncu read-back sonrasında `PRODUCT_APPROVAL_PENDING / RETRY_SCHEDULED` durumunda kaldı; duplicate create yapılmadı. Terminal ürün onayı dış Trendyol kabulüne bağlıdır. Production endpoint/credential boundary, authorization, master + connection external-write switch, input validation, idempotency, reconciliation ve audit değişmedi.
+
 ## 2026-08-12 - Ürün approval poll deadline hizalaması
 
 Ürün approval reconciliation işi yedi günlük yerel operasyon deadline'ı ile çalışır. Worker'ın genel retry politikası beşinci denemeden sonra en az bir saatlik jitter'lı geri çekilme uyguladığından mevcut `MaxAttempts=200` de pratikte deadline'dan önce tükenmez; canlı işte altıncı deneme `18:11 UTC` için planlandı. Yeni işler yine de scheduler ayrıntısından bağımsız kalmak için nominal beş dakikalık pencereye göre `(7 × 24 × 12) + 1 = 2017` deneme üst sınırını kullanır. Böylece ileride daha sık polling seçilirse yedinci gün sonunda normal `PRODUCT_APPROVAL_DEADLINE_EXPIRED / MANUAL_REVIEW` yolu korunur. Yeni dış yazma, retry bypass'ı veya Production güvenlik değişikliği yoktur.
