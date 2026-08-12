@@ -5,6 +5,11 @@
 - Başarılı connection testinden sonra `VERIFIED` kalan Stage E-Faturam bağlantısı, F4 fatura gate'inde yanlışlıkla pasif sayılıyordu. `VERIFIED` artık yalnız Stage manuel read/write akışında operasyonel kabul edilir; normal submit, status/reconcile ve E-Arşiv cancel görünür/kuyruğa alınabilir.
 - Production `VERIFIED` bağlantı yine fail-closed kalır. Production read/write için `ACTIVE`; write için ayrıca global ve bağlantı dış-yazma switch'leri, yeniden doğrulama, idempotency, input/provider validation ve audit zinciri korunur.
 
+## 2026-08-12 - Gerçek Stage E-Arşiv yetki sonucu
+
+- v10.53'te `VERIFIED` Stage gate düzeltmesi dağıtıldı; hazır E-Arşiv taslağı normal manuel submit yolundan ek parola/onay olmadan bir kez kuyruğa alındı. Sağlayıcı submit endpoint'i `401` döndürdü ve deneme `EFATURAM_AUTHENTICATION_FAILED` olarak audite edildi; duplicate koruması nedeniyle aynı fatura yeniden gönderilmedi.
+- Resmî Trendyol E-Faturam pazaryeri rehberi, fatura API'lerinin partner `signIn` ve `customerSignIn` ile alınan müşteri token'ını gerektirdiğini belirtir. Tekil kullanıcı hesabının giriş yapabilmesi provider fatura API yetkisi anlamına gelmez; partner + test müşteri API hesabı olmadan Stage submit/status/PDF/cancel kabulü blokludur. Production güvenlikleri azaltılmadı.
+
 ## 2026-08-12 - E-Faturam tekil hesap credential akışı
 
 - Partner/alt müşteri credential sözleşmesi kaldırıldı. E-Faturam tekil hesap e-postası ve parolasıyla doğrudan oturum açar; firma ve kullanıcı kapsamı yalnız sağlayıcı token'ından fail-closed okunur.

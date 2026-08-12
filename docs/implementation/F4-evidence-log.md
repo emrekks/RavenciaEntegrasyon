@@ -4,8 +4,8 @@
 
 | Kanıt | Durum | Not |
 | --- | --- | --- |
-| Gate ayrımı | CODED_TARGETED_VALIDATION_PENDING | Başarılı connection testinin bıraktığı `VERIFIED` Stage bağlantısı artık manuel submit/status/cancel için operasyonel kabul edilir. Bu yalnız Stage manuel akışıdır; otomatik iş, DRAFT bağlantı ve Production `VERIFIED` bağlantısı fail-closed kalır. |
-| Gerçek Stage submit kabulü | PENDING | Hazır yerel E-Arşiv taslağı ile provider submit, status/PDF/cancel zinciri release/deploy sonrasında çalıştırılacaktır. |
+| Gate ayrımı | DEPLOYED_AND_STAGE_ENQUEUE_SUCCEEDED | Başarılı connection testinin bıraktığı `VERIFIED` Stage bağlantısı manuel submit için operasyonel kabul edildi; `READY` taslak normal endpointten parolasız kuyruğa alındı. Otomatik iş, DRAFT bağlantı ve Production `VERIFIED` bağlantısı fail-closed kalır. |
+| Gerçek Stage submit kabulü | BLOCKED_PROVIDER_API_ACCOUNT | `#1177219188` E-Arşiv taslağının ilk ve tek submit denemesi provider `POST /api/invoice/documents/earchive` çağrısında `401` / `EFATURAM_AUTHENTICATION_FAILED` aldı. Resmî pazaryeri entegrasyon rehberi fatura çağrıları için partner `signIn` + `customerSignIn` müşteri token'ını zorunlu kılar; tekil hesap sign-in'i bu API yetkisini sağlamaz. Aynı taslak yeniden gönderilmedi. |
 
 ## 2026-08-12 - Tekil E-Faturam hesap kimlik doğrulaması
 

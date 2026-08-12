@@ -4,6 +4,10 @@
 
 Trendyol siparişi/paketi için provider hesabındaki mali kapsamı kullanarak doğru E-Fatura veya internet satışı E-Arşiv belgesini oluşturmak, provider durumunu sayısal kodlarla uzlaştırmak, PDF'yi private saklamak, E-Arşiv iptalini takip etmek ve Trendyol paketine güvenli fatura linki iletmek.
 
+## Sağlayıcı kabul ön koşulu
+
+Resmî Trendyol E-Faturam pazaryeri API'si, fatura çağrılarında partner `signIn` ardından her test müşterisi için `customerSignIn` ile alınan müşteri token'ını ister. Tekil kullanıcı e-posta/parolası başarılı oturum açsa bile bu token'ın yerine geçmez. Bu nedenle partner + Stage test müşteri API hesabı sağlanmadan gerçek submit/status/PDF/cancel kabulü `BLOCKED_PROVIDER_API_ACCOUNT` kalır; uygulama bu dış yetki koşulunu bypass etmez.
+
 ## Kodlanan kapsam
 
 1. Doğrudan `API_USER` `signIn`, `x-access-token` ve şifreli e-posta/parola.
