@@ -1,5 +1,13 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-13 - v10.62 immutable deployment kabulü
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Source / immutable release | PASS | `88b9ca2` source CI `31649708460`; `release-2026-08-13-v10.62` publish `31649967620` geçti. |
+| Backup / deploy | PASS_TARGET | `20260812T231433Z` seti checksum ve `pg_restore --list` ile doğrulandı. App `sha256:920be4db...ed43`, edge `sha256:550b772f...24b6`; migration, bütün servis health, dış readiness ve asset smoke geçti. |
+| Provider acceptance | BLOCKED_PROVIDER_API_SCOPE | Yeni taze-token teşhisi deploy edildi; mevcut Stage hesabının korumalı fatura endpointi yetkisi için provider tarafı kapsam tanımı hâlâ gereklidir. Önceki submit tekrar gönderilmedi. |
+
 ## 2026-08-13 - CI test altyapısı bağımlılık düzeltmesi
 
 - **Finding:** Locked restore, Testcontainers'ın geçişli `SSH.NET 2025.1.0` paketi için `GHSA-q939-rpr3-3284` yüksek önem dereceli advisory'sini hata olarak bildirdi.

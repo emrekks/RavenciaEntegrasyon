@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-13 - v10.62 immutable deployment
+
+- `88b9ca2` source CI `31649708460` ve `release-2026-08-13-v10.62` immutable publish `31649967620` geçti. `20260812T231433Z` rollback backup seti checksum ve `pg_restore --list` ile doğrulandı.
+- App `sha256:920be4db528bf20dc5785b5b8514425cc0f6193a67e8706737e4a6ced660ed43`, edge `sha256:550b772f2cb10e52f120b42bf7937fa4b56bb77a75b2cb66660fc9630a0724b6` immutable digestleriyle deploy edildi. API, Worker, Caddy ve PostgreSQL healthy; dış readiness `200` ve frontend asset smoke geçti.
+
 ## 2026-08-13 - Test altyapısı SSH bağımlılığı güvenlik düzeltmesi
 
 - Testcontainers'ın geçişli `SSH.NET 2025.1.0` bağımlılığı, güvenlik advisory'sindeki düzeltme sürümü `2026.0.0` ile merkezi olarak pinlendi. CI'ın vulnerability-as-error denetimi korunur; güvenlik uyarısı bastırılmadı.

@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-13 - v10.62 E-Faturam teşhis ve CI güvenlik düzeltmesi deployment kabulü
+
+`88b9ca2` source CI `31649708460` ile .NET çözüm, Docker-backed Testcontainers, formatter, web build ve Playwright kontrollerini geçti. `release-2026-08-13-v10.62` immutable publish `31649967620` app `sha256:920be4db528bf20dc5785b5b8514425cc0f6193a67e8706737e4a6ced660ed43` ve edge `sha256:550b772f2cb10e52f120b42bf7937fa4b56bb77a75b2cb66660fc9630a0724b6` digestlerini üretti. `20260812T231433Z` backup seti checksum ve `pg_restore --list` ile doğrulandı; fail-closed compose validation, migration, API/Worker/Caddy/PostgreSQL health, dış readiness `200` ve frontend asset smoke geçti. Yeni sürüm, taze-token `401` teşhisini doğru kodla gösterir ve Testcontainers'ın düzeltme SSH.NET sürümünü kullanır; Stage/Production işlem güvenlikleri değişmedi.
+
 ## 2026-08-13 - CI güvenlik bağımlılığı düzeltmesi
 
 CI, Testcontainers'ın geçişli `SSH.NET 2025.1.0` paketini yeni yayımlanan yüksek önem dereceli advisory nedeniyle hata olarak durdurdu. Paket merkezi `2026.0.0` düzeltme sürümüne yükseltildi; uyarıyı bastırmak yerine locked restore ve tam doğrulama yeniden çalıştırılacaktır. Bu yalnız test altyapısı bağımlılığıdır; deploy edilen runtime ve Stage/Production işlem kapıları değişmez.
