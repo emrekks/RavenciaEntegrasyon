@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-13 - Stage iade eşitleme yeniden kabulü
+
+Normal paneldeki `İadeleri eşitle` komutu Stage Trendyol bağlantısında `TRENDYOL_RETURN_SYNC` olarak kuyruğa alındı ve ilk denemede `SUCCEEDED` oldu. Panel 26 iade kaydını, alıcı ve ürün satırı bilgilerini gösteriyor. Tek bekleyen claim uzak `Created`/yerel `REQUESTED` durumunda olduğundan karar endpointi bilinçli olarak açılmadı: bu sağlayıcı durum uygunluğu, capability/evidence ya da Production write switch'i değildir. İade detayındaki operatör metni bu gerçek nedeni gösterecek şekilde düzeltildi; Stage manuel karar akışının connection/auth/input/idempotency/provider-response sınırları ve Production write korumaları değişmedi.
+
 ## 2026-08-13 - Kapanış regresyon doğrulaması
 
 Güncel `f810b31` çalışma ağacında `dotnet build MarketplaceHub.sln --no-restore` `0` hata/uyarı ile geçti. Docker gerektirmeyen çekirdek testler Domain `32/32`, Application `66/66` ve Trendyol/E-Faturam adapter sözleşme testleri `61/61` geçti. Frontend `npm.cmd run typecheck` ve tüm Vitest paketi `21/21` geçti. Yerel Docker CLI/engine olmadığı için PostgreSQL Testcontainers doğrudan çalıştırılmadı; ancak `845f351` için Linux source CI `31644381310` tam `dotnet test MarketplaceHub.sln`, formatter, web build ve Playwright paketini başarıyla çalıştırdı. Böylece Docker-backed integration/worker pipeline ve tam browser E2E CI'da `PASS` kanıtına sahiptir.

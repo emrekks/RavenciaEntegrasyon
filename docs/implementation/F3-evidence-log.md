@@ -1,3 +1,9 @@
+## 2026-08-13 — Stage return-sync re-acceptance
+
+- The normal panel `İadeleri eşitle` operation created a new `TRENDYOL_RETURN_SYNC` job and completed as `SUCCEEDED` on its first attempt. The return screen showed 26 records with customer and product-line information.
+- The newest `Created`/`REQUESTED` claim is not yet actionable by the provider. Its disabled `APPROVE`/`REJECT` UI is not a Stage capability/evidence or Production switch block; the operator explanation now states this specific runtime reason.
+- Stage boundary, credential/auth, input validation, idempotency, reconciliation/audit, and Production master plus connection external-write controls remain unchanged.
+
 ## 2026-08-13 — closure regression validation
 
 - **Local build/tests:** `dotnet build MarketplaceHub.sln --no-restore` `PASS` (0 warning/error); Domain `32/32`, Application `66/66`, adapter contract `61/61`; web typecheck `PASS`, Vitest `21/21 PASS`.

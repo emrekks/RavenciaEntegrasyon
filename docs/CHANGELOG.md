@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-13 - Stage iade eşitleme ve doğru operasyon nedeni
+
+- Panelden çalıştırılan Stage `TRENDYOL_RETURN_SYNC` ilk denemede başarılı oldu; iade listesi 26 güncel kaydı alıcı ve ürün satırlarıyla gösterdi.
+- `Created`/`REQUESTED` sağlayıcı durumunda karar aksiyonu açılmadığında panel artık yanlışlıkla Production write ayarlarını suçlamaz; sağlayıcının mevcut durumunun onay/ret kabul etmediğini bildirir. Stage ve Production güvenlik zincirleri değişmedi.
+
 ## 2026-08-13 - Kapanış regresyon doğrulaması
 
 - Güncel solution build `0` hata/uyarı ile geçti; Domain `32/32`, Application `66/66`, adapter contract `61/61`, frontend typecheck ve Vitest `21/21` PASS.

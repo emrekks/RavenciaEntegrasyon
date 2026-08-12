@@ -109,3 +109,16 @@ test('queues an approved return decision without inventing unsupported actions',
   await waitFor(() => expect(JSON.parse(decisionBody)).toEqual({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [] }))
   expect(screen.queryByRole('option', { name: 'REJECT' })).not.toBeInTheDocument()
 })
+
+test('explains when the provider return state has no available decision', async () => {
+  globalThis.fetch = vi.fn((input, init) => {
+    const url = String(input)
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-return' })
+    if (url.endsWith('/api/v1/returns/return-pending') && (!init?.method || init.method === 'GET')) return json({ id: 'return-pending', externalClaimId: 'C-2', orderNumber: 'O-2', customerName: 'Test Müşteri', orderedAt: '2026-08-05T00:00:00Z', orderAmount: 120, currency: 'TRY', status: 'REQUESTED', rawStatus: 'Created', reasonCode: 'R1', reasonText: 'Neden', actionDueAt: null, cargoProviderName: null, cargoTrackingNumber: null, allowedActions: [], stockDispositionAvailable: false, lines: [], version: 1 })
+    return json({}, 404)
+  }) as typeof fetch
+
+  renderAt('/returns/return-pending', '/returns/:id', <ReturnDetailPage />)
+  expect(await screen.findByText('Sağlayıcının mevcut iade durumu bu kayıtta henüz onay veya ret işlemini desteklemiyor.')).toBeInTheDocument()
+  expect(screen.queryByText(/production dış-yazma ayarları/i)).not.toBeInTheDocument()
+})
