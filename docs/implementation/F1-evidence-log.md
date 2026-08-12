@@ -1,5 +1,12 @@
 # F1 Kanıt Günlüğü
 
+## 2026-08-12 - F1-EV-031 v10.49 immutable deploy kabulü
+
+- `84ba728` source CI `31548069815` ve `release-2026-08-12-v10.49` immutable publish `31548345363` `PASS`.
+- App `sha256:c2698b0666ea3948260c41b450ec774b81a4cf83cb1ac1ccecb227a99b17d7cd`, edge `sha256:35673e1db13d8f302ffeade17e709c088dd55a5355d2e1a41d895fb7a3a35ad7` digestleri remote manifestte doğrulandı.
+- Deploy öncesi backup `20260812T000007Z` üretildi; database ve private volume arşivi SHA-256 `PASS`, manifest PostgreSQL 18 + files + DP keys bilgisini doğruladı.
+- Onaylı root Compose `2.40.2` ile fail-closed config, migration, API readiness, Worker/Caddy health, frontend asset ve dış `https://panel.ravencia.com/health/ready` HTTP 200 `PASS`.
+
 ## 2026-08-12 - F1-EV-030 fail-closed deploy Compose runtime
 
 - Hedef Ubuntu'da kullanıcı Docker Compose `5.3.1`, root Docker Compose ise onaylı `2.40.2` sürümünü raporladı.

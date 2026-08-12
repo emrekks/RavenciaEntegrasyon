@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - v10.49 immutable deploy ve canlı Stage smoke
+
+- v10.49 immutable app `sha256:c2698b0666ea3948260c41b450ec774b81a4cf83cb1ac1ccecb227a99b17d7cd` ve edge `sha256:35673e1db13d8f302ffeade17e709c088dd55a5355d2e1a41d895fb7a3a35ad7` digestleri checksumlı backup sonrasında Ubuntu hedefe deploy edildi. Fail-closed compose validation, migration, API/Worker/Caddy health, frontend asset ve `/health/ready` 200 geçti.
+- Canlı panel smoke testi Trendyol ve E-Faturam Stage bağlantılarında sade `Stage işlemleri / Hazır` görünümünü doğruladı. E-Faturam eski credential şeması nedeniyle teknik `EFATURAM_CONFIGURATION_UNAVAILABLE` durumunda kalır; secret tahmin edilmedi veya gösterilmedi.
+
 ## 2026-08-12 - Fail-closed deploy Compose runtime
 
 - Deploy scripti exact Docker Compose sürümünü kontrol ederken compose/config/pull/up/inspect çağrılarını aynı onaylı root Docker ikilisi üzerinden çalıştıracak şekilde düzeltildi. Kullanıcı ve root eklentileri farklıysa sürüm kapısı artık yanlış ikiliyi seçmez.

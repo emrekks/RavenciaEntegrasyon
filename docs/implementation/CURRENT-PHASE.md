@@ -1,5 +1,11 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - v10.49 immutable deployment ve canlı Stage UI smoke
+
+`84ba728` source CI `31548069815` ve `release-2026-08-12-v10.49` immutable publish `31548345363` başarıyla tamamlandı. App `sha256:c2698b0666ea3948260c41b450ec774b81a4cf83cb1ac1ccecb227a99b17d7cd`, edge `sha256:35673e1db13d8f302ffeade17e709c088dd55a5355d2e1a41d895fb7a3a35ad7` digestleri taze `20260812T000007Z` checksumlı backup sonrasında hedefe deploy edildi. Compose validation, migration, API readiness, Worker/Caddy health, frontend asset ve dış `/health/ready` 200 geçti.
+
+Normal panel smoke doğrulaması Trendyol Stage bağlantısında `Stage işlemleri / Hazır`, Stage salt-okunur sync açıklamaları ve teknik capability listesinin operasyon yüzeyinden kaldırıldığını doğruladı. E-Faturam Stage paneli de aynı Stage yüzeyini gösteriyor ancak mevcut credential güncel partner + müşteri oturum şemasında değil: test işi teknik `EFATURAM_CONFIGURATION_UNAVAILABLE` ile fail-closed kalıyor. Secret tahmin edilmedi veya gösterilmedi. Gerçek Stage ürün/fiyat-stok write kabulü de mevcut yalnız eksik alanlı yerel `DENE/dene` ürününde güvenli fixture bulunmadığından `NOT_RUN` kalır.
+
 ## 2026-08-12 - Fail-closed deploy Compose runtime düzeltmesi
 
 Ubuntu hedefte kullanıcı Compose eklentisi `5.3.1`, root'un onaylı eklentisi ise `2.40.2` olarak ayrıştı. Deploy scripti exact `2.40.2` şartını kontrol ederken kullanıcı eklentisini çağırdığı için `--validate-only` doğru biçimde fail-closed durdu; image kaydı veya çalışan servis değiştirilmedi. Script artık compose ve worker inspect çağrılarını tutarlı olarak `sudo docker` üzerinden yapar. Hedefte bu onaylı ikili ile compose configuration `PASS` verdi. Değişiklik kaynak CI/release/deploy kabulü bekliyor.
