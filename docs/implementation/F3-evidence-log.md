@@ -1,3 +1,9 @@
+## 2026-08-12 — v10.58 Stage publication guidance smoke
+
+- **Release/deploy:** `a95909d` source CI `31611581747`, immutable publish `31612027079`, backup `20260812T152558Z`, migration/health/readiness `PASS`.
+- **UI smoke:** Ürün formu Stage manuel yayın için bağlantı/auth/input/duplicate korumasını; Production için bunlara ek master + connection switch zorunluluğunu gösterdi. Capability/evidence Stage runtime blocker gibi gösterilmiyor.
+- **Durable state:** `TRENDYOL_PRODUCT_CREATE` başarısı ve approval reconciliation işi deployment sonrası korundu; provider sonucu halen `PRODUCT_APPROVAL_PENDING`, terminal onay `PENDING`.
+
 ## 2026-08-12 — v10.57 Stage product create acceptance
 
 - **Release/deploy:** `27084f6` source CI `31608375061` ve immutable publish `31608783961` `PASS`. Backup `20260812T145942Z` checksum/dump list `PASS`; app `sha256:c45f2ece1e150fe042a02d96c711e9c9e55837f95bb000564557026c9277ce51`, edge `sha256:8c659ac2fa6982dcb10fc4203e74f19c2c56f9e11cf1792976eb715ee9b5c85d`; migration `0`, tüm health ve dış readiness `200`.

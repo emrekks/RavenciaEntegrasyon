@@ -94,3 +94,9 @@ F1 yerel uygulama ve AWS production runtime'ı deployment açısından hazırdı
 | Authenticator kurulum akışı | PASS_LOCAL_WEB | Mevcut parola ile `/reauthenticate`, ardından `/mfa/setup` QR verisi ve `/mfa/confirm` kurtarma kodları çalışan bileşen testiyle doğrulandı. |
 | Oturum sonlandırma | PASS_LOCAL_WEB | Mevcut oturum korunur; diğer oturum için teyitli tekil revoke ve toplu revoke denetimleri mevcut server-side session API'lerine bağlıdır. |
 | Dinamik backend/PostgreSQL suite | BLOCKED_ENVIRONMENT | Yerel makinede Docker engine yok; Testcontainers suite başarılı sayılmadı ve full CI kanıtı beklenir. |
+## 2026-08-12 — v10.58 immutable deployment
+
+- `a95909d` source CI `31611581747` ve immutable publish `31612027079` `PASS`.
+- Backup `20260812T152558Z`: database/private volume checksum ve `pg_restore --list` `PASS`; rollback kopyası `deploy/backups/20260812T152558Z-v10.58` içinde yeniden checksum doğrulandı.
+- App `sha256:be4ff60e41aaf675154711612c2e20d8e841fe026f2eaf8c458da3228d846e33`, edge `sha256:a6c27ff3fc76cc69a5508b11cce77dcb30ad540cf9631a0283c202be53e0c6d7`; migration exit `0`, API/Worker/Caddy/PostgreSQL healthy, dış readiness `200`.
+- Şifreli off-host aktarım ayrı dış kapı olarak kalır; Production write güvenlikleri değişmedi.

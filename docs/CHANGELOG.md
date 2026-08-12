@@ -1,11 +1,17 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - v10.58 immutable deployment
+
+- Stage/Production yayın yardım metni source CI `31611581747` ve immutable publish `31612027079` kapılarından geçti. Checksumlı `20260812T152558Z` rollback seti sonrasında v10.58 app/edge digestleri deploy edildi.
+- Migration `0`; API, Worker, Caddy ve PostgreSQL healthy; dış readiness `200`. Normal panel smoke kontrolünde Stage bağlantı/auth/input/idempotency zinciri ve Production master + connection switch ayrımı doğru gösterildi.
+- Stage ürün create başarı kaydı ve approval reconciliation job'u deployment boyunca korundu; provider approval hâlâ `PENDING` ve otomatik readback aktif.
+
 ## 2026-08-12 - v10.57 Stage ürün create kabulü
 
 - Kategori özelliği zorunluluk kontrolü source CI ve immutable release kapılarından geçti; checksumlı rollback seti sonrasında v10.57 app/edge digestleri deploy edildi. Migration `0`, bütün servis health kontrolleri ve dış readiness `200` geçti.
 - Normal panelde opsiyonel `Kol Boyu`, güncel Bluz category snapshot/mapping, ayrı Stage test markası, zorunlu özellik/değer mapping'leri, geçerli EAN-13, stok/fiyat ve HTTPS medya ile güvenli ürün fixture'ı oluşturuldu.
 - Trendyol create batch correlation `f9c945309efe4bf9acdd13dcd246b2aa` `SUCCEEDED`; approval reconciliation provider'da halen `PRODUCT_APPROVAL_PENDING` ve otomatik readback yapıyor. Duplicate create gönderilmedi.
-- Ürün formunun güvenli yayın yardım metni Stage'de capability/evidence veya write switch'i blocker gibi göstermeyecek; Production master + connection switch zorunluluğunu açıkça koruyacak şekilde düzeltildi. Bu son metin değişikliğinin release/deploy kabulü `NOT_RUN`.
+- Ürün formunun güvenli yayın yardım metni Stage'de capability/evidence veya write switch'i blocker gibi göstermeyecek; Production master + connection switch zorunluluğunu açıkça koruyacak şekilde düzeltildi. Değişiklik v10.58 ile deploy edilip normal panelde doğrulandı.
 
 ## 2026-08-12 - Yerel kategori özelliği zorunluluk kontrolü
 
