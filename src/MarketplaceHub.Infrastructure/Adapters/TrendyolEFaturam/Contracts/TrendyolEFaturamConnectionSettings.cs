@@ -2,9 +2,6 @@ namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 
 public sealed record TrendyolEFaturamCredentialPayload(
     string? Email,
-    string? Password,
-    string? CustomerEmail,
-    string? CustomerPassword,
-    string? CustomerTaxId);
+    string? Password);
 
 public sealed record TrendyolEFaturamConnectionSettings(bool ExternalWritesEnabled);

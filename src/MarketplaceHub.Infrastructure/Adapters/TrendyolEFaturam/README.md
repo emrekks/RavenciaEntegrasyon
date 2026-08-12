@@ -2,10 +2,10 @@
 
 Bu adapter F4 kapsamındadır ve API sürümünü `1.0.0` olarak sabitler. Stage ve production kök adresleri ile doğrudan API kullanıcısı `signIn` sözleşmesi resmî entegrasyon dokümanına dayanır. Credential yalnız şifreli persistence üzerinden okunur; access token saklanmaz veya loglanmaz.
 
-## Sağlayıcı tarafından yönetilen hesap
+## Doğrudan API kullanıcısı
 
-- Panel partner e-posta/parolası ile Stage test müşteri e-posta/parolası ve VKN/TCKN'sini şifreli olarak alır.
-- `companyId`, `userId` ve müşteri access token'ı partner `signIn` sonrasındaki `customerSignIn` yanıtından okunur.
+- Panel yalnız bağlı E-Faturam hesabının e-posta ve parolasını şifreli olarak alır.
+- `companyId` ve `userId`, `signIn` yanıtındaki access token claimlerinden okunur. Tek firma kapsamı belirlenemiyorsa adapter fail-closed kalır.
 - Prefix/seri gönderilmez; E-Faturam hesabındaki varsayılan seri kullanılır.
 - Manuel mali hesap, Temel/Ticari senaryo, ödeme ve kargo eşleme ayarları aktif kapsamda değildir.
 - Belge türü Trendyol siparişindeki `commercial` ve `eInvoiceAvailable` alanlarından otomatik seçilir.

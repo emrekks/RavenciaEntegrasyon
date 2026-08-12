@@ -1,5 +1,11 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - E-Faturam doğrudan hesap sözleşmesi düzeltmesi
+
+Zorunlu gate–route–service–job envanteri `F4-stage-direct-account-gate-inventory.md` içinde çıkarıldı. Ana proje belgesindeki tek işletme `API_USER` kapsamına aykırı partner `signIn` → `customerSignIn` zorunluluğu route, persistence, adapter ve panelden kaldırıldı. E-Faturam bağlantısı artık yalnız hesap e-posta/parolasını şifreli saklar; `companyId` ve `userId` doğrudan `signIn` access token claimlerinden okunur. Token tek firma ve kullanıcı kapsamı vermiyorsa adapter fail-closed kalır. Stage manuel işlem politikası ile Production endpoint/credential boundary, master + connection write switch, authorization, input validation, idempotency, reconciliation ve audit kontrolleri değişmedi.
+
+Solution build 0 hata/uyarı, hedefli E-Faturam contract testleri 38/38, ilgili web form testleri 7/7 ve TypeScript kontrolü `PASS`. Immutable release, deployment, normal panel connection testi ve provider mali E2E henüz `NOT_RUN`.
+
 ## 2026-08-12 - v10.58 Stage yayın açıklaması deployment kabulü
 
 `a95909d` source CI `31611581747` ve `release-2026-08-12-v10.58` immutable publish `31612027079` tamamen geçti. Güncel Stage ürün/job kayıtlarını içeren `20260812T152558Z` backup setinin checksumları ve PostgreSQL dump listesi doğrulandı. App `sha256:be4ff60e41aaf675154711612c2e20d8e841fe026f2eaf8c458da3228d846e33`, edge `sha256:a6c27ff3fc76cc69a5508b11cce77dcb30ad540cf9631a0283c202be53e0c6d7` deploy edildi; migration exit `0`, API/Worker/Caddy/PostgreSQL healthy ve dış readiness `200`. Normal ürün formu smoke kontrolü Stage manuel yayının bağlantı, doğrulanmış kimlik bilgisi, geçerli ürün verisi ve tekrar korumasıyla çalıştığını; Production'ın master + bağlantı dış-yazma anahtarlarını ayrıca zorunlu tuttuğunu gösterdi. Approval reconciliation durable job'u deployment boyunca korundu ve halen provider `PRODUCT_APPROVAL_PENDING` sonucuyla otomatik readback yapıyor.
@@ -248,7 +254,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 9.9
+**Ana plan sürümü:** 10.0
 
 **2026-08-10 hızlı geliştirme politikası v8.3:** Günlük UI ve olağan işlevsel değişikliklerde otomatik test/build kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılandır. Hedefli kontrol yalnız somut sorun/derleme riski ya da güvenlik, migration, mali işlem, dosya yükleme, veri kaybı ve dış yazma gibi riskli alanlarda çalıştırılır. Tam doğrulama kullanıcı talebi veya release/production kapısına bırakılır.
 

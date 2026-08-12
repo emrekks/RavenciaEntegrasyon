@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - E-Faturam doğrudan hesap auth düzeltmesi
+
+- Aktif tek işletme `API_USER` kapsamına aykırı partner + test müşteri credential zorunluluğu kaldırıldı. Panel ve API artık yalnız E-Faturam hesap e-posta/parolasını alır; secret değerleri yeniden gösterilmez.
+- Adapter tek `signIn` access tokenından firma/kullanıcı kapsamını okur. Eksik veya çoklu kapsam fail-closed kalır; Stage/Production endpoint ve credential sınırı ile Production dış-yazma kontrolleri korunur.
+- Gate–route–service–job envanteri kaydedildi. Solution build, 38 E-Faturam contract testi, 7 ilgili web testi ve TypeScript kontrolü geçti; release/deploy ve gerçek Stage mali E2E `NOT_RUN`.
+
 ## 2026-08-12 - v10.58 immutable deployment
 
 - Stage/Production yayın yardım metni source CI `31611581747` ve immutable publish `31612027079` kapılarından geçti. Checksumlı `20260812T152558Z` rollback seti sonrasında v10.58 app/edge digestleri deploy edildi.

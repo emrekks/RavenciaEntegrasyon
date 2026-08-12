@@ -1,5 +1,16 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 - Doğrudan API_USER hesap sözleşmesi geri hizalaması
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Gate–route–service–job envanteri | PASS_STATIC | `F4-stage-direct-account-gate-inventory.md`; Stage ve Production gereklilikleri işlem öncesinde dosya/route/service/job bazında ayrıldı. |
+| Credential route/persistence | CODED_TARGETED_VALIDATED | E-Faturam için yalnız hesap e-posta/parolası kabul edilir ve mevcut veri koruma katmanında şifreli saklanır. Partner, müşteri hesabı ve müşteri VKN/TCKN runtime blocker değildir. |
+| Doğrudan hesap auth | CODED_TARGETED_VALIDATED | Tek `signIn` tokenından `companyId/userId` okunur; eksik veya çoklu firma kapsamı `EFATURAM_SIGNIN_SCOPE_MISSING` ile fail-closed kalır. `customerSignIn` çağrısı kaldırıldı. |
+| Stage / Production sınırı | PRESERVED | Stage manuel boundary/auth/input/idempotency/response doğrulaması ve Production endpoint/credential boundary + master/connection switch + authorization/reconciliation/audit zinciri korunur. |
+| Hedefli doğrulama | PASS_LOCAL | Solution build 0 hata/uyarı; E-Faturam contract 38/38; web form 7/7; TypeScript `PASS`. İlk web komutu yanlış çalışma dizininde `package.json` bulunamadığı için başlamadı, doğru dizinde yeniden çalıştırılıp geçti. |
+| Kalan kabul | NOT_RUN | Source CI, immutable release/deploy, normal panel Stage connection testi ve submit/status/PDF/cancel E2E. Önceki tek submit 401 sonucu yeni sözleşme deploy edilmeden başarı sayılmaz ve aynı taslak otomatik tekrar gönderilmez. |
+
 ## 2026-08-12 - v10.54 partner/müşteri credential runtime deploy doğrulaması
 
 | Kanıt | Durum | Not |

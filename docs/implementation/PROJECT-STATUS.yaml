@@ -1,12 +1,12 @@
 schema_version: 1
-document_version: '9.9'
+document_version: '10.0'
 updated_at: '2026-08-12'
 active_scope:
 - TRENDYOL
 - TRENDYOL_EFATURAM
 overall_status: F3_CORE_CODE_COMPLETE_VALIDATION_PENDING_F4_CODE_COMPLETE_VALIDATION_PENDING_PRODUCTION_BLOCKED
 production_status: BLOCKED
-local_validation: V10_58_DEPLOY_AND_STAGE_UI_PASS_PRODUCT_CREATE_PASS_APPROVAL_RECONCILIATION_PENDING
+local_validation: F4_DIRECT_ACCOUNT_AUTH_CODED_TARGETED_VALIDATED_DEPLOYMENT_AND_STAGE_REVALIDATION_REQUIRED
 source_of_truth: docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md
 phases:
   F0:
@@ -85,11 +85,11 @@ features:
   trendyol_label:
     status: LABEL_READ_STAGE_SUPPORTED_FRESH_TEST_ORDER_PICKING_REJECTED_SAFE_VENDOR_CODE_DIAGNOSIS_PENDING_LABEL_AND_SHIPMENT_WRITE
   efaturam_provider_managed_account:
-    status: PARTNER_CUSTOMER_AUTH_CODED_STATIC_VERIFIED_STAGE_CREDENTIAL_ROTATION_AND_REVALIDATION_REQUIRED
+    status: DIRECT_API_USER_AUTH_CODED_TARGETED_VALIDATED_DEPLOYMENT_AND_STAGE_REVALIDATION_REQUIRED
   efaturam_automatic_invoice_routing:
     status: CODED_STATIC_VERIFIED_DYNAMIC_AND_STAGE_REVALIDATION_REQUIRED
   efaturam_submit:
-    status: STAGE_MANUAL_RUNTIME_ENABLED_CREDENTIAL_PAYLOAD_RENEWAL_REQUIRED_PRODUCTION_GATED
+    status: STAGE_MANUAL_RUNTIME_ENABLED_DIRECT_ACCOUNT_REVALIDATION_REQUIRED_PRODUCTION_GATED
   efaturam_status_cancel:
     status: STAGE_MANUAL_RUNTIME_ENABLED_PRODUCTION_GATED
   secure_invoice_pdf:
@@ -97,7 +97,7 @@ features:
   trendyol_invoice_delivery:
     status: CODED_SUBMITTED_MANUAL_CONFIRMATION_REQUIRED
   efaturam_operator_ui:
-    status: STAGE_MALI_UI_EXPLICIT_CREDENTIAL_RENEWAL_GUIDANCE_TARGETED_VERIFIED
+    status: DIRECT_ACCOUNT_EMAIL_PASSWORD_FORM_TARGETED_VERIFIED_DEPLOYMENT_REQUIRED
   efaturam_einvoice_status:
     status: STAGE_MANUAL_RUNTIME_ENABLED_PROVIDER_ENDPOINT_CONFIGURATION_REQUIRED_PRODUCTION_GATED
   trendyol_return_read_write:
@@ -111,4 +111,4 @@ required_documents_on_status_change:
 - docs/implementation/CURRENT-PHASE.md
 - docs/CHANGELOG.md
 - relevant_phase_evidence_log
-last_targeted_ui_update: "2026-08-12-efaturam-partner-customer-credential-form"
+last_targeted_ui_update: "2026-08-12-efaturam-direct-account-credential-form"

@@ -15,7 +15,6 @@ public sealed class TrendyolEFaturamOptions
 internal static class TrendyolEFaturamEndpoints
 {
     public const string SignIn = "api/auth/signin";
-    public const string CustomerSignIn = "api/invoice/partners/customer/signin";
     public const string CreateOutgoingInvoice = "api/invoice/documents/outgoing-einvoice";
     public const string CreateEArchive = "api/invoice/documents/earchive";
     public const string PermanentDocumentUrl = "api/invoice/documents/download/permanent-url";

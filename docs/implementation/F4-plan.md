@@ -6,14 +6,14 @@ Trendyol siparişi/paketi için provider hesabındaki mali kapsamı kullanarak d
 
 ## Sağlayıcı kabul ön koşulu
 
-Resmî Trendyol E-Faturam pazaryeri API'si, fatura çağrılarında partner `signIn` ardından her test müşterisi için `customerSignIn` ile alınan müşteri token'ını ister. Tekil kullanıcı e-posta/parolası başarılı oturum açsa bile bu token'ın yerine geçmez. Bu nedenle partner + Stage test müşteri API hesabı sağlanmadan gerçek submit/status/PDF/cancel kabulü `BLOCKED_PROVIDER_API_ACCOUNT` kalır; uygulama bu dış yetki koşulunu bypass etmez.
+Aktif kapsam tek işletmenin kendi E-Faturam hesabını yöneten `API_USER` modelidir. Panel yalnız hesap e-posta/parolasını şifreli saklar; `companyId` ve `userId` sağlayıcının `signIn` access tokenından okunur. Tek firma/kullanıcı kapsamı güvenli biçimde çıkarılamazsa işlem fail-closed kalır. Partner `customerSignIn` ve çoklu müşteri modeli aktif kapsam dışıdır.
 
 ## Kodlanan kapsam
 
-1. Partner `signIn`, customerSignIn müşteri token'ı (`x-access-token`) ve şifreli partner + Stage test müşteri credential'ı.
-2. `companyId/userId` değerlerinin customerSignIn yanıtından okunması; mali hesap/seri ayarlarının panel ve persistence dışına çıkarılması; eski connection settings verilerinin migration ile temizlenmesi.
+1. Doğrudan hesap `signIn`, access token (`x-access-token`) ve şifreli hesap e-posta/parolası.
+2. `companyId/userId` değerlerinin access token claimlerinden okunması; mali hesap/seri ayarlarının panel ve persistence dışında tutulması.
 3. `commercial && eInvoiceAvailable` ile otomatik `TEMELFATURA`; diğer siparişlerde `EARSIVFATURA`.
-4. Ayrı taxpayer sorgusu ve Temel/Ticari seçiminin kaldırılması; provider zorunluluğu olan partner/customerSignIn yetki zincirinin korunması.
+4. Ayrı taxpayer sorgusu ve Temel/Ticari seçiminin kaldırılması; tekil token kapsamının belirsiz veya çoklu firma olması halinde fail-closed davranışın korunması.
 5. E-Arşiv internet satışı için gereken payment/delivery alanlarının Trendyol siparişi ve resmî carrier kataloğundan otomatik üretilmesi.
 6. Kuruş dönüşümü, satır/toplam denklemi, pozitif faturalanabilir miktar filtresi, yalnız tutarı içeren Türkçe not ve deterministic request hash.
 7. Durable submit → status reconcile → document fetch → Trendyol link delivery akışı.
