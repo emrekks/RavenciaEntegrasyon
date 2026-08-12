@@ -4,7 +4,7 @@
 
 - Kategori referans ağacındaki child satırlar artık kök request scope'u ile yanlış karşılaştırılmaz. Her non-root parent kimliğinin aynı normalize cevap kümesinde bulunması ve satırın kendisine parent olmaması zorunludur.
 - Brand, category-attribute ve attribute-value exact scope kontrolleri; duplicate/orphan/boş zorunlu alan fail-closed davranışı korunur.
-- v10.55 canlı kabulünde connection, sipariş ve marka senkronları ilk denemede başarılı oldu; kategori tanı kodu hatalı yerel gate'i ayırdı. Yeni hiyerarşi düzeltmesi buildlerden geçti ve Linux CI/runtime kabulü bekliyor.
+- v10.55 canlı kabulünde connection, sipariş ve marka senkronları ilk denemede başarılı oldu; kategori tanı kodu hatalı yerel gate'i ayırdı. Hiyerarşi düzeltmesi source CI `31601096910` ve immutable publish `31601437442` sonrasında v10.56 olarak checksumlı backup ile deploy edildi. Migration/health/readiness geçti; panel category sync `6d8661a3467d4814a57820beaea0a7b9` ilk denemede başarılı oldu.
 
 ## 2026-08-12 - Trendyol sipariş stream fallback ve referans tanı kodları
 

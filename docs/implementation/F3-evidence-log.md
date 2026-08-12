@@ -83,7 +83,9 @@
 - Connection test `daca33547a604b58ba9f3b2efb32daef`, order sync `ff2fa68c4dbb441bab5253a3326c2522`, brand sync `5ed2142619fd4657a040006ca6024705`: `SUCCEEDED`, ilk deneme.
 - Category sync `0882d3d6fa004f47978b5e7876a10b55`: `REFERENCE_CONTRACT_INVALID`. Gerçek neden provider değil, flattened kategori child kayıtlarının parent kimliğini kök request scope ile karşılaştıran yerel gate idi.
 - Kategori scope doğrulaması parent kimliğinin aynı yanıt kümesinde varlığını ve self-parent yasağını kontrol edecek şekilde düzeltildi. Brand ve scoped attribute/value kaynaklarında exact scope eşitliği korunur; orphan, duplicate, boş kimlik/ad ve bozuk resource type fail-closed kalır.
-- Infrastructure build ve EndToEnd test projesi build: `PASS`. Yeni PostgreSQL hiyerarşi regresyonunun runtime sonucu: `CI_PENDING` (yerel Docker motoru kapalı).
+- Infrastructure build ve EndToEnd test projesi build: `PASS`. Yeni PostgreSQL hiyerarşi regresyonu source CI `31601096910` içinde `PASS`; immutable publish `31601437442` `PASS`.
+- v10.56 app `sha256:389f288e88b835be617c9a26548fe553bf085d833e4a3fab02570e965441184e`, edge `sha256:a7bf1f83ec28e7de23d613dc97de650c80c39f7a84d462094a9c87f07a3ce34f`; backup `20260812T132906Z` checksumları, migration exit `0`, servis health ve readiness `200`: `PASS`.
+- Normal panel category sync `6d8661a3467d4814a57820beaea0a7b9`: `SUCCEEDED`, ilk deneme. Kategori snapshot yenilemesi Stage runtime'da kabul edildi.
 
 ## 2026-08-12 - Stage order hydration fallback ve referans hata ayrıştırması
 
