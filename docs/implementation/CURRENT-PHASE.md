@@ -4,6 +4,8 @@
 
 CI, Testcontainers'ın geçişli `SSH.NET 2025.1.0` paketini yeni yayımlanan yüksek önem dereceli advisory nedeniyle hata olarak durdurdu. Paket merkezi `2026.0.0` düzeltme sürümüne yükseltildi; uyarıyı bastırmak yerine locked restore ve tam doğrulama yeniden çalıştırılacaktır. Bu yalnız test altyapısı bağımlılığıdır; deploy edilen runtime ve Stage/Production işlem kapıları değişmez.
 
+İlk yeniden doğrulamada merkezi formatter, yeni E-Faturam contract testindeki import sırasını bildirdi; importlar düzenlendi. Bu test-kaynak biçimlendirme düzeltmesi için de transaction kaydı aynı değişiklikle tutulur.
+
 ## 2026-08-13 - E-Faturam taze-token teşhis doğruluğu
 
 Resmî bireysel `API_USER` dokümanı, aynı Stage gateway'de `signIn` tokenı ile create/iptal/sorgu yapılacağını; `x-access-token` header'ının kullanılacağını doğrular. Mevcut uygulama bu sözleşmeyi zaten kullanır ve connection testi başarılıdır. Buna rağmen taze `signIn` ardından korumalı E-Arşiv endpointinden gelen `401`, artık yanlışlıkla giriş hatası değil `EFATURAM_ACCESS_TOKEN_REJECTED` olarak kaydedilir; bu provider tarafında hesabın işlem endpointi yetkisinin doğrulanması gerektiğini belirtir. İstek tekrar gönderilmez; Stage/Production write zinciri, idempotency ve fiscal validation değişmez. Hedefli adapter contract `62/62` ve Infrastructure build geçti.

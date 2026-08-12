@@ -4,6 +4,7 @@
 
 - Testcontainers'ın geçişli `SSH.NET 2025.1.0` bağımlılığı, güvenlik advisory'sindeki düzeltme sürümü `2026.0.0` ile merkezi olarak pinlendi. CI'ın vulnerability-as-error denetimi korunur; güvenlik uyarısı bastırılmadı.
 - Kilitli restore, çözüm build/test ve formatter doğrulaması yeniden çalıştırılacaktır. Production runtime paketi ve dış yazma güvenlikleri etkilenmez.
+- E-Faturam contract testindeki yeni `using` satırları merkezi formatter sırasına getirildi; değişiklik yalnız test kaynak biçimlendirmesidir.
 
 ## 2026-08-13 - E-Faturam taze token teşhis düzeltmesi
 

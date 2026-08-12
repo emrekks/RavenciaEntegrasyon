@@ -5,6 +5,7 @@
 - **Finding:** Locked restore, Testcontainers'ın geçişli `SSH.NET 2025.1.0` paketi için `GHSA-q939-rpr3-3284` yüksek önem dereceli advisory'sini hata olarak bildirdi.
 - **Remediation:** Merkezi geçişli pin `SSH.NET 2026.0.0` olarak güncellendi. Advisory bastırılmadı ve uygulamanın E-Faturam çalışma zamanı bağımlılıkları ya da Stage/Production transaction güvenlikleri değiştirilmedi.
 - **Verification:** Locked restore, çözüm build/test ve formatter yeniden doğrulanacaktır.
+- **Formatter follow-up:** Yeni contract testindeki import sırası merkezi formatter'a göre düzenlendi; çalışma zamanı davranışı değişmedi.
 
 ## 2026-08-13 - Taze token korumalı-endpoint teşhisi
 
