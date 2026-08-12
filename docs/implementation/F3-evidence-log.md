@@ -1,3 +1,10 @@
+## 2026-08-13 — v10.61 return operation-reason deployment
+
+- **CI/release:** Source CI `31646490936` and immutable publish `31646826162` `PASS`; release tag `release-2026-08-12-v10.61` resolves to `cb56898`.
+- **Backup/rollback:** `20260812T222805Z` database/private-volume checksum and `pg_restore --list` `PASS`; immutable rollback copy `deploy/backups/20260812T222805Z-v10.61` retained.
+- **Deploy:** App `sha256:d5f8f83f6ef3c7367ee5a0b149970be04f8031b189f82e836319ca8bf608aafe`, edge `sha256:7c4efdf9477e5e54467415d8edf842d63f44216eb07a402df7050d69dc0170f2`; fail-closed config validation, migration, API/Worker/Caddy/PostgreSQL health, external readiness `200`, and frontend-asset smoke `PASS`.
+- **Panel smoke:** The authenticated `Created`/`REQUESTED` return detail showed the provider-status explanation rather than a false Production-switch explanation. No decision was sent because the provider state is not actionable.
+
 ## 2026-08-13 — Stage return-sync re-acceptance
 
 - The normal panel `İadeleri eşitle` operation created a new `TRENDYOL_RETURN_SYNC` job and completed as `SUCCEEDED` on its first attempt. The return screen showed 26 records with customer and product-line information.
