@@ -4,7 +4,7 @@
 
 - Güncel solution build `0` hata/uyarı ile geçti; Domain `32/32`, Application `66/66`, adapter contract `61/61`, frontend typecheck ve Vitest `21/21` PASS.
 - Uygulama kaynaklı kapanabilir işler tamamlandı. Dış Trendyol ürün onayı `BLOCKED_PROVIDER_APPROVAL`, E-Faturam fatura API kapsamı `BLOCKED_PROVIDER_API_SCOPE`, uygun Stage iade/etiket fixture'ı `BLOCKED_REMOTE_FIXTURE` olarak korunur; bunlar capability veya güvenlik kapısı bypass edilerek başarı sayılmadı.
-- Docker-backed Testcontainers/integration pipeline bu iş istasyonunda Docker CLI/engine bulunmadığından `NOT_RUN_SCOPED_RUNNER_REQUIRED`; production Docker socket'i test runner'a verilmedi.
+- Yerel Docker CLI/engine yokluğuna rağmen Linux source CI `31644381310`, tam solution testlerini (Docker-backed Testcontainers dahil), formatter'ı, locked web build'i ve Playwright'ı başarıyla tamamladı.
 
 ## 2026-08-12 - v10.60 immutable deployment
 

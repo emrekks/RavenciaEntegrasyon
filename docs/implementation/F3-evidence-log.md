@@ -2,7 +2,8 @@
 
 - **Local build/tests:** `dotnet build MarketplaceHub.sln --no-restore` `PASS` (0 warning/error); Domain `32/32`, Application `66/66`, adapter contract `61/61`; web typecheck `PASS`, Vitest `21/21 PASS`.
 - **Runtime:** Current product create correlation `f9c945309efe4bf9acdd13dcd246b2aa` is `SUCCEEDED`; durable approval reconciliation has made `10/200` provider reads and remains `PRODUCT_APPROVAL_PENDING / RETRY_SCHEDULED`. No duplicate create was submitted.
-- **Honest closure boundary:** Product terminal approval is `BLOCKED_PROVIDER_APPROVAL`; common-label and return writes remain `BLOCKED_REMOTE_FIXTURE`. PostgreSQL Testcontainers/API/persistence/worker pipeline execution is `NOT_RUN_SCOPED_RUNNER_REQUIRED` because this workstation has no Docker CLI/engine and production Docker was not exposed to a test runner.
+- **CI closure:** Source CI `31644381310` `PASS` runs the full `dotnet test MarketplaceHub.sln` on Linux, including Docker-backed PostgreSQL Testcontainers/API/persistence/worker pipeline tests, plus formatter, locked Node dependencies, web build and Playwright. The local no-Docker result is therefore not a project acceptance gap.
+- **Honest closure boundary:** Product terminal approval is `BLOCKED_PROVIDER_APPROVAL`; common-label and return writes remain `BLOCKED_REMOTE_FIXTURE`.
 
 ## 2026-08-12 — v10.60 approval retry alignment deployment
 

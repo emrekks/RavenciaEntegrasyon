@@ -4,7 +4,7 @@
 
 - **Shared regression:** Current solution build, Domain/Application and adapter contract suites, frontend typecheck, and all Vitest checks passed: build `0` warning/error; `32/32`, `66/66`, `61/61`, and `21/21` respectively.
 - **Provider boundary:** The direct API_USER Stage account still authenticates but protected E-Arşiv create returns `401 / EFATURAM_AUTHENTICATION_FAILED`; submit/status/PDF/cancel is therefore `BLOCKED_PROVIDER_API_SCOPE`, not bypassed by a capability, evidence, switch, or retry. The original submit is not replayed.
-- **Not run:** Docker-backed Testcontainers/integration pipeline remains `NOT_RUN_SCOPED_RUNNER_REQUIRED`; an isolated Ubuntu Docker build and compile passed, but the production Docker socket/host network was not assigned to a test runner.
+- **CI closure:** Source CI `31644381310` `PASS` runs full Linux `dotnet test MarketplaceHub.sln`, formatter, locked web build and Playwright. Docker-backed Testcontainers/integration coverage therefore passed centrally; the production Docker socket/host network remained unassigned to a test runner.
 
 ## 2026-08-12 - v10.59 doğrudan hesap Stage kabul sonucu
 
