@@ -1,5 +1,13 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - v10.57 Trendyol Stage ürün create kabulü
+
+`27084f6` source CI `31608375061` ve `release-2026-08-12-v10.57` immutable publish `31608783961` tamamen geçti. Checksum ve `pg_restore --list` doğrulanmış `20260812T145942Z` rollback setinden sonra app `sha256:c45f2ece1e150fe042a02d96c711e9c9e55837f95bb000564557026c9277ce51`, edge `sha256:8c659ac2fa6982dcb10fc4203e74f19c2c56f9e11cf1792976eb715ee9b5c85d` deploy edildi. Migration exit `0`; API, Worker, Caddy ve PostgreSQL healthy; dış readiness `200`.
+
+Normal panelde Bluz kategorisinin yerel `Kol Boyu` alanı sağlayıcıdaki opsiyonel sözleşmeyle hizalanarak `İsteğe bağlı` yapıldı; kategori mapping güncel snapshot'a `v4` olarak yeniden doğrulandı. Ayrı `Ravencia Stage Test` marka mapping'i, zorunlu Beden/Renk/Web Color değer mapping'leri, geçerli EAN-13, stok/fiyat ve HTTPS medya içeren ürün `019ff682-a871-7246-b778-7e2bcec261ae` olarak oluşturuldu. İlk fail-closed uyarı güncel kategori snapshot'ı gereksinimini doğru bildirdi; mapping yenilendikten sonra aynı ürün için tek create işi gönderildi. `TRENDYOL_PRODUCT_CREATE` correlation `f9c945309efe4bf9acdd13dcd246b2aa` ikinci batch poll'da `SUCCEEDED`; provider create batch'i kabul etti. `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` işi provider durumunu beş dakikalık aralıklarla okuyor ve halen `PRODUCT_APPROVAL_PENDING / RETRY_SCHEDULED`; terminal onay readback'i bekleniyor. Duplicate create gönderilmedi. Production endpoint/credential boundary, master + bağlantı write switch, authorization, validation, idempotency, reconciliation ve audit kontrolleri değişmedi.
+
+Ürün oluşturma ekranındaki eski capability/evidence veya Stage dış-yazma switch'ini runtime blocker gibi anlatan yardım metni de gerçek davranışla hizalandı: Stage manuel yayın bağlantı/auth/input/duplicate korumasını; Production ise bunlara ek master + bağlantı switch'lerini açıkça gösterir. Bu metin düzeltmesinin release/deploy kabulü henüz `NOT_RUN`.
+
 ## 2026-08-12 - Kategori özelliği zorunluluk yönetimi
 
 Kategori eşleme çalışma alanındaki yerel ürün özellikleri artık kart üzerinden `Zorunlu` veya `İsteğe bağlı` olarak değiştirilebilir. Böylece sağlayıcı kategorisinde opsiyonel olan bir alan, eski yerel katalog tanımı nedeniyle ürün formunda ve manuel Stage yayınında gereksiz zorunlu alan oluşturmaz. Güncelleme mevcut version/`If-Match` sözleşmesi üzerinden yapılır; uzaktaki Trendyol verisini veya Production write güvenlik zincirini değiştirmez. `CatalogWorkspacePages.test.tsx` hedefli Vitest kontrolü 2/2 geçti. Immutable release, deployment ve gerçek Stage ürün create/readback kabulü henüz `NOT_RUN`.
@@ -236,7 +244,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 9.7
+**Ana plan sürümü:** 9.8
 
 **2026-08-10 hızlı geliştirme politikası v8.3:** Günlük UI ve olağan işlevsel değişikliklerde otomatik test/build kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılandır. Hedefli kontrol yalnız somut sorun/derleme riski ya da güvenlik, migration, mali işlem, dosya yükleme, veri kaybı ve dış yazma gibi riskli alanlarda çalıştırılır. Tam doğrulama kullanıcı talebi veya release/production kapısına bırakılır.
 

@@ -38,7 +38,7 @@ Gerçek platform test hesapları ve resmî capability kanıtları gelene kadar c
 | Kategori özellik gereksinimi read API | CODED_STATIC_VERIFIED | Kategoriye bağlı özellik başlıkları ve değerleri ürün formuna tek modelle döner. |
 | Varyant seviyeli özellik kalıcılığı | CODED_STATIC_VERIFIED | Normal özellikler ürün, varyant özellikleri ilgili varyant kapsamında `ProductAttributeAssignment` olarak saklanır. |
 | Varyant matrisi ve doğrulama | TYPESCRIPT_STATIC_PASS | En fazla 100 UI kombinasyonu; yinelenen kombinasyon, SKU ve barkod engeli; toplu stok/fiyat uygulama. |
-| Güvenli yayın hazırlığı | CODED_STATIC_VERIFIED / STAGE_NOT_RUN | ACTIVE Trendyol bağlantısında teklifler, listing profile ve publication job zinciri; capability/write-switch fail-closed kalır. |
+| Güvenli yayın hazırlığı | PASS_STAGE_CREATE / APPROVAL_PENDING | ACTIVE Trendyol bağlantısında teklifler, listing profile ve publication job zinciri Stage create batch kabulünden geçti. Stage manuel akış bağlantı/auth/input/idempotency ile çalışır; Production master + connection write switch zinciri korunur. Terminal approval readback `PENDING`. |
 | Dinamik suite | BLOCKED_ENVIRONMENT | Exact Node/npm registry ve .NET SDK yok; Vitest/Vite ve `dotnet test` çalıştırılamadı. |
 
 ## 2026-08-09 — v10.20 ürün formu ve desi modeli

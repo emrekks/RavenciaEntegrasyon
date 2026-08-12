@@ -1,3 +1,11 @@
+## 2026-08-12 — v10.57 Stage product create acceptance
+
+- **Release/deploy:** `27084f6` source CI `31608375061` ve immutable publish `31608783961` `PASS`. Backup `20260812T145942Z` checksum/dump list `PASS`; app `sha256:c45f2ece1e150fe042a02d96c711e9c9e55837f95bb000564557026c9277ce51`, edge `sha256:8c659ac2fa6982dcb10fc4203e74f19c2c56f9e11cf1792976eb715ee9b5c85d`; migration `0`, tüm health ve dış readiness `200`.
+- **Stage fixture:** Ürün `019ff682-a871-7246-b778-7e2bcec261ae`; ayrı Stage test marka mapping'i, Bluz kategori mapping `v4`, Beden M / Renk Siyah / Web Color Siyah mapping'leri, EAN-13 `8690002608124`, MAIN stok `5`, fiyat `129.90/149.90 TRY` ve public HTTPS medya doğrulandı.
+- **Provider create:** `TRENDYOL_PRODUCT_CREATE` correlation `f9c945309efe4bf9acdd13dcd246b2aa`, batch poll `2/10`, `SUCCEEDED`. Tek create gönderildi; duplicate yok.
+- **Approval readback:** `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` halen `PRODUCT_APPROVAL_PENDING / RETRY_SCHEDULED`; terminal provider onayı `PENDING`, başarılmış gösterilmedi.
+- **Korunan sınır:** Production endpoint/credential boundary, authorization, master + connection switch, technical validation, idempotency, reconciliation ve audit değişmedi.
+
 ## 2026-08-12 — Yerel kategori özelliği zorunluluk yönetimi
 
 - **Kod:** Kategori mapping çalışma alanında mevcut yerel özellik `Zorunlu` veya `İsteğe bağlı` yapılabilir. Kayıt mevcut optimistic concurrency sözleşmesini kullanır; sağlayıcıda opsiyonel olan alanın eski yerel tanım yüzünden ürün formunu bloke etmesi önlenir.

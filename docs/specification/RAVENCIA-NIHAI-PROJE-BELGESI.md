@@ -2,7 +2,7 @@
 
 ## Ana Proje Planı, Sistem Tasarımı, Kullanıcı İşleyişi, Uygulama Yol Haritası ve Durum Takip Belgesi
 
-**Belge sürümü:** 9.7
+**Belge sürümü:** 9.8
 **Belge tarihi:** 10 Ağustos 2026
 **Belge statüsü:** Nihai ana proje planı ve yetkili teknik kaynak  
 **Plan yaklaşımı:** Sistem başlangıçtan itibaren bu belgede tanımlanan kademeli kapsam ve mimariyle uygulanır  
