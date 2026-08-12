@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - Kategori özelliği zorunluluk yönetimi
+
+Kategori eşleme çalışma alanındaki yerel ürün özellikleri artık kart üzerinden `Zorunlu` veya `İsteğe bağlı` olarak değiştirilebilir. Böylece sağlayıcı kategorisinde opsiyonel olan bir alan, eski yerel katalog tanımı nedeniyle ürün formunda ve manuel Stage yayınında gereksiz zorunlu alan oluşturmaz. Güncelleme mevcut version/`If-Match` sözleşmesi üzerinden yapılır; uzaktaki Trendyol verisini veya Production write güvenlik zincirini değiştirmez. `CatalogWorkspacePages.test.tsx` hedefli Vitest kontrolü 2/2 geçti. Immutable release, deployment ve gerçek Stage ürün create/readback kabulü henüz `NOT_RUN`.
+
 ## 2026-08-12 - v10.56 hedef Ubuntu izole restore tatbikatı
 
 Checksum doğrulanmış `20260812T132906Z` backup seti, çalışan production DB/volume/network kaynaklarına bağlanmadan timestamp-scope internal Docker ağına ve temiz PostgreSQL/private volume'larına restore edildi. Database dump ve private archive SHA-256, archive safe-path, `iam/integration/ops` şemaları, 13 migration ve 1 tenant aggregate kontrolü geçti. Restore kopyasında scheduler policy'leri ve bekleyen işler Worker başlatılmadan önce devre dışı bırakıldı; `FeatureFlags__ExternalWrites=false` ve egress'siz internal ağ korundu. v10.56 app `sha256:389f288e88b835be617c9a26548fe553bf085d833e4a3fab02570e965441184e` ile no-op migration, API readiness ve Worker heartbeat `PASS`; ilk tatbikat 14 saniye sürdü. Trap yalnız `marketplacehub_restore_20260812t132906z_*` kaynaklarını kaldırdı; sonrasında production container health ve dış readiness yeniden `PASS`. Tekrarlanabilir `deploy/backup/restore-drill.sh`, shell syntax CI kapısı ve repository guard eklendi. Commit `d9d841c` için source CI `31604226847` tamamen geçti; sunucu committed sürüme fast-forward edildikten sonra aynı tatbikat 13 saniyede yeniden `PASS` verdi ve geçici container/volume/network listeleri boş doğrulandı. Şifreli off-host backup aktarımı hâlâ ayrı dış kapıdır; production dış yazmaları değiştirilmedi.
@@ -232,7 +236,7 @@ Fatura işlemleri menüsünün erişilebilir adı görünen başlıkla eşitlend
 
 **Son güncelleme:** 2026-08-06
 
-**Ana plan sürümü:** 9.6
+**Ana plan sürümü:** 9.7
 
 **2026-08-10 hızlı geliştirme politikası v8.3:** Günlük UI ve olağan işlevsel değişikliklerde otomatik test/build kaldırıldı; kısa önizleme veya manuel smoke kontrol varsayılandır. Hedefli kontrol yalnız somut sorun/derleme riski ya da güvenlik, migration, mali işlem, dosya yükleme, veri kaybı ve dış yazma gibi riskli alanlarda çalıştırılır. Tam doğrulama kullanıcı talebi veya release/production kapısına bırakılır.
 

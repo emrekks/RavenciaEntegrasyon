@@ -1,3 +1,9 @@
+## 2026-08-12 — Yerel kategori özelliği zorunluluk yönetimi
+
+- **Kod:** Kategori mapping çalışma alanında mevcut yerel özellik `Zorunlu` veya `İsteğe bağlı` yapılabilir. Kayıt mevcut optimistic concurrency sözleşmesini kullanır; sağlayıcıda opsiyonel olan alanın eski yerel tanım yüzünden ürün formunu bloke etmesi önlenir.
+- **Hedefli kontrol:** `CatalogWorkspacePages.test.tsx` 2/2 `PASS`.
+- **Kalan kabul:** Immutable release/deploy ve gerçek Trendyol Stage product create/readback `NOT_RUN`. Production write zinciri değişmedi.
+
 ## 2026-08-12 — v10.44 Stage return runtime acceptance
 
 - **Release/deploy:** `ed2dfc9` source CI PASS; `release-2026-08-12-v10.44` immutable publish PASS. App `sha256:214a3bc4614c0573a3915eba3705abff4814b6c7b6a8d2607bf6300f3742334a`, edge `sha256:1dcd2fd246d71b80a817cf690f7b5c6309995eb72fc3a8bc96ab2b0fa8722ad3`; hedefte migration, API/Worker/Caddy health ve `/health/ready` 200 PASS.

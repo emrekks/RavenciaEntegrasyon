@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Yerel kategori özelliği zorunluluk kontrolü
+
+- Kategori eşleme ekranındaki özellik kartlarına `Zorunlu / İsteğe bağlı` kontrolü eklendi; değişiklik optimistic concurrency kullanan mevcut kategori requirement endpointinden kaydedilir.
+- Sağlayıcıda opsiyonel bir özellik artık yanlış yerel zorunluluk nedeniyle ürün oluşturma ve manuel Stage yayınını bloke etmek zorunda değildir. Provider input, mapping, idempotency, active connection/auth ve Stage/Production credential boundary kontrolleri korunur.
+- Hedefli web testi 2/2 geçti. Release/deploy ve gerçek Trendyol Stage ürün create/readback kabulü `NOT_RUN`.
+
 ## 2026-08-12 - İzole backup restore drill
 
 - Backup checksum, dump restore, private archive safe-path/extract, schema/migration/tenant aggregate, migration, API readiness ve Worker heartbeat adımlarını production kaynaklarına bağlanmayan timestamp-scope internal Docker ortamında çalıştıran `restore-drill.sh` eklendi.

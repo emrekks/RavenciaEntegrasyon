@@ -80,12 +80,14 @@ test('creates cartesian variants with variant-scoped attributes and global multi
 
 test('loads category-scoped attribute mappings in one bulk request', async () => {
   const calls: string[] = []
-  globalThis.fetch = vi.fn((input) => {
+  let requirementBody: any
+  globalThis.fetch = vi.fn((input, init) => {
     const url = String(input); calls.push(url)
     if (url.includes('/api/v1/connections?')) return json(page([{ id: 'connection-1', platformCode: 'TRENDYOL', displayName: 'Trendyol', externalStoreId: '2738', status: 'ACTIVE' }]))
     if (url.includes('/api/v1/catalog/categories?')) return json(page([{ id: 'category-1', name: 'Bluz', path: 'Giyim / Bluz', depth: 1, isLeaf: true, isActive: true, version: 4 }]))
     if (url.includes('/api/v1/catalog/attributes?')) return json(page([{ id: 'attribute-1', code: 'SIZE', name: 'Beden', dataType: 'SINGLE_SELECT', isActive: true, version: 1, values: [{ id: 'size-s', value: 'S', isActive: true }] }]))
     if (url.endsWith('/api/v1/catalog/categories/category-1')) return json({ id: 'category-1', name: 'Bluz', path: 'Giyim / Bluz', depth: 1, isLeaf: true, isActive: true, version: 4 })
+    if (url.endsWith('/api/v1/catalog/categories/category-1/attribute-requirements') && init?.method === 'PUT') { requirementBody = JSON.parse(String(init.body)); return json({}, 204) }
     if (url.endsWith('/api/v1/catalog/categories/category-1/attribute-requirements')) return json([{ attributeId: 'attribute-1', isRequired: true, allowsCustomValue: false, displayOrder: 0, attribute: { id: 'attribute-1', code: 'SIZE', name: 'Beden', dataType: 'SINGLE_SELECT', isActive: true, version: 1, values: [{ id: 'size-s', value: 'S', isActive: true }] } }])
     if (url.includes('/api/v1/reference-data/categories?')) return json({ snapshotId: 'category-snapshot', resourceType: 'CATEGORIES', fetchedAt: '2026-08-06T00:00:00Z', items: [{ externalId: '14609', name: 'Bluz', path: 'Giyim / Bluz', isLeaf: true, isActive: true }] })
     if (url.includes('/api/v1/mappings/categories/category-1')) return json({ id: 'category-mapping', connectionId: 'connection-1', snapshotId: 'category-snapshot', localId: 'category-1', scopeExternalId: '', externalId: '14609', status: 'VERIFIED', version: 1 })
@@ -104,4 +106,7 @@ test('loads category-scoped attribute mappings in one bulk request', async () =>
   expect(await screen.findByText('1/1 zorunlu özellik eşlendi')).toBeInTheDocument()
   expect(calls.filter(url => url.includes('/api/v1/mappings/attributes?'))).toHaveLength(1)
   expect(calls.some(url => url.includes('/api/v1/mappings/attributes/attribute-1?'))).toBe(false)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Beden özelliğini isteğe bağlı yap' }))
+  await waitFor(() => expect(requirementBody).toEqual([{ attributeId: 'attribute-1', isRequired: false, allowsCustomValue: false, displayOrder: 0 }]))
 })
