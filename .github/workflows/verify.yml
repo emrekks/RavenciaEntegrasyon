@@ -38,6 +38,17 @@ jobs:
           [[ -n "$base" && "$base" != "0000000000000000000000000000000000000000" ]] || base="$(git rev-parse HEAD^)"
           python3 scripts/verify-documentation-transaction.py --base "$base"
 
+      - name: Verify deployment shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n deploy/backup/backup.sh
+          bash -n deploy/backup/restore-verify.sh
+          bash -n deploy/backup/restore-drill.sh
+          bash -n deploy/scripts/deploy.sh
+          bash -n deploy/scripts/initialize-deployment.sh
+          bash -n deploy/scripts/install-marketplacehub.sh
+
       - name: Install exact .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:

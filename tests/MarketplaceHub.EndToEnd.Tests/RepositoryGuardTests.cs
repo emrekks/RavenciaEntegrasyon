@@ -104,6 +104,25 @@ public sealed class RepositoryGuardTests
     }
 
     [Fact]
+    public void Restore_drill_is_isolated_digest_pinned_and_self_cleaning()
+    {
+        var root = FindRoot();
+        var drill = File.ReadAllText(Path.Combine(root, "deploy", "backup", "restore-drill.sh"));
+        var workflow = File.ReadAllText(Path.Combine(root, ".github", "workflows", "verify.yml"));
+
+        Assert.Contains("Application image must be immutable name@sha256", drill, StringComparison.Ordinal);
+        Assert.Contains("docker network create --internal", drill, StringComparison.Ordinal);
+        Assert.Contains("FeatureFlags__ExternalWrites=false", drill, StringComparison.Ordinal);
+        Assert.Contains("update integration.connection_sync_policies", drill, StringComparison.Ordinal);
+        Assert.Contains("'PENDING', 'RUNNING', 'RETRY_SCHEDULED'", drill, StringComparison.Ordinal);
+        Assert.Contains("trap cleanup EXIT", drill, StringComparison.Ordinal);
+        Assert.Contains("docker volume rm \"$private_volume\" \"$db_volume\"", drill, StringComparison.Ordinal);
+        Assert.DoesNotContain("marketplacehub_pg_data", drill, StringComparison.Ordinal);
+        Assert.DoesNotContain("down -v", drill, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("bash -n deploy/backup/restore-drill.sh", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Repository_hygiene_is_enforced_before_build_and_packaging()
     {
         var root = FindRoot();

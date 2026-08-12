@@ -13,6 +13,15 @@ Her set `database.dump`, `private-volumes.tar.gz`, `SHA256SUMS` ve `manifest.jso
 
 ## İzole restore doğrulaması
 
+Hedef Ubuntu sunucusunda aşağıdaki script, timestamp adlı backup setini production ağ/volume'larına bağlanmayan geçici kaynaklara restore eder. App image mutlaka immutable digest olmalıdır. Script restore kopyasında scheduler policy'lerini ve bekleyen işleri devre dışı bıraktıktan sonra migration, API readiness ve Worker heartbeat smoke çalıştırır; çıkışta yalnız kendi timestamp-scope kaynaklarını kaldırır.
+
+```bash
+sudo -v
+bash deploy/backup/restore-drill.sh \
+  20260812T132906Z \
+  ghcr.io/emrekks/marketplacehub-app@sha256:389f288e88b835be617c9a26548fe553bf085d833e4a3fab02570e965441184e
+```
+
 1. PostgreSQL 18.4 ile boş ve üretimden izole hedef oluştur.
 2. Dump owner rolü `marketplacehub` hedefte yoksa önce rolü oluştur.
 3. `sha256sum -c SHA256SUMS` ve `pg_restore --list database.dump` çalıştır.

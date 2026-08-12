@@ -6,7 +6,7 @@ active_scope:
 - TRENDYOL_EFATURAM
 overall_status: F3_CORE_CODE_COMPLETE_VALIDATION_PENDING_F4_CODE_COMPLETE_VALIDATION_PENDING_PRODUCTION_BLOCKED
 production_status: BLOCKED
-local_validation: V10_56_SOURCE_CI_RELEASE_DEPLOY_AND_TRENDYOL_CATEGORY_STAGE_ACCEPTANCE_PASS
+local_validation: V10_56_TARGET_ISOLATED_BACKUP_RESTORE_MIGRATION_API_WORKER_SMOKE_PASS_CI_PENDING
 source_of_truth: docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md
 phases:
   F0:
@@ -15,7 +15,7 @@ phases:
     evidence: docs/implementation/F0-evidence-log.md
   F1:
     title: Güvenli temel
-    status: HARDENING_CODED_DYNAMIC_REVALIDATION_REQUIRED
+    status: TARGET_RESTORE_DRILL_PASS_REMAINING_HARDENING_REVALIDATION_REQUIRED
     evidence: docs/implementation/F1-evidence-log.md
   F2:
     title: Katalog ve envanter çekirdeği
@@ -53,7 +53,7 @@ features:
   webhook_ingress_security:
     status: CODED_STATIC_VERIFIED_DYNAMIC_REVALIDATION_REQUIRED
   deployment_health_and_bootstrap_secrets:
-    status: CODED_STATIC_VERIFIED_DOCKER_REVALIDATION_REQUIRED
+    status: V10_56_TARGET_RESTORE_MIGRATION_API_WORKER_HEALTH_VERIFIED_OFF_HOST_GATE_REMAINS
   pull_request_ci_gates:
     status: CODED_WORKFLOW_EXECUTION_REQUIRED
   dashboard:

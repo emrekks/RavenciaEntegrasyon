@@ -7,4 +7,4 @@ sha256sum -c SHA256SUMS
 test -s database.dump
 test -s private-volumes.tar.gz
 pg_restore --list database.dump >/dev/null
-echo "Backup artifacts passed integrity and archive checks; full restore requires an empty isolated target database."
+echo "Backup artifacts passed integrity and archive checks. Run restore-drill.sh for an isolated database/private-volume/API/Worker restore smoke."

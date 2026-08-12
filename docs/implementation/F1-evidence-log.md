@@ -1,5 +1,15 @@
 # F1 Kanıt Günlüğü
 
+## 2026-08-12 - F1-EV-032 v10.56 hedef izole restore tatbikatı
+
+- Backup manifest: `20260812T132906Z`; DB ve private archive SHA-256: `PASS`; PostgreSQL image: pinned `18.4` digest.
+- Production kaynaklarından ayrık timestamp-scope internal network, temiz DB volume ve private volume oluşturuldu. Restore sonucu `iam/integration/ops=3`, migration `13`, tenant `1`.
+- Private archive absolute/parent traversal kontrolü ve `files`/`dp-keys` dizinleri: `PASS`.
+- Restore kopyasında scheduler policy ve pending/running/retry işleri dış çağrıdan önce devre dışı; external writes `false`, ağ egress'siz.
+- v10.56 immutable app `sha256:389f288e88b835be617c9a26548fe553bf085d833e4a3fab02570e965441184e`: migration up-to-date, API ready, Worker heartbeat `PASS`; süre `14 sn`.
+- Cleanup sonrası timestamp-scope container/volume/network sayısı `0`; production API/Worker/Caddy/PostgreSQL healthy ve dış readiness `PASS`.
+- Otomasyon: `deploy/backup/restore-drill.sh`; shell syntax ve izolasyon guard'ları CI'a eklendi. Off-host şifreli kopya kanıtı bu tatbikatın kapsamında değildir ve açık kalır.
+
 ## 2026-08-12 - F1-EV-031 v10.49 immutable deploy kabulü
 
 - `84ba728` source CI `31548069815` ve `release-2026-08-12-v10.49` immutable publish `31548345363` `PASS`.
