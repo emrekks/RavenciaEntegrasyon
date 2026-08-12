@@ -4,6 +4,7 @@
 
 - Gerçek Stage E-Arşiv submitindeki 401, tekil kullanıcı oturumunun fatura API token'ı olmadığını doğruladı. Adapter ve panel, sağlayıcının zorunlu partner `signIn` → `customerSignIn` modeline geri hizalandı.
 - Partner ve Stage test müşteri credential'ı (e-posta/parola/VKN-TCKN) şifreli rotasyon formunda tutulur; customer token ve firma/kullanıcı kapsamı yalnız provider yanıtından okunur. Stage manuel gate sade kalır, Production korumaları değişmez.
+- Credential formunun provider modeliyle eşleşmesini doğrulayan web regresyonu güncellendi; Vitest 21/21 ve TypeScript typecheck geçti.
 
 ## 2026-08-12 - VERIFIED Stage E-Faturam manuel işlemleri
 

@@ -10,7 +10,7 @@ Başarılı E-Faturam bağlantı testi bir `DRAFT` bağlantıyı `VERIFIED` duru
 
 ## 2026-08-12 - Partner / müşteri E-Faturam yetki zinciri geri hizalaması
 
-Gerçek 401 kabulünden sonra adapter ve panel, resmî sözleşmedeki partner `signIn` → `customerSignIn` modeline geri hizalandı. Credential rotation artık partner e-posta/parolası ile Stage test müşteri e-posta/parolası ve VKN/TCKN ister; firma/kullanıcı kapsamı ve dış çağrılarda kullanılan token yalnız customer sign-in yanıtından gelir. Stage manuel write'da capability/evidence, switch, re-auth veya ek onay kapısı eklenmedi. Hedefli E-Faturam contract testleri 38/38, Infrastructure build ve web typecheck geçti. Yeni credential olmadan gerçek provider kabulü başlatılmadı.
+Gerçek 401 kabulünden sonra adapter ve panel, resmî sözleşmedeki partner `signIn` → `customerSignIn` modeline geri hizalandı. Credential rotation artık partner e-posta/parolası ile Stage test müşteri e-posta/parolası ve VKN/TCKN ister; firma/kullanıcı kapsamı ve dış çağrılarda kullanılan token yalnız customer sign-in yanıtından gelir. Stage manuel write'da capability/evidence, switch, re-auth veya ek onay kapısı eklenmedi. Hedefli E-Faturam contract testleri 38/38, Infrastructure build, web Vitest 21/21 ve typecheck geçti. Yeni credential olmadan gerçek provider kabulü başlatılmadı.
 
 ## 2026-08-12 - E-Faturam tekil hesap oturumu
 

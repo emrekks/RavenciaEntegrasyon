@@ -161,7 +161,7 @@ test('maps a category-scoped attribute and its value in the unified mapping work
 })
 
 
-test('stores direct E-Faturam account credentials without exposing fiscal settings', async () => {
+test('stores partner and Stage test-customer E-Faturam credentials without exposing fiscal settings', async () => {
   let credentialRequest: RequestInit | undefined
   globalThis.fetch = vi.fn((input, init) => {
     const url = String(input)
@@ -178,15 +178,18 @@ test('stores direct E-Faturam account credentials without exposing fiscal settin
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/integrations/connection-ef']}><Routes><Route path="/integrations/:id" element={<IntegrationDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
 
-  expect(await screen.findByRole('heading', { name: "E-Faturam hesap kapsamı token'dan alınır" })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'E-Faturam provider yetki zinciri' })).toBeInTheDocument()
   expect(screen.getByText('Yenileme gerekli')).toBeInTheDocument()
-  expect(screen.getByText('Stage credential eski şemada. E-Faturam hesap e-postası ve parolasıyla yenileyin.')).toBeInTheDocument()
+  expect(screen.getByText('Stage credential eski şemada. Partner ve Stage test müşteri bilgileriyle yenileyin.')).toBeInTheDocument()
   expect(screen.queryByText('E-Faturam mali hesap ayarları')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('E-Fatura senaryosu')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Kargo tüzel kimlik eşlemeleri')).not.toBeInTheDocument()
 
-  fireEvent.change(screen.getByLabelText('E-Faturam hesap e-postası'), { target: { value: 'account@example.test' } })
-  fireEvent.change(screen.getByLabelText('E-Faturam hesap parolası'), { target: { value: 'account-password' } })
+  fireEvent.change(screen.getByLabelText('Partner e-postası'), { target: { value: 'partner@example.test' } })
+  fireEvent.change(screen.getByLabelText('Partner parolası'), { target: { value: 'partner-password' } })
+  fireEvent.change(screen.getByLabelText('Stage test müşteri e-postası'), { target: { value: 'customer@example.test' } })
+  fireEvent.change(screen.getByLabelText('Stage test müşteri parolası'), { target: { value: 'customer-password' } })
+  fireEvent.change(screen.getByLabelText('Stage test müşteri VKN/TCKN'), { target: { value: '1234567890' } })
   fireEvent.click(screen.getByRole('button', { name: 'Şifreli kaydet' }))
 
   expect(await screen.findByRole('status')).toHaveTextContent('Credential şifreli olarak yenilendi')
@@ -195,7 +198,7 @@ test('stores direct E-Faturam account credentials without exposing fiscal settin
   expect(headers.get('If-Match')).toBe('"v4"')
   expect(headers.get('Idempotency-Key')).toBeTruthy()
   expect(headers.get('X-CSRF-TOKEN')).toBeTruthy()
-  expect(JSON.parse(String(credentialRequest?.body))).toEqual({ email: 'account@example.test', password: 'account-password' })
+  expect(JSON.parse(String(credentialRequest?.body))).toEqual({ email: 'partner@example.test', password: 'partner-password', customerEmail: 'customer@example.test', customerPassword: 'customer-password', customerTaxId: '1234567890' })
 })
 
 test('queues a read-only refresh for one Trendyol order number', async () => {
