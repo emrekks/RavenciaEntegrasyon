@@ -1,8 +1,8 @@
 using System.Net;
 using System.Text;
 using MarketplaceHub.Application;
-using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
+using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Mapping;
 
 namespace MarketplaceHub.Adapters.ContractTests;
