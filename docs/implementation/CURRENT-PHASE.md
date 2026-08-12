@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-13 - E-Faturam taze-token teşhis doğruluğu
+
+Resmî bireysel `API_USER` dokümanı, aynı Stage gateway'de `signIn` tokenı ile create/iptal/sorgu yapılacağını; `x-access-token` header'ının kullanılacağını doğrular. Mevcut uygulama bu sözleşmeyi zaten kullanır ve connection testi başarılıdır. Buna rağmen taze `signIn` ardından korumalı E-Arşiv endpointinden gelen `401`, artık yanlışlıkla giriş hatası değil `EFATURAM_ACCESS_TOKEN_REJECTED` olarak kaydedilir; bu provider tarafında hesabın işlem endpointi yetkisinin doğrulanması gerektiğini belirtir. İstek tekrar gönderilmez; Stage/Production write zinciri, idempotency ve fiscal validation değişmez. Hedefli adapter contract `62/62` ve Infrastructure build geçti.
+
 ## 2026-08-13 - v10.61 iade operasyon nedeni deployment kabulü
 
 `cb56898` source CI `31646490936` ve `release-2026-08-12-v10.61` immutable publish `31646826162` geçti. `20260812T222805Z` PostgreSQL/private-volume backup setinin checksumları ve `pg_restore --list` doğrulandı; rollback kopyası `deploy/backups/20260812T222805Z-v10.61` altında saklandı. App `sha256:d5f8f83f6ef3c7367ee5a0b149970be04f8031b189f82e836319ca8bf608aafe`, edge `sha256:7c4efdf9477e5e54467415d8edf842d63f44216eb07a402df7050d69dc0170f2` olarak deploy edildi. Fail-closed config validation, migration, API/Worker/Caddy/PostgreSQL health, dış readiness `200` ve frontend asset smoke geçti. Girişli panelde `Created`/`REQUESTED` return detail, artık yanlış Production switch açıklaması yerine sağlayıcı durumunun onay/ret kabul etmediğini gösterdi.

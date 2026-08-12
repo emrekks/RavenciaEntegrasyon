@@ -1,4 +1,7 @@
+using System.Net;
 using System.Text;
+using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Mapping;
 
@@ -70,6 +73,15 @@ public sealed class F4TrendyolEFaturamContractTests
     [Fact]
     public void Invalid_direct_account_token_does_not_create_a_fiscal_scope() =>
         Assert.False(TrendyolEFaturamDirectAccountAccess.TryRead("not-a-jwt", out _));
+
+    [Fact]
+    public void Fresh_authorized_endpoint_unauthorized_is_not_reported_as_sign_in_failure()
+    {
+        var error = TrendyolEFaturamErrorMapper.FromAuthorizedStatus(HttpStatusCode.Unauthorized, null, "safe-request-id");
+        Assert.Equal("EFATURAM_ACCESS_TOKEN_REJECTED", error.Code);
+        Assert.Equal(AdapterErrorClass.Authentication, error.Class);
+        Assert.Equal(401, error.HttpStatus);
+    }
 
     [Theory]
     [InlineData("TEXMP", "8590921777")]

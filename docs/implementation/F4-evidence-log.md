@@ -1,5 +1,12 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-13 - Taze token korumalı-endpoint teşhisi
+
+- **Official contract review:** The official API_USER guide specifies direct `signIn` for invoice create/cancel/query on `https://stage-apigateway.trendyolefaturam.com`, with `x-access-token` for protected API calls. The active direct-account implementation matches those endpoints and headers.
+- **Diagnostic fix:** An HTTP `401` received after a newly acquired direct-account token is now recorded as `EFATURAM_ACCESS_TOKEN_REJECTED`, rather than a false sign-in failure. `403` is separately `EFATURAM_OPERATION_FORBIDDEN`; response bodies and secrets remain unlogged.
+- **Safety:** No invoice was replayed and no authorization, fiscal validation, idempotency, Stage boundary, or Production external-write control changed.
+- **Validation:** Infrastructure build `PASS`; adapter contract suite `62/62 PASS`.
+
 ## 2026-08-13 - Kapanış regresyon doğrulaması
 
 - **Shared regression:** Current solution build, Domain/Application and adapter contract suites, frontend typecheck, and all Vitest checks passed: build `0` warning/error; `32/32`, `66/66`, `61/61`, and `21/21` respectively.

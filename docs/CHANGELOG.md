@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-13 - E-Faturam taze token teşhis düzeltmesi
+
+- Başarılı doğrudan `signIn` sonrasında korumalı endpointten gelen `401`, artık giriş hatası gibi değil `EFATURAM_ACCESS_TOKEN_REJECTED` olarak kaydedilir. Bu, sağlayıcıdaki hesap API yetkisinin doğrulanması gerektiğini doğru biçimde gösterir; istek tekrar gönderilmez.
+- Resmî bireysel API_USER sözleşmesindeki Stage gateway ve `x-access-token` kullanımı doğrulandı. Adapter contract `62/62` ve Infrastructure build geçti; Stage/Production güvenlik zinciri değişmedi.
+
 ## 2026-08-13 - v10.61 iade operasyon nedeni deployment
 
 - `cb56898` source CI ve `release-2026-08-12-v10.61` immutable publish geçtikten sonra checksum/`pg_restore --list` doğrulanmış rollback backup ile v10.61 deploy edildi. Migration, API/Worker/Caddy/PostgreSQL health, dış readiness ve frontend asset smoke geçti.
