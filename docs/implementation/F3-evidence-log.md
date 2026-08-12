@@ -132,6 +132,14 @@
 
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-13 - Stage sipariş read yeniden kabulü ve termin doğruluğu
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Stage order sync | PASS_STAGE | Panel `TRENDYOL_ORDER_SYNC` correlation `d93a995127d24fd1a12e54db3769464c` ilk denemede `SUCCEEDED`; 189 sipariş yerel operatör listesinde gösterildi. |
+| Eksik termin gösterimi | PASS_LOCAL | `.NET` varsayılan veya geçersiz termin tarihi artık gecikme hesabına katılmaz. Normal siparişte `Termin zamanı bekleniyor`, mikro ihracatta sağlayıcının termin göndermediği mesajı gösterilir. Hedefli Vitest `6/6` ve TypeScript typecheck geçti. |
+| Dış işlem sınırı | PRESERVED | Kabul yalnız sağlayıcıdan okuma ve yerel kayıt güncellemesidir; Trendyol'a yazma gönderilmedi. |
+
 ## 2026-08-12 - v10.55 canlı Stage kabulü ve kategori ağaç scope tanısı
 
 - Source CI `31599817178` ve immutable publish `31600192757`: `PASS`; v10.55 app/edge digest deploy, migration, tüm servis health ve readiness `200`: `PASS`. Backup `20260812T131446Z` database/private-volume checksumları: `PASS`.

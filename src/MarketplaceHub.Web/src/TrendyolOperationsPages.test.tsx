@@ -54,6 +54,20 @@ test('shows order information directly in the operational list without a detail 
   expect(screen.queryByText('Sipariş detaylarını göster')).not.toBeInTheDocument()
 })
 
+test('does not render an invented overdue duration for a missing provider due date', async () => {
+  globalThis.fetch = vi.fn(input => {
+    const url = String(input)
+    if (url.includes('/api/v1/orders?')) return json({ items: [{ id: 'order-due-missing', orderNumber: 'T-1002', derivedStatus: 'PROCESSING', currency: 'TRY', grossAmount: 1, discountAmount: 0, netAmount: 1, orderedAt: '2026-08-08T10:00:00Z', lineCount: 1, packageCount: 0, version: 1, connectionId: 'connection-1', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol Mağaza', customerName: 'Test Müşteri', customerEmail: null, customerTaxOrIdentityNumber: null, orderType: 'NORMAL', isMicroExport: false, shipmentAddressJson: '{}', invoiceAddressJson: '{}', shipmentDueAt: '0001-01-01T00:00:00+00:00', isDeadlineCritical: false, invoiceStatus: 'FATURA_BEKLIYOR', cargoProviderName: null, cargoTrackingNumber: null, primaryImageUrl: null, productQuantity: 1, lines: [], packages: [] }], nextCursor: null, hasMore: false })
+    if (url.includes('/api/v1/connections?')) return json({ items: [], nextCursor: null, hasMore: false })
+    return json({}, 404)
+  }) as typeof fetch
+
+  renderAt('/orders', '/orders', <OrdersPage />)
+  fireEvent.click(screen.getByRole('tab', { name: /İşleme Alınanlar/ }))
+  expect(await screen.findByText('Termin zamanı bekleniyor')).toBeInTheDocument()
+  expect(screen.queryByText(/gün gecikmiştir/)).not.toBeInTheDocument()
+})
+
 test('queues Trendyol product update from the product publication workspace', async () => {
   let posted = ''
   globalThis.fetch = vi.fn((input, init) => {

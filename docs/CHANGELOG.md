@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-13 - Eksik termin tarihi gösterim düzeltmesi
+
+- Sağlayıcının eksik termin alanını .NET varsayılan tarihiyle (`0001-01-01`) göndermesi halinde sipariş listesi artık uydurma gecikme günü hesaplamaz. Panel, resmi termin bulunmadığını açıkça gösterir.
+- Taze Stage salt-okunur sipariş eşitlemesi ilk denemede başarılı oldu; panel 189 yerel sipariş kaydını gösterdi. Bu işlem dış platforma yazmaz.
+
 ## 2026-08-13 - v10.62 immutable deployment
 
 - `88b9ca2` source CI `31649708460` ve `release-2026-08-13-v10.62` immutable publish `31649967620` geçti. `20260812T231433Z` rollback backup seti checksum ve `pg_restore --list` ile doğrulandı.

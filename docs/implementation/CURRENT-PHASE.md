@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-13 - Stage sipariş eşitleme ve eksik termin doğruluğu
+
+Normal panelden başlatılan salt-okunur `TRENDYOL_ORDER_SYNC` correlation `d93a995127d24fd1a12e54db3769464c` ilk denemede `SUCCEEDED` oldu; panel 189 Stage siparişini gösterdi. Bu kabulde bazı sağlayıcı satırlarında termin alanının .NET varsayılan tarihiyle geldiği görüldü ve arayüzde uydurma binlerce günlük gecikme ürettiği doğrulandı. UI artık `0001-01-01` veya geçersiz tarihi eksik veri sayar: mikro ihracatta açık sağlayıcı mesajını, diğer siparişlerde `Termin zamanı bekleniyor` durumunu gösterir. Hedefli Vitest `6/6` ve TypeScript typecheck geçti. Dış yazma, fatura, idempotency veya Production güvenlik zinciri değişmedi.
+
 ## 2026-08-13 - v10.62 E-Faturam teşhis ve CI güvenlik düzeltmesi deployment kabulü
 
 `88b9ca2` source CI `31649708460` ile .NET çözüm, Docker-backed Testcontainers, formatter, web build ve Playwright kontrollerini geçti. `release-2026-08-13-v10.62` immutable publish `31649967620` app `sha256:920be4db528bf20dc5785b5b8514425cc0f6193a67e8706737e4a6ced660ed43` ve edge `sha256:550b772f2cb10e52f120b42bf7937fa4b56bb77a75b2cb66660fc9630a0724b6` digestlerini üretti. `20260812T231433Z` backup seti checksum ve `pg_restore --list` ile doğrulandı; fail-closed compose validation, migration, API/Worker/Caddy/PostgreSQL health, dış readiness `200` ve frontend asset smoke geçti. Yeni sürüm, taze-token `401` teşhisini doğru kodla gösterir ve Testcontainers'ın düzeltme SSH.NET sürümünü kullanır; Stage/Production işlem güvenlikleri değişmedi.
