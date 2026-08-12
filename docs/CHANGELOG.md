@@ -10,6 +10,11 @@
 - Gerçek Stage sign-in tokenı yalnız claim adları/tipleri üzerinden incelendi: kullanıcı kapsamı sayısal `sub`, firma kapsamı tek `privs` sayısal anahtarıdır. Token veya credential loglanmadı.
 - Direct-account parser bu sağlayıcı sözleşmesini destekleyecek şekilde güncellendi; çoklu firma kapsamı fail-closed bırakıldı. Contract testleri `32/32` ve Infrastructure build geçti. Güncel parser release edilip aynı Stage connection test yeniden çalıştırılacak.
 
+## 2026-08-12 - E-Faturam doğrudan hesap Stage kabulü
+
+- Immutable `release-2026-08-12-v10.52` dağıtımından sonra tekil Stage hesap credential'ı panelin şifreli formuyla yenilendi. Panelden başlatılan `EFATURAM_CONNECTION_TEST` işi `ae2c1681d72240d08d556f6be87777da` ilk denemede `SUCCEEDED`; bağlantı `VERIFIED` ve hata kodu yok.
+- Token, parola, e-posta veya firma/kullanıcı değerleri loglanmadı ya da gösterilmedi. Gerçek fatura submit/status/PDF/cancel Stage kabulü uygun test siparişi ile `NOT_RUN` kalır; Production güvenlik zinciri değişmedi.
+
 ## 2026-08-12 - v10.50 iade alıcı API fallback deployment
 
 - İade alıcı bilgisi fallback'i, checksum doğrulanmış `20260812T093713Z` backup sonrasında immutable v10.50 app/edge imajlarıyla deploy edildi. API, Worker, Caddy ve PostgreSQL healthy; iç ve dış `/health/ready` yanıtı `200`.

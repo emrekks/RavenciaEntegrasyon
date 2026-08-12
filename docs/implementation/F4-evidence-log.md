@@ -4,8 +4,9 @@
 
 | Kanıt | Durum | Not |
 | --- | --- | --- |
-| Direct sign-in scope | STAGE_SCHEMA_DISCOVERED_PARSER_CODED | Partner/customer çalışma yolu kaldırıldı. Gerçek Stage tokenı değer gösterilmeden doğrulandı: sayısal `sub` kullanıcı, tek `privs` sayısal anahtarı firma kapsamıdır. Çoklu firma kapsamı fail-closed kalır. Contract testleri 32/32 ve Infrastructure build geçti. |
-| Gerçek Stage kabulü | RETRY_AFTER_RELEASE | Tekil Stage credential kaydedildi; mevcut v10.51 testinde eski parser `EFATURAM_SIGNIN_SCOPE_MISSING` döndü. Güncel parser immutable release sonrası aynı manuel smoke ile doğrulanacak. |
+| Direct sign-in scope | STAGE_SCHEMA_DISCOVERED_VALIDATED | Partner/customer çalışma yolu kaldırıldı. Gerçek Stage tokenı değer gösterilmeden doğrulandı: sayısal `sub` kullanıcı, tek `privs` sayısal anahtarı firma kapsamıdır. Çoklu firma kapsamı fail-closed kalır. Contract testleri 32/32 ve Infrastructure build geçti. |
+| Gerçek Stage kabulü | SUCCEEDED | `release-2026-08-12-v10.52` sonrası panelden başlatılan `EFATURAM_CONNECTION_TEST` işi `ae2c1681d72240d08d556f6be87777da` ilk denemede `SUCCEEDED`; bağlantı `VERIFIED`, hata kodu yok. Token/credential gösterilmedi. |
+| Fatura işlemi Stage kabulü | NOT_RUN | Uygun test siparişi/oluşturma girdisiyle submit, status, PDF ve cancel akışları henüz başlatılmadı. |
 
 ## 2026-08-12 — Stage operator real-reason messaging
 
