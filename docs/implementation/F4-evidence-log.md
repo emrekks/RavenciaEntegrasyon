@@ -1,5 +1,14 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 - v10.54 partner/müşteri credential runtime deploy doğrulaması
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Source ve immutable release | PASS | Source CI `31597532585` belge transaction, .NET ve web kontrolleriyle geçti. `release-2026-08-12-v10.54` yayın işi `31597903394`, onaylı SHA için provenance/SBOM ve digest doğrulamasıyla geçti. |
+| Hedef deploy | PASS_TARGET | App `sha256:1bd4399e09e896be38c0eb9db512e00bb2e4314c2d58352448fe592f6245321c` ve edge `sha256:fa08b7dbc96001967a3e4e00142d7b40bcf8d5249de95beac892c54846200cfe` immutable index digestleriyle dağıtıldı. Önce `20260812T124726Z` PostgreSQL/private-volume backup alındı; compose validation, migration, API/Worker/Caddy health, frontend asset ve dış readiness geçti. |
+| Panel Stage smoke | PASS_EXPECTED_CONFIGURATION | Normal panel `Bağlantıyı test et` eylemi job olarak kuyruğa alındı. Eski tekil credential payload'ı provider isteği yapmadan `EFATURAM_CONFIGURATION_UNAVAILABLE` döndürdü; UI `Yenileme gerekli` ve partner + test müşteri alanlarını gösterdi. Secret, token veya PII okunmadı. |
+| Kalan kabul | BLOCKED_PROVIDER_API_ACCOUNT | Şifreli partner ve Stage test müşteri API credential'ları ile müşteri VKN/TCKN kaydedilmeden gerçek provider connection → submit → status/PDF kabulü başlatılamaz. |
+
 ## 2026-08-12 - Sağlayıcı yetki sözleşmesi hizalaması
 
 | Kanıt | Durum | Not |

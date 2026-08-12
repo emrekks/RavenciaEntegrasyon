@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - v10.54 immutable Stage deployment ve credential sınırı
+
+Partner → müşteri E-Faturam yetki zinciri, source CI `31597532585` ve immutable release `31597903394` sonrası v10.54 olarak Ubuntu hedefe dağıtıldı. App `sha256:1bd4399e09e896be38c0eb9db512e00bb2e4314c2d58352448fe592f6245321c`, edge `sha256:fa08b7dbc96001967a3e4e00142d7b40bcf8d5249de95beac892c54846200cfe` ile çalışıyor; taze `20260812T124726Z` backup sonrası migration, API/Worker/Caddy health, frontend asset ve dış readiness `200` geçti. Panelde normal Stage bağlantı testi ayrıca denenerek eski tekil credential payload'ının provider isteği yapmadan `EFATURAM_CONFIGURATION_UNAVAILABLE` ile fail-closed kaldığı, kullanıcıya yalnız `Yenileme gerekli` ve partner + Stage test müşteri alanlarının gösterildiği doğrulandı. Gerçek provider kabulü için gerekli partner/test müşteri API credential'ları ve VKN/TCKN hâlâ dış önkoşuldur; Production kontrolleri değiştirilmedi.
+
 ## 2026-08-12 - VERIFIED Stage fatura operasyon kapısı
 
 Başarılı E-Faturam bağlantı testi bir `DRAFT` bağlantıyı `VERIFIED` durumuna getirir. Bu durum Stage'de credential doğrulanmış operasyonel bağlantıdır; önceki F4 gate yalnız `ACTIVE` aradığı için normal manuel submit/reconcile/cancel eylemlerini yanlışlıkla gizliyordu. Runtime policy artık `VERIFIED` bağlantıyı yalnız manuel Stage read/write için kabul eder. Production'da `VERIFIED` yeterli değildir: read/write için `ACTIVE`, write için buna ek olarak global + bağlantı switch'i ve mevcut Production zinciri zorunludur. Hedefli policy testi ve gerçek Stage submit kabulü bekleniyor.

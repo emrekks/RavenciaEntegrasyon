@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - v10.54 E-Faturam yetki zinciri immutable deploy
+
+- Partner → müşteri provider yetki zinciri için source CI ve immutable image yayını başarıyla tamamlandı. Ubuntu hedefte taze backup sonrası app `sha256:1bd4399e09e896be38c0eb9db512e00bb2e4314c2d58352448fe592f6245321c` ve edge `sha256:fa08b7dbc96001967a3e4e00142d7b40bcf8d5249de95beac892c54846200cfe` çalışıyor; API/Worker/Caddy/PostgreSQL health ve dış readiness `200`.
+- Paneldeki normal Stage bağlantı testi, eski tekil credential'ı provider'a göndermeden `EFATURAM_CONFIGURATION_UNAVAILABLE` ile güvenli biçimde reddetti; kullanıcı yalnız partner + Stage test müşteri credential yenileme gereksinimini görüyor. Gerçek submit/status/PDF kabulü partner ve test müşteri API hesabı ile VKN/TCKN sağlanana kadar başlatılmayacak.
+
 ## 2026-08-12 - E-Faturam partner/müşteri API yetki zinciri
 
 - Gerçek Stage E-Arşiv submitindeki 401, tekil kullanıcı oturumunun fatura API token'ı olmadığını doğruladı. Adapter ve panel, sağlayıcının zorunlu partner `signIn` → `customerSignIn` modeline geri hizalandı.
