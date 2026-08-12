@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - v10.50 iade alıcı API fallback deployment
+
+- İade alıcı bilgisi fallback'i, checksum doğrulanmış `20260812T093713Z` backup sonrasında immutable v10.50 app/edge imajlarıyla deploy edildi. API, Worker, Caddy ve PostgreSQL healthy; iç ve dış `/health/ready` yanıtı `200`.
+- Girişli iade tablosu smoke kontrolü oturum olmadığından `NOT_RUN`; Stage iade sync'in önceki başarılı sonucu korunuyor.
+
 ## 2026-08-12 - İade alıcı bilgisini API'den tamamlama
 
 - İade liste/detay alıcı adı artık Trendyol sipariş snapshot'ındaki üst seviye ad/soyad placeholder ise API'nin invoice address, o da yoksa shipment address ad/soyadını kullanır. Gerçek müşteri adı önceliğini korur; API anlamlı değer göndermiyorsa isim uydurulmaz.
