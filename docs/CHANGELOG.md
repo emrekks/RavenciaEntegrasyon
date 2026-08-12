@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-13 - Kapanış regresyon doğrulaması
+
+- Güncel solution build `0` hata/uyarı ile geçti; Domain `32/32`, Application `66/66`, adapter contract `61/61`, frontend typecheck ve Vitest `21/21` PASS.
+- Uygulama kaynaklı kapanabilir işler tamamlandı. Dış Trendyol ürün onayı `BLOCKED_PROVIDER_APPROVAL`, E-Faturam fatura API kapsamı `BLOCKED_PROVIDER_API_SCOPE`, uygun Stage iade/etiket fixture'ı `BLOCKED_REMOTE_FIXTURE` olarak korunur; bunlar capability veya güvenlik kapısı bypass edilerek başarı sayılmadı.
+- Docker-backed Testcontainers/integration pipeline bu iş istasyonunda Docker CLI/engine bulunmadığından `NOT_RUN_SCOPED_RUNNER_REQUIRED`; production Docker socket'i test runner'a verilmedi.
+
 ## 2026-08-12 - v10.60 immutable deployment
 
 - `163327f` source CI `31620941782` ve `release-2026-08-12-v10.60` immutable publish `31621351060` geçti. Checksum/doğrulanmış `20260812T171539Z-v10.60` rollback seti sonrasında digest-pinned app/edge imajları deploy edildi.

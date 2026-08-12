@@ -1,5 +1,11 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-13 - Kapanış regresyon doğrulaması
+
+Güncel `f810b31` çalışma ağacında `dotnet build MarketplaceHub.sln --no-restore` `0` hata/uyarı ile geçti. Docker gerektirmeyen çekirdek testler Domain `32/32`, Application `66/66` ve Trendyol/E-Faturam adapter sözleşme testleri `61/61` geçti. Frontend `npm.cmd run typecheck` ve tüm Vitest paketi `21/21` geçti. PostgreSQL Testcontainers, API/persistence integration ve gerçek worker pipeline yürütmesi bu makinede Docker CLI/engine bulunmadığı için `NOT_RUN_SCOPED_RUNNER_REQUIRED`; Ubuntu'daki production Docker socket'i test runner'a verilmedi.
+
+Güncel Stage kanıtı ürün create correlation `f9c945309efe4bf9acdd13dcd246b2aa` için create `SUCCEEDED`, approval reconcile `10/200` denemede `PRODUCT_APPROVAL_PENDING / RETRY_SCHEDULED` durumudur. Bu, dış Trendyol terminal onayını bekleyen `BLOCKED_PROVIDER_APPROVAL` durumudur; duplicate create yapılmadı. E-Faturam submit/status/PDF/cancel akışı mevcut doğrudan API_USER hesabında provider `401` ile durduğu için `BLOCKED_PROVIDER_API_SCOPE`; return action ve common-label write için uygun remote Stage fixture da `BLOCKED_REMOTE_FIXTURE` kalır. Bunların hiçbiri capability/evidence veya uygulama switch'i ile bypass edilmedi.
+
 ## 2026-08-12 - v10.60 ürün approval retry alignment deployment kabulü
 
 `163327f` source CI `31620941782` ve `release-2026-08-12-v10.60` immutable publish `31621351060` geçti. `20260812T171539Z` PostgreSQL/private-volume backup seti için iki SHA-256 kaydı ve `pg_restore --list` doğrulandı; rollback kopyası `deploy/backups/20260812T171539Z-v10.60` olarak saklandı. App `sha256:4365d0b97db9ac56e9b4c0356a91e6c3900e32c62db0b7b2805e654145854d18`, edge `sha256:2edf42576cad4b2c646cf2cbfc206510daab40ef780c52080169d211d459fdcb` olarak deploy edildi. Migration exit `0`; API, Worker, Caddy ve PostgreSQL healthy; dış readiness `200`; deploy script'in frontend asset doğrulaması geçti.

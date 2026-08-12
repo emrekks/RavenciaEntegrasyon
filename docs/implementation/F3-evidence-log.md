@@ -1,3 +1,9 @@
+## 2026-08-13 — closure regression validation
+
+- **Local build/tests:** `dotnet build MarketplaceHub.sln --no-restore` `PASS` (0 warning/error); Domain `32/32`, Application `66/66`, adapter contract `61/61`; web typecheck `PASS`, Vitest `21/21 PASS`.
+- **Runtime:** Current product create correlation `f9c945309efe4bf9acdd13dcd246b2aa` is `SUCCEEDED`; durable approval reconciliation has made `10/200` provider reads and remains `PRODUCT_APPROVAL_PENDING / RETRY_SCHEDULED`. No duplicate create was submitted.
+- **Honest closure boundary:** Product terminal approval is `BLOCKED_PROVIDER_APPROVAL`; common-label and return writes remain `BLOCKED_REMOTE_FIXTURE`. PostgreSQL Testcontainers/API/persistence/worker pipeline execution is `NOT_RUN_SCOPED_RUNNER_REQUIRED` because this workstation has no Docker CLI/engine and production Docker was not exposed to a test runner.
+
 ## 2026-08-12 — v10.60 approval retry alignment deployment
 
 - **CI/release:** Source CI `31620941782` and immutable publish `31621351060` `PASS`; release tag `release-2026-08-12-v10.60` resolves to `163327f`.
