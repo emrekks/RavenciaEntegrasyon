@@ -1,3 +1,4 @@
+using System.Text;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Mapping;
 
@@ -40,19 +41,23 @@ public sealed class F4TrendyolEFaturamContractTests
     }
 
     [Fact]
-    public void Fiscal_scope_is_read_from_customer_signin_response_instead_of_user_settings()
+    public void Fiscal_scope_is_read_from_direct_account_token_instead_of_user_settings()
     {
-        Assert.True(TrendyolEFaturamCustomerAccess.TryRead("""{"companyId":10,"userId":20,"accessToken":"customer-token"}""", out var access));
+        Assert.True(TrendyolEFaturamDirectAccountAccess.TryRead(Token("""{"companyId":10,"userId":20}"""), out var access));
         Assert.Equal(10, access.CompanyId);
         Assert.Equal(20, access.UserId);
     }
 
     [Theory]
-    [InlineData("")]
-    [InlineData("not-json")]
-    [InlineData("{\"companyId\":10,\"userId\":20}")]
-    public void Invalid_customer_signin_response_does_not_create_a_fiscal_scope(string response) =>
-        Assert.False(TrendyolEFaturamCustomerAccess.TryRead(response, out _));
+    [InlineData("{}")]
+    [InlineData("{\"companyId\":10}")]
+    [InlineData("{\"companyId\":10,\"userId\":\"invalid\"}")]
+    public void Direct_account_token_without_fiscal_scope_does_not_create_a_fiscal_scope(string payload) =>
+        Assert.False(TrendyolEFaturamDirectAccountAccess.TryRead(Token(payload), out _));
+
+    [Fact]
+    public void Invalid_direct_account_token_does_not_create_a_fiscal_scope() =>
+        Assert.False(TrendyolEFaturamDirectAccountAccess.TryRead("not-a-jwt", out _));
 
     [Theory]
     [InlineData("TEXMP", "8590921777")]
@@ -82,5 +87,6 @@ public sealed class F4TrendyolEFaturamContractTests
     }
 
     private static string Fixture(string name) => File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Infrastructure", "Adapters", "TrendyolEFaturam", "Fixtures", name));
+    private static string Token(string payload) => $"header.{Convert.ToBase64String(Encoding.UTF8.GetBytes(payload)).TrimEnd('=').Replace('+', '-').Replace('/', '_')}.signature";
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }
 }

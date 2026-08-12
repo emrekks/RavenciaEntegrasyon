@@ -3,10 +3,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { expect, test, vi } from 'vitest'
 import { BrandMappingPage, IntegrationDetailPage, IntegrationsPage, MappingPage } from './F3Pages'
-
 const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } }))
 async function chooseSearchable(label: string, option: string) { const input = await screen.findByRole('combobox', { name: label }); await waitFor(() => expect(input).toBeEnabled()); fireEvent.focus(input); fireEvent.change(input, { target: { value: option } }); await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThan(0)); fireEvent.keyDown(input, { key: 'Enter' }); return input }
-
 test('maps a local leaf category to the verified Trendyol snapshot', async () => {
   let savedBody = ''
   globalThis.fetch = vi.fn((input, init) => {
@@ -24,16 +22,13 @@ test('maps a local leaf category to the verified Trendyol snapshot', async () =>
   }) as typeof fetch
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><MappingPage kind="categories" /></MemoryRouter></QueryClientProvider>)
-
   const local = await chooseSearchable('Panel kategorisi', 'Giyim / Elbise')
   await waitFor(() => expect(local).toHaveValue('Giyim / Elbise'))
   await chooseSearchable('Trendyol yaprak kategorisi', 'Kadın / Giyim / Elbise')
   fireEvent.click(await screen.findByRole('button', { name: 'Eşle' }))
-
   expect(await screen.findByRole('status')).toHaveTextContent('Kategori eşleşti')
   await waitFor(() => expect(JSON.parse(savedBody)).toEqual({ connectionId: 'connection-1', snapshotId: 'snapshot-1', externalId: 'external-1', status: 'VERIFIED' }))
 })
-
 test('creates and selects a panel category from the mapping workspace', async () => {
   let createdBody = ''
   globalThis.fetch = vi.fn((input, init) => {
@@ -62,7 +57,6 @@ test('shows only the two ADR-016 integrations in active connection UI', async ()
   globalThis.fetch = vi.fn(() => json({ items: [connection('1', 'TRENDYOL', 'Trendyol Aktif'), connection('2', 'TRENDYOL_EFATURAM', 'E-Faturam Aktif'), connection('3', 'LEGACY_PLATFORM_A', 'Eski Platform A'), connection('4', 'LEGACY_PLATFORM_B', 'Eski Platform B')], nextCursor: null, hasMore: false })) as typeof fetch
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><IntegrationsPage /></MemoryRouter></QueryClientProvider>)
-
   expect(await screen.findByText('Trendyol Aktif')).toBeInTheDocument()
   expect(screen.queryByText('Eski Platform A')).not.toBeInTheDocument()
   expect(screen.getByText('E-Faturam Aktif')).toBeInTheDocument()
@@ -167,7 +161,7 @@ test('maps a category-scoped attribute and its value in the unified mapping work
 })
 
 
-test('stores the provider-required E-Faturam partner and customer credentials without exposing fiscal settings', async () => {
+test('stores direct E-Faturam account credentials without exposing fiscal settings', async () => {
   let credentialRequest: RequestInit | undefined
   globalThis.fetch = vi.fn((input, init) => {
     const url = String(input)
@@ -184,18 +178,15 @@ test('stores the provider-required E-Faturam partner and customer credentials wi
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/integrations/connection-ef']}><Routes><Route path="/integrations/:id" element={<IntegrationDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
 
-  expect(await screen.findByRole('heading', { name: 'E-Faturam müşteri kapsamı otomatik alınır' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: "E-Faturam hesap kapsamı token'dan alınır" })).toBeInTheDocument()
   expect(screen.getByText('Yenileme gerekli')).toBeInTheDocument()
-  expect(screen.getByText('Stage credential eski şemada. Partner ve müşteri bilgileriyle yenileyin.')).toBeInTheDocument()
+  expect(screen.getByText('Stage credential eski şemada. E-Faturam hesap e-postası ve parolasıyla yenileyin.')).toBeInTheDocument()
   expect(screen.queryByText('E-Faturam mali hesap ayarları')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('E-Fatura senaryosu')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Kargo tüzel kimlik eşlemeleri')).not.toBeInTheDocument()
 
-  fireEvent.change(screen.getByLabelText('Partner e-postası'), { target: { value: 'partner@example.test' } })
-  fireEvent.change(screen.getByLabelText('Partner parolası'), { target: { value: 'partner-password' } })
-  fireEvent.change(screen.getByLabelText('Müşteri e-postası'), { target: { value: 'customer@example.test' } })
-  fireEvent.change(screen.getByLabelText('Müşteri parolası'), { target: { value: 'customer-password' } })
-  fireEvent.change(screen.getByLabelText('Müşteri VKN / TCKN'), { target: { value: '1234567890' } })
+  fireEvent.change(screen.getByLabelText('E-Faturam hesap e-postası'), { target: { value: 'account@example.test' } })
+  fireEvent.change(screen.getByLabelText('E-Faturam hesap parolası'), { target: { value: 'account-password' } })
   fireEvent.click(screen.getByRole('button', { name: 'Şifreli kaydet' }))
 
   expect(await screen.findByRole('status')).toHaveTextContent('Credential şifreli olarak yenilendi')
@@ -204,7 +195,7 @@ test('stores the provider-required E-Faturam partner and customer credentials wi
   expect(headers.get('If-Match')).toBe('"v4"')
   expect(headers.get('Idempotency-Key')).toBeTruthy()
   expect(headers.get('X-CSRF-TOKEN')).toBeTruthy()
-  expect(JSON.parse(String(credentialRequest?.body))).toEqual({ email: 'partner@example.test', password: 'partner-password', customerEmail: 'customer@example.test', customerPassword: 'customer-password', customerTaxId: '1234567890' })
+  expect(JSON.parse(String(credentialRequest?.body))).toEqual({ email: 'account@example.test', password: 'account-password' })
 })
 
 test('queues a read-only refresh for one Trendyol order number', async () => {

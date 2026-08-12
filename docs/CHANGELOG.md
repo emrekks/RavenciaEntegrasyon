@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - E-Faturam tekil hesap credential akışı
+
+- Partner/alt müşteri credential sözleşmesi kaldırıldı. E-Faturam tekil hesap e-postası ve parolasıyla doğrudan oturum açar; firma ve kullanıcı kapsamı yalnız sağlayıcı token'ından fail-closed okunur.
+- Eski payload dönüştürülmez, secret gösterilmez. Production dış-yazma zinciri değişmedi. Contract testleri 30/30, Infrastructure build, web testleri 7/7 ve TypeScript kontrolü geçti; gerçek Stage smoke `NOT_RUN`.
+
 ## 2026-08-12 - v10.50 iade alıcı API fallback deployment
 
 - İade alıcı bilgisi fallback'i, checksum doğrulanmış `20260812T093713Z` backup sonrasında immutable v10.50 app/edge imajlarıyla deploy edildi. API, Worker, Caddy ve PostgreSQL healthy; iç ve dış `/health/ready` yanıtı `200`.

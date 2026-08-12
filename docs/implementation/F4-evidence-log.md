@@ -1,5 +1,12 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 - Tekil E-Faturam hesap kimlik doğrulaması
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Direct sign-in scope | CODED_TARGETED_VALIDATED | Partner/customer çalışma yolu kaldırıldı. Tekil hesap token'ındaki `companyId` ve `userId` fail-closed doğrulanır; token/secret loglanmaz. Contract testleri 30/30 ve Infrastructure build geçti. |
+| Gerçek Stage kabulü | NOT_RUN | Tekil Stage E-Faturam hesabı e-postası/parolası yenilenmeden sağlayıcı smoke başlatılmaz. |
+
 ## 2026-08-12 — Stage operator real-reason messaging
 
 | Kanıt | Durum | Not |

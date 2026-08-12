@@ -72,27 +72,39 @@ public static class TrendyolCarrierCatalog
     }
 }
 
-public static class TrendyolEFaturamCustomerAccess
+public static class TrendyolEFaturamDirectAccountAccess
 {
-    public static bool TryRead(string responseBody, out TrendyolEFaturamAccessContext access)
+    public static bool TryRead(string token, out TrendyolEFaturamAccessContext access)
     {
         access = null!;
-        if (string.IsNullOrWhiteSpace(responseBody)) return false;
+        if (string.IsNullOrWhiteSpace(token)) return false;
         try
         {
-            using var document = JsonDocument.Parse(responseBody);
+            var segments = token.Split('.');
+            if (segments.Length != 3) return false;
+            var payload = segments[1].Replace('-', '+').Replace('_', '/');
+            payload = payload.PadRight(payload.Length + ((4 - payload.Length % 4) % 4), '=');
+            using var document = JsonDocument.Parse(Convert.FromBase64String(payload));
             var root = document.RootElement;
-            if (!root.TryGetProperty("companyId", out var companyValue) || !TryLong(companyValue, out var companyId)
-                || !root.TryGetProperty("userId", out var userValue) || !TryLong(userValue, out var userId)
-                || !root.TryGetProperty("accessToken", out var tokenValue) || tokenValue.ValueKind != JsonValueKind.String
-                || string.IsNullOrWhiteSpace(tokenValue.GetString()) || companyId <= 0 || userId <= 0) return false;
-            access = new(tokenValue.GetString()!, companyId, userId);
+            if (!TryGetLong(root, "companyId", out var companyId)
+                || !TryGetLong(root, "userId", out var userId)
+                || companyId <= 0 || userId <= 0) return false;
+            access = new(token, companyId, userId);
             return true;
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is FormatException or JsonException)
         {
             return false;
         }
+    }
+
+    private static bool TryGetLong(JsonElement root, string name, out long result)
+    {
+        foreach (var property in root.EnumerateObject())
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                return TryLong(property.Value, out result);
+        result = 0;
+        return false;
     }
 
     private static bool TryLong(JsonElement value, out long result)
