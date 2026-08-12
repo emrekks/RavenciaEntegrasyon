@@ -9,6 +9,8 @@
 - v10.56 immutable app `sha256:389f288e88b835be617c9a26548fe553bf085d833e4a3fab02570e965441184e`: migration up-to-date, API ready, Worker heartbeat `PASS`; süre `14 sn`.
 - Cleanup sonrası timestamp-scope container/volume/network sayısı `0`; production API/Worker/Caddy/PostgreSQL healthy ve dış readiness `PASS`.
 - Otomasyon: `deploy/backup/restore-drill.sh`; shell syntax ve izolasyon guard'ları CI'a eklendi. Off-host şifreli kopya kanıtı bu tatbikatın kapsamında değildir ve açık kalır.
+- Commit `d9d841c` source CI `31604226847`: documentation transaction, deployment shell syntax, tam .NET solution ve web doğrulaması `PASS`.
+- Hedef repository committed sürüme fast-forward edildikten sonra restore drill aynı backup/digest ile 13 saniyede tekrar `PASS`; cleanup sonrası eşleşen container, volume ve network listeleri boş, production health/readiness `PASS`.
 
 ## 2026-08-12 - F1-EV-031 v10.49 immutable deploy kabulü
 

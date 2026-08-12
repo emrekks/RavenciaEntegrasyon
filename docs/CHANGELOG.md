@@ -5,6 +5,7 @@
 - Backup checksum, dump restore, private archive safe-path/extract, schema/migration/tenant aggregate, migration, API readiness ve Worker heartbeat adımlarını production kaynaklarına bağlanmayan timestamp-scope internal Docker ortamında çalıştıran `restore-drill.sh` eklendi.
 - Restore kopyasında otomatik scheduler ve bekleyen işler Worker smoke öncesinde devre dışı bırakılır; external writes kapalı ve ağ egress'sizdir. Cleanup yalnız scriptin oluşturduğu adlandırılmış container/volume/network kaynaklarını kaldırır.
 - `20260812T132906Z` backup seti v10.56 immutable app ile hedef Ubuntu'da 14 saniyede geçti; cleanup ve production health tekrar doğrulandı. CI artık tüm deployment/backup shell scriptlerinde `bash -n` çalıştırır.
+- Commit `d9d841c` source CI `31604226847` tamamen geçti. Hedef repository committed sürüme güncellendikten sonra tatbikat 13 saniyede yeniden geçti; geçici kaynak listeleri boş ve production readiness sağlıklı kaldı.
 
 ## 2026-08-12 - Trendyol kategori ağacı scope doğrulaması
 
