@@ -1,3 +1,10 @@
+## 2026-08-12 — Product approval seven-day retry alignment
+
+- **Finding:** The payload's seven-day deadline is authoritative. Although an approval result requests a five-minute retry, `JobRetryPolicy` applies jittered exponential backoff and the live sixth attempt was scheduled for `18:11 UTC`; the current `200` cap therefore does not exhaust before the deadline. Retention must nevertheless remain independent of that scheduler detail.
+- **Fix:** New reconciliation jobs use `(7 * 24 * 12) + 1 = 2017` attempts, which preserves availability through the nominal five-minute seven-day window even if polling becomes more frequent. The payload deadline remains terminal and transitions through the existing `PRODUCT_APPROVAL_DEADLINE_EXPIRED / MANUAL_REVIEW` path. The product create write, idempotency fence, read-back behavior, Stage boundary, and Production switches are unchanged.
+- **Validation:** `dotnet build src/MarketplaceHub.Infrastructure/MarketplaceHub.Infrastructure.csproj --no-restore` `PASS` (0 warning/error). Ubuntu'da production compose'tan ayrı kopyada Docker `--target build` ile Release API/Worker publish ve ağsız SDK container'ında `MarketplaceHub.EndToEnd.Tests` compile `PASS` (0 warning/error). Targeted `FakeWorkerPipelineTests` is `NOT_RUN_SCOPED_RUNNER_REQUIRED`: local Testcontainers `npipe://./pipe/docker_engine` erişimi olmadan başlatılamadı; Ubuntu'da production Docker socket'i + host network isteyen test runner güvenlik politikası tarafından reddedildi. The generated-job assertion covers the 2017-attempt contract when a scoped PostgreSQL test runner is available.
+- **Runtime state:** Existing Stage job `f9c945309efe4bf9acdd13dcd246b2aa` remains on the already-deployed image with `MaxAttempts=200`, `PRODUCT_APPROVAL_PENDING / RETRY_SCHEDULED`; immutable release/deployment is required before the corrected limit applies to newly created jobs.
+
 ## 2026-08-12 — v10.58 Stage publication guidance smoke
 
 - **Release/deploy:** `a95909d` source CI `31611581747`, immutable publish `31612027079`, backup `20260812T152558Z`, migration/health/readiness `PASS`.

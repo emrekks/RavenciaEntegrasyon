@@ -10,6 +10,11 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IReturnPort returns, IPrivateFileStorage files, TimeProvider timeProvider) : IF3JobProcessor
 {
+    // The payload deadline is the authoritative approval bound. The worker currently
+    // applies exponential backoff, but this ceiling also keeps retry accounting from
+    // becoming the earlier bound if the polling schedule is made more frequent later.
+    private const int ProductApprovalReconcileMaxAttempts = (7 * 24 * 12) + 1;
+
     public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         if (connectionId is null) return JobExecutionResult.Blocked("CONNECTION_REQUIRED", "Job requires a platform connection.");
@@ -361,7 +366,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
             Priority = 1,
             Status = JobStatus.Pending,
             AvailableAt = now,
-            MaxAttempts = 200,
+            MaxAttempts = ProductApprovalReconcileMaxAttempts,
             CorrelationId = correlationId,
             CreatedAt = now,
             Version = 1

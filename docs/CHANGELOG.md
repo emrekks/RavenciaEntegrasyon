@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Trendyol ürün approval deadline hizalaması
+
+- Yedi günlük approval deadline'ı scheduler ayrıntısından bağımsızlaştırıldı. Worker'ın mevcut jitter'lı geri çekilmesiyle `200` deneme zaten deadline'dan önce tükenmez; yeni reconciliation işleri nominal beş dakikalık pencereyi de kapsayan `2017` limitini kullanır. Deadline sonunda mevcut `PRODUCT_APPROVAL_DEADLINE_EXPIRED / MANUAL_REVIEW` akışı çalışır.
+- Product create yazması, idempotency/effect fence, provider read-back, Stage endpoint/credential boundary ve Production external-write kontrolleri değişmedi.
+- Infrastructure build `0` hata/uyarı ile geçti. Ubuntu'daki ayrı Docker build contextinde Release API/Worker publish ve ağsız Testcontainers test-projesi derlemesi de `PASS` verdi. Gerçek Testcontainers yürütmesi production Docker socket'i/host network erişimi gerektirdiği için `NOT_RUN_SCOPED_RUNNER_REQUIRED`; immutable CI/release/deploy henüz `NOT_RUN`.
+
 ## 2026-08-12 - v10.59 doğrudan E-Faturam hesap Stage kabulü
 
 - Doğrudan hesap auth düzeltmesi source CI ve immutable release kapılarından geçti; checksum ve `pg_restore --list` doğrulanmış backup sonrasında v10.59 app/edge digestleri deploy edildi. Migration `0`, servis health ve dış readiness `200`.

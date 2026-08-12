@@ -1,5 +1,11 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - Ürün approval poll deadline hizalaması
+
+Ürün approval reconciliation işi yedi günlük yerel operasyon deadline'ı ile çalışır. Worker'ın genel retry politikası beşinci denemeden sonra en az bir saatlik jitter'lı geri çekilme uyguladığından mevcut `MaxAttempts=200` de pratikte deadline'dan önce tükenmez; canlı işte altıncı deneme `18:11 UTC` için planlandı. Yeni işler yine de scheduler ayrıntısından bağımsız kalmak için nominal beş dakikalık pencereye göre `(7 × 24 × 12) + 1 = 2017` deneme üst sınırını kullanır. Böylece ileride daha sık polling seçilirse yedinci gün sonunda normal `PRODUCT_APPROVAL_DEADLINE_EXPIRED / MANUAL_REVIEW` yolu korunur. Yeni dış yazma, retry bypass'ı veya Production güvenlik değişikliği yoktur.
+
+Infrastructure build `0` hata/uyarı ile geçti. Ubuntu'da production compose'tan ayrı `/tmp/ravencia-product-approval-208ee30` kopyası ve ağsız SDK build container'ı ile Docker `--target build` (Release API/Worker publish) ve `MarketplaceHub.EndToEnd.Tests` compile `0` hata/uyarı ile geçti. PostgreSQL Testcontainers kullanan hedefli `FakeWorkerPipelineTests` yerel Docker motoru çalışmadığı için başlatılamadı; Ubuntu'da ise test runner'a production Docker socket'i ve host network verilmesi güvenlik politikasıyla reddedildi. Bu nedenle gerçek Testcontainers yürütmesi `NOT_RUN_SCOPED_RUNNER_REQUIRED`; test hatası başarı gibi gösterilmez. Güncel Stage approval işi mevcut deploy'da eski `MaxAttempts=200` ile `PRODUCT_APPROVAL_PENDING / RETRY_SCHEDULED` durumunda kalır; düzeltmenin bu işte etkinleşmesi için normal immutable release/deploy gerekir.
+
 ## 2026-08-12 - v10.59 E-Faturam doğrudan hesap deployment ve Stage kabulü
 
 `30a7b53` source CI `31614008516` ve `release-2026-08-12-v10.59` immutable publish `31614469658` geçti. `20260812T155329Z` PostgreSQL/private-volume backup setinin iki SHA-256 kaydı ve `pg_restore --list` doğrulandı; rollback kopyası `deploy/backups/20260812T155329Z-v10.59` olarak saklandı. App `sha256:913c590fc0ecc1f3b837106f157d9a560448dde576d289f895ed39092b382efa`, edge `sha256:5c85c44d8740c827dc8dffe39c5df0678b708a66db3e694ac093c73a9e7d8aff` deploy edildi. Migration exit `0`; API, Worker ve Caddy healthy; dış readiness `200`.

@@ -354,6 +354,7 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
         Assert.Equal(1, await db.ExternalEffectRecords.CountAsync(x => x.TenantId == tenantId && x.EffectType == F3JobTypes.ProductCreate, cancellationToken));
         Assert.Equal(1, await db.IntegrationJobs.CountAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductCreate, cancellationToken));
         var approvalJob = await db.IntegrationJobs.SingleAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductApprovalReconcile, cancellationToken);
+        Assert.Equal((7 * 24 * 12) + 1, approvalJob.MaxAttempts);
         var approvalResult = await processor.ProcessAsync(tenantId, connectionId, approvalJob.JobType, approvalJob.PayloadJson, approvalJob.CorrelationId, cancellationToken);
         Assert.True(approvalResult.Succeeded);
 
