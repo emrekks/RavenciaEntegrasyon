@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - İade alıcı bilgisi API fallback'i
+
+İade liste ve detay API görünümleri alıcı adını sipariş snapshot'ından üretir. Trendyol Stage örneği üst seviye `customerFirstName/customerLastName` alanlarını `Adı Soyadı` placeholder'ı olarak döndürdüğünde, uygulama artık aynı siparişin API'den gelen fatura adresi; o da uygun değilse teslimat adresi ad/soyad alanını kullanır. Gerçek müşteri adı varsa önceliği korunur; anlamlı bir API değeri yoksa değer uydurulmaz ve `—` gösterilir. E-posta/telefon/vergi numarası için de adres fallback'i genişletildi. Hedefli `F3ReturnCustomerNameTests` 3/3 ve web TypeScript kontrolü geçti. Normal panelden başlatılan güncel `TRENDYOL_RETURN_SYNC` işi `3cb60e4e9e674ed39e1b091020af6ad1` ilk denemede `SUCCEEDED`; yeni gösterim değişikliğinin immutable deploy kabulü bekliyor.
+
 ## 2026-08-12 - v10.49 immutable deployment ve canlı Stage UI smoke
 
 `84ba728` source CI `31548069815` ve `release-2026-08-12-v10.49` immutable publish `31548345363` başarıyla tamamlandı. App `sha256:c2698b0666ea3948260c41b450ec774b81a4cf83cb1ac1ccecb227a99b17d7cd`, edge `sha256:35673e1db13d8f302ffeade17e709c088dd55a5355d2e1a41d895fb7a3a35ad7` digestleri taze `20260812T000007Z` checksumlı backup sonrasında hedefe deploy edildi. Compose validation, migration, API readiness, Worker/Caddy health, frontend asset ve dış `/health/ready` 200 geçti.

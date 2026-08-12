@@ -37,7 +37,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
             var package = packages.FirstOrDefault(x => x.OrderId == order.Id);
             var invoice = invoices.FirstOrDefault(x => x.OrderId == order.Id && x.OriginalInvoiceId == null);
             var connection = connections.GetValueOrDefault(order.ConnectionId);
-            var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+            var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
             var dueAt = OperationalDueAt(order.CustomerSnapshotJson);
             var terminal = order.DerivedStatus is "DELIVERED" or "CANCELLED" or "RETURNED";
             var lineViews = orderLines.Select(x =>
@@ -83,7 +83,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);
         var invoice = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.OriginalInvoiceId == null).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-        var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+        var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<OrderDetailView>.Ok(new(
             order.Id, order.OrderNumber, order.DerivedStatus, order.Currency, order.GrossAmount, order.DiscountAmount, order.NetAmount, order.OrderedAt,
             lines, packages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version,
@@ -231,7 +231,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
             var firstLine = claimLines.Select(x => orderLines.GetValueOrDefault(x.OrderLineId)).FirstOrDefault(x => x is not null);
             var image = firstLine?.VariantId is { } variantId ? imageUrls.GetValueOrDefault(variantId) : null;
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, claim.ActionDueAt, claim.Version,
-                order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson).Name,
+                order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", package?.CargoProviderExternalId, package?.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode);
         }).ToList();
         return Page(rows, limit, x => x.Id);
@@ -262,7 +262,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
                 source?.VariantId is { } mappedVariantId && inventoryVariants.Contains(mappedVariantId));
         }).ToList();
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
-        var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+        var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, claim.ActionDueAt, actions, claim.Version,
             customer.Name, order.OrderedAt, order.NetAmount, order.Currency, package?.CargoProviderExternalId, package?.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed));
     }
@@ -392,15 +392,12 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         return rows.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Url);
     }
 
-    private static (string Name, string? Email, string? Phone, string? TaxOrIdentityNumber, string OrderType, bool IsMicroExport, bool? IsEInvoiceAvailable) Customer(string customerJson, string invoiceAddressJson)
+    private static (string Name, string? Email, string? Phone, string? TaxOrIdentityNumber, string OrderType, bool IsMicroExport, bool? IsEInvoiceAvailable) Customer(string customerJson, string invoiceAddressJson, string shipmentAddressJson)
     {
-        var first = JsonText(customerJson, "customerFirstName", "firstName");
-        var last = JsonText(customerJson, "customerLastName", "lastName");
-        var name = string.Join(' ', new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)));
-        if (string.IsNullOrWhiteSpace(name)) name = JsonText(invoiceAddressJson, "fullName", "name", "company") ?? "—";
-        var email = JsonText(customerJson, "customerEmail", "email") ?? JsonText(invoiceAddressJson, "email");
-        var phone = JsonText(customerJson, "customerPhone", "customerPhoneNumber", "phone", "phoneNumber") ?? JsonText(invoiceAddressJson, "phone", "phoneNumber", "mobilePhone");
-        var tax = JsonText(customerJson, "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber") ?? JsonText(invoiceAddressJson, "taxNumber", "identityNumber", "tcIdentityNumber");
+        var name = ResolveCustomerName(customerJson, invoiceAddressJson, shipmentAddressJson);
+        var email = JsonText(customerJson, "customerEmail", "email") ?? JsonText(invoiceAddressJson, "email") ?? JsonText(shipmentAddressJson, "email");
+        var phone = JsonText(customerJson, "customerPhone", "customerPhoneNumber", "phone", "phoneNumber") ?? JsonText(invoiceAddressJson, "phone", "phoneNumber", "mobilePhone") ?? JsonText(shipmentAddressJson, "phone", "phoneNumber", "mobilePhone");
+        var tax = JsonText(customerJson, "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber") ?? JsonText(invoiceAddressJson, "taxNumber", "identityNumber", "tcIdentityNumber") ?? JsonText(shipmentAddressJson, "taxNumber", "identityNumber", "tcIdentityNumber");
         var microText = JsonText(customerJson, "shipmentPackageType", "orderType");
         // Trendyol exports through its 3P partner model explicitly return micro=false. The documented
         // 3pByTrendyol=true signal is still an export order and must be presented as such to operators.
@@ -413,6 +410,26 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var eInvoice = JsonNullableBool(customerJson, "eInvoiceAvailable", "isEInvoice") ?? JsonNullableBool(invoiceAddressJson, "eInvoiceAvailable", "isEInvoice");
         return (name, email, phone, tax, micro ? "MIKRO_IHRACAT" : commercial ? "KURUMSAL" : "BIREYSEL", micro, eInvoice);
     }
+
+    internal static string ResolveCustomerName(string customerJson, string invoiceAddressJson, string shipmentAddressJson)
+    {
+        var customerName = NameFrom(customerJson, "customerFirstName", "customerLastName", "customerName", "customerFullName", "buyerName", "fullName", "name");
+        var invoiceName = NameFrom(invoiceAddressJson, "firstName", "lastName", "invoiceFirstName", "invoiceLastName", "fullName", "name", "company", "companyName");
+        var shipmentName = NameFrom(shipmentAddressJson, "firstName", "lastName", "shippingFirstName", "shippingLastName", "fullName", "name", "company", "companyName");
+        return FirstMeaningful(customerName, invoiceName, shipmentName) ?? "—";
+    }
+
+    private static string? NameFrom(string json, string firstName, string lastName, params string[] fullNameFields)
+    {
+        var first = JsonText(json, firstName);
+        var last = JsonText(json, lastName);
+        var combined = string.Join(' ', new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        return !string.IsNullOrWhiteSpace(combined) ? combined : JsonText(json, fullNameFields);
+    }
+
+    private static string? FirstMeaningful(params string?[] names) => names.FirstOrDefault(name => !string.IsNullOrWhiteSpace(name) && !IsPlaceholderCustomerName(name));
+
+    private static bool IsPlaceholderCustomerName(string name) => name.Trim() is "Adı Soyadı" or "Ad Soyad" or "İsim Soyisim";
 
     internal static bool IsLegacyTrendyolExportPartner(string name) =>
         name.Contains("PM3", StringComparison.OrdinalIgnoreCase) && name.Contains("ARVATO", StringComparison.OrdinalIgnoreCase);

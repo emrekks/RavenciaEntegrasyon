@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - İade alıcı bilgisini API'den tamamlama
+
+- İade liste/detay alıcı adı artık Trendyol sipariş snapshot'ındaki üst seviye ad/soyad placeholder ise API'nin invoice address, o da yoksa shipment address ad/soyadını kullanır. Gerçek müşteri adı önceliğini korur; API anlamlı değer göndermiyorsa isim uydurulmaz.
+- E-posta, telefon ve vergi kimliği için de mevcut sipariş adresi fallback'i eklendi. Hedefli backend testi `3/3`, web TypeScript kontrolü `PASS`.
+
 ## 2026-08-12 - v10.49 immutable deploy ve canlı Stage smoke
 
 - v10.49 immutable app `sha256:c2698b0666ea3948260c41b450ec774b81a4cf83cb1ac1ccecb227a99b17d7cd` ve edge `sha256:35673e1db13d8f302ffeade17e709c088dd55a5355d2e1a41d895fb7a3a35ad7` digestleri checksumlı backup sonrasında Ubuntu hedefe deploy edildi. Fail-closed compose validation, migration, API/Worker/Caddy health, frontend asset ve `/health/ready` 200 geçti.
