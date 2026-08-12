@@ -48,6 +48,18 @@ public sealed class F4TrendyolEFaturamContractTests
         Assert.Equal(20, access.UserId);
     }
 
+    [Fact]
+    public void Fiscal_scope_is_read_from_direct_account_privileges_and_subject()
+    {
+        Assert.True(TrendyolEFaturamDirectAccountAccess.TryRead(Token("""{"sub":"20","privs":{"10":["INVOICE_CREATE"]}}"""), out var access));
+        Assert.Equal(10, access.CompanyId);
+        Assert.Equal(20, access.UserId);
+    }
+
+    [Fact]
+    public void Multiple_direct_account_privilege_companies_remain_fail_closed() =>
+        Assert.False(TrendyolEFaturamDirectAccountAccess.TryRead(Token("""{"sub":"20","privs":{"10":[],"11":[]}}"""), out _));
+
     [Theory]
     [InlineData("{}")]
     [InlineData("{\"companyId\":10}")]

@@ -5,6 +5,11 @@
 - Partner/alt müşteri credential sözleşmesi kaldırıldı. E-Faturam tekil hesap e-postası ve parolasıyla doğrudan oturum açar; firma ve kullanıcı kapsamı yalnız sağlayıcı token'ından fail-closed okunur.
 - Eski payload dönüştürülmez, secret gösterilmez. Production dış-yazma zinciri değişmedi. Contract testleri 30/30, Infrastructure build, web testleri 7/7 ve TypeScript kontrolü geçti; gerçek Stage smoke `NOT_RUN`.
 
+## 2026-08-12 - E-Faturam Stage token kapsamı
+
+- Gerçek Stage sign-in tokenı yalnız claim adları/tipleri üzerinden incelendi: kullanıcı kapsamı sayısal `sub`, firma kapsamı tek `privs` sayısal anahtarıdır. Token veya credential loglanmadı.
+- Direct-account parser bu sağlayıcı sözleşmesini destekleyecek şekilde güncellendi; çoklu firma kapsamı fail-closed bırakıldı. Contract testleri `32/32` ve Infrastructure build geçti. Güncel parser release edilip aynı Stage connection test yeniden çalıştırılacak.
+
 ## 2026-08-12 - v10.50 iade alıcı API fallback deployment
 
 - İade alıcı bilgisi fallback'i, checksum doğrulanmış `20260812T093713Z` backup sonrasında immutable v10.50 app/edge imajlarıyla deploy edildi. API, Worker, Caddy ve PostgreSQL healthy; iç ve dış `/health/ready` yanıtı `200`.

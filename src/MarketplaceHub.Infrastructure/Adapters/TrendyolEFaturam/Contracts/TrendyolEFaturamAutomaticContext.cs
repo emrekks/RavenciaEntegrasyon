@@ -86,8 +86,8 @@ public static class TrendyolEFaturamDirectAccountAccess
             payload = payload.PadRight(payload.Length + ((4 - payload.Length % 4) % 4), '=');
             using var document = JsonDocument.Parse(Convert.FromBase64String(payload));
             var root = document.RootElement;
-            if (!TryGetLong(root, "companyId", out var companyId)
-                || !TryGetLong(root, "userId", out var userId)
+            if (!TryGetCompanyId(root, out var companyId)
+                || !TryGetUserId(root, out var userId)
                 || companyId <= 0 || userId <= 0) return false;
             access = new(token, companyId, userId);
             return true;
@@ -106,6 +106,30 @@ public static class TrendyolEFaturamDirectAccountAccess
         result = 0;
         return false;
     }
+
+    private static bool TryGetCompanyId(JsonElement root, out long result)
+    {
+        if (TryGetLong(root, "companyId", out result)) return true;
+        if (!root.TryGetProperty("privs", out var privileges) || privileges.ValueKind != JsonValueKind.Object)
+        {
+            result = 0;
+            return false;
+        }
+
+        var companyIds = privileges.EnumerateObject()
+            .Select(value => value.Name)
+            .Where(value => long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+            .Select(value => long.Parse(value, CultureInfo.InvariantCulture))
+            .Where(value => value > 0)
+            .Distinct()
+            .ToArray();
+        result = companyIds.Length == 1 ? companyIds[0] : 0;
+        return result > 0;
+    }
+
+    private static bool TryGetUserId(JsonElement root, out long result) =>
+        TryGetLong(root, "userId", out result)
+        || TryGetLong(root, "sub", out result);
 
     private static bool TryLong(JsonElement value, out long result)
     {

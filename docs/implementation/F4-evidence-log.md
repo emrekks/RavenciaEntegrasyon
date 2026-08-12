@@ -4,8 +4,8 @@
 
 | Kanıt | Durum | Not |
 | --- | --- | --- |
-| Direct sign-in scope | CODED_TARGETED_VALIDATED | Partner/customer çalışma yolu kaldırıldı. Tekil hesap token'ındaki `companyId` ve `userId` fail-closed doğrulanır; token/secret loglanmaz. Contract testleri 30/30 ve Infrastructure build geçti. |
-| Gerçek Stage kabulü | NOT_RUN | Tekil Stage E-Faturam hesabı e-postası/parolası yenilenmeden sağlayıcı smoke başlatılmaz. |
+| Direct sign-in scope | STAGE_SCHEMA_DISCOVERED_PARSER_CODED | Partner/customer çalışma yolu kaldırıldı. Gerçek Stage tokenı değer gösterilmeden doğrulandı: sayısal `sub` kullanıcı, tek `privs` sayısal anahtarı firma kapsamıdır. Çoklu firma kapsamı fail-closed kalır. Contract testleri 32/32 ve Infrastructure build geçti. |
+| Gerçek Stage kabulü | RETRY_AFTER_RELEASE | Tekil Stage credential kaydedildi; mevcut v10.51 testinde eski parser `EFATURAM_SIGNIN_SCOPE_MISSING` döndü. Güncel parser immutable release sonrası aynı manuel smoke ile doğrulanacak. |
 
 ## 2026-08-12 — Stage operator real-reason messaging
 

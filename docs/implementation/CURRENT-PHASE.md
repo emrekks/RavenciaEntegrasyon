@@ -2,7 +2,7 @@
 
 ## 2026-08-12 - E-Faturam tekil hesap oturumu
 
-E-Faturam bağlantısı artık partner/alt müşteri akışına bağlı değildir. Tekil hesap e-postası ve parolası şifreli credential olarak saklanır; sağlayıcının doğrudan `sign-in` token içindeki `companyId` ve `userId` kapsamı doğrulanmadan fatura işlemi başlatılmaz. Eski partner payload'ları güvenli biçimde `EFATURAM_CONFIGURATION_UNAVAILABLE` durumunda kalır. Stage teknik kontrolleri ile Production dış-yazma güvenlik zinciri korunur. Hedefli E-Faturam contract testleri 30/30, Infrastructure build, web testleri 7/7 ve TypeScript kontrolü geçti; gerçek Stage provider smoke kullanıcı credential yenilemesine kadar `NOT_RUN`.
+E-Faturam bağlantısı artık partner/alt müşteri akışına bağlı değildir. Tekil hesap e-postası ve parolası şifreli credential olarak saklanır. Gerçek Stage sign-in tokenı token/secret değerleri açıklanmadan incelendi: kullanıcı kimliği sayısal `sub`, tek firma kapsamı ise `privs` içindeki sayısal anahtardır. Parser bu şekli ve önceki açık `companyId/userId` sözleşmesini destekler; çoklu firma kapsamı fail-closed kalır. Eski partner payload'ları güvenli biçimde `EFATURAM_CONFIGURATION_UNAVAILABLE` durumunda kalır. Stage teknik kontrolleri ile Production dış-yazma güvenlik zinciri korunur. Hedefli E-Faturam contract testleri 32/32 ve Infrastructure build geçti; parser düzeltmesi yayınlanana kadar gerçek Stage provider smoke `NOT_RUN`.
 
 ## 2026-08-12 - İade alıcı bilgisi API fallback'i
 
