@@ -13,6 +13,7 @@ public enum FakeScenario
     RemoteError,
     Timeout,
     Validation,
+    HydrationValidation,
     ContractViolation
 }
 
@@ -88,7 +89,9 @@ internal sealed class DeterministicFakeAdapter(FakeScenario scenario, TimeProvid
         Result(Page(Order()));
 
     public Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken) =>
-        Result(Order() with { ExternalOrderId = externalOrderId });
+        scenario == FakeScenario.HydrationValidation
+            ? Task.FromResult(AdapterResult<RemoteOrder>.Failure(new(AdapterErrorClass.Validation, "FAKE_HYDRATION_VALIDATION", "Synthetic hydration validation failure.", 400, null, "fake-request")))
+            : Result(Order() with { ExternalOrderId = externalOrderId });
 
     public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) =>
         Write(context, () => new PackageActionResult(command.ExternalPackageId, "SYNTHETIC", $"fake-operation-{context.IdempotencyKey}"));

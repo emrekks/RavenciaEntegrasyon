@@ -77,6 +77,15 @@
 
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-12 - Stage order hydration fallback ve referans hata ayrıştırması
+
+- Trendyol Stage bağlantı testi `8838053f02264cf1aa13ea675b4262e6` ve marka referansı `f5ef22cb565f4ef6a28bb5803d48a142` ilk denemede `SUCCEEDED`.
+- Sipariş eşitleme `1e2075ec26694ee2a83b45b6de5526d3`, ilk stream sayfasından cursor kaydettikten sonra opsiyonel exact hydration HTTP 400 nedeniyle `REMOTE_REQUEST_REJECTED`; kategori referansı `3482afc1a86e415e9322bd20b61e54c9` boş normalize sonuç nedeniyle genel `F3_JOB_REJECTED` oldu.
+- Exact order hydration için yalnız `NotFound` ve `Validation/400` sonucunda stream kaydına dönülür ve iş başına tek `ORDER_STREAM_HYDRATION_FALLBACK` audit'i tutulur. Auth, timeout, rate-limit, remote ve contract hataları fallback kapsamına alınmadı.
+- Zorunlu kategori/marka koleksiyonu boşsa `REFERENCE_EMPTY_RESPONSE`; limit, cursor, sözleşme ve duplicate kimlik sorunlarında ayrı manual-review kodları üretilir. Hatalı/boş sonuç snapshot'ın yerini almaz.
+- Infrastructure build: `PASS` (0 hata, 0 uyarı). İki hedefli PostgreSQL uçtan uca test: `BLOCKED_DOCKER` (yerel Docker engine erişilemiyor); CI `PENDING`.
+- Stage/Production endpoint ve credential ayrımı, aktif bağlantı/auth, input validation, idempotency, provider response validation, audit ve Production dış-yazma zinciri değişmedi.
+
 ## 2026-08-12 — Stage operator action visibility refactor
 
 | Kanıt | Durum | Not |

@@ -832,16 +832,17 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
             var result = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:{resourceType}:{parentExternalId}:{cursor}"), new(resourceType, parentExternalId), new(cursor, 1000), cancellationToken);
             if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
             items.AddRange(result.Value!.Items);
-            if (items.Count > 100_000) return false;
+            if (items.Count > 100_000) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_RESULT_LIMIT_EXCEEDED", "Referans yanıtı güvenli işleme sınırını aştı."));
             cursor = result.Value.NextCursor;
             if (!result.Value.HasMore) break;
-            if (string.IsNullOrWhiteSpace(cursor) || !visitedCursors.Add(cursor)) return false;
+            if (string.IsNullOrWhiteSpace(cursor) || !visitedCursors.Add(cursor)) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CURSOR_INVALID", "Referans sayfalama imleci eksik veya yinelendi."));
         } while (!cancellationToken.IsCancellationRequested);
 
         cancellationToken.ThrowIfCancellationRequested();
-        if ((items.Count == 0 && resourceType is "CATEGORIES" or "BRANDS") || items.Any(x => !string.Equals(x.ResourceType, resourceType, StringComparison.Ordinal) || !string.Equals(x.ParentExternalId ?? "", parentExternalId ?? "", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(x.ExternalId) || string.IsNullOrWhiteSpace(x.Name))) return false;
+        if (items.Count == 0 && resourceType is "CATEGORIES" or "BRANDS") throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", $"Trendyol {resourceType} salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
+        if (items.Any(x => !string.Equals(x.ResourceType, resourceType, StringComparison.Ordinal) || !string.Equals(x.ParentExternalId ?? "", parentExternalId ?? "", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(x.ExternalId) || string.IsNullOrWhiteSpace(x.Name))) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
         var ordered = items.OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
-        if (ordered.Select(x => x.ExternalId).Distinct(StringComparer.Ordinal).Count() != ordered.Count) return false;
+        if (ordered.Select(x => x.ExternalId).Distinct(StringComparer.Ordinal).Count() != ordered.Count) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_IDENTIFIERS_DUPLICATE", "Referans yanıtı yinelenen uzak kimlik içeriyor."));
         var canonical = JsonSerializer.Serialize(ordered.Select(x => new { x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive, x.IsRequired, x.AllowsCustomValue, x.AllowsMultipleValues }));
         var contentHash = Hash(canonical);
         var now = timeProvider.GetUtcNow();
@@ -917,6 +918,7 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
     private async Task<bool> SyncOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var productSnapshots = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var hydrationFallbackRecorded = false;
         string? externalOrderId = null;
         try { using var payload = JsonDocument.Parse(payloadJson); if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString(); }
         catch (JsonException) { return false; }
@@ -948,8 +950,15 @@ public sealed class F3JobProcessor(AppDbContext db, IConnectionPort connections,
                 // A package may disappear between the stream page and its exact read (for example after a
                 // marketplace-side cancellation). Keep the stream record instead of aborting the whole
                 // read-only synchronization; all other adapter failures remain visible and retryable.
-                if (!fullOrder.IsSuccess && fullOrder.Error?.Class != AdapterErrorClass.NotFound)
+                var safeHydrationFallback = !fullOrder.IsSuccess && (fullOrder.Error?.Class == AdapterErrorClass.NotFound || fullOrder.Error is { Class: AdapterErrorClass.Validation, HttpStatus: 400 });
+                if (!fullOrder.IsSuccess && !safeHydrationFallback)
                     throw JobProcessingException.FromAdapter(fullOrder.Error!);
+
+                if (safeHydrationFallback && !hydrationFallbackRecorded)
+                {
+                    db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "ORDER_STREAM_HYDRATION_FALLBACK", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = fullOrder.Error!.Code, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
+                    hydrationFallbackRecorded = true;
+                }
 
                 var hydratedOrder = fullOrder.IsSuccess ? fullOrder.Value! : streamedOrder;
                 await UpsertOrder(tenantId, connectionId, await EnrichOrderLineSources(tenantId, connectionId, correlationId, hydratedOrder, productSnapshots, cancellationToken), cancellationToken);

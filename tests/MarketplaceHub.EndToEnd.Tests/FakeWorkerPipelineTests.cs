@@ -104,6 +104,52 @@ public sealed class FakeWorkerPipelineTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Order_stream_validation_during_optional_hydration_keeps_stream_record_and_audits_fallback()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var tenantId = Guid.Parse("45555555-5555-5555-5555-555555555555");
+        var connectionId = Guid.Parse("46666666-6666-6666-6666-666666666666");
+        var clock = new MutableTimeProvider(Now);
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options);
+        await db.Database.MigrateAsync(cancellationToken);
+        db.Tenants.Add(new Tenant { Id = tenantId, Code = "hydrate-fallback", DisplayName = "Hydrate Fallback", CreatedAt = Now, UpdatedAt = Now });
+        db.PlatformConnections.Add(new PlatformConnection { Id = connectionId, PublicId = Guid.NewGuid(), TenantId = tenantId, PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Hydrate fallback", ExternalStoreId = "synthetic-store", Status = "ACTIVE", ApiVersion = "v2", Version = 1 });
+        await db.SaveChangesAsync(cancellationToken);
+
+        var fake = new DeterministicFakeAdapter(FakeScenario.HydrationValidation, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, fake, null!, clock);
+        var result = await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.OrderSync, "{}", "hydrate-fallback-correlation", cancellationToken);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(1, await db.Orders.CountAsync(x => x.TenantId == tenantId, cancellationToken));
+        var audit = await db.AuditLogs.SingleAsync(x => x.TenantId == tenantId && x.Action == "ORDER_STREAM_HYDRATION_FALLBACK", cancellationToken);
+        Assert.Equal("FAKE_HYDRATION_VALIDATION", audit.Reason);
+        Assert.Equal("hydrate-fallback-correlation", audit.CorrelationId);
+    }
+
+    [Fact]
+    public async Task Empty_required_reference_collection_returns_specific_block_without_replacing_snapshot()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var tenantId = Guid.Parse("35555555-5555-5555-5555-555555555555");
+        var connectionId = Guid.Parse("36666666-6666-6666-6666-666666666666");
+        var clock = new MutableTimeProvider(Now);
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options);
+        await db.Database.MigrateAsync(cancellationToken);
+        db.Tenants.Add(new Tenant { Id = tenantId, Code = "empty-reference", DisplayName = "Empty Reference", CreatedAt = Now, UpdatedAt = Now });
+        db.PlatformConnections.Add(new PlatformConnection { Id = connectionId, PublicId = Guid.NewGuid(), TenantId = tenantId, PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Empty reference", ExternalStoreId = "synthetic-store", Status = "ACTIVE", ApiVersion = "v2", Version = 1 });
+        await db.SaveChangesAsync(cancellationToken);
+
+        var fake = new DeterministicFakeAdapter(FakeScenario.Empty, clock);
+        var processor = new F3JobProcessor(db, fake, fake, fake, fake, fake, fake, null!, clock);
+        var result = await processor.ProcessAsync(tenantId, connectionId, F3JobTypes.ReferenceSync, "{\"resourceType\":\"CATEGORIES\"}", "empty-reference-correlation", cancellationToken);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("REFERENCE_EMPTY_RESPONSE", result.ErrorCode);
+        Assert.Empty(await db.ReferenceSnapshots.Where(x => x.TenantId == tenantId).ToListAsync(cancellationToken));
+    }
+
+    [Fact]
     public async Task Reference_sync_retry_keeps_one_current_snapshot_and_one_item()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

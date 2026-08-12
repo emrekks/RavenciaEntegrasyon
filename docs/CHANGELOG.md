@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - Trendyol sipariş stream fallback ve referans tanı kodları
+
+- Salt-okunur sipariş stream'inde gelen kayıt, opsiyonel exact hydration isteği `NotFound` veya `Validation/400` döndürürse kaybedilmez; stream kaydı saklanır ve iş başına tek audit üretilir. Diğer provider hataları mevcut fail-closed/retry davranışını korur.
+- Zorunlu kategori/marka referansı boş, aşırı büyük, geçersiz cursor/sözleşme veya duplicate kimlik içerdiğinde genel job reddi yerine operasyonel olarak ayırt edilebilir hata kodları döner. Başarısız sonuç mevcut referans snapshot'ını değiştirmez.
+- Infrastructure build geçti. Yeni PostgreSQL uçtan uca testleri yerel Docker motoru kapalı olduğundan `BLOCKED_DOCKER`; merkezi CI bekleniyor. Production kontrollerinde değişiklik yapılmadı.
+
 ## 2026-08-12 - v10.54 E-Faturam yetki zinciri immutable deploy
 
 - Partner → müşteri provider yetki zinciri için source CI ve immutable image yayını başarıyla tamamlandı. Ubuntu hedefte taze backup sonrası app `sha256:1bd4399e09e896be38c0eb9db512e00bb2e4314c2d58352448fe592f6245321c` ve edge `sha256:fa08b7dbc96001967a3e4e00142d7b40bcf8d5249de95beac892c54846200cfe` çalışıyor; API/Worker/Caddy/PostgreSQL health ve dış readiness `200`.
