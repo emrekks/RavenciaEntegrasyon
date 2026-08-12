@@ -1,5 +1,12 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-12 - v10.59 doğrudan E-Faturam hesap Stage kabulü
+
+- Doğrudan hesap auth düzeltmesi source CI ve immutable release kapılarından geçti; checksum ve `pg_restore --list` doğrulanmış backup sonrasında v10.59 app/edge digestleri deploy edildi. Migration `0`, servis health ve dış readiness `200`.
+- Normal panel connection testi mevcut şifreli bireysel credential ile ilk denemede geçti. Panel artık partner/test müşteri alanı istemiyor.
+- Eksik alıcı VKN/TCKN'li yeni fixture provider çağrısından önce fail-closed durdu. Gerçek mali kimlik formatı bulunan ayrı fixture yerel doğrulamayı geçti ancak korumalı E-Arşiv create endpointi direct tokenı `401` ile reddetti; tekrar gönderilmedi.
+- Mevcut Stage hesabına sağlayıcı tarafında fatura API kapsamı tanımlanana kadar mali E2E `BLOCKED_PROVIDER_API_SCOPE`. Authorization, alıcı kimliği doğrulaması ve Production güvenlikleri azaltılmadı.
+
 ## 2026-08-12 - E-Faturam doğrudan hesap auth düzeltmesi
 
 - Aktif tek işletme `API_USER` kapsamına aykırı partner + test müşteri credential zorunluluğu kaldırıldı. Panel ve API artık yalnız E-Faturam hesap e-posta/parolasını alır; secret değerleri yeniden gösterilmez.

@@ -1,5 +1,17 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-12 - v10.59 doğrudan hesap Stage kabul sonucu
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Source / immutable release | PASS | Commit `30a7b53`, source CI `31614008516`; tag `release-2026-08-12-v10.59`, publish `31614469658`. App/edge provenance, SBOM ve digest kapıları geçti. |
+| Backup / deploy | PASS_TARGET | `20260812T155329Z` database/private checksum ve `pg_restore --list` geçti. App `sha256:913c590f...2efa`, edge `sha256:5c85c44d...d8aff`; migration `0`, API/Worker/Caddy healthy, external readiness `200`. |
+| Doğrudan hesap connection | PASS_STAGE | Normal panel job'u `021ac1ba75204ef4b9e010f103c00edb`, `SUCCEEDED 1/6`. Mevcut şifreli bireysel credential kullanıldı; secret/token okunmadı veya loglanmadı. |
+| Eksik alıcı mali kimliği fixture | PASS_FAIL_CLOSED | `#1238711676` yeni taslağı provider çağrısından önce `EFATURAM_RECIPIENT_TAX_ID_REQUIRED` ile durdu. Kimlik uydurulmadı ve validation kaldırılmadı. |
+| Geçerli mali kimlikli fixture | BLOCKED_PROVIDER_API_SCOPE | `#698232919` API snapshotında 10 haneli alıcı mali kimliği varlığı değer okunmadan doğrulandı; yerel taslak `READY`. Tek submit, provider korumalı E-Arşiv endpointinde `401 / EFATURAM_AUTHENTICATION_FAILED` aldı. Tekrar gönderilmedi. |
+| Resmî sözleşme karşılaştırması | PASS_SOURCE_REVIEW | `x-access-token` header kullanımı doğru. Resmî pazaryeri rehberi müşteri adına fatura için partner `signIn` → `customerSignIn` tokenını ister; doğrudan hesabın kendi tokenı ancak sağlayıcı o hesaba korumalı fatura API kapsamı verdiyse kullanılabilir. |
+| Kalan kabul | BLOCKED_PROVIDER_API_SCOPE | Mevcut bireysel Stage hesabına E-Faturam tarafından fatura API yetkisi tanımlanmadan submit/status/PDF/cancel E2E ilerlemez. Uygulama authorization'ı bypass etmez. |
+
 ## 2026-08-12 - Doğrudan API_USER hesap sözleşmesi geri hizalaması
 
 | Kanıt | Durum | Not |

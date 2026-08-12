@@ -1,5 +1,13 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-12 - v10.59 E-Faturam doğrudan hesap deployment ve Stage kabulü
+
+`30a7b53` source CI `31614008516` ve `release-2026-08-12-v10.59` immutable publish `31614469658` geçti. `20260812T155329Z` PostgreSQL/private-volume backup setinin iki SHA-256 kaydı ve `pg_restore --list` doğrulandı; rollback kopyası `deploy/backups/20260812T155329Z-v10.59` olarak saklandı. App `sha256:913c590fc0ecc1f3b837106f157d9a560448dde576d289f895ed39092b382efa`, edge `sha256:5c85c44d8740c827dc8dffe39c5df0678b708a66db3e694ac093c73a9e7d8aff` deploy edildi. Migration exit `0`; API, Worker ve Caddy healthy; dış readiness `200`.
+
+Normal panelde bireysel hesap e-posta/parola formu görüldü. Mevcut şifreli credential ile `EFATURAM_CONNECTION_TEST` correlation `021ac1ba75204ef4b9e010f103c00edb` ilk denemede `SUCCEEDED`; partner veya müşteri VKN alanı gerekmedi. İlk yeni Stage E-Arşiv fixture'ı `#1238711676`, alıcı mali kimliği olmadığı için provider çağrısından önce `EFATURAM_RECIPIENT_TAX_ID_REQUIRED` ile doğru biçimde fail-closed durdu. API snapshotında gerçek 10 haneli alıcı mali kimliği bulunan `#698232919` için ayrı taslak yerel doğrulamadan geçti; kimlik değeri okunmadı. Tek submit denemesi korumalı `POST /api/invoice/documents/earchive` endpointinde `401 / EFATURAM_AUTHENTICATION_FAILED` aldı. Aynı taslak yeniden gönderilmedi.
+
+Sonuç: doğrudan `signIn`, token claim scope parserı, Stage boundary ve payload üretimi çalışıyor; mevcut Stage hesabının tokenı korumalı fatura API yetkisine sahip değil. Resmî pazaryeri rehberi çoklu müşteri adına fatura için partner `customerSignIn` tokenını şart koşuyor. Aktif tek işletme doğrudan hesap modeli değiştirilmedi; E-Faturam tarafından bu hesaba fatura API kapsamı tanımlanmadan submit/status/PDF/cancel kabulü `BLOCKED_PROVIDER_API_SCOPE` kalır. Production güvenlikleri değiştirilmedi.
+
 ## 2026-08-12 - E-Faturam doğrudan hesap sözleşmesi düzeltmesi
 
 Zorunlu gate–route–service–job envanteri `F4-stage-direct-account-gate-inventory.md` içinde çıkarıldı. Ana proje belgesindeki tek işletme `API_USER` kapsamına aykırı partner `signIn` → `customerSignIn` zorunluluğu route, persistence, adapter ve panelden kaldırıldı. E-Faturam bağlantısı artık yalnız hesap e-posta/parolasını şifreli saklar; `companyId` ve `userId` doğrudan `signIn` access token claimlerinden okunur. Token tek firma ve kullanıcı kapsamı vermiyorsa adapter fail-closed kalır. Stage manuel işlem politikası ile Production endpoint/credential boundary, master + connection write switch, authorization, input validation, idempotency, reconciliation ve audit kontrolleri değişmedi.

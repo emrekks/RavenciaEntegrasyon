@@ -8,6 +8,8 @@ Trendyol siparişi/paketi için provider hesabındaki mali kapsamı kullanarak d
 
 Aktif kapsam tek işletmenin kendi E-Faturam hesabını yöneten `API_USER` modelidir. Panel yalnız hesap e-posta/parolasını şifreli saklar; `companyId` ve `userId` sağlayıcının `signIn` access tokenından okunur. Tek firma/kullanıcı kapsamı güvenli biçimde çıkarılamazsa işlem fail-closed kalır. Partner `customerSignIn` ve çoklu müşteri modeli aktif kapsam dışıdır.
 
+v10.59 Stage kabulünde bu hesabın `signIn` ve token kapsamı doğrulandı; korumalı E-Arşiv create endpointi aynı tokenı `401` ile reddetti. Bu nedenle doğrudan hesap modeli için ek dış ön koşul, sağlayıcının hesaba fatura API kapsamı tanımlamasıdır. Uygulama bunu capability/evidence veya Stage switch ile bypass etmez. Sağlayıcı çoklu müşteri pazaryeri modeli dayatırsa bu aktif kapsam değişikliği ayrıca kararlaştırılmalıdır.
+
 ## Kodlanan kapsam
 
 1. Doğrudan hesap `signIn`, access token (`x-access-token`) ve şifreli hesap e-posta/parolası.
