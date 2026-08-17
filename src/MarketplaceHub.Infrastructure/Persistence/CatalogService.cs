@@ -29,9 +29,16 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             if (parent is null) return NotFound<CategoryView>();
         }
         var normalized = Normalize(name);
-        if (await db.Categories.AnyAsync(x => x.TenantId == tenantId && x.ParentId == command.ParentId && x.NormalizedName == normalized, cancellationToken))
-            return Conflict<CategoryView>("CATEGORY_DUPLICATE", "Aynı üst kategoride bu ad zaten var.");
-        var now = timeProvider.GetUtcNow(); var category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, ParentId = parent?.Id, Name = name, NormalizedName = normalized, Path = parent is null ? name : $"{parent.Path} / {name}", Depth = parent is null ? 0 : parent.Depth + 1, IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now };
+        var existing = await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ParentId == command.ParentId && x.NormalizedName == normalized, cancellationToken);
+        if (existing?.IsActive == true) return Conflict<CategoryView>("CATEGORY_DUPLICATE", "Aynı üst kategoride bu ad zaten var.");
+        var now = timeProvider.GetUtcNow();
+        if (existing is not null)
+        {
+            existing.Name = name; existing.Path = parent is null ? name : $"{parent.Path} / {name}"; existing.Depth = parent is null ? 0 : parent.Depth + 1; existing.IsActive = true; existing.IsLeaf = !await db.Categories.AnyAsync(x => x.TenantId == tenantId && x.ParentId == existing.Id && x.IsActive, cancellationToken); existing.Version++; existing.UpdatedAt = now;
+            if (parent is not null) { parent.IsLeaf = false; parent.Version++; parent.UpdatedAt = now; }
+            await db.SaveChangesAsync(cancellationToken); return ServiceResult<CategoryView>.Ok(MapCategory(existing));
+        }
+        var category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, ParentId = parent?.Id, Name = name, NormalizedName = normalized, Path = parent is null ? name : $"{parent.Path} / {name}", Depth = parent is null ? 0 : parent.Depth + 1, IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now };
         db.Categories.Add(category); if (parent is not null) { parent.IsLeaf = false; parent.Version++; parent.UpdatedAt = now; }
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<CategoryView>.Ok(MapCategory(category));
     }
