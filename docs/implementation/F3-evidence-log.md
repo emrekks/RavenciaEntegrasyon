@@ -132,6 +132,14 @@
 
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-17 - v10.64 immutable deploy ve return aggregate smoke
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Source / immutable release | PASS | `c18ca94` source CI `32026532850`; `release-2026-08-17-v10.64` publish `32026931375` geçti. |
+| Backup / deploy | PASS_TARGET | `20260817T115450Z` backup checksumları ve PostgreSQL restore-list geçti. App `sha256:ecb225ea...5d370f`, edge `sha256:8ab2e7e...ac4d43` digestleriyle deploy; API, Worker, Caddy, PostgreSQL healthy ve dış readiness `Healthy`. |
+| İade veri bütünlüğü | PASS_TARGET | PII göstermeyen aggregate kontrolde 26/26 claim bağlı sipariş, müşteri snapshot, adres snapshot, ad alanı kaynağı ve en az bir iade satırına sahip; son üç `TRENDYOL_RETURN_SYNC` işi `SUCCEEDED`. Bu salt-okunur smoke yeni provider write oluşturmadı. |
+
 ## 2026-08-17 - Dashboard güvenlik e2e eşitliği
 
 | Kanıt | Durum | Not |

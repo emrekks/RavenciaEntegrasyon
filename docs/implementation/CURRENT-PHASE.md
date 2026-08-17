@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - v10.64 release ve iade veri smoke
+
+`c18ca94` için source CI (`32026532850`) ve `release-2026-08-17-v10.64` immutable publish (`32026931375`) başarıyla tamamlandı. Ubuntu hedefte checksum ve PostgreSQL restore-list doğrulanmış `20260817T115450Z` backup sonrasında app `sha256:ecb225ea20a3f6759e25e5038939d6a600b6943c7eeadb3f1a33e94aba5d370f`, edge `sha256:8ab2e7e46a08a6ada482893559a14a657c6d54e0c0ac59455d5ad86c47ac4d43` ile deploy edildi. API/Worker/Caddy/PostgreSQL healthy, dış `/health/ready` `Healthy` ve frontend asset smoke geçti. PII göstermeyen aggregate kontrol, 26 iadenin tamamında bağlı sipariş, müşteri/adres snapshot'ı, anlamlı ad kaynağı ve en az bir iade satırı bulunduğunu; son üç `TRENDYOL_RETURN_SYNC` işinin `SUCCEEDED` olduğunu gösterdi. Yeni provider write başlatılmadı; F3/F4 dış kabul blocker'ları değişmedi.
+
 ## 2026-08-17 - Dashboard e2e güvenlik metni eşitliği
 
 Dashboard Playwright kabuk testi eski "bağlantı bazında" metin beklentisi nedeniyle source CI'da başarısız oldu. Beklenti, görünür güncel "Environment sınırı ve dış yazma korumaları korunur" metnine güncellendi; `npm.cmd run test:e2e` `3/3 PASS` verdi. Bu test eşitliği provider iş akışını, Stage runtime sınırlarını veya Production korumalarını değiştirmez. Yeni source CI sonucu bekleniyor.

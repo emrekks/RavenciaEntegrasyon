@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - v10.64 immutable deployment ve iade bütünlüğü
+
+- `c18ca94` source CI `32026532850` ile; `release-2026-08-17-v10.64` immutable image publish `32026931375` ile başarıyla tamamlandı.
+- App `sha256:ecb225ea20a3f6759e25e5038939d6a600b6943c7eeadb3f1a33e94aba5d370f`, edge `sha256:8ab2e7e46a08a6ada482893559a14a657c6d54e0c0ac59455d5ad86c47ac4d43` digestleri checksum ve PostgreSQL restore-list doğrulanmış `20260817T115450Z` backup sonrasında deploy edildi.
+- API, Worker, Caddy ve PostgreSQL healthy; dış readiness `Healthy` ve frontend asset smoke geçti. PII açığa çıkarmayan aggregate kontrolde 26/26 iadenin bağlı siparişi, müşteri/adres snapshot'ı, ad alanı kaynağı ve iade satırı bulundu; son üç return-sync işi `SUCCEEDED`.
+
 ## 2026-08-17 - Dashboard güvenlik e2e beklentisi
 
 - Uygulama kabuğu Playwright senaryosu, Stage manuel operasyonları ile Production dış-yazma güvenlik zincirini doğru ayıran güncel dashboard metnine eşitlendi.
