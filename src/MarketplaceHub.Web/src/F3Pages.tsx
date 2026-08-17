@@ -277,6 +277,7 @@ export function ShipmentDetailPage() {
 }
 
 function ReturnReferenceRow({ item, order }: { item: ReturnClaim; order: Order | null }) {
+  const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null)
   const lines = order?.lines?.length ? order.lines : item.lines ?? []
   const shipment = order?.packages?.[0]
   const currency = order?.currency ?? item.currency
@@ -284,16 +285,16 @@ function ReturnReferenceRow({ item, order }: { item: ReturnClaim; order: Order |
   const total = order?.grossAmount || order?.netAmount || item.grossAmount || item.orderAmount
   const invoiceStatus = order?.invoiceStatus ?? item.invoiceStatus
   const discountAmount = order?.discountAmount ?? item.discountAmount
-  return <Link to={`/returns/${item.id}`} className="return-reference-row" role="row">
+  return <><Link to={`/returns/${item.id}`} className="return-reference-row" role="row">
     <span className="order-reference-meta"><strong>#{item.orderNumber}</strong><small>İade kodu: {item.externalClaimId}</small><small>Sipariş tarihi: <DateText value={order?.orderedAt ?? item.orderedAt} /></small><small>Paket No: {shipment?.externalPackageId ?? item.packageNumber ?? '—'}</small><small>Teslimat No: {shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? '—'}</small></span>
     <span className="order-reference-buyer"><strong>{order?.customerName ?? item.customerName}</strong>{order?.customerEmail && <small>{order.customerEmail}</small>}</span>
-    <span className="order-reference-products return-order-products">{lines.length ? lines.map(line => { const imageUrl = line.imageUrl ?? order?.primaryImageUrl; return <article key={line.id}><span className="reference-product-media">{imageUrl ? <img src={imageUrl} alt={`${line.title} ürün görseli`} /> : <span className="reference-product-placeholder">↩</span>}<b className="quantity-bubble">{line.orderedQuantity}</b></span><div><strong>{line.title}</strong><small>Stok Kodu: {line.sku}</small>{optionRows(line.optionSignature).map(option => <small key={`${option.label}:${option.value}`}>{option.label}: {option.value}</small>)}<small>Barkod: {line.barcode ?? '—'}</small><small>Model Kodu: {line.modelCode ?? '—'}</small></div></article> }) : <div className="reference-no-product"><strong>{item.productCount} ürün</strong><small>Barkod: {item.primaryBarcode ?? '—'}</small></div>}</span>
+    <span className="order-reference-products return-order-products">{lines.length ? lines.map(line => { const imageUrl = line.imageUrl ?? order?.primaryImageUrl; return <article key={line.id}><span className="reference-product-media">{imageUrl ? <button type="button" className="product-image-button" onClick={event => { event.preventDefault(); event.stopPropagation(); setPreviewImage({ url: imageUrl, title: line.title }) }} aria-label={`${line.title} görselini büyüt`}><img src={imageUrl} alt={`${line.title} ürün görseli`} /></button> : <span className="reference-product-placeholder">↩</span>}<b className="quantity-bubble">{line.orderedQuantity}</b></span><div><strong>{line.title}</strong><small>Stok Kodu: {line.sku}</small>{optionRows(line.optionSignature).map(option => <small key={`${option.label}:${option.value}`}>{option.label}: {option.value}</small>)}<small>Barkod: {line.barcode ?? '—'}</small><small>Model Kodu: {line.modelCode ?? '—'}</small></div></article> }) : <div className="reference-no-product"><strong>{item.productCount} ürün</strong><small>Barkod: {item.primaryBarcode ?? '—'}</small></div>}</span>
     <span className="order-reference-prices">{lines.length ? lines.map(line => <strong key={line.id}>{money(line.unitPrice)}</strong>) : <strong>{money(item.orderAmount)}</strong>}</span>
     <span className="order-reference-cargo"><strong>{shipment?.cargoProviderName ?? order?.cargoProviderName ?? item.cargoProviderName ?? 'Kargo bilgisi yok'}</strong><b>{shipment?.cargoTrackingNumber ?? order?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? '—'}</b></span>
     <span className={`order-reference-invoice ${invoiceStatus === 'FATURA_BEKLIYOR' ? 'invoice-pending' : 'invoice-created'}`}><small>Satış Tutarı:</small><strong>{money(total)}</strong>{discountAmount > 0 && <small>Satıcı İndirim Tutarı: {money(discountAmount)}</small>}<span>{invoiceStatus === 'FATURA_BEKLIYOR' ? 'Fatura bekleniyor' : invoiceStatus === 'FATURA_KONTROLDE' ? 'Fatura kontrol ediliyor' : invoiceStatus === 'FATURA_REDDEDILDI' ? 'Fatura reddedildi' : 'Fatura kesildi'}</span></span>
     <span><b>{item.reasonText ?? 'Belirtilmedi'}</b></span>
     <span><Badge value={item.status} />{item.actionDueAt && <small>{remainingText(item.actionDueAt)}</small>}<em>Detaylı bilgi gör →</em></span>
-  </Link>
+  </Link>{previewImage && <div className="workspace-modal-backdrop product-image-backdrop" role="presentation" onMouseDown={() => setPreviewImage(null)}><section className="workspace-modal product-image-modal" role="dialog" aria-modal="true" aria-label={`${previewImage.title} büyük ürün görseli`} onMouseDown={event => event.stopPropagation()}><header><h2>{previewImage.title}</h2><button type="button" className="modal-close" onClick={() => setPreviewImage(null)} aria-label="Pencereyi kapat">×</button></header><img src={previewImage.url} alt={`${previewImage.title} büyük ürün görseli`} /></section></div>}</>
 }
 
 export function ReturnsPage() {
