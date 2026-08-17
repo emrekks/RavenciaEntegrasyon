@@ -458,6 +458,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var inventories = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").ToListAsync(cancellationToken);
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).OrderByDescending(x => x.Status == "ACTIVE").ThenBy(x => x.Id).ToListAsync(cancellationToken);
         var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.Enabled).ToListAsync(cancellationToken);
+        var productAttributes = await db.ProductAttributeAssignments.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.VariantId == null)
+            .OrderBy(x => x.SortOrder)
+            .ToListAsync(cancellationToken);
         var connectionIds = profiles.Select(x => x.ConnectionId).Distinct().ToArray();
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
         var media = await (from item in db.ProductMedia.AsNoTracking()
@@ -480,7 +484,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var prices = variantViews.Where(x => x.SalePrice is not null).Select(x => x.SalePrice!.Value).ToList();
             var currency = variantViews.Select(x => x.Currency).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "TRY";
             var modelCode = variantViews.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), prices.Count > 0 ? prices.Min() : null, currency, modelCode, activePlatforms);
+            var attributes = productAttributes.Where(x => x.ProductId == product.Id)
+                .Select(x => new ProductAttributeAssignmentView(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder))
+                .ToList();
+            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), prices.Count > 0 ? prices.Min() : null, currency, modelCode, activePlatforms, attributes);
         }).ToList();
     }
 

@@ -54,3 +54,12 @@ Gerçek platform test hesapları ve resmî capability kanıtları gelene kadar c
 - HTML açıklama editörü güvenli iframe ön izlemesiyle eklendi; açıklama temel bilgiler kartının sonuna taşındı.
 - JPEG/PNG dosyaları ürün kaydından sonra mevcut özel medya endpointine yüklenir; varyant kombinasyon mantığı korunur.
 - Web production build ve typecheck: `PASS`; web testleri `19/19 PASS`; production bağımlılık taraması `0 vulnerability`. Ayrıntılı tarayıcı/Stage kabulü: `NOT_RUN`.
+
+## 2026-08-17 - Ürün düzenleme çalışma alanı eşitliği
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Ürün seviye özellik read modeli | CODED_BUILD_PASS | `ProductView`, yalnız ürün seviyesindeki typed attribute atamalarını döner; varyant atamaları kapsam dışı bırakılır. |
+| Düzenleme alanları | CODED_LOCAL | `/products/:id`, ayrı bir JSX düzeni yerine doğrudan ürün oluşturma bileşeninin düzenleme modunu kullanır; temel bilgiler, kategori/marka, özellikler, varyant stok/fiyat, ölçü/desi, görsel ve Trendyol yayın alanları tek render kaynağındadır. |
+| Hedefli web doğrulaması | PASS_LOCAL | `npm.cmd run typecheck` ve `npm.cmd test -- TrendyolOperationsPages.test.tsx`: 7/7 PASS. |
+| Ayrıntılı tarayıcı/Stage kabulü | NOT_RUN | Bu kullanıcı arayüzü/katalog değişikliği için çalıştırılmadı; dış yazma başlatılmadı. |

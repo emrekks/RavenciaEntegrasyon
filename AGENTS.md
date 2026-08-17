@@ -7,7 +7,7 @@ Bu dosya repository kökünün tamamı için geçerlidir.
 - Eşleştirme merkezi yalnız aktif `TRENDYOL` kapsamını gösterir; kategori ve marka iki ana sekmedir.
 - Panel kategorisi eşleştirme ekranından oluşturulabilir. Bu yerel katalog işlemidir; Trendyol dış yazma kapılarını açmaz.
 - Sipariş detay route'u kullanıcı arayüzünde yoktur; eski `/orders/:id` adresi listeye döner. Fatura ön izlemesi yalnız yerel taslak oluşturabilir. `STAGE` bağlantısındaki manuel provider denemeleri ek parola/açık onay istemez; `PRODUCTION` provider yazmaları için ilgili güvenlik kapıları korunur.
-- Güvenlik ekranı mevcut MFA/session endpointlerine bağlıdır; canlı kabulte MFA etkinleştirme veya oturum iptali kullanıcı onayı olmadan tetiklenmez. Yeni ürün ekranında desi doğrudan veya ölçülerden hesaplanır ve nullable varyant alanında saklanır.
+- Güvenlik ekranı mevcut MFA/session endpointlerine bağlıdır; canlı kabulte MFA etkinleştirme veya oturum iptali kullanıcı onayı olmadan tetiklenmez. Ürün ekleme ve düzenleme ekranları aynı çalışma alanı hiyerarşisini kullanır; desi nullable varyant alanında doğrudan veya ölçülerden hesaplanmış olarak gösterilir. Varyant kimliği/ölçüleri düzenleme ekranında güvenli biçimde görünür, stok/fiyat mevcut sürüm korumalı işlemlerden yönetilir.
 - E-Faturam aktif kapsamı tek işletmenin doğrudan `API_USER` hesabıdır; panel yalnız hesap e-posta/parolasını şifreli saklar. Partner `customerSignIn` ve çoklu müşteri credential alanları kullanılmaz.
 - Sonlandırılmış oturum kayıtları kullanıcı kapsamlı tekil/toplu silinebilir; aktif veya mevcut oturum silinemez. Genel faturalama ayar sayfası kullanıcı menüsünde yoktur.
 

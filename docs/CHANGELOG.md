@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Ürün düzenleme çalışma alanı eşitliği
+
+- Ürün düzenleme sayfası, ürün ekleme sayfasının temel bilgiler, kategori özellikleri, varyant fiyat/stok, kargo ölçüsü/desi, görsel ve yayın bölümlerini aynı çalışma alanı hiyerarşisinde sunacak şekilde düzenlendi.
+- Kayıtlı ürün seviyesi typed attribute atamaları ürün okuma sözleşmesine eklendi; düzenleme kaydı mevcut ETag/If-Match concurrency korumasını kullanır. Stok/fiyat endpointleri, Trendyol yayın akışı ve Production güvenlikleri değişmedi.
+- Web typecheck ve hedefli yayın-çalışma-alanı Vitest kontrolü geçti. Ayrıntılı tarayıcı/Stage kabulü çalıştırılmadı.
+
 ## 2026-08-17 - Trendyol approval polling interval correction
 
 - Logical `PRODUCT_APPROVAL_PENDING` reconciliation results now retain the processor-requested five-minute delay instead of being stretched to the generic one-hour terminal retry interval.

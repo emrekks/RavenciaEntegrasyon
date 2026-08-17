@@ -40,6 +40,7 @@ public sealed record ProductVariantView(
     string? VatInclusion = null,
     string? RoundingMode = null,
     decimal? SafetyStock = null);
+public sealed record ProductAttributeAssignmentView(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record ProductView(
     Guid Id,
     string Title,
@@ -55,7 +56,8 @@ public sealed record ProductView(
     decimal? StartingPrice = null,
     string Currency = "TRY",
     string? ModelCode = null,
-    IReadOnlyList<string>? ActivePlatforms = null);
+    IReadOnlyList<string>? ActivePlatforms = null,
+    IReadOnlyList<ProductAttributeAssignmentView>? Attributes = null);
 public sealed record ListingProfileView(Guid Id, Guid ProductId, Guid ConnectionId, string? TitleOverride, string? DescriptionOverride, string? ExternalCategoryId, string? ExternalBrandId, int? DeliveryTimeDays, bool Enabled, string DesiredStatus, string ActualStatus, long Version);
 public sealed record PublicationLineView(Guid VariantId, string Sku, string? Barcode, string DesiredStatus, string ActualStatus, string? RejectionCode);
 public sealed record PublicationStatusView(Guid ProductId, Guid ConnectionId, Guid? ProfileId, string? DesiredStatus, string? ActualStatus, string? LastRejectionCode, Guid? LastJobId, string? LastJobStatus, IReadOnlyList<PublicationLineView> Lines);

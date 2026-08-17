@@ -70,25 +70,41 @@ test('does not render an invented overdue duration for a missing provider due da
   expect(screen.queryByText(/gün gecikmiştir/)).not.toBeInTheDocument()
 })
 
-test('queues Trendyol product update from the product publication workspace', async () => {
-  let posted = ''
+test('uses the exact product-creation workspace for product editing', async () => {
   globalThis.fetch = vi.fn((input, init) => {
     const url = String(input)
     if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-product' })
     if (url.endsWith('/api/v1/products/product-1')) return json({ id: 'product-1', title: 'Ürün', description: 'Açıklama', status: 'ACTIVE', version: 1, variants: [{ id: 'variant-1', sku: 'SKU-1', barcode: 'BC-1', version: 1 }] })
     if (url.includes('/api/v1/connections?')) return json({ items: [{ id: 'connection-1', platformCode: 'TRENDYOL', displayName: 'Trendyol', externalStoreId: 'seller-1', status: 'ACTIVE' }], nextCursor: null, hasMore: false })
-    if (url.includes('/publication-status/')) return json({ productId: 'product-1', connectionId: 'connection-1', profileId: 'profile-1', actualStatus: 'LIVE', desiredStatus: 'LIVE', lastJobStatus: 'COMPLETED', lastRejectionCode: null, lines: [] })
-    if (url.endsWith('/api/v1/products/product-1/update-jobs') && init?.method === 'POST') { posted = String(init.body); return json('job-1', 202) }
     return json({}, 404)
   }) as typeof fetch
 
   renderAt('/products/product-1', '/products/:id', <ProductDetailPage />)
-  const select = await screen.findByLabelText('Ürün Trendyol bağlantısı')
-  await within(select).findByRole('option', { name: 'Trendyol · seller-1' })
-  fireEvent.change(select, { target: { value: 'connection-1' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Trendyol ürününü güncelle' }))
-  await waitFor(() => expect(JSON.parse(posted)).toEqual({ connectionId: 'connection-1' }))
-  expect(await screen.findByRole('status')).toHaveTextContent('job-1')
+  expect(await screen.findByRole('heading', { name: 'Yeni Ürün Ekle' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Ürün seçenek grupları' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Yayınlanacak kanallar' })).toBeInTheDocument()
+})
+
+test('edits catalog fields and saved category attributes from the unified product workspace', async () => {
+  let patchBody = ''
+  globalThis.fetch = vi.fn((input, init) => {
+    const url = String(input)
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-product-edit' })
+    if (url.endsWith('/api/v1/products/product-1') && (!init?.method || init.method === 'GET')) return json({ id: 'product-1', title: 'Eski ürün', description: '<p>Eski açıklama</p>', brandId: 'brand-1', categoryId: 'category-1', status: 'ACTIVE', version: 4, modelCode: 'MODEL-1', variants: [{ id: 'variant-1', sku: 'SKU-1', barcode: 'BC-1', version: 1, onHand: 3, available: 3 }], attributes: [{ attributeId: 'attribute-1', valueId: 'value-1', textValue: null, numberValue: null, booleanValue: null, sortOrder: 0 }] })
+    if (url.endsWith('/api/v1/products/product-1') && init?.method === 'PATCH') { patchBody = String(init.body); return json({}) }
+    if (url.includes('/api/v1/catalog/categories?')) return json({ items: [{ id: 'category-1', name: 'Elbise', path: 'Giyim / Elbise', depth: 1, isLeaf: true, isActive: true, version: 1 }], nextCursor: null, hasMore: false })
+    if (url.includes('/api/v1/catalog/brands?')) return json({ items: [{ id: 'brand-1', name: 'Ravencia', isActive: true, version: 1 }], nextCursor: null, hasMore: false })
+    if (url.includes('/api/v1/catalog/categories/category-1/attribute-requirements')) return json([{ attributeId: 'attribute-1', isRequired: true, allowsCustomValue: false, displayOrder: 0, attribute: { id: 'attribute-1', code: 'KUMAS', name: 'Kumaş', dataType: 'SINGLE_SELECT', values: [{ id: 'value-1', value: 'Pamuk' }] } }])
+    if (url.includes('/api/v1/connections?')) return json({ items: [], nextCursor: null, hasMore: false })
+    return json({}, 404)
+  }) as typeof fetch
+
+  renderAt('/products/product-1', '/products/:id', <ProductDetailPage />)
+  const title = await screen.findByDisplayValue('Eski ürün')
+  await screen.findByRole('button', { name: 'Pamuk' })
+  fireEvent.change(title, { target: { value: 'Yeni ürün adı' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
+  await waitFor(() => expect(JSON.parse(patchBody)).toEqual({ title: 'Yeni ürün adı', description: '<p>Eski açıklama</p>', brandId: 'brand-1', categoryId: 'category-1', attributes: [{ attributeId: 'attribute-1', valueId: 'value-1', textValue: null, numberValue: null, booleanValue: null, sortOrder: 0 }] }))
 })
 
 test('queues only capability-provided shipment action with optimistic concurrency', async () => {
