@@ -104,7 +104,7 @@ test('edits catalog fields and saved category attributes from the unified produc
   await screen.findByRole('button', { name: 'Pamuk' })
   fireEvent.change(title, { target: { value: 'Yeni ürün adı' } })
   fireEvent.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
-  await waitFor(() => expect(JSON.parse(patchBody)).toEqual({ title: 'Yeni ürün adı', description: '<p>Eski açıklama</p>', brandId: 'brand-1', categoryId: 'category-1', attributes: [{ attributeId: 'attribute-1', valueId: 'value-1', textValue: null, numberValue: null, booleanValue: null, sortOrder: 0 }] }))
+  await waitFor(() => expect(JSON.parse(patchBody)).toEqual({ title: 'Yeni ürün adı', description: '<p>Eski açıklama</p>', brandId: 'brand-1', categoryId: 'category-1', attributes: [{ attributeId: 'attribute-1', valueId: 'value-1', textValue: null, numberValue: null, booleanValue: null, sortOrder: 0 }], variantsToCreate: [] }))
 })
 
 test('queues only capability-provided shipment action with optimistic concurrency', async () => {
