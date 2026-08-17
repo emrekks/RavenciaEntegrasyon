@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - Dashboard e2e güvenlik metni eşitliği
+
+Dashboard Playwright kabuk testi eski "bağlantı bazında" metin beklentisi nedeniyle source CI'da başarısız oldu. Beklenti, görünür güncel "Environment sınırı ve dış yazma korumaları korunur" metnine güncellendi; `npm.cmd run test:e2e` `3/3 PASS` verdi. Bu test eşitliği provider iş akışını, Stage runtime sınırlarını veya Production korumalarını değiştirmez. Yeni source CI sonucu bekleniyor.
+
 ## 2026-08-17 - Stage fatura taslağı rehberinin runtime ile eşitlenmesi
 
 Siparişten fatura taslağı açıldığında açıklama artık bağlantı ortamını esas alır. `STAGE` manuel gönderiminde ek parola/açık onay istemi yoktur; connection/credential, teknik mali input, idempotency ve provider response sınırları devam eder. `PRODUCTION` açıklaması parola/açık onayı korur. Dashboard da Stage manuel operasyonlarını capability kanıtı/açık onay ile yanlış bağlamaz; Production yazma zincirini açıkça korur. API yüzey testi Stage kısa devresinin Production açık-onay ve yeniden-doğrulama kapılarından önce kalmasını ayrıca korur. Gönderi detayındaki Stage etiket testi yalnız Stage paketinde görünür; Production normal ekranı teknik canary içermez. Bu değişiklikler provider isteği başlatmaz; hedefli web `6/6`, API `3/3` ve TypeScript typecheck geçti.

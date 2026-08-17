@@ -132,6 +132,12 @@
 
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-17 - Dashboard güvenlik e2e eşitliği
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Kabuk e2e beklentisi | PASS_LOCAL | Görünür dashboard güvenlik metni, Stage manuel işlem ve Production dış-yazma sınırını güncel şekilde ayırır. Playwright eski metni değil `Environment sınırı ve dış yazma korumaları korunur` ifadesini doğrular; `npm.cmd run test:e2e` `3/3 PASS`. Provider çağrısı ve güvenlik kapıları değişmedi. |
+
 ## 2026-08-17 - Stage operasyon rehberi
 
 | Kanıt | Durum | Not |

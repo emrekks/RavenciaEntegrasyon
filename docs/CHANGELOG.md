@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Dashboard güvenlik e2e beklentisi
+
+- Uygulama kabuğu Playwright senaryosu, Stage manuel operasyonları ile Production dış-yazma güvenlik zincirini doğru ayıran güncel dashboard metnine eşitlendi.
+- Hedefli Playwright paketi `3/3 PASS` verdi. Bu yalnız test beklentisi uyumudur; provider çağrısı, Stage sınırı ve Production güvenlik kapıları değişmedi.
+
 ## 2026-08-17 - Stage fatura taslağı işlem rehberi hizalaması
 
 - Fatura taslağı penceresi, aktif E-Faturam bağlantısının ortamını doğru açıklar: `STAGE` için gerçek gönderimin ek parola veya açık onay olmadan fatura ekranından başlatılabileceğini; `PRODUCTION` için parola ve açık onayın korunduğunu gösterir.
