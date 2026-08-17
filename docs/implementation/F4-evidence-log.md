@@ -1,5 +1,12 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-17 - Protected-endpoint result visibility
+
+| Evidence | Status | Note |
+| --- | --- | --- |
+| Panel diagnosis | CODED | The E-Faturam connection's latest-test card translates `EFATURAM_ACCESS_TOKEN_REJECTED` into the actual user reason: sign-in succeeded and the provider rejected the fresh token only on a protected Stage endpoint. |
+| Safety | PRESERVED | The visible explanation does not weaken Stage boundary, credential encryption, validation, idempotency or any Production write safeguard. |
+
 ## 2026-08-17 - Authorized-read connection preflight runtime result
 
 | Evidence | Status | Note |
