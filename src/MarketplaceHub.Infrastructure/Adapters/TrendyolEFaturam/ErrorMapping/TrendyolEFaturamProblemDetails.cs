@@ -38,7 +38,7 @@ internal static class TrendyolEFaturamProblemDetails
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
         var path = value.Trim();
-        if (Uri.TryCreate(path, UriKind.Absolute, out var absolute))
+        if (!path.StartsWith('/') && Uri.TryCreate(path, UriKind.Absolute, out var absolute))
             path = absolute.AbsolutePath + (string.IsNullOrEmpty(absolute.Query) ? absolute.Fragment : string.Empty);
         var queryIndex = path.IndexOf('?');
         if (queryIndex >= 0) path = path[..queryIndex];
