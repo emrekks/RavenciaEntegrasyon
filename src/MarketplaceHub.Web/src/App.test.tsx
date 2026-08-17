@@ -11,6 +11,20 @@ test('shows a safe loading state before auth resolution', () => {
   expect(screen.getByRole('status')).toHaveTextContent('Güvenli oturum doğrulanıyor')
 })
 
+test('explains the Stage and Production external-operation boundaries accurately on the dashboard', async () => {
+  globalThis.fetch = async input => {
+    const url = String(input)
+    if (url.endsWith('/api/v1/auth/me')) return new Response(JSON.stringify({ id: 'user-1', email: 'admin@ravencia.test', tenantId: 'tenant-1', state: 'ACTIVE', displayName: 'Ravencia Admin', role: 'OWNER' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (url.includes('/api/v1/connections?') || url.includes('/api/v1/orders?') || url.includes('/api/v1/returns?') || url.includes('/api/v1/invoice-workspace?') || url.includes('/api/v1/products?')) return new Response(JSON.stringify({ items: [], hasMore: false, nextCursor: null }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    return new Response('{}', { status: 404, headers: { 'Content-Type': 'application/json' } })
+  }
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/dashboard']}><App /></MemoryRouter></QueryClientProvider>)
+  expect(await screen.findByText(/Stage'de manuel işlemler bağlantı, credential, teknik doğrulama ve tekrar korumasıyla çalışır/)).toBeInTheDocument()
+  expect(screen.getByText(/Production dış yazmaları ise yetkilendirme, aktif bağlantı, yazma anahtarları, doğrulama ve audit ile korunur/)).toBeInTheDocument()
+  expect(screen.queryByText(/capability kanıtı, bağlantı anahtarı ve açık işlem onayı birlikte olmadan çalışmaz/)).not.toBeInTheDocument()
+})
+
 test('collapses the sidebar to icons and remembers the choice', async () => {
   localStorage.clear()
   globalThis.fetch = async input => {

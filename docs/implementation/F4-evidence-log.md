@@ -1,5 +1,11 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-17 - Stage manuel fatura rehberi
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Ortama göre kullanıcı metni | PASS_LOCAL | Taslak penceresi Stage bağlantısında ek parola/açık onay olmadan fatura ekranından başlatılan manuel gönderimi, Production'da ise korunmuş parola/açık onay akışını açıkça ayırır. `TrendyolOperationsPages.test.tsx` `6/6` ve Web typecheck geçti; teknik input, idempotency, provider response validation ve environment boundary değişmedi. |
+
 ## 2026-08-13 - v10.62 immutable deployment kabulü
 
 | Kanıt | Durum | Not |

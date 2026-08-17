@@ -1,5 +1,13 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - Stage fatura taslağı rehberinin runtime ile eşitlenmesi
+
+Siparişten fatura taslağı açıldığında açıklama artık bağlantı ortamını esas alır. `STAGE` manuel gönderiminde ek parola/açık onay istemi yoktur; connection/credential, teknik mali input, idempotency ve provider response sınırları devam eder. `PRODUCTION` açıklaması parola/açık onayı korur. Dashboard da Stage manuel operasyonlarını capability kanıtı/açık onay ile yanlış bağlamaz; Production yazma zincirini açıkça korur. Bu değişiklik provider isteği başlatmaz; hedefli Vitest `10/10` ve TypeScript typecheck geçti.
+
+## 2026-08-13 - v10.63 eksik termin tarihi deployment kabulü
+
+`c555c28` source CI `31650747089` .NET çözüm, Docker-backed Testcontainers, formatter, web test/build ve Playwright paketini geçti. `release-2026-08-13-v10.63` immutable publish `31650999736`, app `sha256:551eaa9cb4adab5bdab2e2662edf4aeec3d7cbd7ee99ef8b64d51b9e6e128e8e` ve edge `sha256:4bfeee466b9c9f13a2bd4468e312658e716c4946ea130cf9840a2501b4b403f5` üretti. Checksum ve `pg_restore --list` doğrulanmış rollback backup sonrasında deploy edildi; fail-closed config, migration, API/Worker/Caddy/PostgreSQL health, dış readiness `200` ve frontend asset smoke geçti. Bu sürüm eksik termin alanını uydurma gecikme olarak göstermeden açıkça eksik veri sayar.
+
 ## 2026-08-13 - Stage sipariş eşitleme ve eksik termin doğruluğu
 
 Normal panelden başlatılan salt-okunur `TRENDYOL_ORDER_SYNC` correlation `d93a995127d24fd1a12e54db3769464c` ilk denemede `SUCCEEDED` oldu; panel 189 Stage siparişini gösterdi. Bu kabulde bazı sağlayıcı satırlarında termin alanının .NET varsayılan tarihiyle geldiği görüldü ve arayüzde uydurma binlerce günlük gecikme ürettiği doğrulandı. UI artık `0001-01-01` veya geçersiz tarihi eksik veri sayar: mikro ihracatta açık sağlayıcı mesajını, diğer siparişlerde `Termin zamanı bekleniyor` durumunu gösterir. Hedefli Vitest `6/6` ve TypeScript typecheck geçti. Dış yazma, fatura, idempotency veya Production güvenlik zinciri değişmedi.

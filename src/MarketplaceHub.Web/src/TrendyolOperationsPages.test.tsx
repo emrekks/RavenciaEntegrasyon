@@ -39,6 +39,8 @@ test('shows order information directly in the operational list without a detail 
   fireEvent.click(screen.getByRole('menuitem', { name: 'Fatura Oluştur' }))
   expect(await screen.findByRole('dialog', { name: 'Fatura Oluştur' })).toBeInTheDocument()
   expect(await screen.findByText('Kadıköy İstanbul')).toBeInTheDocument()
+  expect(screen.getByText(/Stage bağlantısında gerçek gönderim/)).toBeInTheDocument()
+  expect(screen.queryByText(/Production bağlantısında E-Faturam’a gerçek gönderim/)).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Devam Et ve Taslağı Oluştur' })).toBeEnabled()
   fireEvent.click(screen.getByRole('button', { name: 'Pencereyi kapat' }))
   fireEvent.click(screen.getByRole('checkbox', { name: 'Sipariş T-1001 seç' }))

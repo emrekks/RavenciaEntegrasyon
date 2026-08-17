@@ -132,6 +132,20 @@
 
 # F3 Trendyol Kanıt Günlüğü
 
+## 2026-08-17 - Stage operasyon rehberi
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Dashboard ve etiket rehberi | PASS_LOCAL | Dashboard, Stage manuel işlemleri capability/evidence veya açık onayla yanlış bağlamaz; Production dış yazma zincirini ayrı olarak açıklar. Toplu etiket bildirimi de capability kontrolünün işlemi gereksiz yere kapattığını söylemez. `App.test.tsx` ve `TrendyolOperationsPages.test.tsx` toplam `10/10`, Web typecheck `PASS`. |
+
+## 2026-08-13 - v10.63 deployment kabulü
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Source / immutable release | PASS | `c555c28` source CI `31650747089`; `release-2026-08-13-v10.63` publish `31650999736` geçti. |
+| Backup / deploy | PASS_TARGET | Checksum ve `pg_restore --list` doğrulanmış backup sonrasında app `sha256:551eaa9c...8e8e`, edge `sha256:4bfeee46...03f5` deploy edildi. Migration, servis health, dış readiness ve frontend asset smoke geçti. |
+| Görsel doğruluk | DEPLOYED | Eksik .NET varsayılan termin alanı artık uydurma gecikme gününe dönüştürülmez. |
+
 ## 2026-08-13 - Stage sipariş read yeniden kabulü ve termin doğruluğu
 
 | Kanıt | Durum | Not |

@@ -1,5 +1,16 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Stage fatura taslağı işlem rehberi hizalaması
+
+- Fatura taslağı penceresi, aktif E-Faturam bağlantısının ortamını doğru açıklar: `STAGE` için gerçek gönderimin ek parola veya açık onay olmadan fatura ekranından başlatılabileceğini; `PRODUCTION` için parola ve açık onayın korunduğunu gösterir.
+- Bu yalnız kullanıcı rehberi düzeltmesidir. Stage'de connection/credential, mali input doğrulaması, idempotency ve provider yanıt kontrolü; Production'da mevcut dış-yazma güvenlik zinciri korunur.
+- Dashboard ve toplu etiket bildirimi de aynı ayrımı kullanır: Stage manuel işlemleri capability kanıtı veya açık onayla yanlış yönlendirilmez; Production güvenlik zinciri açıkça korunur.
+
+## 2026-08-13 - v10.63 immutable deployment
+
+- `c555c28` source CI `31650747089` ve `release-2026-08-13-v10.63` immutable publish `31650999736` geçti.
+- App `sha256:551eaa9cb4adab5bdab2e2662edf4aeec3d7cbd7ee99ef8b64d51b9e6e128e8e`, edge `sha256:4bfeee466b9c9f13a2bd4468e312658e716c4946ea130cf9840a2501b4b403f5` digestleri checksum/`pg_restore --list` doğrulanmış rollback backup sonrasında deploy edildi. API, Worker, Caddy, PostgreSQL health; dış readiness ve frontend asset smoke geçti.
+
 ## 2026-08-13 - Eksik termin tarihi gösterim düzeltmesi
 
 - Sağlayıcının eksik termin alanını .NET varsayılan tarihiyle (`0001-01-01`) göndermesi halinde sipariş listesi artık uydurma gecikme günü hesaplamaz. Panel, resmi termin bulunmadığını açıkça gösterir.
