@@ -4,7 +4,7 @@
 
 v10.72 source CI `32040097876`, immutable publish `32040366761`, backup `20260817T145206Z` and Ubuntu API/Worker/Caddy/PostgreSQL/HTTPS health checks passed. The live Stage connection page now distinguishes a valid direct-account sign-in from provider protected-endpoint authorization rejection. `EFATURAM_ACCESS_TOKEN_REJECTED` is shown as a provider rejection of a fresh token, not as a password, capability, evidence or user-approval failure. The Stage manual operation remains available and Production controls are unchanged.
 
-The protected permanent-document URL request now uses the media type documented for that endpoint (`Accept: text/plain`), while invoice create remains `Accept: application/json`. This narrows the next safe Stage read verification to the provider's token authorization rather than a request content-negotiation mismatch.
+The protected permanent-document URL request now uses the media type documented for that endpoint (`Accept: text/plain`), while invoice create remains `Accept: application/json`. v10.73 source CI `32040768596`, immutable publish `32040993423`, backup `20260817T150421Z` and healthy deployment passed. A fresh no-effect Stage preflight still returned `401 / EFATURAM_ACCESS_TOKEN_REJECTED`, so content negotiation is excluded and the remaining blocker is the provider's token authorization on protected endpoints.
 
 ## 2026-08-17 - E-Faturam authorized-read connection preflight runtime result
 

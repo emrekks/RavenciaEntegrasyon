@@ -3,6 +3,7 @@
 ## 2026-08-17 - E-Faturam permanent URL media-type alignment
 
 - Protected permanent-document URL reads, including the no-effect Stage preflight, now send the provider-documented `Accept: text/plain`; invoice create requests retain `Accept: application/json`.
+- v10.73 source CI `32040768596`, immutable publish `32040993423`, backup `20260817T150421Z` and healthy deployment passed. The fresh Stage read still returned `401 / EFATURAM_ACCESS_TOKEN_REJECTED`, excluding content negotiation as the cause.
 
 ## 2026-08-17 - E-Faturam provider rejection visibility
 
