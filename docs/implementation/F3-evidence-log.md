@@ -1,3 +1,9 @@
+## 2026-08-17 - Approval reconciliation polling interval correction
+
+- **Finding:** The Stage job was logically pending after attempt `17`, but generic exponential retry changed the processor-requested five-minute approval read-back into an approximately one-hour delay.
+- **Fix:** Only `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` results with `PRODUCT_APPROVAL_PENDING` now preserve the requested five-minute delay. This is a read-only status poll. Provider/network/rate-limit retry results remain on the generic retry policy and retain their provider `Retry-After` behavior.
+- **Verification:** Infrastructure and the PostgreSQL integration-test project build with zero errors. The targeted PostgreSQL lease test is `NOT_RUN_LOCAL_DOCKER_UNAVAILABLE`: Testcontainers could not connect to `npipe://./pipe/docker_engine` before test setup. No provider write or local terminal-state promotion was performed.
+
 ## 2026-08-17 - Stage product approval reconciliation follow-up
 
 - **Read-only runtime check:** At `2026-08-17 16:20 UTC`, the existing `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` job remained `RETRY_SCHEDULED / PRODUCT_APPROVAL_PENDING` after attempt `17`.

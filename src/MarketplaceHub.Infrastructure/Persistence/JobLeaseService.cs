@@ -54,7 +54,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         };
         job.CompletedAt = kind == JobCompletionKind.Retry ? null : now;
         job.AvailableAt = kind == JobCompletionKind.Retry
-            ? now.Add(EffectiveRetryDelay(job, result.RetryAfter))
+            ? now.Add(EffectiveRetryDelay(job, result))
             : job.AvailableAt;
         job.LastErrorCode = result.ErrorCode;
         job.LastErrorSummary = result.ErrorSummary;
@@ -80,8 +80,19 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         return true;
     }
 
-    private static TimeSpan EffectiveRetryDelay(IntegrationJob job, TimeSpan? requested)
+    private static TimeSpan EffectiveRetryDelay(IntegrationJob job, JobExecutionResult result)
     {
+        var requested = result.RetryAfter;
+        // Product approval is a bounded, read-only reconciliation poll. Its processor
+        // deliberately asks for five minutes; applying the generic terminal one-hour
+        // backoff would prevent the seven-day acceptance window from being observed.
+        // Provider/network retries still follow the generic policy and Retry-After.
+        if (job.JobType == F3JobTypes.ProductApprovalReconcile
+            && string.Equals(result.ErrorCode, "PRODUCT_APPROVAL_PENDING", StringComparison.Ordinal)
+            && requested.HasValue
+            && requested.Value > TimeSpan.Zero)
+            return requested.Value;
+
         var policyDelay = JobRetryPolicy.DelayAfterAttempt(job.AttemptCount, job.Id);
         if (requested is null || requested <= TimeSpan.Zero) return policyDelay;
         var bounded = requested > TimeSpan.FromHours(1) ? TimeSpan.FromHours(1) : requested.Value;

@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Trendyol approval polling interval correction
+
+- Logical `PRODUCT_APPROVAL_PENDING` reconciliation results now retain the processor-requested five-minute delay instead of being stretched to the generic one-hour terminal retry interval.
+- The change applies only to the read-only approval status poll. Provider/network/rate-limit retries, external writes, duplicate protection, and Production safety controls are unchanged.
+- Infrastructure and the PostgreSQL integration-test project build with zero errors. The targeted runtime test is `NOT_RUN_LOCAL_DOCKER_UNAVAILABLE` because Testcontainers cannot reach the local Docker named pipe.
+
 ## 2026-08-17 - Trendyol product approval reconciliation follow-up
 
 - A read-only Stage check confirmed that the existing product approval reconciliation remains `PRODUCT_APPROVAL_PENDING` after attempt `17`; the worker scheduled its next provider read-back for `17:25:49 UTC`.

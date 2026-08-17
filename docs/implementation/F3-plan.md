@@ -6,6 +6,10 @@
 
 - [x] 17. Mikro ihracat rozetini yalnız fatura sütununda kısa adla göster; mavi satır göstergesini koru.
 
+## Runtime acceptance note - 2026-08-17
+
+`PRODUCT_APPROVAL_PENDING` is a read-only Trendyol publication-status result. Its processor-requested five-minute polling interval must remain distinct from generic provider/network retry backoff and from every external-write control.
+
 ## Hedef
 
 Trendyol Türkiye CORE ürün, referans, sipariş, paket, iade, etiket, webhook ve fatura-link akışlarını idempotent, fail-closed ve uzlaştırılabilir biçimde tamamlamak.

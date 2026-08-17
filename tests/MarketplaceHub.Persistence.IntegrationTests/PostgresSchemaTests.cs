@@ -251,6 +251,19 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
         var transientEntity = await db.IntegrationJobs.SingleAsync(x => x.Id == transientLease.Id, cancellationToken);
         Assert.Equal(JobStatus.RetryScheduled, transientEntity.Status); Assert.Null(transientEntity.CompletedAt); Assert.True(transientEntity.AvailableAt > DateTimeOffset.UtcNow.AddSeconds(20));
 
+        var approvalJob = NewJob(tenant.Id, "approval-poll");
+        approvalJob.JobType = F3JobTypes.ProductApprovalReconcile;
+        approvalJob.AttemptCount = 16;
+        approvalJob.MaxAttempts = (7 * 24 * 12) + 1;
+        approvalJob.AvailableAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+        db.IntegrationJobs.Add(approvalJob); await db.SaveChangesAsync(cancellationToken);
+        var approvalLease = Assert.IsType<MarketplaceHub.Application.LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
+        Assert.Equal(approvalJob.Id, approvalLease.Id);
+        var approvalCompletedAt = DateTimeOffset.UtcNow;
+        Assert.True(await leases.CompleteAsync(approvalLease.Id, approvalLease.LeaseToken, JobExecutionResult.Retry("PRODUCT_APPROVAL_PENDING", retryAfter: TimeSpan.FromMinutes(5)), cancellationToken));
+        await db.Entry(approvalJob).ReloadAsync(cancellationToken);
+        Assert.InRange(approvalJob.AvailableAt, approvalCompletedAt.AddMinutes(4).AddSeconds(55), approvalCompletedAt.AddMinutes(5).AddSeconds(5));
+
         var reviewJob = NewJob(tenant.Id, "manual-review"); db.IntegrationJobs.Add(reviewJob); await db.SaveChangesAsync(cancellationToken);
         var reviewLease = Assert.IsType<MarketplaceHub.Application.LeasedJob>(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), cancellationToken));
         Assert.True(await leases.CompleteAsync(reviewLease.Id, reviewLease.LeaseToken, JobExecutionResult.ManualReview("REMOTE_STATUS_UNKNOWN"), cancellationToken));
