@@ -1,5 +1,13 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-17 - Safe Stage authentication replay
+
+| Evidence | Status | Note |
+| --- | --- | --- |
+| Runtime cause | VERIFIED | The Stage invoice has no external reference, yet remained `SUBMITTING` after an unambiguous provider 401 and had no panel replay action. |
+| Bounded replay | CODED_PENDING_TEST | Allows the pinned Stage E-Arşiv canary to replay `EFATURAM_AUTHENTICATION_FAILED`, `EFATURAM_ACCESS_TOKEN_REJECTED` and historical inferred-privilege 401 results only when external reference is empty. |
+| Safety | PRESERVED | Production, other stores, external references and ambiguous outcomes remain excluded; existing idempotency, audit, input validation and provider response validation are unchanged. |
+
 ## 2026-08-17 - Stage manuel fatura rehberi
 
 | Kanıt | Durum | Not |

@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Safe Stage authentication replay
+
+- A pinned E-Faturam Stage canary with no external reference can be replayed after an unambiguous provider authentication rejection.
+- Replay remains unavailable for Production, any external reference, non-E-Arşiv invoices, and unknown/ambiguous provider results.
+- The same invoice idempotency key, audit entry, technical validation and provider response validation remain in force.
+
 ## 2026-08-17 - E-Faturam Stage 401 classification correction
 
 - A successful direct API_USER `signIn` account is not classified from a guessed JWT privilege name.

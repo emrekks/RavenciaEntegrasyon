@@ -309,14 +309,12 @@ public sealed partial class F4BillingService(
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (invoice is null) return NotFound<Guid>();
         if (invoice.Version != expectedVersion) return Precondition<Guid>(invoice.Version);
-        var safeScopeReplay = invoice.Status == InvoiceStatus.ManualReview
-            && string.Equals(invoice.LastErrorCode, "EFATURAM_TOKEN_SCOPE_MISSING", StringComparison.Ordinal)
-            && string.IsNullOrWhiteSpace(invoice.ExternalReference);
-        if (invoice.Status != InvoiceStatus.Ready && !safeScopeReplay || invoice.InvoiceType != "EARSIVFATURA" || !string.IsNullOrWhiteSpace(invoice.ExternalReference)) return ServiceResult<Guid>.Fail("STAGE_INVOICE_FIXTURE_INVALID", "Canary yalnız gönderilmemiş Ready taslakta veya provider isteğinden önce token kapsamı eksikliğiyle duran aynı Stage taslakta çalışır.", 409);
+        var safeReplay = IsSafeStageReplay(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference);
+        if (invoice.Status != InvoiceStatus.Ready && !safeReplay || invoice.InvoiceType != "EARSIVFATURA" || !string.IsNullOrWhiteSpace(invoice.ExternalReference)) return ServiceResult<Guid>.Fail("STAGE_INVOICE_FIXTURE_INVALID", "Canary yalnız gönderilmemiş Ready taslakta veya kesin dış referanssız Stage kimlik doğrulama sonucuyla duran aynı taslakta çalışır.", 409);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
         if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) || !string.Equals(connection.ExternalStoreId, "Ravencia - Ravencia", StringComparison.Ordinal)) return ServiceResult<Guid>.Fail("STAGE_INVOICE_FIXTURE_REQUIRED", "Canary yalnız sabitlenmiş E-Faturam Stage test hesabındaki faturada çalışır.", 422);
         invoice.Status = InvoiceStatus.Submitting; invoice.IssuedAt ??= timeProvider.GetUtcNow(); invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
-        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "EFATURAM_STAGE_CAPABILITY_PROBE_ENQUEUED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = safeScopeReplay ? "pre-submit-token-scope-replay" : "auditli-stage-test-order", CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "EFATURAM_STAGE_CAPABILITY_PROBE_ENQUEUED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = safeReplay ? "no-external-reference-authentication-replay" : "auditli-stage-test-order", CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
         return await AddJob(invoice, F4JobTypes.StageCapabilityProbe, idempotencyKey, correlationId, cancellationToken);
     }
     public async Task<ServiceResult<Guid>> EnqueueCancellationAsync(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -388,10 +386,7 @@ public sealed partial class F4BillingService(
 
     internal static bool AllowsStageCapabilityProbe(InvoiceStatus status, string? lastErrorCode, string? externalReference, string invoiceType, PlatformConnection? connection)
     {
-        var safeScopeReplay = status == InvoiceStatus.ManualReview
-            && string.Equals(lastErrorCode, "EFATURAM_TOKEN_SCOPE_MISSING", StringComparison.Ordinal)
-            && string.IsNullOrWhiteSpace(externalReference);
-        return (status == InvoiceStatus.Ready || safeScopeReplay)
+        return (status == InvoiceStatus.Ready || IsSafeStageReplay(status, lastErrorCode, externalReference))
             && string.Equals(invoiceType, "EARSIVFATURA", StringComparison.Ordinal)
             && string.IsNullOrWhiteSpace(externalReference)
             && connection is not null
@@ -399,6 +394,11 @@ public sealed partial class F4BillingService(
             && string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)
             && string.Equals(connection.ExternalStoreId, "Ravencia - Ravencia", StringComparison.Ordinal);
     }
+
+    private static bool IsSafeStageReplay(InvoiceStatus status, string? lastErrorCode, string? externalReference) =>
+        string.IsNullOrWhiteSpace(externalReference)
+        && ((status == InvoiceStatus.ManualReview && string.Equals(lastErrorCode, "EFATURAM_TOKEN_SCOPE_MISSING", StringComparison.Ordinal))
+            || (status == InvoiceStatus.Submitting && lastErrorCode is "EFATURAM_AUTHENTICATION_FAILED" or "EFATURAM_ACCESS_TOKEN_REJECTED" or "EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING"));
 
     private async Task<bool> WriteGates(Guid tenantId, Guid connectionId, string capability, CancellationToken cancellationToken)
     {

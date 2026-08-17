@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - Safe Stage authentication replay
+
+The Stage canary had a non-ambiguous provider 401 with no external reference but remained in `SUBMITTING`, so the newly corrected adapter could not be retried from the normal panel. The replay action now permits exactly this bounded case on the pinned Stage E-Faturam account. It does not open Production, does not replay a record with an external reference, and retains idempotency, validation, audit and response checks. Targeted Stage-probe tests are pending before a fresh immutable release and runtime retry.
+
 ## 2026-08-17 - E-Faturam Stage 401 classification correction
 
 The direct API_USER `signIn` and connection test remain successful; the account is not the diagnosed fault. The public API contract documents the Stage gateway, `signIn`, `x-access-token`, companyId/userId and create endpoint, but not an `INVOICE_CREATE` JWT authorization contract. The claim-derived runtime branch was removed. Manual Stage create reaches the same provider endpoint without a claim/evidence gate and a genuine provider 401 remains safely visible as `EFATURAM_ACCESS_TOKEN_REJECTED`. The remaining investigation is the provider's opaque protected-endpoint response, not an account claim. Production fail-closed writes are unchanged.
