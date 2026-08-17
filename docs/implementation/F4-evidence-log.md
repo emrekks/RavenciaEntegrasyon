@@ -277,5 +277,5 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 | Resmî sözleşme | OFFICIAL_DOCUMENTATION_VERIFIED | API_USER modeli `signIn` tokenı, Stage gateway ve standart create endpointlerini kullanır; mevcut adapter bu sözleşmeyle eşleşir. |
 | Güvenli sınıflandırma | CODED_TARGETED_VALIDATED | JWT değeri/ham claim saklanmadan yalnız seçili firma privilege listesinde `INVOICE_CREATE` var/yok/bilinmiyor sınıflandırılır. Eksik privilege ayrı hata kodudur; bilinmeyen biçim fail-closed mevcut 401 kodunda kalır. |
 | Hedefli test | PASS_LOCAL | Adapter contract `38/38` PASS. |
-| Runtime kabul | NOT_RUN | Immutable release/deploy ve dördüncü Stage submit tekrarı bekleniyor. |
-| İlk source CI | FORMATTER_FIXED_REVALIDATION_PENDING | `32034862011` yalnız `TrendyolEFaturamErrorMapper` switch-expression whitespace kuralında durdu; davranış değişmeden biçim düzeltildi. |
+| Runtime kabul | BLOCKED_PROVIDER_API_PRIVILEGE | v10.67 CI `32035385747`, publish `32035738058`, backup `20260817T133652Z` ve healthy deploy tamamlandı. Dördüncü submit seçili firma JWT privilege listesinde `INVOICE_CREATE` bulunmadığını gösterdi; `EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING / 401`, dış referans yok. |
+| İlk source CI | FIXED_REVALIDATED | `32034862011` yalnız formatter whitespace kuralında durdu; davranış değişmeden biçim düzeltildi ve `32035385747` geçti. |

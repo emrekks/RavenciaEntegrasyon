@@ -4,8 +4,9 @@
 
 - Başarılı `signIn` sonrasında create endpointinin verdiği açıklamasız `401`, token değeri saklanmadan JWT içindeki firma kapsamına ait `INVOICE_CREATE` privilege'ı açısından sınıflandırılır.
 - Privilege açıkça yoksa hata `EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING` olarak ayrılır; claim yoksa veya biçim bilinmiyorsa mevcut fail-closed `EFATURAM_ACCESS_TOKEN_REJECTED` korunur. Bu yalnız teşhistir, token claim'i yetkilendirme bypass'ı olarak kullanılmaz.
-- Resmî bireysel API_USER gateway, `signIn` ve create sözleşmesiyle mevcut endpoint/header kullanımı yeniden karşılaştırıldı. Hedefli adapter contract `38/38` PASS; release/deploy ve Stage tekrar `NOT_RUN`.
-- Linux source CI'ın bildirdiği switch-expression whitespace kuralı düzeltildi; davranış değişmedi.
+- Resmî bireysel API_USER gateway, `signIn` ve create sözleşmesiyle mevcut endpoint/header kullanımı yeniden karşılaştırıldı. Hedefli adapter contract `38/38` PASS. Source CI `32035385747`, immutable publish `32035738058`, doğrulanmış `20260817T133652Z` backup ve v10.67 deploy tamamlandı.
+- Dördüncü gerçek Stage submit, taze tokenın seçili firma privilege listesinde `INVOICE_CREATE` bildirmediğini kanıtladı ve `EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING` ile durdu. Provider create çağrısı 401 oldu; dış referans/ETTN oluşmadı.
+- Linux source CI'ın bildirdiği switch-expression whitespace kuralı düzeltildi; davranış değişmedi ve yeniden doğrulama geçti.
 
 ## 2026-08-17 - E-Faturam korumalı endpoint teşhisinin güvenli derinleştirilmesi
 
