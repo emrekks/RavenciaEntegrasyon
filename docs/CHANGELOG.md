@@ -4,6 +4,7 @@
 
 - `v10.65` Stage replay düzeltmesi immutable olarak yayımlandı ve sağlıklı deploy edildi. Bağlantı testi yeniden başarılı olurken mali doğrulaması geçen eski taslağın güncel kodla tekrarı korumalı create endpointinde `EFATURAM_ACCESS_TOKEN_REJECTED / 401` aldı; bu sonuç hesap giriş hatası değildir.
 - Provider `x-request-id` vermediğinde RFC problem gövdesinden yalnız `/problem/...` biçimindeki `instance` referansı, query değerleri ve serbest metinler atılarak güvenli teşhis alanına alınır. Ham cevap, token, parola ve müşteri verisi saklanmaz.
+- Kökten başlayan problem yollarının Linux'ta `file:` URI sayılmasına bağlı platform farkı giderildi; aynı allowlist Windows ve Linux'ta eşit çalışır.
 - Hedefli adapter contract testleri `37/37` PASS. Bu teşhis değişikliği endpoint/header sözleşmesini, Stage mali doğrulamayı veya Production güvenlik zincirini değiştirmez; yeni immutable release/deploy ve provider tekrarı `NOT_RUN`.
 
 ## 2026-08-17 - E-Faturam Stage replay aksiyonunun açılması

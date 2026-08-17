@@ -267,5 +267,5 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 | Hesap/signIn | PASS_STAGE | Normal panel bağlantı testi güncel sürümde tekrar başarılıdır; sorun genel hesap girişi olarak sınıflandırılmaz. |
 | Provider create | BLOCKED_PROVIDER_AUTHORIZED_ENDPOINT | Mali input doğrulaması geçen taslak, taze tokenla resmi Stage create endpointinden `401` aldı; provider `x-request-id` döndürmedi ve dış referans oluşmadı. |
 | Güvenli teşhis | CODED_TARGETED_VALIDATED | `x-request-id` yoksa yalnız allowlist `/problem/...` instance yolu okunur; query, serbest metin, ham response, token, parola ve PII saklanmaz. Büyük veya geçersiz gövde reddedilir. |
-| Hedefli test | PASS_LOCAL | `F4TrendyolEFaturamContractTests` `37/37` PASS. |
+| Hedefli test | PASS_LOCAL | `F4TrendyolEFaturamContractTests` `37/37` PASS; kökten başlayan problem yolu Windows/Linux eşitliğiyle normalize edilir. |
 | Runtime tekrar | NOT_RUN | Güvenli problem referansı yakalama kodunun immutable release/deploy ve aynı provider tekrarı henüz çalıştırılmadı. |
