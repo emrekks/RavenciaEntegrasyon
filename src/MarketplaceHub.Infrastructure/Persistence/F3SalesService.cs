@@ -111,7 +111,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
             ? StageLabelFormats
             : await CapabilityValues(tenantId, row.Package.ConnectionId, F3Capabilities.LabelRead, "formats", cancellationToken);
         var documents = await db.ShipmentDocuments.AsNoTracking().Where(x => x.TenantId == tenantId && x.PackageId == id).OrderByDescending(x => x.DocumentVersion).Select(x => new ShipmentDocumentView(x.Id, x.DocumentKind, x.Format, x.Source, x.DocumentVersion, x.CreatedAt, x.ExpiresAt)).ToListAsync(cancellationToken);
-        return ServiceResult<ShipmentDetailView>.Ok(new(Map(row.Package, row.OrderNumber), actions, formats, documents));
+        return ServiceResult<ShipmentDetailView>.Ok(new(Map(row.Package, row.OrderNumber), actions, formats, stage, documents));
     }
 
     public Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, F3Capabilities.OrderRead, F3JobTypes.OrderSync, JsonSerializer.Serialize(new { connectionId, externalOrderId }), correlationId, cancellationToken);

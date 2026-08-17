@@ -2,7 +2,7 @@
 
 ## 2026-08-17 - Stage fatura taslağı rehberinin runtime ile eşitlenmesi
 
-Siparişten fatura taslağı açıldığında açıklama artık bağlantı ortamını esas alır. `STAGE` manuel gönderiminde ek parola/açık onay istemi yoktur; connection/credential, teknik mali input, idempotency ve provider response sınırları devam eder. `PRODUCTION` açıklaması parola/açık onayı korur. Dashboard da Stage manuel operasyonlarını capability kanıtı/açık onay ile yanlış bağlamaz; Production yazma zincirini açıkça korur. API yüzey testi Stage kısa devresinin Production açık-onay ve yeniden-doğrulama kapılarından önce kalmasını ayrıca korur. Bu değişiklik provider isteği başlatmaz; hedefli API testi `3/3` geçti.
+Siparişten fatura taslağı açıldığında açıklama artık bağlantı ortamını esas alır. `STAGE` manuel gönderiminde ek parola/açık onay istemi yoktur; connection/credential, teknik mali input, idempotency ve provider response sınırları devam eder. `PRODUCTION` açıklaması parola/açık onayı korur. Dashboard da Stage manuel operasyonlarını capability kanıtı/açık onay ile yanlış bağlamaz; Production yazma zincirini açıkça korur. API yüzey testi Stage kısa devresinin Production açık-onay ve yeniden-doğrulama kapılarından önce kalmasını ayrıca korur. Gönderi detayındaki Stage etiket testi yalnız Stage paketinde görünür; Production normal ekranı teknik canary içermez. Bu değişiklikler provider isteği başlatmaz; hedefli web `6/6`, API `3/3` ve TypeScript typecheck geçti.
 
 ## 2026-08-13 - v10.63 eksik termin tarihi deployment kabulü
 

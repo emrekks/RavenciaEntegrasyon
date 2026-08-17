@@ -7,6 +7,7 @@
 - Dashboard ve toplu etiket bildirimi de aynı ayrımı kullanır: Stage manuel işlemleri capability kanıtı veya açık onayla yanlış yönlendirilmez; Production güvenlik zinciri açıkça korunur.
 - F3 kabul planındaki eski “açık onaylı Stage write” ifadesi de güncel runtime politikasıyla eşitlendi.
 - API yüzey testi, Stage’deki parola/açık-onay kısa devresinin Production açık-onay ve yeniden-doğrulama kapılarından önce kalmasını regresyona karşı korur.
+- Gönderi detayındaki teknik Stage etiket testi Production paketlerinden kaldırıldı; normal etiket işlemi korunurken test yüzeyi yalnız Stage bağlantısında sade biçimde görünür.
 
 ## 2026-08-13 - v10.63 immutable deployment
 

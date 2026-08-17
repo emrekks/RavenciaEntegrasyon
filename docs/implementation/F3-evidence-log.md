@@ -137,6 +137,7 @@
 | Kanıt | Durum | Not |
 | --- | --- | --- |
 | Dashboard ve etiket rehberi | PASS_LOCAL | Dashboard, Stage manuel işlemleri capability/evidence veya açık onayla yanlış bağlamaz; Production dış yazma zincirini ayrı olarak açıklar. Toplu etiket bildirimi de capability kontrolünün işlemi gereksiz yere kapattığını söylemez. `App.test.tsx` ve `TrendyolOperationsPages.test.tsx` toplam `10/10`, Web typecheck `PASS`. |
+| Etiket test yüzeyi environment ayrımı | PASS_LOCAL | Shipment detail sözleşmesi `IsStageConnection` alanını taşır. Production paketinde yalnız normal uygun etiket işlemi görünür; teknik test formu yalnız Stage bağlantısına taşınır ve canary/evidence terminolojisi normal ekrandan kaldırılır. `TrendyolOperationsPages.test.tsx` `6/6`, Web typecheck ve API integration `3/3` geçti. |
 
 ## 2026-08-13 - v10.63 deployment kabulü
 

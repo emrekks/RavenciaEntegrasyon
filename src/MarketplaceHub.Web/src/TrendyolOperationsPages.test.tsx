@@ -96,13 +96,14 @@ test('queues only capability-provided shipment action with optimistic concurrenc
   globalThis.fetch = vi.fn((input, init) => {
     const url = String(input)
     if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-shipment' })
-    if (url.endsWith('/api/v1/shipments/shipment-1') && (!init?.method || init.method === 'GET')) return json({ package: { id: 'shipment-1', orderId: 'order-1', orderNumber: 'O-1', externalPackageId: 'P-1', status: 'PROCESSING', rawStatus: 'Picking', cargoTrackingNumber: 'T-1', statusOccurredAt: '2026-08-05T00:00:00Z', version: 4 }, allowedActions: ['INVOICED'], supportedLabelFormats: ['ZPL'], documents: [] })
+    if (url.endsWith('/api/v1/shipments/shipment-1') && (!init?.method || init.method === 'GET')) return json({ package: { id: 'shipment-1', orderId: 'order-1', orderNumber: 'O-1', externalPackageId: 'P-1', status: 'PROCESSING', rawStatus: 'Picking', cargoTrackingNumber: 'T-1', statusOccurredAt: '2026-08-05T00:00:00Z', version: 4 }, allowedActions: ['INVOICED'], supportedLabelFormats: ['ZPL'], isStageConnection: false, documents: [] })
     if (url.endsWith('/api/v1/shipments/shipment-1/actions') && init?.method === 'POST') { actionHeaders = new Headers(init.headers); actionBody = String(init.body); return json('job-2', 202) }
     return json({}, 404)
   }) as typeof fetch
 
   renderAt('/shipments/shipment-1', '/shipments/:id', <ShipmentDetailPage />)
   expect(await screen.findByRole('option', { name: 'INVOICED' })).toBeInTheDocument()
+  expect(screen.queryByText('Stage etiket testi')).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Resmî aksiyon payload JSON'), { target: { value: '{"invoiceNumber":"INV-1"}' } })
   fireEvent.click(screen.getByRole('button', { name: 'Aksiyonu kuyruğa al' }))
   await waitFor(() => expect(JSON.parse(actionBody)).toEqual({ action: 'INVOICED', payloadJson: '{"invoiceNumber":"INV-1"}' }))
