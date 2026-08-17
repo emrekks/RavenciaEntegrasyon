@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Manuel teslim modeli
+
+- Aktif durum, zorunlu sistem envanteri, açık dış bağımlılıklar, öneriler ve dağıtımlı teslim tanımı [Manuel Proje İlerletme ve Teslim Modeli](implementation/MANUAL-OPERATIONS.md) içinde belgelendi. Normal teslim `main` push, source CI, immutable release, Ubuntu deploy, health ve hedef panel doğrulamasını kapsar; Production güvenlik kapıları korunur.
+
 ## 2026-08-17 - Eşleştirme görünürlüğü ve ürün düzenleme araçları
 
 - Ürün özellikleri kitaplığı kategori seçimine bağlı olmadan görünür ve düzenlenebilir hale getirildi; aktif bağlantıda kaydedilmiş attribute eşleşmeleri seçimsiz özetlenir.

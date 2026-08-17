@@ -1,6 +1,8 @@
 schema_version: 1
 document_version: '10.0'
 updated_at: '2026-08-17'
+manual_delivery_model: docs/implementation/MANUAL-OPERATIONS.md
+delivery_definition: CHANGE_COMPLETE_ONLY_AFTER_MAIN_PUSH_CI_IMMUTABLE_RELEASE_DEPLOY_HEALTH_AND_TARGET_VERIFICATION_UNLESS_EXPLICITLY_DRAFT_ONLY
 active_scope:
 - TRENDYOL
 - TRENDYOL_EFATURAM

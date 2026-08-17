@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - Manuel ilerletme ve dağıtımlı teslim modeli
+
+Öncelikler ürün sahibi tarafından manuel belirlenecek. [Manuel Proje İlerletme ve Teslim Modeli](MANUAL-OPERATIONS.md), aktif faz durumunu, zorunlu altyapıları, açık dış sistem ihtiyaçlarını ve önerileri toplar. Değişiklik; commit → `main` push → source CI → immutable release → Ubuntu deploy → health ve hedef panel doğrulaması tamamlanmadan teslim sayılmaz. GitHub Actions uygulamayı çalıştırmak için teknik zorunluluk olmasa da normal dağıtımın immutable image/digest izlenebilirlik kapısı olarak korunur. Stage kolaylaştırmaları ve Production fail-closed write zinciri değişmedi.
+
 ## 2026-08-17 - Bağımsız özellik kitaplığı ve ürün metin araçları
 
 Eşleştirme merkezinin özellik kitaplığı artık kategori seçimi olmadan aktif yerel özellikleri/değerleri gösterir ve yeni özellik/değer eklenmesine izin verir. Kategori seçimi yalnız zorunluluk bağlama ve kategoriye özgü eşleştirme ayrıntısı için gereklidir. Aktif Trendyol bağlantısında üçüncü adım, kategori seçilmeden tüm kaydedilmiş özellik eşleşmelerinin salt-okunur özetini gösterir; API'nin `scopeExternalId=*` read-only görünümü yalnız bu listeleme içindir. Ürün ekranında varyant oluştur/temizle aksiyonları 5. bölümde sağda birlikte yer alır, 100 satırlık görsel sayaç kalkar; gerçek API/inventory üst sınırı 1000 olarak korunur. Desi varsayılan metni kaldırıldı. Zengin açıklama paneline başlık, alıntı, sıralı/sırasız liste, bağlantı, üstü çizili ve canlı karakter sayacı eklendi. Typecheck ve hedefli web testleri `10/10 PASS`; browser/Stage görsel kabulü `NOT_RUN`.
