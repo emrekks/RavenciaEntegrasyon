@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - E-Faturam Stage güvenli replay aksiyonu
+
+Normal panelden güncel E-Faturam bağlantı testi yeniden çalıştırıldı ve `SUCCEEDED` oldu; hesap/credential ve `signIn` token üretimi sağlıklıdır. Eski canary taslağı `EFATURAM_TOKEN_SCOPE_MISSING / MANUAL_REVIEW` durumundayken backend aynı dış referanssız taslağın sabitlenmiş Stage hesapta güvenli replay'ine izin verdiği halde detay API'si `STAGE_CAPABILITY_PROBE` aksiyonunu üretmiyordu. Aksiyon üretimi backend doğrulamasıyla eşitlendi. Yalnız `TRENDYOL_EFATURAM + STAGE + Ravencia - Ravencia`, E-Arşiv, dış referansı olmayan `Ready` veya güvenli pre-submit scope replay kaydı kapsam içindedir. Production ve başka bağlantılar kapalı kalır. Hedefli backend `2/2`, F4 web `5/5` PASS; immutable release/deploy ve gerçek provider replay henüz `NOT_RUN`.
+
 ## 2026-08-17 - v10.64 release ve iade veri smoke
 
 `c18ca94` için source CI (`32026532850`) ve `release-2026-08-17-v10.64` immutable publish (`32026931375`) başarıyla tamamlandı. Ubuntu hedefte checksum ve PostgreSQL restore-list doğrulanmış `20260817T115450Z` backup sonrasında app `sha256:ecb225ea20a3f6759e25e5038939d6a600b6943c7eeadb3f1a33e94aba5d370f`, edge `sha256:8ab2e7e46a08a6ada482893559a14a657c6d54e0c0ac59455d5ad86c47ac4d43` ile deploy edildi. API/Worker/Caddy/PostgreSQL healthy, dış `/health/ready` `Healthy` ve frontend asset smoke geçti. PII göstermeyen aggregate kontrol, 26 iadenin tamamında bağlı sipariş, müşteri/adres snapshot'ı, anlamlı ad kaynağı ve en az bir iade satırı bulunduğunu; son üç `TRENDYOL_RETURN_SYNC` işinin `SUCCEEDED` olduğunu gösterdi. Yeni provider write başlatılmadı; F3/F4 dış kabul blocker'ları değişmedi.

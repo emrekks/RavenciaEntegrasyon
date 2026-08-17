@@ -269,7 +269,7 @@ public sealed partial class F4BillingService(
         var attempts = await db.InvoiceSubmissionAttempts.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new InvoiceAttemptView(x.AttemptNumber, x.Outcome, x.ErrorCode, x.StartedAt, x.CompletedAt)).ToListAsync(cancellationToken);
         var deliveries = await db.MarketplaceDeliveries.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new MarketplaceDeliveryView(x.Id, x.DeliveryType, x.Status, x.ExternalReference, x.ErrorCode, x.CreatedAt)).ToListAsync(cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId, cancellationToken);
-        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, invoice.InvoiceNumber, invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, cancellationToken), invoice.Version, connection is null || IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection)));
+        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, invoice.InvoiceNumber, invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, connection, cancellationToken), invoice.Version, connection is null || IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection)));
     }
 
     public async Task<ServiceResult<InvoiceDetailView>> ValidateAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
@@ -369,10 +369,11 @@ public sealed partial class F4BillingService(
         db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
     }
 
-    private async Task<IReadOnlyList<string>> AllowedActions(Invoice invoice, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<string>> AllowedActions(Invoice invoice, PlatformConnection? connection, CancellationToken cancellationToken)
     {
         var actions = new List<string>(); if (invoice.Status is InvoiceStatus.Draft or InvoiceStatus.ValidationFailed) actions.Add("VALIDATE");
         if (invoice.Status == InvoiceStatus.Ready && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, F4Capabilities.InvoiceSubmit, cancellationToken)) actions.Add("SUBMIT");
+        if (AllowsStageCapabilityProbe(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference, invoice.InvoiceType, connection)) actions.Add("STAGE_CAPABILITY_PROBE");
         if (invoice.Status is (InvoiceStatus.UnknownResult or InvoiceStatus.Submitted) && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, F4Capabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
         if (invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed) && invoice.PackageId is not null)
         {
@@ -383,6 +384,20 @@ public sealed partial class F4BillingService(
         if (invoice.InvoiceType == "EARSIVFATURA" && invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.Completed) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, F4Capabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
         if (invoice.Status == InvoiceStatus.CancellationPending && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, F4Capabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
         return actions;
+    }
+
+    internal static bool AllowsStageCapabilityProbe(InvoiceStatus status, string? lastErrorCode, string? externalReference, string invoiceType, PlatformConnection? connection)
+    {
+        var safeScopeReplay = status == InvoiceStatus.ManualReview
+            && string.Equals(lastErrorCode, "EFATURAM_TOKEN_SCOPE_MISSING", StringComparison.Ordinal)
+            && string.IsNullOrWhiteSpace(externalReference);
+        return (status == InvoiceStatus.Ready || safeScopeReplay)
+            && string.Equals(invoiceType, "EARSIVFATURA", StringComparison.Ordinal)
+            && string.IsNullOrWhiteSpace(externalReference)
+            && connection is not null
+            && string.Equals(connection.PlatformCode, "TRENDYOL_EFATURAM", StringComparison.Ordinal)
+            && string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(connection.ExternalStoreId, "Ravencia - Ravencia", StringComparison.Ordinal);
     }
 
     private async Task<bool> WriteGates(Guid tenantId, Guid connectionId, string capability, CancellationToken cancellationToken)

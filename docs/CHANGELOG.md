@@ -1,5 +1,12 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - E-Faturam Stage replay aksiyonunun açılması
+
+- Güncel panel bağlantı testi başarılı oldu; hesap/credential sorunu olmadığı doğrulandı.
+- Dış referans oluşmadan `EFATURAM_TOKEN_SCOPE_MISSING` ile manuel incelemeye düşen sabit Stage taslağı için backend'de zaten bulunan güvenli canary replay endpointi artık fatura detayının `allowedActions` yanıtında görünür.
+- Kapsam yalnız sabitlenmiş E-Faturam Stage hesabı, E-Arşiv ve dış referansı olmayan güvenli taslak/replay ile sınırlıdır. Production ve başka bağlantılar negatif testle kapalı kalır.
+- Hedefli backend `2/2`, F4 web `5/5` PASS. Release/deploy ve gerçek provider replay `NOT_RUN`.
+
 ## 2026-08-17 - v10.64 immutable deployment ve iade bütünlüğü
 
 - `c18ca94` source CI `32026532850` ile; `release-2026-08-17-v10.64` immutable image publish `32026931375` ile başarıyla tamamlandı.

@@ -249,3 +249,13 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 | Form sözleşmesi | PASS_LOCAL | E-Faturam bağlantı formu, provider sözleşmesindeki partner e-posta/parola ile Stage test müşteri e-posta/parola ve 10/11 haneli VKN/TCKN alanlarını gönderir. Eski tekil credential alanları artık geçerli payload üretmez. |
 | Hedefli web doğrulaması | PASS_LOCAL | `npm.cmd test -- --run` ile 5 dosyada 21/21 Vitest, `npm.cmd run typecheck` ve `npm.cmd run build` geçti. Playwright 3/3 senaryo geçti; yerel başlatıcı süreci süre aşımında kapanmadığı için komut sonucu `NOT_RUN` olarak ayrı tutulur. |
 | Stage provider kabulü | BLOCKED_EXTERNAL_CREDENTIALS | Önceki tekil hesap kaydı, resmi partner → müşteri API zinciri için yeterli değildir. Şifreli partner ve Stage test müşteri API credential'ları ile VKN/TCKN yenilenmeden bağlantı smoke veya mali submit tekrarlanmaz. |
+## 2026-08-17 — Stage güvenli replay aksiyon görünürlüğü
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Güncel bağlantı testi | PASS_STAGE | Normal panelden çalıştırılan E-Faturam bağlantı testi güncel sürümde başarılı oldu; hesap/credential ve `signIn` akışı çalışıyor. |
+| Kök neden | FIXED_IN_CODE | `EnqueueStageCapabilityProbeAsync` eski pre-submit `EFATURAM_TOKEN_SCOPE_MISSING` taslağını güvenli replay için kabul ederken `AllowedActions` bu aksiyonu detay API'sine taşımıyordu. |
+| Stage sınırı | TARGETED_PASS | Aksiyon yalnız sabitlenmiş `TRENDYOL_EFATURAM/STAGE/Ravencia - Ravencia` bağlantısında, dış referansı olmayan E-Arşiv `Ready` veya güvenli scope replay kaydında görünür. Backend testleri `2/2` PASS. |
+| Production güvenliği | PRESERVED | Production bağlantısı ve farklı store kapsamı negatif testle kapalıdır; parola/onay, master/connection write, validation, idempotency, reconciliation ve audit akışı değiştirilmedi. |
+| UI regresyonu | PASS_LOCAL | F4 Vitest `5/5` PASS. |
+| Runtime kabul | NOT_RUN | Immutable release/deploy ve gerçek provider Stage replay bu kod sürümü deploy edilene kadar çalıştırılmadı. |
