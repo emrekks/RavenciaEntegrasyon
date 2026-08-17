@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Trendyol product approval reconciliation follow-up
+
+- A read-only Stage check confirmed that the existing product approval reconciliation remains `PRODUCT_APPROVAL_PENDING` after attempt `17`; the worker scheduled its next provider read-back for `17:25:49 UTC`.
+- No duplicate product create, manual approval promotion, or provider write was performed. Production safeguards are unchanged.
+
 ## 2026-08-17 - Real Stage invoice-create result after connection acceptance
 
 - After the new Stage connection test succeeded, the bounded E-Arşiv canary reached the real provider create endpoint and returned `EFATURAM_ACCESS_TOKEN_REJECTED`.

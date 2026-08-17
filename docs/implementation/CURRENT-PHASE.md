@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - Trendyol Stage approval reconciliation follow-up
+
+The durable `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` job was checked read-only at `16:20 UTC`. It remains `RETRY_SCHEDULED / PRODUCT_APPROVAL_PENDING` after attempt `17`; its next provider read-back is scheduled for `17:25:49 UTC`. No duplicate create, manual approval promotion, or provider write was issued. F3 remains pending the provider's terminal listing result.
+
 ## 2026-08-17 - Post-connection real Stage invoice-create result
 
 After the v10.76 connection job succeeded, the panel queued the bounded E-Arşiv Stage canary on invoice `019ff6b4-f556-79d7-82cc-928709382389`. The worker completed `EFATURAM_STAGE_CAPABILITY_PROBE` at `2026-08-17 16:17:35 UTC` with `EFATURAM_ACCESS_TOKEN_REJECTED`. The invoice remains without an external reference. This confirms the application does not impose the previous synthetic-read blocker and that the remaining failure is the provider rejecting the fresh token on the actual create endpoint. No capability/evidence/fiscal-policy/user-approval/connection-switch gate blocked the manual Stage request; Production controls remain unchanged.

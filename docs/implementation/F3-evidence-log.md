@@ -1,3 +1,9 @@
+## 2026-08-17 - Stage product approval reconciliation follow-up
+
+- **Read-only runtime check:** At `2026-08-17 16:20 UTC`, the existing `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` job remained `RETRY_SCHEDULED / PRODUCT_APPROVAL_PENDING` after attempt `17`.
+- **Next action:** The durable worker has scheduled the next provider read-back for `2026-08-17 17:25:49 UTC`. No duplicate product-create request, manual state promotion, or provider write was performed.
+- **Boundary:** The pending result is a genuine provider approval state. Stage endpoint/credential separation, idempotency, reconciliation/audit, and all Production safeguards remain unchanged.
+
 ## 2026-08-13 — v10.61 return operation-reason deployment
 
 - **CI/release:** Source CI `31646490936` and immutable publish `31646826162` `PASS`; release tag `release-2026-08-12-v10.61` resolves to `cb56898`.
