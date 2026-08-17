@@ -222,17 +222,27 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var orderLineIds = returnLines.Select(x => x.OrderLineId).Distinct().ToArray();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
+        var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId) && x.OriginalInvoiceId == null).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
         var imageUrls = await MediaUrls(tenantId, orderLines.Values.Select(x => x.VariantId), cancellationToken);
         var rows = claims.Select(claim =>
         {
             var order = orders.GetValueOrDefault(claim.OrderId);
             var claimLines = returnLines.Where(x => x.ClaimId == claim.Id).ToList();
             var package = packages.FirstOrDefault(x => x.OrderId == claim.OrderId);
+            var invoice = invoices.FirstOrDefault(x => x.OrderId == claim.OrderId);
             var firstLine = claimLines.Select(x => orderLines.GetValueOrDefault(x.OrderLineId)).FirstOrDefault(x => x is not null);
             var image = firstLine?.VariantId is { } variantId ? imageUrls.GetValueOrDefault(variantId) : null;
+            var lineViews = claimLines.Select(returnLine =>
+            {
+                var line = orderLines.GetValueOrDefault(returnLine.OrderLineId);
+                if (line is null) return null;
+                var source = SourceLine(line.SourceSnapshotJson);
+                return new OrderLineView(line.Id, line.Sku, line.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId, source.ModelCode, source.OptionSignature, source.ImageUrl ?? (line.VariantId is { } id ? imageUrls.GetValueOrDefault(id) : null));
+            }).Where(line => line is not null).Select(line => line!).ToList();
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, claim.ActionDueAt, claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
-                order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", package?.CargoProviderExternalId, package?.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode);
+                order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", package?.CargoProviderExternalId, package?.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode,
+                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : InvoiceLabel(invoice, order.CustomerSnapshotJson), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0);
         }).ToList();
         return Page(rows, limit, x => x.Id);
     }

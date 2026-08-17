@@ -323,7 +323,12 @@ public sealed record ReturnListView(
     string? CargoTrackingNumber = null,
     string? PrimaryImageUrl = null,
     int ProductCount = 0,
-    string? PrimaryBarcode = null);
+    string? PrimaryBarcode = null,
+    IReadOnlyList<OrderLineView>? Lines = null,
+    string? PackageNumber = null,
+    string InvoiceStatus = "FATURA_BEKLIYOR",
+    decimal GrossAmount = 0,
+    decimal DiscountAmount = 0);
 public sealed record ReturnDetailView(
     Guid Id,
     string ExternalClaimId,
