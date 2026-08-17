@@ -62,8 +62,7 @@ test('creates cartesian variants with variant-scoped attributes and global multi
   const handles = screen.getAllByLabelText(/varyantını sıralamak için sürükleyin/)
   expect(handles).toHaveLength(2)
   fireEvent.dragStart(handles[1], { dataTransfer: { effectAllowed: 'move' } })
-  fireEvent.dragOver(handles[0].parentElement!, { dataTransfer: { effectAllowed: 'move' } })
-  fireEvent.drop(handles[0].parentElement!, { dataTransfer: { effectAllowed: 'move' } })
+  fireEvent.dragEnter(handles[0].parentElement!, { dataTransfer: { effectAllowed: 'move' } })
   expect(screen.getAllByPlaceholderText('Varyant SKU')[0]).toHaveValue('RAV-BLUZ-2')
   fireEvent.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
 
@@ -82,6 +81,33 @@ test('creates cartesian variants with variant-scoped attributes and global multi
     expect.objectContaining({ attributeId: 'size-attribute' }),
     expect.objectContaining({ attributeId: 'color-attribute', valueId: 'color-white' }),
   ]))
+})
+
+test('persists newly generated variants while preserving existing product sale lines', async () => {
+  let patchBody: any
+  globalThis.fetch = vi.fn((input, init) => {
+    const url = String(input)
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-catalog' })
+    if (url.endsWith('/api/v1/products/product-1')) {
+      if (init?.method === 'PATCH') { patchBody = JSON.parse(String(init.body)); return json({ id: 'product-1', variants: [] }) }
+      return json({ id: 'product-1', title: 'Mevcut ürün', description: 'Açıklama', categoryId: 'category-1', version: 3, variants: [{ id: 'variant-existing', sku: 'OLD-SKU', optionSignature: 'Tek Ürün', onHand: 0, desi: 1 }] })
+    }
+    if (url.includes('/api/v1/catalog/categories?')) return json(page([{ id: 'category-1', name: 'Bluz', path: 'Giyim / Bluz', depth: 1, isLeaf: true, isActive: true, version: 1 }]))
+    if (url.includes('/api/v1/catalog/brands?') || url.includes('/api/v1/connections?')) return json(page([]))
+    if (url.endsWith('/api/v1/catalog/categories/category-1/attribute-requirements')) return json([{ attributeId: 'color', isRequired: false, allowsCustomValue: false, displayOrder: 0, attribute: { id: 'color', code: 'COLOR', name: 'Renk', dataType: 'SINGLE_SELECT', values: [{ id: 'black', value: 'Siyah' }] } }])
+    return json({}, 404)
+  }) as typeof fetch
+
+  renderPage(<NewProductPage editProductId="product-1" />)
+  const colorToggle = await screen.findByLabelText(/Renk/)
+  fireEvent.change(screen.getByLabelText('Temel SKU'), { target: { value: 'NEW-SKU' } })
+  fireEvent.click(colorToggle)
+  fireEvent.click(screen.getByRole('button', { name: 'Siyah' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Ürünleri ekle' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
+
+  await waitFor(() => expect(patchBody).toBeDefined())
+  expect(patchBody.variantsToCreate).toEqual([expect.objectContaining({ sku: 'NEW-SKU-1' })])
 })
 
 test('loads category-scoped attribute mappings in one bulk request', async () => {

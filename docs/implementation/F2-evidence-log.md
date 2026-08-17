@@ -1,5 +1,11 @@
 # F2 Kanıt Günlüğü
 
+## 2026-08-17 - Düzenleme varyant append kalıcılığı
+
+- `UpdateProductCommand.VariantsToCreate` yalnız yeni varyantları ekler; mevcut varyantların silinmesi veya dış liste/enventory bağlantılarının kopması söz konusu değildir.
+- Servis SKU/barkod tenant tekilliği, kategori zorunlu özellikleri, 1000 varyant üst sınırı ve her yeni varyant için MAIN envanter kaydını doğrular.
+- Hedefli doğrulama: `dotnet build MarketplaceHub.sln --no-restore` `PASS` (0 warning/error); `npm.cmd run typecheck` `PASS`; `CatalogWorkspacePages.test.tsx` `3/3 PASS`, yeni düzenleme PATCH gövdesi senaryosu dahil. Tarayıcı/Stage kabulü `NOT_RUN`.
+
 ## 2026-08-08 production v9 hotfix
 
 - Dashboard ve yeni ürün çalışma alanındaki sayfalı API koleksiyonları eksik/null `items` alanında boş listeye güvenli düşecek şekilde düzeltildi.

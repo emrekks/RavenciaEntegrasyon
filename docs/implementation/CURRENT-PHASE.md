@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - Ürün düzenlemede varyant kalıcılığı
+
+Ürün düzenleme `PATCH /products/{id}` akışı artık yeni oluşturulan varyantları `variantsToCreate` ile append-only olarak kaydeder. Mevcut satış satırları, envanterleri veya dış liste bağlantıları silinmez. API SKU/barkod tekilliğini, kategori zorunlu özelliklerini, en fazla 1000 varyant sınırını ve ana envanter oluşturmayı doğrular; `If-Match` sürüm koruması devam eder. Varyant oluşturma ekranı mevcut satırları koruyarak yeni kombinasyonları ekler. .NET solution build ve hedefli katalog Vitest senaryoları geçti; tarayıcı/Stage kabulü `NOT_RUN`.
+
 ## 2026-08-17 - Varyant sıralama ve seçenek kontrastı
 
 Ürün ekleme ve düzenleme ortak çalışma alanında, her varyant satırının solunda üç çizgili tutma kolu bulunur; kullanıcı bu kolu sürükleyerek satırları dikey sıraya koyabilir. Yeni ürün kaydında oluşan varyant dizisi bu görünür sırayı kullanır. Tema katmanındaki genel buton renginin boş/açık seçenek çiplerini görünmez yapması engellendi: pasif değerler koyu metin, seçili değerler beyaz metinle gösterilir. Hedefli web typecheck ile katalog ve ürün çalışma alanı testleri `9/9 PASS`; tarayıcı/Stage kabulü `NOT_RUN`.

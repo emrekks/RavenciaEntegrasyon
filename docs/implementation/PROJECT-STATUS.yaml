@@ -19,7 +19,7 @@ phases:
     evidence: docs/implementation/F1-evidence-log.md
   F2:
     title: Katalog ve envanter çekirdeği
-    status: V9_CATALOG_WORKSPACE_CODED_STATIC_VERIFIED_DYNAMIC_REVALIDATION_REQUIRED
+  status: CATALOG_WORKSPACE_VARIANT_APPEND_PERSISTENCE_CODED_TARGETED_VERIFIED_DYNAMIC_REVALIDATION_REQUIRED
     evidence: docs/implementation/F2-evidence-log.md
   F3:
     title: Trendyol entegrasyonu kapanışı

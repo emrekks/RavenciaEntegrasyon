@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Düzenleme varyantları kalıcı kaydetme
+
+- Ürün düzenleme ekranında oluşturulan yeni varyantlar artık ürün `PATCH` isteğiyle append-only kaydedilir ve sayfa yenilendiğinde geri yüklenir.
+- Mevcut satış satırları korunur; API SKU/barkod çakışması, zorunlu kategori özellikleri, envanter başlangıcı ve optimistic concurrency kontrollerini sürdürür.
+- .NET build, web typecheck ve hedefli katalog Vitest senaryoları geçti; tarayıcı/Stage kabulü çalıştırılmadı.
+
 ## 2026-08-17 - Varyant sıralama ve seçenek kontrastı
 
 - Ürün ekleme ve düzenleme ortak varyant tablosuna sol tutma kolu ile dikey sürükle-bırak sıralama eklendi; yeni ürün kaydı görünür satır sırasını korur.
