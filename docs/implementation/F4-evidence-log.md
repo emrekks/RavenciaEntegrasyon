@@ -5,6 +5,7 @@
 | Kanıt | Durum | Not |
 | --- | --- | --- |
 | Ortama göre kullanıcı metni | PASS_LOCAL | Taslak penceresi Stage bağlantısında ek parola/açık onay olmadan fatura ekranından başlatılan manuel gönderimi, Production'da ise korunmuş parola/açık onay akışını açıkça ayırır. `TrendyolOperationsPages.test.tsx` `6/6` ve Web typecheck geçti; teknik input, idempotency, provider response validation ve environment boundary değişmedi. |
+| API confirmation boundary | PASS_LOCAL | `EnqueueProtected`, Stage kısa devresinin Production açık onay ve parola ile yeniden doğrulamadan önce kaldığını kaynak-yüzey regresyon testiyle korur. `MarketplaceHub.Api.IntegrationTests` `3/3` geçti. |
 
 ## 2026-08-13 - v10.62 immutable deployment kabulü
 

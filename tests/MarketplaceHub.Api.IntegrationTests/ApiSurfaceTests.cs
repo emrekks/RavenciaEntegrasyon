@@ -26,5 +26,21 @@ public sealed class ApiSurfaceTests
         foreach (var guard in new[] { "Idempotency-Key", "If-Match", "REAUTHENTICATION_FAILED", "EXPLICIT_CONFIRMATION_REQUIRED", "no-store" }) Assert.Contains(guard, source, StringComparison.Ordinal);
         foreach (var forbidden in new[] { "/billing/taxpayers", "/billing/legal-entity-profile", "/reports", "/accounting", "/erp", "/tenants", "/users", "Shopify", "Hepsiburada", "N11", "Pazarama" }) Assert.DoesNotContain(forbidden, source, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void F4_protected_write_endpoint_skips_confirmation_only_for_stage_and_keeps_production_guards()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Api", "F4", "F4Endpoints.cs"));
+        var stageGate = source.IndexOf("if (!IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection))", StringComparison.Ordinal);
+        var explicitConfirmation = source.IndexOf("if (!command.Confirmed)", StringComparison.Ordinal);
+        var passwordCheck = source.IndexOf("users.CheckPasswordAsync", StringComparison.Ordinal);
+
+        Assert.True(stageGate >= 0, "Stage manual short-circuit must remain in the protected invoice endpoint.");
+        Assert.True(explicitConfirmation > stageGate, "Explicit confirmation must apply only after the Stage short-circuit.");
+        Assert.True(passwordCheck > explicitConfirmation, "Production password re-authentication must remain after explicit confirmation.");
+        Assert.Contains("return Accepted(await enqueue(tenant.TenantId, stageVersion", source, StringComparison.Ordinal);
+        Assert.Contains("EXPLICIT_CONFIRMATION_REQUIRED", source, StringComparison.Ordinal);
+        Assert.Contains("REAUTHENTICATION_FAILED", source, StringComparison.Ordinal);
+    }
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }
 }
