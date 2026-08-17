@@ -2,7 +2,8 @@
 
 - **Finding:** The Stage job was logically pending after attempt `17`, but generic exponential retry changed the processor-requested five-minute approval read-back into an approximately one-hour delay.
 - **Fix:** Only `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` results with `PRODUCT_APPROVAL_PENDING` now preserve the requested five-minute delay. This is a read-only status poll. Provider/network/rate-limit retry results remain on the generic retry policy and retain their provider `Retry-After` behavior.
-- **Verification:** Infrastructure and the PostgreSQL integration-test project build with zero errors. The targeted PostgreSQL lease test is `NOT_RUN_LOCAL_DOCKER_UNAVAILABLE`: Testcontainers could not connect to `npipe://./pipe/docker_engine` before test setup. No provider write or local terminal-state promotion was performed.
+- **Verification:** Infrastructure and the PostgreSQL integration-test project build with zero errors. The targeted PostgreSQL lease test is `NOT_RUN_LOCAL_DOCKER_UNAVAILABLE`: Testcontainers could not connect to `npipe://./pipe/docker_engine` before test setup. Source CI `32045775540` and immutable publish `32046114208` passed. Backup `20260817T163708Z` passed database/private-volume SHA checks and `pg_restore --list`; v10.77 deployed app `sha256:226e30ddeaa7d8bbca22423ad0140b7d41f4725086dfd6e76b74b9b884b2c071` and edge `sha256:e4ddfd8f8174bebfb5ed57d688ad402af52e8d73b0fc212c36562f083c6354f0`. API, Worker, Caddy and PostgreSQL are healthy and external readiness is `Healthy`. No provider write or local terminal-state promotion was performed.
+- **Live re-acceptance:** The already-pending durable job retains its previously scheduled read-back at `2026-08-17 17:25:49 UTC`; it will prove the new interval on its next logical pending result. No duplicate product-create request was submitted to accelerate that check.
 
 ## 2026-08-17 - Stage product approval reconciliation follow-up
 

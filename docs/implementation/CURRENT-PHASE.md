@@ -2,7 +2,7 @@
 
 ## 2026-08-17 - Trendyol approval polling interval correction
 
-The durable approval processor explicitly requests a five-minute delay for `PRODUCT_APPROVAL_PENDING`, but the generic retry policy was applying its one-hour terminal backoff after repeated reads. The lease scheduler now preserves the five-minute interval only for that logical, read-only product-approval state; provider/network/rate-limit failures retain normal backoff and provider Retry-After semantics. Infrastructure and the test project build with zero errors. The targeted PostgreSQL lease test is `NOT_RUN_LOCAL_DOCKER_UNAVAILABLE` because local Testcontainers cannot reach `npipe://./pipe/docker_engine`; deployment and live re-acceptance remain pending.
+The durable approval processor explicitly requests a five-minute delay for `PRODUCT_APPROVAL_PENDING`, but the generic retry policy was applying its one-hour terminal backoff after repeated reads. The lease scheduler now preserves the five-minute interval only for that logical, read-only product-approval state; provider/network/rate-limit failures retain normal backoff and provider Retry-After semantics. Infrastructure and the test project build with zero errors. The targeted PostgreSQL lease test is `NOT_RUN_LOCAL_DOCKER_UNAVAILABLE` because local Testcontainers cannot reach `npipe://./pipe/docker_engine`. Source CI `32045775540`, immutable publish `32046114208`, backup `20260817T163708Z` checksum/restore-list, and v10.77 Stage deploy all passed. API, Worker, Caddy and PostgreSQL are healthy and external readiness is `Healthy`; live re-acceptance remains pending the existing job's `17:25:49 UTC` read-back.
 
 ## 2026-08-17 - Trendyol Stage approval reconciliation follow-up
 

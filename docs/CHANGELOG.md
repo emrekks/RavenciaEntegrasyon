@@ -5,6 +5,7 @@
 - Logical `PRODUCT_APPROVAL_PENDING` reconciliation results now retain the processor-requested five-minute delay instead of being stretched to the generic one-hour terminal retry interval.
 - The change applies only to the read-only approval status poll. Provider/network/rate-limit retries, external writes, duplicate protection, and Production safety controls are unchanged.
 - Infrastructure and the PostgreSQL integration-test project build with zero errors. The targeted runtime test is `NOT_RUN_LOCAL_DOCKER_UNAVAILABLE` because Testcontainers cannot reach the local Docker named pipe.
+- Source CI `32045775540` and immutable publish `32046114208` passed. The verified `20260817T163708Z` backup preceded v10.77 digest-pinned Ubuntu deployment; API, Worker, Caddy and PostgreSQL are healthy and external readiness is `Healthy`. The existing approval job's first new-code read-back remains scheduled for `17:25:49 UTC`.
 
 ## 2026-08-17 - Trendyol product approval reconciliation follow-up
 
