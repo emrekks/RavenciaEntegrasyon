@@ -22,10 +22,11 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
     {
         if (!await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)) return NotFound<IReadOnlyList<CatalogMappingView>>();
         var scope = string.IsNullOrWhiteSpace(scopeExternalId) ? "" : scopeExternalId.Trim();
-        var entities = await Query(mappingType).AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == scope)
-            .OrderBy(x => x.LocalId)
-            .ToListAsync(cancellationToken);
+        var query = Query(mappingType).AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId);
+        // The mapping centre's read-only overview intentionally uses '*' to show
+        // already saved category-scoped mappings before a category is selected.
+        if (scope != "*") query = query.Where(x => x.ScopeExternalId == scope);
+        var entities = await query.OrderBy(x => x.LocalId).ToListAsync(cancellationToken);
         return ServiceResult<IReadOnlyList<CatalogMappingView>>.Ok(entities.Select(Map).ToList());
     }
 

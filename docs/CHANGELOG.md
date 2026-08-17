@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Eşleştirme görünürlüğü ve ürün düzenleme araçları
+
+- Ürün özellikleri kitaplığı kategori seçimine bağlı olmadan görünür ve düzenlenebilir hale getirildi; aktif bağlantıda kaydedilmiş attribute eşleşmeleri seçimsiz özetlenir.
+- Varyant oluştur/temizle kontrolleri 5. bölümde birleştirildi; görsel 100 varyant sayacı ve desi varsayılan notu kaldırıldı. Backend üst sınırı ve güvenlik kontrolleri korunur.
+- Ürün açıklaması; başlık, alıntı, liste, bağlantı ve vurgu araçları içeren zengin metin paneline yükseltildi. Hedefli web kontrolleri `10/10 PASS`.
+
 ## 2026-08-17 - Ürün özelliği seçim kutuları ve varyant aksiyonu
 
 - Büyük/görsel olarak tutarsız attribute seçim kutuları sabit boyutlu native checkbox görünümüne alındı.

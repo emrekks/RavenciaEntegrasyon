@@ -1,5 +1,11 @@
 # F2 Kanıt Günlüğü
 
+## 2026-08-17 - Özellik kitaplığı, varyant araçları ve zengin metin
+
+- Kategori bağımsız yerel attribute library görünümü ve mevcut kategori-scoped attribute eşleşmelerinin `scopeExternalId=*` salt-okunur özeti eklendi.
+- Varyant araçları 5. bölümde birlikte yer alır; UI'daki 100 varyant göstergesi kaldırıldı. Gerçek servis sınırı 1000, SKU/barkod, envanter ve yayın korumaları değişmedi.
+- Açıklama editorü genişletildi; web typecheck ve hedefli `CatalogWorkspacePages` + `TrendyolOperationsPages` testleri `10/10 PASS`. Browser/Stage görsel kabulü `NOT_RUN`.
+
 ## 2026-08-17 - Attribute checkbox ve varyant aksiyonu yerleşimi
 
 - Varyant özelliği seçicileri sabit boyutlu, erişilebilir native checkbox olarak normalize edildi; geniş input stilleri checkbox'a sızmaz.

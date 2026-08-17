@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - Bağımsız özellik kitaplığı ve ürün metin araçları
+
+Eşleştirme merkezinin özellik kitaplığı artık kategori seçimi olmadan aktif yerel özellikleri/değerleri gösterir ve yeni özellik/değer eklenmesine izin verir. Kategori seçimi yalnız zorunluluk bağlama ve kategoriye özgü eşleştirme ayrıntısı için gereklidir. Aktif Trendyol bağlantısında üçüncü adım, kategori seçilmeden tüm kaydedilmiş özellik eşleşmelerinin salt-okunur özetini gösterir; API'nin `scopeExternalId=*` read-only görünümü yalnız bu listeleme içindir. Ürün ekranında varyant oluştur/temizle aksiyonları 5. bölümde sağda birlikte yer alır, 100 satırlık görsel sayaç kalkar; gerçek API/inventory üst sınırı 1000 olarak korunur. Desi varsayılan metni kaldırıldı. Zengin açıklama paneline başlık, alıntı, sıralı/sırasız liste, bağlantı, üstü çizili ve canlı karakter sayacı eklendi. Typecheck ve hedefli web testleri `10/10 PASS`; browser/Stage görsel kabulü `NOT_RUN`.
+
 ## 2026-08-17 - Ürün özellikleri kontrol iyileştirmesi
 
 Ürün özelliği kartlarındaki varyant seçim kutuları artık tarayıcı/tema kurallarından etkilenmeden sabit 16px checkbox olarak görünür. Varyant üretme aksiyonu, kullanıcı isteğiyle 5 numaralı ürün özellikleri bölümünün üstüne taşındı; 6 numaralı bölüm oluşan varyant satırlarını, toplu alanları ve temizleme aksiyonunu gösterir. İşlevsel doğrulama bu küçük UI değişikliği için hedefli typecheck ile yapılacaktır; tarayıcı/Stage kabulü `NOT_RUN`.

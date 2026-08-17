@@ -136,7 +136,7 @@ test('loads category-scoped attribute mappings in one bulk request', async () =>
   fireEvent.focus(category); fireEvent.change(category, { target: { value: 'Giyim / Bluz' } }); fireEvent.keyDown(category, { key: 'Enter' })
 
   expect(await screen.findByText('1/1 zorunlu özellik eşlendi')).toBeInTheDocument()
-  expect(calls.filter(url => url.includes('/api/v1/mappings/attributes?'))).toHaveLength(1)
+  expect(calls.filter(url => url.includes('/api/v1/mappings/attributes?'))).toHaveLength(2)
   expect(calls.some(url => url.includes('/api/v1/mappings/attributes/attribute-1?'))).toBe(false)
 
   fireEvent.click(screen.getByRole('button', { name: 'Beden özelliğini isteğe bağlı yap' }))
