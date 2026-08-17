@@ -46,7 +46,7 @@ Kod kapsamı tamamlanmıştır; faz production kapanışı için aşağıdakiler
 
 - Exact .NET/PostgreSQL ve frontend suite PASS.
 - Docker Compose/API/Worker/Caddy smoke PASS.
-- Stage read ve açık onaylı write fixture PASS.
+- Stage read ve manuel write fixture PASS; manuel Stage write ek parola veya açık onay istemez.
 - Duplicate, timeout, rate-limit, partial batch, stale payload ve rollback/read-back PASS. Ürün approval polling'i yedi günlük yerel deadline'a ulaşmadan job deneme sınırıyla bitmez; deadline'da `MANUAL_REVIEW` olur.
 - Capability evidence, operatör prosedürü ve rollback kaydı tamam.
 

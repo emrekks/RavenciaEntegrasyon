@@ -5,6 +5,7 @@
 - Fatura taslağı penceresi, aktif E-Faturam bağlantısının ortamını doğru açıklar: `STAGE` için gerçek gönderimin ek parola veya açık onay olmadan fatura ekranından başlatılabileceğini; `PRODUCTION` için parola ve açık onayın korunduğunu gösterir.
 - Bu yalnız kullanıcı rehberi düzeltmesidir. Stage'de connection/credential, mali input doğrulaması, idempotency ve provider yanıt kontrolü; Production'da mevcut dış-yazma güvenlik zinciri korunur.
 - Dashboard ve toplu etiket bildirimi de aynı ayrımı kullanır: Stage manuel işlemleri capability kanıtı veya açık onayla yanlış yönlendirilmez; Production güvenlik zinciri açıkça korunur.
+- F3 kabul planındaki eski “açık onaylı Stage write” ifadesi de güncel runtime politikasıyla eşitlendi.
 
 ## 2026-08-13 - v10.63 immutable deployment
 
