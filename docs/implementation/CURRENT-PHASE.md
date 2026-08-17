@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-18 - Ürün sahibi kontrollü panel düzenleme akışı
+
+Günlük çalışma modeli ürün sahibi tarafından sadeleştirildi. Ürün sahibi panelden düzenleme talebini iletir; Codex değişikliği uygular, riskin gerektirdiği en dar kontrolü yapar, commit eder ve `main` dalına push eder. Talep sunucu güncellemesini kapsıyorsa mevcut erişim/deployment bilgileri kullanılır ve sonuç kısa biçimde bildirilir. GitHub Actions, immutable release, tam doğrulama, faz kanıtı, evidence log ve dokümantasyon transaction adımları ürün sahibi yeniden açana kadar günlük teslim kapısı değildir. Mevcut tarihsel kayıtlar silinmez. Production veri bütünlüğü, secret koruması, migration güvenliği ve dış-yazma runtime kontrolleri korunur.
+
 ## 2026-08-17 - Manuel ilerletme ve dağıtımlı teslim modeli
 
 Öncelikler ürün sahibi tarafından manuel belirlenecek. [Manuel Proje İlerletme ve Teslim Modeli](MANUAL-OPERATIONS.md), aktif faz durumunu, zorunlu altyapıları, açık dış sistem ihtiyaçlarını ve önerileri toplar. Değişiklik; commit → `main` push → source CI → immutable release → Ubuntu deploy → health ve hedef panel doğrulaması tamamlanmadan teslim sayılmaz. GitHub Actions uygulamayı çalıştırmak için teknik zorunluluk olmasa da normal dağıtımın immutable image/digest izlenebilirlik kapısı olarak korunur. Stage kolaylaştırmaları ve Production fail-closed write zinciri değişmedi.

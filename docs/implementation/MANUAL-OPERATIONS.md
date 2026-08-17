@@ -1,25 +1,23 @@
 # Manuel Proje İlerletme ve Teslim Modeli
 
-**Yürürlük:** 17 Ağustos 2026  
+**Yürürlük:** 18 Ağustos 2026
 **Kapsam:** Yalnız `TRENDYOL` ve `TRENDYOL_EFATURAM`
 
 ## Çalışma kuralı
 
-Proje, ürün sahibinin manuel öncelikleriyle ilerler. Bir geliştirme ancak aşağıdaki zincir tamamlanınca **tamamlandı** sayılır:
+Proje, ürün sahibinin panelden ilettiği manuel önceliklerle ilerler:
 
-1. Kaynak değişikliği uygulanır ve riskine uygun hedefli kontrol çalıştırılır.
-2. Durum, evidence ve changelog belgeleri aynı transaction içinde güncellenir.
-3. Değişiklik commit edilir ve `main` dalına push edilir.
-4. GitHub source CI başarılı olur.
-5. Dağıtılabilir değişiklikte immutable app/edge image üretilir; digest kayda alınır.
-6. Ubuntu hedefine, doğrulanmış backup sonrasında yalnız bu digest'ler deploy edilir; migration, container health ve dış `/health/ready` kontrol edilir.
-7. Sonuç, dağıtılan commit/digest, kontroller ve `NOT_RUN`/dış blokajlar kullanıcıya raporlanır.
+1. Ürün sahibi panelde gördüğü düzenlemeyi Codex'e iletir.
+2. Codex gerekli dosya değişikliğini doğrudan uygular; yalnız riskin gerektirdiği en dar kontrolü kullanır.
+3. Codex değişikliği commit eder ve `main` dalına push eder.
+4. Talep sunucu güncellemesini içeriyorsa Codex mevcut sunucu/deployment bilgileriyle güncellemeyi uygular.
+5. Codex yapılan değişikliği, commit/push ve varsa sunucu sonucunu kısa biçimde bildirir.
 
-Yalnız yerel dosya düzenlenmesi, commit, push veya GitHub Actions başarısı teslim değildir. UI veya davranış değişikliği istenmişse sonuç hedef panel ortamında görünür olmalıdır. Kullanıcı açıkça yalnız taslak/dokümantasyon ya da deploy edilmemesini isterse istisna raporda yazılır.
+Faz kanıtı, evidence log, dokümantasyon transaction, zorunlu tam test, Stage kabulü, immutable release ve CI sonucu ürün sahibi yeniden açana kadar günlük işin teslim kapısı değildir. Bu kayıtlar istenirse ayrıca üretilebilir; eksiklikleri düzenlemeyi veya commit/push işlemini bekletmez.
 
 ## GitHub Actions gerekli mi?
 
-Uygulamanın çalışması için GitHub Actions teknik olarak zorunlu değildir; Ubuntu üzerindeki Docker Compose doğrulanmış image ile çalışır. Ancak bu proje için güvenilir dağıtım zincirinin **zorunlu release kapısıdır**: kaynak doğrulaması, immutable app/edge image üretimi, digest ve release izlenebilirliğini sağlar. Normal teslimde Actions atlanmaz. Acil manuel müdahalede de yerel/etiketsiz image ile production'a çıkılmaz; aynı commit'in doğrulanmış digest'i kullanılır ve işlem belgelenir.
+GitHub Actions günlük geliştirme, commit, push veya manuel sunucu güncellemesi için zorunlu değildir. Mevcut workflow dosyaları isteğe bağlı doğrulama ve ileride yeniden açılabilecek release otomasyonu olarak repository'de korunur. Bir Actions koşusunun beklenmesi veya başarılı olması günlük teslim şartı değildir.
 
 ## Aktif teknik durum
 
@@ -37,15 +35,15 @@ Uygulamanın çalışması için GitHub Actions teknik olarak zorunlu değildir;
 | Sistem | Gerekli işlev | Durum |
 | --- | --- | --- |
 | GitHub repository + `main` | Kaynak kaydı ve izlenebilir geçmiş | Zorunlu |
-| GitHub Actions | Source CI ve immutable release publish | Normal deploy için zorunlu kapı |
-| GHCR | Digest-pinned app/edge image saklama | Zorunlu |
+| GitHub Actions | İsteğe bağlı source CI ve immutable release publish | Askıda; günlük teslim kapısı değil |
+| GHCR | İsteğe bağlı digest-pinned app/edge image saklama | Manuel deployment yöntemine göre kullanılır |
 | Ubuntu + Docker Compose | API, Worker, PostgreSQL ve edge çalıştırma | Zorunlu |
 | PostgreSQL volume | Uygulama ve durable job verisi | Zorunlu; deploy öncesi backup |
 | Caddy/DNS/TLS | Panel HTTPS erişimi | Zorunlu; deploy sonrası readiness |
 | Trendyol Stage | Ürün, iade, sipariş ve etiket Stage kabulü | Aktif, dış kabul işleri açık |
 | E-Faturam Stage API_USER | Mali belge işlemleri | Giriş doğrulandı; protected create yetkisi açık |
 | Şifreli credential/secrets | Provider kimlik bilgileri | Zorunlu; secret loglanmaz |
-| Backup + restore doğrulaması | Geri dönüş ve veri güvenliği | Zorunlu |
+| Backup + restore doğrulaması | Geri dönüş ve veri güvenliği | Veri/migration etkili sunucu işlemlerinde korunur |
 
 ## Tamamlanması gereken dış sistem/erişimler
 

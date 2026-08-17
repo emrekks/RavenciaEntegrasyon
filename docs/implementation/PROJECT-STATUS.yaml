@@ -1,8 +1,14 @@
 schema_version: 1
 document_version: '10.0'
-updated_at: '2026-08-17'
+updated_at: '2026-08-18'
 manual_delivery_model: docs/implementation/MANUAL-OPERATIONS.md
-delivery_definition: CHANGE_COMPLETE_ONLY_AFTER_MAIN_PUSH_CI_IMMUTABLE_RELEASE_DEPLOY_HEALTH_AND_TARGET_VERIFICATION_UNLESS_EXPLICITLY_DRAFT_ONLY
+delivery_definition: OWNER_MANAGED_PANEL_REQUEST_IMPLEMENT_COMMIT_MAIN_PUSH_AND_OPTIONAL_SERVER_UPDATE
+delivery_gates:
+  evidence_and_phase_logs: SUSPENDED_UNTIL_OWNER_REOPENS
+  documentation_transaction: SUSPENDED_UNTIL_OWNER_REOPENS
+  github_actions: OPTIONAL_NOT_A_DAILY_DELIVERY_GATE
+  immutable_release: OPTIONAL_NOT_A_DAILY_DELIVERY_GATE
+  full_validation: OWNER_REQUEST_ONLY_EXCEPT_MINIMUM_RISK_CHECKS
 active_scope:
 - TRENDYOL
 - TRENDYOL_EFATURAM
@@ -57,7 +63,7 @@ features:
   deployment_health_and_bootstrap_secrets:
     status: V10_60_IMMUTABLE_DEPLOY_MIGRATION_API_WORKER_EDGE_HEALTH_VERIFIED_OFF_HOST_GATE_REMAINS
   pull_request_ci_gates:
-    status: CODED_WORKFLOW_EXECUTION_REQUIRED
+    status: CODED_OPTIONAL_OWNER_SUSPENDED_AS_DELIVERY_GATE
   dashboard:
     status: V10_UNIFIED_UI_LOCAL_DYNAMIC_VERIFIED
   job_operations_panel:
@@ -108,9 +114,6 @@ features:
     status: CODED_STATIC_VERIFIED_STAGE_EVIDENCE_REQUIRED
   trendyol_core_operator_ui:
     status: V10_20_ORDER_QUANTITY_BADGE_POSITION_LOCAL_VERIFIED_STAGE_REVALIDATION_REQUIRED
-required_documents_on_status_change:
-- docs/implementation/PROJECT-STATUS.yaml
-- docs/implementation/CURRENT-PHASE.md
-- docs/CHANGELOG.md
-- relevant_phase_evidence_log
+required_documents_on_status_change: []
+documentation_update_policy: ONLY_PROCESS_SCOPE_OR_PERMANENT_ARCHITECTURE_CHANGES_UNTIL_OWNER_REOPENS
 last_targeted_ui_update: "2026-08-12-efaturam-direct-account-credential-form"

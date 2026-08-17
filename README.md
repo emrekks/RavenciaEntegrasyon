@@ -1,5 +1,7 @@
 # Ravencia MarketplaceHub
 
+> **Aktif geliştirme modeli (18 Ağustos 2026):** Ürün sahibi panelden değişiklikleri iletir; Codex düzenlemeyi uygular, gerekli commit/push işlemlerini yapar ve talep kapsamındaysa sunucuyu günceller. Evidence/faz kayıtları, dokümantasyon transaction, zorunlu GitHub Actions ve tam kabul adımları yeniden açılana kadar günlük teslim kapısı değildir. Production runtime güvenlikleri korunur.
+
 > **v10.32 arayüz notu:** Güvenlik ekranı sonlandırılmış oturum kayıtlarını tekil veya toplu temizleyebilir; aktif/mevcut oturum koruması devam eder. Sipariş ürün görselleri büyütülebilir. Eşleştirme merkezi özellik kartı seçimi, seçili özelliğe değer ekleme ve eksik Trendyol kategori özellik verisini yeniden eşitleme akışını aynı ekranda sunar. Kullanılmayan genel faturalama ayar sayfası menüden kaldırılmıştır.
 
 > **Codex/devralma başlangıç noktası:** Önce [`AGENTS.md`](AGENTS.md), [`RAVENCIA-NIHAI-PROJE-BELGESI.md`](docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md), [`PROJECT-STATUS.yaml`](docs/implementation/PROJECT-STATUS.yaml) ve [`CURRENT-PHASE.md`](docs/implementation/CURRENT-PHASE.md) dosyalarını okuyun. Aktif durum `F3_CORE_CODE_COMPLETE_VALIDATION_PENDING / F4_CODE_COMPLETE_VALIDATION_PENDING / PRODUCTION_BLOCKED` olarak işaretlenmiştir.

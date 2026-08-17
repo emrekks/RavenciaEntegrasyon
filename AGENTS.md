@@ -2,6 +2,14 @@
 
 Bu dosya repository kökünün tamamı için geçerlidir.
 
+## Ürün sahibi tarafından yönetilen aktif çalışma modeli
+
+- 18 Ağustos 2026 itibarıyla günlük geliştirme ürün sahibinin panelden ilettiği taleplerle yürür: talebi uygula, yalnız değişikliğin güvenli uygulanması için zorunlu en dar kontrolü yap, commit et ve `main` dalına push et.
+- GitHub Actions, immutable release, faz kanıtı, evidence log, capability kanıtı, dokümantasyon transaction ve kapsamlı kabul adımları ürün sahibi yeniden açana kadar günlük teslim kapısı değildir. Mevcut kayıtlar tarihsel bilgi olarak korunur; yeni iş bunları güncellemek için bekletilmez.
+- Kullanıcı özellikle istemedikçe her değişiklikte faz/status/evidence/changelog belgesi güncellenmez. Süreç veya ana kapsam değişiklikleri ilgili ana belgelerde kaydedilir.
+- Sunucu güncellemesi talebin parçasıysa mevcut erişim ve deployment bilgileri kullanılarak uygulanır; sonuç kısa biçimde bildirilir. Git pull/push, commit ve sunucu güncelleme işlerini Codex yürütür.
+- Bu sadeleştirme credential/secret gizliliğini, veri kaybı korumasını, migration bütünlüğünü, Stage/Production ayrımını veya Production dış-yazma güvenlik zincirini kaldırmaz.
+
 ## Güncel kullanıcı arayüzü notu
 
 - Eşleştirme merkezi yalnız aktif `TRENDYOL` kapsamını gösterir; kategori ve marka iki ana sekmedir.
@@ -11,7 +19,7 @@ Bu dosya repository kökünün tamamı için geçerlidir.
 - E-Faturam aktif kapsamı tek işletmenin doğrudan `API_USER` hesabıdır; panel yalnız hesap e-posta/parolasını şifreli saklar. Partner `customerSignIn` ve çoklu müşteri credential alanları kullanılmaz.
 - Sonlandırılmış oturum kayıtları kullanıcı kapsamlı tekil/toplu silinebilir; aktif veya mevcut oturum silinemez. Genel faturalama ayar sayfası kullanıcı menüsünde yoktur.
 
-## Başlamadan önce zorunlu okuma sırası
+## Başlamadan önce kısa okuma sırası
 
 1. `docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md`
 2. `docs/implementation/PROJECT-STATUS.yaml`
@@ -19,7 +27,8 @@ Bu dosya repository kökünün tamamı için geçerlidir.
 4. `docs/specification/current-scope.md`
 5. `docs/platform-rules/capability-matrix.md`
 6. `docs/CHANGELOG.md`
-7. Yapılacak işe karşılık gelen `docs/implementation/F*-plan.md` ve `F*-evidence-log.md`
+
+Faz planı ve evidence logları yalnız ürün sahibi özellikle istediğinde veya ilgili tarihsel ayrıntı gerçekten gerekliyse okunur.
 
 ## Aktif kapsam
 
@@ -58,7 +67,7 @@ Bu dosya repository kökünün tamamı için geçerlidir.
 
 ## Durum yükseltme kuralı
 
-Bir iş yalnız kod bulunduğu için tamamlanmış sayılmaz. Durumu yükseltmeden önce kabul kriterini, hedefli testleri, gerekiyorsa Stage kanıtını, audit/operasyon görünürlüğünü ve ilgili evidence kaydını doğrula. Çalıştırılamayan testi `NOT_RUN` veya `BLOCKED_*` olarak yaz; başarılı gösterme.
+Günlük iş, istenen düzenleme uygulanıp commit/push tamamlandığında teslim edilmiş sayılır. Faz statüsü, production-ready veya provider capability durumu ayrıca yükseltilecekse gerçek sonucu yanlış göstermemek için mevcut teknik durum açıkça korunur; evidence üretmek günlük teslimin ön koşulu değildir.
 
 ## Hızlı geliştirme ve test yöntemi
 
@@ -71,20 +80,11 @@ Günlük geliştirme akışı hızlı tutulur. Her küçük UI/metin/CSS değiş
 
 Çalıştırılmayan ayrıntılı testler `NOT_RUN` olarak kaydedilir; başarılı gösterilmez. Tam test çıktısını konuşma bağlamına kopyalama. Kullanıcıya yalnız çalıştırılan kontrolün özeti ve varsa bilinen riski bildir.
 
-Tam doğrulama komutlarını günlük iş akışına ekleme; mevcut CI/release hattı gerektiğinde bunları merkezi olarak yürütür.
+Tam doğrulama komutlarını günlük iş akışına ekleme. GitHub Actions sonucu günlük işin teslimini bloke etmez; kapsamlı doğrulama yalnız ürün sahibi yeniden istediğinde çalıştırılır.
 
-## Dokümantasyon transaction kuralı
+## Dokümantasyon kuralı
 
-Durum veya capability etkileyen kod değişikliğinde aynı commit içinde en az şunları güncelle:
-
-- `docs/implementation/PROJECT-STATUS.yaml`
-- `docs/implementation/CURRENT-PHASE.md`
-- ilgili faz evidence logu
-- `docs/CHANGELOG.md`
-- gerekiyorsa capability ve traceability matrisleri
-- kullanıcı görünür davranış veya kapsam değiştiyse ana plan, `README.md` ve bu dosya
-
-`python3 scripts/verify-documentation-transaction.py --base <base-ref>` kontrolü kod değişikliğinin belge işlemi olmadan ilerlemesini engeller.
+Dokümantasyon transaction ve evidence güncelleme zorunluluğu ürün sahibi yeniden açana kadar askıdadır. Günlük panel düzenlemelerinde belge değişikliği aranmaz. Yalnız çalışma modeli, ana kapsam veya kalıcı mimari karar değişirse ilgili ana belge güncellenir. Otomatik doğrulama betiğinin sonucu commit/push için manuel engel sayılmaz.
 
 ## Git ve paket politikası
 

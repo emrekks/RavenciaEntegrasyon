@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-18 - Ürün sahibi kontrollü manuel geliştirme modeli
+
+- Günlük süreç panel geri bildirimi → doğrudan düzenleme → riskin gerektirdiği en dar kontrol → commit → `main` push olarak değiştirildi; talep kapsamındaysa sunucu güncellemesini Codex yürütür.
+- Faz/evidence logları, dokümantasyon transaction, zorunlu GitHub Actions, immutable release ve kapsamlı kabul adımları ürün sahibi yeniden açana kadar günlük teslim kapısı olmaktan çıkarıldı. Mevcut workflow ve tarihsel kayıtlar silinmedi.
+- Production runtime güvenlikleri, secret koruması, migration bütünlüğü ve veri kaybı önlemleri değişmedi.
+
 ## 2026-08-17 - Manuel teslim modeli
 
 - Aktif durum, zorunlu sistem envanteri, açık dış bağımlılıklar, öneriler ve dağıtımlı teslim tanımı [Manuel Proje İlerletme ve Teslim Modeli](implementation/MANUAL-OPERATIONS.md) içinde belgelendi. Normal teslim `main` push, source CI, immutable release, Ubuntu deploy, health ve hedef panel doğrulamasını kapsar; Production güvenlik kapıları korunur.

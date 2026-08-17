@@ -5,6 +5,8 @@
 **Karar tarihi:** 2026-08-04  
 **Karar:** Aktif entegrasyon geliştirmesi Trendyol Türkiye `CORE` storefront ve Trendyol E-Faturam ile sınırlıdır. Production Türkiye V2 claims okuması canonical tek çağrıyı kullanır. Yalnız Stage filtresiz getClaims çağrısı `order.not.found` 404 verirse resmî claim durumları aynı salt-okunur endpointte ayrı ayrı sorgulanır; bu istisna production veya yazma yollarına uygulanmaz.
 
+**Aktif çalışma kararı (2026-08-18):** Ürün sahibi panel taleplerini doğrudan Codex'e iletir; değişiklikler uygulanır, commit edilir ve `main` dalına push edilir. Evidence/faz kanıtı, dokümantasyon transaction, zorunlu GitHub Actions ve kapsamlı kabul adımları ürün sahibi yeniden açana kadar günlük teslim kapısı değildir. Bu karar entegrasyon kapsamını veya Production runtime güvenliklerini değiştirmez.
+
 ## 1. Aktif entegrasyonlar
 
 | Platform kodu | Sorumluluk |

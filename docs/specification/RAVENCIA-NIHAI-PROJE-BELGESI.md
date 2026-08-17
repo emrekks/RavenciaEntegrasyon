@@ -11,6 +11,8 @@
 **Ürün sahibi:** Ravencia  
 **Sistem adı:** Ravencia MarketplaceHub
 
+**18 Ağustos 2026 ürün sahibi çalışma kararı:** Günlük geliştirme panelden iletilen talebin uygulanması, commit edilmesi, `main` dalına push edilmesi ve talep kapsamındaysa mevcut bilgilerle sunucunun güncellenmesi şeklinde yürür. Faz/evidence kanıtı, dokümantasyon transaction, zorunlu GitHub Actions, immutable release ve kapsamlı kabul adımları ürün sahibi yeniden açana kadar günlük teslim kapısı değildir. Aşağıdaki eski kanıt ve release hükümleri tarihsel hedef model olarak korunur fakat bu aktif karar tarafından süreç bakımından askıya alınmıştır. Production runtime güvenliği, credential/secret koruması, migration bütünlüğü ve veri kaybı önlemleri bu karardan etkilenmez.
+
 **v10.32 kullanıcı akışı notu:** Sonlandırılmış oturum kayıtları güvenlik ekranından tekil veya toplu temizlenebilir; aktif ve mevcut oturumlar bu silme işlemine kapalıdır. Kullanılmayan genel faturalama ayar sayfası menüden kaldırılmıştır. Eşleştirme merkezinde Trendyol kategori adları kaynak önekleri olmadan gösterilir, özellik kartı tıklanarak seçilir ve eksik kategori özellik verisi aynı çalışma alanından güvenli reference-sync kuyruğuna alınabilir. Sipariş ürün görselleri büyütülebilir; fatura bekleme durumu sade metin rozetiyle sunulur.
 
 **v10.46 manuel runtime notu:** Aktif `STAGE` ve `PRODUCTION` bağlantılarında manuel read/write capability/evidence/fixture SHA/release kaydıyla durmaz; bu kayıtlar diagnostics ve release kabulünde saklanır. Stage’de ek write switch, mali policy, re-auth veya açık onay aranmaz. Production manuel write için yetkilendirme, master + connection external-write switch, etkin bağlantı/credential, input, idempotency, provider doğrulaması, reconciliation ve audit zorunludur. Otomatik write bunlara ek ilgili `AUTO_*` bayrağını ister. Environment ve HTTPS endpoint sınırı fail-closed kalır.
@@ -35,7 +37,7 @@ Belgenin üç temel görevi vardır:
 2. **Durum takibi:** Her işin planlanan, geliştirilen, kodlanan, test edilen, Stage'de doğrulanan veya production'a hazır durumunu kanıtla göstermek.
 3. **Devralma:** Codex veya başka bir geliştiricinin repository'yi açtığında mevcut fazı, sıradaki işi, test zorunluluğunu ve değiştirilmemesi gereken sistem sınırlarını doğrudan anlayabilmesini sağlamak.
 
-Bu belge yaşayan ana kaynaktır. Kapsam, faz veya uygulama durumu değiştiğinde ana plan, makinece okunabilir durum dosyası, aktif faz belgesi, capability matrisi, ilgili faz planı, evidence log, README ve değişiklik kaydı aynı dokümantasyon işlemi içinde birlikte güncellenir.
+Bu belge ürün ve teknik kapsamın ana kaynağıdır. Günlük panel düzenlemeleri belge transaction'ına bağlı değildir. Çalışma modeli, ana kapsam veya kalıcı mimari değiştiğinde ilgili ana belgeler güncellenir; faz planı ve evidence log güncellemesi ürün sahibi yeniden açana kadar zorunlu değildir.
 
 ## 1.1 Yetkili kaynak sırası
 
@@ -71,6 +73,8 @@ Kaynak kod ile hedef belge arasında fark varsa bu fark gizlenmez. Kodun sunduğ
 | `KAPSAM_DIŞI` | Bu ürün sürümünün ve aktif yol haritasının parçası değildir. |
 
 ## 2.2 “Tamamlandı” denebilmesi için zorunlu şartlar
+
+Bu bölümün evidence, Stage kabulü, tam doğrulama ve dokümantasyon şartları 18 Ağustos 2026 tarihli ürün sahibi kararıyla günlük geliştirme teslimleri için askıdadır. Günlük teslim, istenen değişikliğin uygulanıp commit/push edilmesiyle tamamlanır. `production-ready` veya provider capability gibi teknik iddialar ayrıca değiştirilmedikçe mevcut durumlarında kalır.
 
 Bir görev yalnız aşağıdaki koşulların tamamı sağlandığında tamamlandı yazılabilir:
 
@@ -696,6 +700,8 @@ Kullanıcının açık talebi, release adayı, tag veya production öncesinde me
 
 ## 10.2 Dokümantasyon transaction kuralı
 
+Bu kural 18 Ağustos 2026 itibarıyla ürün sahibi yeniden açana kadar askıdadır. Günlük kod/UI değişiklikleri status, phase, evidence ve changelog dosyalarını birlikte güncellemek zorunda değildir. Süreç, ana kapsam veya kalıcı mimari değişikliği ilgili ana belgede kaydedilir.
+
 Bir kod değişikliği durum veya capability etkiliyorsa aynı commit içinde en az şu dosyalar güncellenir:
 
 1. `PROJECT-STATUS.yaml`
@@ -708,6 +714,8 @@ Bir kod değişikliği durum veya capability etkiliyorsa aynı commit içinde en
 Dokümanlar farklı günlerde rastgele güncellenmez. “Kod tamamlandı, belge sonra yazılır” yaklaşımı kabul edilmez.
 
 ## 10.3 Otomatik tutarlılık kontrolü
+
+Otomatik tutarlılık kontrolü isteğe bağlıdır ve ürün sahibi yeniden açana kadar günlük commit/push veya teslim kapısı değildir. Workflow ve betikler ileride tekrar kullanılmak üzere korunabilir.
 
 CI ve yerel kontrol şu durumları hata kabul eder:
 
