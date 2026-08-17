@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Varyant sıralama ve seçenek kontrastı
+
+- Ürün ekleme ve düzenleme ortak varyant tablosuna sol tutma kolu ile dikey sürükle-bırak sıralama eklendi; yeni ürün kaydı görünür satır sırasını korur.
+- Açık seçenek çiplerinde metin rengi tema katmanına karşı sabitlendi; seçili çiplerin beyaz metin kontrastı korundu.
+- Web typecheck ile ilgili katalog/ürün testleri `9/9 PASS`; ayrıntılı tarayıcı/Stage kabulü çalıştırılmadı.
+
 ## 2026-08-17 - Ürün düzenleme çalışma alanı eşitliği
 
 - Ürün düzenleme sayfası, ürün ekleme sayfasının temel bilgiler, kategori özellikleri, varyant fiyat/stok, kargo ölçüsü/desi, görsel ve yayın bölümlerini aynı çalışma alanı hiyerarşisinde sunacak şekilde düzenlendi.

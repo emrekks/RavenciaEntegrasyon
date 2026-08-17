@@ -59,6 +59,12 @@ test('creates cartesian variants with variant-scoped attributes and global multi
   fireEvent.click(screen.getByRole('button', { name: 'Ürünleri ekle' }))
 
   expect(screen.getAllByPlaceholderText('Varyant SKU')).toHaveLength(2)
+  const handles = screen.getAllByLabelText(/varyantını sıralamak için sürükleyin/)
+  expect(handles).toHaveLength(2)
+  fireEvent.dragStart(handles[1], { dataTransfer: { effectAllowed: 'move' } })
+  fireEvent.dragOver(handles[0].parentElement!, { dataTransfer: { effectAllowed: 'move' } })
+  fireEvent.drop(handles[0].parentElement!, { dataTransfer: { effectAllowed: 'move' } })
+  expect(screen.getAllByPlaceholderText('Varyant SKU')[0]).toHaveValue('RAV-BLUZ-2')
   fireEvent.click(screen.getByRole('button', { name: 'Ürünü kaydet' }))
 
   await waitFor(() => expect(productBody).toBeDefined())

@@ -63,3 +63,12 @@ Gerçek platform test hesapları ve resmî capability kanıtları gelene kadar c
 | Düzenleme alanları | CODED_LOCAL | `/products/:id`, ayrı bir JSX düzeni yerine doğrudan ürün oluşturma bileşeninin düzenleme modunu kullanır; temel bilgiler, kategori/marka, özellikler, varyant stok/fiyat, ölçü/desi, görsel ve Trendyol yayın alanları tek render kaynağındadır. |
 | Hedefli web doğrulaması | PASS_LOCAL | `npm.cmd run typecheck` ve `npm.cmd test -- TrendyolOperationsPages.test.tsx`: 7/7 PASS. |
 | Ayrıntılı tarayıcı/Stage kabulü | NOT_RUN | Bu kullanıcı arayüzü/katalog değişikliği için çalıştırılmadı; dış yazma başlatılmadı. |
+
+## 2026-08-17 - Varyant sıralama ve tema kontrastı
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Varyant satır sıralama | CODED_LOCAL | Sol tutma kolu, drag-and-drop ile satırları yeniden sıralar; yeni ürün gönderimindeki varyant dizisi bu sırayı korur. |
+| Seçenek değeri görünürlüğü | CODED_LOCAL | Pasif çip metni tema bağımsız koyu renge, seçili çip metni beyaza sabitlendi. |
+| Hedefli web doğrulaması | PASS_LOCAL | `npm.cmd run typecheck`; `CatalogWorkspacePages.test.tsx` ve `TrendyolOperationsPages.test.tsx`: 9/9 PASS. |
+| Tarayıcı/Stage kabulü | NOT_RUN | Yayın öncesi çalıştırılmadı; dış yazma başlatılmadı. |

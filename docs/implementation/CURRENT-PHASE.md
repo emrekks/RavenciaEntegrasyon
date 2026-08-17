@@ -1,16 +1,20 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - Varyant sıralama ve seçenek kontrastı
+
+Ürün ekleme ve düzenleme ortak çalışma alanında, her varyant satırının solunda üç çizgili tutma kolu bulunur; kullanıcı bu kolu sürükleyerek satırları dikey sıraya koyabilir. Yeni ürün kaydında oluşan varyant dizisi bu görünür sırayı kullanır. Tema katmanındaki genel buton renginin boş/açık seçenek çiplerini görünmez yapması engellendi: pasif değerler koyu metin, seçili değerler beyaz metinle gösterilir. Hedefli web typecheck ile katalog ve ürün çalışma alanı testleri `9/9 PASS`; tarayıcı/Stage kabulü `NOT_RUN`.
+
 ## 2026-08-17 - Ürün düzenleme çalışma alanı eşitliği
 
 Ürün düzenleme ekranı, ayrı bir JSX düzeni taşımadan ürün ekleme bileşeninin düzenleme modunu kullanır: temel ürün bilgileri, kategori özellikleri, varyant bazlı fiyat/stok, ölçü/desi, görsel ve Trendyol yayın alanları aynı render kaynağındadır. Kayıtlı ürün seviyesi özellik değerleri `ProductView` ile güvenli biçimde okunur ve mevcut optimistic-concurrency `PATCH /products/{id}` işlemiyle kaydedilir. Varyant stok/fiyat işlemleri mevcut idempotency ve sürüm korumalı endpointlerinde kaldı; yayın güvenliği ve Production kontrolleri değişmedi. Web typecheck ve hedefli ürün yayın Vitest dosyası geçti; tarayıcı/Stage kabulü `NOT_RUN`.
 
 ## 2026-08-17 - Trendyol approval polling interval correction
 
-The durable approval processor explicitly requests a five-minute delay for `PRODUCT_APPROVAL_PENDING`, but the generic retry policy was applying its one-hour terminal backoff after repeated reads. The lease scheduler now preserves the five-minute interval only for that logical, read-only product-approval state; provider/network/rate-limit failures retain normal backoff and provider Retry-After semantics. Infrastructure and the test project build with zero errors. The targeted PostgreSQL lease test is `NOT_RUN_LOCAL_DOCKER_UNAVAILABLE` because local Testcontainers cannot reach `npipe://./pipe/docker_engine`. Source CI `32045775540`, immutable publish `32046114208`, backup `20260817T163708Z` checksum/restore-list, and v10.77 Stage deploy all passed. API, Worker, Caddy and PostgreSQL are healthy and external readiness is `Healthy`; the scheduled `17:25:49 UTC` read-back reached attempt `18` and correctly scheduled the next pending poll for `17:30:52 UTC`.
+The durable approval processor explicitly requests a five-minute delay for `PRODUCT_APPROVAL_PENDING`, but the generic retry policy was applying its one-hour terminal backoff after repeated reads. The lease scheduler now preserves the five-minute interval only for that logical, read-only product-approval state; provider/network/rate-limit failures retain normal backoff and provider Retry-After semantics. Infrastructure and the test project build with zero errors. The targeted PostgreSQL lease test is `NOT_RUN_LOCAL_DOCKER_UNAVAILABLE` because local Testcontainers cannot reach `npipe://./pipe/docker_engine`. Source CI `32045775540`, immutable publish `32046114208`, backup `20260817T163708Z` checksum/restore-list, and v10.77 Stage deploy all passed. API, Worker, Caddy and PostgreSQL are healthy and external readiness is `Healthy`; the polling has reached attempt `30` and scheduled its next pending read-back for `18:30:59 UTC`.
 
 ## 2026-08-17 - Trendyol Stage approval reconciliation follow-up
 
-The durable `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` job was checked read-only at `17:26 UTC`. It remains `RETRY_SCHEDULED / PRODUCT_APPROVAL_PENDING` after attempt `18`; its next provider read-back is scheduled for `17:30:52 UTC`. No duplicate create, manual approval promotion, or provider write was issued. F3 remains pending the provider's terminal listing result.
+The durable `TRENDYOL_PRODUCT_APPROVAL_RECONCILE` job was checked read-only at `18:30 UTC`. It remains `RETRY_SCHEDULED / PRODUCT_APPROVAL_PENDING` after attempt `30`; its next provider read-back is scheduled for `18:30:59 UTC`. No duplicate create, manual approval promotion, or provider write was issued. F3 remains pending the provider's terminal listing result.
 
 ## 2026-08-17 - Post-connection real Stage invoice-create result
 
