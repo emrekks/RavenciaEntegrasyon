@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - E-Faturam authorized-read connection preflight
+
+- Connection testing now verifies a fresh `signIn` token against a harmless protected read request using a zero document UUID.
+- Expected missing-document validation responses prove authorized endpoint access; authentication, network and contract failures remain visible without a write.
+
 ## 2026-08-17 - E-Faturam Stage replay runtime result
 
 - v10.69 deployed the bounded Stage authentication replay after source CI and immutable image verification.

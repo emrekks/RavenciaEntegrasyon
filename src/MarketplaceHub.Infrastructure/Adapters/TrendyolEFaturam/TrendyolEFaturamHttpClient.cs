@@ -26,6 +26,10 @@ public sealed class TrendyolEFaturamHttpClient(
         if (configured is null) return AdapterResult<ConnectionIdentity>.Failure(TrendyolEFaturamErrorMapper.Configuration());
         var access = await AcquireAccess(configured, cancellationToken);
         if (!access.IsSuccess) return AdapterResult<ConnectionIdentity>.Failure(access.Error!, access.RateLimit);
+        var authorizedRead = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Post, TrendyolEFaturamEndpoints.PermanentDocumentUrl,
+            JsonContent.Create(new { companyId = access.Value.CompanyId, documentUuid = Guid.Empty, documentType = "EARCHIVE", fileExtension = "pdf" }), cancellationToken);
+        if (!authorizedRead.IsSuccess && authorizedRead.Error!.HttpStatus is not (400 or 404 or 422))
+            return AdapterResult<ConnectionIdentity>.Failure(authorizedRead.Error!, authorizedRead.RateLimit);
         return AdapterResult<ConnectionIdentity>.Success(new(
             "TRENDYOL_EFATURAM",
             configured.Connection.Environment,

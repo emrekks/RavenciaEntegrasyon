@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - E-Faturam authorized-read connection preflight
+
+The direct API_USER connection test previously proved only that `signIn` returned a token. It now follows sign-in with a harmless protected permanent-document read using the all-zero UUID, company id, EARCHIVE type and PDF extension. Provider `400`, `404` and `422` responses are expected for that non-existent document and prove the token reached a protected read endpoint; authentication/network/contract errors remain failures. This adds no provider write and will distinguish token authorization failure from create-payload behavior in the next Stage connection test.
+
 ## 2026-08-17 - E-Faturam Stage replay runtime result
 
 `v10.69` source CI and immutable release succeeded, and backup `20260817T141016Z` passed SHA/restore-list verification before a healthy Ubuntu deployment. The panel replay action queued and executed the bounded Stage canary. Attempt 5 reached the provider create endpoint but received `EFATURAM_ACCESS_TOKEN_REJECTED / 401`, with no external reference, ETTN, request id, or ambiguous external effect. The direct account `signIn` remains successful and the application did not block the request with capability/evidence/JWT-claim gating. The remaining blocker is the provider's opaque authorized-endpoint response; Production safeguards remain unchanged.

@@ -1,5 +1,14 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-17 - Authorized-read connection preflight
+
+| Evidence | Status | Note |
+| --- | --- | --- |
+| Scope | CODED_PENDING_RUNTIME | After direct `signIn`, a no-effect permanent-document request uses the zero UUID and current company id. |
+| Accepted probe responses | CODED | 400/404/422 are expected for a non-existent document and establish protected read authorization; success is also accepted. |
+| Rejected responses | CODED | 401/403, network and contract failures keep the connection test failed and expose the provider result without storing credentials. |
+| Write safety | PRESERVED | The preflight calls only a document read endpoint; no invoice, cancellation or marketplace delivery is created. |
+
 ## 2026-08-17 - Safe replay runtime result
 
 | Evidence | Status | Note |
