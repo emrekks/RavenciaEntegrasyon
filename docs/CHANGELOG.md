@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - E-Faturam Stage replay runtime result
+
+- v10.69 deployed the bounded Stage authentication replay after source CI and immutable image verification.
+- The fifth provider attempt reached the protected create endpoint and again returned `EFATURAM_ACCESS_TOKEN_REJECTED / 401`; no external reference, ETTN, or provider request id was created.
+- This confirms the account sign-in and application-side replay path are working; the remaining failure is the provider's opaque authorized-endpoint response.
+
 ## 2026-08-17 - Safe Stage authentication replay
 
 - A pinned E-Faturam Stage canary with no external reference can be replayed after an unambiguous provider authentication rejection.

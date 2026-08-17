@@ -1,5 +1,14 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-17 - Safe replay runtime result
+
+| Evidence | Status | Note |
+| --- | --- | --- |
+| Release/deploy | PASS | v10.69 source CI and immutable publish passed; backup `20260817T141016Z` passed SHA/archive restore-list validation and API/Worker/Caddy/readiness were healthy after deploy. |
+| Panel action | PASS_STAGE | The bounded Stage canary replay was available in the invoice detail and was queued without an extra confirmation. |
+| Provider result | BLOCKED_PROVIDER_AUTHORIZED_ENDPOINT | Attempt 5 received `EFATURAM_ACCESS_TOKEN_REJECTED / 401`; no external reference, ETTN or request id was produced. |
+| Safety conclusion | VERIFIED | The provider request was not blocked by capability/evidence/claim gates. With no external reference, no ambiguous external effect was accepted. Production remains excluded. |
+
 ## 2026-08-17 - Safe Stage authentication replay
 
 | Evidence | Status | Note |

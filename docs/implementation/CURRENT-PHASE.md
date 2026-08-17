@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - E-Faturam Stage replay runtime result
+
+`v10.69` source CI and immutable release succeeded, and backup `20260817T141016Z` passed SHA/restore-list verification before a healthy Ubuntu deployment. The panel replay action queued and executed the bounded Stage canary. Attempt 5 reached the provider create endpoint but received `EFATURAM_ACCESS_TOKEN_REJECTED / 401`, with no external reference, ETTN, request id, or ambiguous external effect. The direct account `signIn` remains successful and the application did not block the request with capability/evidence/JWT-claim gating. The remaining blocker is the provider's opaque authorized-endpoint response; Production safeguards remain unchanged.
+
 ## 2026-08-17 - Safe Stage authentication replay
 
 The Stage canary had a non-ambiguous provider 401 with no external reference but remained in `SUBMITTING`, so the newly corrected adapter could not be retried from the normal panel. The replay action now permits exactly this bounded case on the pinned Stage E-Faturam account. It does not open Production, does not replay a record with an external reference, and retains idempotency, validation, audit and response checks. Targeted Stage-probe tests are pending before a fresh immutable release and runtime retry.
