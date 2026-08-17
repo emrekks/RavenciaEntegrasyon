@@ -1,12 +1,13 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
-## 2026-08-17 - Authorized-read connection preflight
+## 2026-08-17 - Authorized-read connection preflight runtime result
 
 | Evidence | Status | Note |
 | --- | --- | --- |
-| Scope | CODED_PENDING_RUNTIME | After direct `signIn`, a no-effect permanent-document request uses the zero UUID and current company id. |
+| Scope | PASS_STAGE | After direct `signIn`, a no-effect permanent-document request uses the zero UUID and current company id. |
 | Accepted probe responses | CODED | 400/404/422 are expected for a non-existent document and establish protected read authorization; success is also accepted. |
-| Rejected responses | CODED | 401/403, network and contract failures keep the connection test failed and expose the provider result without storing credentials. |
+| Runtime result | BLOCKED_PROVIDER_AUTHORIZED_ENDPOINT | On v10.70, `signIn` returned a fresh direct-account token, but the zero-UUID protected read returned `401 / EFATURAM_ACCESS_TOKEN_REJECTED`. The provider did not create an invoice, cancellation, document or external reference. |
+| Account conclusion | VERIFIED | The credential/login path is valid. The failure is the provider rejecting that fresh token on a protected endpoint, not an application capability, evidence, fixture, approval or credential-entry blocker. |
 | Write safety | PRESERVED | The preflight calls only a document read endpoint; no invoice, cancellation or marketplace delivery is created. |
 
 ## 2026-08-17 - Safe replay runtime result

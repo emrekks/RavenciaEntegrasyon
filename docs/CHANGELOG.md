@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - E-Faturam protected-read Stage runtime result
+
+- v10.70 Stage connection preflight confirmed that direct `signIn` succeeds, while the same fresh token receives `401 / EFATURAM_ACCESS_TOKEN_REJECTED` on a no-effect protected document read.
+- The failure is shown as provider protected-API scope rejection rather than an account credential error. No invoice, cancellation, document or external reference was created.
+- Source CI `32038452349`, immutable publish `32038750695`, backup `20260817T142403Z` and post-deploy API/Worker/Caddy/PostgreSQL health checks passed.
+
 ## 2026-08-17 - E-Faturam authorized-read connection preflight
 
 - Connection testing now verifies a fresh `signIn` token against a harmless protected read request using a zero document UUID.

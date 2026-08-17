@@ -1,8 +1,8 @@
 # Güncel Faz ve Devralma Durumu
 
-## 2026-08-17 - E-Faturam authorized-read connection preflight
+## 2026-08-17 - E-Faturam authorized-read connection preflight runtime result
 
-The direct API_USER connection test previously proved only that `signIn` returned a token. It now follows sign-in with a harmless protected permanent-document read using the all-zero UUID, company id, EARCHIVE type and PDF extension. Provider `400`, `404` and `422` responses are expected for that non-existent document and prove the token reached a protected read endpoint; authentication/network/contract errors remain failures. This adds no provider write and will distinguish token authorization failure from create-payload behavior in the next Stage connection test.
+The direct API_USER connection test previously proved only that `signIn` returned a token. v10.70 follows sign-in with a harmless protected permanent-document read using the all-zero UUID, company id, EARCHIVE type and PDF extension. The Stage runtime test received a fresh token from `signIn`, then the protected read returned `401 / EFATURAM_ACCESS_TOKEN_REJECTED`. This proves the credential/login path is valid and the create payload is not the root cause; the provider gateway rejects the fresh token on protected endpoints. No provider write or external reference was created. Capability, evidence, fixture, approval and write-switch gates did not block this manual Stage test; Production safeguards remain unchanged.
 
 ## 2026-08-17 - E-Faturam Stage replay runtime result
 
