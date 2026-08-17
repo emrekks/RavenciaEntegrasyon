@@ -397,7 +397,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         var name = ResolveCustomerName(customerJson, invoiceAddressJson, shipmentAddressJson);
         var email = JsonText(customerJson, "customerEmail", "email") ?? JsonText(invoiceAddressJson, "email") ?? JsonText(shipmentAddressJson, "email");
         var phone = JsonText(customerJson, "customerPhone", "customerPhoneNumber", "phone", "phoneNumber") ?? JsonText(invoiceAddressJson, "phone", "phoneNumber", "mobilePhone") ?? JsonText(shipmentAddressJson, "phone", "phoneNumber", "mobilePhone");
-        var tax = JsonText(customerJson, "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber") ?? JsonText(invoiceAddressJson, "taxNumber", "identityNumber", "tcIdentityNumber") ?? JsonText(shipmentAddressJson, "taxNumber", "identityNumber", "tcIdentityNumber");
+        var tax = ResolveCustomerTaxOrIdentityNumber(customerJson, invoiceAddressJson, shipmentAddressJson);
         var microText = JsonText(customerJson, "shipmentPackageType", "orderType");
         // Trendyol exports through its 3P partner model explicitly return micro=false. The documented
         // 3pByTrendyol=true signal is still an export order and must be presented as such to operators.
@@ -419,6 +419,11 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         return FirstMeaningful(customerName, invoiceName, shipmentName) ?? "—";
     }
 
+    internal static string? ResolveCustomerTaxOrIdentityNumber(string customerJson, string invoiceAddressJson, string shipmentAddressJson) =>
+        JsonText(customerJson, "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber")
+        ?? JsonText(invoiceAddressJson, "taxNumber", "identityNumber", "tcIdentityNumber")
+        ?? JsonText(shipmentAddressJson, "taxNumber", "identityNumber", "tcIdentityNumber");
+
     private static string? NameFrom(string json, string firstName, string lastName, params string[] fullNameFields)
     {
         var first = JsonText(json, firstName);
@@ -427,7 +432,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         return !string.IsNullOrWhiteSpace(combined) ? combined : JsonText(json, fullNameFields);
     }
 
-    private static string? FirstMeaningful(params string?[] names) => names.FirstOrDefault(name => !string.IsNullOrWhiteSpace(name) && !IsPlaceholderCustomerName(name));
+    private static string? FirstMeaningful(params string?[] names) => names.FirstOrDefault(name => IsMeaningfulText(name) && !IsPlaceholderCustomerName(name!));
 
     private static bool IsPlaceholderCustomerName(string name) => name.Trim() is "Adı Soyadı" or "Ad Soyad" or "İsim Soyisim";
 
@@ -517,7 +522,7 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
                 if (names.Contains(property.Name) && property.Value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined or JsonValueKind.Object or JsonValueKind.Array))
                 {
                     var value = property.Value.ToString();
-                    if (!string.IsNullOrWhiteSpace(value)) return value;
+                    if (IsMeaningfulText(value)) return value;
                 }
                 var nested = FindText(property.Value, names); if (!string.IsNullOrWhiteSpace(nested)) return nested;
             }
@@ -525,6 +530,9 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
         else if (element.ValueKind == JsonValueKind.Array) foreach (var item in element.EnumerateArray()) { var nested = FindText(item, names); if (!string.IsNullOrWhiteSpace(nested)) return nested; }
         return null;
     }
+
+    private static bool IsMeaningfulText(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetterOrDigit);
 
     private static bool JsonBool(string json, params string[] names)
     {

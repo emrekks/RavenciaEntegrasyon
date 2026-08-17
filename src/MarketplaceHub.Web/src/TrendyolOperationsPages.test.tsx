@@ -70,6 +70,34 @@ test('does not render an invented overdue duration for a missing provider due da
   expect(screen.queryByText(/gün gecikmiştir/)).not.toBeInTheDocument()
 })
 
+test('explains a missing invoice package and queues a single-order refresh', async () => {
+  let refreshBody = ''
+  globalThis.fetch = vi.fn((input, init) => {
+    const url = String(input)
+    const order = { id: 'order-masked', orderNumber: '1114396103', derivedStatus: 'PROCESSING', currency: 'TRY', grossAmount: 52.9, discountAmount: 0, netAmount: 52.9, orderedAt: '2026-08-18T10:00:00Z', lineCount: 1, packageCount: 0, version: 1, connectionId: 'connection-1', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', customerName: '*** ***', customerEmail: null, customerPhone: null, customerTaxOrIdentityNumber: '11111111111', orderType: 'NORMAL', isMicroExport: false, isEInvoiceAvailable: false, shipmentAddressJson: '{}', invoiceAddressJson: '{"invoiceAddress":{"fullAddress":"***","neighborhood":"Caferağa"}}', shipmentDueAt: null, isDeadlineCritical: false, invoiceStatus: 'FATURA_BEKLIYOR', invoiceDocumentUrl: null, invoiceId: null, cargoProviderName: null, cargoTrackingNumber: null, primaryImageUrl: null, productQuantity: 1, lines: [{ id: 'line-1', sku: 'SKU-1', barcode: null, title: 'Köpek Ödülü', orderedQuantity: 1, cancelledQuantity: 0, shippedQuantity: 0, deliveredQuantity: 0, returnedQuantity: 0, unitPrice: 52.9, vatRate: 20, rawStatus: 'Created', variantId: null, modelCode: null, optionSignature: null, imageUrl: null }], packages: [] }
+    if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-order-refresh' })
+    if (url.includes('/api/v1/orders?')) return json({ items: [order], nextCursor: null, hasMore: false })
+    if (url.includes('/api/v1/connections?')) return json({ items: [{ id: 'billing-1', publicId: 'public-1', platformCode: 'TRENDYOL_EFATURAM', environment: 'STAGE', displayName: 'E-Faturam', externalStoreId: 'ravencia', status: 'ACTIVE', apiVersion: '1', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, version: 1 }], nextCursor: null, hasMore: false })
+    if (url.endsWith('/api/v1/orders/order-masked')) return json(order)
+    if (url.endsWith('/api/v1/connections/connection-1/order-sync-jobs') && init?.method === 'POST') { refreshBody = String(init.body); return json({ id: 'job-1' }, 202) }
+    return json({}, 404)
+  }) as typeof fetch
+
+  renderAt('/orders', '/orders', <OrdersPage />)
+  fireEvent.click(screen.getByRole('tab', { name: /İşleme Alınanlar/ }))
+  await screen.findByText('Sipariş Bilgileri')
+  fireEvent.click(screen.getByRole('button', { name: 'Fatura işlemleri' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Fatura Oluştur' }))
+
+  expect(await screen.findByText('Trendyol müşteri bilgisini maskeledi')).toBeInTheDocument()
+  expect(screen.getByText('Caferağa')).toBeInTheDocument()
+  expect(screen.getByText(/paket bilgisi henüz gelmedi/i)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Devam Et ve Taslağı Oluştur' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Paket bilgisini yenile' }))
+  await waitFor(() => expect(JSON.parse(refreshBody)).toEqual({ externalOrderId: '1114396103' }))
+  expect(await screen.findByText(/yenileme kuyruğa alındı/i)).toBeInTheDocument()
+})
+
 test('uses the exact product-creation workspace for product editing', async () => {
   globalThis.fetch = vi.fn((input, init) => {
     const url = String(input)

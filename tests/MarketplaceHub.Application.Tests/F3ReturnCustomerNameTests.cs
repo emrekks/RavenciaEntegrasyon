@@ -36,4 +36,20 @@ public sealed class F3ReturnCustomerNameTests
 
         Assert.Equal("—", name);
     }
+
+    [Fact]
+    public void Ignores_masked_customer_values_and_uses_available_invoice_data()
+    {
+        var name = F3SalesService.ResolveCustomerName(
+            """{"customerFirstName":"***","customerLastName":"***"}""",
+            """{"invoiceAddress":{"firstName":"Fatura","lastName":"Alıcısı"}}""",
+            """{}""");
+        var taxNumber = F3SalesService.ResolveCustomerTaxOrIdentityNumber(
+            """{"customerTaxNumber":"***","taxNumber":"***","identityNumber":"11111111111"}""",
+            """{}""",
+            """{}""");
+
+        Assert.Equal("Fatura Alıcısı", name);
+        Assert.Equal("11111111111", taxNumber);
+    }
 }
