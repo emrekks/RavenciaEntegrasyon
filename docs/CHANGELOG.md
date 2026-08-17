@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - E-Faturam connection-test false-negative correction
+
+- The connection test no longer calls the permanent-document endpoint with a synthetic all-zero UUID after successful direct sign-in. That endpoint requires a real document UUID, so the synthetic read could incorrectly mark a healthy Stage credential as failed.
+- Connection verification remains limited to encrypted credential loading, direct sign-in and a validated single company/user scope. Real document retrieval, invoice submission, idempotency, audit and Production controls are unchanged.
+
 ## 2026-08-17 - E-Faturam permanent URL media-type alignment
 
 - Protected permanent-document URL reads, including the no-effect Stage preflight, now send the provider-documented `Accept: text/plain`; invoice create requests retain `Accept: application/json`.

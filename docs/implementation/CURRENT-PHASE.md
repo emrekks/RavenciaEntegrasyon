@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - E-Faturam connection-test false-negative correction
+
+The same direct Stage connection completed successful `signIn` tests at 12:34 and 12:36 UTC. Later failures began only after the connection test called the permanent-document endpoint with `Guid.Empty`. That endpoint requires a real document UUID, so the synthetic request can turn a valid sign-in into a false negative. The connection test now validates encrypted credential loading, direct `signIn`, and the single company/user scope only. Real document download, invoice submission, idempotency, audit, the Stage boundary, and every Production write safeguard are unchanged. Targeted adapter contract verification is pending.
+
 ## 2026-08-17 - E-Faturam protected-endpoint result visibility
 
 v10.72 source CI `32040097876`, immutable publish `32040366761`, backup `20260817T145206Z` and Ubuntu API/Worker/Caddy/PostgreSQL/HTTPS health checks passed. The live Stage connection page now distinguishes a valid direct-account sign-in from provider protected-endpoint authorization rejection. `EFATURAM_ACCESS_TOKEN_REJECTED` is shown as a provider rejection of a fresh token, not as a password, capability, evidence or user-approval failure. The Stage manual operation remains available and Production controls are unchanged.

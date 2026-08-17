@@ -1,5 +1,13 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-17 - Connection-test false-negative correction
+
+| Evidence | Status | Note |
+| --- | --- | --- |
+| Runtime chronology | VERIFIED_STAGE | The same connection succeeded at 12:34 and 12:36 UTC. The later 401 records began only after the connection test added a synthetic permanent-document request. |
+| Contract correction | CODED_PENDING_TEST | `TestConnectionAsync` now stops after encrypted credential loading, direct `signIn`, and validated single company/user scope. It no longer sends `Guid.Empty` to an endpoint that requires a real document UUID. |
+| Safety | PRESERVED | Real document download retains the documented endpoint, real UUID, `text/plain` accept header, response validation and private storage controls. Invoice submit and every Production safeguard are unchanged. |
+
 ## 2026-08-17 - Protected-endpoint result visibility
 
 | Evidence | Status | Note |

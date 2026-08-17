@@ -4,6 +4,10 @@
 
 Trendyol siparişi/paketi için provider hesabındaki mali kapsamı kullanarak doğru E-Fatura veya internet satışı E-Arşiv belgesini oluşturmak, provider durumunu sayısal kodlarla uzlaştırmak, PDF'yi private saklamak, E-Arşiv iptalini takip etmek ve Trendyol paketine güvenli fatura linki iletmek.
 
+## Connection-test scope
+
+Connection verification validates only encrypted credential loading, direct `signIn`, and a validated single company/user scope. It does not send a synthetic all-zero UUID to the permanent-document endpoint, because that endpoint is reserved for a real invoice/document flow. Real document retrieval, invoice submission, reconciliation, idempotency, audit, environment boundaries and Production safeguards remain separate.
+
 ## Sağlayıcı kabul ön koşulu
 
 Aktif kapsam tek işletmenin kendi E-Faturam hesabını yöneten `API_USER` modelidir. Panel yalnız hesap e-posta/parolasını şifreli saklar; `companyId` ve `userId` sağlayıcının `signIn` access tokenından okunur. Tek firma/kullanıcı kapsamı güvenli biçimde çıkarılamazsa işlem fail-closed kalır. Partner `customerSignIn` ve çoklu müşteri modeli aktif kapsam dışıdır.

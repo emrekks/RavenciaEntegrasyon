@@ -71,6 +71,17 @@ public sealed class F4TrendyolEFaturamContractTests
     public void Multiple_direct_account_privilege_companies_remain_fail_closed() =>
         Assert.False(TrendyolEFaturamDirectAccountAccess.TryRead(Token("""{"sub":"20","privs":{"10":[],"11":[]}}"""), out _));
 
+    [Fact]
+    public void Connection_test_only_validates_direct_sign_in_and_does_not_query_a_synthetic_document()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Infrastructure", "Adapters", "TrendyolEFaturam", "TrendyolEFaturamHttpClient.cs"));
+        var connectionTest = source[..source.IndexOf("    public async Task<AdapterResult<InvoiceSubmissionResult>> SubmitAsync", StringComparison.Ordinal)];
+
+        Assert.DoesNotContain("TrendyolEFaturamEndpoints.PermanentDocumentUrl", connectionTest, StringComparison.Ordinal);
+        Assert.DoesNotContain("Guid.Empty", connectionTest, StringComparison.Ordinal);
+        Assert.Contains("AcquireAccess(configured", connectionTest, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("{}")]
     [InlineData("{\"companyId\":10}")]
