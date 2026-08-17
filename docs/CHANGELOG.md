@@ -1,5 +1,11 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - v10.76 immutable release and E-Faturam Stage connection acceptance
+
+- Source CI `32044345183` and immutable publish `32044534115` passed after the Buildx manifest-rate-limit remediation. The release used the pinned Buildx binary and mandatory SHA-256 verification.
+- Backup `20260817T161235Z` passed checksum and restore-list verification before digest-pinned Ubuntu deployment. API, Worker, Caddy and PostgreSQL are healthy; external readiness is `Healthy`.
+- The first new panel-triggered E-Faturam Stage connection test completed successfully. It validates direct sign-in and account scope without a synthetic document request; it does not claim provider invoice-write acceptance.
+
 ## 2026-08-17 - Immutable release Buildx manifest 429 remediation
 
 - Source CI passed, but two immutable publish runs failed before authentication or image creation because the setup action was rate-limited while resolving its Buildx manifest from GitHub raw content.

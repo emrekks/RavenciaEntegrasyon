@@ -1,5 +1,11 @@
 # F1 Kanıt Günlüğü
 
+## 2026-08-17 - F1-EV-033 v10.76 immutable release builder recovery
+
+- Source CI `32044345183` and immutable publish `32044534115` passed. The exact Buildx `v0.34.1` binary was downloaded from the official release URL, SHA-256 verified, and used to publish both app and edge images.
+- Backup `20260817T161235Z` passed database/private-volume SHA-256 checks, manifest presence and `pg_restore --list` before deployment.
+- The production deploy consumed only digest-pinned images. API, Worker, Caddy and PostgreSQL became healthy and external `/health/ready` returned `Healthy` after the normal Caddy startup interval.
+
 ## 2026-08-17 - Immutable release Buildx manifest 429 remediation
 
 - Source CI `32043779256` accepted commit `9f159c5`, but release runs `32043947714` and `32044093802` failed before registry authentication because the setup action received `429 Too Many Requests` while reading its Buildx release manifest from GitHub raw content.

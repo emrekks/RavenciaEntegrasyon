@@ -1,5 +1,14 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-17 - v10.76 Stage connection acceptance
+
+| Evidence | Status | Note |
+| --- | --- | --- |
+| Source/release/deploy | PASS | Source CI `32044345183`, immutable publish `32044534115`, backup `20260817T161235Z` checksum/restore-list, Ubuntu deploy and external readiness all passed. |
+| Panel-triggered connection job | PASS_STAGE | The first new `EFATURAM_CONNECTION_TEST` after deploy completed `SUCCEEDED` at `2026-08-17 16:14:39 UTC`. |
+| Scope | VERIFIED | Connection acceptance proves encrypted credential loading, direct `signIn`, and single company/user scope. It does not manufacture a document UUID or claim invoice-create acceptance. |
+| Safety | PRESERVED | Invoice submit/document retrieval retain their own input, idempotency, provider-response, audit, Stage boundary and Production protections. |
+
 ## 2026-08-17 - Connection-test false-negative correction
 
 | Evidence | Status | Note |

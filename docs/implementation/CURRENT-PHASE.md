@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - v10.76 release and Stage connection acceptance
+
+Source CI `32044345183` and immutable publish `32044534115` passed for commit `21ceb57`. The release builder installed exact Buildx `v0.34.1` with SHA-256 verification, proving the manifest-429 remediation. Backup `20260817T161235Z` passed database/private-volume SHA checks, manifest presence and `pg_restore --list` before deployment. Ubuntu API, Worker, Caddy and PostgreSQL are healthy; external readiness is `Healthy`. The first new panel-triggered `EFATURAM_CONNECTION_TEST` after deployment completed `SUCCEEDED` at `2026-08-17 16:14:39 UTC`. This accepts encrypted credential loading, direct sign-in and validated single-company/user scope without a synthetic document request. It is not evidence of invoice-create acceptance; the provider protected invoice-write result remains a separate Stage requirement.
+
 ## 2026-08-17 - Immutable release Buildx download hardening
 
 Source CI `32043779256` passed for commit `9f159c5`. Two release-tag runs then failed before registry authentication, image construction or deployment because `docker/setup-buildx-action` received GitHub raw-content `429` while resolving its Buildx manifest. The release workflow now downloads the same Buildx `v0.34.1` binary from its official release URL with bounded retries and verifies SHA-256 `f1332ddb9010bd0b72628266c3a906d9a6979848033df4c8d9bd2cd113bae12b` before creating the builder. This preserves the exact version and digest-only release path while removing the unauthenticated manifest dependency. Targeted workflow guard validation and a new source CI/release run are pending; no deployment occurred after either failed release run.
