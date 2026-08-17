@@ -87,7 +87,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     public async Task<PageResult<AttributeView>> ListAttributesAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken)
     {
-        var afterId = Decode(after); var query = db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId); if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
+        var afterId = Decode(after); var query = db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive); if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
         var rows = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken); var ids = rows.Take(limit).Select(x => x.Id).ToArray(); var values = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.AttributeId)).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken);
         return Page(rows, limit, attribute => MapAttribute(attribute, values.Where(x => x.AttributeId == attribute.Id)));
     }
@@ -102,6 +102,19 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (values.GroupBy(x => x.NormalizedValue).Any(group => group.Count() > 1)) return Invalid<AttributeView>("values", "Aynı özellik değeri tekrarlanamaz.");
         if (dataType is AttributeDataType.SingleSelect or AttributeDataType.MultiSelect && values.Count == 0) return Invalid<AttributeView>("values", "Seçimli özellik en az bir değer ister.");
         db.AttributeDefinitions.Add(attribute); db.AttributeValues.AddRange(values); await db.SaveChangesAsync(cancellationToken); return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, values));
+    }
+
+    public async Task<ServiceResult<AttributeView>> DeactivateAttributeAsync(Guid tenantId, Guid attributeId, long expectedVersion, CancellationToken cancellationToken)
+    {
+        var attribute = await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == attributeId && x.IsActive, cancellationToken);
+        if (attribute is null) return NotFound<AttributeView>();
+        if (attribute.Version != expectedVersion) return Precondition<AttributeView>(attribute.Version);
+        attribute.IsActive = false;
+        attribute.Version++;
+        attribute.UpdatedAt = timeProvider.GetUtcNow();
+        await db.SaveChangesAsync(cancellationToken);
+        var values = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && x.AttributeId == attributeId).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken);
+        return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, values));
     }
 
     public async Task<ServiceResult<AttributeView>> AddAttributeValuesAsync(Guid tenantId, Guid attributeId, IReadOnlyList<CreateAttributeValueCommand> values, CancellationToken cancellationToken)
@@ -151,7 +164,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .ToListAsync(cancellationToken);
         var attributeIds = requirements.Select(x => x.AttributeId).Distinct().ToArray();
         var attributes = await db.AttributeDefinitions.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && attributeIds.Contains(x.Id))
+            .Where(x => x.TenantId == tenantId && attributeIds.Contains(x.Id) && x.IsActive)
             .OrderBy(x => x.Name)
             .ToListAsync(cancellationToken);
         var values = await db.AttributeValues.AsNoTracking()
