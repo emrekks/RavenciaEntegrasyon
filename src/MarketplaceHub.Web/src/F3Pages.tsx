@@ -330,8 +330,8 @@ function CategoryMappingWorkspace() {
   const requirements = useQuery({ queryKey: ['category-requirements', localId, 'mapping'], queryFn: () => hubApi<CategoryRequirementView[]>(`/catalog/categories/${localId}/attribute-requirements`), enabled: !!localId, retry: false })
   const references = useQuery({ queryKey: ['reference-categories', connectionId], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!connectionId, retry: false })
   const mapping = useQuery({ queryKey: ['category-mapping', localId, connectionId], queryFn: () => hubApi<CatalogMapping | null>(`/mappings/categories/${localId}?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!localId && !!connectionId, retry: false })
-  const save = useMutation({ mutationFn: () => { if (!references.data || !localId || !externalId) throw new Error('Panel kategorisi ve Trendyol kategorisi zorunludur.'); return hubApi<CatalogMapping>(`/mappings/categories/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, externalId, status: 'VERIFIED' }) }) }, onSuccess: async value => { setNotice('Kategori eşleşti. 3. adımda özellik eşlemelerine devam edebilirsiniz.'); setExternalId(value.externalId); client.setQueryData(['category-mapping', localId, connectionId], value); client.setQueryData(['category-mapping', localId, connectionId, 'embedded'], value); await client.invalidateQueries({ queryKey: ['category-mapping', localId, connectionId] }); await client.invalidateQueries({ queryKey: ['category-mapping', localId, connectionId, 'embedded'] }) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Eşleme kaydedilemedi.') })
-  const createCategory = useMutation({ mutationFn: () => { if (!categoryName.trim()) throw new Error('Kategori adı zorunludur.'); return hubApi<LocalCategory>('/catalog/categories', { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ name: categoryName.trim(), parentId: null }) }) }, onSuccess: async category => { await client.invalidateQueries({ queryKey: ['categories', 'mapping'] }); setLocalId(category.id); setExternalId(''); setCategoryName(''); setNotice(`“${category.name}” panel kategorisi oluşturuldu ve seçildi.`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Kategori oluşturulamadı.') })
+  const save = useMutation({ mutationFn: () => { if (!references.data || !localId || !externalId) throw new Error('Panel kategorisi ve Trendyol kategorisi zorunludur.'); return hubApi<CatalogMapping>(`/mappings/categories/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, externalId, status: 'VERIFIED' }) }) }, onSuccess: async value => { setNotice('Kategori eşleşti. 3. adımda özellik eşlemelerine devam edebilirsiniz.'); setExternalId(value.externalId); client.setQueryData(['category-mapping', localId, connectionId], value); client.setQueryData(['category-mapping', localId, connectionId, 'embedded'], value); client.setQueryData<CatalogMapping[]>(['category-mappings', connectionId], current => current ? [...current.filter(item => item.localId !== value.localId), value] : [value]); await Promise.all([client.invalidateQueries({ queryKey: ['category-mapping', localId, connectionId] }), client.invalidateQueries({ queryKey: ['category-mapping', localId, connectionId, 'embedded'] }), client.invalidateQueries({ queryKey: ['category-mappings', connectionId] })]) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Eşleme kaydedilemedi.') })
+  const createCategory = useMutation({ mutationFn: () => { if (!categoryName.trim()) throw new Error('Kategori adı zorunludur.'); return hubApi<LocalCategory>('/catalog/categories', { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ name: categoryName.trim(), parentId: null }) }) }, onSuccess: async category => { client.setQueryData<Page<LocalCategory>>(['categories', 'mapping'], current => current ? { ...current, items: [...current.items.filter(item => item.id !== category.id), category] } : current); setLocalId(category.id); setExternalId(''); setCategoryName(''); setNotice(`“${category.name}” panel kategorisi oluşturuldu ve seçildi.`); await client.invalidateQueries({ queryKey: ['categories', 'mapping'] }) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Kategori oluşturulamadı.') })
   useEffect(() => { setExternalId(mapping.data?.externalId ?? '') }, [mapping.data])
   const trendyolConnections = connections.data?.items.filter(item => item.platformCode === 'TRENDYOL' && item.status === 'ACTIVE') ?? []
   useEffect(() => { if (!connectionId && trendyolConnections.length) setConnectionId(trendyolConnections[0].id) }, [connectionId, trendyolConnections])
@@ -391,7 +391,11 @@ function cleanTrendyolCategoryPath(value: string) {
 }
 
 function CategoryRequirementBuilder({ categoryId, categoryVersion, attributes, requirements, onNotice, onSaved }: { categoryId: string; categoryVersion: number | null; attributes: LocalAttribute[]; requirements: CategoryRequirementView[]; onNotice: (value: string) => void; onSaved: () => Promise<void> }) {
+  const client = useQueryClient()
   const [selectedAttributeId, setSelectedAttributeId] = useState(''); const [title, setTitle] = useState(''); const [values, setValues] = useState(''); const [feedback, setFeedback] = useState(''); const [removingRequirementId, setRemovingRequirementId] = useState('')
+  function updateAttributeCache(attribute: LocalAttribute) {
+    client.setQueryData<Page<LocalAttribute>>(['attributes', 'mapping-builder'], current => current ? { ...current, items: [...current.items.filter(item => item.id !== attribute.id), attribute] } : current)
+  }
   async function persist(next: Array<{ attributeId: string; isRequired: boolean; allowsCustomValue: boolean }>) {
     if (!categoryId || categoryVersion == null) return onNotice('Önce panel kategorisini seçin.')
     await hubApi(`/catalog/categories/${categoryId}/attribute-requirements`, { method: 'PUT', headers: { 'If-Match': `"v${categoryVersion}"` }, body: JSON.stringify(next.map((item, index) => ({ ...item, displayOrder: index }))) })
@@ -405,7 +409,8 @@ function CategoryRequirementBuilder({ categoryId, categoryVersion, attributes, r
         if (!selectedAttributeId) return setFeedback('Önce değer eklemek istediğiniz özellik kartını seçin.')
         const requestedValues = values.split(',').map(item => item.trim()).filter(Boolean)
         if (!requestedValues.length) return setFeedback('Eklenecek seçenek değerlerini virgülle girin.')
-        await hubApi<LocalAttribute>(`/catalog/attributes/${selectedAttributeId}/values`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify(requestedValues.map((value, sortOrder) => ({ value, sortOrder }))) })
+        const updatedAttribute = await hubApi<LocalAttribute>(`/catalog/attributes/${selectedAttributeId}/values`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify(requestedValues.map((value, sortOrder) => ({ value, sortOrder }))) })
+        updateAttributeCache(updatedAttribute)
         setValues(''); setFeedback('Yeni seçenek değerleri eklendi.'); await onSaved(); return
       }
       if (!title.trim()) return onNotice('Yeni özellik başlığı girin.')
@@ -415,13 +420,15 @@ function CategoryRequirementBuilder({ categoryId, categoryVersion, attributes, r
         const payload = { code: slug(title), name: title.trim(), dataType: selectableValues.length ? 'SINGLE_SELECT' : 'TEXT', selectionMode: selectableValues.length ? 'SINGLE' : null, unit: null, values: selectableValues.map((value, index) => ({ value, sortOrder: index })) }
         createdAttribute = await hubApi<LocalAttribute>('/catalog/attributes', { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify(payload) })
       }
+      updateAttributeCache(createdAttribute)
       if (categoryId) await persist([...current, { attributeId: createdAttribute.id, isRequired: true, allowsCustomValue: !createdAttribute.values.length }])
       setSelectedAttributeId(createdAttribute.id); setTitle(''); setValues(''); setFeedback('Kategori özellik başlığı kaydedildi.')
     } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Özellik kaydedilemedi.') }
   }
   async function removeValue(attributeId: string, valueId: string) {
     try {
-      await hubApi<LocalAttribute>(`/catalog/attributes/${attributeId}/values/${valueId}`, { method: 'DELETE' })
+      const updatedAttribute = await hubApi<LocalAttribute>(`/catalog/attributes/${attributeId}/values/${valueId}`, { method: 'DELETE' })
+      updateAttributeCache(updatedAttribute)
       setFeedback('Seçenek değeri kaldırıldı.'); await onSaved()
     } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Seçenek değeri kaldırılamadı.') }
   }
@@ -429,6 +436,7 @@ function CategoryRequirementBuilder({ categoryId, categoryVersion, attributes, r
     try {
       setRemovingRequirementId(item.attributeId)
       await hubApi<LocalAttribute>(`/catalog/attributes/${item.attributeId}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.attribute.version}"` } })
+      client.setQueryData<Page<LocalAttribute>>(['attributes', 'mapping-builder'], current => current ? { ...current, items: current.items.filter(attribute => attribute.id !== item.attributeId) } : current)
       if (selectedAttributeId === item.attributeId) setSelectedAttributeId('')
       setFeedback(`${item.attribute.name} kaldırıldı.`)
       await onSaved()
