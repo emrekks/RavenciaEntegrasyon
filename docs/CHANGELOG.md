@@ -4,6 +4,7 @@
 
 - The Stage connection card now states that `EFATURAM_ACCESS_TOKEN_REJECTED` means successful sign-in followed by provider rejection on a protected API endpoint; it is not displayed as a password, capability or approval failure.
 - A manual read-only return sync completed successfully after deployment: 26 return claims remain visible, with 10 successful sync jobs and no failed/blocked return-sync job.
+- v10.72 source CI `32040097876`, immutable publish `32040366761`, backup `20260817T145206Z`, Ubuntu service health and live panel smoke all passed.
 
 ## 2026-08-17 - E-Faturam protected-read Stage runtime result
 

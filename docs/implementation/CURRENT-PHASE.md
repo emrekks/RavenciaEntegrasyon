@@ -2,7 +2,7 @@
 
 ## 2026-08-17 - E-Faturam protected-endpoint result visibility
 
-The Stage connection page now distinguishes a valid direct-account sign-in from provider protected-endpoint authorization rejection. `EFATURAM_ACCESS_TOKEN_REJECTED` is shown as a provider rejection of a fresh token, not as a password, capability, evidence or user-approval failure. The Stage manual operation remains available and Production controls are unchanged.
+v10.72 source CI `32040097876`, immutable publish `32040366761`, backup `20260817T145206Z` and Ubuntu API/Worker/Caddy/PostgreSQL/HTTPS health checks passed. The live Stage connection page now distinguishes a valid direct-account sign-in from provider protected-endpoint authorization rejection. `EFATURAM_ACCESS_TOKEN_REJECTED` is shown as a provider rejection of a fresh token, not as a password, capability, evidence or user-approval failure. The Stage manual operation remains available and Production controls are unchanged.
 
 ## 2026-08-17 - E-Faturam authorized-read connection preflight runtime result
 
