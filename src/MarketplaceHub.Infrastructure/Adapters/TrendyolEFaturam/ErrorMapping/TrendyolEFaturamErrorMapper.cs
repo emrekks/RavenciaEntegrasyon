@@ -1,5 +1,6 @@
 using System.Net;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 
 namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
 
@@ -15,8 +16,13 @@ internal static class TrendyolEFaturamErrorMapper
         _ => new(AdapterErrorClass.Validation, "EFATURAM_REQUEST_REJECTED", "E-Faturam isteği reddetti.", (int)status, null, remoteRequestId)
     };
 
-    public static AdapterError FromAuthorizedStatus(HttpStatusCode status, TimeSpan? retryAfter, string? remoteRequestId) => status switch
+    public static AdapterError FromAuthorizedStatus(
+        HttpStatusCode status,
+        TimeSpan? retryAfter,
+        string? remoteRequestId,
+        TrendyolEFaturamPrivilegeStatus invoiceCreatePrivilege = TrendyolEFaturamPrivilegeStatus.Unknown) => status switch
     {
+        HttpStatusCode.Unauthorized when invoiceCreatePrivilege == TrendyolEFaturamPrivilegeStatus.Missing => new(AdapterErrorClass.Authentication, "EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING", "E-Faturam oturum tokenı INVOICE_CREATE yetkisini bildirmiyor; Stage API işlem kapsamı etkinleştirilmelidir.", 401, null, remoteRequestId),
         HttpStatusCode.Unauthorized => new(AdapterErrorClass.Authentication, "EFATURAM_ACCESS_TOKEN_REJECTED", "E-Faturam yeni oturum tokenını korumalı işlem endpointi için yetkilendirmedi; hesap API erişimi doğrulanmalı.", 401, null, remoteRequestId),
         HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "EFATURAM_OPERATION_FORBIDDEN", "E-Faturam hesabı bu işlemi yapmaya yetkili değil.", 403, null, remoteRequestId),
         _ => FromStatus(status, retryAfter, remoteRequestId)

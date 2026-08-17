@@ -54,4 +54,8 @@ public sealed record TrendyolEFaturamRequestContext(
     public bool ExternalWritesEnabled => Settings.ExternalWritesEnabled;
 }
 
-public sealed record TrendyolEFaturamAccessContext(string AccessToken, long CompanyId, long UserId);
+public sealed record TrendyolEFaturamAccessContext(
+    string AccessToken,
+    long CompanyId,
+    long UserId,
+    TrendyolEFaturamPrivilegeStatus InvoiceCreatePrivilege);

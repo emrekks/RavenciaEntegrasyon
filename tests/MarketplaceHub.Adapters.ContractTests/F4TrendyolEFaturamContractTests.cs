@@ -57,6 +57,16 @@ public sealed class F4TrendyolEFaturamContractTests
         Assert.True(TrendyolEFaturamDirectAccountAccess.TryRead(Token("""{"sub":"20","privs":{"10":["INVOICE_CREATE"]}}"""), out var access));
         Assert.Equal(10, access.CompanyId);
         Assert.Equal(20, access.UserId);
+        Assert.Equal(TrendyolEFaturamPrivilegeStatus.Present, access.InvoiceCreatePrivilege);
+    }
+
+    [Fact]
+    public void Direct_account_token_without_invoice_create_privilege_is_diagnosed_without_exposing_token()
+    {
+        Assert.True(TrendyolEFaturamDirectAccountAccess.TryRead(Token("""{"sub":"20","privs":{"10":["INVOICE_READ"]}}"""), out var access));
+        Assert.Equal(TrendyolEFaturamPrivilegeStatus.Missing, access.InvoiceCreatePrivilege);
+        var error = TrendyolEFaturamErrorMapper.FromAuthorizedStatus(HttpStatusCode.Unauthorized, null, null, access.InvoiceCreatePrivilege);
+        Assert.Equal("EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING", error.Code);
     }
 
     [Fact]

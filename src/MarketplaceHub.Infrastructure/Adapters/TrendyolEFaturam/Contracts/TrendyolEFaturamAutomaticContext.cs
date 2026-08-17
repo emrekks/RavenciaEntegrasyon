@@ -89,7 +89,7 @@ public static class TrendyolEFaturamDirectAccountAccess
             if (!TryGetCompanyId(root, out var companyId)
                 || !TryGetUserId(root, out var userId)
                 || companyId <= 0 || userId <= 0) return false;
-            access = new(token, companyId, userId);
+            access = new(token, companyId, userId, ReadInvoiceCreatePrivilege(root, companyId));
             return true;
         }
         catch (Exception exception) when (exception is FormatException or JsonException)
@@ -131,6 +131,20 @@ public static class TrendyolEFaturamDirectAccountAccess
         TryGetLong(root, "userId", out result)
         || TryGetLong(root, "sub", out result);
 
+    private static TrendyolEFaturamPrivilegeStatus ReadInvoiceCreatePrivilege(JsonElement root, long companyId)
+    {
+        if (!root.TryGetProperty("privs", out var privileges) || privileges.ValueKind != JsonValueKind.Object)
+            return TrendyolEFaturamPrivilegeStatus.Unknown;
+        if (!privileges.TryGetProperty(companyId.ToString(CultureInfo.InvariantCulture), out var companyPrivileges)
+            || companyPrivileges.ValueKind != JsonValueKind.Array)
+            return TrendyolEFaturamPrivilegeStatus.Unknown;
+        return companyPrivileges.EnumerateArray().Any(value =>
+            value.ValueKind == JsonValueKind.String
+            && string.Equals(value.GetString(), "INVOICE_CREATE", StringComparison.OrdinalIgnoreCase))
+            ? TrendyolEFaturamPrivilegeStatus.Present
+            : TrendyolEFaturamPrivilegeStatus.Missing;
+    }
+
     private static bool TryLong(JsonElement value, out long result)
     {
         result = 0;
@@ -139,3 +153,5 @@ public static class TrendyolEFaturamDirectAccountAccess
             && long.TryParse(value.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out result);
     }
 }
+
+public enum TrendyolEFaturamPrivilegeStatus { Unknown, Present, Missing }

@@ -269,3 +269,12 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 | Güvenli teşhis | CODED_TARGETED_VALIDATED | `x-request-id` yoksa yalnız allowlist `/problem/...` instance yolu okunur; query, serbest metin, ham response, token, parola ve PII saklanmaz. Büyük veya geçersiz gövde reddedilir. |
 | Hedefli test | PASS_LOCAL | `F4TrendyolEFaturamContractTests` `37/37` PASS; kökten başlayan problem yolu Windows/Linux eşitliğiyle normalize edilir. |
 | Runtime tekrar | BLOCKED_PROVIDER_AUTHORIZED_ENDPOINT | v10.66 CI `32033455000`, publish `32033891198`, backup `20260817T131624Z` ve healthy deploy tamamlandı. Üçüncü submit denemesi taze token sonrası yine `401` aldı; provider `x-request-id`/problem `instance` vermedi, dış referans oluşmadı. |
+
+## 2026-08-17 — JWT INVOICE_CREATE privilege teşhisi
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Resmî sözleşme | OFFICIAL_DOCUMENTATION_VERIFIED | API_USER modeli `signIn` tokenı, Stage gateway ve standart create endpointlerini kullanır; mevcut adapter bu sözleşmeyle eşleşir. |
+| Güvenli sınıflandırma | CODED_TARGETED_VALIDATED | JWT değeri/ham claim saklanmadan yalnız seçili firma privilege listesinde `INVOICE_CREATE` var/yok/bilinmiyor sınıflandırılır. Eksik privilege ayrı hata kodudur; bilinmeyen biçim fail-closed mevcut 401 kodunda kalır. |
+| Hedefli test | PASS_LOCAL | Adapter contract `38/38` PASS. |
+| Runtime kabul | NOT_RUN | Immutable release/deploy ve dördüncü Stage submit tekrarı bekleniyor. |
