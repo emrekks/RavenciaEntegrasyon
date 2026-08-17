@@ -4,6 +4,8 @@
 
 Resmî API_USER belgesi mevcut `stage-apigateway`, `signIn`, `x-access-token`, companyId/userId ve create endpoint kullanımını doğruladı. Provider'ın gövdesiz/request-id'siz `401` sonucunu daraltmak için taze JWT yalnız yerel olarak incelenir: seçili firma privilege listesi açıkça `INVOICE_CREATE` içermiyorsa `EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING`, claim bilinmiyorsa mevcut `EFATURAM_ACCESS_TOKEN_REJECTED` üretilir. Token veya ham claim loglanmaz; bu sınıflandırma işlem yetkisi vermez ve Stage/Production güvenlik zincirini değiştirmez. Adapter contract `38/38` PASS; immutable release/deploy ve gerçek Stage tekrar `NOT_RUN`.
 
+İlk source CI davranıştan bağımsız formatter whitespace kuralında durdu; switch-expression yerleşimi merkezi formatter ile eşitlendi ve yeniden doğrulama bekleniyor.
+
 ## 2026-08-17 - E-Faturam provider problem referansı teşhisi
 
 `release-2026-08-17-v10.66` source CI `32033455000` ve immutable publish `32033891198` ile geçti; checksum/restore-list doğrulanmış `20260817T131624Z` backup sonrasında app `sha256:e261eab355ba8a44e17cf257dc4f9d4dbb62f1ee0591b4066c79106f3e497b1a`, edge `sha256:6fde74c33cf67972aebcd9203a04fbcba60780970c5bafdfb3ee19bfdd423509` deploy edildi. API/Worker/Caddy/PostgreSQL healthy ve readiness/frontend smoke geçti. Güncel bağlantı testi başarılıdır. Mali doğrulaması geçen eski Stage taslağının üçüncü denemesi, taze `signIn` sonrasında provider korumalı create endpointinde yine `EFATURAM_ACCESS_TOKEN_REJECTED / 401` ile durdu; provider `x-request-id` veya problem `instance` vermedi ve dış referans oluşmadı. Güvenli problem teşhisi deploy edilmiş ve çalışmıştır ancak provider ayrıntı göndermediğinden kalan durum `BLOCKED_PROVIDER_AUTHORIZED_ENDPOINT`tir; uygulama capability/onay/gate blocker'ı değildir.

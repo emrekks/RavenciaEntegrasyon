@@ -20,13 +20,14 @@ internal static class TrendyolEFaturamErrorMapper
         HttpStatusCode status,
         TimeSpan? retryAfter,
         string? remoteRequestId,
-        TrendyolEFaturamPrivilegeStatus invoiceCreatePrivilege = TrendyolEFaturamPrivilegeStatus.Unknown) => status switch
-    {
-        HttpStatusCode.Unauthorized when invoiceCreatePrivilege == TrendyolEFaturamPrivilegeStatus.Missing => new(AdapterErrorClass.Authentication, "EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING", "E-Faturam oturum tokenı INVOICE_CREATE yetkisini bildirmiyor; Stage API işlem kapsamı etkinleştirilmelidir.", 401, null, remoteRequestId),
-        HttpStatusCode.Unauthorized => new(AdapterErrorClass.Authentication, "EFATURAM_ACCESS_TOKEN_REJECTED", "E-Faturam yeni oturum tokenını korumalı işlem endpointi için yetkilendirmedi; hesap API erişimi doğrulanmalı.", 401, null, remoteRequestId),
-        HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "EFATURAM_OPERATION_FORBIDDEN", "E-Faturam hesabı bu işlemi yapmaya yetkili değil.", 403, null, remoteRequestId),
-        _ => FromStatus(status, retryAfter, remoteRequestId)
-    };
+        TrendyolEFaturamPrivilegeStatus invoiceCreatePrivilege = TrendyolEFaturamPrivilegeStatus.Unknown) =>
+        status switch
+        {
+            HttpStatusCode.Unauthorized when invoiceCreatePrivilege == TrendyolEFaturamPrivilegeStatus.Missing => new(AdapterErrorClass.Authentication, "EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING", "E-Faturam oturum tokenı INVOICE_CREATE yetkisini bildirmiyor; Stage API işlem kapsamı etkinleştirilmelidir.", 401, null, remoteRequestId),
+            HttpStatusCode.Unauthorized => new(AdapterErrorClass.Authentication, "EFATURAM_ACCESS_TOKEN_REJECTED", "E-Faturam yeni oturum tokenını korumalı işlem endpointi için yetkilendirmedi; hesap API erişimi doğrulanmalı.", 401, null, remoteRequestId),
+            HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "EFATURAM_OPERATION_FORBIDDEN", "E-Faturam hesabı bu işlemi yapmaya yetkili değil.", 403, null, remoteRequestId),
+            _ => FromStatus(status, retryAfter, remoteRequestId)
+        };
 
     public static AdapterError Configuration() => new(AdapterErrorClass.Authentication, "EFATURAM_CONFIGURATION_UNAVAILABLE", "E-Faturam bağlantısı veya şifreli credential kullanılamıyor.", null, null, null);
     public static AdapterError Unsupported(string message) => new(AdapterErrorClass.NotSupported, "CAPABILITY_NOT_VERIFIED", message, null, null, null);

@@ -278,3 +278,4 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 | Güvenli sınıflandırma | CODED_TARGETED_VALIDATED | JWT değeri/ham claim saklanmadan yalnız seçili firma privilege listesinde `INVOICE_CREATE` var/yok/bilinmiyor sınıflandırılır. Eksik privilege ayrı hata kodudur; bilinmeyen biçim fail-closed mevcut 401 kodunda kalır. |
 | Hedefli test | PASS_LOCAL | Adapter contract `38/38` PASS. |
 | Runtime kabul | NOT_RUN | Immutable release/deploy ve dördüncü Stage submit tekrarı bekleniyor. |
+| İlk source CI | FORMATTER_FIXED_REVALIDATION_PENDING | `32034862011` yalnız `TrendyolEFaturamErrorMapper` switch-expression whitespace kuralında durdu; davranış değişmeden biçim düzeltildi. |
