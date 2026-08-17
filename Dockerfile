@@ -2,9 +2,20 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0.302@sha256:ed034a8bf0b24ded0cbbac07e17825d8e9ebfe21e308191d0f7421eaf5ad4664 AS build
 WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props MarketplaceHub.sln ./
+COPY src/MarketplaceHub.Api/MarketplaceHub.Api.csproj src/MarketplaceHub.Api/
+COPY src/MarketplaceHub.Application/MarketplaceHub.Application.csproj src/MarketplaceHub.Application/
+COPY src/MarketplaceHub.Domain/MarketplaceHub.Domain.csproj src/MarketplaceHub.Domain/
+COPY src/MarketplaceHub.Infrastructure/MarketplaceHub.Infrastructure.csproj src/MarketplaceHub.Infrastructure/
+COPY src/MarketplaceHub.Worker/MarketplaceHub.Worker.csproj src/MarketplaceHub.Worker/
+COPY tests/MarketplaceHub.Adapters.ContractTests/MarketplaceHub.Adapters.ContractTests.csproj tests/MarketplaceHub.Adapters.ContractTests/
+COPY tests/MarketplaceHub.Api.IntegrationTests/MarketplaceHub.Api.IntegrationTests.csproj tests/MarketplaceHub.Api.IntegrationTests/
+COPY tests/MarketplaceHub.Application.Tests/MarketplaceHub.Application.Tests.csproj tests/MarketplaceHub.Application.Tests/
+COPY tests/MarketplaceHub.Domain.Tests/MarketplaceHub.Domain.Tests.csproj tests/MarketplaceHub.Domain.Tests/
+COPY tests/MarketplaceHub.EndToEnd.Tests/MarketplaceHub.EndToEnd.Tests.csproj tests/MarketplaceHub.EndToEnd.Tests/
+COPY tests/MarketplaceHub.Persistence.IntegrationTests/MarketplaceHub.Persistence.IntegrationTests.csproj tests/MarketplaceHub.Persistence.IntegrationTests/
+RUN dotnet restore MarketplaceHub.sln --locked-mode
 COPY src/ src/
 COPY tests/ tests/
-RUN dotnet restore MarketplaceHub.sln --locked-mode
 RUN dotnet publish src/MarketplaceHub.Api/MarketplaceHub.Api.csproj -c Release --no-restore -o /out/api \
  && dotnet publish src/MarketplaceHub.Worker/MarketplaceHub.Worker.csproj -c Release --no-restore -o /out/worker
 
