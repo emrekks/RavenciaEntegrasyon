@@ -202,6 +202,15 @@ public sealed class F3TrendyolContractTests
     }
 
     [Fact]
+    public void Category_attribute_read_uses_the_documented_required_filter_as_authoritative_source()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Infrastructure", "Adapters", "Trendyol", "TrendyolHttpClient.cs"));
+
+        Assert.Contains("endpoint + \"?required=true\"", source, StringComparison.Ordinal);
+        Assert.Contains("IsRequired = requiredIds.Contains(item.ExternalId)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Capability_discovery_probes_documented_reads_and_contains_no_write_request()
     {
         var source = File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Infrastructure", "Adapters", "Trendyol", "TrendyolHttpClient.cs"));

@@ -54,6 +54,15 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         try
         {
             var items = TrendyolJsonMapper.References(type, response.Value!, resource.ParentExternalId);
+            if (type == "CATEGORY_ATTRIBUTES")
+            {
+                var requiredResponse = await SendAsync(authorized, HttpMethod.Get, endpoint + "?required=true", null, cancellationToken);
+                if (!requiredResponse.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(requiredResponse.Error!, requiredResponse.RateLimit);
+                var requiredIds = TrendyolJsonMapper.References(type, requiredResponse.Value!, resource.ParentExternalId)
+                    .Select(item => item.ExternalId)
+                    .ToHashSet(StringComparer.Ordinal);
+                items = items.Select(item => item with { IsRequired = requiredIds.Contains(item.ExternalId) }).ToList();
+            }
             var hasMore = type is "BRANDS" or "ATTRIBUTE_VALUES" && items.Count >= page.Limit;
             var next = hasMore ? (Page(page.Cursor) + 1).ToString(CultureInfo.InvariantCulture) : null;
             return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new(items, next, hasMore), response.RateLimit);
