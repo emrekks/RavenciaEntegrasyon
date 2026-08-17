@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - Post-connection real Stage invoice-create result
+
+After the v10.76 connection job succeeded, the panel queued the bounded E-Arşiv Stage canary on invoice `019ff6b4-f556-79d7-82cc-928709382389`. The worker completed `EFATURAM_STAGE_CAPABILITY_PROBE` at `2026-08-17 16:17:35 UTC` with `EFATURAM_ACCESS_TOKEN_REJECTED`. The invoice remains without an external reference. This confirms the application does not impose the previous synthetic-read blocker and that the remaining failure is the provider rejecting the fresh token on the actual create endpoint. No capability/evidence/fiscal-policy/user-approval/connection-switch gate blocked the manual Stage request; Production controls remain unchanged.
+
 ## 2026-08-17 - v10.76 release and Stage connection acceptance
 
 Source CI `32044345183` and immutable publish `32044534115` passed for commit `21ceb57`. The release builder installed exact Buildx `v0.34.1` with SHA-256 verification, proving the manifest-429 remediation. Backup `20260817T161235Z` passed database/private-volume SHA checks, manifest presence and `pg_restore --list` before deployment. Ubuntu API, Worker, Caddy and PostgreSQL are healthy; external readiness is `Healthy`. The first new panel-triggered `EFATURAM_CONNECTION_TEST` after deployment completed `SUCCEEDED` at `2026-08-17 16:14:39 UTC`. This accepts encrypted credential loading, direct sign-in and validated single-company/user scope without a synthetic document request. It is not evidence of invoice-create acceptance; the provider protected invoice-write result remains a separate Stage requirement.

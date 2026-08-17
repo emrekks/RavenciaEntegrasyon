@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Real Stage invoice-create result after connection acceptance
+
+- After the new Stage connection test succeeded, the bounded E-Arşiv canary reached the real provider create endpoint and returned `EFATURAM_ACCESS_TOKEN_REJECTED`.
+- No external reference, invoice number or ETTN was created. The remaining invoice-create acceptance dependency is provider-side; application Stage gates and Production safeguards are unchanged.
+
 ## 2026-08-17 - v10.76 immutable release and E-Faturam Stage connection acceptance
 
 - Source CI `32044345183` and immutable publish `32044534115` passed after the Buildx manifest-rate-limit remediation. The release used the pinned Buildx binary and mandatory SHA-256 verification.

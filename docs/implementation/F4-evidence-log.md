@@ -1,5 +1,14 @@
 # F4 Trendyol E-Faturam Kanıt Günlüğü
 
+## 2026-08-17 - Post-connection real Stage create probe
+
+| Evidence | Status | Note |
+| --- | --- | --- |
+| Prerequisite | PASS_STAGE | The v10.76 panel-triggered connection test completed `SUCCEEDED` before this canary. |
+| Provider create result | BLOCKED_PROVIDER_AUTHORIZED_ENDPOINT | `EFATURAM_STAGE_CAPABILITY_PROBE` completed at `2026-08-17 16:17:35 UTC` with `EFATURAM_ACCESS_TOKEN_REJECTED`. |
+| External-effect fence | VERIFIED | The invoice has no external reference, invoice number or ETTN. The result is not counted as a successful invoice and was not auto-replayed. |
+| Gate conclusion | VERIFIED | Manual Stage reached the provider after technical validation/idempotency. Capability/evidence/fiscal-policy/user-approval/connection-switch gates were not the runtime blocker. |
+
 ## 2026-08-17 - v10.76 Stage connection acceptance
 
 | Evidence | Status | Note |
