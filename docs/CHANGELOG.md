@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Ürün özelliği seçim kutuları ve varyant aksiyonu
+
+- Büyük/görsel olarak tutarsız attribute seçim kutuları sabit boyutlu native checkbox görünümüne alındı.
+- `Ürünleri ekle` kontrolü 5 numaralı ürün özellikleri bölümünün üstüne taşındı; varyant tablosu ve toplu işlemler alttaki bölümde korundu.
+
 ## 2026-08-17 - Düzenleme varyantları kalıcı kaydetme
 
 - Ürün düzenleme ekranında oluşturulan yeni varyantlar artık ürün `PATCH` isteğiyle append-only kaydedilir ve sayfa yenilendiğinde geri yüklenir.

@@ -1,5 +1,11 @@
 # F2 Kanıt Günlüğü
 
+## 2026-08-17 - Attribute checkbox ve varyant aksiyonu yerleşimi
+
+- Varyant özelliği seçicileri sabit boyutlu, erişilebilir native checkbox olarak normalize edildi; geniş input stilleri checkbox'a sızmaz.
+- `Ürünleri ekle` aksiyonu 5 numaralı özellik bölümünün üstünde konumlandırıldı; oluşan satır işlemleri 6 numaralı bölümde kaldı.
+- Browser/Stage görsel kabulü `NOT_RUN`; takip eden hedefli web typecheck sonucu bu kayıtla birlikte güncellenecek.
+
 ## 2026-08-17 - Düzenleme varyant append kalıcılığı
 
 - `UpdateProductCommand.VariantsToCreate` yalnız yeni varyantları ekler; mevcut varyantların silinmesi veya dış liste/enventory bağlantılarının kopması söz konusu değildir.

@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - Ürün özellikleri kontrol iyileştirmesi
+
+Ürün özelliği kartlarındaki varyant seçim kutuları artık tarayıcı/tema kurallarından etkilenmeden sabit 16px checkbox olarak görünür. Varyant üretme aksiyonu, kullanıcı isteğiyle 5 numaralı ürün özellikleri bölümünün üstüne taşındı; 6 numaralı bölüm oluşan varyant satırlarını, toplu alanları ve temizleme aksiyonunu gösterir. İşlevsel doğrulama bu küçük UI değişikliği için hedefli typecheck ile yapılacaktır; tarayıcı/Stage kabulü `NOT_RUN`.
+
 ## 2026-08-17 - Ürün düzenlemede varyant kalıcılığı
 
 Ürün düzenleme `PATCH /products/{id}` akışı artık yeni oluşturulan varyantları `variantsToCreate` ile append-only olarak kaydeder. Mevcut satış satırları, envanterleri veya dış liste bağlantıları silinmez. API SKU/barkod tekilliğini, kategori zorunlu özelliklerini, en fazla 1000 varyant sınırını ve ana envanter oluşturmayı doğrular; `If-Match` sürüm koruması devam eder. Varyant oluşturma ekranı mevcut satırları koruyarak yeni kombinasyonları ekler. .NET solution build ve hedefli katalog Vitest senaryoları geçti; tarayıcı/Stage kabulü `NOT_RUN`.
