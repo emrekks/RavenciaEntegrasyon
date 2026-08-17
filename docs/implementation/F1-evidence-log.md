@@ -1,5 +1,11 @@
 # F1 Kanıt Günlüğü
 
+## 2026-08-17 - Immutable release Buildx manifest 429 remediation
+
+- Source CI `32043779256` accepted commit `9f159c5`, but release runs `32043947714` and `32044093802` failed before registry authentication because the setup action received `429 Too Many Requests` while reading its Buildx release manifest from GitHub raw content.
+- The release workflow now downloads the same pinned Buildx `v0.34.1` binary from the official Docker Buildx release URL using bounded curl retries, verifies SHA-256 `f1332ddb9010bd0b72628266c3a906d9a6979848033df4c8d9bd2cd113bae12b`, then creates the existing docker-container builder.
+- No image was published and no Ubuntu deployment ran from the failed release attempts. Targeted repository guard, source CI and immutable publish validation remain pending.
+
 ## 2026-08-12 - F1-EV-032 v10.56 hedef izole restore tatbikatı
 
 - Backup manifest: `20260812T132906Z`; DB ve private archive SHA-256: `PASS`; PostgreSQL image: pinned `18.4` digest.

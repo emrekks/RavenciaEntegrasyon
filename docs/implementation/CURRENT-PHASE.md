@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - Immutable release Buildx download hardening
+
+Source CI `32043779256` passed for commit `9f159c5`. Two release-tag runs then failed before registry authentication, image construction or deployment because `docker/setup-buildx-action` received GitHub raw-content `429` while resolving its Buildx manifest. The release workflow now downloads the same Buildx `v0.34.1` binary from its official release URL with bounded retries and verifies SHA-256 `f1332ddb9010bd0b72628266c3a906d9a6979848033df4c8d9bd2cd113bae12b` before creating the builder. This preserves the exact version and digest-only release path while removing the unauthenticated manifest dependency. Targeted workflow guard validation and a new source CI/release run are pending; no deployment occurred after either failed release run.
+
 ## 2026-08-17 - E-Faturam connection-test false-negative correction
 
 The same direct Stage connection completed successful `signIn` tests at 12:34 and 12:36 UTC. Later failures began only after the connection test called the permanent-document endpoint with `Guid.Empty`. That endpoint requires a real document UUID, so the synthetic request can turn a valid sign-in into a false negative. The connection test now validates encrypted credential loading, direct `signIn`, and the single company/user scope only. Real document download, invoice submission, idempotency, audit, the Stage boundary, and every Production write safeguard are unchanged. Targeted adapter contract verification is pending.

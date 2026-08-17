@@ -42,8 +42,10 @@ public sealed class RepositoryGuardTests
         Assert.Contains("name@sha256", workflow, StringComparison.Ordinal);
         Assert.Contains("runs-on: ubuntu-24.04", workflow, StringComparison.Ordinal);
         Assert.Contains("actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803", workflow, StringComparison.Ordinal);
-        Assert.Contains("docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c", workflow, StringComparison.Ordinal);
-        Assert.Contains("version: v0.34.1", workflow, StringComparison.Ordinal);
+        Assert.Contains("buildx_version='v0.34.1'", workflow, StringComparison.Ordinal);
+        Assert.Contains("f1332ddb9010bd0b72628266c3a906d9a6979848033df4c8d9bd2cd113bae12b", workflow, StringComparison.Ordinal);
+        Assert.Contains("docker/buildx/releases/download/${buildx_version}", workflow, StringComparison.Ordinal);
+        Assert.Contains("sha256sum --check --status", workflow, StringComparison.Ordinal);
         Assert.Contains("actions: read", workflow, StringComparison.Ordinal);
         Assert.Contains("GITHUB_TOKEN: ${{ github.token }}", workflow, StringComparison.Ordinal);
         Assert.Contains("git merge-base --is-ancestor", workflow, StringComparison.Ordinal);

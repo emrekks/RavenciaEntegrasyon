@@ -18,9 +18,9 @@ Bu runbook, onaylı bir Git commit'inden production adayına ait Linux/amd64 uyg
    - `MARKETPLACEHUB_EDGE_IMAGE`
 5. `sha-<commit>` etiketi yalnız bulunabilirlik içindir. Compose veya deploy kaydında etiket kullanma; yalnız digest'li tam adı kullan.
 
-Akış, iki digest'i de `sha256:` ve 64 küçük hexadecimal karakter olarak doğrulamadan başarılı sayılmaz. Base image'lar Dockerfile içinde sabit digest ile bağlıdır; checkout ve Buildx setup action'ları tam commit SHA, Buildx binary'si exact sürüm ile sabittir. Buildx ayrıca provenance ve SBOM üretir.
+Akış, iki digest'i de `sha256:` ve 64 küçük hexadecimal karakter olarak doğrulamadan başarılı sayılmaz. Base image'lar Dockerfile içinde sabit digest ile bağlıdır; checkout action'ı tam commit SHA ile sabittir. Buildx `v0.34.1` resmi release binary'si bounded retry ile indirilir ve sabit SHA-256 doğrulamasından geçmeden builder oluşturulmaz. Buildx ayrıca provenance ve SBOM üretir.
 
-Resmî doğrulama kaynakları: [GitHub Container Registry image yayınlama](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images), [Caddy Automatic HTTPS](https://caddyserver.com/docs/automatic-https) ve [Docker Setup Buildx](https://github.com/docker/setup-buildx-action).
+Resmî doğrulama kaynakları: [GitHub Container Registry image yayınlama](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images), [Caddy Automatic HTTPS](https://caddyserver.com/docs/automatic-https) ve [Docker Buildx releases](https://github.com/docker/buildx/releases).
 
 ## Deploy öncesi bağımsız doğrulama
 

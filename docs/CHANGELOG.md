@@ -1,5 +1,10 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - Immutable release Buildx manifest 429 remediation
+
+- Source CI passed, but two immutable publish runs failed before authentication or image creation because the setup action was rate-limited while resolving its Buildx manifest from GitHub raw content.
+- The release workflow now installs the same pinned Buildx `v0.34.1` from the official release URL with bounded retries and mandatory SHA-256 verification before creating the builder. No failed run produced an image or deployed to Ubuntu.
+
 ## 2026-08-17 - E-Faturam connection-test false-negative correction
 
 - The connection test no longer calls the permanent-document endpoint with a synthetic all-zero UUID after successful direct sign-in. That endpoint requires a real document UUID, so the synthetic read could incorrectly mark a healthy Stage credential as failed.
