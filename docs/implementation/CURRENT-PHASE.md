@@ -1,5 +1,9 @@
 # Güncel Faz ve Devralma Durumu
 
+## 2026-08-17 - E-Faturam Stage 401 classification correction
+
+The direct API_USER `signIn` and connection test remain successful; the account is not the diagnosed fault. The public API contract documents the Stage gateway, `signIn`, `x-access-token`, companyId/userId and create endpoint, but not an `INVOICE_CREATE` JWT authorization contract. The claim-derived runtime branch was removed. Manual Stage create reaches the same provider endpoint without a claim/evidence gate and a genuine provider 401 remains safely visible as `EFATURAM_ACCESS_TOKEN_REJECTED`. The remaining investigation is the provider's opaque protected-endpoint response, not an account claim. Production fail-closed writes are unchanged.
+
 ## 2026-08-17 - E-Faturam token privilege ayrımı
 
 Resmî API_USER belgesi mevcut `stage-apigateway`, `signIn`, `x-access-token`, companyId/userId ve create endpoint kullanımını doğruladı. Provider'ın gövdesiz/request-id'siz `401` sonucunu daraltmak için taze JWT yalnız yerel olarak incelenir: seçili firma privilege listesi açıkça `INVOICE_CREATE` içermiyorsa `EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING`, claim bilinmiyorsa mevcut `EFATURAM_ACCESS_TOKEN_REJECTED` üretilir. Token veya ham claim loglanmaz; bu sınıflandırma işlem yetkisi vermez ve Stage/Production güvenlik zincirini değiştirmez. Adapter contract `38/38`, source CI `32035385747` ve immutable publish `32035738058` PASS. `20260817T133652Z` doğrulanmış backup sonrası v10.67 deploy healthy oldu. Dördüncü gerçek Stage submit seçili firma privilege listesinde `INVOICE_CREATE` bulunmadığını gösterdi; 401 ile durdu ve dış referans/ETTN oluşmadı. Kalan dış adım Stage API_USER hesabı için provider tarafında invoice-create işlem kapsamının etkinleştirilmesidir.

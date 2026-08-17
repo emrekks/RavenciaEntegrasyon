@@ -57,5 +57,4 @@ public sealed record TrendyolEFaturamRequestContext(
 public sealed record TrendyolEFaturamAccessContext(
     string AccessToken,
     long CompanyId,
-    long UserId,
-    TrendyolEFaturamPrivilegeStatus InvoiceCreatePrivilege);
+    long UserId);

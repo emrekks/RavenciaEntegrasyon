@@ -1,5 +1,12 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - E-Faturam Stage 401 classification correction
+
+- A successful direct API_USER `signIn` account is not classified from a guessed JWT privilege name.
+- The `INVOICE_CREATE` claim inference and its special error code were removed because the official API contract does not define that claim as the authorization contract.
+- Manual Stage create still reaches the provider without this gate; a real provider 401 is reported as `EFATURAM_ACCESS_TOKEN_REJECTED` without storing token, claim or password.
+- Stage boundary, input validation, idempotency and response validation remain. Production write protections are unchanged.
+
 ## 2026-08-17 - E-Faturam JWT işlem privilege teşhisi
 
 - Başarılı `signIn` sonrasında create endpointinin verdiği açıklamasız `401`, token değeri saklanmadan JWT içindeki firma kapsamına ait `INVOICE_CREATE` privilege'ı açısından sınıflandırılır.

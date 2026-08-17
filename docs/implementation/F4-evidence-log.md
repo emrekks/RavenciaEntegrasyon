@@ -270,7 +270,16 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 | Hedefli test | PASS_LOCAL | `F4TrendyolEFaturamContractTests` `37/37` PASS; kökten başlayan problem yolu Windows/Linux eşitliğiyle normalize edilir. |
 | Runtime tekrar | BLOCKED_PROVIDER_AUTHORIZED_ENDPOINT | v10.66 CI `32033455000`, publish `32033891198`, backup `20260817T131624Z` ve healthy deploy tamamlandı. Üçüncü submit denemesi taze token sonrası yine `401` aldı; provider `x-request-id`/problem `instance` vermedi, dış referans oluşmadı. |
 
-## 2026-08-17 — JWT INVOICE_CREATE privilege teşhisi
+## 2026-08-17 — JWT claim inference removal
+
+| Evidence | Status | Note |
+| --- | --- | --- |
+| Account access | PASS_STAGE | Direct API_USER signIn connection test remains successful; the account itself is not classified as faulty. |
+| Official contract comparison | VERIFIED | The public API contract documents the Stage gateway, signIn, x-access-token, companyId/userId and create path, but not an INVOICE_CREATE JWT privilege contract. |
+| Runtime behavior | CODED_PENDING_REVALIDATION | Removed the claim-derived special 401 branch. A genuine provider 401 remains visible as EFATURAM_ACCESS_TOKEN_REJECTED; no token, raw claim or password is persisted. |
+| Safety | PRESERVED | Manual Stage requests are not gated by the claim. Stage boundary, validation, idempotency and provider response checks remain; Production write protections are unchanged. |
+
+## 2026-08-17 — Historical JWT INVOICE_CREATE privilege diagnosis
 
 | Kanıt | Durum | Not |
 | --- | --- | --- |

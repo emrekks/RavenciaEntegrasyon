@@ -190,11 +190,7 @@ public sealed class TrendyolEFaturamHttpClient(
             if (!response.IsSuccessStatusCode)
             {
                 remoteId ??= await TrendyolEFaturamProblemDetails.TryReadReferenceAsync(response.Content, linked.Token);
-                var privilege = IsInvoiceCreateEndpoint(endpoint)
-                    && TrendyolEFaturamDirectAccountAccess.TryRead(token, out var tokenAccess)
-                    ? tokenAccess.InvoiceCreatePrivilege
-                    : TrendyolEFaturamPrivilegeStatus.Unknown;
-                return AdapterResult<AuthorizedResponse>.Failure(TrendyolEFaturamErrorMapper.FromAuthorizedStatus(response.StatusCode, retryAfter, remoteId, privilege), rate);
+                return AdapterResult<AuthorizedResponse>.Failure(TrendyolEFaturamErrorMapper.FromAuthorizedStatus(response.StatusCode, retryAfter, remoteId), rate);
             }
             return AdapterResult<AuthorizedResponse>.Success(new(await response.Content.ReadAsStringAsync(linked.Token), remoteId), rate);
         }
@@ -209,10 +205,6 @@ public sealed class TrendyolEFaturamHttpClient(
         path = path.TrimStart('/');
         return path.Length > 0 && !path.Contains("..", StringComparison.Ordinal);
     }
-
-    private static bool IsInvoiceCreateEndpoint(string endpoint) =>
-        string.Equals(endpoint, TrendyolEFaturamEndpoints.CreateEArchive, StringComparison.Ordinal)
-        || string.Equals(endpoint, TrendyolEFaturamEndpoints.CreateOutgoingInvoice, StringComparison.Ordinal);
 
     private sealed record AuthorizedResponse(string Body, string? RemoteRequestId);
 }

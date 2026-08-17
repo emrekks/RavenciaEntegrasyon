@@ -19,11 +19,9 @@ internal static class TrendyolEFaturamErrorMapper
     public static AdapterError FromAuthorizedStatus(
         HttpStatusCode status,
         TimeSpan? retryAfter,
-        string? remoteRequestId,
-        TrendyolEFaturamPrivilegeStatus invoiceCreatePrivilege = TrendyolEFaturamPrivilegeStatus.Unknown) =>
+        string? remoteRequestId) =>
         status switch
         {
-            HttpStatusCode.Unauthorized when invoiceCreatePrivilege == TrendyolEFaturamPrivilegeStatus.Missing => new(AdapterErrorClass.Authentication, "EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING", "E-Faturam oturum tokenı INVOICE_CREATE yetkisini bildirmiyor; Stage API işlem kapsamı etkinleştirilmelidir.", 401, null, remoteRequestId),
             HttpStatusCode.Unauthorized => new(AdapterErrorClass.Authentication, "EFATURAM_ACCESS_TOKEN_REJECTED", "E-Faturam yeni oturum tokenını korumalı işlem endpointi için yetkilendirmedi; hesap API erişimi doğrulanmalı.", 401, null, remoteRequestId),
             HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "EFATURAM_OPERATION_FORBIDDEN", "E-Faturam hesabı bu işlemi yapmaya yetkili değil.", 403, null, remoteRequestId),
             _ => FromStatus(status, retryAfter, remoteRequestId)
