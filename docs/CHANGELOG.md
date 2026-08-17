@@ -5,6 +5,7 @@
 - Ürün düzenleme ekranında oluşturulan yeni varyantlar artık ürün `PATCH` isteğiyle append-only kaydedilir ve sayfa yenilendiğinde geri yüklenir.
 - Mevcut satış satırları korunur; API SKU/barkod çakışması, zorunlu kategori özellikleri, envanter başlangıcı ve optimistic concurrency kontrollerini sürdürür.
 - .NET build, web typecheck ve hedefli katalog Vitest senaryoları geçti; tarayıcı/Stage kabulü çalıştırılmadı.
+- PATCH sözleşme testi boş ek varyant dizisini de kapsayacak şekilde güncellendi; tam web Vitest `27/27` ve Vite production build geçti.
 
 ## 2026-08-17 - Varyant sıralama ve seçenek kontrastı
 

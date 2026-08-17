@@ -5,6 +5,7 @@
 - `UpdateProductCommand.VariantsToCreate` yalnız yeni varyantları ekler; mevcut varyantların silinmesi veya dış liste/enventory bağlantılarının kopması söz konusu değildir.
 - Servis SKU/barkod tenant tekilliği, kategori zorunlu özellikleri, 1000 varyant üst sınırı ve her yeni varyant için MAIN envanter kaydını doğrular.
 - Hedefli doğrulama: `dotnet build MarketplaceHub.sln --no-restore` `PASS` (0 warning/error); `npm.cmd run typecheck` `PASS`; `CatalogWorkspacePages.test.tsx` `3/3 PASS`, yeni düzenleme PATCH gövdesi senaryosu dahil. Tarayıcı/Stage kabulü `NOT_RUN`.
+- Takip sözleşme doğrulaması: tüm web Vitest kümesi `27/27 PASS` ve Vite production build `PASS`; mevcut varyant eklenmediğinde PATCH gövdesinin `variantsToCreate: []` ile açık kalması doğrulandı.
 
 ## 2026-08-08 production v9 hotfix
 
