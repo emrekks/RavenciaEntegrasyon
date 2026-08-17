@@ -1,5 +1,9 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - E-Faturam permanent URL media-type alignment
+
+- Protected permanent-document URL reads, including the no-effect Stage preflight, now send the provider-documented `Accept: text/plain`; invoice create requests retain `Accept: application/json`.
+
 ## 2026-08-17 - E-Faturam provider rejection visibility
 
 - The Stage connection card now states that `EFATURAM_ACCESS_TOKEN_REJECTED` means successful sign-in followed by provider rejection on a protected API endpoint; it is not displayed as a password, capability or approval failure.

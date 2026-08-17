@@ -5,6 +5,7 @@
 | Evidence | Status | Note |
 | --- | --- | --- |
 | Panel diagnosis | PASS_STAGE | v10.72 was deployed after source CI `32040097876`, immutable publish `32040366761` and backup `20260817T145206Z`. The live connection card translates `EFATURAM_ACCESS_TOKEN_REJECTED` into the actual user reason: sign-in succeeded and the provider rejected the fresh token only on a protected Stage endpoint. |
+| Permanent URL contract | CODED_PENDING_STAGE | The protected-read preflight and PDF URL request now use the official `Accept: text/plain` media type; invoice create remains `Accept: application/json`. |
 | Safety | PRESERVED | The visible explanation does not weaken Stage boundary, credential encryption, validation, idempotency or any Production write safeguard. |
 
 ## 2026-08-17 - Authorized-read connection preflight runtime result

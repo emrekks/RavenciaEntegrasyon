@@ -27,7 +27,7 @@ public sealed class TrendyolEFaturamHttpClient(
         var access = await AcquireAccess(configured, cancellationToken);
         if (!access.IsSuccess) return AdapterResult<ConnectionIdentity>.Failure(access.Error!, access.RateLimit);
         var authorizedRead = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Post, TrendyolEFaturamEndpoints.PermanentDocumentUrl,
-            JsonContent.Create(new { companyId = access.Value.CompanyId, documentUuid = Guid.Empty, documentType = "EARCHIVE", fileExtension = "pdf" }), cancellationToken);
+            JsonContent.Create(new { companyId = access.Value.CompanyId, documentUuid = Guid.Empty, documentType = "EARCHIVE", fileExtension = "pdf" }), cancellationToken, "text/plain");
         if (!authorizedRead.IsSuccess && authorizedRead.Error!.HttpStatus is not (400 or 404 or 422))
             return AdapterResult<ConnectionIdentity>.Failure(authorizedRead.Error!, authorizedRead.RateLimit);
         return AdapterResult<ConnectionIdentity>.Success(new(
@@ -113,7 +113,7 @@ public sealed class TrendyolEFaturamHttpClient(
         var access = await AcquireAccess(configured, cancellationToken);
         if (!access.IsSuccess) return AdapterResult<RemoteInvoiceDocument>.Failure(access.Error!, access.RateLimit);
         var response = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Post, TrendyolEFaturamEndpoints.PermanentDocumentUrl,
-            JsonContent.Create(new { companyId = access.Value.CompanyId, documentUuid, documentType = providerType, fileExtension = "pdf" }), cancellationToken);
+            JsonContent.Create(new { companyId = access.Value.CompanyId, documentUuid, documentType = providerType, fileExtension = "pdf" }), cancellationToken, "text/plain");
         if (!response.IsSuccess) return AdapterResult<RemoteInvoiceDocument>.Failure(response.Error!, response.RateLimit);
         string permanentUrl;
         try { permanentUrl = TrendyolEFaturamJsonMapper.PermanentDocumentUrl(response.Value!.Body); }
@@ -178,10 +178,10 @@ public sealed class TrendyolEFaturamHttpClient(
         IntegrationRuntimePolicy.IsManualStage(configured.Connection, context)
         || (IntegrationRuntimePolicy.IsProduction(configured.Connection) && GlobalWritesEnabled && configured.ExternalWritesEnabled);
 
-    private async Task<AdapterResult<AuthorizedResponse>> SendAuthorized(TrendyolEFaturamRequestContext context, string token, HttpMethod method, string endpoint, HttpContent? content, CancellationToken cancellationToken)
+    private async Task<AdapterResult<AuthorizedResponse>> SendAuthorized(TrendyolEFaturamRequestContext context, string token, HttpMethod method, string endpoint, HttpContent? content, CancellationToken cancellationToken, string acceptMediaType = "application/json")
     {
         using var request = new HttpRequestMessage(method, new Uri(context.BaseAddress, endpoint)) { Content = content };
-        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Accept.ParseAdd(acceptMediaType);
         request.Headers.TryAddWithoutValidation("x-access-token", token);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         linked.CancelAfter(RequestTimeout);
