@@ -84,6 +84,14 @@ public sealed class F4TrendyolEFaturamContractTests
     }
 
     [Theory]
+    [InlineData("/problem/connection-error#token-info-read-timed-out", "problem:/problem/connection-error#token-info-read-timed-out")]
+    [InlineData("https://stage.example.test/problem/token-invalid?token=secret#ignored", "problem:/problem/token-invalid")]
+    [InlineData("/problem/token invalid", null)]
+    [InlineData("/other/not-a-provider-problem", null)]
+    public void Provider_problem_reference_is_allowlisted_without_preserving_query_values(string value, string? expected) =>
+        Assert.Equal(expected, TrendyolEFaturamProblemDetails.Normalize(value));
+
+    [Theory]
     [InlineData("TEXMP", "8590921777")]
     [InlineData("Trendyol Express", "8590921777")]
     [InlineData("Yurtiçi Kargo", "3130557669")]

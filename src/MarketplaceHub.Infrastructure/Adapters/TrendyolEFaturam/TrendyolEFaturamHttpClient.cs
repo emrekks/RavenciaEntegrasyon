@@ -187,7 +187,11 @@ public sealed class TrendyolEFaturamHttpClient(
             var retryAfter = response.Headers.RetryAfter?.Delta;
             var rate = new RateLimitMetadata(null, response.Headers.RetryAfter?.Date, retryAfter);
             var remoteId = response.Headers.TryGetValues("x-request-id", out var ids) ? ids.FirstOrDefault() : null;
-            if (!response.IsSuccessStatusCode) return AdapterResult<AuthorizedResponse>.Failure(TrendyolEFaturamErrorMapper.FromAuthorizedStatus(response.StatusCode, retryAfter, remoteId), rate);
+            if (!response.IsSuccessStatusCode)
+            {
+                remoteId ??= await TrendyolEFaturamProblemDetails.TryReadReferenceAsync(response.Content, linked.Token);
+                return AdapterResult<AuthorizedResponse>.Failure(TrendyolEFaturamErrorMapper.FromAuthorizedStatus(response.StatusCode, retryAfter, remoteId), rate);
+            }
             return AdapterResult<AuthorizedResponse>.Success(new(await response.Content.ReadAsStringAsync(linked.Token), remoteId), rate);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return AdapterResult<AuthorizedResponse>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_TIMEOUT", "E-Faturam isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(5), null)); }

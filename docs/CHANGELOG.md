@@ -1,11 +1,17 @@
 # Ravencia MarketplaceHub Değişiklik Kaydı
 
+## 2026-08-17 - E-Faturam korumalı endpoint teşhisinin güvenli derinleştirilmesi
+
+- `v10.65` Stage replay düzeltmesi immutable olarak yayımlandı ve sağlıklı deploy edildi. Bağlantı testi yeniden başarılı olurken mali doğrulaması geçen eski taslağın güncel kodla tekrarı korumalı create endpointinde `EFATURAM_ACCESS_TOKEN_REJECTED / 401` aldı; bu sonuç hesap giriş hatası değildir.
+- Provider `x-request-id` vermediğinde RFC problem gövdesinden yalnız `/problem/...` biçimindeki `instance` referansı, query değerleri ve serbest metinler atılarak güvenli teşhis alanına alınır. Ham cevap, token, parola ve müşteri verisi saklanmaz.
+- Hedefli adapter contract testleri `37/37` PASS. Bu teşhis değişikliği endpoint/header sözleşmesini, Stage mali doğrulamayı veya Production güvenlik zincirini değiştirmez; yeni immutable release/deploy ve provider tekrarı `NOT_RUN`.
+
 ## 2026-08-17 - E-Faturam Stage replay aksiyonunun açılması
 
 - Güncel panel bağlantı testi başarılı oldu; hesap/credential sorunu olmadığı doğrulandı.
 - Dış referans oluşmadan `EFATURAM_TOKEN_SCOPE_MISSING` ile manuel incelemeye düşen sabit Stage taslağı için backend'de zaten bulunan güvenli canary replay endpointi artık fatura detayının `allowedActions` yanıtında görünür.
 - Kapsam yalnız sabitlenmiş E-Faturam Stage hesabı, E-Arşiv ve dış referansı olmayan güvenli taslak/replay ile sınırlıdır. Production ve başka bağlantılar negatif testle kapalı kalır.
-- Hedefli backend `2/2`, F4 web `5/5` PASS. Release/deploy ve gerçek provider replay `NOT_RUN`.
+- Hedefli backend `2/2`, F4 web `5/5` PASS. Source CI `32031018630`, immutable publish `32031420205`, doğrulanmış `20260817T125012Z` backup ve sağlıklı deploy tamamlandı. Replay zinciri girişten geçti; bir eksik mali fixture input validation'da, mali doğrulaması geçen eski taslak ise provider korumalı endpointindeki `401` ile güvenli biçimde durdu.
 
 ## 2026-08-17 - v10.64 immutable deployment ve iade bütünlüğü
 

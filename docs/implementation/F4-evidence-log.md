@@ -258,4 +258,14 @@ Kod kapanışı production kabulü değildir. Capability evidence, exact runtime
 | Stage sınırı | TARGETED_PASS | Aksiyon yalnız sabitlenmiş `TRENDYOL_EFATURAM/STAGE/Ravencia - Ravencia` bağlantısında, dış referansı olmayan E-Arşiv `Ready` veya güvenli scope replay kaydında görünür. Backend testleri `2/2` PASS. |
 | Production güvenliği | PRESERVED | Production bağlantısı ve farklı store kapsamı negatif testle kapalıdır; parola/onay, master/connection write, validation, idempotency, reconciliation ve audit akışı değiştirilmedi. |
 | UI regresyonu | PASS_LOCAL | F4 Vitest `5/5` PASS. |
-| Runtime kabul | NOT_RUN | Immutable release/deploy ve gerçek provider Stage replay bu kod sürümü deploy edilene kadar çalıştırılmadı. |
+| Runtime kabul | BLOCKED_PROVIDER_AUTHORIZED_ENDPOINT | v10.65 source CI `32031018630`, publish `32031420205`, backup `20260817T125012Z` ve healthy deploy tamamlandı. Bağlantı testi PASS; eksik VKN'li fixture input validation'da güvenli durdu. Mali doğrulaması geçen eski taslak güncel kodla tekrarlandığında taze token sonrası create endpointi `401 / EFATURAM_ACCESS_TOKEN_REJECTED` verdi; dış referans oluşmadı. |
+
+## 2026-08-17 — Korumalı endpoint problem referansı teşhisi
+
+| Kanıt | Durum | Not |
+| --- | --- | --- |
+| Hesap/signIn | PASS_STAGE | Normal panel bağlantı testi güncel sürümde tekrar başarılıdır; sorun genel hesap girişi olarak sınıflandırılmaz. |
+| Provider create | BLOCKED_PROVIDER_AUTHORIZED_ENDPOINT | Mali input doğrulaması geçen taslak, taze tokenla resmi Stage create endpointinden `401` aldı; provider `x-request-id` döndürmedi ve dış referans oluşmadı. |
+| Güvenli teşhis | CODED_TARGETED_VALIDATED | `x-request-id` yoksa yalnız allowlist `/problem/...` instance yolu okunur; query, serbest metin, ham response, token, parola ve PII saklanmaz. Büyük veya geçersiz gövde reddedilir. |
+| Hedefli test | PASS_LOCAL | `F4TrendyolEFaturamContractTests` `37/37` PASS. |
+| Runtime tekrar | NOT_RUN | Güvenli problem referansı yakalama kodunun immutable release/deploy ve aynı provider tekrarı henüz çalıştırılmadı. |
