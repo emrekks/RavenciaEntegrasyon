@@ -162,6 +162,26 @@ public sealed class F4TrendyolEFaturamContractTests
         Assert.DoesNotContain("sensitive", reference, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Provider_problem_detail_is_preserved_when_it_is_safe_and_actionable()
+    {
+        using var content = new StringContent("""{"title":"Bad Request","detail":"invoiceLines[0].unitPriceAmount must be greater than 0"}""");
+
+        var reference = await TrendyolEFaturamProblemDetails.TryReadReferenceAsync(content, CancellationToken.None);
+
+        Assert.Equal("provider-detail:invoiceLines[0].unitPriceAmount must be greater than 0", reference);
+    }
+
+    [Fact]
+    public async Task Provider_problem_detail_with_email_is_not_persisted()
+    {
+        using var content = new StringContent("""{"title":"Bad Request","detail":"customer@example.test is invalid"}""");
+
+        var reference = await TrendyolEFaturamProblemDetails.TryReadReferenceAsync(content, CancellationToken.None);
+
+        Assert.Equal("provider-title:bad-request", reference);
+    }
+
     [Theory]
     [InlineData("TEXMP", "8590921777")]
     [InlineData("Trendyol Express", "8590921777")]

@@ -71,6 +71,14 @@ internal static class TrendyolEFaturamProblemDetails
             var problemCode = SafeSegment(document.RootElement, "code");
             if (problemCode is not null) return $"provider:{problemCode}";
 
+            // ProblemDetails `detail` and provider-specific `message` carry the
+            // actionable validation reason for some 400 responses. Persist only
+            // a short, character-allowlisted diagnostic; values containing e-mail
+            // addresses, URLs or other unsafe punctuation are discarded.
+            var detail = SafeDiagnostic(document.RootElement, "detail")
+                ?? SafeDiagnostic(document.RootElement, "message");
+            if (detail is not null) return $"provider-detail:{detail}";
+
             var title = SafeWords(document.RootElement, "title");
             return title is null ? null : $"provider-title:{title}";
         }
@@ -126,5 +134,16 @@ internal static class TrendyolEFaturamProblemDetails
         if (words.Length > 80) words = words[..80];
         if (!words.All(character => char.IsAsciiLetterOrDigit(character) || character is ' ' or '-' or '_' or '.')) return null;
         return string.Join('-', words.Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+    }
+
+    private static string? SafeDiagnostic(JsonElement parent, string name)
+    {
+        if (!TryGetProperty(parent, name, out var value) || value.ValueKind != JsonValueKind.String) return null;
+        var diagnostic = string.Join(' ', (value.GetString() ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (string.IsNullOrWhiteSpace(diagnostic)) return null;
+        if (diagnostic.Length > MaximumReferenceLength) diagnostic = diagnostic[..MaximumReferenceLength];
+        return diagnostic.All(character => char.IsLetterOrDigit(character) || character is ' ' or '-' or '_' or '.' or ':' or ',' or '[' or ']' or '(' or ')' or '/' or '%')
+            ? diagnostic
+            : null;
     }
 }
