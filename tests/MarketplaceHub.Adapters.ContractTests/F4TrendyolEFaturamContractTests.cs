@@ -141,6 +141,16 @@ public sealed class F4TrendyolEFaturamContractTests
         Assert.DoesNotContain("sensitive", reference, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Provider_problem_type_is_preserved_when_instance_is_absent()
+    {
+        using var content = new StringContent("""{"type":"/problem/ubl-validation-failed","title":"Invoice UBL Build Failed","detail":"customer content"}""");
+
+        var reference = await TrendyolEFaturamProblemDetails.TryReadReferenceAsync(content, CancellationToken.None);
+
+        Assert.Equal("problem:/problem/ubl-validation-failed", reference);
+    }
+
     [Theory]
     [InlineData("TEXMP", "8590921777")]
     [InlineData("Trendyol Express", "8590921777")]

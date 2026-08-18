@@ -23,6 +23,7 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
 
         using var json = JsonDocument.Parse(TrendyolEFaturamInvoicePayload.Create(account, source));
         var root = json.RootElement;
+        Assert.Equal("PARTNER", root.GetProperty("source").GetString());
         Assert.Equal("YALNIZ: ÜÇ YÜZ TÜRK LİRASI", Assert.Single(root.GetProperty("notes").EnumerateArray()).GetString());
         Assert.Equal(2, root.GetProperty("invoiceLines").GetArrayLength());
         Assert.Equal("Birinci Ürün", root.GetProperty("invoiceLines")[0].GetProperty("itemName").GetString());
