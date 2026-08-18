@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Mapping;
@@ -9,6 +10,15 @@ namespace MarketplaceHub.Adapters.ContractTests;
 
 public sealed class F4TrendyolEFaturamContractTests
 {
+    [Fact]
+    public void Direct_account_stage_uses_the_provider_portal_bff_while_production_stays_on_the_gateway()
+    {
+        var options = new TrendyolEFaturamOptions();
+
+        Assert.Equal("https://stage.trendyolefaturam.com/bff/v1/", options.StageBaseAddress.AbsoluteUri);
+        Assert.Equal("https://apigateway.trendyolecozum.com/", options.ProductionBaseAddress.AbsoluteUri);
+    }
+
     [Theory]
     [InlineData("earchive-status-approved-anonymous.json", "ACCEPTED", true, "205")]
     [InlineData("earchive-status-cancelled-anonymous.json", "CANCELLED", true, "305")]

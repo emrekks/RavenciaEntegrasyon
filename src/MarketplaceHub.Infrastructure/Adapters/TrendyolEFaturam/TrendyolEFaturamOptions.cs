@@ -3,7 +3,13 @@ namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
 public sealed class TrendyolEFaturamOptions
 {
     public const string SectionName = "TrendyolEFaturam";
-    public Uri StageBaseAddress { get; init; } = new("https://stage-apigateway.trendyolefaturam.com/");
+    // The current Stage portal authenticates direct API_USER accounts and routes
+    // the V2 invoice APIs through its BFF. Calling stage-apigateway directly with
+    // that portal token loses the active company/application context and is
+    // rejected as an application-status mismatch even though the portal account
+    // is active. Keep Production on the documented gateway; only Stage follows
+    // the provider's own active client route.
+    public Uri StageBaseAddress { get; init; } = new("https://stage.trendyolefaturam.com/bff/v1/");
     public Uri ProductionBaseAddress { get; init; } = new("https://apigateway.trendyolecozum.com/");
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
     public string[] DocumentAllowedHosts { get; init; } = [];
