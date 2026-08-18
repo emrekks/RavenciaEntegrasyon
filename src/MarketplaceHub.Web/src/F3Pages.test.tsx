@@ -203,14 +203,16 @@ test('explains protected endpoint rejection without blaming a valid E-Faturam cr
     const url = String(input)
     if (url.endsWith('/api/v1/auth/csrf')) return json({ token: 'csrf-efaturam-token' })
     if (url.endsWith('/api/v1/connections/connection-ef-token/capabilities')) return json([])
-    if (url.endsWith('/api/v1/connections/connection-ef-token')) return json({ id: 'connection-ef-token', publicId: 'public-ef-token', platformCode: 'TRENDYOL_EFATURAM', environment: 'STAGE', displayName: 'E-Faturam Stage', externalStoreId: '100001', status: 'VERIFIED', apiVersion: '1.0.0', lastTestedAt: '2026-08-17T14:25:31Z', lastSuccessAt: null, lastErrorCode: 'EFATURAM_ACCESS_TOKEN_REJECTED', hasCredential: true, version: 4 })
+    if (url.endsWith('/api/v1/connections/connection-ef-token')) return json({ id: 'connection-ef-token', publicId: 'public-ef-token', platformCode: 'TRENDYOL_EFATURAM', environment: 'STAGE', displayName: 'E-Faturam Stage', externalStoreId: '100001', status: 'DRAFT', apiVersion: '1.0.0', lastTestedAt: '2026-08-17T14:25:31Z', lastSuccessAt: null, lastErrorCode: 'EFATURAM_ACCESS_TOKEN_REJECTED', hasCredential: true, version: 4 })
     return Promise.resolve(new Response('{}', { status: 404, headers: { 'Content-Type': 'application/problem+json' } }))
   }) as typeof fetch
 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/integrations/connection-ef-token']}><Routes><Route path="/integrations/:id" element={<IntegrationDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
 
-  expect(await screen.findByText('Giriş başarılı; sağlayıcı yeni tokenı korumalı Stage API endpointinde reddetti. Bu bir parola veya capability engeli değildir.')).toBeInTheDocument()
+  expect(await screen.findByText('Giriş başarılı; sağlayıcı bu hesabın tokenını korumalı fatura API’sinde reddetti. Stage API_USER fatura erişimi sağlayıcı tarafından etkinleştirilmelidir.')).toBeInTheDocument()
+  expect(screen.getByText('Bloke')).toBeInTheDocument()
+  expect(screen.getByText('Son korumalı bağlantı testi başarısız. Sağlayıcı erişimi düzeltilmeden fatura gönderimi başlatılmaz.')).toBeInTheDocument()
 })
 
 test('queues a read-only refresh for one Trendyol order number', async () => {

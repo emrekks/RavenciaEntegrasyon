@@ -31,6 +31,16 @@ public sealed class IntegrationRuntimePolicyTests
     }
 
     [Fact]
+    public void Stage_connection_with_a_failed_latest_test_is_not_operational()
+    {
+        var connection = Connection("STAGE", "VERIFIED");
+        connection.LastErrorCode = "EFATURAM_ACCESS_TOKEN_REJECTED";
+
+        Assert.False(IntegrationRuntimePolicy.AllowsManualRead(connection));
+        Assert.False(IntegrationRuntimePolicy.AllowsManualWrite(connection, Manual, globalWritesEnabled: false, connectionWritesEnabled: false));
+    }
+
+    [Fact]
     public void Production_remains_fail_closed_without_all_write_gates()
     {
         var connection = Connection("PRODUCTION", "ACTIVE");

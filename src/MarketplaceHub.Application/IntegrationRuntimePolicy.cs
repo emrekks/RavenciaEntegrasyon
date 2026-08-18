@@ -16,7 +16,9 @@ public static class IntegrationRuntimePolicy
     // A successful Stage connection test promotes DRAFT to VERIFIED. That is an
     // authenticated, operational Stage connection; Production remains stricter.
     public static bool IsOperationalStage(PlatformConnection connection) =>
-        IsStage(connection) && (IsActive(connection) || string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase));
+        IsStage(connection)
+        && string.IsNullOrWhiteSpace(connection.LastErrorCode)
+        && (IsActive(connection) || string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase));
     public static bool IsManualStage(PlatformConnection connection, AdapterContext context) =>
         IsOperationalStage(connection) && context.Operation == IntegrationOperation.Manual;
 

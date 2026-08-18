@@ -60,6 +60,11 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
                 capability.Version++;
             }
         }
+        else
+        {
+            connection.Status = "DRAFT";
+            connection.LastSuccessAt = null;
+        }
         connection.Version++;
         await db.SaveChangesAsync(cancellationToken);
         if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
