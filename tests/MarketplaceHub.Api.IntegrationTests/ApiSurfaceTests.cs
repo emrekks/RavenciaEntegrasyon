@@ -28,19 +28,20 @@ public sealed class ApiSurfaceTests
     }
 
     [Fact]
-    public void F4_protected_write_endpoint_skips_confirmation_only_for_stage_and_keeps_production_guards()
+    public void F4_submit_can_skip_reauthentication_while_other_sensitive_writes_keep_production_guards()
     {
         var source = File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Api", "F4", "F4Endpoints.cs"));
-        var stageGate = source.IndexOf("if (!IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection))", StringComparison.Ordinal);
+        var stageGate = source.IndexOf("if (!requireSensitiveConfirmation || !IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection))", StringComparison.Ordinal);
         var explicitConfirmation = source.IndexOf("if (!command.Confirmed)", StringComparison.Ordinal);
         var passwordCheck = source.IndexOf("users.CheckPasswordAsync", StringComparison.Ordinal);
 
-        Assert.True(stageGate >= 0, "Stage manual short-circuit must remain in the protected invoice endpoint.");
-        Assert.True(explicitConfirmation > stageGate, "Explicit confirmation must apply only after the Stage short-circuit.");
+        Assert.True(stageGate >= 0, "The per-operation sensitive-confirmation switch and Stage short-circuit must remain in the invoice endpoint.");
+        Assert.True(explicitConfirmation > stageGate, "Explicit confirmation must apply only to operations that retain the sensitive-confirmation gate.");
         Assert.True(passwordCheck > explicitConfirmation, "Production password re-authentication must remain after explicit confirmation.");
         Assert.Contains("return Accepted(await enqueue(tenant.TenantId, stageVersion", source, StringComparison.Ordinal);
         Assert.Contains("EXPLICIT_CONFIRMATION_REQUIRED", source, StringComparison.Ordinal);
         Assert.Contains("REAUTHENTICATION_FAILED", source, StringComparison.Ordinal);
+        Assert.Contains("requireSensitiveConfirmation: false", source, StringComparison.Ordinal);
     }
     private static string FindRoot() { var path = AppContext.BaseDirectory; while (!File.Exists(Path.Combine(path, "MarketplaceHub.sln"))) path = Directory.GetParent(path)?.FullName ?? throw new InvalidOperationException("Root not found"); return path; }
 }
