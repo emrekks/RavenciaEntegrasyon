@@ -103,6 +103,7 @@ public sealed class F4TrendyolEFaturamContractTests
         Assert.Equal(AdapterErrorClass.Authentication, error.Class);
         Assert.Equal(401, error.HttpStatus);
         Assert.Contains("girişi başarılı", error.SafeMessage, StringComparison.Ordinal);
+        Assert.Contains("taze JWT", error.SafeMessage, StringComparison.Ordinal);
     }
 
     [Theory]

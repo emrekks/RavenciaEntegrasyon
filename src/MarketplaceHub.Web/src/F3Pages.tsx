@@ -202,7 +202,7 @@ const activePlatformCodes = new Set(['TRENDYOL', 'TRENDYOL_EFATURAM'])
 function credentialLabel(item: Connection) { return item.platformCode === 'TRENDYOL_EFATURAM' && item.lastErrorCode === 'EFATURAM_CONFIGURATION_UNAVAILABLE' ? 'Yenileme gerekli' : item.hasCredential ? 'Şifreli kayıtlı' : 'Bekleniyor' }
 function credentialHelp(item: Connection) { return item.platformCode === 'TRENDYOL_EFATURAM' && item.lastErrorCode === 'EFATURAM_CONFIGURATION_UNAVAILABLE' ? 'E-Faturam hesap e-postası ve parolasıyla şifreli kaydı yenileyin.' : item.hasCredential ? 'Şifreli kaydedildi; değerler tekrar gösterilmez.' : 'Credential kaydı bekleniyor.' }
 function connectionTestHelp(item: Connection) {
-  if (item.platformCode === 'TRENDYOL_EFATURAM' && item.lastErrorCode === 'EFATURAM_ACCESS_TOKEN_REJECTED') return 'Giriş başarılı; sağlayıcı bu hesabın tokenını korumalı fatura API’sinde reddetti. Stage API_USER fatura erişimi sağlayıcı tarafından etkinleştirilmelidir.'
+  if (item.platformCode === 'TRENDYOL_EFATURAM' && item.lastErrorCode === 'EFATURAM_ACCESS_TOKEN_REJECTED') return 'Giriş başarılı; sağlayıcı sign-in yanıtındaki taze JWT tokenını korumalı fatura API’sinde geçersiz veya süresi dolmuş olarak reddetti.'
   return item.lastErrorCode ?? 'Hata kaydı yok'
 }
 

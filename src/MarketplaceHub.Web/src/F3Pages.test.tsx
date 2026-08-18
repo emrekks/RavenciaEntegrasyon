@@ -210,7 +210,7 @@ test('explains protected endpoint rejection without blaming a valid E-Faturam cr
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/integrations/connection-ef-token']}><Routes><Route path="/integrations/:id" element={<IntegrationDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
 
-  expect(await screen.findByText('Giriş başarılı; sağlayıcı bu hesabın tokenını korumalı fatura API’sinde reddetti. Stage API_USER fatura erişimi sağlayıcı tarafından etkinleştirilmelidir.')).toBeInTheDocument()
+  expect(await screen.findByText('Giriş başarılı; sağlayıcı sign-in yanıtındaki taze JWT tokenını korumalı fatura API’sinde geçersiz veya süresi dolmuş olarak reddetti.')).toBeInTheDocument()
   expect(screen.getByText('Bloke')).toBeInTheDocument()
   expect(screen.getByText('Son korumalı bağlantı testi başarısız. Sağlayıcı erişimi düzeltilmeden fatura gönderimi başlatılmaz.')).toBeInTheDocument()
 })
