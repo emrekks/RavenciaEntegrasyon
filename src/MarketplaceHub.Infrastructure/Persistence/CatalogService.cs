@@ -266,9 +266,28 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var attributeValidation = await ValidateAttributesAsync(tenantId, command.CategoryId, command.Attributes, cancellationToken); if (attributeValidation is not null) return ServiceResult<ProductView>.Fail(attributeValidation.Code, attributeValidation.Message, attributeValidation.Status, attributeValidation.FieldErrors);
         }
         var variantsToCreate = command.VariantsToCreate ?? [];
+        var variantUpdates = command.VariantUpdates ?? [];
+        var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0
+            ? await db.ProductVariants.Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken)
+            : [];
+        if (variantUpdates.Count > 0)
+        {
+            if (variantUpdates.Select(x => x.Id).Distinct().Count() != variantUpdates.Count || variantUpdates.Any(x => !existingVariants.Any(existing => existing.Id == x.Id))) return Invalid<ProductView>("variantUpdates", "Güncellenecek varyant ürün kaydına ait değil.");
+            var updatesById = variantUpdates.ToDictionary(x => x.Id);
+            var proposedSkus = existingVariants.Select(variant => Normalize(updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku)).ToArray();
+            if (proposedSkus.Any(string.IsNullOrWhiteSpace) || proposedSkus.Distinct().Count() != proposedSkus.Length) return Invalid<ProductView>("variantUpdates", "Stok kodları boş veya tekrarlı olamaz.");
+            var proposedBarcodes = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? Normalize(update.Barcode ?? string.Empty) : variant.BarcodeNormalized).Where(value => !string.IsNullOrWhiteSpace(value)).Cast<string>().ToArray();
+            if (proposedBarcodes.Distinct().Count() != proposedBarcodes.Length) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkodlar ürün içinde benzersiz olmalıdır.");
+            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.ProductId != id && (proposedSkus.Contains(x.SkuNormalized) || x.BarcodeNormalized != null && proposedBarcodes.Contains(x.BarcodeNormalized)), cancellationToken)) return Conflict<ProductView>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod başka bir varyantla çakışıyor.");
+            var updatedAt = timeProvider.GetUtcNow();
+            foreach (var update in variantUpdates)
+            {
+                var variant = existingVariants.Single(x => x.Id == update.Id);
+                variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = string.IsNullOrWhiteSpace(update.Barcode) ? null : Normalize(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.UpdatedAt = updatedAt; variant.Version++;
+            }
+        }
         if (variantsToCreate.Count > 0)
         {
-            var existingVariants = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken);
             if (existingVariants.Count + variantsToCreate.Count > 1000) return Invalid<ProductView>("variantsToCreate", "Tek Ã¼rÃ¼n kaydÄ±nda en fazla 1000 varyant oluÅŸturulabilir.");
             foreach (var variant in variantsToCreate)
             {

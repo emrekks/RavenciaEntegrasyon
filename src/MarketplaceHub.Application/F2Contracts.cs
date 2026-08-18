@@ -71,10 +71,11 @@ public sealed record CreateAttributeCommand(string Code, string Name, string Dat
 public sealed record AttributeRequirementCommand(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder);
 public sealed record CategoryAttributeRequirementView(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder, AttributeView Attribute);
 public sealed record CreateVariantCommand(string Sku, string? Barcode, string? ModelCode, IReadOnlyDictionary<string, string>? Options = null, decimal? Weight = null, decimal? Width = null, decimal? Height = null, decimal? Length = null, decimal? Desi = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null);
+public sealed record UpdateVariantCommand(Guid Id, string Sku, string? Barcode, string? ModelCode);
 public sealed record ProductAttributeCommand(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record CreateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<CreateVariantCommand> Variants, IReadOnlyList<ProductAttributeCommand>? Attributes = null);
 // Variant ekleme append-only'dir: envanter veya dış listeye bağlı mevcut satış satırları sessizce silinmez.
-public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null);
+public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null);
 public sealed record UpsertListingProfileCommand(string? TitleOverride, string? DescriptionOverride, string? ExternalCategoryId, string? ExternalBrandId, int? DeliveryTimeDays, bool Enabled);
 
 public interface ICatalogService
