@@ -95,6 +95,22 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
     }
 
     [Fact]
+    public void Canonical_payload_uses_customer_snapshot_tax_id_when_address_does_not_repeat_it()
+    {
+        var canonical = JsonSerializer.Serialize(new
+        {
+            Id = Guid.NewGuid(), InvoiceType = "TEMELFATURA", Currency = "TRY", Note = "YALNIZ: YÜZ YİRMİ TÜRK LİRASI", PayableTotal = 120m, IssuedAt = DateTimeOffset.UtcNow,
+            Order = new { OrderNumber = "ORDER", OrderedAt = DateTimeOffset.UtcNow, CustomerSnapshotJson = JsonSerializer.Serialize(new { customerTaxNumber = "11111111111", customerFirstName = "Test", customerLastName = "Müşteri" }), InvoiceAddressSnapshotJson = JsonSerializer.Serialize(new { invoiceAddress = new { countryCode = "TR", city = "İzmir", district = "Bornova", fullAddress = "Test adresi" } }), ShipmentAddressSnapshotJson = "{}" },
+            Package = (object?)null,
+            Lines = new[] { new { LineSequence = 1, DescriptionSnapshot = "Ürün", SkuSnapshot = "SKU", UnitSnapshot = "ADET", Quantity = 1m, UnitPrice = 100m, DiscountAmount = 0m, VatRate = 20m, VatAmount = 20m, LineTotal = 120m } }
+        });
+
+        using var payload = JsonDocument.Parse(TrendyolEFaturamCanonicalPayload.Create(new EfaturamFiscalAccount(1, 1, null), canonical));
+
+        Assert.Equal("11111111111", payload.RootElement.GetProperty("recipientInfo").GetProperty("taxId").GetString());
+    }
+
+    [Fact]
     public void Canonical_payload_rejects_non_ascii_tax_digits()
     {
         var canonical = JsonSerializer.Serialize(new

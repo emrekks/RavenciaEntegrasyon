@@ -17,8 +17,10 @@ public static class TrendyolEFaturamCanonicalPayload
         try
         {
             var address = RequiredObject(addressSnapshot.RootElement, "invoiceAddress");
-            var taxId = Text(address, "taxNumber", "invoiceTaxNumber", "identityNumber", "IdentityNumber");
-            if (taxId.Length is not (10 or 11) || !taxId.All(char.IsAsciiDigit))
+            var taxId = Text(address, "taxNumber", "invoiceTaxNumber", "identityNumber", "IdentityNumber", "tcIdentityNumber");
+            if (!ValidTaxId(taxId))
+                taxId = Text(customer.RootElement, "customerTaxNumber", "taxNumber", "invoiceTaxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber");
+            if (!ValidTaxId(taxId))
                 throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
 
             var invoiceType = RequiredText(root, "InvoiceType");
@@ -67,6 +69,7 @@ public static class TrendyolEFaturamCanonicalPayload
     private static JsonElement RequiredArray(JsonElement parent, string name) => parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array ? value : throw new JsonException($"{name} missing");
     private static string RequiredText(JsonElement parent, string name) => Text(parent, name) is { Length: > 0 } value ? value : throw new JsonException($"{name} missing");
     private static decimal Decimal(JsonElement parent, string name) => parent.TryGetProperty(name, out var value) && value.TryGetDecimal(out var number) ? number : throw new JsonException($"{name} missing");
+    private static bool ValidTaxId(string value) => value.Length is 10 or 11 && value.All(char.IsAsciiDigit);
     private static string Text(JsonElement parent, params string[] names)
     {
         foreach (var name in names)

@@ -6,6 +6,14 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class F4StageCapabilityProbeTests
 {
     [Fact]
+    public void Local_payload_failure_without_external_reference_can_be_retried_safely()
+    {
+        Assert.True(F4BillingService.CanRetryLocalPayloadFailure(InvoiceStatus.Rejected, "EFATURAM_FISCAL_PAYLOAD_INVALID", null));
+        Assert.False(F4BillingService.CanRetryLocalPayloadFailure(InvoiceStatus.Rejected, "EFATURAM_REQUEST_REJECTED", null));
+        Assert.False(F4BillingService.CanRetryLocalPayloadFailure(InvoiceStatus.Rejected, "EFATURAM_FISCAL_PAYLOAD_INVALID", "remote-reference"));
+    }
+
+    [Fact]
     public void Safe_no_external_reference_authentication_failures_are_replayable_only_on_the_pinned_stage_account()
     {
         var stage = Connection("STAGE", "Ravencia - Ravencia");
