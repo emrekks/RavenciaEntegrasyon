@@ -97,7 +97,9 @@ public static class TrendyolEFaturamDirectAccountAccess
                 TryGetNumericDate(root, "nbf"),
                 TryGetNumericDate(root, "exp"),
                 TryGetString(root, "iss"),
-                TryGetAudience(root));
+                TryGetAudience(root),
+                TryGetPrivilege(root, companyId, "INVOICE_CREATE"),
+                TryGetPrivilege(root, companyId, "INVOICE_READ"));
             return true;
         }
         catch (Exception exception) when (exception is FormatException or JsonException)
@@ -177,6 +179,18 @@ public static class TrendyolEFaturamDirectAccountAccess
     private static bool TryGetUserId(JsonElement root, out long result) =>
         TryGetLong(root, "userId", out result)
         || TryGetLong(root, "sub", out result);
+
+    private static bool? TryGetPrivilege(JsonElement root, long companyId, string privilege)
+    {
+        if (!root.TryGetProperty("privs", out var privileges)
+            || privileges.ValueKind != JsonValueKind.Object
+            || !privileges.TryGetProperty(companyId.ToString(CultureInfo.InvariantCulture), out var companyPrivileges)
+            || companyPrivileges.ValueKind != JsonValueKind.Array)
+            return null;
+        return companyPrivileges.EnumerateArray().Any(value =>
+            value.ValueKind == JsonValueKind.String
+            && string.Equals(value.GetString(), privilege, StringComparison.OrdinalIgnoreCase));
+    }
 
 
     private static bool TryLong(JsonElement value, out long result)

@@ -170,12 +170,14 @@ public sealed class TrendyolEFaturamHttpClient(
                 null, null, null), login.RateLimit);
         var now = timeProvider.GetUtcNow();
         logger.LogInformation(
-            "E-Faturam access token metadata. IssuedAt={IssuedAt} NotBefore={NotBefore} ExpiresAt={ExpiresAt} Issuer={Issuer} Audience={Audience}",
+            "E-Faturam access token metadata. IssuedAt={IssuedAt} NotBefore={NotBefore} ExpiresAt={ExpiresAt} Issuer={Issuer} Audience={Audience} HasInvoiceCreatePrivilege={HasInvoiceCreatePrivilege} HasInvoiceReadPrivilege={HasInvoiceReadPrivilege}",
             access.IssuedAt,
             access.NotBefore,
             access.ExpiresAt,
             access.Issuer,
-            access.Audience);
+            access.Audience,
+            access.HasInvoiceCreatePrivilege,
+            access.HasInvoiceReadPrivilege);
         if (access.ExpiresAt is { } expiresAt && expiresAt <= now)
             return AdapterResult<TrendyolEFaturamAccessContext>.Failure(new(
                 AdapterErrorClass.Authentication,

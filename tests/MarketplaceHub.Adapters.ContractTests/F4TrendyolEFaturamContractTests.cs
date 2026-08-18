@@ -75,6 +75,8 @@ public sealed class F4TrendyolEFaturamContractTests
     public void Direct_account_privilege_list_does_not_override_authorized_endpoint_response()
     {
         Assert.True(TrendyolEFaturamDirectAccountAccess.TryRead(Token("""{"sub":"20","privs":{"10":["INVOICE_READ"]}}"""), out var access));
+        Assert.False(access.HasInvoiceCreatePrivilege);
+        Assert.True(access.HasInvoiceReadPrivilege);
         var error = TrendyolEFaturamErrorMapper.FromAuthorizedStatus(HttpStatusCode.Unauthorized, null, null);
         Assert.Equal("EFATURAM_ACCESS_TOKEN_REJECTED", error.Code);
     }

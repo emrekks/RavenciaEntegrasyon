@@ -62,4 +62,6 @@ public sealed record TrendyolEFaturamAccessContext(
     DateTimeOffset? NotBefore = null,
     DateTimeOffset? ExpiresAt = null,
     string? Issuer = null,
-    string? Audience = null);
+    string? Audience = null,
+    bool? HasInvoiceCreatePrivilege = null,
+    bool? HasInvoiceReadPrivilege = null);
