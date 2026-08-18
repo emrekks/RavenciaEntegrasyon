@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 
-public sealed record EfaturamFiscalAccount(long CompanyId, long UserId, string? Prefix, string Source = "PARTNER");
+public sealed record EfaturamFiscalAccount(long CompanyId, long UserId, string? Prefix, string Source = "WEB");
 public sealed record EfaturamRecipient(string TaxId, string CountryCode, string City, string District, string Address, string? PostalCode, string? Phone, string? Email, string? Name, string? Surname, string? TaxOffice);
 public sealed record EfaturamDelivery(string CarrierTaxId, string CarrierName, string? CarrierSurname, DateOnly SentAt);
 public sealed record EfaturamPayment(string PurchaseUrl, string? PaymentAgentName, string? PaymentType, DateTimeOffset PaymentDate, string PaymentMeans);

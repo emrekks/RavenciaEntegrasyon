@@ -64,7 +64,10 @@ public sealed class TrendyolEFaturamHttpClient(
         var access = await AcquireAccess(configured, cancellationToken);
         if (!access.IsSuccess) return AdapterResult<InvoiceSubmissionResult>.Failure(access.Error!, access.RateLimit);
         string officialPayload;
-        try { officialPayload = TrendyolEFaturamCanonicalPayload.Create(new(access.Value!.CompanyId, access.Value.UserId, null, "PARTNER"), submission.PayloadJson); }
+        // The active integration authenticates the business' own API_USER account directly.
+        // PARTNER is reserved for marketplace customerSignIn/sub-customer sessions and makes
+        // the provider look for a partner application record that does not exist here.
+        try { officialPayload = TrendyolEFaturamCanonicalPayload.Create(new(access.Value!.CompanyId, access.Value.UserId, null, "WEB"), submission.PayloadJson); }
         catch (Exception exception) when (exception is JsonException or ArgumentException or FormatException)
         {
             return AdapterResult<InvoiceSubmissionResult>.Failure(new(AdapterErrorClass.Validation, "EFATURAM_FISCAL_PAYLOAD_INVALID", exception.Message, null, null, null));
