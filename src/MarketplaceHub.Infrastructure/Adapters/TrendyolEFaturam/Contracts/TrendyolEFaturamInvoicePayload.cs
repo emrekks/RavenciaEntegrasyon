@@ -93,6 +93,115 @@ public static class TrendyolEFaturamInvoicePayload
         return JsonSerializer.Serialize(payload, JsonOptions);
     }
 
+    public static string CreateEArchiveV2(EfaturamFiscalAccount account, EfaturamInvoicePayloadSource source)
+    {
+        if (account.CompanyId <= 0 || account.UserId <= 0) throw new ArgumentOutOfRangeException(nameof(account));
+        if (!string.Equals(source.InvoiceType, "EARSIVFATURA", StringComparison.Ordinal)) throw new ArgumentException("V2 E-Archive payload requires EARSIVFATURA.", nameof(source));
+        if (source.Lines.Count == 0) throw new ArgumentException("Invoice requires at least one line.", nameof(source));
+        if (source.Lines.Any(line => line.Quantity <= 0)) throw new ArgumentException("Invoice line quantity must be greater than zero.", nameof(source));
+
+        var taxExclusive = Money(source.Lines.Sum(x => x.TaxableAmount));
+        var taxTotal = Money(source.Lines.Sum(x => x.VatAmount));
+        var discountTotal = Money(source.Lines.Sum(x => x.DiscountAmount));
+        var payable = Money(source.Lines.Sum(x => x.PayableAmount));
+        if (Money(taxExclusive + taxTotal) != payable) throw new ArgumentException("Invoice total equation is invalid.", nameof(source));
+
+        // The provider's current portal and V2 API exchange monetary values in the
+        // invoice currency's major unit (TRY), unlike the retired V1 contract which
+        // expected integer kuruş values.
+        var lineRows = source.Lines.Select(line => new
+        {
+            itemName = line.ItemName,
+            unitCode = line.UnitCode,
+            unitPriceAmount = Money((line.TaxableAmount + line.DiscountAmount) / line.Quantity),
+            quantity = line.Quantity,
+            subtotal = Money(line.TaxableAmount + line.DiscountAmount),
+            totalAmount = Money(line.TaxableAmount),
+            totalDiscountAmount = Money(line.DiscountAmount),
+            totalTax = new
+            {
+                totalTaxAmount = Money(line.VatAmount),
+                subTotalTaxes = new[]
+                {
+                    new
+                    {
+                        taxableAmount = Money(line.TaxableAmount),
+                        taxAmount = Money(line.VatAmount),
+                        taxType = "KDV",
+                        percent = line.VatRate
+                    }
+                }
+            }
+        }).ToArray();
+
+        var taxes = source.Lines.GroupBy(x => x.VatRate).Select(group => new
+        {
+            taxableAmount = Money(group.Sum(x => x.TaxableAmount)),
+            taxAmount = Money(group.Sum(x => x.VatAmount)),
+            taxType = "KDV",
+            percent = group.Key
+        }).ToArray();
+
+        var payload = new
+        {
+            source = account.Source,
+            receiverInfo = source.Recipient,
+            invoiceIdentification = new
+            {
+                invoiceType = source.InvoiceType,
+                invoiceTypeCode = "SATIS",
+                autoInvoiceId = true,
+                issuedAt = ProviderDateTime(source.IssuedAt)
+            },
+            invoiceLines = lineRows,
+            totalTax = new { totalTaxAmount = taxTotal, subTotalTaxes = taxes },
+            invoiceTotal = new
+            {
+                totalRawPrice = Money(taxExclusive + discountTotal),
+                totalSubtotal = taxExclusive,
+                totalAmount = Money(taxExclusive + taxTotal),
+                totalDiscountAmount = discountTotal,
+                payableAmount = payable
+            },
+            currencyInfo = new
+            {
+                currency = source.Currency,
+                hasExchange = false,
+                sourceCurrency = source.Currency,
+                targetCurrency = "TRY",
+                calculationRate = 0,
+                exchangeDate = ProviderDateTime(source.IssuedAt)
+            },
+            bankInfo = Array.Empty<object>(),
+            notes = new[] { source.Note },
+            references = new
+            {
+                orderInfo = new
+                {
+                    orderId = source.OrderNumber,
+                    orderDate = source.OrderDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                }
+            },
+            paymentInfo = source.Payment is null ? null : new
+            {
+                source.Payment.PurchaseUrl,
+                source.Payment.PaymentAgentName,
+                paymentDate = ProviderDateTime(source.Payment.PaymentDate),
+                source.Payment.PaymentMeans,
+                instructionNote = "Trendyol siparişi"
+            },
+            deliveryInfo = source.Delivery is null ? null : new
+            {
+                source.Delivery.CarrierTaxId,
+                source.Delivery.CarrierName,
+                sentAt = source.Delivery.SentAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            },
+            targetAlias = ""
+        };
+
+        return JsonSerializer.Serialize(payload, JsonOptions);
+    }
+
     private static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
     private static long Kurus(decimal value) => decimal.ToInt64(Money(value) * 100m);
     private static decimal KurusDecimal(decimal value) => decimal.Round(value * 100m, 4, MidpointRounding.AwayFromZero);

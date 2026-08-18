@@ -56,6 +56,32 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
     }
 
     [Fact]
+    public void Current_earchive_v2_payload_uses_portal_contract_and_major_currency_units()
+    {
+        var source = new EfaturamInvoicePayloadSource(
+            "local", "EARSIVFATURA", "TRY", "YALNIZ", "ORDER", new DateOnly(2026, 8, 18), DateTimeOffset.UtcNow,
+            new("11111111111", "TR", "İzmir", "Bornova", "Test adresi", null, null, null, "Test", "Müşteri", null),
+            [new("Ürün", "C62", 2m, 52.90m, 88.17m, 17.63m, 20m, 0m, 105.80m)],
+            new("https://www.trendyol.com", "Trendyol", "PAZARYERI", DateTimeOffset.UtcNow, "MEDIATOR"),
+            new("8590921777", "Yurtiçi Kargo", null, new DateOnly(2026, 8, 18)));
+
+        using var payload = JsonDocument.Parse(TrendyolEFaturamInvoicePayload.CreateEArchiveV2(new(1, 1, null, "PORTAL"), source));
+        var root = payload.RootElement;
+
+        Assert.Equal("PORTAL", root.GetProperty("source").GetString());
+        Assert.Equal("11111111111", root.GetProperty("receiverInfo").GetProperty("taxId").GetString());
+        Assert.Equal("EARSIVFATURA", root.GetProperty("invoiceIdentification").GetProperty("invoiceType").GetString());
+        Assert.Equal(44.09m, root.GetProperty("invoiceLines")[0].GetProperty("unitPriceAmount").GetDecimal());
+        Assert.Equal(88.17m, root.GetProperty("invoiceLines")[0].GetProperty("totalAmount").GetDecimal());
+        Assert.Equal(105.80m, root.GetProperty("invoiceTotal").GetProperty("payableAmount").GetDecimal());
+        Assert.Equal("ORDER", root.GetProperty("references").GetProperty("orderInfo").GetProperty("orderId").GetString());
+        Assert.False(root.TryGetProperty("companyId", out _));
+        Assert.False(root.TryGetProperty("userId", out _));
+        Assert.False(root.TryGetProperty("recipientInfo", out _));
+        Assert.False(root.TryGetProperty("invoiceInfo", out _));
+    }
+
+    [Fact]
     public void Low_level_payload_omits_optional_internet_fields_when_source_does_not_supply_them()
     {
         var source = new EfaturamInvoicePayloadSource("local", "TEMELFATURA", "TRY", "YALNIZ: SIFIR TÜRK LİRASI", "ORDER", new DateOnly(2026, 8, 3), DateTimeOffset.UtcNow,

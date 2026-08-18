@@ -67,7 +67,13 @@ public sealed class TrendyolEFaturamHttpClient(
         // The active integration authenticates the business' own portal account directly.
         // PARTNER is reserved for marketplace customerSignIn/sub-customer sessions; the
         // provider's direct-account E-Archive example uses PORTAL for this sign-in model.
-        try { officialPayload = TrendyolEFaturamCanonicalPayload.Create(new(access.Value!.CompanyId, access.Value.UserId, null, "PORTAL"), submission.PayloadJson); }
+        try
+        {
+            officialPayload = TrendyolEFaturamCanonicalPayload.Create(
+                new(access.Value!.CompanyId, access.Value.UserId, null, "PORTAL"),
+                submission.PayloadJson,
+                useEArchiveV2: submission.InvoiceType == "EARSIVFATURA");
+        }
         catch (Exception exception) when (exception is JsonException or ArgumentException or FormatException)
         {
             return AdapterResult<InvoiceSubmissionResult>.Failure(new(AdapterErrorClass.Validation, "EFATURAM_FISCAL_PAYLOAD_INVALID", exception.Message, null, null, null));
@@ -241,6 +247,7 @@ public sealed class TrendyolEFaturamHttpClient(
         // compatible with the documented gateway and the provider's own active client.
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         request.Headers.TryAddWithoutValidation("x-access-token", token);
+        request.Headers.TryAddWithoutValidation("Accept-Language", "tr");
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         linked.CancelAfter(RequestTimeout);
         try
