@@ -100,6 +100,7 @@ test('explains a missing invoice package and queues a single-order refresh', asy
 test('retries a pre-provider E-Faturam authentication failure and waits for the provider invoice number', async () => {
   let submitted = false
   let submitIdempotency = ''
+  let submitBody = ''
   const order = { id: 'order-invoice-retry', orderNumber: '1910028925', derivedStatus: 'PROCESSING', currency: 'TRY', grossAmount: 381.8, discountAmount: 0, netAmount: 381.8, orderedAt: '2026-08-18T10:00:00Z', lineCount: 1, packageCount: 1, version: 2, connectionId: 'connection-1', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', customerName: 'Test Müşteri', customerEmail: null, customerPhone: null, customerTaxOrIdentityNumber: '11111111111', orderType: 'NORMAL', isMicroExport: false, isEInvoiceAvailable: false, shipmentAddressJson: '{}', invoiceAddressJson: '{"invoiceAddress":{"fullAddress":"Bornova İzmir"}}', shipmentDueAt: null, isDeadlineCritical: false, invoiceStatus: 'FATURA_ISLENIYOR', invoiceId: 'invoice-1', invoiceDocumentUrl: null, cargoProviderName: 'Yurtiçi Kargo', cargoTrackingNumber: 'TRK-1', primaryImageUrl: null, productQuantity: 1, lines: [{ id: 'line-1', sku: 'SKU-1', barcode: null, title: 'Ürün', orderedQuantity: 1, cancelledQuantity: 0, shippedQuantity: 0, deliveredQuantity: 0, returnedQuantity: 0, unitPrice: 381.8, vatRate: 20, rawStatus: 'Created', variantId: null, modelCode: null, optionSignature: null, imageUrl: null }], packages: [{ id: 'package-1', orderId: 'order-invoice-retry', orderNumber: '1910028925', externalPackageId: 'PKG-1', status: 'CREATED', rawStatus: 'Created', cargoTrackingNumber: 'TRK-1', cargoProviderName: 'Yurtiçi Kargo', statusOccurredAt: '2026-08-18T10:00:00Z', version: 1 }] }
   globalThis.fetch = vi.fn((input, init) => {
     const url = String(input)
@@ -107,7 +108,7 @@ test('retries a pre-provider E-Faturam authentication failure and waits for the 
     if (url.includes('/api/v1/orders?')) return json({ items: [order], nextCursor: null, hasMore: false })
     if (url.includes('/api/v1/connections?')) return json({ items: [{ id: 'billing-1', publicId: 'public-1', platformCode: 'TRENDYOL_EFATURAM', environment: 'PRODUCTION', displayName: 'E-Faturam', externalStoreId: 'ravencia', status: 'ACTIVE', apiVersion: '1', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, version: 1 }], nextCursor: null, hasMore: false })
     if (url.endsWith('/api/v1/orders/order-invoice-retry')) return json(order)
-    if (url.endsWith('/api/v1/invoices/invoice-1/submit-jobs') && init?.method === 'POST') { submitted = true; submitIdempotency = new Headers(init.headers).get('Idempotency-Key') ?? ''; return json({ jobId: 'job-retry' }, 202) }
+    if (url.endsWith('/api/v1/invoices/invoice-1/submit-jobs') && init?.method === 'POST') { submitted = true; submitIdempotency = new Headers(init.headers).get('Idempotency-Key') ?? ''; submitBody = String(init.body); return json({ jobId: 'job-retry' }, 202) }
     if (url.endsWith('/api/v1/invoices/invoice-1')) return json(submitted
       ? { id: 'invoice-1', version: 8, status: 'SUBMITTED', invoiceNumber: 'RVN2026000000001', externalReference: 'provider-1', lastErrorCode: null }
       : { id: 'invoice-1', version: 7, status: 'SUBMITTING', invoiceNumber: null, externalReference: null, lastErrorCode: 'EFATURAM_ACCESS_TOKEN_REJECTED' })
@@ -120,9 +121,14 @@ test('retries a pre-provider E-Faturam authentication failure and waits for the 
   fireEvent.click(screen.getByRole('button', { name: 'Fatura işlemleri' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Fatura Oluştur' }))
   await screen.findByRole('dialog', { name: 'Fatura Oluştur' })
-  fireEvent.click(await screen.findByRole('button', { name: 'Faturayı Oluştur' }))
+  const createButton = await screen.findByRole('button', { name: 'Faturayı Oluştur' })
+  expect(createButton).toBeDisabled()
+  fireEvent.change(screen.getByLabelText('Hesap parolanız'), { target: { value: 'account-password' } })
+  fireEvent.click(screen.getByRole('checkbox', { name: /Gerçek faturanın E-Faturam Production hesabında oluşturulmasını onaylıyorum/ }))
+  fireEvent.click(createButton)
 
   expect(await screen.findByText('Fatura E-Faturam’da oluşturuldu: RVN2026000000001')).toBeInTheDocument()
+  expect(JSON.parse(submitBody)).toEqual({ password: 'account-password', confirmed: true })
   expect(submitIdempotency).not.toBe('invoice-submit:invoice-1')
   expect(submitIdempotency).not.toBe('')
 })
