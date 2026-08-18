@@ -308,18 +308,19 @@ public sealed partial class F4BillingService(
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (invoice is null) return NotFound<Guid>();
         if (invoice.Version != expectedVersion) return Precondition<Guid>(invoice.Version);
-        var safeLocalPayloadRetry = CanRetryLocalPayloadFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference);
-        if (invoice.Status != InvoiceStatus.Ready && !safeLocalPayloadRetry)
+        var safePreProviderRetry = CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference);
+        if (invoice.Status != InvoiceStatus.Ready && !safePreProviderRetry)
             return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura mevcut durumdan E-Faturam gönderimine geçemez.", 409);
         if (!await WriteGates(tenantId, invoice.ProviderConnectionId, F4Capabilities.InvoiceSubmit, cancellationToken)) return CapabilityUnknown<Guid>(F4Capabilities.InvoiceSubmit);
         var now = timeProvider.GetUtcNow();
+        var previousErrorCode = invoice.LastErrorCode;
         invoice.Status = InvoiceStatus.Submitting;
         invoice.LastErrorCode = null;
         invoice.IssuedAt ??= now;
         invoice.UpdatedAt = now;
         invoice.Version++;
-        if (safeLocalPayloadRetry)
-            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "EFATURAM_LOCAL_PAYLOAD_RETRY_ENQUEUED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = "previous-payload-validation-failed-before-provider-write", CorrelationId = correlationId, CreatedAt = now });
+        if (safePreProviderRetry)
+            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "EFATURAM_PRE_PROVIDER_RETRY_ENQUEUED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = $"no-external-reference:{previousErrorCode}", CorrelationId = correlationId, CreatedAt = now });
         return await AddJob(invoice, F4JobTypes.InvoiceSubmit, idempotencyKey, correlationId, cancellationToken);
     }
     public async Task<ServiceResult<Guid>> EnqueueStageCapabilityProbeAsync(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -388,7 +389,7 @@ public sealed partial class F4BillingService(
     private async Task<IReadOnlyList<string>> AllowedActions(Invoice invoice, PlatformConnection? connection, CancellationToken cancellationToken)
     {
         var actions = new List<string>(); if (invoice.Status is InvoiceStatus.Draft or InvoiceStatus.ValidationFailed) actions.Add("VALIDATE");
-        if ((invoice.Status == InvoiceStatus.Ready || CanRetryLocalPayloadFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference)) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, F4Capabilities.InvoiceSubmit, cancellationToken)) actions.Add("SUBMIT");
+        if ((invoice.Status == InvoiceStatus.Ready || CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference)) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, F4Capabilities.InvoiceSubmit, cancellationToken)) actions.Add("SUBMIT");
         if (AllowsStageCapabilityProbe(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference, invoice.InvoiceType, connection)) actions.Add("STAGE_CAPABILITY_PROBE");
         if (invoice.Status is (InvoiceStatus.UnknownResult or InvoiceStatus.Submitted) && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, F4Capabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
         if (invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed) && invoice.PackageId is not null)
@@ -422,6 +423,11 @@ public sealed partial class F4BillingService(
         status == InvoiceStatus.Rejected
         && string.Equals(lastErrorCode, "EFATURAM_FISCAL_PAYLOAD_INVALID", StringComparison.Ordinal)
         && string.IsNullOrWhiteSpace(externalReference);
+
+    internal static bool CanRetryPreProviderFailure(InvoiceStatus status, string? lastErrorCode, string? externalReference) =>
+        string.IsNullOrWhiteSpace(externalReference)
+        && (CanRetryLocalPayloadFailure(status, lastErrorCode, externalReference)
+            || (status == InvoiceStatus.Submitting && lastErrorCode is "EFATURAM_AUTHENTICATION_FAILED" or "EFATURAM_ACCESS_TOKEN_REJECTED" or "EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING"));
 
     private async Task<bool> WriteGates(Guid tenantId, Guid connectionId, string capability, CancellationToken cancellationToken)
     {

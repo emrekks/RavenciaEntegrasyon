@@ -14,6 +14,15 @@ public sealed class F4StageCapabilityProbeTests
     }
 
     [Fact]
+    public void Authentication_failure_without_external_reference_can_be_retried_safely()
+    {
+        Assert.True(F4BillingService.CanRetryPreProviderFailure(InvoiceStatus.Submitting, "EFATURAM_ACCESS_TOKEN_REJECTED", null));
+        Assert.True(F4BillingService.CanRetryPreProviderFailure(InvoiceStatus.Submitting, "EFATURAM_AUTHENTICATION_FAILED", null));
+        Assert.False(F4BillingService.CanRetryPreProviderFailure(InvoiceStatus.Submitting, "EFATURAM_ACCESS_TOKEN_REJECTED", "remote-reference"));
+        Assert.False(F4BillingService.CanRetryPreProviderFailure(InvoiceStatus.Submitted, null, null));
+    }
+
+    [Fact]
     public void Safe_no_external_reference_authentication_failures_are_replayable_only_on_the_pinned_stage_account()
     {
         var stage = Connection("STAGE", "Ravencia - Ravencia");
