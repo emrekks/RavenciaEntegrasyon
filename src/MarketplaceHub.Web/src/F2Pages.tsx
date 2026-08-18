@@ -98,6 +98,16 @@ function ProductColorRows({ product, selected, expandedGroupId, onSelect, onExpa
     ;(groups[color] ??= []).push(variant)
     return groups
   }, {})
+  const variantSize = (variant: Variant) => {
+    const match = variant.optionSignature?.match(/(?:BEDEN|Beden)\s*[:=]\s*([^|_]+)/)
+    return match ? `Beden: ${match[1].trim()}` : '—'
+  }
+  const colorPriceRange = (variants: Variant[]) => {
+    const prices = variants.map(variant => variant.salePrice ?? variant.listPrice).filter((price): price is number => price != null)
+    if (!prices.length) return 'Fiyat girilmedi'
+    const lowest = Math.min(...prices); const highest = Math.max(...prices)
+    return lowest === highest ? money(lowest, product.currency) : `${money(lowest, product.currency)} – ${money(highest, product.currency)}`
+  }
   const platformActive = Boolean(product.activePlatforms?.length)
   const expanded = expandedGroupId === product.id
   return <article className={`product-catalog-item color-variant-item${expanded ? ' expanded' : ''}`}>
@@ -112,7 +122,7 @@ function ProductColorRows({ product, selected, expandedGroupId, onSelect, onExpa
         <div className="product-list-status"><Tag>{product.status}</Tag><small>{product.status === 'ACTIVE' ? 'Satışa açık' : product.status === 'DRAFT' ? 'Taslak ürün' : 'Arşivlenmiş'}</small></div>
         <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`}>Düzenle</Link></div>
       </div>
-      {expanded && <div className="product-color-groups" aria-label={`${product.title} renk grupları`}>{Object.entries(colorGroups).map(([color, variants]) => <details className="product-color-group" key={color} open={Object.keys(colorGroups).length === 1}><summary><span className={`color-swatch color-${color.toLocaleLowerCase('tr-TR').replaceAll(' ', '-')}`} /><strong>{color}</strong><small>{variants.length} varyant</small><b>⌄</b></summary><div className="product-variant-table" role="table" aria-label={`${color} varyantları`}><div className="product-variant-head" role="row"><span>Görsel</span><span>Barkod ve stok kodu</span><span>Seçenek</span><span>Model kodu</span><span>Fiyat</span><span>Stok</span><span>Durum</span></div>{variants.map(variant => <div className="product-variant-row" role="row" key={variant.id}>{product.primaryImageUrl ? <img className="product-variant-media" src={product.primaryImageUrl} alt={`${product.title} ${variant.sku}`} /> : <span className="product-variant-media empty-media">Görsel yok</span>}<div><strong>Stok Kodu: {variant.sku}</strong><small>Barkod: {variant.barcode ?? '—'}</small></div><strong>{variant.optionSignature ? variant.optionSignature.replaceAll('_', ' · ').replaceAll('|', ' · ').replaceAll('=', ': ') : 'Ana varyant'}</strong><span>{variant.modelCode ?? product.modelCode ?? '—'}</span><InlineVariantInputs variant={variant} connections={connections} onChanged={onChanged} /><span className={`variant-sale-state ${variant.status === 'ACTIVE' ? 'active' : ''}`}>{variant.status === 'ACTIVE' ? '● Satışta' : variant.status === 'DRAFT' ? 'Taslak' : variant.status}</span></div>)}</div></details>)}</div>}
+      {expanded && <div className="product-color-groups" aria-label={`${product.title} renk grupları`}>{Object.entries(colorGroups).map(([color, variants]) => <details className="product-color-group" key={color} open={Object.keys(colorGroups).length === 1}><summary><span className="product-color-summary-media">{product.primaryImageUrl ? <img src={product.primaryImageUrl} alt={`${product.title} ${color}`} /> : 'Görsel yok'}</span><span className={`color-swatch color-${color.toLocaleLowerCase('tr-TR').replaceAll(' ', '-')}`} /><span className="product-color-summary-copy"><strong>{color}</strong><small>{variants.length} varyant · {colorPriceRange(variants)}</small><small>Toplam stok: {variants.reduce((total, variant) => total + variant.available, 0)}</small></span><b>⌄</b></summary><div className="product-variant-table" role="table" aria-label={`${color} varyantları`}><div className="product-variant-head" role="row"><span>Barkod ve stok kodu</span><span>Seçenek</span><span>Model kodu</span><span>Fiyat</span><span>Stok</span><span>Durum</span></div>{variants.map(variant => <div className="product-variant-row" role="row" key={variant.id}><div className="variant-identifiers"><strong>Stok Kodu: {variant.sku}</strong><small>Barkod: {variant.barcode ?? '—'}</small></div><strong>{variantSize(variant)}</strong><span>{variant.modelCode ?? product.modelCode ?? '—'}</span><InlineVariantInputs variant={variant} connections={connections} onChanged={onChanged} /><span className={`variant-sale-state ${variant.status === 'ACTIVE' ? 'active' : ''}`}>{variant.status === 'ACTIVE' ? '● Satışta' : variant.status === 'DRAFT' ? 'Taslak' : variant.status}</span></div>)}</div></details>)}</div>}
     </article>
 }
 
