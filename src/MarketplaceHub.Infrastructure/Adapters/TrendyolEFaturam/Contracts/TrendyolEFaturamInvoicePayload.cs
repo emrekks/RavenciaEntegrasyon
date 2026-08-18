@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -85,9 +86,9 @@ public static class TrendyolEFaturamInvoicePayload
                 allowanceTotalAmount = Kurus(discountTotal)
             },
             orderInfo = new { orderId = source.OrderNumber, orderDate = source.OrderDate.ToString("yyyy-MM-dd") },
-            issuedAt = source.IssuedAt,
+            issuedAt = ProviderDateTime(source.IssuedAt),
             deliveryInfo = source.Delivery is null ? null : new { source.Delivery.CarrierTaxId, source.Delivery.CarrierName, source.Delivery.CarrierSurname, sentAt = source.Delivery.SentAt.ToString("yyyy-MM-dd") },
-            paymentInfo = source.Payment is null ? null : new { source.Payment.PurchaseUrl, source.Payment.PaymentAgentName, source.Payment.PaymentType, source.Payment.PaymentDate, source.Payment.PaymentMeans }
+            paymentInfo = source.Payment is null ? null : new { source.Payment.PurchaseUrl, source.Payment.PaymentAgentName, source.Payment.PaymentType, paymentDate = ProviderDateTime(source.Payment.PaymentDate), source.Payment.PaymentMeans }
         };
         return JsonSerializer.Serialize(payload, JsonOptions);
     }
@@ -95,4 +96,6 @@ public static class TrendyolEFaturamInvoicePayload
     private static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
     private static long Kurus(decimal value) => decimal.ToInt64(Money(value) * 100m);
     private static decimal KurusDecimal(decimal value) => decimal.Round(value * 100m, 4, MidpointRounding.AwayFromZero);
+    private static string ProviderDateTime(DateTimeOffset value) =>
+        value.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
 }

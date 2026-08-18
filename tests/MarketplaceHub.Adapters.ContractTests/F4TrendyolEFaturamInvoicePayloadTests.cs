@@ -34,6 +34,8 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
         Assert.Equal(5000, root.GetProperty("totalTax").GetProperty("totalTaxAmount").GetInt64());
         Assert.False(root.TryGetProperty("prefix", out _));
         Assert.Equal("https://www.trendyol.com", root.GetProperty("paymentInfo").GetProperty("purchaseUrl").GetString());
+        Assert.Equal("2026-08-03T09:00:00.000Z", root.GetProperty("issuedAt").GetString());
+        Assert.Equal("2026-08-03T08:00:00.000Z", root.GetProperty("paymentInfo").GetProperty("paymentDate").GetString());
     }
 
     [Fact]
