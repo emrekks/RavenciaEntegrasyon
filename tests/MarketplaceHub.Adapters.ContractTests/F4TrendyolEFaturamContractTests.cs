@@ -151,6 +151,17 @@ public sealed class F4TrendyolEFaturamContractTests
         Assert.Equal("problem:/problem/ubl-validation-failed", reference);
     }
 
+    [Fact]
+    public async Task Validation_problem_dictionary_preserves_only_the_field_path()
+    {
+        using var content = new StringContent("""{"title":"Bad Request","errors":{"InvoiceLines[0].UnitPriceAmount":["customer-sensitive message"]}}""");
+
+        var reference = await TrendyolEFaturamProblemDetails.TryReadReferenceAsync(content, CancellationToken.None);
+
+        Assert.Equal("validation:InvoiceLines.0.UnitPriceAmount:rejected", reference);
+        Assert.DoesNotContain("sensitive", reference, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("TEXMP", "8590921777")]
     [InlineData("Trendyol Express", "8590921777")]

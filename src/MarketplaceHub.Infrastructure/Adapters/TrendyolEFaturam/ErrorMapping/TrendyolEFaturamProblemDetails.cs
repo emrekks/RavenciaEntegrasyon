@@ -45,7 +45,7 @@ internal static class TrendyolEFaturamProblemDetails
             // Validation responses commonly omit `instance` and expose only a
             // field/code pair. Preserve those non-secret identifiers so a Stage
             // rejection is diagnosable without logging the response body.
-            if (document.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array)
+            if (TryGetProperty(document.RootElement, "errors", out var errors) && errors.ValueKind == JsonValueKind.Array)
             {
                 foreach (var error in errors.EnumerateArray())
                 {
@@ -53,6 +53,18 @@ internal static class TrendyolEFaturamProblemDetails
                     var code = SafeSegment(error, "code");
                     if (field is not null || code is not null)
                         return $"validation:{field ?? "unknown"}:{code ?? "rejected"}";
+                }
+            }
+
+            // ASP.NET-compatible validation problems use an object whose keys
+            // are field paths and whose values are message arrays. Retain only
+            // the safe field identifier; never store the messages.
+            if (errors.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var error in errors.EnumerateObject())
+                {
+                    var field = SafeSegment(error.Name);
+                    if (field is not null) return $"validation:{field}:rejected";
                 }
             }
 
@@ -81,12 +93,29 @@ internal static class TrendyolEFaturamProblemDetails
 
     private static string? SafeSegment(JsonElement parent, string name)
     {
-        if (!parent.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String) return null;
+        if (!TryGetProperty(parent, name, out var value) || value.ValueKind != JsonValueKind.String) return null;
         var segment = value.GetString()?.Trim();
-        if (string.IsNullOrWhiteSpace(segment)) return null;
-        segment = segment.Replace("[", ".", StringComparison.Ordinal).Replace("]", "", StringComparison.Ordinal);
+        return SafeSegment(segment);
+    }
+
+    private static string? SafeSegment(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var segment = value.Trim().Replace("[", ".", StringComparison.Ordinal).Replace("]", "", StringComparison.Ordinal);
         if (segment.Length > 80) segment = segment[..80];
         return segment.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.') ? segment : null;
+    }
+
+    private static bool TryGetProperty(JsonElement parent, string name, out JsonElement value)
+    {
+        foreach (var property in parent.EnumerateObject())
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        value = default;
+        return false;
     }
 
     private static string? SafeWords(JsonElement parent, string name)
