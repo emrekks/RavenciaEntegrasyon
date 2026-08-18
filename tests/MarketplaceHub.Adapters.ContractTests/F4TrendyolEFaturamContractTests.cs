@@ -157,6 +157,20 @@ public sealed class F4TrendyolEFaturamContractTests
     }
 
     [Fact]
+    public async Task Official_application_mismatch_type_is_preserved_without_sender_tax_id_detail()
+    {
+        using var content = new StringContent("""{"type":"https://api.trendyol.com/etransformation/gateway/application-mismatch","title":"Conflict","detail":"Application detail status not suitable for invoice operation for tax id 1234567890"}""");
+
+        var reference = await TrendyolEFaturamProblemDetails.TryReadReferenceAsync(content, CancellationToken.None);
+        var error = TrendyolEFaturamErrorMapper.FromAuthorizedStatus(HttpStatusCode.Conflict, null, reference);
+
+        Assert.Equal("problem:/etransformation/gateway/application-mismatch", reference);
+        Assert.Equal("EFATURAM_APPLICATION_NOT_ACTIVE", error.Code);
+        Assert.Contains("aktif görmüyor", error.SafeMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("1234567890", reference, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Validation_problem_dictionary_preserves_only_the_field_path()
     {
         using var content = new StringContent("""{"title":"Bad Request","errors":{"InvoiceLines[0].UnitPriceAmount":["customer-sensitive message"]}}""");

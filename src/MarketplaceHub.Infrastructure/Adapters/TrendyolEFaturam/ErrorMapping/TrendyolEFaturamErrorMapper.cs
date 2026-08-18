@@ -20,6 +20,15 @@ internal static class TrendyolEFaturamErrorMapper
         HttpStatusCode status,
         TimeSpan? retryAfter,
         string? remoteRequestId) =>
+        string.Equals(remoteRequestId, TrendyolEFaturamProblemDetails.ApplicationMismatchReference, StringComparison.Ordinal)
+            ? new(
+                AdapterErrorClass.BusinessConflict,
+                "EFATURAM_APPLICATION_NOT_ACTIVE",
+                "E-Faturam, gönderen hesabın fatura uygulamasını bu işlem için aktif görmüyor. Stage hesabında ilgili E-Arşiv/E-Fatura API hizmeti sağlayıcı tarafından etkinleştirilmelidir.",
+                (int)status,
+                null,
+                remoteRequestId)
+            :
         status switch
         {
             HttpStatusCode.Unauthorized => new(AdapterErrorClass.Authentication, "EFATURAM_ACCESS_TOKEN_REJECTED", "E-Faturam girişi başarılı, ancak sağlayıcı sign-in yanıtındaki taze JWT tokenını korumalı fatura API'sinde geçersiz veya süresi dolmuş olarak reddetti.", 401, null, remoteRequestId),

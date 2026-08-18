@@ -6,6 +6,7 @@ internal static class TrendyolEFaturamProblemDetails
 {
     private const int MaximumBodyBytes = 16 * 1024;
     private const int MaximumReferenceLength = 240;
+    internal const string ApplicationMismatchReference = "problem:/etransformation/gateway/application-mismatch";
 
     public static async Task<string?> TryReadReferenceAsync(HttpContent content, CancellationToken cancellationToken)
     {
@@ -91,11 +92,21 @@ internal static class TrendyolEFaturamProblemDetails
         if (string.IsNullOrWhiteSpace(value)) return null;
         var path = value.Trim();
         if (!path.StartsWith('/') && Uri.TryCreate(path, UriKind.Absolute, out var absolute))
+        {
+            // The provider documents this stable ProblemDetails type outside the
+            // historical /problem/* namespace. Accept only the official host and
+            // exact path so no arbitrary response URL is persisted.
+            if (string.Equals(absolute.Host, "api.trendyol.com", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(absolute.AbsolutePath, "/etransformation/gateway/application-mismatch", StringComparison.OrdinalIgnoreCase))
+                return ApplicationMismatchReference;
             path = absolute.AbsolutePath + (string.IsNullOrEmpty(absolute.Query) ? absolute.Fragment : string.Empty);
+        }
         var queryIndex = path.IndexOf('?');
         if (queryIndex >= 0) path = path[..queryIndex];
         if (path.Length > MaximumReferenceLength) path = path[..MaximumReferenceLength];
         if (path.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '/' or '-' or '_' or '.' or '#'))) return null;
+        if (string.Equals(path, "/etransformation/gateway/application-mismatch", StringComparison.OrdinalIgnoreCase))
+            return ApplicationMismatchReference;
         return path.StartsWith("/problem/", StringComparison.OrdinalIgnoreCase) ? $"problem:{path}" : null;
     }
 

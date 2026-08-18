@@ -123,6 +123,7 @@ function InvoiceDraftModal({ item, provider, onClose }: { item: Order; provider:
       if (['SUBMITTED', 'ACCEPTED', 'MARKETPLACE_PENDING', 'COMPLETED'].includes(invoice.status)) return invoice
       if (invoice.status === 'SUBMITTING') throw new Error('Fatura E-Faturam’a gönderildi; sağlayıcı yanıtı henüz bekleniyor.')
       if (invoice.lastErrorCode === 'EFATURAM_ACCESS_TOKEN_REJECTED') throw new Error('E-Faturam oturum anahtarını reddetti. Canlı E-Faturam bağlantısını ve hesap yetkisini kontrol edin.')
+      if (invoice.lastErrorCode === 'EFATURAM_APPLICATION_NOT_ACTIVE') throw new Error('E-Faturam, gönderen hesabın Stage fatura uygulamasını aktif görmüyor. Bu hesap için E-Arşiv API hizmetinin sağlayıcı tarafından etkinleştirilmesi gerekiyor.')
       throw new Error(invoice.lastErrorCode ? `E-Faturam faturayı oluşturamadı: ${invoice.lastErrorCode}` : `E-Faturam faturası oluşturulamadı (${invoice.status}).`)
     },
     onSuccess: async invoice => { setMessage(invoice.invoiceNumber ? `Fatura E-Faturam’da oluşturuldu: ${invoice.invoiceNumber}` : 'Fatura E-Faturam’da başarıyla oluşturuldu.'); await client.invalidateQueries({ queryKey: ['orders'] }); await client.invalidateQueries({ queryKey: ['invoice-draft-order', item.id] }) },
