@@ -71,8 +71,7 @@ public sealed class TrendyolEFaturamHttpClient(
         {
             officialPayload = TrendyolEFaturamCanonicalPayload.Create(
                 new(access.Value!.CompanyId, access.Value.UserId, null, "PORTAL"),
-                submission.PayloadJson,
-                useEArchiveV2: submission.InvoiceType == "EARSIVFATURA");
+                submission.PayloadJson);
         }
         catch (Exception exception) when (exception is JsonException or ArgumentException or FormatException)
         {

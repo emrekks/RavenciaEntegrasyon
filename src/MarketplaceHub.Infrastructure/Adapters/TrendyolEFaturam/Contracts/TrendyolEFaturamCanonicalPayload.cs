@@ -4,7 +4,7 @@ namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 
 public static class TrendyolEFaturamCanonicalPayload
 {
-    public static string Create(EfaturamFiscalAccount account, string canonicalJson, bool useEArchiveV2 = false)
+    public static string Create(EfaturamFiscalAccount account, string canonicalJson)
     {
         if (account.CompanyId <= 0 || account.UserId <= 0)
             throw new JsonException("E-Faturam access token scope is incomplete.");
@@ -55,9 +55,7 @@ public static class TrendyolEFaturamCanonicalPayload
                     NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), NullText(address, "firstName") ?? NullText(customer.RootElement, "customerFirstName"),
                     NullText(address, "lastName") ?? NullText(customer.RootElement, "customerLastName"), NullText(address, "taxOffice")),
                 lines, payment, delivery);
-            return useEArchiveV2
-                ? TrendyolEFaturamInvoicePayload.CreateEArchiveV2(account, source)
-                : TrendyolEFaturamInvoicePayload.Create(account, source);
+            return TrendyolEFaturamInvoicePayload.Create(account, source);
         }
         finally
         {

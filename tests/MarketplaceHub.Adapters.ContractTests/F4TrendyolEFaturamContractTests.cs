@@ -15,7 +15,7 @@ public sealed class F4TrendyolEFaturamContractTests
     {
         var options = new TrendyolEFaturamOptions();
 
-        Assert.Equal("https://stage.trendyolefaturam.com/bff/v1/", options.StageBaseAddress.AbsoluteUri);
+        Assert.Equal("https://stage-apigateway.trendyolefaturam.com/", options.StageBaseAddress.AbsoluteUri);
         Assert.Equal("https://apigateway.trendyolecozum.com/", options.ProductionBaseAddress.AbsoluteUri);
     }
 
