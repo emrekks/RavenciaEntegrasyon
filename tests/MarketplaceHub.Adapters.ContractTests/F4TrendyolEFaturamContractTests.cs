@@ -98,7 +98,7 @@ public sealed class F4TrendyolEFaturamContractTests
         Assert.Contains("HttpStatus is not (404 or 409)", connectionTest, StringComparison.Ordinal);
         Assert.Contains("new AuthenticationHeaderValue(\"Bearer\", token)", source, StringComparison.Ordinal);
         Assert.Contains("TryAddWithoutValidation(\"x-access-token\", token)", source, StringComparison.Ordinal);
-        Assert.Contains("access.Value.UserId, null, \"WEB\"", source, StringComparison.Ordinal);
+        Assert.Contains("access.Value.UserId, null, \"PORTAL\"", source, StringComparison.Ordinal);
         Assert.DoesNotContain("access.Value.UserId, null, \"PARTNER\"", source, StringComparison.Ordinal);
         Assert.Contains("new ByteArrayContent(Encoding.UTF8.GetBytes(officialPayload))", source, StringComparison.Ordinal);
         Assert.Contains("payload.Headers.ContentType = new MediaTypeHeaderValue(\"application/json\")", source, StringComparison.Ordinal);
