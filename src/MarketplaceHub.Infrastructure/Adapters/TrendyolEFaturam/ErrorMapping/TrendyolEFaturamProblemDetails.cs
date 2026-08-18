@@ -78,6 +78,7 @@ internal static class TrendyolEFaturamProblemDetails
             // addresses, URLs or other unsafe punctuation are discarded.
             var detail = SafeDiagnostic(document.RootElement, "detail")
                 ?? SafeDiagnostic(document.RootElement, "message");
+            if (IsApplicationMismatchDetail(detail)) return ApplicationMismatchReference;
             if (detail is not null) return $"provider-detail:{detail}";
 
             var title = SafeWords(document.RootElement, "title");
@@ -156,5 +157,13 @@ internal static class TrendyolEFaturamProblemDetails
         return diagnostic.All(character => char.IsLetterOrDigit(character) || character is ' ' or '-' or '_' or '.' or ':' or ',' or '[' or ']' or '(' or ')' or '/' or '%')
             ? diagnostic
             : null;
+    }
+
+    private static bool IsApplicationMismatchDetail(string? value)
+    {
+        const string prefix = "Application detail status not suitable for invoice operation for tax id ";
+        if (value is null || !value.StartsWith(prefix, StringComparison.Ordinal)) return false;
+        var taxId = value[prefix.Length..];
+        return taxId.Length is 10 or 11 && taxId.All(char.IsAsciiDigit);
     }
 }
