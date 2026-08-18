@@ -111,7 +111,7 @@ function InvoiceDraftModal({ item, provider, onClose }: { item: Order; provider:
       setActiveInvoiceId(invoice.id)
       if (invoice.status === 'DRAFT' || invoice.status === 'VALIDATION_FAILED')
         invoice = await hubApi<InvoiceOperation>(`/invoices/${invoice.id}/validate`, { method: 'POST', headers: { 'If-Match': `"v${invoice.version}"` } })
-      const canRetryPreProviderFailure = !invoice.externalReference && ((invoice.status === 'REJECTED' && invoice.lastErrorCode === 'EFATURAM_FISCAL_PAYLOAD_INVALID') || (invoice.status === 'SUBMITTING' && ['EFATURAM_AUTHENTICATION_FAILED', 'EFATURAM_ACCESS_TOKEN_REJECTED', 'EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING'].includes(invoice.lastErrorCode ?? '')))
+      const canRetryPreProviderFailure = !invoice.externalReference && ((invoice.status === 'REJECTED' && ['EFATURAM_FISCAL_PAYLOAD_INVALID', 'EFATURAM_REQUEST_REJECTED'].includes(invoice.lastErrorCode ?? '')) || (invoice.status === 'SUBMITTING' && ['EFATURAM_AUTHENTICATION_FAILED', 'EFATURAM_ACCESS_TOKEN_REJECTED', 'EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING'].includes(invoice.lastErrorCode ?? '')))
       if (invoice.status === 'READY' || canRetryPreProviderFailure) {
         await hubApi(`/invoices/${invoice.id}/submit-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency(), 'If-Match': `"v${invoice.version}"` }, body: JSON.stringify({ password: '', confirmed: false }) })
         invoice = await hubApi<InvoiceOperation>(`/invoices/${invoice.id}`)

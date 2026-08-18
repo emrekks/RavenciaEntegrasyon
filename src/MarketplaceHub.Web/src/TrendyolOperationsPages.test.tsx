@@ -97,7 +97,7 @@ test('explains a missing invoice package and queues a single-order refresh', asy
   expect(await screen.findByText(/yenileme kuyruğa alındı/i)).toBeInTheDocument()
 })
 
-test('retries a pre-provider E-Faturam authentication failure and waits for the provider invoice number', async () => {
+test('retries a rejected E-Faturam request without an external reference and waits for the provider invoice number', async () => {
   let submitted = false
   let submitIdempotency = ''
   let submitBody = ''
@@ -111,7 +111,7 @@ test('retries a pre-provider E-Faturam authentication failure and waits for the 
     if (url.endsWith('/api/v1/invoices/invoice-1/submit-jobs') && init?.method === 'POST') { submitted = true; submitIdempotency = new Headers(init.headers).get('Idempotency-Key') ?? ''; submitBody = String(init.body); return json({ jobId: 'job-retry' }, 202) }
     if (url.endsWith('/api/v1/invoices/invoice-1')) return json(submitted
       ? { id: 'invoice-1', version: 8, status: 'SUBMITTED', invoiceNumber: 'RVN2026000000001', externalReference: 'provider-1', lastErrorCode: null }
-      : { id: 'invoice-1', version: 7, status: 'SUBMITTING', invoiceNumber: null, externalReference: null, lastErrorCode: 'EFATURAM_ACCESS_TOKEN_REJECTED' })
+      : { id: 'invoice-1', version: 7, status: 'REJECTED', invoiceNumber: null, externalReference: null, lastErrorCode: 'EFATURAM_REQUEST_REJECTED' })
     return json({}, 404)
   }) as typeof fetch
 
