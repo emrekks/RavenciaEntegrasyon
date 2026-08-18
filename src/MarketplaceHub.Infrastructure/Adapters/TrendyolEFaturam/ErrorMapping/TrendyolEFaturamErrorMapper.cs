@@ -22,7 +22,7 @@ internal static class TrendyolEFaturamErrorMapper
         string? remoteRequestId) =>
         status switch
         {
-            HttpStatusCode.Unauthorized => new(AdapterErrorClass.Authentication, "EFATURAM_ACCESS_TOKEN_REJECTED", "E-Faturam girişi başarılı olsa da yeni oturum tokenını korumalı API endpointi için reddetti; sağlayıcı API kapsamı doğrulanmalı.", 401, null, remoteRequestId),
+            HttpStatusCode.Unauthorized => new(AdapterErrorClass.Authentication, "EFATURAM_ACCESS_TOKEN_REJECTED", "E-Faturam girişi başarılı, ancak sağlayıcı korumalı fatura API'sinde bu hesabın tokenını reddetti. Stage API_USER fatura erişimi sağlayıcı tarafından etkinleştirilmelidir.", 401, null, remoteRequestId),
             HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "EFATURAM_OPERATION_FORBIDDEN", "E-Faturam hesabı bu işlemi yapmaya yetkili değil.", 403, null, remoteRequestId),
             _ => FromStatus(status, retryAfter, remoteRequestId)
         };

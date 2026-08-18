@@ -72,14 +72,16 @@ public sealed class F4TrendyolEFaturamContractTests
         Assert.False(TrendyolEFaturamDirectAccountAccess.TryRead(Token("""{"sub":"20","privs":{"10":[],"11":[]}}"""), out _));
 
     [Fact]
-    public void Connection_test_only_validates_direct_sign_in_and_does_not_query_a_synthetic_document()
+    public void Connection_test_validates_direct_sign_in_and_read_only_protected_invoice_api_access()
     {
         var source = File.ReadAllText(Path.Combine(FindRoot(), "src", "MarketplaceHub.Infrastructure", "Adapters", "TrendyolEFaturam", "TrendyolEFaturamHttpClient.cs"));
         var connectionTest = source[..source.IndexOf("    public async Task<AdapterResult<InvoiceSubmissionResult>> SubmitAsync", StringComparison.Ordinal)];
 
         Assert.DoesNotContain("TrendyolEFaturamEndpoints.PermanentDocumentUrl", connectionTest, StringComparison.Ordinal);
-        Assert.DoesNotContain("Guid.Empty", connectionTest, StringComparison.Ordinal);
         Assert.Contains("AcquireAccess(configured", connectionTest, StringComparison.Ordinal);
+        Assert.Contains("HttpMethod.Get", connectionTest, StringComparison.Ordinal);
+        Assert.Contains("TrendyolEFaturamEndpoints.EArchiveStatus(ConnectionProbeInvoiceUuid)", connectionTest, StringComparison.Ordinal);
+        Assert.Contains("HttpStatus is not (404 or 409)", connectionTest, StringComparison.Ordinal);
     }
 
     [Theory]

@@ -16,6 +16,7 @@ public sealed class TrendyolEFaturamHttpClient(
     Microsoft.Extensions.Options.IOptions<TrendyolEFaturamOptions> options,
     SafeRemoteDocumentDownloader documents) : IInvoiceProviderPort
 {
+    private const string ConnectionProbeInvoiceUuid = "00000000-0000-0000-0000-000000000000";
     private readonly TrendyolEFaturamOptions _options = options.Value;
     private TimeSpan RequestTimeout => _options.Timeout > TimeSpan.Zero && _options.Timeout <= TimeSpan.FromMinutes(2) ? _options.Timeout : TimeSpan.FromSeconds(30);
     private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
@@ -26,6 +27,22 @@ public sealed class TrendyolEFaturamHttpClient(
         if (configured is null) return AdapterResult<ConnectionIdentity>.Failure(TrendyolEFaturamErrorMapper.Configuration());
         var access = await AcquireAccess(configured, cancellationToken);
         if (!access.IsSuccess) return AdapterResult<ConnectionIdentity>.Failure(access.Error!, access.RateLimit);
+
+        // A successful sign-in only proves that the portal account exists. API_USER access can
+        // still be missing, in which case every invoice operation is rejected with 401. Probe a
+        // non-existent document through a read-only protected endpoint so the connection is not
+        // marked VERIFIED until the freshly issued token is accepted by the invoice API.
+        var protectedApiProbe = await SendAuthorized(
+            configured,
+            access.Value!.AccessToken,
+            HttpMethod.Get,
+            TrendyolEFaturamEndpoints.EArchiveStatus(ConnectionProbeInvoiceUuid),
+            null,
+            cancellationToken);
+        if (!protectedApiProbe.IsSuccess
+            && protectedApiProbe.Error?.HttpStatus is not (404 or 409))
+            return AdapterResult<ConnectionIdentity>.Failure(protectedApiProbe.Error!, protectedApiProbe.RateLimit);
+
         return AdapterResult<ConnectionIdentity>.Success(new(
             "TRENDYOL_EFATURAM",
             configured.Connection.Environment,
