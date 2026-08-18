@@ -21,9 +21,14 @@ public static class TrendyolEFaturamInvoicePayload
     {
         if (account.CompanyId <= 0 || account.UserId <= 0) throw new ArgumentOutOfRangeException(nameof(account));
         if (source.Lines.Count == 0) throw new ArgumentException("Invoice requires at least one line.", nameof(source));
+        if (source.Lines.Any(line => line.Quantity <= 0)) throw new ArgumentException("Invoice line quantity must be greater than zero.", nameof(source));
 
         var lineRows = source.Lines.Select(line => new
         {
+            // E-Faturam expects unitPriceAmount and totalAmount to use the same,
+            // tax-exclusive basis. Marketplace order snapshots keep UnitPrice as
+            // the customer-facing tax-inclusive amount, so derive the official
+            // unit price from the line basis instead of forwarding that snapshot.
             unitCode = line.UnitCode,
             quantity = line.Quantity,
             totalAmount = Kurus(line.TaxableAmount + line.DiscountAmount),
@@ -33,7 +38,7 @@ public static class TrendyolEFaturamInvoicePayload
             taxName = "KDV",
             taxCode = "0015",
             itemName = line.ItemName,
-            unitPriceAmount = KurusDecimal(line.UnitPrice),
+            unitPriceAmount = KurusDecimal((line.TaxableAmount + line.DiscountAmount) / line.Quantity),
             totalDiscountAmount = Kurus(line.DiscountAmount),
             totalTax = new
             {

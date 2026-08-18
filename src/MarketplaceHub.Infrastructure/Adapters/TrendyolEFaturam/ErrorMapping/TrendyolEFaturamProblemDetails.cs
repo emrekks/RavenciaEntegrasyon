@@ -27,8 +27,28 @@ internal static class TrendyolEFaturamProblemDetails
 
             limited.Position = 0;
             using var document = await JsonDocument.ParseAsync(limited, cancellationToken: cancellationToken);
-            if (!document.RootElement.TryGetProperty("instance", out var instance) || instance.ValueKind != JsonValueKind.String) return null;
-            return Normalize(instance.GetString());
+            if (document.RootElement.TryGetProperty("instance", out var instance) && instance.ValueKind == JsonValueKind.String)
+            {
+                var normalized = Normalize(instance.GetString());
+                if (normalized is not null) return normalized;
+            }
+
+            // Validation responses commonly omit `instance` and expose only a
+            // field/code pair. Preserve those non-secret identifiers so a Stage
+            // rejection is diagnosable without logging the response body.
+            if (document.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var error in errors.EnumerateArray())
+                {
+                    var field = SafeSegment(error, "field");
+                    var code = SafeSegment(error, "code");
+                    if (field is not null || code is not null)
+                        return $"validation:{field ?? "unknown"}:{code ?? "rejected"}";
+                }
+            }
+
+            var problemCode = SafeSegment(document.RootElement, "code");
+            return problemCode is null ? null : $"provider:{problemCode}";
         }
         catch (JsonException) { return null; }
         catch (IOException) { return null; }
@@ -45,5 +65,15 @@ internal static class TrendyolEFaturamProblemDetails
         if (path.Length > MaximumReferenceLength) path = path[..MaximumReferenceLength];
         if (path.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '/' or '-' or '_' or '.' or '#'))) return null;
         return path.StartsWith("/problem/", StringComparison.OrdinalIgnoreCase) ? $"problem:{path}" : null;
+    }
+
+    private static string? SafeSegment(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String) return null;
+        var segment = value.GetString()?.Trim();
+        if (string.IsNullOrWhiteSpace(segment)) return null;
+        segment = segment.Replace("[", ".", StringComparison.Ordinal).Replace("]", "", StringComparison.Ordinal);
+        if (segment.Length > 80) segment = segment[..80];
+        return segment.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.') ? segment : null;
     }
 }

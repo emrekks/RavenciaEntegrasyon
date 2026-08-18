@@ -130,6 +130,17 @@ public sealed class F4TrendyolEFaturamContractTests
     public void Provider_problem_reference_is_allowlisted_without_preserving_query_values(string value, string? expected) =>
         Assert.Equal(expected, TrendyolEFaturamProblemDetails.Normalize(value));
 
+    [Fact]
+    public async Task Provider_validation_field_and_code_are_preserved_without_response_body()
+    {
+        using var content = new StringContent("""{"errors":[{"field":"invoiceLines[0].unitPriceAmount","code":"AmountMismatch","defaultMessage":"sensitive value"}]}""");
+
+        var reference = await TrendyolEFaturamProblemDetails.TryReadReferenceAsync(content, CancellationToken.None);
+
+        Assert.Equal("validation:invoiceLines.0.unitPriceAmount:AmountMismatch", reference);
+        Assert.DoesNotContain("sensitive", reference, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("TEXMP", "8590921777")]
     [InlineData("Trendyol Express", "8590921777")]

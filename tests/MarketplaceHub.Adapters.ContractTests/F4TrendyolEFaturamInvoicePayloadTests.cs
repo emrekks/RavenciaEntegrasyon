@@ -36,6 +36,23 @@ public sealed class F4TrendyolEFaturamInvoicePayloadTests
     }
 
     [Fact]
+    public void Official_payload_derives_tax_exclusive_unit_price_from_line_basis()
+    {
+        var source = new EfaturamInvoicePayloadSource(
+            "local", "EARSIVFATURA", "TRY", "YALNIZ", "ORDER", new DateOnly(2026, 8, 18), DateTimeOffset.UtcNow,
+            new("11111111111", "TR", "İzmir", "Bornova", "Test adresi", null, null, null, "Test", "Müşteri", null),
+            [new("Ürün", "C62", 2m, 52.90m, 88.17m, 17.63m, 20m, 0m, 105.80m)],
+            new("https://www.trendyol.com", "Trendyol", "PAZARYERI", DateTimeOffset.UtcNow, "MEDIATOR"),
+            new("8590921777", "Yurtiçi Kargo", null, new DateOnly(2026, 8, 18)));
+
+        using var payload = JsonDocument.Parse(TrendyolEFaturamInvoicePayload.Create(new(1, 1, null), source));
+        var line = payload.RootElement.GetProperty("invoiceLines")[0];
+
+        Assert.Equal(4408.5m, line.GetProperty("unitPriceAmount").GetDecimal());
+        Assert.Equal(8817, line.GetProperty("totalAmount").GetInt64());
+    }
+
+    [Fact]
     public void Low_level_payload_omits_optional_internet_fields_when_source_does_not_supply_them()
     {
         var source = new EfaturamInvoicePayloadSource("local", "TEMELFATURA", "TRY", "YALNIZ: SIFIR TÜRK LİRASI", "ORDER", new DateOnly(2026, 8, 3), DateTimeOffset.UtcNow,
