@@ -84,6 +84,14 @@ function InvoiceDraftModal({ item, provider, onClose }: { item: Order; provider:
   const order = detail.data
   const packageId = order?.packages[0]?.id
   useEffect(() => { if (refreshQueued && packageId) { setRefreshQueued(false); setMessage('Paket bilgisi geldi. Fatura taslağını oluşturabilirsiniz.') } }, [packageId, refreshQueued])
+  useEffect(() => {
+    if (!refreshQueued || packageId) return
+    const timeout = window.setTimeout(() => {
+      setRefreshQueued(false)
+      setMessage('Paket bilgisi hâlâ gelmedi. Trendyol paketi oluşturduğunda fatura taslağı açılacaktır.')
+    }, 12000)
+    return () => window.clearTimeout(timeout)
+  }, [packageId, refreshQueued])
   const refreshOrder = useMutation({
     mutationFn: () => {
       if (!order?.connectionId) throw new Error('Siparişin Trendyol bağlantısı bulunamadı.')
