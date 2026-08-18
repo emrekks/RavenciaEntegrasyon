@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
@@ -68,9 +69,14 @@ public sealed class TrendyolEFaturamHttpClient(
         {
             return AdapterResult<InvoiceSubmissionResult>.Failure(new(AdapterErrorClass.Validation, "EFATURAM_FISCAL_PAYLOAD_INVALID", exception.Message, null, null, null));
         }
-        using var payload = JsonDocument.Parse(officialPayload);
         var endpoint = submission.InvoiceType == "EARSIVFATURA" ? TrendyolEFaturamEndpoints.CreateEArchive : TrendyolEFaturamEndpoints.CreateOutgoingInvoice;
-        var response = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Post, endpoint, JsonContent.Create(payload.RootElement), cancellationToken);
+        // The invoice gateway does not reliably consume chunked JsonContent bodies and answers
+        // with "Failed to read request" before model validation. ByteArrayContent provides an
+        // exact Content-Length and the same application/json media type as the official curl
+        // example, while preserving the already validated canonical payload byte-for-byte.
+        using var payload = new ByteArrayContent(Encoding.UTF8.GetBytes(officialPayload));
+        payload.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        var response = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Post, endpoint, payload, cancellationToken);
         if (!response.IsSuccess) return AdapterResult<InvoiceSubmissionResult>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<InvoiceSubmissionResult>.Success(TrendyolEFaturamJsonMapper.OutgoingInvoice(response.Value!.Body, response.Value.RemoteRequestId), response.RateLimit); }
         catch (JsonException) { return AdapterResult<InvoiceSubmissionResult>.Failure(TrendyolEFaturamErrorMapper.Contract(), response.RateLimit); }
