@@ -6,6 +6,7 @@ using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Mapping;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
 
@@ -14,7 +15,9 @@ public sealed class TrendyolEFaturamHttpClient(
     TrendyolEFaturamAuthenticationHandler authentication,
     IConfiguration configuration,
     Microsoft.Extensions.Options.IOptions<TrendyolEFaturamOptions> options,
-    SafeRemoteDocumentDownloader documents) : IInvoiceProviderPort
+    SafeRemoteDocumentDownloader documents,
+    TimeProvider timeProvider,
+    ILogger<TrendyolEFaturamHttpClient> logger) : IInvoiceProviderPort
 {
     private const string ConnectionProbeInvoiceUuid = "00000000-0000-0000-0000-000000000000";
     private readonly TrendyolEFaturamOptions _options = options.Value;
@@ -165,6 +168,31 @@ public sealed class TrendyolEFaturamHttpClient(
                 "EFATURAM_SIGNIN_SCOPE_MISSING",
                 "E-Faturam oturumu tekil firma ve kullanıcı kapsamı döndürmedi.",
                 null, null, null), login.RateLimit);
+        var now = timeProvider.GetUtcNow();
+        logger.LogInformation(
+            "E-Faturam access token metadata. IssuedAt={IssuedAt} NotBefore={NotBefore} ExpiresAt={ExpiresAt} Issuer={Issuer} Audience={Audience}",
+            access.IssuedAt,
+            access.NotBefore,
+            access.ExpiresAt,
+            access.Issuer,
+            access.Audience);
+        if (access.ExpiresAt is { } expiresAt && expiresAt <= now)
+            return AdapterResult<TrendyolEFaturamAccessContext>.Failure(new(
+                AdapterErrorClass.Authentication,
+                "EFATURAM_ACCESS_TOKEN_EXPIRED",
+                "E-Faturam sign-in yanıtında süresi dolmuş bir access token döndürdü.",
+                401, null, null), login.RateLimit);
+        if (access.NotBefore is { } notBefore && notBefore > now)
+        {
+            var wait = notBefore - now;
+            if (wait > TimeSpan.FromSeconds(15))
+                return AdapterResult<TrendyolEFaturamAccessContext>.Failure(new(
+                    AdapterErrorClass.Authentication,
+                    "EFATURAM_ACCESS_TOKEN_NOT_ACTIVE",
+                    "E-Faturam sign-in yanıtındaki access token henüz geçerli değil.",
+                    401, null, null), login.RateLimit);
+            await Task.Delay(wait, timeProvider, cancellationToken);
+        }
         return AdapterResult<TrendyolEFaturamAccessContext>.Success(access, login.RateLimit);
     }
 

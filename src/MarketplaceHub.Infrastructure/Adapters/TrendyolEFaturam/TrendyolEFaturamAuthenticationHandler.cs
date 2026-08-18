@@ -57,4 +57,9 @@ public sealed record TrendyolEFaturamRequestContext(
 public sealed record TrendyolEFaturamAccessContext(
     string AccessToken,
     long CompanyId,
-    long UserId);
+    long UserId,
+    DateTimeOffset? IssuedAt = null,
+    DateTimeOffset? NotBefore = null,
+    DateTimeOffset? ExpiresAt = null,
+    string? Issuer = null,
+    string? Audience = null);

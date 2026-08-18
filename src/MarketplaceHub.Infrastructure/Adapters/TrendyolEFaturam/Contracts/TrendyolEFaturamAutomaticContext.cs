@@ -89,7 +89,15 @@ public static class TrendyolEFaturamDirectAccountAccess
             if (!TryGetCompanyId(root, out var companyId)
                 || !TryGetUserId(root, out var userId)
                 || companyId <= 0 || userId <= 0) return false;
-            access = new(token, companyId, userId);
+            access = new(
+                token,
+                companyId,
+                userId,
+                TryGetNumericDate(root, "iat"),
+                TryGetNumericDate(root, "nbf"),
+                TryGetNumericDate(root, "exp"),
+                TryGetString(root, "iss"),
+                TryGetAudience(root));
             return true;
         }
         catch (Exception exception) when (exception is FormatException or JsonException)
@@ -105,6 +113,45 @@ public static class TrendyolEFaturamDirectAccountAccess
                 return TryLong(property.Value, out result);
         result = 0;
         return false;
+    }
+
+    private static DateTimeOffset? TryGetNumericDate(JsonElement root, string name)
+    {
+        if (!TryGetLong(root, name, out var value) || value <= 0) return null;
+        try
+        {
+            return value > 10_000_000_000
+                ? DateTimeOffset.FromUnixTimeMilliseconds(value)
+                : DateTimeOffset.FromUnixTimeSeconds(value);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    private static string? TryGetString(JsonElement root, string name)
+    {
+        foreach (var property in root.EnumerateObject())
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)
+                && property.Value.ValueKind == JsonValueKind.String)
+                return property.Value.GetString();
+        return null;
+    }
+
+    private static string? TryGetAudience(JsonElement root)
+    {
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "aud", StringComparison.OrdinalIgnoreCase)) continue;
+            if (property.Value.ValueKind == JsonValueKind.String) return property.Value.GetString();
+            if (property.Value.ValueKind == JsonValueKind.Array)
+                return string.Join(',', property.Value.EnumerateArray()
+                    .Where(value => value.ValueKind == JsonValueKind.String)
+                    .Select(value => value.GetString())
+                    .Where(value => !string.IsNullOrWhiteSpace(value)));
+        }
+        return null;
     }
 
     private static bool TryGetCompanyId(JsonElement root, out long result)

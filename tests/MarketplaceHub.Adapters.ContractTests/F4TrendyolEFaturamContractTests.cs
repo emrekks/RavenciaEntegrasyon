@@ -52,6 +52,18 @@ public sealed class F4TrendyolEFaturamContractTests
     }
 
     [Fact]
+    public void Direct_account_access_reads_safe_token_lifetime_metadata()
+    {
+        Assert.True(TrendyolEFaturamDirectAccountAccess.TryRead(Token("""{"companyId":10,"userId":20,"iat":1724000000,"nbf":1724000001,"exp":1724003600,"iss":"stage-issuer","aud":["invoice-api"]}"""), out var access));
+
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1724000000), access.IssuedAt);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1724000001), access.NotBefore);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1724003600), access.ExpiresAt);
+        Assert.Equal("stage-issuer", access.Issuer);
+        Assert.Equal("invoice-api", access.Audience);
+    }
+
+    [Fact]
     public void Fiscal_scope_is_read_from_direct_account_privileges_and_subject()
     {
         Assert.True(TrendyolEFaturamDirectAccountAccess.TryRead(Token("""{"sub":"20","privs":{"10":["INVOICE_CREATE"]}}"""), out var access));
