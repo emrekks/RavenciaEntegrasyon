@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Text.Json;
 using MarketplaceHub.Application;
@@ -225,6 +226,11 @@ public sealed class TrendyolEFaturamHttpClient(
     {
         using var request = new HttpRequestMessage(method, new Uri(context.BaseAddress, endpoint)) { Content = content };
         request.Headers.Accept.ParseAdd(acceptMediaType);
+        // The public API contract documents x-access-token, while the provider's current Stage
+        // portal sends the same access token as Authorization: Bearer for protected invoice API
+        // calls. Send both equivalent representations so direct API_USER traffic remains
+        // compatible with the documented gateway and the provider's own active client.
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         request.Headers.TryAddWithoutValidation("x-access-token", token);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         linked.CancelAfter(RequestTimeout);
