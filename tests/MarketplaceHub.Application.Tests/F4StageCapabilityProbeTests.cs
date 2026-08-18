@@ -10,6 +10,7 @@ public sealed class F4StageCapabilityProbeTests
     {
         Assert.True(F4BillingService.CanRetryLocalPayloadFailure(InvoiceStatus.Rejected, "EFATURAM_FISCAL_PAYLOAD_INVALID", null));
         Assert.True(F4BillingService.CanRetryLocalPayloadFailure(InvoiceStatus.Rejected, "EFATURAM_REQUEST_REJECTED", null));
+        Assert.True(F4BillingService.CanRetryLocalPayloadFailure(InvoiceStatus.Rejected, "EFATURAM_APPLICATION_NOT_ACTIVE", null));
         Assert.False(F4BillingService.CanRetryLocalPayloadFailure(InvoiceStatus.Rejected, "EFATURAM_REQUEST_REJECTED", "remote-reference"));
         Assert.False(F4BillingService.CanRetryLocalPayloadFailure(InvoiceStatus.Rejected, "EFATURAM_FISCAL_PAYLOAD_INVALID", "remote-reference"));
     }

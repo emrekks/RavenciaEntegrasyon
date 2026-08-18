@@ -421,7 +421,7 @@ public sealed partial class F4BillingService(
 
     internal static bool CanRetryLocalPayloadFailure(InvoiceStatus status, string? lastErrorCode, string? externalReference) =>
         status == InvoiceStatus.Rejected
-        && lastErrorCode is "EFATURAM_FISCAL_PAYLOAD_INVALID" or "EFATURAM_REQUEST_REJECTED"
+        && lastErrorCode is "EFATURAM_FISCAL_PAYLOAD_INVALID" or "EFATURAM_REQUEST_REJECTED" or "EFATURAM_APPLICATION_NOT_ACTIVE"
         && string.IsNullOrWhiteSpace(externalReference);
 
     internal static bool CanRetryPreProviderFailure(InvoiceStatus status, string? lastErrorCode, string? externalReference) =>
