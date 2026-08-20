@@ -50,13 +50,16 @@ function Login() {
   return (
     <div className="relative min-h-screen bg-[#060711] text-white flex flex-col font-sans overflow-hidden">
       {/* Background Effects & Diagonal Rays */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
          <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%]">
-            <div className="absolute top-1/2 left-[45%] w-[120%] h-[1px] bg-gradient-to-r from-transparent via-blue-400/40 to-transparent -translate-x-1/2 -translate-y-1/2 rotate-[-35deg] shadow-[0_0_25px_rgba(96,165,250,0.6)]"></div>
-            <div className="absolute top-[60%] left-1/2 w-[120%] h-[1px] bg-gradient-to-r from-transparent via-indigo-400/40 to-transparent -translate-x-1/2 -translate-y-1/2 rotate-[35deg] shadow-[0_0_25px_rgba(129,140,248,0.6)]"></div>
+            <div className="absolute top-1/2 left-[45%] w-[120%] h-[1px]" 
+                 style={{ transform: 'translate(-50%, -50%) rotate(-35deg)', background: 'linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.4), transparent)', boxShadow: '0 0 35px 2px rgba(96, 165, 250, 0.8)' }}></div>
+            <div className="absolute top-[60%] left-1/2 w-[120%] h-[1px]" 
+                 style={{ transform: 'translate(-50%, -50%) rotate(35deg)', background: 'linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.4), transparent)', boxShadow: '0 0 35px 2px rgba(129, 140, 248, 0.8)' }}></div>
          </div>
          {/* Huge subtle glowing ring on the left */}
-         <div className="absolute top-1/2 left-[20%] -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full border border-blue-400/[0.1] shadow-[0_0_150px_rgba(30,58,138,0.35)] bg-gradient-to-tr from-blue-900/15 to-transparent mix-blend-screen"></div>
+         <div className="absolute top-1/2 left-[20%] w-[700px] h-[700px] rounded-full mix-blend-screen" 
+              style={{ transform: 'translate(-50%, -50%)', border: '1px solid rgba(96, 165, 250, 0.1)', boxShadow: '0 0 150px 40px rgba(30, 58, 138, 0.4)', background: 'linear-gradient(45deg, rgba(30, 58, 138, 0.2), transparent)' }}></div>
       </div>
 
       {/* Güvenli Erişim Box */}
@@ -87,9 +90,12 @@ function Login() {
 
         {/* Right Side: Login Card */}
         <div className="lg:w-1/2 flex items-center justify-center w-full">
-          <div className="w-full max-w-[460px] p-10 bg-[#0a0b12]/60 backdrop-blur-2xl border border-white/[0.06] rounded-[18px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative">
-             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-[1px] bg-gradient-to-r from-transparent via-blue-400/40 to-transparent shadow-[0_0_15px_rgba(96,165,250,0.4)]" />
-             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-48 h-[1px] bg-gradient-to-r from-transparent via-indigo-400/40 to-transparent shadow-[0_0_15px_rgba(129,140,248,0.4)]" />
+          <div className="w-full max-w-[460px] p-10 bg-[#0a0b12]/60 backdrop-blur-2xl border border-white/[0.06] rounded-[18px] relative"
+               style={{ boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
+             <div className="absolute top-0 left-1/2 w-48 h-[1px]" 
+                  style={{ transform: 'translateX(-50%)', background: 'linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.4), transparent)', boxShadow: '0 0 20px 2px rgba(96, 165, 250, 0.6)' }} />
+             <div className="absolute bottom-0 left-1/2 w-48 h-[1px]" 
+                  style={{ transform: 'translateX(-50%)', background: 'linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.4), transparent)', boxShadow: '0 0 20px 2px rgba(129, 140, 248, 0.6)' }} />
              
              <div className="text-center mb-10 mt-2">
                 <h1 className="text-[1.7rem] text-slate-200 tracking-wide" style={{ fontFamily: "'Cinzel', serif", fontWeight: 500 }}>Ravencia Yönetim Paneli</h1>
