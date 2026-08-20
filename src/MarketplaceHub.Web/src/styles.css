@@ -190,8 +190,14 @@ body { background:var(--mp-canvas); }
 .product-table td { vertical-align:middle; }
 .product-table td small { color:#778480; }
 .integration-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; }
-.integration-card { display:grid; min-height:350px; padding:24px; color:#0b1c30; text-decoration:none; background:#fff; border:1px solid #bdc9c8; border-radius:10px; box-shadow:0 3px 8px #0b292612; }
+.integration-card { display:grid; min-height:350px; padding:24px; color:#0b1c30; text-decoration:none; background:#fff; border:1px solid #bdc9c8; border-radius:10px; box-shadow:0 3px 8px #0b292612; cursor:pointer; font:inherit; text-align:left; }
 .integration-card:hover { border-color:#087a70; box-shadow:0 10px 24px #0b292619; }
+.integration-card.selected { border-color:#087a70; box-shadow:0 10px 24px #0b292619; }
+.integration-card-empty { display:flex; align-items:center; justify-content:center; gap:10px; color:#087a70; background:transparent; border-style:dashed; cursor:default; text-align:center; }
+.integration-card-empty:hover { border-color:#bdc9c8; box-shadow:none; }
+.integration-add-icon { display:grid; place-items:center; width:46px; height:46px; border:1px solid #087a70; border-radius:50%; font-size:2rem; line-height:1; }
+.integration-inline-workspace { margin-top:24px; }
+.integration-inline-workspace .back { display:none; }
 .integration-card-top { display:flex; align-items:center; justify-content:space-between; }
 .platform-mark { display:grid; place-items:center; width:40px; height:40px; color:#0e5752; background:#d9f5f1; border-radius:8px; font-size:1.2rem; }
 .platform-mark.trendyol_efaturam { color:#1d5eea; background:#dce9ff; }
