@@ -48,117 +48,104 @@ function Login() {
   const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
   return (
-    <div className="auth-login-page relative min-h-screen bg-[#060711] text-white flex flex-col font-sans overflow-hidden">
-      {/* Background Effects & Diagonal Rays */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
-         <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%]">
-            <div className="absolute top-1/2 left-[45%] w-[120%] h-[1px]" 
-                 style={{ transform: 'translate(-50%, -50%) rotate(-35deg)', background: 'linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.4), transparent)', boxShadow: '0 0 35px 2px rgba(96, 165, 250, 0.8)' }}></div>
-            <div className="absolute top-[60%] left-1/2 w-[120%] h-[1px]" 
-                 style={{ transform: 'translate(-50%, -50%) rotate(35deg)', background: 'linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.4), transparent)', boxShadow: '0 0 35px 2px rgba(129, 140, 248, 0.8)' }}></div>
-         </div>
-         {/* Huge subtle glowing ring on the left */}
-         <div className="absolute top-1/2 left-[20%] w-[700px] h-[700px] rounded-full mix-blend-screen" 
-              style={{ transform: 'translate(-50%, -50%)', border: '1px solid rgba(96, 165, 250, 0.1)', boxShadow: '0 0 150px 40px rgba(30, 58, 138, 0.4)', background: 'linear-gradient(45deg, rgba(30, 58, 138, 0.2), transparent)' }}></div>
+    <div className="auth-login-page">
+      {/* Background Effects */}
+      <div className="auth-bg-effects">
+         <div className="auth-ray auth-ray-1"></div>
+         <div className="auth-ray auth-ray-2"></div>
+         <div className="auth-glow-ring"></div>
       </div>
 
       {/* Güvenli Erişim Box */}
-      <div className="auth-security-card absolute bottom-16 left-12 max-w-[320px] p-4 rounded-xl border border-white/[0.04] bg-[#0c0d14]/40 backdrop-blur-md flex items-start gap-4 shadow-2xl z-20 hidden xl:flex">
-        <div className="p-2.5 rounded-lg border border-white/[0.08] text-slate-400 opacity-80 shrink-0">
+      <div className="auth-security-card">
+        <div className="auth-security-icon">
            <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M8 11h8v6H8z"/><path d="M10 11V9a2 2 0 114 0v2"/></svg>
         </div>
         <div>
-          <div className="text-[#818cf8] text-[0.65rem] font-bold tracking-widest uppercase mb-1">Güvenli Erişim</div>
-          <div className="text-slate-400 text-[0.7rem] leading-relaxed opacity-80">Tüm bağlantılar uçtan uca şifrelenmiştir.<br/>Verileriniz güvende.</div>
+          <div className="auth-security-title">Güvenli Erişim</div>
+          <div className="auth-security-desc">Tüm bağlantılar uçtan uca şifrelenmiştir.<br/>Verileriniz güvende.</div>
         </div>
       </div>
 
-      <div className="auth-login-layout flex-1 flex flex-col lg:flex-row items-center justify-center relative z-10 px-6 w-full max-w-[1300px] mx-auto gap-12 lg:gap-32">
-        
+      <div className="auth-login-layout">
         {/* Left Side: Logo */}
-        <div className="auth-brand-panel lg:w-1/2 flex flex-col items-center justify-center">
-          <div className="relative flex flex-col items-center justify-center mb-8">
+        <div className="auth-brand-panel">
+          <div className="auth-brand-inner">
              <svg className="auth-logo-mark" viewBox="0 0 230 210" role="img" aria-label="Ravencia">
                <defs><linearGradient id="auth-logo-silver" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffffff"/><stop offset=".5" stopColor="#c7cbd8"/><stop offset="1" stopColor="#7d8497"/></linearGradient></defs>
                <path d="M78 178C43 162 44 116 67 82c24-35 72-53 102-34 22 14 13 40-15 59-26 18-60 28-91 32M72 82c10 36 27 79 60 105 14 11 38 13 58 2M112 118c39-7 78-22 99-53 10-15 8-29-4-35-13-7-27 4-38 19" fill="none" stroke="url(#auth-logo-silver)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>
                <path d="M32 167c39 1 83-12 121-40 25-18 44-38 61-61" fill="none" stroke="#bfc5d4" strokeWidth="3" strokeLinecap="round" opacity=".9"/>
              </svg>
-             <div className="text-[1.25rem] tracking-[0.45em] font-light mt-4 text-slate-300/90 relative z-10 ml-3 uppercase" style={{ fontFamily: "Inter, sans-serif" }}>
-               Ravencia
-             </div>
+             <div className="auth-brand-text">Ravencia</div>
           </div>
         </div>
 
         {/* Right Side: Login Card */}
-        <div className="auth-form-panel lg:w-1/2 flex items-center justify-center w-full">
-          <div className="auth-login-card w-full max-w-[460px] p-10 bg-[#0a0b12]/60 backdrop-blur-2xl border border-white/[0.06] rounded-[18px] relative"
-               style={{ boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
-             <div className="absolute top-0 left-1/2 w-48 h-[1px]" 
-                  style={{ transform: 'translateX(-50%)', background: 'linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.4), transparent)', boxShadow: '0 0 20px 2px rgba(96, 165, 250, 0.6)' }} />
-             <div className="absolute bottom-0 left-1/2 w-48 h-[1px]" 
-                  style={{ transform: 'translateX(-50%)', background: 'linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.4), transparent)', boxShadow: '0 0 20px 2px rgba(129, 140, 248, 0.6)' }} />
+        <div className="auth-form-panel">
+          <div className="auth-login-card">
+             <div className="auth-card-flare auth-card-flare-top"></div>
+             <div className="auth-card-flare auth-card-flare-bottom"></div>
              
-             <div className="text-center mb-10 mt-2">
-                <h1 className="text-[1.7rem] text-slate-200 tracking-wide" style={{ fontFamily: "'Cinzel', serif", fontWeight: 500 }}>Ravencia Yönetim Paneli</h1>
-                <div className="mt-4 flex items-center justify-center opacity-40">
-                   <div className="h-px bg-gradient-to-r from-transparent to-slate-400 w-16"></div>
-                   <svg className="w-2.5 h-2.5 mx-3 text-slate-300" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0l2 10 10 2-10 2-2 10-2-10-10-2 10-2z"/></svg>
-                   <div className="h-px bg-gradient-to-l from-transparent to-slate-400 w-16"></div>
+             <div className="auth-card-header">
+                <h1>Ravencia Yönetim Paneli</h1>
+                <div className="auth-card-divider">
+                   <span></span>
+                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0l2 10 10 2-10 2-2 10-2-10-10-2 10-2z"/></svg>
+                   <span></span>
                 </div>
              </div>
              
-             <h2 className="text-slate-300 text-[0.8rem] mb-4 pl-1">Oturum aç</h2>
+             <h2>Oturum aç</h2>
              
-             <form onSubmit={submit} className="space-y-4">
-                <div className="relative">
-                   <input name="email" type="email" autoComplete="username" required placeholder="E-posta" className="login-input w-full" />
-                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">
+             <form onSubmit={submit}>
+                <div className="auth-field-wrap">
+                   <input name="email" type="email" autoComplete="username" required placeholder="E-posta" className="login-input" />
+                   <div className="auth-field-icon">
                       <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                    </div>
                 </div>
                 
-                <div className="relative">
-                   <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parola" className="login-input w-full" />
-                   <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-3 text-slate-500">
+                <div className="auth-field-wrap">
+                   <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parola" className="login-input" />
+                   <div className="auth-field-icon">
                       <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                      <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                    </div>
                 </div>
                 
-                <div className="flex items-center justify-between text-[0.75rem] py-1 px-1">
-                   <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                <div className="auth-remember-row">
+                   <label className="auth-remember-label">
                       <input type="checkbox" className="login-checkbox" />
                       <span>Beni hatırla</span>
                    </label>
-                   <a href="#" className="text-[#818cf8] hover:text-[#a5b4fc] transition-colors">Şifremi unuttum?</a>
+                   <a href="#" className="auth-forgot-link">Şifremi unuttum?</a>
                 </div>
                 
                 {error && (
-                   <div className="p-2.5 rounded-lg bg-red-900/20 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
-                     <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                   <div className="auth-error">
+                     <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                      <span>{error}</span>
                    </div>
                 )}
                 
-                <button type="submit" disabled={loading} className="login-button w-full mt-3 flex items-center justify-center gap-2 disabled:opacity-70 group">
+                <button type="submit" disabled={loading} className="login-button">
                    {loading ? 'Giriş yapılıyor...' : 'Güvenli giriş'}
-                   {!loading && <svg className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M4 12h16m-7-7l7 7-7 7"/></svg>}
+                   {!loading && <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M4 12h16m-7-7l7 7-7 7"/></svg>}
                 </button>
              </form>
 
              {/* System Info Grid */}
-             <div className="mt-8 pt-5 border-t border-white/[0.04] grid grid-cols-3 gap-2 text-center opacity-80">
-               <div className="flex flex-col items-center justify-center">
-                 <div className="text-slate-500 text-[0.6rem] mb-1.5">Sistem Ortamı</div>
-                 <div className="text-slate-300 text-[0.7rem] flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> PROD</div>
+             <div className="auth-system-info">
+               <div className="auth-info-cell">
+                 <div className="auth-info-label">Sistem Ortamı</div>
+                 <div className="auth-info-value"><span className="auth-status-dot"></span> PROD</div>
                </div>
-               <div className="flex flex-col items-center justify-center border-l border-white/[0.04]">
-                 <div className="text-slate-500 text-[0.6rem] mb-1.5">Sürüm</div>
-                 <div className="text-slate-300 text-[0.7rem]">v2.6.0</div>
+               <div className="auth-info-cell auth-info-bordered">
+                 <div className="auth-info-label">Sürüm</div>
+                 <div className="auth-info-value">v2.6.0</div>
                </div>
-               <div className="flex flex-col items-center justify-center border-l border-white/[0.04]">
-                 <div className="text-slate-500 text-[0.6rem] mb-1.5">Son Güncelleme</div>
-                 <div className="text-slate-300 text-[0.7rem]">25.05.2025 10:42</div>
+               <div className="auth-info-cell auth-info-bordered">
+                 <div className="auth-info-label">Son Güncelleme</div>
+                 <div className="auth-info-value">25.05.2025 10:42</div>
                </div>
              </div>
           </div>
@@ -166,9 +153,9 @@ function Login() {
       </div>
       
       {/* Footer */}
-      <div className="auth-login-footer relative z-10 w-full px-10 py-5 border-t border-white/[0.03] bg-transparent flex flex-col sm:flex-row items-center justify-between text-[0.7rem] text-slate-500 mt-auto opacity-70">
+      <div className="auth-login-footer">
          <div>© {new Date().getFullYear()} Ravencia. Tüm hakları saklıdır.</div>
-         <div className="flex items-center gap-1.5 mt-2 sm:mt-0">
+         <div className="auth-footer-right">
             <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
             Ravencia Yönetim Paneli v2.6.0
          </div>
