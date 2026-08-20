@@ -11,46 +11,97 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 /* ─── Login Page (Elegant Split Glassmorphism - Premium Revise) ─── */
 .auth-login-page { position:relative; min-height:100vh; overflow:hidden; background-color:#03040b; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
 
-/* ─── Login Page (B2B SaaS Modern Dark) ─── */
-.auth-saas-page { background-color: #000; color: #ededed; font-family: Inter, ui-sans-serif, system-ui, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; }
-.saas-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.saas-glow { position: absolute; top: -30%; left: 50%; transform: translateX(-50%); width: 800px; height: 800px; background: radial-gradient(circle, rgba(79,70,229,0.12) 0%, rgba(0,0,0,0) 60%); }
-.saas-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 40px 40px; opacity: 0.5; mask-image: radial-gradient(circle at center, black 0%, transparent 80%); -webkit-mask-image: radial-gradient(circle at center, black 0%, transparent 80%); }
+/* ─── Login Page (Complex E-commerce Integration Hub) ─── */
+.auth-hub-page { min-height: 100vh; display: flex; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #03040b; color: #f8fafc; overflow: hidden; }
 
-.saas-container { position: relative; z-index: 10; width: 100%; max-width: 420px; padding: 20px; }
-.saas-header { text-align: center; margin-bottom: 32px; }
-.saas-logo { width: 220px; height: auto; margin-bottom: 24px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)); }
-.saas-header h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.02em; color: #fff; }
-.saas-header p { font-size: 0.9rem; color: #a1a1aa; margin: 0; }
+/* Left Side: Form Section */
+.hub-form-section { flex: 0 0 500px; background: #0a0c14; border-right: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; justify-content: center; padding: 40px; position: relative; z-index: 10; box-shadow: 20px 0 40px rgba(0,0,0,0.5); }
+.hub-form-inner { width: 100%; max-width: 380px; margin: 0 auto; }
+.hub-brand { margin-bottom: 40px; }
+.hub-logo { width: 220px; height: auto; mix-blend-mode: screen; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.5)); opacity: 0.95; }
 
-.saas-card { background: #09090b; border: 1px solid #27272a; border-radius: 12px; padding: 32px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); }
-.saas-form { display: flex; flex-direction: column; gap: 20px; }
-.saas-field { display: flex; flex-direction: column; gap: 8px; }
-.saas-field-header { display: flex; justify-content: space-between; align-items: center; }
-.saas-field label { font-size: 0.85rem; font-weight: 500; color: #e4e4e7; }
-.saas-field input { background: #000; border: 1px solid #27272a; border-radius: 6px; padding: 10px 12px; color: #fff; font-size: 0.9rem; outline: none; transition: all 0.2s; box-shadow: inset 0 1px 2px rgba(0,0,0,0.5); }
-.saas-field input:focus { border-color: #4f46e5; box-shadow: 0 0 0 1px #4f46e5; }
-.saas-field input::placeholder { color: #52525b; }
+.hub-header h1 { font-size: 1.8rem; font-weight: 600; margin: 0 0 10px; color: #fff; letter-spacing: -0.02em; }
+.hub-header p { font-size: 0.95rem; color: #94a3b8; margin: 0 0 30px; line-height: 1.5; }
 
-.saas-options { display: flex; justify-content: space-between; align-items: center; margin-top: -4px; }
-.saas-checkbox { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem; color: #a1a1aa; user-select: none; transition: color 0.2s; }
-.saas-checkbox:hover { color: #e4e4e7; }
-.saas-checkbox input { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; border: 1px solid #3f3f46; border-radius: 4px; background: #000; cursor: pointer; display: grid; place-content: center; transition: all 0.2s; margin: 0; }
-.saas-checkbox input:checked { background: #4f46e5; border-color: #4f46e5; }
-.saas-checkbox input:checked::before { content: ""; width: 8px; height: 8px; background: #fff; transform: scale(1); clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%); }
-.saas-link { font-size: 0.85rem; color: #a1a1aa; text-decoration: none; transition: color 0.2s; }
-.saas-link:hover { color: #fff; }
+.hub-form { display: flex; flex-direction: column; gap: 20px; }
+.hub-input-group { display: flex; flex-direction: column; gap: 8px; }
+.hub-input-group label { font-size: 0.85rem; font-weight: 500; color: #cbd5e1; }
+.hub-input-wrap { position: relative; display: flex; align-items: center; }
+.hub-icon { position: absolute; left: 14px; color: #64748b; }
+.hub-input-wrap input { width: 100%; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px 16px 12px 42px; color: #fff; font-size: 0.9rem; transition: all 0.2s; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); outline: none; }
+.hub-input-wrap input:hover { border-color: rgba(255,255,255,0.2); }
+.hub-input-wrap input:focus { border-color: #6366f1; background: rgba(0,0,0,0.6); box-shadow: 0 0 0 3px rgba(99,102,241,0.2), inset 0 2px 4px rgba(0,0,0,0.2); }
+.hub-input-wrap input:focus + .hub-icon { color: #818cf8; }
 
-.saas-button { background: #fff; color: #000; border: none; border-radius: 6px; padding: 11px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; margin-top: 8px; display: flex; justify-content: center; align-items: center; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-.saas-button:hover { background: #e4e4e7; transform: translateY(-1px); }
-.saas-button:active { transform: translateY(0); }
-.saas-button:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+.hub-form-actions { display: flex; justify-content: space-between; align-items: center; margin-top: -4px; }
+.hub-checkbox { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem; color: #94a3b8; user-select: none; transition: color 0.2s; }
+.hub-checkbox:hover { color: #f8fafc; }
+.hub-checkbox input { display: none; }
+.check-box { width: 18px; height: 18px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.check-box svg { width: 12px; height: 12px; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; fill: none; stroke-dasharray: 16; stroke-dashoffset: 16; transition: stroke-dashoffset 0.3s cubic-bezier(0.4,0,0.2,1); }
+.hub-checkbox input:checked + .check-box { background: #6366f1; border-color: #6366f1; }
+.hub-checkbox input:checked + .check-box svg { stroke-dashoffset: 0; }
+.hub-link { font-size: 0.85rem; color: #818cf8; text-decoration: none; transition: color 0.2s; }
+.hub-link:hover { color: #a5b4fc; }
 
-.saas-error { padding: 12px; border-radius: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; }
+.hub-button { background: linear-gradient(180deg, #6366f1, #4f46e5); color: #fff; border: none; border-radius: 8px; padding: 12px; font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(79,70,229,0.3), inset 0 1px 0 rgba(255,255,255,0.2); }
+.hub-button:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(79,70,229,0.4), inset 0 1px 0 rgba(255,255,255,0.2); }
+.hub-button:active { transform: translateY(0); }
+.hub-button:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
 
-.saas-footer { text-align: center; margin-top: 32px; font-size: 0.8rem; color: #52525b; }
+.hub-error { padding: 12px; border-radius: 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 0.85rem; text-align: center; }
 
-@media (max-width: 600px) { .saas-card { padding: 24px; } }
+.hub-footer { margin-top: 40px; font-size: 0.8rem; color: #64748b; }
+
+/* Right Side: Visual Dashboard (E-commerce Integration) */
+.hub-visual-section { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; background: #03040b; overflow: hidden; }
+.hub-mesh-bg { position: absolute; inset: 0; background: radial-gradient(circle at 80% 20%, rgba(79,70,229,0.15) 0%, transparent 40%), radial-gradient(circle at 20% 80%, rgba(16,185,129,0.1) 0%, transparent 40%), radial-gradient(circle at 50% 50%, rgba(2,6,23,1) 0%, transparent 100%); opacity: 0.8; }
+.hub-mesh-bg::after { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 40px 40px; mask-image: radial-gradient(circle at center, black 0%, transparent 80%); -webkit-mask-image: radial-gradient(circle at center, black 0%, transparent 80%); }
+
+.hub-showcase { position: relative; z-index: 10; width: 600px; height: 500px; perspective: 1000px; }
+
+/* Glass Widgets */
+.glass-widget { position: absolute; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1); color: #fff; animation: floatWidget 6s ease-in-out infinite alternate; }
+
+/* Widget 1: Trendyol */
+.widget-1 { top: 10%; right: 5%; width: 320px; animation-delay: 0s; transform: rotateY(-10deg) rotateX(5deg); }
+.wg-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px; }
+.wg-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.95rem; }
+.wg-dot { width: 10px; height: 10px; border-radius: 50%; }
+.wg-dot.trendyol { background: #f97316; box-shadow: 0 0 10px rgba(249,115,22,0.5); }
+.wg-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+.wg-badge.success { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+.wg-stat { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
+.wg-stat span { color: #94a3b8; font-size: 0.85rem; }
+.wg-stat strong { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.02em; }
+.wg-progress { height: 6px; background: rgba(0,0,0,0.5); border-radius: 3px; overflow: hidden; }
+.wg-progress-fill { height: 100%; background: linear-gradient(90deg, #f97316, #fb923c); border-radius: 3px; box-shadow: 0 0 10px rgba(249,115,22,0.5); }
+
+/* Widget 2: Shopify */
+.widget-2 { top: 45%; left: 5%; width: 280px; animation-delay: -2s; transform: rotateY(10deg) rotateX(-5deg); }
+.wg-dot.shopify { background: #10b981; box-shadow: 0 0 10px rgba(16,185,129,0.5); }
+.wg-badge.sync { background: rgba(99, 102, 241, 0.2); color: #818cf8; animation: pulseSync 2s infinite; }
+@keyframes pulseSync { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.wg-chart { display: flex; align-items: flex-end; gap: 8px; height: 60px; margin-top: 20px; }
+.wg-chart .bar { flex: 1; background: rgba(255,255,255,0.1); border-radius: 4px 4px 0 0; transition: height 0.5s; position: relative; overflow: hidden; }
+.wg-chart .bar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, #10b981, transparent); opacity: 0.8; }
+.b1 { height: 40%; } .b2 { height: 60%; } .b3 { height: 35%; } .b4 { height: 80%; } .b5 { height: 50%; } .b6 { height: 90%; } .b7 { height: 70%; }
+
+/* Widget 3: System */
+.widget-3 { bottom: 5%; right: 15%; width: 340px; display: flex; gap: 16px; align-items: center; padding: 20px; animation-delay: -4s; }
+.wg-icon-wrap { width: 48px; height: 48px; background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.3); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #818cf8; }
+.wg-text h4 { margin: 0 0 4px; font-size: 0.95rem; font-weight: 600; }
+.wg-text p { margin: 0; font-size: 0.85rem; color: #94a3b8; }
+
+@keyframes floatWidget {
+  0% { transform: translateY(0px) rotateY(var(--ry, 0deg)) rotateX(var(--rx, 0deg)); }
+  100% { transform: translateY(-15px) rotateY(var(--ry, 0deg)) rotateX(var(--rx, 0deg)); }
+}
+
+@media (max-width: 992px) {
+  .hub-form-section { flex: 1; box-shadow: none; border-right: none; }
+  .hub-visual-section { display: none; }
+}
 
 .app-shell { min-height:100vh; display:grid; grid-template-columns:250px 1fr; } aside { position:sticky; top:0; height:100vh; padding:1.6rem; background:#101b35; color:white; } aside .brand small { color:#93a3c7; } nav { display:grid; gap:.4rem; margin-top:3rem; } nav a { padding:.8rem 1rem; border-radius:9px; color:#b9c4dc; text-decoration:none; font-weight:650; } nav a.active { color:white; background:#ffffff15; } .scope { position:absolute; bottom:1rem; color:#7f91b6; font-size:.75rem; }
 main > header { height:78px; display:flex; justify-content:flex-end; align-items:center; padding:0 2.5rem; background:white; border-bottom:1px solid #e6e9f0; } header div { display:grid; text-align:right; } header small { color:#7b8496; }
