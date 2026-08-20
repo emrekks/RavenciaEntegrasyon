@@ -28,6 +28,12 @@ public static class F4Endpoints
         api.MapPost("/invoices/{id:guid}/marketplace-delivery-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IF4BillingService service, UserManager<ApplicationUser> users, AppDbContext db) => await EnqueueProtected(id, command, http, users, db, (tenant, _, key) => service.EnqueueDeliveryAsync(tenant, id, key, http.TraceIdentifier, http.RequestAborted), false));
         api.MapPost("/invoices/{id:guid}/cancellation-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IF4BillingService service, UserManager<ApplicationUser> users, AppDbContext db) => await EnqueueProtected(id, command, http, users, db, (tenant, version, key) => service.EnqueueCancellationAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted)));
         api.MapPost("/invoices/{id:guid}/documents/manual", UploadManualInvoiceDocumentAsync).DisableAntiforgery();
+        api.MapGet("/invoices/{invoiceId:guid}/documents/latest/content", async (Guid invoiceId, HttpContext http, AppDbContext db, IF4BillingService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var documentId = await db.InvoiceDocuments.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.InvoiceId == invoiceId && x.DocumentType == "PDF").OrderByDescending(x => x.CreatedAt).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(http.RequestAborted);
+            return documentId is { } id ? Stream(await service.OpenDocumentAsync(tenant.TenantId, invoiceId, id, http.RequestAborted), http) : Problem(http, new("INVOICE_PDF_NOT_READY", "Faturanın PDF belgesi henüz arşivlenmedi.", 404));
+        });
         api.MapGet("/invoices/{invoiceId:guid}/documents/{documentId:guid}/content", async (Guid invoiceId, Guid documentId, HttpContext http, IF4BillingService service) => Tenant(http) is { } tenant ? Stream(await service.OpenDocumentAsync(tenant.TenantId, invoiceId, documentId, http.RequestAborted), http) : Unauthorized(http));
         return endpoints;
     }
