@@ -20,7 +20,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .auth-login-layout { width:min(1120px,calc(100% - 64px)); min-height:calc(100vh - 94px); gap:clamp(42px,8vw,118px); }
 .auth-brand-panel { min-width:0; }
 .auth-brand-panel > div { margin-bottom:0 !important; transform:translateY(-8px); }
-.auth-brand-panel > div > div:first-child { font-family:"Pinyon Script",cursive !important; font-size:clamp(9rem,18vw,13.8rem) !important; line-height:.7 !important; letter-spacing:-.06em; text-shadow:0 0 35px rgba(183,190,255,.12),0 16px 28px rgba(0,0,0,.48); }
+.auth-logo-mark { width:clamp(180px,22vw,265px); height:auto; overflow:visible; filter:drop-shadow(0 0 16px rgba(176,185,255,.12)) drop-shadow(0 16px 20px rgba(0,0,0,.45)); }
 .auth-brand-panel > div > div:last-child { margin-top:2rem !important; margin-left:.45rem !important; font-family:Inter,ui-sans-serif,sans-serif !important; font-size:1.22rem !important; letter-spacing:.47em !important; color:#d5d9e8 !important; }
 .auth-security-card { left:clamp(28px,6vw,84px) !important; bottom:74px !important; max-width:286px !important; padding:14px 16px !important; border:1px solid rgba(177,187,229,.15) !important; border-radius:10px !important; background:rgba(10,14,27,.42) !important; box-shadow:0 10px 30px rgba(0,0,0,.22) !important; }
 .auth-security-card > div:first-child { border-color:rgba(190,198,235,.28) !important; }
@@ -33,6 +33,9 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .auth-login-card form { gap:.7rem !important; margin-top:1.35rem !important; }
 .auth-login-card .login-input { min-height:35px; padding:.55rem .75rem !important; padding-right:2.5rem !important; border-radius:5px !important; background:rgba(7,10,18,.48) !important; border-color:rgba(171,181,218,.2) !important; font-size:.72rem !important; }
 .auth-login-card .login-input:focus { border-color:#7375d4 !important; box-shadow:0 0 0 1px rgba(115,117,212,.35),0 0 18px rgba(95,92,220,.15) !important; }
+.auth-login-card .login-input:-webkit-autofill,.auth-login-card .login-input:-webkit-autofill:hover,.auth-login-card .login-input:-webkit-autofill:focus { -webkit-text-fill-color:#e7e9f2 !important; -webkit-box-shadow:0 0 0 1000px #090d18 inset !important; box-shadow:0 0 0 1000px #090d18 inset !important; caret-color:#fff; }
+.auth-login-card .login-checkbox { width:13px !important; min-width:13px !important; height:13px !important; min-height:13px !important; padding:0 !important; margin:0 !important; flex:none !important; align-self:center; }
+.auth-login-card .login-checkbox:checked::before { width:7px !important; height:7px !important; }
 .auth-login-card .login-button { min-height:37px; margin-top:.35rem !important; border:1px solid rgba(143,143,238,.38) !important; background:linear-gradient(100deg,#35365d,#5555a1) !important; color:#ececff !important; font-size:.72rem !important; }
 .auth-login-card .login-button:hover { background:linear-gradient(100deg,#414274,#6262b8) !important; }
 .auth-login-card .auth-login-footer { border-color:rgba(183,191,226,.12) !important; }

@@ -78,10 +78,11 @@ function Login() {
         {/* Left Side: Logo */}
         <div className="auth-brand-panel lg:w-1/2 flex flex-col items-center justify-center">
           <div className="relative flex flex-col items-center justify-center mb-8">
-             <div className="text-[220px] leading-[0.8] relative z-10 pr-4 drop-shadow-[0_10px_15px_rgba(0,0,0,0.4)]" 
-                  style={{ fontFamily: "'Pinyon Script', cursive", background: "linear-gradient(180deg, #ffffff 0%, #cbd5e1 50%, #94a3b8 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 400 }}>
-               R
-             </div>
+             <svg className="auth-logo-mark" viewBox="0 0 230 210" role="img" aria-label="Ravencia">
+               <defs><linearGradient id="auth-logo-silver" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffffff"/><stop offset=".5" stopColor="#c7cbd8"/><stop offset="1" stopColor="#7d8497"/></linearGradient></defs>
+               <path d="M78 178C43 162 44 116 67 82c24-35 72-53 102-34 22 14 13 40-15 59-26 18-60 28-91 32M72 82c10 36 27 79 60 105 14 11 38 13 58 2M112 118c39-7 78-22 99-53 10-15 8-29-4-35-13-7-27 4-38 19" fill="none" stroke="url(#auth-logo-silver)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>
+               <path d="M32 167c39 1 83-12 121-40 25-18 44-38 61-61" fill="none" stroke="#bfc5d4" strokeWidth="3" strokeLinecap="round" opacity=".9"/>
+             </svg>
              <div className="text-[1.25rem] tracking-[0.45em] font-light mt-4 text-slate-300/90 relative z-10 ml-3 uppercase" style={{ fontFamily: "Inter, sans-serif" }}>
                Ravencia
              </div>
