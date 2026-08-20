@@ -47,36 +47,31 @@ export function App() {
 function Login() {
   const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
+  
+  const showReferenceOverlay = false; // toggle to true during development
+
   return (
     <div className="auth-login-page">
-      {/* Background Effects */}
-      <div className="auth-bg-effects">
-         <div className="auth-ray auth-ray-1"></div>
-         <div className="auth-ray auth-ray-2"></div>
-         <div className="auth-glow-ring"></div>
-      </div>
-
-      {/* Güvenli Erişim Box */}
-      <div className="auth-security-card">
-        <div className="auth-security-icon">
-           <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M8 11h8v6H8z"/><path d="M10 11V9a2 2 0 114 0v2"/></svg>
-        </div>
-        <div>
-          <div className="auth-security-title">Güvenli Erişim</div>
-          <div className="auth-security-desc">Tüm bağlantılar uçtan uca şifrelenmiştir.<br/>Verileriniz güvende.</div>
-        </div>
+      {import.meta.env.DEV && showReferenceOverlay && (
+        <div className="reference-overlay" />
+      )}
+      
+      {/* Background Geometries */}
+      <div className="auth-bg-layer">
+        <div className="bg-glow bg-glow-center"></div>
+        <div className="bg-line-diagonal line-top-left"></div>
+        <div className="bg-line-diagonal line-bottom-right"></div>
+        <div className="bg-line-diagonal line-top-right"></div>
+        <div className="bg-glow bg-glow-right"></div>
+        <div className="bg-huge-ring"></div>
       </div>
 
       <div className="auth-login-layout">
+        
         {/* Left Side: Logo */}
         <div className="auth-brand-panel">
           <div className="auth-brand-inner">
-             <svg className="auth-logo-mark" viewBox="0 0 230 210" role="img" aria-label="Ravencia">
-               <defs><linearGradient id="auth-logo-silver" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffffff"/><stop offset=".5" stopColor="#c7cbd8"/><stop offset="1" stopColor="#7d8497"/></linearGradient></defs>
-               <path d="M78 178C43 162 44 116 67 82c24-35 72-53 102-34 22 14 13 40-15 59-26 18-60 28-91 32M72 82c10 36 27 79 60 105 14 11 38 13 58 2M112 118c39-7 78-22 99-53 10-15 8-29-4-35-13-7-27 4-38 19" fill="none" stroke="url(#auth-logo-silver)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>
-               <path d="M32 167c39 1 83-12 121-40 25-18 44-38 61-61" fill="none" stroke="#bfc5d4" strokeWidth="3" strokeLinecap="round" opacity=".9"/>
-             </svg>
-             <div className="auth-brand-text">Ravencia</div>
+             <img src="/logo.png" alt="Ravencia Logo" className="auth-logo-img" />
           </div>
         </div>
 
@@ -90,7 +85,7 @@ function Login() {
                 <h1>Ravencia Yönetim Paneli</h1>
                 <div className="auth-card-divider">
                    <span></span>
-                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0l2 10 10 2-10 2-2 10-2-10-10-2 10-2z"/></svg>
+                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2 8 8 2-8 2-2 8-2-8-8-2 8-2z"/></svg>
                    <span></span>
                 </div>
              </div>
@@ -99,7 +94,7 @@ function Login() {
              
              <form onSubmit={submit}>
                 <div className="auth-field-wrap">
-                   <input name="email" type="email" autoComplete="username" required placeholder="E-posta" className="login-input" />
+                   <input name="email" type="email" autoComplete="email" required placeholder="E-posta" className="login-input" />
                    <div className="auth-field-icon">
                       <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                    </div>
@@ -109,6 +104,7 @@ function Login() {
                    <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parola" className="login-input" />
                    <div className="auth-field-icon">
                       <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                      <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                    </div>
                 </div>
                 
@@ -129,39 +125,19 @@ function Login() {
                 
                 <button type="submit" disabled={loading} className="login-button">
                    {loading ? 'Giriş yapılıyor...' : 'Güvenli giriş'}
-                   {!loading && <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M4 12h16m-7-7l7 7-7 7"/></svg>}
+                   {!loading && <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>}
                 </button>
              </form>
-
-             {/* System Info Grid */}
-             <div className="auth-system-info">
-               <div className="auth-info-cell">
-                 <div className="auth-info-label">Sistem Ortamı</div>
-                 <div className="auth-info-value"><span className="auth-status-dot"></span> PROD</div>
-               </div>
-               <div className="auth-info-cell auth-info-bordered">
-                 <div className="auth-info-label">Sürüm</div>
-                 <div className="auth-info-value">v2.6.0</div>
-               </div>
-               <div className="auth-info-cell auth-info-bordered">
-                 <div className="auth-info-label">Son Güncelleme</div>
-                 <div className="auth-info-value">25.05.2025 10:42</div>
-               </div>
-             </div>
           </div>
         </div>
       </div>
       
       {/* Footer */}
       <div className="auth-login-footer">
-         <div>© {new Date().getFullYear()} Ravencia. Tüm hakları saklıdır.</div>
-         <div className="auth-footer-right">
-            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-            Ravencia Yönetim Paneli v2.6.0
-         </div>
+         © 2026 Ravencia. Tüm hakları saklıdır.
       </div>
     </div>
-  )
+  );
 }
 
 function ChangePassword() { const client = useQueryClient(); const [message, setMessage] = useState('İlk girişte parolanızı değiştirmeniz gerekir.'); async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await api('/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: data.get('current'), newPassword: data.get('next') }) }); await client.invalidateQueries({ queryKey: ['me'] }) } catch { setMessage('Parola değiştirilemedi; politika ve mevcut parolayı kontrol edin.') } } return <div className="auth-page"><section className="auth-card"><h1>Parolanızı değiştirin</h1><p role="status">{message}</p><form onSubmit={submit}><label>Geçerli parola<input name="current" type="password" required /></label><label>Yeni parola<input name="next" type="password" minLength={15} maxLength={64} required /></label><button>Parolayı değiştir</button></form></section></div> }
