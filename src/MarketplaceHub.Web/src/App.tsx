@@ -49,69 +49,62 @@ function Login() {
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
 
   return (
-    <div className="auth-login-page">
+    <div className="auth-login-page gold-theme">
       
-      {/* Elegant Minimal Background */}
+      {/* Background Geometries (Gold Swooshes) */}
       <div className="auth-bg-layer">
-        <div className="bg-line-diagonal line-1"></div>
-        <div className="bg-line-diagonal line-2"></div>
-        
-        {/* Giant smooth arc */}
-        <div className="bg-huge-ring"></div>
-        
-        <div className="ambient-glow right-glow"></div>
+        <div className="gold-swoosh gold-swoosh-1"></div>
+        <div className="gold-swoosh gold-swoosh-2"></div>
+        <div className="gold-swoosh gold-swoosh-3"></div>
+        <div className="ambient-glow gold-glow"></div>
       </div>
 
       <div className="auth-login-layout">
         
-        {/* Left Side: Brand Logo & Secure Widget */}
+        {/* Left Side: Brand Logo (Gold) */}
         <div className="auth-brand-panel">
           <div className="auth-brand-inner">
              <img src="/logo.png" alt="Ravencia Logo" className="auth-logo-img" />
-             
-             {/* Secure Access Widget */}
-             <div className="auth-secure-widget">
-                <div className="secure-icon">
-                   <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                </div>
-                <div className="secure-text">
-                   <h4>GÜVENLİ ERİŞİM</h4>
-                   <p>Tüm bağlantılar uçtan uca şifrelenmiştir.<br/>Verileriniz güvende.</p>
-                </div>
+             <div className="logo-divider">
+                <span></span><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 0l4 12-4 12-4-12 4-12z"/></svg><span></span>
              </div>
           </div>
         </div>
 
-        {/* Right Side: Elegant Login Card */}
+        {/* Right Side: Golden Form Panel */}
         <div className="auth-form-panel">
           <div className="auth-login-card">
              
-             <div className="card-flare-top"></div>
-             
              <div className="auth-card-header">
-                <h1>Ravencia Yönetim Paneli</h1>
+                <div className="shield-icon">
+                   <svg width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                </div>
+                <h1>Yönetici girişi</h1>
+                <p className="welcome-text">Hoş geldiniz</p>
                 <div className="auth-card-divider">
-                   <span></span>
-                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0 L13.5 10.5 L24 12 L13.5 13.5 L12 24 L10.5 13.5 L0 12 L10.5 10.5 Z"/></svg>
-                   <span></span>
+                   <span></span><svg viewBox="0 0 24 24" fill="currentColor"><rect x="12" y="2" width="10" height="10" transform="rotate(45 12 2)"/></svg><span></span>
                 </div>
              </div>
              
-             <h2>Oturum aç</h2>
-             
              <form onSubmit={submit} className="auth-form-grid">
-                <div className="auth-field-wrap">
-                   <input name="email" type="email" autoComplete="email" required placeholder="E-posta" className="login-input" />
-                   <div className="auth-field-icon">
-                      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                
+                <div className="auth-field-group">
+                   <label>E-posta adresi</label>
+                   <div className="auth-field-wrap">
+                      <input name="email" type="email" autoComplete="email" required placeholder="E-posta adresinizi girin" className="login-input" />
+                      <div className="auth-field-icon">
+                         <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                      </div>
                    </div>
                 </div>
                 
-                <div className="auth-field-wrap">
-                   <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parola" className="login-input" />
-                   <div className="auth-field-icon">
-                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                <div className="auth-field-group">
+                   <label>Parola</label>
+                   <div className="auth-field-wrap">
+                      <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parolanızı girin" className="login-input" />
+                      <div className="auth-field-icon">
+                         <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                      </div>
                    </div>
                 </div>
                 
@@ -120,7 +113,7 @@ function Login() {
                       <input type="checkbox" className="login-checkbox" />
                       <span>Beni hatırla</span>
                    </label>
-                   <a href="#" className="auth-forgot-link">Şifremi unuttum?</a>
+                   <a href="#" className="auth-forgot-link">Şifrenizi mi unuttunuz?</a>
                 </div>
                 
                 {error && (
@@ -131,36 +124,35 @@ function Login() {
                 )}
                 
                 <button type="submit" disabled={loading} className="login-button">
-                   {loading ? 'İşleminiz yapılıyor...' : 'Güvenli giriş'}
+                   {loading ? 'İşleminiz yapılıyor...' : 'Panele giriş yap'}
                    {!loading && <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg>}
                 </button>
+                
+                <div className="secure-badge">
+                   <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                   <span>Güvenli oturum: Tüm verileriniz şifrelenerek korunur.</span>
+                </div>
              </form>
-
-             {/* Bottom Info Row */}
-             <div className="auth-card-info">
-                <div className="info-block">
-                   <span>Sistem Ortamı</span>
-                   <strong><i className="status-dot"></i> PROD</strong>
-                </div>
-                <div className="info-block">
-                   <span>Sürüm</span>
-                   <strong>v2.6.0</strong>
-                </div>
-                <div className="info-block">
-                   <span>Son Güncelleme</span>
-                   <strong>{new Date().toLocaleDateString('tr-TR')} {new Date().toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'})}</strong>
-                </div>
-             </div>
           </div>
         </div>
       </div>
       
       {/* Footer */}
       <div className="auth-login-footer">
-         <div className="footer-left">© 2025 Ravencia. Tüm hakları saklıdır.</div>
+         <div className="footer-left">
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            Ravencia Yönetim Paneli
+         </div>
+         <div className="footer-center">© 2025 Ravencia. Tüm hakları saklıdır.</div>
          <div className="footer-right">
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-            Ravencia Yönetim Paneli v2.6.0
+            <a href="#">Gizlilik Politikası</a>
+            <span className="dot"></span>
+            <a href="#">Kullanım Koşulları</a>
+            <span className="dot"></span>
+            <a href="#">
+               <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+               Destek
+            </a>
          </div>
       </div>
     </div>
