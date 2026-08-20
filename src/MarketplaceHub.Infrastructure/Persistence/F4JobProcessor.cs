@@ -237,6 +237,18 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         invoice.UpdatedAt = timeProvider.GetUtcNow();
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
+        if (AcceptedDeliveryStatuses.Contains(NormalizeRemoteStatus(result.Value!.RawStatus)))
+        {
+            delivery.Status = "CONFIRMED";
+            delivery.ErrorCode = null;
+            delivery.CompletedAt = timeProvider.GetUtcNow();
+            invoice.Status = InvoiceStatus.Completed;
+            invoice.LastErrorCode = null;
+            invoice.UpdatedAt = timeProvider.GetUtcNow();
+            invoice.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
         return await ConfirmDelivery(tenantId, invoice, package, delivery, correlationId, cancellationToken);
     }
 
@@ -296,12 +308,26 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         if (existing is not null)
         {
             existing.PermanentUrl ??= document.PermanentUrl; invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
+            await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, correlationId, cancellationToken);
             await db.SaveChangesAsync(cancellationToken); return true;
         }
         await using var content = new MemoryStream(document.Content, writable: false); var assetId = Guid.CreateVersion7(); var stored = await files.SaveAsync(tenantId, $"{assetId:N}-{Path.GetFileName(document.FileName)}", document.MimeType, content, document.Content.LongLength, cancellationToken);
         db.FileAssets.Add(new FileAsset { Id = assetId, TenantId = tenantId, Classification = "INVOICE_DOCUMENT", RelativePath = stored, OriginalNameSafe = Path.GetFileName(document.FileName), MimeType = document.MimeType, SizeBytes = document.Content.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() });
         db.InvoiceDocuments.Add(new InvoiceDocument { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, DocumentType = document.DocumentKind, FileAssetId = assetId, Sha256 = hash, ExternalDocumentId = document.ExternalDocumentId, PermanentUrl = document.PermanentUrl, CreatedAt = timeProvider.GetUtcNow() });
-        invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++; await db.SaveChangesAsync(cancellationToken); return true;
+        invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
+        await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, correlationId, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken); return true;
+    }
+
+    private async Task QueueMarketplaceDeliveryAfterDocument(Guid tenantId, Invoice invoice, string correlationId, CancellationToken cancellationToken)
+    {
+        if (invoice.Status != InvoiceStatus.Accepted || invoice.PackageId is null) return;
+        var marketplaceConnectionId = await db.ShipmentPackages.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == invoice.PackageId)
+            .Select(x => (Guid?)x.ConnectionId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (marketplaceConnectionId is null) return;
+        await EnqueueAutomaticJob(tenantId, marketplaceConnectionId.Value, invoice.Id, F4JobTypes.MarketplaceDelivery, "after-document", correlationId, cancellationToken);
     }
 
     private async Task<bool> StageCapabilityProbe(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
