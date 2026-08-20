@@ -75,6 +75,7 @@ function Login() {
                <div className="iso-options">
                   <label className="iso-checkbox">
                      <input type="checkbox" />
+                     <div className="cb-box"></div>
                      <span>Beni Hatırla</span>
                   </label>
                   <a href="#" className="iso-link">Şifremi unuttum</a>
@@ -93,25 +94,50 @@ function Login() {
       <div className="iso-bg-wrapper">
          <div className="iso-grid">
             
-            {/* 3D Isometric Nodes (Cubes) */}
-            <div className="iso-node node-1">
-               <div className="cube"><div className="face top"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Amazon API (Avrupa)</div>
+            {/* Center Node (Core) */}
+            <div className="iso-node node-core">
+               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
+               <div className="node-label">Ravencia Core</div>
+            </div>
+
+            {/* External Nodes */}
+            <div className="iso-node node-amazon">
+               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
+               <div className="node-label">Amazon API</div>
             </div>
             
-            <div className="iso-node node-2">
-               <div className="cube"><div className="face top"></div><div className="face left"></div><div className="face right"></div></div>
+            <div className="iso-node node-shopify">
+               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
                <div className="node-label">Shopify Webhook</div>
             </div>
             
-            <div className="iso-node node-3">
-               <div className="cube"><div className="face top"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Ravencia Core (Senkronizasyon)</div>
+            <div className="iso-node node-trendyol">
+               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
+               <div className="node-label">Trendyol API</div>
+            </div>
+
+            <div className="iso-node node-fatura">
+               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
+               <div className="node-label">Trendyol e-Fatura</div>
+            </div>
+
+            <div className="iso-node node-n11">
+               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
+               <div className="node-label">N11 Sync</div>
+            </div>
+
+            <div className="iso-node node-pazarama">
+               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
+               <div className="node-label">Pazarama</div>
             </div>
             
             {/* Data connecting lines with moving packets */}
-            <div className="iso-line line-1"><div className="packet"></div></div>
-            <div className="iso-line line-2"><div className="packet"></div></div>
+            <div className="iso-line line-1"><div className="packet p1"></div><div className="packet p2"></div></div>
+            <div className="iso-line line-2"><div className="packet p1"></div></div>
+            <div className="iso-line line-3"><div className="packet p1"></div></div>
+            <div className="iso-line line-4"><div className="packet p1"></div><div className="packet p2"></div></div>
+            <div className="iso-line line-5"><div className="packet p1"></div></div>
+            <div className="iso-line line-6"><div className="packet p1"></div></div>
             
          </div>
       </div>
