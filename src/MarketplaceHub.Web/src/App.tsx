@@ -135,8 +135,8 @@ function Login() {
                   <div className="wg-badge sync">Senkronize...</div>
                </div>
                <div className="wg-chart">
-                  <div className="bar b1"></div><div class="bar b2"></div><div class="bar b3"></div>
-                  <div className="bar b4"></div><div class="bar b5"></div><div class="bar b6"></div>
+                  <div className="bar b1"></div><div className="bar b2"></div><div className="bar b3"></div>
+                  <div className="bar b4"></div><div className="bar b5"></div><div className="bar b6"></div>
                   <div className="bar b7"></div>
                </div>
             </div>
