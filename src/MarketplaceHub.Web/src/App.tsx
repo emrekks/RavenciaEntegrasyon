@@ -93,25 +93,49 @@ function Login() {
       <div className="iso-bg-wrapper">
          <div className="iso-grid">
             
-            {/* 3D Isometric Nodes (Cubes) */}
-            <div className="iso-node node-1">
-               <div className="cube"><div className="face top"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Amazon API (Avrupa)</div>
+            {/* 1. Order Node (Floating Receipt) */}
+            <div className="iso-node order-node">
+               <div className="receipt-3d">
+                  <div className="line"></div>
+                  <div className="line short"></div>
+                  <div className="line"></div>
+                  <div className="stamp"></div>
+               </div>
+               <div className="node-label">Yeni Sipariş (Amazon)</div>
             </div>
             
-            <div className="iso-node node-2">
-               <div className="cube"><div className="face top"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Shopify Webhook</div>
+            {/* 2. Shipping Box Node */}
+            <div className="iso-node box-node">
+               <div className="cube shipping-box">
+                  <div className="face top"><div className="tape"></div><div className="barcode"></div></div>
+                  <div className="face left"><div className="shipping-label"></div></div>
+                  <div className="face right"><div className="fragile">📦</div></div>
+               </div>
+               <div className="node-label">Kargo Hazırlanıyor</div>
             </div>
             
-            <div className="iso-node node-3">
-               <div className="cube"><div className="face top"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Ravencia Core (Senkronizasyon)</div>
+            {/* 3. Server Stack Node (Ravencia Core) */}
+            <div className="iso-node server-node">
+               <div className="server-stack">
+                  <div className="layer l1"></div>
+                  <div className="layer l2"></div>
+                  <div className="layer l3"></div>
+               </div>
+               <div className="node-label">Ravencia Core (Senkronize)</div>
             </div>
             
-            {/* Data connecting lines with moving packets */}
-            <div className="iso-line line-1"><div className="packet"></div></div>
-            <div className="iso-line line-2"><div className="packet"></div></div>
+            {/* Data Routes */}
+            <div className="iso-line route-1">
+               <div className="mini-packet"></div>
+               <div className="mini-packet delayed"></div>
+            </div>
+            <div className="iso-line route-2">
+               <div className="mini-packet"></div>
+            </div>
+            
+            {/* Floating Toasts */}
+            <div className="iso-toast t1">🎉 Sipariş #1042 Geldi</div>
+            <div className="iso-toast t2">🚚 Kargo Barkodu Basıldı</div>
             
          </div>
       </div>
