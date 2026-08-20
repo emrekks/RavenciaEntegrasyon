@@ -48,84 +48,134 @@ function Login() {
   const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
   return (
-    <div className="relative min-h-screen bg-[#05060b] text-white flex flex-col font-sans overflow-hidden">
+    <div className="relative min-h-screen bg-[#060711] text-white flex flex-col font-sans overflow-hidden">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cinzel:wght@400;500&display=swap');
-        .login-input { background: rgba(255, 255, 255, 0.02) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; color: white !important; border-radius: 8px !important; padding: 0.8rem 1rem !important; }
-        .login-input:focus { border-color: rgba(255, 255, 255, 0.3) !important; outline: none !important; box-shadow: none !important; }
-        .login-button { background: linear-gradient(90deg, #282b4a 0%, #1c1e36 100%) !important; border: 1px solid rgba(255, 255, 255, 0.05) !important; color: #e2e8f0 !important; border-radius: 8px !important; padding: 0.85rem !important; }
-        .login-button:hover { background: linear-gradient(90deg, #30345a 0%, #222543 100%) !important; }
-        .login-checkbox { appearance: none !important; width: 14px !important; height: 14px !important; border: 1px solid rgba(255, 255, 255, 0.3) !important; background: transparent !important; border-radius: 3px !important; padding: 0 !important; margin: 0 !important; display: grid; place-content: center; cursor: pointer; }
+        @import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Cinzel:wght@400;500;600&display=swap');
+        .login-input { background: #080911 !important; border: 1px solid rgba(255, 255, 255, 0.08) !important; color: white !important; border-radius: 8px !important; padding: 0.85rem 1rem !important; font-size: 0.85rem !important; transition: all 0.2s; }
+        .login-input:focus { border-color: rgba(99, 102, 241, 0.5) !important; outline: none !important; box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.2) !important; }
+        .login-input::placeholder { color: #64748b !important; }
+        .login-button { background: linear-gradient(90deg, #2b2e4d 0%, #1e2039 100%) !important; border: 1px solid rgba(255, 255, 255, 0.05) !important; color: #e2e8f0 !important; border-radius: 8px !important; padding: 0.9rem !important; font-size: 0.85rem !important; font-weight: 500 !important; transition: all 0.2s; }
+        .login-button:hover { background: linear-gradient(90deg, #333659 0%, #242644 100%) !important; }
+        .login-checkbox { appearance: none !important; width: 14px !important; height: 14px !important; border: 1px solid rgba(255, 255, 255, 0.2) !important; background: transparent !important; border-radius: 3px !important; padding: 0 !important; margin: 0 !important; display: grid; place-content: center; cursor: pointer; transition: all 0.2s; }
+        .login-checkbox:checked { border-color: #818cf8 !important; }
         .login-checkbox:checked::before { content: ""; width: 8px; height: 8px; background: #818cf8; border-radius: 1px; }
       `}</style>
-      <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-[#1a1c3a]/30 rounded-full blur-[120px]" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#1e1b4b]/30 rounded-full blur-[120px]" />
-      <div className="absolute top-0 left-1/4 w-[1px] h-full bg-gradient-to-b from-transparent via-blue-400/5 to-transparent rotate-45 transform origin-top" />
-      <div className="absolute bottom-0 right-1/4 w-[1px] h-full bg-gradient-to-t from-transparent via-indigo-400/5 to-transparent rotate-45 transform origin-bottom" />
-      <div className="flex-1 flex flex-col lg:flex-row items-center justify-center relative z-10 px-6 w-full max-w-[1400px] mx-auto gap-8 lg:gap-24">
+      
+      {/* Background Effects & Diagonal Rays */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+         <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%]">
+            <div className="absolute top-1/2 left-[45%] w-[120%] h-[1px] bg-gradient-to-r from-transparent via-blue-300/10 to-transparent -translate-x-1/2 -translate-y-1/2 rotate-[-35deg] shadow-[0_0_15px_rgba(96,165,250,0.3)]"></div>
+            <div className="absolute top-[60%] left-1/2 w-[120%] h-[1px] bg-gradient-to-r from-transparent via-indigo-300/10 to-transparent -translate-x-1/2 -translate-y-1/2 rotate-[35deg] shadow-[0_0_15px_rgba(129,140,248,0.3)]"></div>
+         </div>
+         {/* Huge subtle glowing ring on the left */}
+         <div className="absolute top-1/2 left-[20%] -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full border border-blue-400/[0.04] shadow-[0_0_120px_rgba(30,58,138,0.15)] bg-gradient-to-tr from-blue-900/5 to-transparent mix-blend-screen"></div>
+      </div>
+
+      {/* Güvenli Erişim Box */}
+      <div className="absolute bottom-16 left-12 max-w-[320px] p-4 rounded-xl border border-white/[0.04] bg-[#0c0d14]/40 backdrop-blur-md flex items-start gap-4 shadow-2xl z-20 hidden xl:flex">
+        <div className="p-2.5 rounded-lg border border-white/[0.08] text-slate-400 opacity-80 shrink-0">
+           <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M8 11h8v6H8z"/><path d="M10 11V9a2 2 0 114 0v2"/></svg>
+        </div>
+        <div>
+          <div className="text-[#818cf8] text-[0.65rem] font-bold tracking-widest uppercase mb-1">Güvenli Erişim</div>
+          <div className="text-slate-400 text-[0.7rem] leading-relaxed opacity-80">Tüm bağlantılar uçtan uca şifrelenmiştir.<br/>Verileriniz güvende.</div>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col lg:flex-row items-center justify-center relative z-10 px-6 w-full max-w-[1300px] mx-auto gap-12 lg:gap-32">
+        
+        {/* Left Side: Logo */}
         <div className="lg:w-1/2 flex flex-col items-center justify-center">
-          <div className="relative flex flex-col items-center justify-center w-[400px] h-[400px]">
-             <div className="absolute inset-0 rounded-full border border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent shadow-[0_0_80px_rgba(30,40,90,0.4)]" />
-             <div className="absolute top-0 left-1/4 w-[200px] h-[1px] bg-gradient-to-r from-transparent via-blue-300/30 to-transparent rotate-[-30deg]" />
-             <div className="absolute bottom-1/4 right-0 w-[150px] h-[1px] bg-gradient-to-r from-transparent via-indigo-300/20 to-transparent rotate-[-45deg]" />
-             <div className="text-[160px] leading-none text-slate-200 relative z-10 translate-x-4 drop-shadow-2xl" style={{ fontFamily: "'Great Vibes', cursive", fontWeight: 400 }}>
+          <div className="relative flex flex-col items-center justify-center mb-8">
+             <div className="text-[170px] leading-[0.8] relative z-10 pr-4 drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)]" 
+                  style={{ fontFamily: "'Alex Brush', cursive", background: "linear-gradient(180deg, #ffffff 0%, #94a3b8 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                R
              </div>
-             <div className="text-[1.1rem] tracking-[0.55em] font-light mt-4 text-slate-300 relative z-10 ml-3 uppercase">
+             <div className="text-[1.25rem] tracking-[0.45em] font-light mt-4 text-slate-300/90 relative z-10 ml-3 uppercase" style={{ fontFamily: "Inter, sans-serif" }}>
                Ravencia
              </div>
           </div>
         </div>
+
+        {/* Right Side: Login Card */}
         <div className="lg:w-1/2 flex items-center justify-center w-full">
-          <div className="w-full max-w-[440px] p-10 bg-[#0c0d14]/60 backdrop-blur-2xl border border-white/[0.04] rounded-2xl shadow-[0_30px_60px_rgba(0,0,0,0.4)] relative">
-             <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-             <div className="text-center mb-10">
-                <h1 className="text-[1.6rem] text-slate-200 tracking-wide font-medium" style={{ fontFamily: "'Cinzel', serif" }}>Ravencia Yönetim Paneli</h1>
-                <div className="mt-3 flex items-center justify-center text-slate-500 opacity-60">
-                   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0l2 10 10 2-10 2-2 10-2-10-10-2 10-2z"/></svg>
+          <div className="w-full max-w-[460px] p-10 bg-[#0a0b12]/60 backdrop-blur-2xl border border-white/[0.06] rounded-[18px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative">
+             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-[1px] bg-gradient-to-r from-transparent via-blue-400/40 to-transparent shadow-[0_0_15px_rgba(96,165,250,0.4)]" />
+             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-48 h-[1px] bg-gradient-to-r from-transparent via-indigo-400/40 to-transparent shadow-[0_0_15px_rgba(129,140,248,0.4)]" />
+             
+             <div className="text-center mb-10 mt-2">
+                <h1 className="text-[1.7rem] text-slate-200 tracking-wide" style={{ fontFamily: "'Cinzel', serif", fontWeight: 500 }}>Ravencia Yönetim Paneli</h1>
+                <div className="mt-4 flex items-center justify-center opacity-40">
+                   <div className="h-px bg-gradient-to-r from-transparent to-slate-400 w-16"></div>
+                   <svg className="w-2.5 h-2.5 mx-3 text-slate-300" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0l2 10 10 2-10 2-2 10-2-10-10-2 10-2z"/></svg>
+                   <div className="h-px bg-gradient-to-l from-transparent to-slate-400 w-16"></div>
                 </div>
              </div>
-             <h2 className="text-slate-300 text-[0.85rem] mb-4 pl-1">Oturum aç</h2>
-             <form onSubmit={submit} className="space-y-5">
+             
+             <h2 className="text-slate-300 text-[0.8rem] mb-4 pl-1">Oturum aç</h2>
+             
+             <form onSubmit={submit} className="space-y-4">
                 <div className="relative">
                    <input name="email" type="email" autoComplete="username" required placeholder="E-posta" className="login-input w-full" />
-                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
-                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">
+                      <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                    </div>
                 </div>
+                
                 <div className="relative">
                    <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parola" className="login-input w-full" />
-                   <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-3 text-slate-400">
-                      <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                   <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-3 text-slate-500">
+                      <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                      <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                    </div>
                 </div>
-                <div className="flex items-center justify-between text-[0.8rem] py-1 pl-1">
-                   <label className="flex items-center gap-2 text-slate-400 cursor-pointer">
+                
+                <div className="flex items-center justify-between text-[0.75rem] py-1 px-1">
+                   <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
                       <input type="checkbox" className="login-checkbox" />
                       <span>Beni hatırla</span>
                    </label>
                    <a href="#" className="text-[#818cf8] hover:text-[#a5b4fc] transition-colors">Şifremi unuttum?</a>
                 </div>
+                
                 {error && (
-                   <div className="p-3 rounded-lg bg-red-900/20 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
+                   <div className="p-2.5 rounded-lg bg-red-900/20 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                      <span>{error}</span>
                    </div>
                 )}
-                <button type="submit" disabled={loading} className="login-button w-full mt-4 flex items-center justify-center gap-2 disabled:opacity-70 group transition-all">
+                
+                <button type="submit" disabled={loading} className="login-button w-full mt-3 flex items-center justify-center gap-2 disabled:opacity-70 group">
                    {loading ? 'Giriş yapılıyor...' : 'Güvenli giriş'}
-                   {!loading && <svg className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>}
+                   {!loading && <svg className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M4 12h16m-7-7l7 7-7 7"/></svg>}
                 </button>
              </form>
+
+             {/* System Info Grid */}
+             <div className="mt-8 pt-5 border-t border-white/[0.04] grid grid-cols-3 gap-2 text-center opacity-80">
+               <div className="flex flex-col items-center justify-center">
+                 <div className="text-slate-500 text-[0.6rem] mb-1.5">Sistem Ortamı</div>
+                 <div className="text-slate-300 text-[0.7rem] flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> PROD</div>
+               </div>
+               <div className="flex flex-col items-center justify-center border-l border-white/[0.04]">
+                 <div className="text-slate-500 text-[0.6rem] mb-1.5">Sürüm</div>
+                 <div className="text-slate-300 text-[0.7rem]">v2.6.0</div>
+               </div>
+               <div className="flex flex-col items-center justify-center border-l border-white/[0.04]">
+                 <div className="text-slate-500 text-[0.6rem] mb-1.5">Son Güncelleme</div>
+                 <div className="text-slate-300 text-[0.7rem]">25.05.2025 10:42</div>
+               </div>
+             </div>
           </div>
         </div>
       </div>
-      <div className="relative z-10 w-full px-8 py-5 border-t border-white/[0.03] bg-transparent flex flex-col sm:flex-row items-center justify-between text-[0.7rem] text-slate-500 mt-auto">
+      
+      {/* Footer */}
+      <div className="relative z-10 w-full px-10 py-5 border-t border-white/[0.03] bg-transparent flex flex-col sm:flex-row items-center justify-between text-[0.7rem] text-slate-500 mt-auto opacity-70">
          <div>© {new Date().getFullYear()} Ravencia. Tüm hakları saklıdır.</div>
-         <div className="flex items-center gap-1.5 mt-2 sm:mt-0 opacity-70">
+         <div className="flex items-center gap-1.5 mt-2 sm:mt-0">
             <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-            Ravencia Yönetim Paneli
+            Ravencia Yönetim Paneli v2.6.0
          </div>
       </div>
     </div>
