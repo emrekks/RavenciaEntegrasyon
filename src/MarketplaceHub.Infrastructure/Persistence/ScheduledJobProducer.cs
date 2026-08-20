@@ -13,6 +13,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     {
         var now = timeProvider.GetUtcNow();
         var added = 0;
+        await EnsureDefaultOrderPoliciesAsync(cancellationToken);
         var policies = await (from policy in db.ConnectionSyncPolicies.AsNoTracking()
                               join connection in db.PlatformConnections.AsNoTracking()
                                   on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
@@ -62,6 +63,40 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             foreach (var entry in db.ChangeTracker.Entries<IntegrationJob>().Where(x => x.State == EntityState.Added)) entry.State = EntityState.Detached;
             return 0;
         }
+    }
+
+    private async Task EnsureDefaultOrderPoliciesAsync(CancellationToken cancellationToken)
+    {
+        var activeConnections = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.Status == "ACTIVE" && x.PlatformCode == "TRENDYOL")
+            .Select(x => new { x.TenantId, ConnectionId = x.Id })
+            .ToListAsync(cancellationToken);
+        if (activeConnections.Count == 0) return;
+
+        var connectionIds = activeConnections.Select(x => x.ConnectionId).ToArray();
+        var existing = await db.ConnectionSyncPolicies.AsNoTracking()
+            .Where(x => connectionIds.Contains(x.ConnectionId) && x.ResourceType == "ORDERS")
+            .Select(x => new { x.TenantId, x.ConnectionId })
+            .ToListAsync(cancellationToken);
+        var existingKeys = existing.Select(x => (x.TenantId, x.ConnectionId)).ToHashSet();
+        foreach (var connection in activeConnections)
+        {
+            if (existingKeys.Contains((connection.TenantId, connection.ConnectionId))) continue;
+            db.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = connection.TenantId,
+                ConnectionId = connection.ConnectionId,
+                ResourceType = "ORDERS",
+                IntervalSeconds = 300,
+                OverlapSeconds = 60,
+                JitterSeconds = 15,
+                Enabled = true,
+                Version = 1
+            });
+        }
+        if (db.ChangeTracker.Entries<ConnectionSyncPolicy>().Any(x => x.State == EntityState.Added))
+            await db.SaveChangesAsync(cancellationToken);
     }
 
     private static (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId) => resourceType switch
