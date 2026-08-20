@@ -21,12 +21,9 @@ Bu dosya repository kökünün tamamı için geçerlidir.
 
 ## Başlamadan önce kısa okuma sırası
 
-1. `docs/specification/RAVENCIA-NIHAI-PROJE-BELGESI.md`
-2. `docs/implementation/PROJECT-STATUS.yaml`
-3. `docs/implementation/CURRENT-PHASE.md`
-4. `docs/specification/current-scope.md`
-5. `docs/platform-rules/capability-matrix.md`
-6. `docs/CHANGELOG.md`
+1. `docs/RAVENCIA-PROJE-RAPORU.md`
+
+Projenin çalışma modeli, kapsamı, güncel sunucu bilgileri ve mevcut durumu tek raporda tutulur. Ayrı faz, evidence, capability, review, changelog veya runbook belgeleri tutulmaz.
 
 Faz planı ve evidence logları yalnız ürün sahibi özellikle istediğinde veya ilgili tarihsel ayrıntı gerçekten gerekliyse okunur.
 
