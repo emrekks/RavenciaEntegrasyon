@@ -90,16 +90,21 @@ function Login() {
          </div>
       </div>
 
-      {/* Isometric Background Animation */}
-      <div className="iso-bg-wrapper">
-         <div className="iso-grid">
+      {/* Radial 3D Network (Image Match) */}
+      <div className="radial-bg-wrapper">
+         
+         {/* Deep space background elements */}
+         <div className="bg-glow"></div>
+         <div className="core-ring r4"></div>
+         <div className="core-ring r3"></div>
+         
+         <div className="radial-container">
             
-            {/* Perfect 3x3 SVG Network Matrix */}
-            <svg className="iso-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+            {/* SVG Network Lines */}
+            <svg className="radial-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
                <defs>
-                  {/* High-tech Pulse Glow Filter */}
-                  <filter id="pulse-glow" x="-20%" y="-20%" width="140%" height="140%">
-                     <feGaussianBlur stdDeviation="1" result="blur" />
+                  <filter id="neon-glow" x="-20%" y="-20%" width="140%" height="140%">
+                     <feGaussianBlur stdDeviation="1.5" result="blur" />
                      <feMerge>
                         <feMergeNode in="blur" />
                         <feMergeNode in="SourceGraphic" />
@@ -107,87 +112,125 @@ function Login() {
                   </filter>
                </defs>
 
-               {/* Base Grid Lines (Motherboard traces) */}
-               <line x1="20" y1="20" x2="50" y2="50" className="svg-line" />
-               <line x1="50" y1="20" x2="50" y2="50" className="svg-line" />
-               <line x1="80" y1="20" x2="50" y2="50" className="svg-line" />
-               <line x1="20" y1="50" x2="50" y2="50" className="svg-line" />
-               <line x1="80" y1="50" x2="50" y2="50" className="svg-line" />
-               <line x1="20" y1="80" x2="50" y2="50" className="svg-line" />
-               <line x1="50" y1="80" x2="50" y2="50" className="svg-line" />
-               <line x1="80" y1="80" x2="50" y2="50" className="svg-line" />
-               
-               {/* Sleek Data Pulses */}
-               <line x1="20" y1="20" x2="50" y2="50" className="svg-packet p-1" pathLength="100" filter="url(#pulse-glow)" />
-               <line x1="50" y1="20" x2="50" y2="50" className="svg-packet p-2" pathLength="100" filter="url(#pulse-glow)" />
-               <line x1="80" y1="20" x2="50" y2="50" className="svg-packet p-3" pathLength="100" filter="url(#pulse-glow)" />
-               <line x1="20" y1="50" x2="50" y2="50" className="svg-packet p-4" pathLength="100" filter="url(#pulse-glow)" />
-               <line x1="80" y1="50" x2="50" y2="50" className="svg-packet p-5" pathLength="100" filter="url(#pulse-glow)" />
-               <line x1="20" y1="80" x2="50" y2="50" className="svg-packet p-6" pathLength="100" filter="url(#pulse-glow)" />
-               <line x1="50" y1="80" x2="50" y2="50" className="svg-packet p-7" pathLength="100" filter="url(#pulse-glow)" />
-               <line x1="80" y1="80" x2="50" y2="50" className="svg-packet p-8" pathLength="100" filter="url(#pulse-glow)" />
+               {/* Lines to Nodes */}
+               <line x1="50" y1="50" x2="50" y2="15" className="r-line" />
+               <line x1="50" y1="50" x2="75" y2="25" className="r-line" />
+               <line x1="50" y1="50" x2="85" y2="50" className="r-line" />
+               <line x1="50" y1="50" x2="75" y2="75" className="r-line" />
+               <line x1="50" y1="50" x2="50" y2="85" className="r-line" />
+               <line x1="50" y1="50" x2="25" y2="75" className="r-line" />
+               <line x1="50" y1="50" x2="15" y2="50" className="r-line" />
+               <line x1="50" y1="50" x2="25" y2="25" className="r-line" />
+
+               {/* Animated Packets */}
+               <line x1="50" y1="50" x2="50" y2="15" className="r-packet" style={{animationDelay: '0.0s'}} pathLength="100" />
+               <line x1="50" y1="50" x2="75" y2="25" className="r-packet" style={{animationDelay: '0.4s'}} pathLength="100" />
+               <line x1="50" y1="50" x2="85" y2="50" className="r-packet" style={{animationDelay: '0.8s'}} pathLength="100" />
+               <line x1="50" y1="50" x2="75" y2="75" className="r-packet" style={{animationDelay: '1.2s'}} pathLength="100" />
+               <line x1="50" y1="50" x2="50" y2="85" className="r-packet" style={{animationDelay: '1.6s'}} pathLength="100" />
+               <line x1="50" y1="50" x2="25" y2="75" className="r-packet" style={{animationDelay: '0.2s'}} pathLength="100" />
+               <line x1="50" y1="50" x2="15" y2="50" className="r-packet" style={{animationDelay: '0.6s'}} pathLength="100" />
+               <line x1="50" y1="50" x2="25" y2="25" className="r-packet" style={{animationDelay: '1.0s'}} pathLength="100" />
             </svg>
 
-            {/* 3x3 Grid Nodes */}
-            
-            {/* Center */}
-            <div className="iso-node node-core">
-               <div className="platform"></div>
-               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Ravencia Core</div>
+            <div className="core-ring r2"></div>
+            <div className="core-ring r1"></div>
+
+            {/* Core Node */}
+            <div className="radial-core">
+               <div className="core-logo-text">R</div>
+               <div className="core-title">Ravencia<br/>Core</div>
             </div>
 
-            {/* Top Row */}
-            <div className="iso-node node-amazon">
-               <div className="platform"></div>
-               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Amazon API</div>
-            </div>
-            
-            <div className="iso-node node-trendyol">
-               <div className="platform"></div>
-               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Trendyol</div>
-            </div>
-
-            <div className="iso-node node-hepsiburada">
-               <div className="platform"></div>
-               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Hepsiburada</div>
+            {/* Nodes */}
+            <div className="radial-node" style={{ top: '15%', left: '50%', '--brand': '#a855f7', '--brand-glow': 'rgba(168,85,247,0.4)' } as React.CSSProperties}>
+               <div className="node-pad"></div>
+               <div className="node-card">
+                  <div className="node-icon">🛍️</div>
+                  <div className="node-text">
+                     <div className="node-title">Hepsiburada</div>
+                     <div className="node-sub">Pazaryeri</div>
+                  </div>
+               </div>
             </div>
 
-            {/* Middle Row (Outer) */}
-            <div className="iso-node node-shopify">
-               <div className="platform"></div>
-               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Shopify</div>
-            </div>
-            
-            <div className="iso-node node-fatura">
-               <div className="platform"></div>
-               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">e-Fatura</div>
+            <div className="radial-node" style={{ top: '25%', left: '75%', '--brand': '#06b6d4', '--brand-glow': 'rgba(6,182,212,0.4)' } as React.CSSProperties}>
+               <div className="node-pad"></div>
+               <div className="node-card">
+                  <div className="node-icon">📄</div>
+                  <div className="node-text">
+                     <div className="node-title">e-Fatura</div>
+                     <div className="node-sub">Finans</div>
+                  </div>
+               </div>
             </div>
 
-            {/* Bottom Row */}
-            <div className="iso-node node-n11">
-               <div className="platform"></div>
-               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">N11</div>
+            <div className="radial-node" style={{ top: '50%', left: '85%', '--brand': '#3b82f6', '--brand-glow': 'rgba(59,130,246,0.4)' } as React.CSSProperties}>
+               <div className="node-pad"></div>
+               <div className="node-card">
+                  <div className="node-icon">📦</div>
+                  <div className="node-text">
+                     <div className="node-title">Ticimax</div>
+                     <div className="node-sub">E-ticaret</div>
+                  </div>
+               </div>
             </div>
 
-            <div className="iso-node node-pazarama">
-               <div className="platform"></div>
-               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Pazarama</div>
+            <div className="radial-node" style={{ top: '75%', left: '75%', '--brand': '#ec4899', '--brand-glow': 'rgba(236,72,153,0.4)' } as React.CSSProperties}>
+               <div className="node-pad"></div>
+               <div className="node-card">
+                  <div className="node-icon">🏪</div>
+                  <div className="node-text">
+                     <div className="node-title">Pazarama</div>
+                     <div className="node-sub">Pazaryeri</div>
+                  </div>
+               </div>
             </div>
 
-            <div className="iso-node node-ticimax">
-               <div className="platform"></div>
-               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Ticimax</div>
+            <div className="radial-node" style={{ top: '85%', left: '50%', '--brand': '#f8fafc', '--brand-glow': 'rgba(255,255,255,0.2)' } as React.CSSProperties}>
+               <div className="node-pad"></div>
+               <div className="node-card">
+                  <div className="node-icon">🛒</div>
+                  <div className="node-text">
+                     <div className="node-title">N11</div>
+                     <div className="node-sub">Pazaryeri</div>
+                  </div>
+               </div>
             </div>
-            
+
+            <div className="radial-node" style={{ top: '75%', left: '25%', '--brand': '#22c55e', '--brand-glow': 'rgba(34,197,94,0.4)' } as React.CSSProperties}>
+               <div className="node-pad"></div>
+               <div className="node-card">
+                  <div className="node-icon">🛍️</div>
+                  <div className="node-text">
+                     <div className="node-title">Shopify</div>
+                     <div className="node-sub">E-ticaret</div>
+                  </div>
+               </div>
+            </div>
+
+            <div className="radial-node" style={{ top: '50%', left: '15%', '--brand': '#f97316', '--brand-glow': 'rgba(249,115,22,0.4)' } as React.CSSProperties}>
+               <div className="node-pad"></div>
+               <div className="node-card">
+                  <div className="node-icon">📦</div>
+                  <div className="node-text">
+                     <div className="node-title">Amazon API</div>
+                     <div className="node-sub">Entegrasyon</div>
+                  </div>
+               </div>
+            </div>
+
+            <div className="radial-node" style={{ top: '25%', left: '25%', '--brand': '#f97316', '--brand-glow': 'rgba(249,115,22,0.4)' } as React.CSSProperties}>
+               <div className="node-pad"></div>
+               <div className="node-card">
+                  <div className="node-icon">🛍️</div>
+                  <div className="node-text">
+                     <div className="node-title">Trendyol</div>
+                     <div className="node-sub">Pazaryeri</div>
+                  </div>
+               </div>
+            </div>
+
          </div>
       </div>
 
