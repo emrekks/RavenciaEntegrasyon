@@ -49,26 +49,14 @@ function Login() {
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
   return (
     <div className="relative min-h-screen bg-[#060711] text-white flex flex-col font-sans overflow-hidden">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Cinzel:wght@400;500;600&display=swap');
-        .login-input { background: #080911 !important; border: 1px solid rgba(255, 255, 255, 0.08) !important; color: white !important; border-radius: 8px !important; padding: 0.85rem 1rem !important; font-size: 0.85rem !important; transition: all 0.2s; }
-        .login-input:focus { border-color: rgba(99, 102, 241, 0.5) !important; outline: none !important; box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.2) !important; }
-        .login-input::placeholder { color: #64748b !important; }
-        .login-button { background: linear-gradient(90deg, #2b2e4d 0%, #1e2039 100%) !important; border: 1px solid rgba(255, 255, 255, 0.05) !important; color: #e2e8f0 !important; border-radius: 8px !important; padding: 0.9rem !important; font-size: 0.85rem !important; font-weight: 500 !important; transition: all 0.2s; }
-        .login-button:hover { background: linear-gradient(90deg, #333659 0%, #242644 100%) !important; }
-        .login-checkbox { appearance: none !important; width: 14px !important; height: 14px !important; border: 1px solid rgba(255, 255, 255, 0.2) !important; background: transparent !important; border-radius: 3px !important; padding: 0 !important; margin: 0 !important; display: grid; place-content: center; cursor: pointer; transition: all 0.2s; }
-        .login-checkbox:checked { border-color: #818cf8 !important; }
-        .login-checkbox:checked::before { content: ""; width: 8px; height: 8px; background: #818cf8; border-radius: 1px; }
-      `}</style>
-      
       {/* Background Effects & Diagonal Rays */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
          <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%]">
-            <div className="absolute top-1/2 left-[45%] w-[120%] h-[1px] bg-gradient-to-r from-transparent via-blue-300/10 to-transparent -translate-x-1/2 -translate-y-1/2 rotate-[-35deg] shadow-[0_0_15px_rgba(96,165,250,0.3)]"></div>
-            <div className="absolute top-[60%] left-1/2 w-[120%] h-[1px] bg-gradient-to-r from-transparent via-indigo-300/10 to-transparent -translate-x-1/2 -translate-y-1/2 rotate-[35deg] shadow-[0_0_15px_rgba(129,140,248,0.3)]"></div>
+            <div className="absolute top-1/2 left-[45%] w-[120%] h-[1px] bg-gradient-to-r from-transparent via-blue-400/40 to-transparent -translate-x-1/2 -translate-y-1/2 rotate-[-35deg] shadow-[0_0_25px_rgba(96,165,250,0.6)]"></div>
+            <div className="absolute top-[60%] left-1/2 w-[120%] h-[1px] bg-gradient-to-r from-transparent via-indigo-400/40 to-transparent -translate-x-1/2 -translate-y-1/2 rotate-[35deg] shadow-[0_0_25px_rgba(129,140,248,0.6)]"></div>
          </div>
          {/* Huge subtle glowing ring on the left */}
-         <div className="absolute top-1/2 left-[20%] -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full border border-blue-400/[0.04] shadow-[0_0_120px_rgba(30,58,138,0.15)] bg-gradient-to-tr from-blue-900/5 to-transparent mix-blend-screen"></div>
+         <div className="absolute top-1/2 left-[20%] -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full border border-blue-400/[0.1] shadow-[0_0_150px_rgba(30,58,138,0.35)] bg-gradient-to-tr from-blue-900/15 to-transparent mix-blend-screen"></div>
       </div>
 
       {/* Güvenli Erişim Box */}
