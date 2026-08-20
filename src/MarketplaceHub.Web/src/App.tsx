@@ -47,86 +47,67 @@ export function App() {
 function Login() {
   const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
-  
-  const showReferenceOverlay = false;
 
   return (
     <div className="auth-login-page">
-      {/* SVG Filter for Logo to map black to silver and preserve highlights */}
-      <svg width="0" height="0" style={{ position: 'absolute' }}>
-        <filter id="silver-logo-filter">
-          <feComponentTransfer>
-            <feFuncR type="linear" slope="0.5" intercept="0.5" />
-            <feFuncG type="linear" slope="0.6" intercept="0.55" />
-            <feFuncB type="linear" slope="0.7" intercept="0.65" />
-          </feComponentTransfer>
-        </filter>
-      </svg>
-
-      {import.meta.env.DEV && showReferenceOverlay && (
-        <div className="reference-overlay" />
-      )}
       
-      {/* Background Geometries & Flares */}
+      {/* Background Layer (Deep Navy + Neon Orbs + Diagonal Lines) */}
       <div className="auth-bg-layer">
-        <div className="bg-glow bg-glow-center"></div>
-        
-        {/* Lines */}
-        <div className="bg-line-diagonal line-top-left"></div>
-        <div className="bg-line-diagonal line-bottom-right"></div>
-        <div className="bg-line-diagonal line-top-right"></div>
-        
-        {/* Huge Ring */}
-        <div className="bg-huge-ring">
-           {/* Ring Flares */}
-           <div className="flare flare-ring-top-left"></div>
-           <div className="flare flare-ring-bottom-cross"></div>
-        </div>
-
-        {/* Right side flare */}
-        <div className="flare flare-right-edge"></div>
+        <div className="neon-orb orb-top-left"></div>
+        <div className="neon-orb orb-bottom-right"></div>
+        <div className="diagonal-line line-1"></div>
+        <div className="diagonal-line line-2"></div>
+        <div className="diagonal-line line-3"></div>
       </div>
 
       <div className="auth-login-layout">
         
-        {/* Left Side: Logo */}
+        {/* Left Side: Custom Redesigned Logo */}
         <div className="auth-brand-panel">
           <div className="auth-brand-inner">
-             <div className="logo-glow"></div>
-             <img src="/logo.png" alt="Ravencia Logo" className="auth-logo-img" />
+             <div className="brand-icon-wrapper">
+               <svg viewBox="0 0 100 100" className="brand-icon-svg" fill="none">
+                 <defs>
+                   <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                     <stop offset="0%" stopColor="#818cf8" />
+                     <stop offset="100%" stopColor="#c084fc" />
+                   </linearGradient>
+                   <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                      <feGaussianBlur stdDeviation="4" result="blur" />
+                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                   </filter>
+                 </defs>
+                 <path d="M50 5 L90 25 L90 75 L50 95 L10 75 L10 25 Z" stroke="url(#brandGrad)" strokeWidth="3" fill="rgba(99, 102, 241, 0.05)" filter="url(#glow)"/>
+                 <path d="M50 5 V50 L90 25 M50 50 L10 25 M50 50 V95" stroke="url(#brandGrad)" strokeWidth="2" strokeOpacity="0.5"/>
+                 <circle cx="50" cy="50" r="15" fill="url(#brandGrad)" filter="url(#glow)"/>
+               </svg>
+             </div>
+             <div className="brand-text">RAVENCIA</div>
+             <div className="brand-tagline">Advanced Integration Hub</div>
           </div>
         </div>
 
-        {/* Right Side: Login Card */}
+        {/* Right Side: Glassmorphism Card */}
         <div className="auth-form-panel">
           <div className="auth-login-card">
-             <div className="auth-card-flare auth-card-flare-top"><div className="flare-core"></div></div>
-             <div className="auth-card-flare auth-card-flare-bottom"><div className="flare-core"></div></div>
              
              <div className="auth-card-header">
-                <h1>Ravencia Yönetim Paneli</h1>
-                <div className="auth-card-divider">
-                   <span></span>
-                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0 L13.5 10.5 L24 12 L13.5 13.5 L12 24 L10.5 13.5 L0 12 L10.5 10.5 Z"/></svg>
-                   <span></span>
-                </div>
+                <h1>Yönetim Paneli</h1>
+                <p>Hesabınıza erişmek için giriş yapın</p>
              </div>
-             
-             <h2>Oturum aç</h2>
              
              <form onSubmit={submit}>
                 <div className="auth-field-wrap">
-                   <input name="email" type="email" autoComplete="email" required placeholder="E-posta" className="login-input" />
+                   <input name="email" type="email" autoComplete="email" required placeholder="E-posta Adresi" className="login-input" />
                    <div className="auth-field-icon">
-                      <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                    </div>
                 </div>
                 
                 <div className="auth-field-wrap">
                    <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parola" className="login-input" />
                    <div className="auth-field-icon">
-                      <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                      <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                    </div>
                 </div>
                 
@@ -146,17 +127,17 @@ function Login() {
                 )}
                 
                 <button type="submit" disabled={loading} className="login-button">
-                   {loading ? 'Giriş yapılıyor...' : 'Güvenli giriş'}
-                   {!loading && <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>}
+                   {loading ? 'İşleminiz yapılıyor...' : 'Güvenli Giriş'}
+                   {!loading && <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>}
                 </button>
              </form>
           </div>
         </div>
       </div>
       
-      {/* Footer Bar */}
+      {/* Footer */}
       <div className="auth-login-footer">
-         © 2025 Ravencia. Tüm hakları saklıdır.
+         © {new Date().getFullYear()} Ravencia. Tüm hakları saklıdır.
       </div>
     </div>
   );
