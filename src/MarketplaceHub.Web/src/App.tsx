@@ -48,78 +48,83 @@ function Login() {
   const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
   return (
-    <div className="relative min-h-screen bg-[#050610] text-white flex flex-col font-sans overflow-hidden">
-      <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-blue-900/10 rounded-full blur-[150px]" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-900/10 rounded-full blur-[150px]" />
-      <div className="absolute top-0 left-1/4 w-[1px] h-full bg-gradient-to-b from-transparent via-blue-500/10 to-transparent rotate-45 transform origin-top" />
-      <div className="absolute bottom-0 right-1/4 w-[1px] h-full bg-gradient-to-t from-transparent via-indigo-500/10 to-transparent rotate-45 transform origin-bottom" />
-      <div className="flex-1 flex flex-col lg:flex-row items-center justify-center relative z-10 px-6 w-full max-w-6xl mx-auto">
-        <div className="lg:w-1/2 flex flex-col items-center justify-center mb-16 lg:mb-0">
-          <div className="relative flex flex-col items-center justify-center">
-             <div className="absolute w-[320px] h-[320px] border border-blue-400/20 rounded-full flex items-center justify-center">
-                <div className="w-full h-full rounded-full shadow-[0_0_100px_rgba(59,130,246,0.15)]" />
-             </div>
-             <div className="text-[140px] font-serif leading-none italic text-slate-200 relative z-10" style={{ fontFamily: 'Georgia, serif' }}>
+    <div className="relative min-h-screen bg-[#05060b] text-white flex flex-col font-sans overflow-hidden">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cinzel:wght@400;500&display=swap');
+        .login-input { background: rgba(255, 255, 255, 0.02) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; color: white !important; border-radius: 8px !important; padding: 0.8rem 1rem !important; }
+        .login-input:focus { border-color: rgba(255, 255, 255, 0.3) !important; outline: none !important; box-shadow: none !important; }
+        .login-button { background: linear-gradient(90deg, #282b4a 0%, #1c1e36 100%) !important; border: 1px solid rgba(255, 255, 255, 0.05) !important; color: #e2e8f0 !important; border-radius: 8px !important; padding: 0.85rem !important; }
+        .login-button:hover { background: linear-gradient(90deg, #30345a 0%, #222543 100%) !important; }
+        .login-checkbox { appearance: none !important; width: 14px !important; height: 14px !important; border: 1px solid rgba(255, 255, 255, 0.3) !important; background: transparent !important; border-radius: 3px !important; padding: 0 !important; margin: 0 !important; display: grid; place-content: center; cursor: pointer; }
+        .login-checkbox:checked::before { content: ""; width: 8px; height: 8px; background: #818cf8; border-radius: 1px; }
+      `}</style>
+      <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-[#1a1c3a]/30 rounded-full blur-[120px]" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#1e1b4b]/30 rounded-full blur-[120px]" />
+      <div className="absolute top-0 left-1/4 w-[1px] h-full bg-gradient-to-b from-transparent via-blue-400/5 to-transparent rotate-45 transform origin-top" />
+      <div className="absolute bottom-0 right-1/4 w-[1px] h-full bg-gradient-to-t from-transparent via-indigo-400/5 to-transparent rotate-45 transform origin-bottom" />
+      <div className="flex-1 flex flex-col lg:flex-row items-center justify-center relative z-10 px-6 w-full max-w-[1400px] mx-auto gap-8 lg:gap-24">
+        <div className="lg:w-1/2 flex flex-col items-center justify-center">
+          <div className="relative flex flex-col items-center justify-center w-[400px] h-[400px]">
+             <div className="absolute inset-0 rounded-full border border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent shadow-[0_0_80px_rgba(30,40,90,0.4)]" />
+             <div className="absolute top-0 left-1/4 w-[200px] h-[1px] bg-gradient-to-r from-transparent via-blue-300/30 to-transparent rotate-[-30deg]" />
+             <div className="absolute bottom-1/4 right-0 w-[150px] h-[1px] bg-gradient-to-r from-transparent via-indigo-300/20 to-transparent rotate-[-45deg]" />
+             <div className="text-[160px] leading-none text-slate-200 relative z-10 translate-x-4 drop-shadow-2xl" style={{ fontFamily: "'Great Vibes', cursive", fontWeight: 400 }}>
                R
              </div>
-             <div className="text-xl tracking-[0.45em] font-light mt-4 text-slate-300 relative z-10 ml-2">
-               RAVENCIA
+             <div className="text-[1.1rem] tracking-[0.55em] font-light mt-4 text-slate-300 relative z-10 ml-3 uppercase">
+               Ravencia
              </div>
           </div>
         </div>
         <div className="lg:w-1/2 flex items-center justify-center w-full">
-          <div className="w-full max-w-[420px] p-10 bg-[#0c0f1c]/70 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl relative">
-             <div className="text-center mb-8">
-                <h1 className="text-[1.35rem] font-serif text-slate-200 tracking-wide">Ravencia Yönetim Paneli</h1>
-                <div className="mt-3 flex items-center justify-center text-slate-500">
-                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0l2 10 10 2-10 2-2 10-2-10-10-2 10-2z"/></svg>
+          <div className="w-full max-w-[440px] p-10 bg-[#0c0d14]/60 backdrop-blur-2xl border border-white/[0.04] rounded-2xl shadow-[0_30px_60px_rgba(0,0,0,0.4)] relative">
+             <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+             <div className="text-center mb-10">
+                <h1 className="text-[1.6rem] text-slate-200 tracking-wide font-medium" style={{ fontFamily: "'Cinzel', serif" }}>Ravencia Yönetim Paneli</h1>
+                <div className="mt-3 flex items-center justify-center text-slate-500 opacity-60">
+                   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0l2 10 10 2-10 2-2 10-2-10-10-2 10-2z"/></svg>
                 </div>
              </div>
-             <h2 className="text-slate-300 text-sm mb-5">Oturum aç</h2>
-             <form onSubmit={submit} className="space-y-4">
+             <h2 className="text-slate-300 text-[0.85rem] mb-4 pl-1">Oturum aç</h2>
+             <form onSubmit={submit} className="space-y-5">
                 <div className="relative">
-                   <input name="email" type="email" autoComplete="username" required placeholder="E-posta"
-                      className="w-full px-4 py-3.5 rounded-xl border border-white/10 bg-[#13172c]/80 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-colors"
-                   />
-                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">
-                      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                   <input name="email" type="email" autoComplete="username" required placeholder="E-posta" className="login-input w-full" />
+                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                    </div>
                 </div>
                 <div className="relative">
-                   <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parola"
-                      className="w-full px-4 py-3.5 rounded-xl border border-white/10 bg-[#13172c]/80 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-colors"
-                   />
-                   <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-3 text-slate-500">
-                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                   <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parola" className="login-input w-full" />
+                   <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-3 text-slate-400">
+                      <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                    </div>
                 </div>
-                <div className="flex items-center justify-between text-sm py-2">
+                <div className="flex items-center justify-between text-[0.8rem] py-1 pl-1">
                    <label className="flex items-center gap-2 text-slate-400 cursor-pointer">
-                      <input type="checkbox" className="w-4 h-4 rounded border-white/20 bg-transparent text-indigo-500 focus:ring-indigo-500/50 focus:ring-offset-0 focus:ring-1" />
+                      <input type="checkbox" className="login-checkbox" />
                       <span>Beni hatırla</span>
                    </label>
-                   <a href="#" className="text-indigo-400 hover:text-indigo-300 transition-colors">Şifremi unuttum?</a>
+                   <a href="#" className="text-[#818cf8] hover:text-[#a5b4fc] transition-colors">Şifremi unuttum?</a>
                 </div>
                 {error && (
-                   <div className="p-3 rounded-xl bg-red-900/30 border border-red-500/30 text-red-400 text-sm flex items-center gap-3">
-                     <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                   <div className="p-3 rounded-lg bg-red-900/20 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
+                     <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                      <span>{error}</span>
                    </div>
                 )}
-                <button type="submit" disabled={loading}
-                   className="w-full mt-2 py-3.5 px-4 bg-gradient-to-r from-indigo-900/80 to-[#232959] hover:from-indigo-800 hover:to-[#2a316b] border border-indigo-500/30 text-white rounded-xl font-medium transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 group">
+                <button type="submit" disabled={loading} className="login-button w-full mt-4 flex items-center justify-center gap-2 disabled:opacity-70 group transition-all">
                    {loading ? 'Giriş yapılıyor...' : 'Güvenli giriş'}
-                   {!loading && <svg className="w-4 h-4 text-indigo-300 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>}
+                   {!loading && <svg className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>}
                 </button>
              </form>
           </div>
         </div>
       </div>
-      <div className="relative z-10 w-full px-8 py-5 border-t border-white/5 bg-[#05060b]/80 backdrop-blur-sm flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 mt-auto">
+      <div className="relative z-10 w-full px-8 py-5 border-t border-white/[0.03] bg-transparent flex flex-col sm:flex-row items-center justify-between text-[0.7rem] text-slate-500 mt-auto">
          <div>© {new Date().getFullYear()} Ravencia. Tüm hakları saklıdır.</div>
-         <div className="flex items-center gap-2 mt-2 sm:mt-0">
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+         <div className="flex items-center gap-1.5 mt-2 sm:mt-0 opacity-70">
+            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
             Ravencia Yönetim Paneli
          </div>
       </div>
