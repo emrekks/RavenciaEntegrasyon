@@ -50,49 +50,72 @@ function Login() {
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
 
   return (
-    <div className="auth-mac-page">
+    <div className="auth-isometric-page">
       
-      {/* Abstract macOS Dark Wallpaper */}
-      <div className="mac-wallpaper"></div>
-      
-      {/* Frosted Glass Login Card */}
-      <div className="mac-glass-card">
-        <div className="mac-card-content">
-           
-           <div className="mac-brand">
-              <img src="/logo.png" alt="Ravencia" className="mac-logo" />
-           </div>
-           
-           <h1 className="mac-title">Yönetim Paneli</h1>
-           <p className="mac-subtitle">Sisteme giriş yapmak için bilgilerinizi girin.</p>
-           
-           <form onSubmit={submit} className="mac-form">
-              <div className="mac-field">
-                 <input name="email" type="email" autoComplete="email" required placeholder="E-posta adresi" />
-              </div>
-              
-              <div className="mac-field">
-                 <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parola" />
-              </div>
-              
-              <div className="mac-options">
-                 <label className="mac-checkbox">
-                    <input type="checkbox" />
-                    <span>Beni hatırla</span>
-                 </label>
-                 <a href="#" className="mac-link">Şifremi unuttum</a>
-              </div>
-              
-              {error && <div className="mac-error">{error}</div>}
-              
-              <button type="submit" disabled={loading} className="mac-button">
-                 {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
-              </button>
-           </form>
-           
-        </div>
+      {/* Modern Clean Form (Stripe Dark Style) */}
+      <div className="iso-form-panel">
+         <div className="iso-card">
+            <div className="iso-header">
+               <img src="/logo.png" alt="Ravencia" className="iso-logo" />
+               <h1>Sisteme Bağlan</h1>
+               <p>E-ticaret veri merkezinize güvenli giriş yapın.</p>
+            </div>
+            
+            <form onSubmit={submit} className="iso-form">
+               <div className="iso-field">
+                  <label>Kurumsal E-posta</label>
+                  <input name="email" type="email" autoComplete="email" required placeholder="ornek@sirket.com" />
+               </div>
+               
+               <div className="iso-field">
+                  <label>Güvenlik Parolası</label>
+                  <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="••••••••" />
+               </div>
+               
+               <div className="iso-options">
+                  <label className="iso-checkbox">
+                     <input type="checkbox" />
+                     <span>Beni Hatırla</span>
+                  </label>
+                  <a href="#" className="iso-link">Şifremi unuttum</a>
+               </div>
+               
+               {error && <div className="iso-error">{error}</div>}
+               
+               <button type="submit" disabled={loading} className="iso-button">
+                  {loading ? 'Doğrulanıyor...' : 'Bağlantıyı Kur'}
+               </button>
+            </form>
+         </div>
       </div>
-      
+
+      {/* Isometric Background Animation */}
+      <div className="iso-bg-wrapper">
+         <div className="iso-grid">
+            
+            {/* 3D Isometric Nodes (Cubes) */}
+            <div className="iso-node node-1">
+               <div className="cube"><div className="face top"></div><div className="face left"></div><div className="face right"></div></div>
+               <div className="node-label">Amazon API (Avrupa)</div>
+            </div>
+            
+            <div className="iso-node node-2">
+               <div className="cube"><div className="face top"></div><div className="face left"></div><div className="face right"></div></div>
+               <div className="node-label">Shopify Webhook</div>
+            </div>
+            
+            <div className="iso-node node-3">
+               <div className="cube"><div className="face top"></div><div className="face left"></div><div className="face right"></div></div>
+               <div className="node-label">Ravencia Core (Senkronizasyon)</div>
+            </div>
+            
+            {/* Data connecting lines with moving packets */}
+            <div className="iso-line line-1"><div className="packet"></div></div>
+            <div className="iso-line line-2"><div className="packet"></div></div>
+            
+         </div>
+      </div>
+
     </div>
   );
 }
