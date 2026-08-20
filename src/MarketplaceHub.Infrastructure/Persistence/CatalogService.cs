@@ -363,7 +363,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (!draftResult.Succeeded) return ServiceResult<Guid>.Fail(draftResult.Error!.Code, draftResult.Error.Message, draftResult.Error.Status, draftResult.Error.FieldErrors);
         var draft = draftResult.Value!;
         var dedup = $"product-create:{connectionId:N}:{productId:N}:{draft.PayloadHash}";
-        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductCreate && x.JobDedupKey == dedup, cancellationToken);
+        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductCreate && x.JobDedupKey == dedup, cancellationToken);
         if (existing is not null)
         {
             await transaction.CommitAsync(cancellationToken);
@@ -412,7 +412,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             Id = jobId,
             TenantId = tenantId,
             ConnectionId = connectionId,
-            JobType = F3JobTypes.ProductCreate,
+            JobType = MarketplaceJobTypes.ProductCreate,
             PayloadJson = payload,
             PayloadVersion = 1,
             PayloadHash = Hash(payload),
@@ -436,7 +436,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         {
             await transaction.RollbackAsync(cancellationToken);
             db.ChangeTracker.Clear();
-            var concurrent = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductCreate && x.JobDedupKey == dedup, cancellationToken);
+            var concurrent = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductCreate && x.JobDedupKey == dedup, cancellationToken);
             if (concurrent is not null) return ServiceResult<Guid>.Ok(concurrent.Id);
             throw;
         }
@@ -454,7 +454,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!;
         var dedup = $"product-update:{connectionId:N}:{productId:N}:{draft.Publication.PayloadHash}";
-        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductUpdate && x.JobDedupKey == dedup, cancellationToken);
+        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductUpdate && x.JobDedupKey == dedup, cancellationToken);
         if (existing is not null) { await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(existing.Id); }
 
         var profile = await db.ChannelListingProfiles.SingleAsync(x => x.TenantId == tenantId && x.Id == draft.ProfileId, cancellationToken);
@@ -465,7 +465,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var jobId = Guid.CreateVersion7();
         var phase = draft.Publication.Mode == "APPROVED" ? "SUBMIT_CONTENT" : "SUBMIT_UNAPPROVED";
         var payload = JsonSerializer.Serialize(new ProductUpdateJobPayload(jobId, productId, profile.Id, phase, draft.Publication.Mode, draft.Publication.PayloadHash, draft.Publication.UnapprovedPayloadJson, draft.Publication.ApprovedContentPayloadJson, draft.Publication.ApprovedVariantPayloadJson, draft.Publication.ApprovedDeliveryPayloadJson, null, null));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductUpdate, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Status = JobStatus.Pending, AvailableAt = timeProvider.GetUtcNow(), MaxAttempts = 12, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow(), Version = 1 });
+        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductUpdate, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Status = JobStatus.Pending, AvailableAt = timeProvider.GetUtcNow(), MaxAttempts = 12, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow(), Version = 1 });
         await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
     }
 
@@ -479,7 +479,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var build = await new ProductArchiveComposer(db).BuildAsync(tenantId, productId, connectionId, archived, cancellationToken);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!; var dedup = $"product-archive:{connectionId:N}:{productId:N}:{archived}:{draft.PayloadHash}";
-        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == F3JobTypes.ProductArchive && x.JobDedupKey == dedup, cancellationToken);
+        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductArchive && x.JobDedupKey == dedup, cancellationToken);
         if (existing is not null) { await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(existing.Id); }
         var profile = await db.ChannelListingProfiles.SingleAsync(x => x.TenantId == tenantId && x.Id == draft.ProfileId, cancellationToken);
         profile.DesiredStatus = archived ? "ARCHIVED" : "LIVE"; profile.ActualStatus = archived ? "ARCHIVE_QUEUED" : "UNARCHIVE_QUEUED"; profile.LastRejectionCode = null; profile.Version++;
@@ -489,7 +489,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         foreach (var state in states) { state.DesiredStatus = archived ? "ARCHIVED" : "LIVE"; state.ActualStatus = profile.ActualStatus; state.LastRejectionCode = null; state.PayloadHash = draft.PayloadHash; state.Version++; }
         var jobId = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new ProductArchiveJobPayload(jobId, productId, profile.Id, archived, "SUBMIT", draft.PayloadHash, draft.PayloadJson, null, now, now.AddHours(24)));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = F3JobTypes.ProductArchive, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 20, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductArchive, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 20, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
     }
 
@@ -506,7 +506,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var hasProfile = profile is not null;
         var approvalPrefix = hasProfile ? $"product-approval:{connectionId:N}:{profile!.Id:N}:" : "";
         var job = await db.IntegrationJobs.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && ((x.JobType == F3JobTypes.ProductCreate && x.JobDedupKey.StartsWith(createPrefix)) || (x.JobType == F3JobTypes.ProductUpdate && x.JobDedupKey.StartsWith($"product-update:{connectionId:N}:{productId:N}:")) || (x.JobType == F3JobTypes.ProductArchive && x.JobDedupKey.StartsWith($"product-archive:{connectionId:N}:{productId:N}:")) || (hasProfile && x.JobType == F3JobTypes.ProductApprovalReconcile && x.JobDedupKey.StartsWith(approvalPrefix))))
+            .Where(x => x.TenantId == tenantId && ((x.JobType == MarketplaceJobTypes.ProductCreate && x.JobDedupKey.StartsWith(createPrefix)) || (x.JobType == MarketplaceJobTypes.ProductUpdate && x.JobDedupKey.StartsWith($"product-update:{connectionId:N}:{productId:N}:")) || (x.JobType == MarketplaceJobTypes.ProductArchive && x.JobDedupKey.StartsWith($"product-archive:{connectionId:N}:{productId:N}:")) || (hasProfile && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile && x.JobDedupKey.StartsWith(approvalPrefix))))
             .OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
         return ServiceResult<PublicationStatusView>.Ok(new(productId, connectionId, profile?.Id, profile?.DesiredStatus, profile?.ActualStatus, profile?.LastRejectionCode, job?.Id, job is null ? null : JobWire(job.Status), lines));
     }

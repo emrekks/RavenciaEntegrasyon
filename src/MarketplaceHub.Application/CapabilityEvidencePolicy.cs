@@ -10,7 +10,7 @@ public static class CapabilityEvidencePolicy
     };
 
     public static bool RequiresStageFixtureChecksum(string capabilityCode) => capabilityCode.Trim().ToUpperInvariant() is
-        F3Capabilities.ProductWrite or F3Capabilities.InventoryWrite or F3Capabilities.PriceWrite
-        or F3Capabilities.ShipmentWrite or F3Capabilities.LabelWrite or F3Capabilities.ReturnWrite
-        or F4Capabilities.InvoiceSubmit or F4Capabilities.InvoiceCancel or F4Capabilities.InvoiceDeliver;
+        MarketplaceCapabilities.ProductWrite or MarketplaceCapabilities.InventoryWrite or MarketplaceCapabilities.PriceWrite
+        or MarketplaceCapabilities.ShipmentWrite or MarketplaceCapabilities.LabelWrite or MarketplaceCapabilities.ReturnWrite
+        or InvoicingCapabilities.InvoiceSubmit or InvoicingCapabilities.InvoiceCancel or InvoicingCapabilities.InvoiceDeliver;
 }

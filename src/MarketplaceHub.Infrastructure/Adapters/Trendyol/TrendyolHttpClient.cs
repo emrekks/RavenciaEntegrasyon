@@ -32,11 +32,11 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         var returns = await PollAsync(context, new ReturnPollWindow(null, null), new(null, 1), cancellationToken);
         IReadOnlyList<CapabilityEvidence> evidence =
         [
-            SupportedEvidence(F3Capabilities.ConnectionTest, identity, "https://developers.trendyol.com/v2.0/docs/authorization", "Stage/Production kimlik doğrulaması order stream read ile geçti.", now),
-            SupportedEvidence(F3Capabilities.OrderRead, identity, "https://developers.trendyol.com/v2.0/docs/getshipmentpackagesstream", "Cursor order stream read yanıtı alındı.", now),
-            ReadProbeEvidence(F3Capabilities.ReferenceRead, identity, "https://developers.trendyol.com/v2.0/docs/trendyol-category-list-getcategorytree", references, "Kategori ağacı", now),
-            ReadProbeEvidence(F3Capabilities.ProductRead, identity, "https://developers.trendyol.com/v2.0/docs/product-filtering-approved-products-v2", products, "Onaylı ürün listesi", now),
-            ReadProbeEvidence(F3Capabilities.ReturnRead, identity, "https://developers.trendyol.com/v2.0/docs/getting-returned-orders-getclaims", returns, "İade talepleri", now)
+            SupportedEvidence(MarketplaceCapabilities.ConnectionTest, identity, "https://developers.trendyol.com/v2.0/docs/authorization", "Stage/Production kimlik doğrulaması order stream read ile geçti.", now),
+            SupportedEvidence(MarketplaceCapabilities.OrderRead, identity, "https://developers.trendyol.com/v2.0/docs/getshipmentpackagesstream", "Cursor order stream read yanıtı alındı.", now),
+            ReadProbeEvidence(MarketplaceCapabilities.ReferenceRead, identity, "https://developers.trendyol.com/v2.0/docs/trendyol-category-list-getcategorytree", references, "Kategori ağacı", now),
+            ReadProbeEvidence(MarketplaceCapabilities.ProductRead, identity, "https://developers.trendyol.com/v2.0/docs/product-filtering-approved-products-v2", products, "Onaylı ürün listesi", now),
+            ReadProbeEvidence(MarketplaceCapabilities.ReturnRead, identity, "https://developers.trendyol.com/v2.0/docs/getting-returned-orders-getclaims", returns, "İade talepleri", now)
         ];
         return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(evidence, test.RateLimit);
     }

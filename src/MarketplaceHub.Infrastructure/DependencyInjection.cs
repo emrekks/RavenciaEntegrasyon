@@ -69,11 +69,11 @@ public static class DependencyInjection
         services.AddScoped<IOrderPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IReturnPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IWebhookVerifier, TrendyolWebhookVerifier>();
-        services.AddScoped<IF3ConnectionService, F3ConnectionService>();
-        services.AddScoped<IF3SalesService, F3SalesService>();
-        services.AddScoped<IF3WebhookService, F3WebhookService>();
-        services.AddScoped<IF3JobProcessor, F3JobProcessor>();
-        services.AddScoped<IF3ReconciliationService, F3ReconciliationService>();
+        services.AddScoped<IMarketplaceConnectionService, MarketplaceConnectionService>();
+        services.AddScoped<IMarketplaceSalesService, MarketplaceSalesService>();
+        services.AddScoped<IMarketplaceWebhookService, MarketplaceWebhookService>();
+        services.AddScoped<IMarketplaceJobProcessor, MarketplaceJobProcessor>();
+        services.AddScoped<IMarketplaceReconciliationService, MarketplaceReconciliationService>();
         services.Configure<TrendyolEFaturamOptions>(configuration.GetSection(TrendyolEFaturamOptions.SectionName));
         services.AddHttpClient("TrendyolEFaturam", client => client.Timeout = Timeout.InfiniteTimeSpan).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddHttpClient("TrendyolEFaturamDocument", client => client.Timeout = Timeout.InfiniteTimeSpan).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
@@ -88,9 +88,9 @@ public static class DependencyInjection
         services.AddScoped<TrendyolEFaturamHttpClient>();
         services.AddScoped<IInvoiceProviderPort>(provider => provider.GetRequiredService<TrendyolEFaturamHttpClient>());
         services.AddScoped<IInvoiceMarketplacePort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
-        services.AddScoped<IF4BillingService, F4BillingService>();
-        services.AddScoped<IF4JobProcessor, F4JobProcessor>();
-        services.AddScoped<IF4ReconciliationService, F4ReconciliationService>();
+        services.AddScoped<IInvoicingBillingService, InvoicingBillingService>();
+        services.AddScoped<IInvoicingJobProcessor, InvoicingJobProcessor>();
+        services.AddScoped<IInvoicingReconciliationService, InvoicingReconciliationService>();
         services.AddSingleton<IPrivateFileStorage>(new PrivateFileStorage(filesRoot));
         services.Configure<BootstrapOptions>(configuration.GetSection("Bootstrap"));
         services.AddScoped<BootstrapService>();

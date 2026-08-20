@@ -136,15 +136,15 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             return succeeded ? JobExecutionResult.Success() : JobExecutionResult.Blocked("IMPORT_JOB_REJECTED", "Import operation was rejected by its current state or validation rules.");
         }
 
-        if (job.JobType is F3JobTypes.ConnectionTest or F3JobTypes.ReferenceSync or F3JobTypes.ProductCreate or F3JobTypes.ProductApprovalReconcile or F3JobTypes.ProductUpdate or F3JobTypes.ProductArchive or F3JobTypes.PriceInventorySync or F3JobTypes.OrderSync or F3JobTypes.ShipmentAction or F3JobTypes.CommonLabel or F3JobTypes.CapabilityProbe or F3JobTypes.StageTestOrder or F3JobTypes.ReturnSync or F3JobTypes.ReturnAction or F3JobTypes.WebhookIngest)
+        if (job.JobType is MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.ProductCreate or MarketplaceJobTypes.ProductApprovalReconcile or MarketplaceJobTypes.ProductUpdate or MarketplaceJobTypes.ProductArchive or MarketplaceJobTypes.PriceInventorySync or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.CommonLabel or MarketplaceJobTypes.CapabilityProbe or MarketplaceJobTypes.StageTestOrder or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnAction or MarketplaceJobTypes.WebhookIngest)
         {
-            var processor = services.GetRequiredService<IF3JobProcessor>();
+            var processor = services.GetRequiredService<IMarketplaceJobProcessor>();
             return await processor.ProcessAsync(job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, cancellationToken);
         }
 
-        if (job.JobType is F4JobTypes.ConnectionTest or F4JobTypes.InvoiceSubmit or F4JobTypes.InvoiceReconcile or F4JobTypes.InvoiceDocumentFetch or F4JobTypes.MarketplaceDelivery or F4JobTypes.InvoiceCancellation or F4JobTypes.InvoiceDueScan or F4JobTypes.StageCapabilityProbe)
+        if (job.JobType is InvoicingJobTypes.ConnectionTest or InvoicingJobTypes.InvoiceSubmit or InvoicingJobTypes.InvoiceReconcile or InvoicingJobTypes.InvoiceDocumentFetch or InvoicingJobTypes.MarketplaceDelivery or InvoicingJobTypes.InvoiceCancellation or InvoicingJobTypes.InvoiceDueScan or InvoicingJobTypes.StageCapabilityProbe)
         {
-            var processor = services.GetRequiredService<IF4JobProcessor>();
+            var processor = services.GetRequiredService<IInvoicingJobProcessor>();
             return await processor.ProcessAsync(job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, cancellationToken);
         }
 

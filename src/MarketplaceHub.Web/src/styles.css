@@ -35,7 +35,7 @@ textarea,select { width:100%; padding:.8rem .9rem; border:1px solid #cfd5df; bor
 .candidate { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:1rem; margin-top:.7rem; background:#fff; border:1px solid #e4e8f0; border-radius:12px; } .candidate code { display:block; margin-top:.5rem; color:#667085; }
 @media (max-width:760px) { .detail-grid,.cards,.metrics,.form-grid { grid-template-columns:1fr; } .candidate { align-items:start; flex-direction:column; } }
 
-/* F3 Teal Precision: yalnız F3 bileşenleri ve ortak navigasyon ekleri. */
+/* Marketplace teal precision: marketplace bileşenleri ve ortak navigasyon ekleri. */
 aside { overflow-y:auto; }
 .nav-label { margin:.85rem 1rem .2rem; color:#6fd5cb; font-size:.68rem; font-weight:850; letter-spacing:.14em; text-transform:uppercase; }
 .f3 { --f3-teal:#0f766e; --f3-ink:#12312f; --f3-mist:#edf8f6; }

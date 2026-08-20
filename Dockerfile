@@ -7,15 +7,8 @@ COPY src/MarketplaceHub.Application/MarketplaceHub.Application.csproj src/Market
 COPY src/MarketplaceHub.Domain/MarketplaceHub.Domain.csproj src/MarketplaceHub.Domain/
 COPY src/MarketplaceHub.Infrastructure/MarketplaceHub.Infrastructure.csproj src/MarketplaceHub.Infrastructure/
 COPY src/MarketplaceHub.Worker/MarketplaceHub.Worker.csproj src/MarketplaceHub.Worker/
-COPY tests/MarketplaceHub.Adapters.ContractTests/MarketplaceHub.Adapters.ContractTests.csproj tests/MarketplaceHub.Adapters.ContractTests/
-COPY tests/MarketplaceHub.Api.IntegrationTests/MarketplaceHub.Api.IntegrationTests.csproj tests/MarketplaceHub.Api.IntegrationTests/
-COPY tests/MarketplaceHub.Application.Tests/MarketplaceHub.Application.Tests.csproj tests/MarketplaceHub.Application.Tests/
-COPY tests/MarketplaceHub.Domain.Tests/MarketplaceHub.Domain.Tests.csproj tests/MarketplaceHub.Domain.Tests/
-COPY tests/MarketplaceHub.EndToEnd.Tests/MarketplaceHub.EndToEnd.Tests.csproj tests/MarketplaceHub.EndToEnd.Tests/
-COPY tests/MarketplaceHub.Persistence.IntegrationTests/MarketplaceHub.Persistence.IntegrationTests.csproj tests/MarketplaceHub.Persistence.IntegrationTests/
 RUN dotnet restore MarketplaceHub.sln --locked-mode
 COPY src/ src/
-COPY tests/ tests/
 RUN dotnet publish src/MarketplaceHub.Api/MarketplaceHub.Api.csproj -c Release --no-restore -o /out/api \
  && dotnet publish src/MarketplaceHub.Worker/MarketplaceHub.Worker.csproj -c Release --no-restore -o /out/worker
 

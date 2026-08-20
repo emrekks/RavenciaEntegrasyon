@@ -103,9 +103,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         ConfigureIdentity(builder);
         ConfigureIntegration(builder);
         ConfigureOperations(builder);
-        builder.ConfigureF2Models();
-        builder.ConfigureF3Models();
-        builder.ConfigureF4Models();
+        builder.ConfigureCatalogModels();
+        builder.ConfigureMarketplaceModels();
+        builder.ConfigureInvoicingModels();
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess) { GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }

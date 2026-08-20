@@ -87,7 +87,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         // deliberately asks for five minutes; applying the generic terminal one-hour
         // backoff would prevent the seven-day acceptance window from being observed.
         // Provider/network retries still follow the generic policy and Retry-After.
-        if (job.JobType == F3JobTypes.ProductApprovalReconcile
+        if (job.JobType == MarketplaceJobTypes.ProductApprovalReconcile
             && string.Equals(result.ErrorCode, "PRODUCT_APPROVAL_PENDING", StringComparison.Ordinal)
             && requested.HasValue
             && requested.Value > TimeSpan.Zero)
