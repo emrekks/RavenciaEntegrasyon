@@ -8,82 +8,79 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .error { padding: .8rem 1rem; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; }
 
 /* ─── Login Page (Pure CSS) ─── */
-/* ─── Login Page (Modern Dark Glassmorphism) ─── */
-.auth-login-page { position:relative; min-height:100vh; overflow:hidden; background-color:#050814; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
+/* ─── Login Page (High-Tech Pattern & Glass) ─── */
+.auth-login-page { position:relative; min-height:100vh; overflow:hidden; background-color:#050505; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
 
-/* Background Geometries (Deep Navy Radial Gradient + Neon Orbs) */
-.auth-bg-layer { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; background:radial-gradient(ellipse at bottom, #0d1326 0%, #050814 100%); }
-.neon-orb { position:absolute; border-radius:50%; filter:blur(150px); opacity:0.6; mix-blend-mode:screen; }
-.orb-top-left { top:-10%; left:-10%; width:600px; height:600px; background:#4338ca; }
-.orb-bottom-right { bottom:-10%; right:-10%; width:700px; height:700px; background:#4c1d95; }
+/* Background Patterns & Glows */
+.auth-bg-layer { position:absolute; inset:0; z-index:0; overflow:hidden; }
 
-/* Diagonal Lines for depth */
-.diagonal-line { position:absolute; background:linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.2), transparent); height:1px; transform:rotate(-45deg); }
-.line-1 { width:150vw; top:20%; left:-25%; }
-.line-2 { width:150vw; top:50%; left:-50%; opacity:0.5; }
-.line-3 { width:150vw; top:80%; left:-15%; }
+/* Dot Matrix Pattern */
+.bg-pattern-dots { position:absolute; inset:0; background-image:radial-gradient(rgba(255, 255, 255, 0.08) 1.5px, transparent 1.5px); background-size:32px 32px; opacity:0.6; pointer-events:none; }
 
-/* Layout */
-.auth-login-layout { position:relative; z-index:10; display:flex; width:100%; min-height:calc(100vh - 60px); }
+/* Grid Pattern Overlay */
+.bg-pattern-grid { position:absolute; inset:0; background-image:linear-gradient(rgba(56, 189, 248, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(56, 189, 248, 0.03) 1px, transparent 1px); background-size:96px 96px; pointer-events:none; }
 
-/* Left Side: Brand Panel */
-.auth-brand-panel { flex:1.2; display:flex; align-items:center; justify-content:center; }
-.auth-brand-inner { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; text-align:center; }
-.brand-icon-wrapper { width:120px; height:120px; filter:drop-shadow(0 0 30px rgba(129, 140, 248, 0.4)); animation:float 6s ease-in-out infinite; }
+/* Ambient Glows behind the card */
+.ambient-glow { position:absolute; border-radius:50%; filter:blur(140px); opacity:0.4; mix-blend-mode:screen; pointer-events:none; }
+.glow-1 { top:50%; left:50%; transform:translate(-50%,-50%); width:600px; height:600px; background:#4f46e5; }
+.glow-2 { top:20%; left:30%; width:500px; height:500px; background:#0284c7; opacity:0.25; }
+
+/* Centered Layout */
+.centered-layout { position:relative; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:calc(100vh - 60px); padding:40px 20px; }
+
+/* Main Glass Card */
+.auth-login-card { position:relative; width:100%; max-width:440px; padding:48px 40px; background:rgba(10, 10, 10, 0.6); border:1px solid rgba(255, 255, 255, 0.08); border-radius:24px; backdrop-filter:blur(30px); -webkit-backdrop-filter:blur(30px); box-shadow:0 30px 60px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255, 255, 255, 0.1); }
+
+/* Brand Header */
+.auth-brand-header { display:flex; flex-direction:column; align-items:center; text-align:center; margin-bottom:36px; }
+.brand-icon-wrapper { width:80px; height:80px; filter:drop-shadow(0 0 20px rgba(56, 189, 248, 0.4)); animation:float 6s ease-in-out infinite; margin-bottom:16px; }
 .brand-icon-svg { width:100%; height:100%; }
-.brand-text { font-family:'Cinzel', Georgia, serif; font-size:2.5rem; letter-spacing:0.3em; color:#f8fafc; text-shadow:0 0 20px rgba(255,255,255,0.2); font-weight:400; margin-left:12px; }
-.brand-tagline { font-size:0.9rem; letter-spacing:0.4em; color:#94a3b8; text-transform:uppercase; font-weight:300; }
+.brand-text { font-family:'Cinzel', Georgia, serif; font-size:2rem; letter-spacing:0.2em; color:#f8fafc; text-shadow:0 0 15px rgba(255,255,255,0.15); font-weight:400; margin-left:8px; }
+.brand-tagline { font-size:0.8rem; letter-spacing:0.3em; color:#94a3b8; text-transform:uppercase; font-weight:300; margin-top:4px; }
 
 @keyframes float {
   0% { transform: translateY(0px); }
-  50% { transform: translateY(-15px); }
+  50% { transform: translateY(-10px); }
   100% { transform: translateY(0px); }
 }
 
-/* Right Side: Glassmorphism Login Card */
-.auth-form-panel { flex:1; display:flex; align-items:center; justify-content:flex-start; padding-right:12vw; }
-.auth-login-card { position:relative; width:100%; max-width:480px; padding:50px 56px; background:rgba(15, 23, 42, 0.4); border:1px solid rgba(148, 163, 184, 0.15); border-radius:16px; backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); box-shadow:0 25px 50px -12px rgba(0,0,0,0.5), 0 0 40px rgba(99, 102, 241, 0.1); }
-
-/* Typography inside card */
-.auth-card-header { margin-bottom:40px; text-align:left; }
-.auth-card-header h1 { margin:0 0 8px 0; color:#f8fafc; font-size:1.8rem; font-weight:600; letter-spacing:-0.02em; }
-.auth-card-header p { margin:0; color:#94a3b8; font-size:0.95rem; font-weight:400; }
-.auth-login-card form { display:grid; gap:24px; }
+/* Form Styles */
+.auth-form-centered { display:grid; gap:22px; }
 
 /* Inputs (Neon Glow) */
 .auth-field-wrap { position:relative; }
 .auth-field-icon { position:absolute; left:18px; top:50%; transform:translateY(-50%); color:#64748b; display:flex; align-items:center; transition:color 0.3s ease; }
 
-.login-input { width:100%; height:54px; background:rgba(15, 23, 42, 0.6); border:1px solid rgba(148, 163, 184, 0.2); color:#f8fafc; border-radius:10px; padding:0 20px 0 48px; font-size:0.9rem; font-family:Inter,sans-serif; transition:all 0.3s ease; }
-.login-input:focus { border-color:rgba(129, 140, 248, 0.8); outline:none; box-shadow:0 0 0 1px rgba(129, 140, 248, 0.3), 0 0 15px rgba(129, 140, 248, 0.4); background:rgba(15, 23, 42, 0.8); }
-.login-input:focus + .auth-field-icon { color:#818cf8; }
+.login-input { width:100%; height:52px; background:rgba(255, 255, 255, 0.03); border:1px solid rgba(255, 255, 255, 0.1); color:#f8fafc; border-radius:12px; padding:0 20px 0 48px; font-size:0.9rem; font-family:Inter,sans-serif; transition:all 0.3s ease; box-shadow:inset 0 2px 4px rgba(0,0,0,0.2); }
+.login-input:focus { border-color:rgba(56, 189, 248, 0.6); outline:none; box-shadow:inset 0 2px 4px rgba(0,0,0,0.2), 0 0 0 1px rgba(56, 189, 248, 0.3), 0 0 20px rgba(56, 189, 248, 0.25); background:rgba(255, 255, 255, 0.06); }
+.login-input:focus + .auth-field-icon { color:#38bdf8; }
 .login-input::placeholder { color:#475569; font-weight:400; }
-.login-input:-webkit-autofill, .login-input:-webkit-autofill:hover, .login-input:-webkit-autofill:focus { -webkit-text-fill-color:#f1f5f9; -webkit-box-shadow:0 0 0 1000px #0f172a inset; box-shadow:0 0 0 1000px #0f172a inset; caret-color:#fff; }
+.login-input:-webkit-autofill, .login-input:-webkit-autofill:hover, .login-input:-webkit-autofill:focus { -webkit-text-fill-color:#f8fafc; -webkit-box-shadow:0 0 0 1000px #111 inset; box-shadow:0 0 0 1000px #111 inset; caret-color:#fff; }
 
 /* Actions (Checkbox & Link) */
-.auth-remember-row { display:flex; align-items:center; justify-content:space-between; margin-top:-4px; }
+.auth-remember-row { display:flex; align-items:center; justify-content:space-between; padding:0 2px; margin-top:-4px; }
 .auth-remember-label { display:flex; align-items:center; gap:10px; color:#cbd5e1; font-size:0.85rem; cursor:pointer; user-select:none; font-weight:400; }
 
-/* Bulletproof Blue Checkbox */
-.login-checkbox { appearance:none; -webkit-appearance:none; width:18px; height:18px; border:1px solid rgba(148,163,184,0.4); background:rgba(15, 23, 42, 0.5); border-radius:4px; display:grid; place-content:center; cursor:pointer; transition:all 0.2s; margin:0; outline:none; }
-.login-checkbox:checked { border-color:#818cf8; background:rgba(99,102,241,0.2); }
-.login-checkbox:checked::before { content:""; width:10px; height:10px; background:#818cf8; border-radius:2px; box-shadow:0 0 8px #818cf8; }
+/* Bulletproof Cyan Checkbox */
+.login-checkbox { appearance:none; -webkit-appearance:none; width:18px; height:18px; border:1px solid rgba(148,163,184,0.3); background:rgba(255, 255, 255, 0.05); border-radius:4px; display:grid; place-content:center; cursor:pointer; transition:all 0.2s; margin:0; outline:none; }
+.login-checkbox:checked { border-color:#38bdf8; background:rgba(56, 189, 248, 0.15); }
+.login-checkbox:checked::before { content:""; width:10px; height:10px; background:#38bdf8; border-radius:2px; box-shadow:0 0 8px #38bdf8; }
 
-.auth-forgot-link { color:#818cf8; font-size:0.85rem; text-decoration:none; transition:color 0.2s; font-weight:500; }
-.auth-forgot-link:hover { color:#a5b4fc; }
+.auth-forgot-link { color:#38bdf8; font-size:0.85rem; text-decoration:none; transition:all 0.2s; font-weight:500; }
+.auth-forgot-link:hover { color:#7dd3fc; text-shadow:0 0 8px rgba(125, 211, 252, 0.5); }
 
 /* Button (Neon Glow) */
-.login-button { width:100%; height:54px; margin-top:8px; display:flex; align-items:center; justify-content:center; gap:10px; background:linear-gradient(135deg, #4f46e5, #7e22ce); border:none; color:#fff; border-radius:10px; font-size:1rem; font-weight:500; cursor:pointer; transition:all 0.3s ease; box-shadow:0 4px 15px rgba(99, 102, 241, 0.4); }
-.login-button:hover { background:linear-gradient(135deg, #4338ca, #6b21a8); box-shadow:0 6px 25px rgba(99, 102, 241, 0.6); transform:translateY(-1px); }
-.login-button:active { transform:translateY(1px); box-shadow:0 2px 10px rgba(99, 102, 241, 0.4); }
+.login-button { width:100%; height:54px; margin-top:8px; display:flex; align-items:center; justify-content:center; gap:10px; background:linear-gradient(135deg, #0284c7, #4f46e5); border:none; color:#fff; border-radius:12px; font-size:1rem; font-weight:500; cursor:pointer; transition:all 0.3s ease; box-shadow:0 4px 20px rgba(56, 189, 248, 0.3), inset 0 1px 0 rgba(255,255,255,0.2); }
+.login-button:hover { background:linear-gradient(135deg, #0369a1, #4338ca); box-shadow:0 6px 30px rgba(56, 189, 248, 0.5), inset 0 1px 0 rgba(255,255,255,0.2); transform:translateY(-1px); }
+.login-button:active { transform:translateY(1px); box-shadow:0 2px 10px rgba(56, 189, 248, 0.3); }
 .login-button:disabled { opacity:0.7; cursor:not-allowed; transform:none; }
 
-.auth-error { padding:14px; border-radius:10px; background:rgba(220,38,38,0.1); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; font-size:0.85rem; display:flex; align-items:center; gap:10px; margin-top:8px; }
+.auth-error { padding:14px; border-radius:10px; background:rgba(220,38,38,0.1); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; font-size:0.85rem; display:flex; align-items:center; gap:10px; margin-top:4px; }
 
 /* Footer */
-.auth-login-footer { position:absolute; bottom:0; left:0; width:100%; height:60px; display:flex; align-items:center; justify-content:center; background:rgba(5, 8, 20, 0.8); border-top:1px solid rgba(255,255,255,0.05); color:#64748b; font-size:0.8rem; z-index:20; backdrop-filter:blur(10px); }
+.auth-login-footer { position:absolute; bottom:0; left:0; width:100%; height:60px; display:flex; align-items:center; justify-content:center; background:rgba(5, 5, 5, 0.8); border-top:1px solid rgba(255,255,255,0.03); color:#64748b; font-size:0.8rem; z-index:20; backdrop-filter:blur(10px); }
 
-@media (max-width:1024px) { .auth-brand-panel { display:none; } .auth-form-panel { padding-right:0; justify-content:center; } .auth-login-card { margin:0 24px; padding:40px 32px; } }
+@media (max-width:768px) { .auth-login-card { padding:40px 24px; } }
 
 .app-shell { min-height:100vh; display:grid; grid-template-columns:250px 1fr; } aside { position:sticky; top:0; height:100vh; padding:1.6rem; background:#101b35; color:white; } aside .brand small { color:#93a3c7; } nav { display:grid; gap:.4rem; margin-top:3rem; } nav a { padding:.8rem 1rem; border-radius:9px; color:#b9c4dc; text-decoration:none; font-weight:650; } nav a.active { color:white; background:#ffffff15; } .scope { position:absolute; bottom:1rem; color:#7f91b6; font-size:.75rem; }
 main > header { height:78px; display:flex; justify-content:flex-end; align-items:center; padding:0 2.5rem; background:white; border-bottom:1px solid #e6e9f0; } header div { display:grid; text-align:right; } header small { color:#7b8496; }
