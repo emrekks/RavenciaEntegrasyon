@@ -90,10 +90,15 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     public async Task<ServiceResult<ConnectionView>> UpdateAsync(Guid tenantId, Guid id, long expectedVersion, UpdateConnectionCommand command, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM"), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
-        if (string.IsNullOrWhiteSpace(command.DisplayName) || connection.PlatformCode == "TRENDYOL" && string.IsNullOrWhiteSpace(command.UserAgentIdentity)) return Invalid<ConnectionView>("connection", "Ad; Trendyol için ayrıca User-Agent kimliği zorunludur.");
+        if (string.IsNullOrWhiteSpace(command.DisplayName)) return Invalid<ConnectionView>("connection", "Bağlantı adı zorunludur.");
+        if (command.Environment is not null && command.Environment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Ortam STAGE veya PRODUCTION olmalıdır.");
         connection.DisplayName = command.DisplayName.Trim();
+        if (command.Environment is not null) connection.Environment = command.Environment;
         if (connection.PlatformCode == "TRENDYOL")
-            connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), ReadSettings(connection).ExternalWritesEnabled));
+        {
+            var current = ReadSettings(connection);
+            connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? current.UserAgentIdentity : command.UserAgentIdentity.Trim(), current.ExternalWritesEnabled));
+        }
         else
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         connection.Version++;
