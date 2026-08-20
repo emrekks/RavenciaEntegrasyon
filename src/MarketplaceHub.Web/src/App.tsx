@@ -84,7 +84,7 @@ function Login() {
                {error && <div className="iso-error">{error}</div>}
                
                <button type="submit" disabled={loading} className="iso-button">
-                  {loading ? 'Doğrulanıyor...' : 'Bağlantıyı Kur'}
+                  {loading ? 'Doğrulanıyor...' : 'Giriş Yap'}
                </button>
             </form>
          </div>
@@ -94,50 +94,67 @@ function Login() {
       <div className="iso-bg-wrapper">
          <div className="iso-grid">
             
-            {/* Center Node (Core) */}
+            {/* Perfect SVG Network Lines */}
+            <svg className="iso-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+               {/* Base Lines */}
+               <line x1="20" y1="20" x2="50" y2="50" className="svg-line" />
+               <line x1="50" y1="20" x2="50" y2="50" className="svg-line" />
+               <line x1="80" y1="20" x2="50" y2="50" className="svg-line" />
+               <line x1="80" y1="50" x2="50" y2="50" className="svg-line" />
+               <line x1="80" y1="80" x2="50" y2="50" className="svg-line" />
+               <line x1="50" y1="80" x2="50" y2="50" className="svg-line" />
+               <line x1="20" y1="80" x2="50" y2="50" className="svg-line" />
+               
+               {/* Animated Packets */}
+               <line x1="20" y1="20" x2="50" y2="50" className="svg-packet p-1" pathLength="100" />
+               <line x1="50" y1="20" x2="50" y2="50" className="svg-packet p-2" pathLength="100" />
+               <line x1="80" y1="20" x2="50" y2="50" className="svg-packet p-3" pathLength="100" />
+               <line x1="80" y1="50" x2="50" y2="50" className="svg-packet p-4" pathLength="100" />
+               <line x1="80" y1="80" x2="50" y2="50" className="svg-packet p-5" pathLength="100" />
+               <line x1="50" y1="80" x2="50" y2="50" className="svg-packet p-6" pathLength="100" />
+               <line x1="20" y1="80" x2="50" y2="50" className="svg-packet p-7" pathLength="100" />
+            </svg>
+
+            {/* Nodes */}
             <div className="iso-node node-core">
-               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
+               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
                <div className="node-label">Ravencia Core</div>
             </div>
 
-            {/* External Nodes */}
             <div className="iso-node node-amazon">
-               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
+               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
                <div className="node-label">Amazon API</div>
             </div>
-            
-            <div className="iso-node node-shopify">
-               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
-               <div className="node-label">Shopify Webhook</div>
+
+            <div className="iso-node node-hepsiburada">
+               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
+               <div className="node-label">Hepsiburada</div>
             </div>
             
             <div className="iso-node node-trendyol">
-               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
-               <div className="node-label">Trendyol API</div>
+               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
+               <div className="node-label">Trendyol</div>
             </div>
 
             <div className="iso-node node-fatura">
-               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
-               <div className="node-label">Trendyol e-Fatura</div>
-            </div>
-
-            <div className="iso-node node-n11">
-               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
-               <div className="node-label">N11 Sync</div>
+               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
+               <div className="node-label">e-Fatura</div>
             </div>
 
             <div className="iso-node node-pazarama">
-               <div className="cube"><div className="face top"></div><div className="face front"></div><div className="face right"></div></div>
+               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
                <div className="node-label">Pazarama</div>
             </div>
+
+            <div className="iso-node node-n11">
+               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
+               <div className="node-label">N11 Sync</div>
+            </div>
             
-            {/* Data connecting lines with moving packets */}
-            <div className="iso-line line-1"><div className="packet p1"></div><div className="packet p2"></div></div>
-            <div className="iso-line line-2"><div className="packet p1"></div></div>
-            <div className="iso-line line-3"><div className="packet p1"></div></div>
-            <div className="iso-line line-4"><div className="packet p1"></div><div className="packet p2"></div></div>
-            <div className="iso-line line-5"><div className="packet p1"></div></div>
-            <div className="iso-line line-6"><div className="packet p1"></div></div>
+            <div className="iso-node node-shopify">
+               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
+               <div className="node-label">Shopify Webhook</div>
+            </div>
             
          </div>
       </div>
