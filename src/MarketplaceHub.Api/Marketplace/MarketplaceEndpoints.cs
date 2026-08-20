@@ -16,7 +16,21 @@ public static class MarketplaceEndpoints
         api.MapGet("/connections/{id:guid}", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPatch("/connections/{id:guid}", async (Guid id, UpdateConnectionCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure! : Unauthorized(http));
         api.MapPut("/connections/{id:guid}/credential", async (Guid id, CredentialCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.RotateCredentialAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure! : MissingContext(http));
-        api.MapPost("/connections/{id:guid}/test-jobs", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueTestAsync(tenant.TenantId, id, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
+        api.MapPost("/connections/{id:guid}/test-jobs", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceJobProcessor marketplaceProcessor, IInvoicingJobProcessor invoicingProcessor) =>
+        {
+            if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
+            var platform = await db.PlatformConnections.AsNoTracking()
+                .Where(x => x.TenantId == tenant.TenantId && x.Id == id)
+                .Select(x => x.PlatformCode)
+                .SingleOrDefaultAsync(http.RequestAborted);
+            if (platform is null) return Results.NotFound();
+
+            var jobType = platform == "TRENDYOL" ? MarketplaceJobTypes.ConnectionTest : InvoicingJobTypes.ConnectionTest;
+            var result = platform == "TRENDYOL"
+                ? await marketplaceProcessor.ProcessAsync(tenant.TenantId, id, jobType, "{}", http.TraceIdentifier, http.RequestAborted)
+                : await invoicingProcessor.ProcessAsync(tenant.TenantId, id, jobType, "{}", http.TraceIdentifier, http.RequestAborted);
+            return Results.Ok(result);
+        });
         api.MapPut("/connections/{id:guid}/active", async (Guid id, ActiveCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.SetActiveAsync(tenant.TenantId, id, version, command.Active, http.RequestAborted), x => x.Version) : failure! : MissingContext(http));
         api.MapGet("/connections/{id:guid}/capabilities", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? Result(await service.CapabilitiesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPut("/connections/{id:guid}/capabilities/{code}/evidence", async (Guid id, string code, RecordCapabilityEvidenceCommand command, HttpContext http, IMarketplaceConnectionService service) =>
