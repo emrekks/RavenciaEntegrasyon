@@ -85,7 +85,7 @@ function Login() {
                 <h1>Ravencia Yönetim Paneli</h1>
                 <div className="auth-card-divider">
                    <span></span>
-                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2 8 8 2-8 2-2 8-2-8-8-2 8-2z"/></svg>
+                   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0 L13.5 10.5 L24 12 L13.5 13.5 L12 24 L10.5 13.5 L0 12 L10.5 10.5 Z"/></svg>
                    <span></span>
                 </div>
              </div>
