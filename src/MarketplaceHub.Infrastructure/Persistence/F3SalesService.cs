@@ -453,14 +453,24 @@ public sealed class F3SalesService(AppDbContext db, CursorCodec cursors, IConfig
 
     private static string InvoiceLabel(Invoice? invoice, string customerJson)
     {
+        // Once a local invoice exists, its state is authoritative. The Trendyol
+        // order snapshot keeps invoiceStatus at NOTINVOICED and is not refreshed
+        // by the E-Faturam write, which otherwise makes a successfully created
+        // invoice appear as still waiting in the orders screen.
+        if (invoice is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(invoice.InvoiceNumber) || invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed)
+                return "FATURA_KESILDI";
+            if (invoice.Status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal) return "FATURA_IPTAL";
+            if (invoice.Status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview) return "FATURA_REDDEDILDI";
+            return "FATURA_ISLENIYOR";
+        }
         var remote = JsonText(customerJson, "invoiceStatus")?.Trim().ToUpperInvariant();
         if (remote is "INVOICED") return "FATURA_KESILDI";
         if (remote is "RECEIVED") return "FATURA_KONTROLDE";
         if (remote is "REJECTED") return "FATURA_REDDEDILDI";
         if (remote is "NOTINVOICED") return "FATURA_BEKLIYOR";
-        if (invoice is null) return "FATURA_BEKLIYOR";
-        if (!string.IsNullOrWhiteSpace(invoice.InvoiceNumber) || invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed) return "FATURA_KESILDI";
-        return invoice.Status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal ? "FATURA_IPTAL" : "FATURA_ISLENIYOR";
+        return "FATURA_BEKLIYOR";
     }
 
     private static string? InvoiceDocumentUrl(string customerJson)
