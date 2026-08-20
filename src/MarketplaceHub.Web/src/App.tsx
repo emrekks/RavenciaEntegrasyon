@@ -49,17 +49,17 @@ function Login() {
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
   return (
     <div className="relative min-h-screen bg-[#060711] text-white flex flex-col font-sans overflow-hidden">
-      {/* Background Effects & Diagonal Rays */}
+      {/* Background Image (Left Side) */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
-         <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%]">
-            <div className="absolute top-1/2 left-[45%] w-[120%] h-[1px]" 
-                 style={{ transform: 'translate(-50%, -50%) rotate(-35deg)', background: 'linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.4), transparent)', boxShadow: '0 0 35px 2px rgba(96, 165, 250, 0.8)' }}></div>
-            <div className="absolute top-[60%] left-1/2 w-[120%] h-[1px]" 
-                 style={{ transform: 'translate(-50%, -50%) rotate(35deg)', background: 'linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.4), transparent)', boxShadow: '0 0 35px 2px rgba(129, 140, 248, 0.8)' }}></div>
-         </div>
-         {/* Huge subtle glowing ring on the left */}
-         <div className="absolute top-1/2 left-[20%] w-[700px] h-[700px] rounded-full mix-blend-screen" 
-              style={{ transform: 'translate(-50%, -50%)', border: '1px solid rgba(96, 165, 250, 0.1)', boxShadow: '0 0 150px 40px rgba(30, 58, 138, 0.4)', background: 'linear-gradient(45deg, rgba(30, 58, 138, 0.2), transparent)' }}></div>
+         <div className="absolute top-0 left-0 w-[65%] h-full" 
+              style={{
+                 backgroundImage: "url('/bg-reference.png')",
+                 backgroundSize: 'cover',
+                 backgroundPosition: 'left center',
+                 backgroundRepeat: 'no-repeat',
+                 maskImage: 'linear-gradient(to right, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%)',
+                 WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%)'
+              }}></div>
       </div>
 
       {/* Güvenli Erişim Box */}
@@ -75,18 +75,8 @@ function Login() {
 
       <div className="flex-1 flex flex-col lg:flex-row items-center justify-center relative z-10 px-6 w-full max-w-[1300px] mx-auto gap-12 lg:gap-32">
         
-        {/* Left Side: Logo */}
-        <div className="lg:w-1/2 flex flex-col items-center justify-center">
-          <div className="relative flex flex-col items-center justify-center mb-8">
-             <div className="text-[170px] leading-[0.8] relative z-10 pr-4 drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)]" 
-                  style={{ fontFamily: "'Alex Brush', cursive", background: "linear-gradient(180deg, #ffffff 0%, #94a3b8 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-               R
-             </div>
-             <div className="text-[1.25rem] tracking-[0.45em] font-light mt-4 text-slate-300/90 relative z-10 ml-3 uppercase" style={{ fontFamily: "Inter, sans-serif" }}>
-               Ravencia
-             </div>
-          </div>
-        </div>
+        {/* Left Side: Empty space since the image handles the logo */}
+        <div className="lg:w-1/2 flex flex-col items-center justify-center pointer-events-none"></div>
 
         {/* Right Side: Login Card */}
         <div className="lg:w-1/2 flex items-center justify-center w-full">
