@@ -52,6 +52,17 @@ function Login() {
 
   return (
     <div className="auth-login-page">
+      {/* SVG Filter for Logo to map black to silver and preserve highlights */}
+      <svg width="0" height="0" style={{ position: 'absolute' }}>
+        <filter id="silver-logo-filter">
+          <feComponentTransfer>
+            <feFuncR type="linear" slope="0.5" intercept="0.5" />
+            <feFuncG type="linear" slope="0.6" intercept="0.55" />
+            <feFuncB type="linear" slope="0.7" intercept="0.65" />
+          </feComponentTransfer>
+        </filter>
+      </svg>
+
       {import.meta.env.DEV && showReferenceOverlay && (
         <div className="reference-overlay" />
       )}
