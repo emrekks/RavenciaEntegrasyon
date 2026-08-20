@@ -78,8 +78,8 @@ function Login() {
         {/* Left Side: Logo */}
         <div className="lg:w-1/2 flex flex-col items-center justify-center">
           <div className="relative flex flex-col items-center justify-center mb-8">
-             <div className="text-[170px] leading-[0.8] relative z-10 pr-4 drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)]" 
-                  style={{ fontFamily: "'Alex Brush', cursive", background: "linear-gradient(180deg, #ffffff 0%, #94a3b8 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+             <div className="text-[220px] leading-[0.8] relative z-10 pr-4 drop-shadow-[0_10px_15px_rgba(0,0,0,0.4)]" 
+                  style={{ fontFamily: "'Pinyon Script', cursive", background: "linear-gradient(180deg, #ffffff 0%, #cbd5e1 50%, #94a3b8 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 400 }}>
                R
              </div>
              <div className="text-[1.25rem] tracking-[0.45em] font-light mt-4 text-slate-300/90 relative z-10 ml-3 uppercase" style={{ fontFamily: "Inter, sans-serif" }}>
