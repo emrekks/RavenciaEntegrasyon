@@ -107,24 +107,25 @@ function Login() {
                   </filter>
                </defs>
 
-               {/* Zigzag motherboard traces */}
-               <path id="flow-1" d="M20 20 H30 V35 H40 V50 H50" className="svg-line" />
-               <path id="flow-2" d="M50 20 H44 V30 H54 V40 H50 V50" className="svg-line" />
-               <path id="flow-3" d="M80 20 H70 V35 H60 V50 H50" className="svg-line" />
-               <path id="flow-4" d="M20 50 H30 V44 H40 V54 H50 V50" className="svg-line" />
-               <path id="flow-5" d="M80 50 H70 V56 H60 V46 H50 V50" className="svg-line" />
-               <path id="flow-6" d="M20 80 H30 V65 H40 V50 H50" className="svg-line" />
-               <path id="flow-7" d="M50 80 H56 V70 H46 V60 H50 V50" className="svg-line" />
-               <path id="flow-8" d="M80 80 H70 V65 H60 V50 H50" className="svg-line" />
-
-               {/* Small neon data points */}
-               {[1, 2, 3, 4, 5, 6, 7, 8].map((packet) => (
-                  <circle key={packet} r="0.72" className={`svg-data-dot p-${packet}`} filter="url(#pulse-glow)">
-                     <animateMotion dur={`${2.8 + packet * 0.11}s`} begin={`${packet * -0.31}s`} repeatCount="indefinite">
-                        <mpath href={`#flow-${packet}`} />
-                     </animateMotion>
-                  </circle>
-               ))}
+               {/* Base Grid Lines (Motherboard traces) */}
+               <line x1="20" y1="20" x2="50" y2="50" className="svg-line" />
+               <line x1="50" y1="20" x2="50" y2="50" className="svg-line" />
+               <line x1="80" y1="20" x2="50" y2="50" className="svg-line" />
+               <line x1="20" y1="50" x2="50" y2="50" className="svg-line" />
+               <line x1="80" y1="50" x2="50" y2="50" className="svg-line" />
+               <line x1="20" y1="80" x2="50" y2="50" className="svg-line" />
+               <line x1="50" y1="80" x2="50" y2="50" className="svg-line" />
+               <line x1="80" y1="80" x2="50" y2="50" className="svg-line" />
+               
+               {/* Sleek Data Pulses */}
+               <line x1="20" y1="20" x2="50" y2="50" className="svg-packet p-1" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="50" y1="20" x2="50" y2="50" className="svg-packet p-2" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="80" y1="20" x2="50" y2="50" className="svg-packet p-3" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="20" y1="50" x2="50" y2="50" className="svg-packet p-4" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="80" y1="50" x2="50" y2="50" className="svg-packet p-5" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="20" y1="80" x2="50" y2="50" className="svg-packet p-6" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="50" y1="80" x2="50" y2="50" className="svg-packet p-7" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="80" y1="80" x2="50" y2="50" className="svg-packet p-8" pathLength="100" filter="url(#pulse-glow)" />
             </svg>
 
             {/* 3x3 Grid Nodes */}
