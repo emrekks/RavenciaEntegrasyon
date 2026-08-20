@@ -49,17 +49,22 @@ function Login() {
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
   return (
     <div className="relative min-h-screen bg-[#060711] text-white flex flex-col font-sans overflow-hidden">
-      {/* Background Image (Left Side) */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
-         <div className="absolute top-0 left-0 w-[65%] h-full" 
+      {/* Background Image (Left Side perfectly cropped) */}
+      <div className="absolute inset-0 pointer-events-none z-0 flex">
+         <div className="relative w-[55%] h-full overflow-hidden" 
               style={{
-                 backgroundImage: "url('/bg-reference.png')",
-                 backgroundSize: 'cover',
-                 backgroundPosition: 'left center',
-                 backgroundRepeat: 'no-repeat',
-                 maskImage: 'linear-gradient(to right, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%)',
-                 WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%)'
-              }}></div>
+                 maskImage: 'linear-gradient(to right, rgba(0,0,0,1) 85%, rgba(0,0,0,0) 100%)',
+                 WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,1) 85%, rgba(0,0,0,0) 100%)'
+              }}>
+            <div className="absolute top-0 left-0 h-full"
+                 style={{
+                    width: '181.81%', /* 100 / 55 = 1.8181 -> 181.81% of parent width makes it equal to 100vw */
+                    backgroundImage: "url('/bg-reference.png')",
+                    backgroundSize: '100% 100%',
+                    backgroundPosition: 'left center',
+                    backgroundRepeat: 'no-repeat'
+                 }}></div>
+         </div>
       </div>
 
       {/* Güvenli Erişim Box */}
