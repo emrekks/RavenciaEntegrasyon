@@ -48,7 +48,7 @@ function Login() {
   const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
   
-  const showReferenceOverlay = false; // toggle to true during development
+  const showReferenceOverlay = false;
 
   return (
     <div className="auth-login-page">
@@ -56,14 +56,24 @@ function Login() {
         <div className="reference-overlay" />
       )}
       
-      {/* Background Geometries */}
+      {/* Background Geometries & Flares */}
       <div className="auth-bg-layer">
         <div className="bg-glow bg-glow-center"></div>
+        
+        {/* Lines */}
         <div className="bg-line-diagonal line-top-left"></div>
         <div className="bg-line-diagonal line-bottom-right"></div>
         <div className="bg-line-diagonal line-top-right"></div>
-        <div className="bg-glow bg-glow-right"></div>
-        <div className="bg-huge-ring"></div>
+        
+        {/* Huge Ring */}
+        <div className="bg-huge-ring">
+           {/* Ring Flares */}
+           <div className="flare flare-ring-top-left"></div>
+           <div className="flare flare-ring-bottom-cross"></div>
+        </div>
+
+        {/* Right side flare */}
+        <div className="flare flare-right-edge"></div>
       </div>
 
       <div className="auth-login-layout">
@@ -71,6 +81,7 @@ function Login() {
         {/* Left Side: Logo */}
         <div className="auth-brand-panel">
           <div className="auth-brand-inner">
+             <div className="logo-glow"></div>
              <img src="/logo.png" alt="Ravencia Logo" className="auth-logo-img" />
           </div>
         </div>
@@ -78,8 +89,8 @@ function Login() {
         {/* Right Side: Login Card */}
         <div className="auth-form-panel">
           <div className="auth-login-card">
-             <div className="auth-card-flare auth-card-flare-top"></div>
-             <div className="auth-card-flare auth-card-flare-bottom"></div>
+             <div className="auth-card-flare auth-card-flare-top"><div className="flare-core"></div></div>
+             <div className="auth-card-flare auth-card-flare-bottom"><div className="flare-core"></div></div>
              
              <div className="auth-card-header">
                 <h1>Ravencia Yönetim Paneli</h1>
@@ -132,9 +143,9 @@ function Login() {
         </div>
       </div>
       
-      {/* Footer */}
+      {/* Footer Bar */}
       <div className="auth-login-footer">
-         © 2026 Ravencia. Tüm hakları saklıdır.
+         © 2025 Ravencia. Tüm hakları saklıdır.
       </div>
     </div>
   );
