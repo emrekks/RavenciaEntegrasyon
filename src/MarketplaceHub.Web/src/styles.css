@@ -190,7 +190,8 @@ body { background:var(--mp-canvas); }
 .product-table td { vertical-align:middle; }
 .product-table td small { color:#778480; }
 .integration-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; }
-.integration-card { display:grid; min-height:350px; padding:24px; color:#0b1c30; text-decoration:none; background:#fff; border:1px solid #bdc9c8; border-radius:10px; box-shadow:0 3px 8px #0b292612; cursor:pointer; font:inherit; text-align:left; }
+.integration-card { display:grid; min-height:350px; padding:24px; color:#0b1c30; text-decoration:none; background:#fff !important; border:1px solid #bdc9c8; border-radius:10px; box-shadow:0 3px 8px #0b292612; font:inherit; text-align:left; }
+.integration-card-form { gap:0; }
 .integration-card:hover { border-color:#087a70; box-shadow:0 10px 24px #0b292619; }
 .integration-card.selected { border-color:#087a70; box-shadow:0 10px 24px #0b292619; }
 .integration-card-empty { display:flex; align-items:center; justify-content:center; gap:10px; color:#087a70; background:transparent; border-style:dashed; cursor:default; text-align:center; }
@@ -204,6 +205,7 @@ body { background:var(--mp-canvas); }
 .connection-state { display:flex; align-items:center; gap:6px; color:#b91c1c; font-size:.76rem; font-weight:800; }.connection-state i { width:8px; height:8px; background:#c61c24; border-radius:50%; }.connection-state.connected { color:#087a70; }.connection-state.connected i { background:#087a70; }
 .integration-card h2 { margin:26px 0 2px; font-size:1.1rem; }.integration-card p { margin:0; color:#64716f; font-size:.86rem; }
 .integration-details { display:grid; gap:13px; align-content:start; margin-top:24px; }.integration-details span { display:grid; gap:3px; color:#73807e; font-size:.71rem; }.integration-details strong { overflow:hidden; color:#263432; font-size:.82rem; font-weight:650; text-overflow:ellipsis; white-space:nowrap; }
+.integration-fields { display:grid; gap:10px; margin-top:20px; }.integration-fields label { display:grid; gap:5px; color:#53615f; font-size:.72rem; font-weight:700; }.integration-fields input { width:100%; min-height:40px; padding:9px 11px; color:#263432; background:#f8fafb; border:1px solid #c7d1d0; border-radius:6px; font:inherit; }.integration-fields input:focus { border-color:#087a70; outline:2px solid #d9f5f1; }.integration-card-notice { margin-top:10px; padding:8px 10px; color:#087a70; background:#edf8f5; border-radius:6px; font-size:.72rem; }
 .connection-button { display:flex; align-items:center; justify-content:center; min-height:48px; margin-top:auto; color:#fff; background:#0e5752; border-radius:8px; font-weight:800; }
 .integration-create { margin-top:24px; }.integration-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:15px; }
 .invoice-toolbar,.return-toolbar { display:flex; align-items:center; gap:10px; padding:14px 24px 12px; background:#fff; border:1px solid #c7d1d0; border-bottom:0; border-radius:10px 10px 0 0; }
