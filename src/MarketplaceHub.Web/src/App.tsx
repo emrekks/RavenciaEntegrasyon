@@ -45,9 +45,67 @@ export function App() {
 }
 
 function Login() {
-  const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState('')
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } }
-  return <div className="auth-page"><section className="auth-card"><div className="brand large"><span>R</span><div><strong>Ravencia</strong><small>Marketplace Hub</small></div></div><p className="eyebrow">Güvenli yönetim paneli</p><h1>Tekrar hoş geldiniz</h1><p>Devam etmek için yönetici hesabınızla oturum açın.</p><form onSubmit={submit}><label>E-posta<input name="email" type="email" autoComplete="username" required /></label><label>Parola<input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} /></label>{error && <div role="alert" className="error">{error}</div>}<button type="submit">Güvenli giriş</button></form></section></div>
+  const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
+  return (
+    <div className="flex min-h-screen font-sans bg-white">
+      <div className="hidden lg:flex w-[45%] bg-[#0a1128] p-12 flex-col justify-between relative overflow-hidden text-white">
+        <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[50%] bg-blue-600/30 rounded-full blur-[100px]" />
+        <div className="absolute -bottom-[20%] -right-[10%] w-[60%] h-[50%] bg-teal-500/20 rounded-full blur-[100px]" />
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-blue-600 font-bold text-xl shadow-lg shadow-blue-900/50">R</div>
+          <div className="leading-tight">
+            <strong className="block text-xl tracking-tight">Ravencia</strong>
+            <span className="text-blue-200/80 text-sm font-medium tracking-wide">Marketplace Hub</span>
+          </div>
+        </div>
+        <div className="relative z-10 mb-12 max-w-md">
+          <h1 className="text-4xl font-extrabold mb-5 tracking-tight leading-[1.15]">E-ticaret operasyonunuz <br/><span className="text-blue-400">tek merkezde.</span></h1>
+          <p className="text-slate-300 text-lg leading-relaxed">Trendyol, E-Faturam ve diğer pazaryerleri entegrasyonlarıyla süreçlerinizi hızlandırın ve satışlarınıza odaklanın.</p>
+        </div>
+      </div>
+      <div className="flex-1 flex flex-col justify-center px-6 sm:px-16 lg:px-24 xl:px-32 relative">
+        <div className="w-full max-w-[420px] mx-auto">
+          <div className="lg:hidden flex items-center gap-3 mb-12">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-600 text-white font-bold text-lg shadow-md">R</div>
+            <div className="leading-tight">
+              <strong className="block text-xl tracking-tight text-slate-900">Ravencia</strong>
+              <span className="text-slate-500 text-sm font-medium">Marketplace Hub</span>
+            </div>
+          </div>
+          <div className="mb-10">
+            <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 font-bold text-xs rounded-full tracking-wider uppercase mb-4 shadow-sm border border-blue-100">Güvenli Yönetim Paneli</span>
+            <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 mb-2">Tekrar hoş geldiniz</h2>
+            <p className="text-slate-500 text-base">Devam etmek için yönetici hesabınızla oturum açın.</p>
+          </div>
+          <form onSubmit={submit} className="space-y-5">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1.5">E-posta adresi</label>
+              <input name="email" type="email" autoComplete="username" required 
+                className="w-full px-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 font-medium placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition-all shadow-sm" 
+                placeholder="ornek@ravencia.com" />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1.5">Parola</label>
+              <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} 
+                className="w-full px-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 font-medium placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition-all shadow-sm" 
+                placeholder="•••••••••••••••" />
+            </div>
+            {error && (
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm font-medium flex items-center gap-3">
+                <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                <span>{error}</span>
+              </div>
+            )}
+            <button type="submit" disabled={loading}
+              className="w-full mt-2 py-3.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-all shadow-lg shadow-slate-900/20 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed">
+              {loading ? 'Giriş yapılıyor...' : 'Güvenli giriş'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function ChangePassword() { const client = useQueryClient(); const [message, setMessage] = useState('İlk girişte parolanızı değiştirmeniz gerekir.'); async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await api('/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: data.get('current'), newPassword: data.get('next') }) }); await client.invalidateQueries({ queryKey: ['me'] }) } catch { setMessage('Parola değiştirilemedi; politika ve mevcut parolayı kontrol edin.') } } return <div className="auth-page"><section className="auth-card"><h1>Parolanızı değiştirin</h1><p role="status">{message}</p><form onSubmit={submit}><label>Geçerli parola<input name="current" type="password" required /></label><label>Yeni parola<input name="next" type="password" minLength={15} maxLength={64} required /></label><button>Parolayı değiştir</button></form></section></div> }
