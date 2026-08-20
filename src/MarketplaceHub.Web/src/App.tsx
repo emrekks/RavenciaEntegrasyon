@@ -46,113 +46,122 @@ export function App() {
 
 function Login() {
   const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
+  const [emailFocused, setEmailFocused] = useState(false); const [passFocused, setPassFocused] = useState(false);
+  const [emailVal, setEmailVal] = useState(''); const [passVal, setPassVal] = useState('');
+  
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
 
   return (
-    <div className="auth-login-page gold-theme">
+    <div className="auth-login-page ultimate-glass">
       
-      {/* Background Geometries (Gold Swooshes) */}
+      {/* Complex Animated Background */}
       <div className="auth-bg-layer">
-        <div className="gold-swoosh gold-swoosh-1"></div>
-        <div className="gold-swoosh gold-swoosh-2"></div>
-        <div className="gold-swoosh gold-swoosh-3"></div>
-        <div className="ambient-glow gold-glow"></div>
+        <div className="bg-grid-pattern"></div>
+        <div className="bg-orb orb-1"></div>
+        <div className="bg-orb orb-2"></div>
+        <div className="bg-orb orb-3"></div>
+        <div className="bg-stars"></div>
       </div>
 
       <div className="auth-login-layout">
         
-        {/* Left Side: Brand Logo (Gold) */}
+        {/* Left Side: Brand Logo */}
         <div className="auth-brand-panel">
           <div className="auth-brand-inner">
+             <div className="logo-glow-ring"></div>
              <img src="/logo.png" alt="Ravencia Logo" className="auth-logo-img" />
-             <div className="logo-divider">
-                <span></span><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 0l4 12-4 12-4-12 4-12z"/></svg><span></span>
+             <div className="brand-text-block">
+                <h2 className="glitch-text" data-text="RAVENCIA">RAVENCIA</h2>
+                <p>Yeni Nesil Yönetim Sistemleri</p>
              </div>
           </div>
         </div>
 
-        {/* Right Side: Golden Form Panel */}
+        {/* Right Side: Ultra Premium Glass Card */}
         <div className="auth-form-panel">
+          
           <div className="auth-login-card">
+             {/* Rotating Gradient Border Wrapper */}
+             <div className="card-border-wrap"></div>
              
-             <div className="auth-card-header">
-                <div className="shield-icon">
-                   <svg width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                </div>
-                <h1>Yönetici girişi</h1>
-                <p className="welcome-text">Hoş geldiniz</p>
-                <div className="auth-card-divider">
-                   <span></span><svg viewBox="0 0 24 24" fill="currentColor"><rect x="12" y="2" width="10" height="10" transform="rotate(45 12 2)"/></svg><span></span>
-                </div>
+             <div className="card-content-inner">
+                 <div className="auth-card-header">
+                    <div className="header-icon-wrap">
+                       <div className="icon-pulse"></div>
+                       <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"/></svg>
+                    </div>
+                    <h1>Sisteme Giriş</h1>
+                    <p className="welcome-text">Güvenli yönetim paneline hoş geldiniz.</p>
+                 </div>
+                 
+                 <form onSubmit={submit} className="auth-form-grid">
+                    
+                    {/* Floating Label Input - Email */}
+                    <div className={`auth-float-group ${emailFocused || emailVal ? 'is-active' : ''}`}>
+                       <div className="float-input-wrap">
+                          <input name="email" type="email" autoComplete="email" required className="float-input" 
+                             onFocus={() => setEmailFocused(true)} onBlur={() => setEmailFocused(false)} 
+                             onChange={(e) => setEmailVal(e.target.value)} value={emailVal} />
+                          <label className="float-label">E-posta adresi</label>
+                          <div className="float-icon">
+                             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                          </div>
+                          <div className="input-glow-bar"></div>
+                       </div>
+                    </div>
+                    
+                    {/* Floating Label Input - Password */}
+                    <div className={`auth-float-group ${passFocused || passVal ? 'is-active' : ''}`}>
+                       <div className="float-input-wrap">
+                          <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} className="float-input" 
+                             onFocus={() => setPassFocused(true)} onBlur={() => setPassFocused(false)} 
+                             onChange={(e) => setPassVal(e.target.value)} value={passVal} />
+                          <label className="float-label">Parola</label>
+                          <div className="float-icon">
+                             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                          </div>
+                          <div className="input-glow-bar"></div>
+                       </div>
+                    </div>
+                    
+                    <div className="auth-actions-row">
+                       <label className="cyber-checkbox-label">
+                          <input type="checkbox" className="cyber-checkbox" />
+                          <div className="checkbox-box"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div>
+                          <span>Oturumu açık tut</span>
+                       </label>
+                       <a href="#" className="cyber-link">Şifremi Unuttum</a>
+                    </div>
+                    
+                    {error && (
+                       <div className="auth-error-box">
+                         <div className="error-bar"></div>
+                         <span>{error}</span>
+                       </div>
+                    )}
+                    
+                    <button type="submit" disabled={loading} className="cyber-button">
+                       <span className="btn-bg"></span>
+                       <span className="btn-text">{loading ? 'DOĞRULANIYOR...' : 'GİRİŞ YAP'}</span>
+                       {!loading && <svg className="btn-icon" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>}
+                    </button>
+                    
+                 </form>
              </div>
-             
-             <form onSubmit={submit} className="auth-form-grid">
-                
-                <div className="auth-field-group">
-                   <label>E-posta adresi</label>
-                   <div className="auth-field-wrap">
-                      <input name="email" type="email" autoComplete="email" required placeholder="E-posta adresinizi girin" className="login-input" />
-                      <div className="auth-field-icon">
-                         <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                      </div>
-                   </div>
-                </div>
-                
-                <div className="auth-field-group">
-                   <label>Parola</label>
-                   <div className="auth-field-wrap">
-                      <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parolanızı girin" className="login-input" />
-                      <div className="auth-field-icon">
-                         <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                      </div>
-                   </div>
-                </div>
-                
-                <div className="auth-remember-row">
-                   <label className="auth-remember-label">
-                      <input type="checkbox" className="login-checkbox" />
-                      <span>Beni hatırla</span>
-                   </label>
-                   <a href="#" className="auth-forgot-link">Şifrenizi mi unuttunuz?</a>
-                </div>
-                
-                {error && (
-                   <div className="auth-error">
-                     <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                     <span>{error}</span>
-                   </div>
-                )}
-                
-                <button type="submit" disabled={loading} className="login-button">
-                   {loading ? 'İşleminiz yapılıyor...' : 'Panele giriş yap'}
-                   {!loading && <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg>}
-                </button>
-                
-                <div className="secure-badge">
-                   <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-                   <span>Güvenli oturum: Tüm verileriniz şifrelenerek korunur.</span>
-                </div>
-             </form>
           </div>
+          
         </div>
       </div>
       
-      {/* Footer */}
-      <div className="auth-login-footer">
-         <div className="footer-left">
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-            Ravencia Yönetim Paneli
-         </div>
-         <div className="footer-center">© 2025 Ravencia. Tüm hakları saklıdır.</div>
-         <div className="footer-right">
-            <a href="#">Gizlilik Politikası</a>
-            <span className="dot"></span>
-            <a href="#">Kullanım Koşulları</a>
-            <span className="dot"></span>
-            <a href="#">
-               <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-               Destek
-            </a>
+      {/* Cyber Footer */}
+      <div className="auth-footer-bar">
+         <div className="footer-line"></div>
+         <div className="footer-content">
+            <span>RAVENCIA CORE v2.6.0</span>
+            <span className="divider">/</span>
+            <span className="status-indicator"><i className="pulse-dot"></i> SECURE CONNECTION</span>
+            <span className="divider">/</span>
+            <span>© 2025 ALL RIGHTS RESERVED</span>
          </div>
       </div>
     </div>
