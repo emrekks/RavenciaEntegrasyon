@@ -48,61 +48,80 @@ function Login() {
   const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
   return (
-    <div className="flex min-h-screen font-sans bg-white">
-      <div className="hidden lg:flex w-[45%] bg-[#0a1128] p-12 flex-col justify-between relative overflow-hidden text-white">
-        <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[50%] bg-blue-600/30 rounded-full blur-[100px]" />
-        <div className="absolute -bottom-[20%] -right-[10%] w-[60%] h-[50%] bg-teal-500/20 rounded-full blur-[100px]" />
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-blue-600 font-bold text-xl shadow-lg shadow-blue-900/50">R</div>
-          <div className="leading-tight">
-            <strong className="block text-xl tracking-tight">Ravencia</strong>
-            <span className="text-blue-200/80 text-sm font-medium tracking-wide">Marketplace Hub</span>
+    <div className="relative min-h-screen bg-[#050610] text-white flex flex-col font-sans overflow-hidden">
+      <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-blue-900/10 rounded-full blur-[150px]" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-900/10 rounded-full blur-[150px]" />
+      <div className="absolute top-0 left-1/4 w-[1px] h-full bg-gradient-to-b from-transparent via-blue-500/10 to-transparent rotate-45 transform origin-top" />
+      <div className="absolute bottom-0 right-1/4 w-[1px] h-full bg-gradient-to-t from-transparent via-indigo-500/10 to-transparent rotate-45 transform origin-bottom" />
+      <div className="flex-1 flex flex-col lg:flex-row items-center justify-center relative z-10 px-6 w-full max-w-6xl mx-auto">
+        <div className="lg:w-1/2 flex flex-col items-center justify-center mb-16 lg:mb-0">
+          <div className="relative flex flex-col items-center justify-center">
+             <div className="absolute w-[320px] h-[320px] border border-blue-400/20 rounded-full flex items-center justify-center">
+                <div className="w-full h-full rounded-full shadow-[0_0_100px_rgba(59,130,246,0.15)]" />
+             </div>
+             <div className="text-[140px] font-serif leading-none italic text-slate-200 relative z-10" style={{ fontFamily: 'Georgia, serif' }}>
+               R
+             </div>
+             <div className="text-xl tracking-[0.45em] font-light mt-4 text-slate-300 relative z-10 ml-2">
+               RAVENCIA
+             </div>
           </div>
         </div>
-        <div className="relative z-10 mb-12 max-w-md">
-          <h1 className="text-4xl font-extrabold mb-5 tracking-tight leading-[1.15]">E-ticaret operasyonunuz <br/><span className="text-blue-400">tek merkezde.</span></h1>
-          <p className="text-slate-300 text-lg leading-relaxed">Trendyol, E-Faturam ve diğer pazaryerleri entegrasyonlarıyla süreçlerinizi hızlandırın ve satışlarınıza odaklanın.</p>
+        <div className="lg:w-1/2 flex items-center justify-center w-full">
+          <div className="w-full max-w-[420px] p-10 bg-[#0c0f1c]/70 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl relative">
+             <div className="text-center mb-8">
+                <h1 className="text-[1.35rem] font-serif text-slate-200 tracking-wide">Ravencia Yönetim Paneli</h1>
+                <div className="mt-3 flex items-center justify-center text-slate-500">
+                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0l2 10 10 2-10 2-2 10-2-10-10-2 10-2z"/></svg>
+                </div>
+             </div>
+             <h2 className="text-slate-300 text-sm mb-5">Oturum aç</h2>
+             <form onSubmit={submit} className="space-y-4">
+                <div className="relative">
+                   <input name="email" type="email" autoComplete="username" required placeholder="E-posta"
+                      className="w-full px-4 py-3.5 rounded-xl border border-white/10 bg-[#13172c]/80 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-colors"
+                   />
+                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">
+                      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                   </div>
+                </div>
+                <div className="relative">
+                   <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parola"
+                      className="w-full px-4 py-3.5 rounded-xl border border-white/10 bg-[#13172c]/80 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-colors"
+                   />
+                   <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-3 text-slate-500">
+                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                   </div>
+                </div>
+                <div className="flex items-center justify-between text-sm py-2">
+                   <label className="flex items-center gap-2 text-slate-400 cursor-pointer">
+                      <input type="checkbox" className="w-4 h-4 rounded border-white/20 bg-transparent text-indigo-500 focus:ring-indigo-500/50 focus:ring-offset-0 focus:ring-1" />
+                      <span>Beni hatırla</span>
+                   </label>
+                   <a href="#" className="text-indigo-400 hover:text-indigo-300 transition-colors">Şifremi unuttum?</a>
+                </div>
+                {error && (
+                   <div className="p-3 rounded-xl bg-red-900/30 border border-red-500/30 text-red-400 text-sm flex items-center gap-3">
+                     <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                     <span>{error}</span>
+                   </div>
+                )}
+                <button type="submit" disabled={loading}
+                   className="w-full mt-2 py-3.5 px-4 bg-gradient-to-r from-indigo-900/80 to-[#232959] hover:from-indigo-800 hover:to-[#2a316b] border border-indigo-500/30 text-white rounded-xl font-medium transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 group">
+                   {loading ? 'Giriş yapılıyor...' : 'Güvenli giriş'}
+                   {!loading && <svg className="w-4 h-4 text-indigo-300 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>}
+                </button>
+             </form>
+          </div>
         </div>
       </div>
-      <div className="flex-1 flex flex-col justify-center px-6 sm:px-16 lg:px-24 xl:px-32 relative">
-        <div className="w-full max-w-[420px] mx-auto">
-          <div className="lg:hidden flex items-center gap-3 mb-12">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-600 text-white font-bold text-lg shadow-md">R</div>
-            <div className="leading-tight">
-              <strong className="block text-xl tracking-tight text-slate-900">Ravencia</strong>
-              <span className="text-slate-500 text-sm font-medium">Marketplace Hub</span>
-            </div>
-          </div>
-          <div className="mb-10">
-            <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 font-bold text-xs rounded-full tracking-wider uppercase mb-4 shadow-sm border border-blue-100">Güvenli Yönetim Paneli</span>
-            <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 mb-2">Tekrar hoş geldiniz</h2>
-            <p className="text-slate-500 text-base">Devam etmek için yönetici hesabınızla oturum açın.</p>
-          </div>
-          <form onSubmit={submit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1.5">E-posta adresi</label>
-              <input name="email" type="email" autoComplete="username" required 
-                className="w-full px-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 font-medium placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition-all shadow-sm" 
-                placeholder="ornek@ravencia.com" />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1.5">Parola</label>
-              <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} 
-                className="w-full px-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 font-medium placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition-all shadow-sm" 
-                placeholder="•••••••••••••••" />
-            </div>
-            {error && (
-              <div className="p-3.5 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm font-medium flex items-center gap-3">
-                <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                <span>{error}</span>
-              </div>
-            )}
-            <button type="submit" disabled={loading}
-              className="w-full mt-2 py-3.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-all shadow-lg shadow-slate-900/20 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed">
-              {loading ? 'Giriş yapılıyor...' : 'Güvenli giriş'}
-            </button>
-          </form>
-        </div>
+      <div className="relative z-10 w-full px-8 py-5 border-t border-white/5 bg-[#05060b]/80 backdrop-blur-sm flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 mt-auto">
+         <div>© {new Date().getFullYear()} Ravencia. Tüm hakları saklıdır.</div>
+         <div className="flex items-center gap-2 mt-2 sm:mt-0">
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            Ravencia Yönetim Paneli
+         </div>
       </div>
     </div>
   )
