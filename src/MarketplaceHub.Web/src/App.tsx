@@ -46,123 +46,66 @@ export function App() {
 
 function Login() {
   const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
-  const [emailFocused, setEmailFocused] = useState(false); const [passFocused, setPassFocused] = useState(false);
-  const [emailVal, setEmailVal] = useState(''); const [passVal, setPassVal] = useState('');
   
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
 
   return (
-    <div className="auth-login-page ultimate-glass">
+    <div className="auth-saas-page">
       
-      {/* Complex Animated Background */}
-      <div className="auth-bg-layer">
-        <div className="bg-grid-pattern"></div>
-        <div className="bg-orb orb-1"></div>
-        <div className="bg-orb orb-2"></div>
-        <div className="bg-orb orb-3"></div>
-        <div className="bg-stars"></div>
+      {/* Subtle SaaS Background */}
+      <div className="saas-bg">
+        <div className="saas-glow"></div>
+        <div className="saas-grid"></div>
       </div>
-
-      <div className="auth-login-layout">
+      
+      <div className="saas-container">
         
-        {/* Left Side: Brand Logo */}
-        <div className="auth-brand-panel">
-          <div className="auth-brand-inner">
-             <div className="logo-glow-ring"></div>
-             <img src="/logo.png" alt="Ravencia Logo" className="auth-logo-img" />
-             <div className="brand-text-block">
-                <h2 className="glitch-text" data-text="RAVENCIA">RAVENCIA</h2>
-                <p>Yeni Nesil Yönetim Sistemleri</p>
-             </div>
-          </div>
+        <div className="saas-header">
+           <img src="/logo.png" alt="Ravencia Entegrasyon" className="saas-logo" />
+           <h1>Yönetim Paneli</h1>
+           <p>E-ticaret entegrasyon sistemine giriş yapın</p>
         </div>
-
-        {/* Right Side: Ultra Premium Glass Card */}
-        <div className="auth-form-panel">
-          
-          <div className="auth-login-card">
-             {/* Rotating Gradient Border Wrapper */}
-             <div className="card-border-wrap"></div>
-             
-             <div className="card-content-inner">
-                 <div className="auth-card-header">
-                    <div className="header-icon-wrap">
-                       <div className="icon-pulse"></div>
-                       <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"/></svg>
-                    </div>
-                    <h1>Sisteme Giriş</h1>
-                    <p className="welcome-text">Güvenli yönetim paneline hoş geldiniz.</p>
+        
+        <div className="saas-card">
+           <form onSubmit={submit} className="saas-form">
+              
+              <div className="saas-field">
+                 <label>E-posta Adresi</label>
+                 <input name="email" type="email" autoComplete="email" required placeholder="ornek@sirket.com" />
+              </div>
+              
+              <div className="saas-field">
+                 <div className="saas-field-header">
+                    <label>Parola</label>
                  </div>
-                 
-                 <form onSubmit={submit} className="auth-form-grid">
-                    
-                    {/* Floating Label Input - Email */}
-                    <div className={`auth-float-group ${emailFocused || emailVal ? 'is-active' : ''}`}>
-                       <div className="float-input-wrap">
-                          <input name="email" type="email" autoComplete="email" required className="float-input" 
-                             onFocus={() => setEmailFocused(true)} onBlur={() => setEmailFocused(false)} 
-                             onChange={(e) => setEmailVal(e.target.value)} value={emailVal} />
-                          <label className="float-label">E-posta adresi</label>
-                          <div className="float-icon">
-                             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                          </div>
-                          <div className="input-glow-bar"></div>
-                       </div>
-                    </div>
-                    
-                    {/* Floating Label Input - Password */}
-                    <div className={`auth-float-group ${passFocused || passVal ? 'is-active' : ''}`}>
-                       <div className="float-input-wrap">
-                          <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} className="float-input" 
-                             onFocus={() => setPassFocused(true)} onBlur={() => setPassFocused(false)} 
-                             onChange={(e) => setPassVal(e.target.value)} value={passVal} />
-                          <label className="float-label">Parola</label>
-                          <div className="float-icon">
-                             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                          </div>
-                          <div className="input-glow-bar"></div>
-                       </div>
-                    </div>
-                    
-                    <div className="auth-actions-row">
-                       <label className="cyber-checkbox-label">
-                          <input type="checkbox" className="cyber-checkbox" />
-                          <div className="checkbox-box"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div>
-                          <span>Oturumu açık tut</span>
-                       </label>
-                       <a href="#" className="cyber-link">Şifremi Unuttum</a>
-                    </div>
-                    
-                    {error && (
-                       <div className="auth-error-box">
-                         <div className="error-bar"></div>
-                         <span>{error}</span>
-                       </div>
-                    )}
-                    
-                    <button type="submit" disabled={loading} className="cyber-button">
-                       <span className="btn-bg"></span>
-                       <span className="btn-text">{loading ? 'DOĞRULANIYOR...' : 'GİRİŞ YAP'}</span>
-                       {!loading && <svg className="btn-icon" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>}
-                    </button>
-                    
-                 </form>
-             </div>
-          </div>
-          
+                 <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="••••••••" />
+              </div>
+              
+              <div className="saas-options">
+                 <label className="saas-checkbox">
+                    <input type="checkbox" />
+                    <span>Beni hatırla</span>
+                 </label>
+                 <a href="#" className="saas-link">Şifremi unuttum</a>
+              </div>
+              
+              {error && (
+                 <div className="saas-error">
+                   <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                   <span>{error}</span>
+                 </div>
+              )}
+              
+              <button type="submit" disabled={loading} className="saas-button">
+                 {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+              </button>
+           </form>
         </div>
-      </div>
-      
-      {/* Cyber Footer */}
-      <div className="auth-footer-bar">
-         <div className="footer-line"></div>
-         <div className="footer-content">
-            <span>RAVENCIA CORE v2.6.0</span>
-            <span className="divider">/</span>
-            <span className="status-indicator"><i className="pulse-dot"></i> SECURE CONNECTION</span>
-            <span className="divider">/</span>
-            <span>© 2025 ALL RIGHTS RESERVED</span>
-         </div>
+        
+        <div className="saas-footer">
+           <p>© {new Date().getFullYear()} Ravencia Entegrasyon Sistemleri. Tüm hakları saklıdır.</p>
+        </div>
+        
       </div>
     </div>
   );
