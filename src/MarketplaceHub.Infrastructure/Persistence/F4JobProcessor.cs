@@ -308,20 +308,20 @@ public sealed class F4JobProcessor(AppDbContext db, IInvoiceProviderPort provide
         if (existing is not null)
         {
             existing.PermanentUrl ??= document.PermanentUrl; invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
-            await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, correlationId, cancellationToken);
+            await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, existing.PermanentUrl, correlationId, cancellationToken);
             await db.SaveChangesAsync(cancellationToken); return true;
         }
         await using var content = new MemoryStream(document.Content, writable: false); var assetId = Guid.CreateVersion7(); var stored = await files.SaveAsync(tenantId, $"{assetId:N}-{Path.GetFileName(document.FileName)}", document.MimeType, content, document.Content.LongLength, cancellationToken);
         db.FileAssets.Add(new FileAsset { Id = assetId, TenantId = tenantId, Classification = "INVOICE_DOCUMENT", RelativePath = stored, OriginalNameSafe = Path.GetFileName(document.FileName), MimeType = document.MimeType, SizeBytes = document.Content.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() });
         db.InvoiceDocuments.Add(new InvoiceDocument { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, DocumentType = document.DocumentKind, FileAssetId = assetId, Sha256 = hash, ExternalDocumentId = document.ExternalDocumentId, PermanentUrl = document.PermanentUrl, CreatedAt = timeProvider.GetUtcNow() });
         invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
-        await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, correlationId, cancellationToken);
+        await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, document.PermanentUrl, correlationId, cancellationToken);
         await db.SaveChangesAsync(cancellationToken); return true;
     }
 
-    private async Task QueueMarketplaceDeliveryAfterDocument(Guid tenantId, Invoice invoice, string correlationId, CancellationToken cancellationToken)
+    private async Task QueueMarketplaceDeliveryAfterDocument(Guid tenantId, Invoice invoice, string? permanentUrl, string correlationId, CancellationToken cancellationToken)
     {
-        if (invoice.Status != InvoiceStatus.Accepted || invoice.PackageId is null) return;
+        if (invoice.Status != InvoiceStatus.Accepted || invoice.PackageId is null || string.IsNullOrWhiteSpace(permanentUrl)) return;
         var marketplaceConnectionId = await db.ShipmentPackages.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == invoice.PackageId)
             .Select(x => (Guid?)x.ConnectionId)
