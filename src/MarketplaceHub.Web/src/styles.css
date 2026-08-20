@@ -15,7 +15,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .auth-isometric-page { min-height: 100vh; background-color: #0b0f19; font-family: Inter, ui-sans-serif, system-ui, sans-serif; display: flex; overflow: hidden; position: relative; color: #f8fafc; }
 
 /* Form Panel */
-.iso-form-panel { position: relative; z-index: 10; width: 30%; min-width: 400px; display: flex; align-items: center; justify-content: center; padding: 40px; background: rgba(11, 15, 25, 0.8); backdrop-filter: blur(20px); border-right: 1px solid rgba(255,255,255,0.05); box-shadow: 20px 0 50px rgba(0,0,0,0.5); }
+.iso-form-panel { position: relative; z-index: 10; width: 500px; display: flex; align-items: center; justify-content: center; padding: 40px; background: rgba(11, 15, 25, 0.8); backdrop-filter: blur(20px); border-right: 1px solid rgba(255,255,255,0.05); box-shadow: 20px 0 50px rgba(0,0,0,0.5); }
 .iso-card { width: 100%; max-width: 360px; transform: translateY(-8vh); }
 
 .iso-header { margin-bottom: 32px; display: flex; flex-direction: column; align-items: center; text-align: center; }
@@ -44,7 +44,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .iso-error { padding: 12px; border-radius: 8px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; font-size: 0.85rem; text-align: center; }
 
 /* Static Image Background (70%) */
-.login-image-wrapper { flex: 1; width: 70%; position: relative; overflow: hidden; background-image: url('/login-bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat; }
+.login-image-wrapper { flex: 1; position: relative; overflow: hidden; background-image: url('/login-bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat; }
 
 @media (max-width: 900px) { .iso-form-panel { width: 100%; border: none; } .login-image-wrapper { display: none; } }
 
