@@ -140,6 +140,89 @@ main > header { height:78px; display:flex; justify-content:flex-end; align-items
 .status { min-height:50vh; display:grid; place-content:center; justify-items:center; gap:1rem; color:#35405a; }.spinner { width:32px; height:32px; border:3px solid #dbe4f5; border-top-color:#1457d9; border-radius:50%; animation:spin .8s linear infinite; }@keyframes spin { to { transform:rotate(360deg); } }
 @media (max-width:760px) { .app-shell { grid-template-columns:1fr; } aside { position:static; height:auto; } aside nav { display:flex; margin-top:1.2rem; } .scope { display:none; } main > header { display:none; } .content { padding:2rem 1.2rem; } .grid { grid-template-columns:1fr; } }
 @media (prefers-reduced-motion:reduce) { .spinner { animation:none; } }
+
+/* Login flow visual: sakin cam kartlar ve okunaklı servis akışı. */
+.iso-bg-wrapper {
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(84, 76, 196, .22), transparent 30%),
+    radial-gradient(circle at 85% 18%, rgba(37, 99, 235, .16), transparent 28%),
+    #080d1c;
+  perspective: none;
+}
+.iso-bg-wrapper::before,
+.iso-bg-wrapper::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(1px);
+}
+.iso-bg-wrapper::before {
+  width: 420px; height: 420px; left: 12%; top: 14%;
+  border: 1px solid rgba(129, 140, 248, .16);
+  box-shadow: 0 0 90px rgba(99, 102, 241, .08), inset 0 0 60px rgba(99, 102, 241, .05);
+}
+.iso-bg-wrapper::after {
+  width: 220px; height: 220px; right: 8%; bottom: 8%;
+  border: 1px solid rgba(56, 189, 248, .10);
+}
+.iso-grid {
+  width: min(850px, 92%); height: min(700px, 84vh);
+  transform: none;
+  transform-style: flat;
+}
+.iso-grid::before {
+  inset: 2% 4%;
+  background-image: linear-gradient(rgba(148,163,184,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.035) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at center, black 20%, transparent 76%);
+}
+.iso-svg { z-index: 0; transform: none; }
+.svg-line { stroke: rgba(129, 140, 248, .20); stroke-width: .65; stroke-dasharray: 2 2; }
+.svg-packet { stroke-width: 1.6; stroke-dasharray: 7 93; opacity: .95; animation-duration: 3.2s; }
+.iso-node {
+  z-index: 2;
+  width: 158px; height: 62px;
+  transform: translate(-50%, -50%);
+  animation: nodeBreath 5s ease-in-out infinite;
+}
+.iso-node .platform, .iso-node .cube { display: none; }
+.node-label {
+  top: 0; left: 0; width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: flex-start;
+  gap: .65rem; padding: 0 1rem 0 2.65rem;
+  transform: none;
+  border: 1px solid rgba(148,163,184,.22);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(24,33,58,.90), rgba(13,20,38,.72));
+  box-shadow: 0 16px 32px rgba(0,0,0,.26), inset 0 1px rgba(255,255,255,.08);
+  color: #e7eaff; font-size: .78rem; letter-spacing: .01em;
+  backdrop-filter: blur(14px);
+}
+.node-label::before {
+  content: ''; position: absolute; left: 1rem; width: 9px; height: 9px;
+  border-radius: 50%; background: #64748b; box-shadow: 0 0 0 4px rgba(100,116,139,.12);
+}
+.node-label::after {
+  content: 'AKTİF'; position: absolute; right: .8rem; bottom: .55rem;
+  color: #8ca0c8; font-size: .52rem; font-weight: 800; letter-spacing: .12em;
+}
+.node-core { width: 190px; height: 82px; z-index: 4; animation-duration: 4s; }
+.node-core .node-label {
+  padding-left: 3rem; border-color: rgba(129,140,248,.7);
+  background: linear-gradient(135deg, rgba(79,70,229,.82), rgba(29,35,75,.94));
+  box-shadow: 0 0 0 1px rgba(129,140,248,.16), 0 20px 44px rgba(79,70,229,.28), inset 0 1px rgba(255,255,255,.16);
+  font-size: .86rem; font-weight: 800;
+}
+.node-core .node-label::before { width: 11px; height: 11px; background: #a7f3d0; box-shadow: 0 0 0 5px rgba(167,243,208,.14), 0 0 18px #34d399; }
+.node-core .node-label::after { content: 'API HUB'; color: #c7d2fe; }
+.node-amazon .node-label::before, .node-trendyol .node-label::before { background: #fb923c; box-shadow: 0 0 0 4px rgba(251,146,60,.13); }
+.node-hepsiburada .node-label::before, .node-pazarama .node-label::before { background: #c084fc; box-shadow: 0 0 0 4px rgba(192,132,252,.13); }
+.node-fatura .node-label::before, .node-ticimax .node-label::before { background: #38bdf8; box-shadow: 0 0 0 4px rgba(56,189,248,.13); }
+.node-shopify .node-label::before { background: #34d399; box-shadow: 0 0 0 4px rgba(52,211,153,.13); }
+.node-n11 .node-label::before { background: #f87171; box-shadow: 0 0 0 4px rgba(248,113,113,.13); }
+@keyframes nodeBreath { 0%, 100% { filter: brightness(.96); } 50% { filter: brightness(1.08); } }
 .page-head { display:flex; justify-content:space-between; align-items:end; gap:1rem; margin-bottom:1.5rem; }
 .page-head h1 { margin-bottom:0; }
 .button-link { display:inline-flex; align-items:center; padding:.9rem 1rem; border-radius:10px; background:#1457d9; color:#fff; text-decoration:none; font-weight:800; }
