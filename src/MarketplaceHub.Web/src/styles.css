@@ -13,6 +13,31 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .login-input::placeholder { color: #64748b !important; }
 .login-button { background: linear-gradient(90deg, #2b2e4d 0%, #1e2039 100%) !important; border: 1px solid rgba(255, 255, 255, 0.05) !important; color: #e2e8f0 !important; border-radius: 8px !important; padding: 0.9rem !important; font-size: 0.85rem !important; font-weight: 500 !important; transition: all 0.2s; }
 .login-button:hover { background: linear-gradient(90deg, #333659 0%, #242644 100%) !important; }
+.auth-login-page { position:relative; isolation:isolate; min-height:100vh; overflow:hidden; color:#eef2ff; background:#070b15 !important; }
+.auth-login-page::before,.auth-login-page::after { content:""; position:absolute; inset:0; pointer-events:none; z-index:-1; }
+.auth-login-page::before { opacity:.62; background:linear-gradient(135deg, transparent 0 16%, rgba(154,164,255,.18) 16.1%, transparent 16.25% 42%, rgba(117,126,239,.1) 42.1%, transparent 42.25%),linear-gradient(32deg, transparent 0 51%, rgba(137,146,255,.14) 51.1%, transparent 51.25% 75%, rgba(120,130,240,.1) 75.1%, transparent 75.25%); }
+.auth-login-page::after { background:radial-gradient(circle at 19% 43%, rgba(76,78,183,.24), transparent 23%),radial-gradient(circle at 79% 50%, rgba(84,82,196,.14), transparent 24%),radial-gradient(circle at 52% 6%, rgba(108,105,255,.22), transparent 10%); }
+.auth-login-layout { width:min(1120px,calc(100% - 64px)); min-height:calc(100vh - 94px); gap:clamp(42px,8vw,118px); }
+.auth-brand-panel { min-width:0; }
+.auth-brand-panel > div { margin-bottom:0 !important; transform:translateY(-8px); }
+.auth-brand-panel > div > div:first-child { font-family:"Pinyon Script",cursive !important; font-size:clamp(9rem,18vw,13.8rem) !important; line-height:.7 !important; letter-spacing:-.06em; text-shadow:0 0 35px rgba(183,190,255,.12),0 16px 28px rgba(0,0,0,.48); }
+.auth-brand-panel > div > div:last-child { margin-top:2rem !important; margin-left:.45rem !important; font-family:Inter,ui-sans-serif,sans-serif !important; font-size:1.22rem !important; letter-spacing:.47em !important; color:#d5d9e8 !important; }
+.auth-security-card { left:clamp(28px,6vw,84px) !important; bottom:74px !important; max-width:286px !important; padding:14px 16px !important; border:1px solid rgba(177,187,229,.15) !important; border-radius:10px !important; background:rgba(10,14,27,.42) !important; box-shadow:0 10px 30px rgba(0,0,0,.22) !important; }
+.auth-security-card > div:first-child { border-color:rgba(190,198,235,.28) !important; }
+.auth-security-card > div:last-child > div:first-child { color:#a2aaf3 !important; font-size:.58rem !important; }
+.auth-security-card > div:last-child > div:last-child { color:#aab1c8 !important; font-size:.62rem !important; }
+.auth-form-panel { min-width:0; }
+.auth-login-card { width:min(100%,430px) !important; padding:32px !important; border:1px solid rgba(183,191,226,.24) !important; border-radius:10px !important; background:linear-gradient(145deg,rgba(25,29,44,.68),rgba(10,13,23,.78)) !important; box-shadow:0 20px 60px rgba(0,0,0,.48),0 0 0 1px rgba(255,255,255,.025) inset !important; }
+.auth-login-card h1 { margin:0 !important; color:#d9dbe4 !important; font-family:Cinzel,Georgia,serif !important; font-size:1.25rem !important; font-weight:500 !important; letter-spacing:.01em !important; }
+.auth-login-card h2 { color:#b9bfce !important; font-size:.78rem !important; font-weight:400 !important; }
+.auth-login-card form { gap:.7rem !important; margin-top:1.35rem !important; }
+.auth-login-card .login-input { min-height:35px; padding:.55rem .75rem !important; padding-right:2.5rem !important; border-radius:5px !important; background:rgba(7,10,18,.48) !important; border-color:rgba(171,181,218,.2) !important; font-size:.72rem !important; }
+.auth-login-card .login-input:focus { border-color:#7375d4 !important; box-shadow:0 0 0 1px rgba(115,117,212,.35),0 0 18px rgba(95,92,220,.15) !important; }
+.auth-login-card .login-button { min-height:37px; margin-top:.35rem !important; border:1px solid rgba(143,143,238,.38) !important; background:linear-gradient(100deg,#35365d,#5555a1) !important; color:#ececff !important; font-size:.72rem !important; }
+.auth-login-card .login-button:hover { background:linear-gradient(100deg,#414274,#6262b8) !important; }
+.auth-login-card .auth-login-footer { border-color:rgba(183,191,226,.12) !important; }
+.auth-login-footer { padding:14px 32px !important; color:#8d95aa !important; font-size:.64rem !important; }
+@media (max-width:760px) { .auth-login-layout { width:calc(100% - 28px); min-height:calc(100vh - 76px); gap:20px; } .auth-brand-panel { display:none; } .auth-login-card { padding:26px 22px !important; } .auth-login-footer { padding:12px 16px !important; text-align:center; } .auth-security-card { display:none !important; } }
 .login-checkbox { appearance: none !important; width: 14px !important; height: 14px !important; border: 1px solid rgba(255, 255, 255, 0.2) !important; background: transparent !important; border-radius: 3px !important; padding: 0 !important; margin: 0 !important; display: grid; place-content: center; cursor: pointer; transition: all 0.2s; }
 .login-checkbox:checked { border-color: #818cf8 !important; }
 .login-checkbox:checked::before { content: ""; width: 8px; height: 8px; background: #818cf8; border-radius: 1px; }

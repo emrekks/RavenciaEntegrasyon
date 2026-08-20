@@ -48,7 +48,7 @@ function Login() {
   const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
   return (
-    <div className="relative min-h-screen bg-[#060711] text-white flex flex-col font-sans overflow-hidden">
+    <div className="auth-login-page relative min-h-screen bg-[#060711] text-white flex flex-col font-sans overflow-hidden">
       {/* Background Effects & Diagonal Rays */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
          <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%]">
@@ -63,7 +63,7 @@ function Login() {
       </div>
 
       {/* Güvenli Erişim Box */}
-      <div className="absolute bottom-16 left-12 max-w-[320px] p-4 rounded-xl border border-white/[0.04] bg-[#0c0d14]/40 backdrop-blur-md flex items-start gap-4 shadow-2xl z-20 hidden xl:flex">
+      <div className="auth-security-card absolute bottom-16 left-12 max-w-[320px] p-4 rounded-xl border border-white/[0.04] bg-[#0c0d14]/40 backdrop-blur-md flex items-start gap-4 shadow-2xl z-20 hidden xl:flex">
         <div className="p-2.5 rounded-lg border border-white/[0.08] text-slate-400 opacity-80 shrink-0">
            <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M8 11h8v6H8z"/><path d="M10 11V9a2 2 0 114 0v2"/></svg>
         </div>
@@ -73,10 +73,10 @@ function Login() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col lg:flex-row items-center justify-center relative z-10 px-6 w-full max-w-[1300px] mx-auto gap-12 lg:gap-32">
+      <div className="auth-login-layout flex-1 flex flex-col lg:flex-row items-center justify-center relative z-10 px-6 w-full max-w-[1300px] mx-auto gap-12 lg:gap-32">
         
         {/* Left Side: Logo */}
-        <div className="lg:w-1/2 flex flex-col items-center justify-center">
+        <div className="auth-brand-panel lg:w-1/2 flex flex-col items-center justify-center">
           <div className="relative flex flex-col items-center justify-center mb-8">
              <div className="text-[220px] leading-[0.8] relative z-10 pr-4 drop-shadow-[0_10px_15px_rgba(0,0,0,0.4)]" 
                   style={{ fontFamily: "'Pinyon Script', cursive", background: "linear-gradient(180deg, #ffffff 0%, #cbd5e1 50%, #94a3b8 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 400 }}>
@@ -89,8 +89,8 @@ function Login() {
         </div>
 
         {/* Right Side: Login Card */}
-        <div className="lg:w-1/2 flex items-center justify-center w-full">
-          <div className="w-full max-w-[460px] p-10 bg-[#0a0b12]/60 backdrop-blur-2xl border border-white/[0.06] rounded-[18px] relative"
+        <div className="auth-form-panel lg:w-1/2 flex items-center justify-center w-full">
+          <div className="auth-login-card w-full max-w-[460px] p-10 bg-[#0a0b12]/60 backdrop-blur-2xl border border-white/[0.06] rounded-[18px] relative"
                style={{ boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
              <div className="absolute top-0 left-1/2 w-48 h-[1px]" 
                   style={{ transform: 'translateX(-50%)', background: 'linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.4), transparent)', boxShadow: '0 0 20px 2px rgba(96, 165, 250, 0.6)' }} />
@@ -165,7 +165,7 @@ function Login() {
       </div>
       
       {/* Footer */}
-      <div className="relative z-10 w-full px-10 py-5 border-t border-white/[0.03] bg-transparent flex flex-col sm:flex-row items-center justify-between text-[0.7rem] text-slate-500 mt-auto opacity-70">
+      <div className="auth-login-footer relative z-10 w-full px-10 py-5 border-t border-white/[0.03] bg-transparent flex flex-col sm:flex-row items-center justify-between text-[0.7rem] text-slate-500 mt-auto opacity-70">
          <div>© {new Date().getFullYear()} Ravencia. Tüm hakları saklıdır.</div>
          <div className="flex items-center gap-1.5 mt-2 sm:mt-0">
             <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
