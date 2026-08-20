@@ -50,109 +50,47 @@ function Login() {
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
 
   return (
-    <div className="auth-hub-page">
+    <div className="auth-mac-page">
       
-      {/* Left: Login Form Area */}
-      <div className="hub-form-section">
-         <div className="hub-form-inner">
-            
-            <div className="hub-brand">
-               <img src="/logo.png" alt="Ravencia" className="hub-logo" />
-            </div>
-            
-            <div className="hub-header">
-               <h1>Entegrasyon Merkezi</h1>
-               <p>E-ticaret kanallarınızı tek bir noktadan yönetmek için giriş yapın.</p>
-            </div>
-            
-            <form onSubmit={submit} className="hub-form">
-               <div className="hub-input-group">
-                  <label>Kurumsal E-posta</label>
-                  <div className="hub-input-wrap">
-                     <svg className="hub-icon" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
-                     <input name="email" type="email" required placeholder="ornek@sirket.com" />
-                  </div>
-               </div>
-               
-               <div className="hub-input-group">
-                  <label>Parola</label>
-                  <div className="hub-input-wrap">
-                     <svg className="hub-icon" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
-                     <input name="password" type="password" required placeholder="••••••••" />
-                  </div>
-               </div>
-               
-               <div className="hub-form-actions">
-                  <label className="hub-checkbox">
-                     <input type="checkbox" />
-                     <div className="check-box"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div>
-                     <span>Oturumu açık tut</span>
-                  </label>
-                  <a href="#" className="hub-link">Şifremi Unuttum</a>
-               </div>
-               
-               {error && <div className="hub-error">{error}</div>}
-               
-               <button type="submit" disabled={loading} className="hub-button">
-                  {loading ? 'Doğrulanıyor...' : 'Sisteme Giriş Yap'}
-                  {!loading && <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" /></svg>}
-               </button>
-            </form>
-            
-            <div className="hub-footer">
-               <p>© 2025 Ravencia. Tüm hakları saklıdır.</p>
-            </div>
-         </div>
-      </div>
+      {/* Abstract macOS Dark Wallpaper */}
+      <div className="mac-wallpaper"></div>
       
-      {/* Right: Complex E-commerce Visual Dashboard Panels (No Space Theme) */}
-      <div className="hub-visual-section">
-         <div className="hub-mesh-bg"></div>
-         
-         <div className="hub-showcase">
-            
-            {/* Widget 1: Trendyol */}
-            <div className="glass-widget widget-1">
-               <div className="wg-header">
-                  <div className="wg-title"><span className="wg-dot trendyol"></span> Trendyol API</div>
-                  <div className="wg-badge success">Aktif</div>
-               </div>
-               <div className="wg-body">
-                  <div className="wg-stat">
-                     <span>Bekleyen Sipariş</span>
-                     <strong>1,284</strong>
-                  </div>
-                  <div className="wg-progress">
-                     <div className="wg-progress-fill" style={{width: '85%'}}></div>
-                  </div>
-               </div>
-            </div>
-            
-            {/* Widget 2: Shopify */}
-            <div className="glass-widget widget-2">
-               <div className="wg-header">
-                  <div className="wg-title"><span className="wg-dot shopify"></span> Shopify Webhook</div>
-                  <div className="wg-badge sync">Senkronize...</div>
-               </div>
-               <div className="wg-chart">
-                  <div className="bar b1"></div><div className="bar b2"></div><div className="bar b3"></div>
-                  <div className="bar b4"></div><div className="bar b5"></div><div className="bar b6"></div>
-                  <div className="bar b7"></div>
-               </div>
-            </div>
-            
-            {/* Widget 3: System Status */}
-            <div className="glass-widget widget-3">
-               <div className="wg-icon-wrap">
-                  <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
-               </div>
-               <div className="wg-text">
-                  <h4>Sistem Performansı</h4>
-                  <p>Tüm kanallar %99.9 Uptime ile çalışıyor.</p>
-               </div>
-            </div>
-            
-         </div>
+      {/* Frosted Glass Login Card */}
+      <div className="mac-glass-card">
+        <div className="mac-card-content">
+           
+           <div className="mac-brand">
+              <img src="/logo.png" alt="Ravencia" className="mac-logo" />
+           </div>
+           
+           <h1 className="mac-title">Yönetim Paneli</h1>
+           <p className="mac-subtitle">Sisteme giriş yapmak için bilgilerinizi girin.</p>
+           
+           <form onSubmit={submit} className="mac-form">
+              <div className="mac-field">
+                 <input name="email" type="email" autoComplete="email" required placeholder="E-posta adresi" />
+              </div>
+              
+              <div className="mac-field">
+                 <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="Parola" />
+              </div>
+              
+              <div className="mac-options">
+                 <label className="mac-checkbox">
+                    <input type="checkbox" />
+                    <span>Beni hatırla</span>
+                 </label>
+                 <a href="#" className="mac-link">Şifremi unuttum</a>
+              </div>
+              
+              {error && <div className="mac-error">{error}</div>}
+              
+              <button type="submit" disabled={loading} className="mac-button">
+                 {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+              </button>
+           </form>
+           
+        </div>
       </div>
       
     </div>
