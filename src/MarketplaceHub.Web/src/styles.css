@@ -51,17 +51,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 
 /* SVG Network Lines */
 .iso-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: visible; transform: translateZ(5px); }
-.svg-line { stroke: rgba(255,255,255,0.1); stroke-width: 0.3; }
-.svg-packet { stroke: #38bdf8; stroke-width: 0.6; stroke-dasharray: 4 96; animation: packetDash 3s linear infinite; filter: drop-shadow(0 0 4px #38bdf8); }
-.p-1 { animation-delay: 0.0s; stroke: #f97316; filter: drop-shadow(0 0 4px #f97316); }
-.p-2 { animation-delay: 0.5s; stroke: #a855f7; filter: drop-shadow(0 0 4px #a855f7); }
-.p-3 { animation-delay: 1.0s; stroke: #f97316; filter: drop-shadow(0 0 4px #f97316); }
-.p-4 { animation-delay: 1.5s; stroke: #0ea5e9; filter: drop-shadow(0 0 4px #0ea5e9); }
-.p-5 { animation-delay: 2.0s; stroke: #a855f7; filter: drop-shadow(0 0 4px #a855f7); }
-.p-6 { animation-delay: 2.5s; stroke: #ef4444; filter: drop-shadow(0 0 4px #ef4444); }
-.p-7 { animation-delay: 3.0s; stroke: #10b981; filter: drop-shadow(0 0 4px #10b981); }
-
-@keyframes packetDash { 0% { stroke-dashoffset: 100; } 100% { stroke-dashoffset: 0; } }
+.svg-line { stroke: rgba(255,255,255,0.1); stroke-width: 0.3; stroke-linejoin: round; }
 
 /* 3D Nodes Base */
 .iso-node { position: absolute; width: 0; height: 0; transform-style: preserve-3d; animation: floatIso 4s ease-in-out infinite alternate; }
@@ -76,15 +66,15 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .right  { transform: translateX(20px) rotateY(90deg); }
 .left   { transform: translateX(-20px) rotateY(-90deg); }
 
-/* Node Positions (Exact Center Coordinates) */
+/* Asymmetrical Node Positions (Scattered) */
 .node-core       { top: 50%; left: 50%; animation-delay: 0s; }
-.node-amazon     { top: 20%; left: 20%; animation-delay: -1s; }
-.node-hepsiburada{ top: 20%; left: 50%; animation-delay: -1.5s; }
-.node-trendyol   { top: 20%; left: 80%; animation-delay: -0.5s; }
-.node-fatura     { top: 50%; left: 80%; animation-delay: -3s; }
-.node-pazarama   { top: 80%; left: 80%; animation-delay: -2s; }
-.node-n11        { top: 80%; left: 50%; animation-delay: -1.5s; }
-.node-shopify    { top: 80%; left: 20%; animation-delay: -2.5s; }
+.node-amazon     { top: 25%; left: 15%; animation-delay: -1s; }
+.node-hepsiburada{ top: 10%; left: 35%; animation-delay: -1.5s; }
+.node-trendyol   { top: 25%; left: 85%; animation-delay: -0.5s; }
+.node-fatura     { top: 70%; left: 75%; animation-delay: -3s; }
+.node-pazarama   { top: 85%; left: 85%; animation-delay: -2s; }
+.node-n11        { top: 90%; left: 60%; animation-delay: -1.5s; }
+.node-shopify    { top: 80%; left: 25%; animation-delay: -2.5s; }
 
 /* Core Node Scale */
 .node-core .cube { transform: scale(1.5); }

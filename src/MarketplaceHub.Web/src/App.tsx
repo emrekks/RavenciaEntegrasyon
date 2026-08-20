@@ -94,25 +94,51 @@ function Login() {
       <div className="iso-bg-wrapper">
          <div className="iso-grid">
             
-            {/* Perfect SVG Network Lines */}
+            {/* SVG Network Lines (Zig-Zag Circuit Board Style) */}
             <svg className="iso-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-               {/* Base Lines */}
-               <line x1="20" y1="20" x2="50" y2="50" className="svg-line" />
-               <line x1="50" y1="20" x2="50" y2="50" className="svg-line" />
-               <line x1="80" y1="20" x2="50" y2="50" className="svg-line" />
-               <line x1="80" y1="50" x2="50" y2="50" className="svg-line" />
-               <line x1="80" y1="80" x2="50" y2="50" className="svg-line" />
-               <line x1="50" y1="80" x2="50" y2="50" className="svg-line" />
-               <line x1="20" y1="80" x2="50" y2="50" className="svg-line" />
-               
-               {/* Animated Packets */}
-               <line x1="20" y1="20" x2="50" y2="50" className="svg-packet p-1" pathLength="100" />
-               <line x1="50" y1="20" x2="50" y2="50" className="svg-packet p-2" pathLength="100" />
-               <line x1="80" y1="20" x2="50" y2="50" className="svg-packet p-3" pathLength="100" />
-               <line x1="80" y1="50" x2="50" y2="50" className="svg-packet p-4" pathLength="100" />
-               <line x1="80" y1="80" x2="50" y2="50" className="svg-packet p-5" pathLength="100" />
-               <line x1="50" y1="80" x2="50" y2="50" className="svg-packet p-6" pathLength="100" />
-               <line x1="20" y1="80" x2="50" y2="50" className="svg-packet p-7" pathLength="100" />
+               <defs>
+                  {/* Neon Glow Filter */}
+                  <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
+                     <feGaussianBlur in="SourceGraphic" stdDeviation="1" result="blur1" />
+                     <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur2" />
+                     <feMerge>
+                        <feMergeNode in="blur2" />
+                        <feMergeNode in="blur1" />
+                        <feMergeNode in="SourceGraphic" />
+                     </feMerge>
+                  </filter>
+                  {/* 3D Orb Gradient */}
+                  <radialGradient id="orb-grad" cx="30%" cy="30%" r="70%">
+                     <stop offset="0%" stopColor="#ffffff" />
+                     <stop offset="40%" stopColor="#7dd3fc" />
+                     <stop offset="100%" stopColor="#0284c7" />
+                  </radialGradient>
+               </defs>
+
+               {/* Circuit Paths */}
+               <path id="path-amazon" d="M 15 25 L 15 50 L 50 50" className="svg-line" fill="none" />
+               <path id="path-hepsiburada" d="M 35 10 L 50 10 L 50 50" className="svg-line" fill="none" />
+               <path id="path-trendyol" d="M 85 25 L 85 50 L 50 50" className="svg-line" fill="none" />
+               <path id="path-fatura" d="M 75 70 L 50 70 L 50 50" className="svg-line" fill="none" />
+               <path id="path-pazarama" d="M 85 85 L 85 50 L 50 50" className="svg-line" fill="none" />
+               <path id="path-n11" d="M 60 90 L 60 50 L 50 50" className="svg-line" fill="none" />
+               <path id="path-shopify" d="M 25 80 L 50 80 L 50 50" className="svg-line" fill="none" />
+
+               {/* 3D Glowing Orbs (Packets) */}
+               {['path-amazon', 'path-hepsiburada', 'path-trendyol', 'path-fatura', 'path-pazarama', 'path-n11', 'path-shopify'].map((pathId, i) => (
+                  <g key={pathId}>
+                     <circle r="1.2" fill="url(#orb-grad)" filter="url(#neon-glow)">
+                        <animateMotion dur={`${3 + (i % 2)}s`} repeatCount="indefinite">
+                           <mpath href={`#${pathId}`} />
+                        </animateMotion>
+                     </circle>
+                     <circle r="1.2" fill="url(#orb-grad)" filter="url(#neon-glow)">
+                        <animateMotion dur={`${3 + (i % 2)}s`} repeatCount="indefinite" begin={`${1.5 + (i % 2)}s`}>
+                           <mpath href={`#${pathId}`} />
+                        </animateMotion>
+                     </circle>
+                  </g>
+               ))}
             </svg>
 
             {/* Nodes */}
