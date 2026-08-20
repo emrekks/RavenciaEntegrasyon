@@ -94,92 +94,98 @@ function Login() {
       <div className="iso-bg-wrapper">
          <div className="iso-grid">
             
-            {/* SVG Network Lines (Zig-Zag Circuit Board Style) */}
+            {/* Perfect 3x3 SVG Network Matrix */}
             <svg className="iso-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
                <defs>
-                  {/* Neon Glow Filter */}
-                  <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
-                     <feGaussianBlur in="SourceGraphic" stdDeviation="1" result="blur1" />
-                     <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur2" />
+                  {/* High-tech Pulse Glow Filter */}
+                  <filter id="pulse-glow" x="-20%" y="-20%" width="140%" height="140%">
+                     <feGaussianBlur stdDeviation="1" result="blur" />
                      <feMerge>
-                        <feMergeNode in="blur2" />
-                        <feMergeNode in="blur1" />
+                        <feMergeNode in="blur" />
                         <feMergeNode in="SourceGraphic" />
                      </feMerge>
                   </filter>
-                  {/* 3D Orb Gradient */}
-                  <radialGradient id="orb-grad" cx="30%" cy="30%" r="70%">
-                     <stop offset="0%" stopColor="#ffffff" />
-                     <stop offset="40%" stopColor="#7dd3fc" />
-                     <stop offset="100%" stopColor="#0284c7" />
-                  </radialGradient>
                </defs>
 
-               {/* Circuit Paths */}
-               <path id="path-amazon" d="M 15 25 L 15 50 L 50 50" className="svg-line" fill="none" />
-               <path id="path-hepsiburada" d="M 35 10 L 50 10 L 50 50" className="svg-line" fill="none" />
-               <path id="path-trendyol" d="M 85 25 L 85 50 L 50 50" className="svg-line" fill="none" />
-               <path id="path-fatura" d="M 75 70 L 50 70 L 50 50" className="svg-line" fill="none" />
-               <path id="path-pazarama" d="M 85 85 L 85 50 L 50 50" className="svg-line" fill="none" />
-               <path id="path-n11" d="M 60 90 L 60 50 L 50 50" className="svg-line" fill="none" />
-               <path id="path-shopify" d="M 25 80 L 50 80 L 50 50" className="svg-line" fill="none" />
-
-               {/* 3D Glowing Orbs (Packets) */}
-               {['path-amazon', 'path-hepsiburada', 'path-trendyol', 'path-fatura', 'path-pazarama', 'path-n11', 'path-shopify'].map((pathId, i) => (
-                  <g key={pathId}>
-                     <circle r="1.2" fill="url(#orb-grad)" filter="url(#neon-glow)">
-                        <animateMotion dur={`${3 + (i % 2)}s`} repeatCount="indefinite">
-                           <mpath href={`#${pathId}`} />
-                        </animateMotion>
-                     </circle>
-                     <circle r="1.2" fill="url(#orb-grad)" filter="url(#neon-glow)">
-                        <animateMotion dur={`${3 + (i % 2)}s`} repeatCount="indefinite" begin={`${1.5 + (i % 2)}s`}>
-                           <mpath href={`#${pathId}`} />
-                        </animateMotion>
-                     </circle>
-                  </g>
-               ))}
+               {/* Base Grid Lines (Motherboard traces) */}
+               <line x1="20" y1="20" x2="50" y2="50" className="svg-line" />
+               <line x1="50" y1="20" x2="50" y2="50" className="svg-line" />
+               <line x1="80" y1="20" x2="50" y2="50" className="svg-line" />
+               <line x1="20" y1="50" x2="50" y2="50" className="svg-line" />
+               <line x1="80" y1="50" x2="50" y2="50" className="svg-line" />
+               <line x1="20" y1="80" x2="50" y2="50" className="svg-line" />
+               <line x1="50" y1="80" x2="50" y2="50" className="svg-line" />
+               <line x1="80" y1="80" x2="50" y2="50" className="svg-line" />
+               
+               {/* Sleek Data Pulses */}
+               <line x1="20" y1="20" x2="50" y2="50" className="svg-packet p-1" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="50" y1="20" x2="50" y2="50" className="svg-packet p-2" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="80" y1="20" x2="50" y2="50" className="svg-packet p-3" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="20" y1="50" x2="50" y2="50" className="svg-packet p-4" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="80" y1="50" x2="50" y2="50" className="svg-packet p-5" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="20" y1="80" x2="50" y2="50" className="svg-packet p-6" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="50" y1="80" x2="50" y2="50" className="svg-packet p-7" pathLength="100" filter="url(#pulse-glow)" />
+               <line x1="80" y1="80" x2="50" y2="50" className="svg-packet p-8" pathLength="100" filter="url(#pulse-glow)" />
             </svg>
 
-            {/* Nodes */}
+            {/* 3x3 Grid Nodes */}
+            
+            {/* Center */}
             <div className="iso-node node-core">
+               <div className="platform"></div>
                <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
                <div className="node-label">Ravencia Core</div>
             </div>
 
+            {/* Top Row */}
             <div className="iso-node node-amazon">
+               <div className="platform"></div>
                <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
                <div className="node-label">Amazon API</div>
             </div>
-
-            <div className="iso-node node-hepsiburada">
-               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Hepsiburada</div>
-            </div>
             
             <div className="iso-node node-trendyol">
+               <div className="platform"></div>
                <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
                <div className="node-label">Trendyol</div>
             </div>
 
+            <div className="iso-node node-hepsiburada">
+               <div className="platform"></div>
+               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
+               <div className="node-label">Hepsiburada</div>
+            </div>
+
+            {/* Middle Row (Outer) */}
+            <div className="iso-node node-shopify">
+               <div className="platform"></div>
+               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
+               <div className="node-label">Shopify</div>
+            </div>
+            
             <div className="iso-node node-fatura">
+               <div className="platform"></div>
                <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
                <div className="node-label">e-Fatura</div>
             </div>
 
+            {/* Bottom Row */}
+            <div className="iso-node node-n11">
+               <div className="platform"></div>
+               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
+               <div className="node-label">N11</div>
+            </div>
+
             <div className="iso-node node-pazarama">
+               <div className="platform"></div>
                <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
                <div className="node-label">Pazarama</div>
             </div>
 
-            <div className="iso-node node-n11">
+            <div className="iso-node node-ticimax">
+               <div className="platform"></div>
                <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">N11 Sync</div>
-            </div>
-            
-            <div className="iso-node node-shopify">
-               <div className="cube"><div className="face top"></div><div className="face bottom"></div><div className="face front"></div><div className="face back"></div><div className="face left"></div><div className="face right"></div></div>
-               <div className="node-label">Shopify Webhook</div>
+               <div className="node-label">Ticimax</div>
             </div>
             
          </div>

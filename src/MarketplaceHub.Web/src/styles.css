@@ -51,10 +51,24 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 
 /* SVG Network Lines */
 .iso-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: visible; transform: translateZ(5px); }
-.svg-line { stroke: rgba(255,255,255,0.1); stroke-width: 0.3; stroke-linejoin: round; }
+.svg-line { stroke: rgba(255,255,255,0.08); stroke-width: 0.5; }
+.svg-packet { stroke: #6366f1; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 10 100; animation: pulseData 2s linear infinite; }
+.p-1 { animation-delay: 0.0s; stroke: #f97316; }
+.p-2 { animation-delay: 0.8s; stroke: #f97316; }
+.p-3 { animation-delay: 1.6s; stroke: #a855f7; }
+.p-4 { animation-delay: 0.4s; stroke: #10b981; }
+.p-5 { animation-delay: 1.2s; stroke: #0ea5e9; }
+.p-6 { animation-delay: 0.6s; stroke: #ef4444; }
+.p-7 { animation-delay: 1.4s; stroke: #d946ef; }
+.p-8 { animation-delay: 2.2s; stroke: #3b82f6; }
+
+@keyframes pulseData { 0% { stroke-dashoffset: 100; } 100% { stroke-dashoffset: 0; } }
 
 /* 3D Nodes Base */
 .iso-node { position: absolute; width: 0; height: 0; transform-style: preserve-3d; animation: floatIso 4s ease-in-out infinite alternate; }
+
+/* The Glass Platform */
+.platform { position: absolute; width: 60px; height: 60px; margin-top: -30px; margin-left: -30px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); transform: translateZ(10px); box-shadow: inset 0 0 15px rgba(99,102,241,0.2); }
 
 /* Perfect 6-Sided CSS Cube */
 .cube { position: absolute; width: 40px; height: 40px; margin-top: -20px; margin-left: -20px; transform-style: preserve-3d; }
@@ -66,18 +80,22 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .right  { transform: translateX(20px) rotateY(90deg); }
 .left   { transform: translateX(-20px) rotateY(-90deg); }
 
-/* Asymmetrical Node Positions (Scattered) */
+/* Structured 3x3 Grid Coordinates */
+.node-amazon     { top: 20%; left: 20%; animation-delay: -1s; }
+.node-trendyol   { top: 20%; left: 50%; animation-delay: -0.5s; }
+.node-hepsiburada{ top: 20%; left: 80%; animation-delay: -1.5s; }
+
+.node-shopify    { top: 50%; left: 20%; animation-delay: -2.5s; }
 .node-core       { top: 50%; left: 50%; animation-delay: 0s; }
-.node-amazon     { top: 25%; left: 15%; animation-delay: -1s; }
-.node-hepsiburada{ top: 10%; left: 35%; animation-delay: -1.5s; }
-.node-trendyol   { top: 25%; left: 85%; animation-delay: -0.5s; }
-.node-fatura     { top: 70%; left: 75%; animation-delay: -3s; }
-.node-pazarama   { top: 85%; left: 85%; animation-delay: -2s; }
-.node-n11        { top: 90%; left: 60%; animation-delay: -1.5s; }
-.node-shopify    { top: 80%; left: 25%; animation-delay: -2.5s; }
+.node-fatura     { top: 50%; left: 80%; animation-delay: -3s; }
+
+.node-n11        { top: 80%; left: 20%; animation-delay: -1.5s; }
+.node-pazarama   { top: 80%; left: 50%; animation-delay: -2s; }
+.node-ticimax    { top: 80%; left: 80%; animation-delay: -0.2s; }
 
 /* Core Node Scale */
-.node-core .cube { transform: scale(1.5); }
+.node-core .cube { transform: scale(1.5) translateZ(10px); }
+.node-core .platform { width: 90px; height: 90px; margin-top: -45px; margin-left: -45px; border-color: rgba(225,29,72,0.3); box-shadow: inset 0 0 25px rgba(225,29,72,0.3); }
 
 /* Node Solid Colors */
 .node-core .face       { background: rgba(225, 29, 72, 0.9); border-color: rgba(255,255,255,0.5); }
@@ -104,10 +122,13 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .node-shopify .face    { background: rgba(5, 150, 105, 0.95); }
 .node-shopify .top     { background: rgba(16, 185, 129, 1); }
 
-/* Node Labels */
-.node-label { position: absolute; top: -50px; left: 50%; background: rgba(0,0,0,0.85); padding: 5px 12px; border-radius: 4px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.15); transform: translateX(-50%) rotateZ(45deg) rotateX(-60deg) translateZ(80px); color: #fff; font-weight: 600; white-space: nowrap; box-shadow: 0 10px 20px rgba(0,0,0,0.5); pointer-events: none; }
+.node-ticimax .face    { background: rgba(37, 99, 235, 0.95); }
+.node-ticimax .top     { background: rgba(59, 130, 246, 1); }
 
-@keyframes floatIso { 0% { transform: translateZ(0); } 100% { transform: translateZ(15px); } }
+/* Node Labels */
+.node-label { position: absolute; top: -60px; left: 50%; background: rgba(0,0,0,0.85); padding: 5px 12px; border-radius: 4px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.15); transform: translateX(-50%) rotateZ(45deg) rotateX(-60deg) translateZ(80px); color: #fff; font-weight: 600; white-space: nowrap; box-shadow: 0 10px 20px rgba(0,0,0,0.5); pointer-events: none; }
+
+@keyframes floatIso { 0% { transform: translateZ(20px); } 100% { transform: translateZ(35px); } }
 
 @media (max-width: 900px) { .iso-form-panel { width: 100%; border: none; } .iso-bg-wrapper { display: none; } }
 
