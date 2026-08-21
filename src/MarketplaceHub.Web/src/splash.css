@@ -665,3 +665,96 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
 .channel-help strong {
   color: var(--rv-ink) !important;
 }
+/* Image preview delete button styles */
+.media-preview-strip .image-preview-card {
+  position: relative !important;
+  margin: 0 !important;
+  padding: 0.5rem !important;
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: var(--rv-radius-sm) !important;
+  overflow: hidden !important;
+}
+.image-remove-btn {
+  position: absolute !important;
+  top: 8px !important;
+  right: 8px !important;
+  width: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(220, 38, 38, 0.9) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 50% !important;
+  font-size: 12px !important;
+  font-weight: bold !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5) !important;
+  z-index: 5 !important;
+  transition: transform 0.15s ease, background 0.15s ease !important;
+}
+.image-remove-btn:hover {
+  background: rgb(239, 68, 68) !important;
+  transform: scale(1.15) !important;
+}
+
+/* Products table clickable price & stock cells */
+.product-list-price.clickable-cell, .product-list-stock.clickable-cell {
+  cursor: pointer !important;
+  padding: 4px 8px !important;
+  border-radius: var(--rv-radius-sm) !important;
+  transition: all 0.2s ease !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+.product-list-price.clickable-cell:hover, .product-list-stock.clickable-cell:hover {
+  background: var(--rv-surface-raised) !important;
+  box-shadow: 0 0 0 1px var(--rv-primary) !important;
+}
+.product-list-price.clickable-cell:hover strong, .product-list-stock.clickable-cell:hover strong {
+  color: var(--rv-primary) !important;
+}
+
+/* Section 7 Channel dropdown with checkboxes */
+.channel-dropdown-wrapper {
+  position: relative !important;
+  width: 100% !important;
+  margin: 0.5rem 0 !important;
+}
+.channel-dropdown-toggle {
+  width: 100% !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  background: var(--rv-bg) !important;
+  border: 1px solid var(--rv-line) !important;
+  color: var(--rv-ink) !important;
+  padding: 0.65rem 0.9rem !important;
+  border-radius: var(--rv-radius-sm) !important;
+  cursor: pointer !important;
+  text-align: left !important;
+  font-weight: 500 !important;
+}
+.channel-dropdown-toggle:hover {
+  border-color: var(--rv-primary) !important;
+  background: var(--rv-surface-raised) !important;
+}
+.channel-dropdown-toggle span {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: calc(100% - 24px) !important;
+}
+.publish-channel-panel .dropdown-list {
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  border-radius: var(--rv-radius-sm) !important;
+  margin-top: 0.4rem !important;
+  padding: 0.4rem !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+  max-height: 250px !important;
+  overflow-y: auto !important;
+}
