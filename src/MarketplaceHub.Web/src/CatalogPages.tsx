@@ -88,22 +88,26 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const [selectedSizes, setSelectedSizes] = useState<string[]>([])
   const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
+  const selectedSet = new Set(selectionDraft)
   const appliedSelectedSet = new Set(selected)
   const sizeOptions = [...new Set(variants.filter(item => !selectedColors.length || selectedColors.includes(colorOf(item))).map(sizeOf))]
-  const syncFilterSelection = (colors: string[], sizes: string[]) => {
-    const ids = variants.filter(item => (!colors.length || colors.includes(colorOf(item))) && (!sizes.length || sizes.includes(sizeOf(item)))).map(item => item.variant.id)
-    setSelectionDraft(ids)
-    setSelectionConfirmed(false)
-  }
   const toggleColor = (color: string) => {
     const next = selectedColors.includes(color) ? selectedColors.filter(item => item !== color) : [...selectedColors, color]
     setSelectedColors(next)
-    syncFilterSelection(next, selectedSizes)
   }
   const toggleSize = (size: string) => {
     const next = selectedSizes.includes(size) ? selectedSizes.filter(item => item !== size) : [...selectedSizes, size]
     setSelectedSizes(next)
-    syncFilterSelection(selectedColors, next)
+  }
+  const toggle = (id: string) => { setSelectionConfirmed(false); setSelectionDraft(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]) }
+  const toggleGroup = (items: typeof variants) => { const ids = items.map(item => item.variant.id); const every = ids.every(id => selectedSet.has(id)); setSelectionConfirmed(false); setSelectionDraft(current => every ? current.filter(id => !ids.includes(id)) : [...new Set([...current, ...ids])]) }
+  function applyFilterSelection() {
+    if (!selectedColors.length && !selectedSizes.length) return setNotice('Önce renk veya beden filtresi seçin.')
+    const ids = variants.filter(item => (!selectedColors.length || selectedColors.includes(colorOf(item))) && (!selectedSizes.length || selectedSizes.includes(sizeOf(item)))).map(item => item.variant.id)
+    if (!ids.length) return setNotice('Seçtiğiniz filtrelerle eşleşen varyant bulunamadı.')
+    setSelectionDraft(ids)
+    setSelectionConfirmed(false)
+    setNotice(`${ids.length} varyant alttaki listede otomatik işaretlendi.`)
   }
   function confirmSelection() {
     if (!selectionDraft.length) return setNotice('Önce en az bir varyant seçin.')
@@ -157,8 +161,14 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
               <div className="quick-edit-filter-options">{sizeOptions.map(size => <label key={size}><input type="checkbox" checked={selectedSizes.includes(size)} onChange={() => toggleSize(size)} /><span>{size}</span><small>{variants.filter(item => (!selectedColors.length || selectedColors.includes(colorOf(item))) && sizeOf(item) === size).length} varyant</small></label>)}</div>
             </details>
           </div>
-          <div className="quick-edit-selection-preview">{selectionDraft.length ? variants.filter(item => selectionDraft.includes(item.variant.id)).map(item => <span key={item.variant.id}>{colorOf(item)} · {sizeOf(item)}</span>) : <p>Örneğin Renk: Siyah, Beden: 3XL + 4XL + 5XL seçin.</p>}</div>
-          <div className="quick-edit-step-action"><p>{selectionConfirmed ? `${selected.length} varyant onaylandı. Seçim değişirse yeniden onaylayın.` : 'Seçtiğiniz renk ve bedenlerin kesişimi fiyat düzenlemesine aktarılır.'}</p><button type="button" onClick={confirmSelection}>Seçimi onayla</button></div>
+          <div className="quick-edit-filter-action"><p>Örneğin Siyah rengini ve 3XL + 4XL + 5XL bedenlerini seçip alttaki varyantları işaretleyin.</p><button type="button" onClick={applyFilterSelection} disabled={!selectedColors.length && !selectedSizes.length}>Seç</button></div>
+          <div className="quick-edit-selection">
+            {Object.entries(groups).map(([color, items]) => <details className="quick-edit-color" key={color} open={Object.keys(groups).length === 1}>
+              <summary><label onClick={event => event.stopPropagation()}><input type="checkbox" checked={items.every(item => selectedSet.has(item.variant.id))} onChange={() => toggleGroup(items)} /> {color}</label><small>{items.length} varyant · {items.reduce((sum, item) => sum + item.variant.available, 0)} stok</small><b>⌄</b></summary>
+              <div className="quick-edit-variants">{items.map(item => <label className="quick-edit-variant" key={item.variant.id}><input type="checkbox" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} /><span><strong>{item.variant.optionSignature || item.product.title}</strong><small>{item.product.title} · Stok kodu: {item.variant.sku}</small></span><em>{item.variant.available} stok</em></label>)}</div>
+            </details>)}
+          </div>
+          <div className="quick-edit-step-action"><p>{selectionConfirmed ? `${selected.length} varyant onaylandı. Seçim değişirse yeniden onaylayın.` : `${selectionDraft.length} varyant seçili. Fiyat düzenlemesine aktarmak için onaylayın.`}</p><button type="button" onClick={confirmSelection}>Seçimi onayla</button></div>
         </details>
         <details className="quick-edit-step quick-edit-pricing-step" open={selectionConfirmed}>
           <summary><span><b>2</b> {mode === 'stock' ? 'Stok değerini düzenle' : mode === 'price' ? 'Fiyatı düzenle' : 'Fiyat ve stok değerini düzenle'}</span><small>{selectionConfirmed ? `${selected.length} onaylı varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small><i>⌄</i></summary>

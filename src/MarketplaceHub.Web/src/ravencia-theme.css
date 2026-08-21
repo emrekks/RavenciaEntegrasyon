@@ -392,11 +392,16 @@ html, body, #root {
 .app-shell .quick-edit-selection-preview { display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px; padding: 10px 14px 0; }
 .app-shell .quick-edit-selection-preview span { padding: 4px 7px; color: #bfeaff; background: rgba(24, 186, 255, .1); border: 1px solid var(--rv-line); border-radius: 999px; font-size: .67rem; }
 .app-shell .quick-edit-selection-preview p { margin: 0; color: var(--rv-muted); font-size: .72rem; }
+.app-shell .quick-edit-filter-action { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 14px 4px; }
+.app-shell .quick-edit-filter-action p { margin: 0; color: var(--rv-muted); font-size: .72rem; }
+.app-shell .quick-edit-filter-action button { min-width: 92px; }
 @media (max-width: 620px) {
   .app-shell .quick-edit-step > summary { grid-template-columns: minmax(0, 1fr) 20px; }
   .app-shell .quick-edit-step > summary small { display: none; }
   .app-shell .quick-edit-step-action { align-items: stretch; flex-direction: column; }
   .app-shell .quick-edit-step-action button { width: 100%; }
+  .app-shell .quick-edit-filter-action { align-items: stretch; flex-direction: column; }
+  .app-shell .quick-edit-filter-action button { width: 100%; }
   .app-shell .quick-edit-filter-row { grid-template-columns: 1fr; }
 }
 
