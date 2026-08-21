@@ -158,7 +158,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           <div className="quick-edit-selection">
             {Object.entries(groups).map(([color, items]) => <details className="quick-edit-color" key={color} open={Object.keys(groups).length === 1}>
               <summary><label onClick={event => event.stopPropagation()}><input type="checkbox" checked={items.every(item => selectedSet.has(item.variant.id))} onChange={() => toggleGroup(items)} /> {color}</label><small>{items.length} varyant · {items.reduce((sum, item) => sum + item.variant.available, 0)} stok</small><b>⌄</b></summary>
-              <div className="quick-edit-variants">{items.map(item => <div className="quick-edit-variant" key={item.variant.id}><input type="checkbox" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} /><span><strong>{item.variant.optionSignature || item.product.title}</strong><small>{item.product.title} · Stok kodu: {item.variant.sku}</small></span><QuickEditVariantControls variant={item.variant} connections={connections} onChanged={onChanged} /></div>)}</div>
+              <div className="quick-edit-variants">{items.map(item => <div className="quick-edit-variant" key={item.variant.id}><input type="checkbox" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} /><span><strong>{item.variant.optionSignature || item.product.title}</strong><small>{item.product.title} · Stok kodu: {item.variant.sku}</small></span><QuickEditVariantControls variant={item.variant} connections={connections} onChanged={onChanged} onSelect={() => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id])} /></div>)}</div>
             </details>)}
           </div>
           <div className="quick-edit-step-action"><p>{selectionDraft.length ? `${selectionDraft.length} varyant işaretli. Değerleri doğrudan uygulayabilirsiniz.` : 'Önce alt listeden varyant seçin veya üst filtreyi kullanın.'}</p></div>
@@ -180,7 +180,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   </div>
 }
 
-function QuickEditVariantControls({ variant, connections, onChanged }: { variant: Variant; connections: TrendyolConnection[]; onChanged: () => Promise<unknown> }) {
+function QuickEditVariantControls({ variant, connections, onChanged, onSelect }: { variant: Variant; connections: TrendyolConnection[]; onChanged: () => Promise<unknown>; onSelect: () => void }) {
   const [price, setPrice] = useState(variant.salePrice ?? variant.listPrice ?? '')
   const [stock, setStock] = useState(variant.onHand)
   const [savingPrice, setSavingPrice] = useState(false); const [savingStock, setSavingStock] = useState(false)
@@ -197,7 +197,7 @@ function QuickEditVariantControls({ variant, connections, onChanged }: { variant
     setSavingStock(true)
     try { await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Hızlı varyant stok düzenleme', sourceEventId: key() }) }); await onChanged() } finally { setSavingStock(false) }
   }
-  return <div className="quick-edit-variant-controls" onClick={event => event.stopPropagation()}><label><small>Stok</small><input aria-label={`${variant.sku} stok`} value={stock} onChange={event => setStock(Number(event.target.value || 0))} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label><label><small>Fiyat</small><input aria-label={`${variant.sku} fiyat`} value={price} onChange={event => setPrice(event.target.value === '' ? '' : Number(event.target.value))} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /></label></div>
+  return <div className="quick-edit-variant-controls" onClick={event => event.stopPropagation()}><label><small>Stok</small><input aria-label={`${variant.sku} stok`} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStock(Number(event.target.value || 0)) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label><label><small>Fiyat</small><input aria-label={`${variant.sku} fiyat`} value={price} onFocus={onSelect} onChange={event => { onSelect(); setPrice(event.target.value === '' ? '' : Number(event.target.value)) }} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /></label></div>
 }
 
 function InlineVariantInputs({ variant, connections, onChanged }: { variant: Variant; connections: TrendyolConnection[]; onChanged: () => Promise<unknown> }) {
