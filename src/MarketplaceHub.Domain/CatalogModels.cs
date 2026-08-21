@@ -1,6 +1,6 @@
 namespace MarketplaceHub.Domain;
 
-public enum ProductStatus { Draft, Archived }
+public enum ProductStatus { Draft = 0, Archived = 1, Active = 2 }
 public enum AttributeDataType { Text, Number, SingleSelect, MultiSelect, Boolean }
 
 public sealed class Product
@@ -11,7 +11,7 @@ public sealed class Product
     public required string Description { get; set; }
     public Guid? BrandId { get; set; }
     public Guid? CategoryId { get; set; }
-    public ProductStatus Status { get; set; } = ProductStatus.Draft;
+    public ProductStatus Status { get; set; } = ProductStatus.Active;
     public long SourcePolicyVersion { get; set; } = 1;
     public DateTimeOffset? ArchivedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
@@ -115,7 +115,7 @@ public sealed class ProductVariant
     public string? BarcodeNormalized { get; set; }
     public string? ModelCode { get; set; }
     public required string OptionSignature { get; set; }
-    public ProductStatus Status { get; set; } = ProductStatus.Draft;
+    public ProductStatus Status { get; set; } = ProductStatus.Active;
     public decimal? Weight { get; set; }
     public decimal? Width { get; set; }
     public decimal? Height { get; set; }
