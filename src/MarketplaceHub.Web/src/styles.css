@@ -32,19 +32,11 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   width: 80vw;
   height: 80vh;
   transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(14,26,60,0.8) 0%, rgba(3,5,12,0) 70%);
+  background: radial-gradient(circle, rgba(14,26,60,0.4) 0%, rgba(3,5,12,0) 70%);
   z-index: 0;
   pointer-events: none;
 }
-.rv-bg-grid {
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.5;
-}
+/* rv-bg-grid removed since background image provides it */
 
 /* SVG Connection Lines */
 .rv-lines {
@@ -57,87 +49,72 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   pointer-events: none;
 }
 
-/* Platform Cards */
-.rv-platform {
+/* Platform Image Cards */
+.rv-platform-img {
   position: absolute;
   z-index: 5;
-  background: rgba(10, 13, 24, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 12px 24px;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(255, 255, 255, 0.02);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.3s ease, border-color 0.3s ease;
+  width: auto;
+  height: 60px; /* Adjust scale based on your original pack resolution */
+  object-fit: contain;
+  transition: transform 0.3s ease;
+  filter: drop-shadow(0 10px 20px rgba(0,0,0,0.6));
 }
-.rv-platform:hover {
-  transform: scale(1.05);
-  border-color: rgba(59, 130, 246, 0.4);
-}
-.rv-brand {
-  font-size: 1.15rem;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
+.rv-platform-img:hover {
+  transform: scale(1.1);
+  filter: drop-shadow(0 15px 30px rgba(59, 130, 246, 0.4));
 }
 
 /* Radial Positions (Responsive based on vh/vw) */
-.rv-p1 { top: 10vh; left: 50%; transform: translateX(-50%); } /* Trendyol */
-.rv-p2 { top: 25vh; left: 15vw; } /* Amazon */
-.rv-p3 { top: 25vh; right: 15vw; } /* Hepsiburada */
-.rv-p4 { top: 48vh; left: 10vw; } /* N11 */
-.rv-p5 { top: 48vh; right: 10vw; } /* Pazarama */
-.rv-p6 { top: 72vh; left: 15vw; } /* PttAVM */
-.rv-p7 { top: 72vh; right: 15vw; } /* Trendyol E-faturam */
-.rv-p8 { bottom: 8vh; left: 50%; transform: translateX(-50%); } /* Shopify */
-.rv-platform:hover {
-  transform: scale(1.05); /* Overrides X-translation for centered items if we're not careful, so let's fix it */
-}
+.rv-p1 { top: 12vh; left: 50%; transform: translateX(-50%); } /* Trendyol */
+.rv-p2 { top: 22vh; left: 18vw; } /* Amazon */
+.rv-p3 { top: 22vh; right: 18vw; } /* Hepsiburada */
+.rv-p4 { top: 48vh; left: 12vw; transform: translateY(-50%); } /* N11 */
+.rv-p5 { top: 48vh; right: 12vw; transform: translateY(-50%); } /* Pazarama */
+.rv-p6 { top: 72vh; left: 18vw; } /* PttAVM */
+.rv-p7 { top: 72vh; right: 18vw; } /* Trendyol E-faturam */
+.rv-p8 { bottom: 12vh; left: 50%; transform: translateX(-50%); } /* Shopify */
 .rv-p1:hover, .rv-p8:hover {
-  transform: translateX(-50%) scale(1.05);
+  transform: translateX(-50%) scale(1.1);
+}
+.rv-p4:hover, .rv-p5:hover {
+  transform: translateY(-50%) scale(1.1);
 }
 
 /* Center Login Card */
 .rv-login-card {
   position: relative;
   z-index: 10;
-  width: 400px;
-  background: rgba(10, 13, 24, 0.9);
+  width: 420px;
+  background: rgba(7, 18, 38, 0.92); /* var(--rav-panel) */
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
-  padding: 40px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(30, 64, 175, 0.3);
+  border: 1px solid rgba(49, 89, 135, 0.68); /* var(--rav-border) */
+  border-radius: 28px; /* var(--rav-radius-card) */
+  padding: 44px;
+  box-shadow: 0 20px 70px rgba(0,0,0,0.45); /* var(--rav-shadow) */
 }
 
 /* Logo Area */
 .rv-logo-area {
   text-align: center;
-  margin-bottom: 30px;
+  margin-bottom: 32px;
 }
 .rv-center-logo {
-  width: 90px;
-  height: 90px;
+  width: 80px;
   object-fit: contain;
-  margin: 0 auto 16px;
-  filter: drop-shadow(0 0 10px rgba(255,255,255,0.2));
+  margin: 0 auto 12px;
 }
-.rv-logo-area h1 {
-  font-size: 1.25rem;
-  font-weight: 500;
-  letter-spacing: 6px;
-  margin: 0 0 8px;
-  color: #e2e8f0;
+.rv-wordmark {
+  width: 140px;
+  object-fit: contain;
+  margin: 0 auto 8px;
+  display: block;
 }
 .rv-logo-area p {
-  font-size: 0.65rem;
-  color: #60a5fa;
+  font-size: 0.62rem;
+  color: #8ea5c2; /* var(--rav-muted) */
   letter-spacing: 2px;
   margin: 0;
+  text-transform: uppercase;
 }
 
 /* Form Styles */
@@ -154,36 +131,37 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .rv-input-icon {
   position: absolute;
   left: 14px;
-  opacity: 0.5;
+  opacity: 0.4;
+  color: #f5f7fb;
 }
 .rv-input-wrap input {
   width: 100%;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  background: rgba(2, 8, 20, 0.5); /* var(--rav-bg-950) with opacity */
+  border: 1px solid rgba(49, 89, 135, 0.4);
+  border-radius: 8px; /* var(--rav-radius-control) */
   padding: 14px 14px 14px 44px;
-  color: #fff;
+  color: #f5f7fb;
   font-size: 0.9rem;
   outline: none;
   transition: all 0.2s;
 }
 .rv-input-wrap input:focus {
-  border-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.05);
+  border-color: #2d8cff; /* var(--rav-blue) */
+  box-shadow: 0 0 18px rgba(45,140,255,0.28); /* var(--rav-glow) */
 }
 .rv-input-wrap input::placeholder {
-  color: #64748b;
+  color: #8ea5c2;
 }
 .rv-eye {
   position: absolute;
   right: 14px;
   background: none;
   border: none;
-  color: #64748b;
+  color: #8ea5c2;
   cursor: pointer;
   padding: 0;
   display: flex;
-  opacity: 0.7;
+  opacity: 0.6;
 }
 .rv-eye:hover {
   opacity: 1;
@@ -200,45 +178,45 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #94a3b8;
+  color: #8ea5c2;
   cursor: pointer;
 }
 .rv-remember input {
-  accent-color: #3b82f6;
+  accent-color: #2d8cff;
 }
 .rv-forgot {
-  color: #60a5fa;
+  color: #4aa7ff;
   text-decoration: none;
   transition: color 0.2s;
 }
 .rv-forgot:hover {
-  color: #93c5fd;
+  color: #2d8cff;
 }
 
 .rv-error {
-  color: #ef4444;
+  color: #ff4a4a;
   font-size: 0.85rem;
   text-align: center;
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(255, 74, 74, 0.1);
   padding: 8px;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .rv-submit {
-  background: linear-gradient(90deg, #2563eb, #3b82f6);
+  background: #2d8cff; /* var(--rav-blue) */
   color: #fff;
   border: none;
   border-radius: 8px;
   padding: 14px;
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+  box-shadow: 0 4px 14px rgba(45, 140, 255, 0.3);
 }
 .rv-submit:hover {
-  background: linear-gradient(90deg, #1d4ed8, #2563eb);
-  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+  background: #4aa7ff;
+  box-shadow: 0 0 18px rgba(45, 140, 255, 0.4);
 }
 
 .rv-divider {

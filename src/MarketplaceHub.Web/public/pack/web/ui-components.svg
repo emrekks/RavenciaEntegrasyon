@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="620" viewBox="0 0 900 620">
+<defs>
+  <linearGradient id="btn" x1="0" x2="1"><stop stop-color="#2c72d7"/><stop offset="1" stop-color="#273f9b"/></linearGradient>
+  <filter id="softGlow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<rect x="40" y="30" width="380" height="500" rx="28" fill="#071226" stroke="#294d78" stroke-opacity=".7"/>
+<rect x="80" y="190" width="300" height="48" rx="8" fill="#0a162a" stroke="#243f61"/>
+<rect x="80" y="255" width="300" height="48" rx="8" fill="#0a162a" stroke="#243f61"/>
+<rect x="80" y="350" width="300" height="48" rx="8" fill="url(#btn)" stroke="#408cff" stroke-opacity=".65"/>
+<rect x="80" y="445" width="300" height="52" rx="8" fill="#0a162a" stroke="#243f61"/>
+<circle cx="515" cy="95" r="4" fill="#4aa7ff" filter="url(#softGlow)"/>
+<path d="M515 95 H650 L705 150 H840" fill="none" stroke="#2d8cff" stroke-opacity=".55"/>
+<rect x="515" y="190" width="325" height="92" rx="16" fill="#071226" stroke="#315987"/>
+<rect x="515" y="315" width="325" height="92" rx="16" fill="#071226" stroke="#315987"/>
+<rect x="515" y="440" width="325" height="92" rx="16" fill="#071226" stroke="#315987"/>
+</svg>

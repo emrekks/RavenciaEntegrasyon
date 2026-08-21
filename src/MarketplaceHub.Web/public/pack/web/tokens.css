@@ -1,0 +1,15 @@
+:root {
+  --rav-bg-950: #020814;
+  --rav-bg-900: #061329;
+  --rav-bg-850: #071226;
+  --rav-panel: rgba(7,18,38,.92);
+  --rav-border: rgba(49,89,135,.68);
+  --rav-blue: #2d8cff;
+  --rav-blue-soft: #4aa7ff;
+  --rav-text: #f5f7fb;
+  --rav-muted: #8ea5c2;
+  --rav-radius-card: 28px;
+  --rav-radius-control: 8px;
+  --rav-shadow: 0 20px 70px rgba(0,0,0,.45);
+  --rav-glow: 0 0 18px rgba(45,140,255,.28);
+}

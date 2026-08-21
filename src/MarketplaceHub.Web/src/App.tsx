@@ -50,34 +50,16 @@ function Login() {
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
 
   return (
-    <div className="rv-page">
-      {/* Background effects */}
-      <div className="rv-bg-glow" />
-      <div className="rv-bg-grid" />
+    <div className="rv-page" style={{ backgroundImage: "url('/pack/backgrounds/login-background-1920x1080.svg')" }}>
 
-      {/* SVG Connection Lines */}
+      {/* SVG Connection Lines - We can keep these for animation, or they might be baked into the background. 
+          Assuming we keep our animated lines as an overlay. */}
       <svg className="rv-lines" viewBox="0 0 1200 675" preserveAspectRatio="xMidYMid slice" fill="none">
          <defs>
             <filter id="lGlow"><feGaussianBlur stdDeviation="4" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
             <linearGradient id="lGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#1e40af" stopOpacity="0.6" /><stop offset="50%" stopColor="#3b82f6" stopOpacity="1" /><stop offset="100%" stopColor="#1e40af" stopOpacity="0.6" /></linearGradient>
          </defs>
-         {/* Trendyol → Center */}
-         <path d="M600,72 C600,150 600,220 600,270" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
-         {/* Amazon → Center */}
-         <path d="M225,182 C340,210 430,245 475,275" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
-         {/* Hepsiburada → Center */}
-         <path d="M940,182 C830,210 740,245 700,275" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
-         {/* N11 → Center */}
-         <path d="M175,340 C290,340 390,338 470,337" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
-         {/* Pazarama → Center */}
-         <path d="M1010,340 C900,340 800,338 720,337" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
-         {/* PttAVM → Center */}
-         <path d="M225,490 C340,465 430,430 475,405" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
-         {/* Trendyol e-faturam → Center */}
-         <path d="M940,490 C830,465 740,430 700,405" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
-         {/* Shopify → Center */}
-         <path d="M580,590 C585,530 590,460 598,410" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
-         {/* Animated pulses */}
+         {/* Animated pulses only, since static lines are likely in the background image */}
          {[
            "M600,72 C600,150 600,220 600,270",
            "M225,182 C340,210 430,245 475,275",
@@ -94,21 +76,21 @@ function Login() {
          ))}
       </svg>
 
-      {/* Platform Cards */}
-      <div className="rv-platform rv-p1"><span className="rv-brand" style={{color:'#f27a1a', fontStyle:'italic'}}>trendyol</span></div>
-      <div className="rv-platform rv-p2"><span className="rv-brand" style={{color:'#ff9900'}}>amazon</span></div>
-      <div className="rv-platform rv-p3"><span className="rv-brand" style={{color:'#ff6000'}}>hepsiburada</span></div>
-      <div className="rv-platform rv-p4"><span className="rv-brand"><span style={{color:'#22c55e', fontWeight:800}}>n11</span><span style={{color:'#ef4444'}}>.</span><span style={{color:'#f59e0b'}}>c</span><span style={{color:'#3b82f6'}}>o</span><span style={{color:'#8b5cf6'}}>m</span></span></div>
-      <div className="rv-platform rv-p5"><span className="rv-brand" style={{color:'#64748b'}}>pazarama</span></div>
-      <div className="rv-platform rv-p6"><span className="rv-brand"><span style={{color:'#fbbf24', fontWeight:900}}>Ptt</span><span style={{color:'#2563eb', fontWeight:900}}>AVM</span><small style={{color:'#94a3b8', fontSize:'0.55rem'}}>.com</small></span></div>
-      <div className="rv-platform rv-p7"><span className="rv-brand" style={{color:'#f27a1a', fontSize:'0.8rem'}}><span style={{fontStyle:'italic'}}>trendyol</span><br/><span style={{fontWeight:400}}>e-faturam</span></span></div>
-      <div className="rv-platform rv-p8"><span className="rv-brand" style={{color:'#96bf48'}}><svg viewBox="0 0 24 24" width="16" height="16" style={{verticalAlign:'middle', marginRight:4}}><path d="M7 22h10a2 2 0 002-2V9l-4-4-4 4v3H7v8a2 2 0 002 2z" fill="#96bf48" opacity="0.3"/><path d="M11 9V5l-4 4h4z" fill="#96bf48"/></svg>shopify</span></div>
+      {/* Pre-rendered Platform Cards from Asset Pack */}
+      <img src="/pack/marketplace/cards/trendyol-card.png" className="rv-platform-img rv-p1" alt="Trendyol" />
+      <img src="/pack/marketplace/cards/amazon-card.png" className="rv-platform-img rv-p2" alt="Amazon" />
+      <img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-platform-img rv-p3" alt="Hepsiburada" />
+      <img src="/pack/marketplace/cards/n11-card.png" className="rv-platform-img rv-p4" alt="N11" />
+      <img src="/pack/marketplace/cards/pazarama-card.png" className="rv-platform-img rv-p5" alt="Pazarama" />
+      <img src="/pack/marketplace/cards/pttavm-card.png" className="rv-platform-img rv-p6" alt="PttAVM" />
+      <img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-platform-img rv-p7" alt="Trendyol e-Faturam" />
+      <img src="/pack/marketplace/cards/shopify-card.png" className="rv-platform-img rv-p8" alt="Shopify" />
 
       {/* Center Login Card */}
       <div className="rv-login-card">
          <div className="rv-logo-area">
-            <img src="/ravencia-hub-logo.png" alt="Ravencia" className="rv-center-logo" />
-            <h1>R A V E N C I A</h1>
+            <img src="/pack/brand/ravencia-symbol-transparent.png" alt="Ravencia Symbol" className="rv-center-logo" />
+            <img src="/pack/brand/ravencia-wordmark-transparent.png" alt="RAVENCIA" className="rv-wordmark" />
             <p>PAZARYERİ ENTEGRASYON API</p>
          </div>
 
