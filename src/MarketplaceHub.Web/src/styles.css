@@ -66,10 +66,8 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .hub { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; }
 .hub-ring { position: absolute; inset: -20px; border-radius: 50%; border: 2px solid #6366f1; box-shadow: 0 0 30px rgba(99,102,241,0.3), inset 0 0 30px rgba(99,102,241,0.1); animation: hubPulse 3s ease-in-out infinite; }
 @keyframes hubPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: 0.7; } }
-.hub-inner { width: 130px; height: 130px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #1e1b4b, #0c0a2a 70%); display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid rgba(99,102,241,0.3); box-shadow: 0 0 60px rgba(99,102,241,0.2); }
-.hub-logo { font-family: 'Times New Roman', serif; font-style: italic; font-size: 2.4rem; color: #fff; text-shadow: 0 0 15px rgba(255,255,255,0.5); line-height: 1; }
-.hub-name { font-size: 0.85rem; font-weight: 700; color: #e2e8f0; letter-spacing: 1px; margin-top: 2px; }
-.hub-tag { font-size: 0.55rem; color: #818cf8; text-transform: uppercase; letter-spacing: 2px; margin-top: 2px; }
+.hub-inner { width: 130px; height: 130px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #1e1b4b, #0c0a2a 70%); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(99,102,241,0.3); box-shadow: 0 0 60px rgba(99,102,241,0.2); overflow: hidden; }
+.hub-logo-img { width: 110px; height: auto; filter: drop-shadow(0 0 12px rgba(255,255,255,0.3)); object-fit: contain; }
 
 /* Marketplace Node Cards */
 .mp-node { position: absolute; z-index: 5; }

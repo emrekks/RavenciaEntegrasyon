@@ -132,9 +132,7 @@ function Login() {
          <div className="hub">
             <div className="hub-ring"></div>
             <div className="hub-inner">
-               <span className="hub-logo">R</span>
-               <span className="hub-name">Ravencia</span>
-               <span className="hub-tag">Core Engine</span>
+               <img src="/ravencia-hub-logo.png" alt="Ravencia" className="hub-logo-img" />
             </div>
          </div>
 
