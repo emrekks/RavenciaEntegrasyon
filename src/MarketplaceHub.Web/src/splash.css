@@ -701,18 +701,23 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
   transform: scale(1.15) !important;
 }
 
-/* Products table clickable price & stock cells */
+/* Products table compact clickable price & stock cells */
 .product-list-price.clickable-cell, .product-list-stock.clickable-cell {
   cursor: pointer !important;
-  padding: 4px 8px !important;
-  border-radius: var(--rv-radius-sm) !important;
-  transition: all 0.2s ease !important;
   display: inline-flex !important;
   align-items: center !important;
+  width: fit-content !important;
+  max-width: max-content !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  transition: all 0.15s ease !important;
 }
 .product-list-price.clickable-cell:hover, .product-list-stock.clickable-cell:hover {
-  background: var(--rv-surface-raised) !important;
-  box-shadow: 0 0 0 1px var(--rv-primary) !important;
+  background: rgba(99, 102, 241, 0.12) !important;
+  border-color: rgba(99, 102, 241, 0.35) !important;
+  box-shadow: none !important;
 }
 .product-list-price.clickable-cell:hover strong, .product-list-stock.clickable-cell:hover strong {
   color: var(--rv-primary) !important;
@@ -722,7 +727,7 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
 .channel-dropdown-wrapper {
   position: relative !important;
   width: 100% !important;
-  margin: 0.5rem 0 !important;
+  margin: 0.4rem 0 !important;
 }
 .channel-dropdown-toggle {
   width: 100% !important;
@@ -732,7 +737,7 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
   background: var(--rv-bg) !important;
   border: 1px solid var(--rv-line) !important;
   color: var(--rv-ink) !important;
-  padding: 0.65rem 0.9rem !important;
+  padding: 0.6rem 0.85rem !important;
   border-radius: var(--rv-radius-sm) !important;
   cursor: pointer !important;
   text-align: left !important;
@@ -747,16 +752,236 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   max-width: calc(100% - 24px) !important;
+  font-size: 0.82rem !important;
 }
 .publish-channel-panel .dropdown-list {
+  position: absolute !important;
+  top: calc(100% + 4px) !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 60 !important;
   background: var(--rv-surface) !important;
   border: 1px solid var(--rv-line-strong) !important;
   border-radius: var(--rv-radius-sm) !important;
-  margin-top: 0.4rem !important;
-  padding: 0.4rem !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
-  max-height: 250px !important;
+  margin-top: 0 !important;
+  padding: 0.35rem !important;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.6) !important;
+  max-height: 160px !important;
   overflow-y: auto !important;
+}
+
+/* Section 5 2-Column Attribute Grid & Settings Popover */
+.attribute-builder-list {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 0.85rem !important;
+}
+@media (max-width: 800px) {
+  .attribute-builder-list {
+    grid-template-columns: 1fr !important;
+  }
+}
+.attribute-variant-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  flex-wrap: wrap !important;
+}
+.attr-filter-menu-shell {
+  position: relative !important;
+}
+.attr-filter-trigger {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  padding: 6px 12px !important;
+  border-radius: var(--rv-radius-sm) !important;
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-ink) !important;
+  border: 1px solid var(--rv-line) !important;
+  cursor: pointer !important;
+}
+.attr-filter-trigger:hover {
+  border-color: var(--rv-primary) !important;
+  color: var(--rv-primary) !important;
+}
+.attr-filter-popover {
+  position: absolute !important;
+  top: calc(100% + 6px) !important;
+  right: 0 !important;
+  width: 290px !important;
+  z-index: 70 !important;
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  border-radius: var(--rv-radius-sm) !important;
+  box-shadow: 0 14px 35px rgba(0,0,0,0.65) !important;
+  padding: 0.8rem !important;
+}
+.attr-filter-toggle-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  color: var(--rv-ink) !important;
+}
+.attr-filter-divider {
+  height: 1px !important;
+  background: var(--rv-line) !important;
+  margin: 0.6rem 0 !important;
+}
+.attr-filter-checklist {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  max-height: 190px !important;
+  overflow-y: auto !important;
+}
+.attr-filter-check-head {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin-bottom: 4px !important;
+}
+.attr-filter-check-head small {
+  color: var(--rv-muted) !important;
+  font-size: 0.72rem !important;
+  text-transform: uppercase !important;
+  font-weight: 700 !important;
+}
+.attr-filter-check-head button {
+  background: none !important;
+  border: none !important;
+  color: var(--rv-primary) !important;
+  font-size: 0.72rem !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  text-decoration: underline !important;
+}
+.attr-filter-check-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 0.78rem !important;
+  color: var(--rv-ink) !important;
+  cursor: pointer !important;
+  padding: 3px 0 !important;
+}
+.attr-filter-check-item:hover {
+  color: var(--rv-primary) !important;
+}
+.attr-filter-check-item .attr-tag {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-primary) !important;
+  padding: 1px 5px !important;
+  border-radius: 4px !important;
+  font-size: 0.65rem !important;
+  margin-left: auto !important;
+}
+
+/* Image Zoom / Lightbox */
+.clickable-thumb {
+  cursor: zoom-in !important;
+  transition: transform 0.15s ease, opacity 0.15s ease !important;
+}
+.clickable-thumb:hover {
+  transform: scale(1.05) !important;
+  opacity: 0.92 !important;
+}
+.image-lightbox-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  background: rgba(10, 14, 24, 0.88) !important;
+  backdrop-filter: blur(8px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1.5rem !important;
+}
+.image-lightbox-modal {
+  position: relative !important;
+  max-width: 90vw !important;
+  max-height: 90vh !important;
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  border-radius: var(--rv-radius-md) !important;
+  padding: 1.25rem !important;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.85) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 0.85rem !important;
+}
+.image-lightbox-modal .lightbox-close {
+  position: absolute !important;
+  top: -12px !important;
+  right: -12px !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  background: var(--rv-surface-raised) !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  color: var(--rv-ink) !important;
+  font-size: 1.2rem !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.15s ease !important;
+}
+.image-lightbox-modal .lightbox-close:hover {
+  background: #ef4444 !important;
+  color: #fff !important;
+}
+.lightbox-img-wrap {
+  max-width: 80vw !important;
+  max-height: 75vh !important;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: var(--rv-radius-sm) !important;
+}
+.lightbox-img-wrap img {
+  max-width: 100% !important;
+  max-height: 75vh !important;
+  object-fit: contain !important;
+}
+.lightbox-caption {
+  color: var(--rv-ink) !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  text-align: center !important;
+  max-width: 80vw !important;
+}
+
+/* Bulk Menu Shell & Button */
+.bulk-menu-shell {
+  position: relative !important;
+}
+.bulk-action {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-ink) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: var(--rv-radius-sm) !important;
+  padding: 0.55rem 0.9rem !important;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+.bulk-action:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}
+.bulk-action:not(:disabled):hover {
+  border-color: var(--rv-primary) !important;
+  color: var(--rv-primary) !important;
 }
 
 /* ==========================================================================

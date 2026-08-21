@@ -29,14 +29,27 @@ type PublicationStatus = { productId: string; connectionId: string; profileId: s
 const key = () => crypto.randomUUID()
 const ErrorBox = ({ error }: { error: unknown }) => error ? <div className="error" role="alert">{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</div> : null
 
-function LocalImagePreview({ file, alt, caption, onRemove }: { file: File, alt: string, caption: string, onRemove?: () => void }) {
+function LocalImagePreview({ file, alt, caption, onRemove, onZoom }: { file: File, alt: string, caption: string, onRemove?: () => void, onZoom?: (url: string) => void }) {
   const [url, setUrl] = useState('');
   useEffect(() => {
     const objectUrl = URL.createObjectURL(file);
     setUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
-  return <figure className="image-preview-card"><img src={url} alt={alt} />{onRemove && <button type="button" className="image-remove-btn" title="Görseli sil" onClick={e => { e.stopPropagation(); onRemove(); }}>✕</button>}<figcaption>{caption}</figcaption></figure>;
+  return <figure className="image-preview-card"><img src={url} alt={alt} className="clickable-thumb" onClick={() => onZoom?.(url)} title="Büyütmek için tıklayın" />{onRemove && <button type="button" className="image-remove-btn" title="Görseli sil" onClick={e => { e.stopPropagation(); onRemove(); }}>✕</button>}<figcaption>{caption}</figcaption></figure>;
+}
+function ImageLightboxModal({ image, onClose }: { image: { url: string; title: string }; onClose: () => void }) {
+  return (
+    <div className="workspace-modal-backdrop image-lightbox-backdrop" role="presentation" onMouseDown={onClose}>
+      <div className="image-lightbox-modal" role="dialog" aria-modal="true" onMouseDown={e => e.stopPropagation()}>
+        <button type="button" className="lightbox-close" onClick={onClose} aria-label="Kapat">×</button>
+        <div className="lightbox-img-wrap">
+          <img src={image.url} alt={image.title} />
+        </div>
+        {image.title && <div className="lightbox-caption">{image.title}</div>}
+      </div>
+    </div>
+  )
 }
 const Tag = ({ children }: { children: ReactNode }) => <span className="tag">{children}</span>
 const money = (value: number | null | undefined, currency = 'TRY') => value == null ? '—' : new Intl.NumberFormat('tr-TR', { style: 'currency', currency }).format(value)
@@ -230,12 +243,12 @@ function InlineVariantInputs({ variant, connections, onChanged }: { variant: Var
   return <><input className="variant-inline-input" aria-label={`${variant.sku} fiyat`} value={price} onChange={event => setPrice(event.target.value === '' ? '' : Number(event.target.value))} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /><input className="variant-inline-input" aria-label={`${variant.sku} stok`} value={stock} onChange={event => setStock(Number(event.target.value || 0))} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></>
 }
 
-function ProductColorRows({ product, selected, onSelect, onQuickEdit }: { product: Product; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void }) {
+function ProductColorRows({ product, selected, onSelect, onQuickEdit, onImageClick }: { product: Product; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void }) {
   const platformActive = Boolean(product.activePlatforms?.length)
   return <article className="product-catalog-item color-variant-item">
       <div className="product-catalog-row">
         <input className="product-row-select" type="checkbox" aria-label={`${product.title} seç`} checked={selected} onChange={onSelect} />
-        {product.primaryImageUrl ? <img src={product.primaryImageUrl} alt={product.title} /> : <span className="product-list-placeholder">Görsel yok</span>}
+        {product.primaryImageUrl ? <img src={product.primaryImageUrl} alt={product.title} className="product-list-thumb clickable-thumb" onClick={() => onImageClick(product.primaryImageUrl!, product.title)} title="Görseli büyütmek için tıklayın" /> : <span className="product-list-placeholder">Görsel yok</span>}
         <div className="product-list-identity"><strong>{product.title}</strong><small>Model Kodu: {product.modelCode ?? '—'}</small></div>
         <strong className="product-list-variants">{product.variants.length} varyant</strong>
         <div className="product-list-price clickable-cell" title="Fiyatı hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('price')}><strong>{money(product.startingPrice, product.currency)}</strong></div>
@@ -248,7 +261,7 @@ function ProductColorRows({ product, selected, onSelect, onQuickEdit }: { produc
 }
 
 export function ProductsPage() {
-  const client = useQueryClient(); const [search, setSearch] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [expandedProductId, setExpandedProductId] = useState<string | null>(null); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null)
+  const client = useQueryClient(); const [search, setSearch] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [expandedProductId, setExpandedProductId] = useState<string | null>(null); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
   const query = useQuery({ queryKey: ['products'], queryFn: () => hubApi<PageData<Product>>('/products?limit=200') })
   const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => hubApi<PageData<TrendyolConnection>>('/connections?limit=200') })
   const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(item => item.status === 'ACTIVE')
@@ -261,20 +274,80 @@ export function ProductsPage() {
     return searchMatch && statusMatch && platformMatch && stockMatch
   })
   const selectedProducts = products.filter(product => quickEdit?.productIds.includes(product.id))
-  const quickProductIds: string[] | null = null; const setQuickProductIds = (productIds: string[] | null) => setQuickEdit(productIds ? { productIds, mode: 'both' } : null)
   const allVisibleSelected = visible.length > 0 && visible.every(product => selectedProductIds.includes(product.id))
   const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
   function showProductToast(message: string, kind: 'success' | 'error') { setProductToast({ message, kind }); window.setTimeout(() => setProductToast(current => current?.message === message ? null : current), 4000) }
   function toggleProduct(id: string) { setSelectedProductIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id]) }
   function toggleAllVisible() { setSelectedProductIds(ids => allVisibleSelected ? ids.filter(id => !visible.some(product => product.id === id)) : [...new Set([...ids, ...visible.map(product => product.id)])]) }
+
+  async function bulkSetProductStatus(newStatus: 'ACTIVE' | 'ARCHIVED') {
+    setBulkOpen(false)
+    const targets = products.filter(p => selectedProductIds.includes(p.id))
+    if (!targets.length) return
+    try {
+      for (const p of targets) {
+        await hubApi(`/products/${p.id}`, {
+          method: 'PATCH',
+          headers: { 'If-Match': `"v${p.version}"` },
+          body: JSON.stringify({ status: newStatus })
+        })
+      }
+      showProductToast(`${targets.length} ürün durumu “${newStatus === 'ACTIVE' ? 'Satışta' : 'Kapalı'}” olarak güncellendi.`, 'success')
+      setSelectedProductIds([])
+      await refresh()
+    } catch (err) {
+      showProductToast(err instanceof Error ? err.message : 'Toplu durum güncelleme başarısız.', 'error')
+    }
+  }
+
   return <Page title="Ürünler" eyebrow="Katalog" action={<Link className="button-link" to="/products/new">+ Yeni Ürün Ekle</Link>}>
     <p className="lede page-lede">Ürün, varyant, stok, fiyat ve pazaryeri yayın durumlarını tek kartta yönetin.</p>
     <div className="product-metrics metrics"><article><small>Toplam ürün</small><strong>{products.length}</strong><span>katalog kaydı</span></article><article><small>Aktif</small><strong>{products.filter(x => x.status === 'ACTIVE').length}</strong><span>ürün</span></article><article><small>Stoksuz</small><strong>{products.filter(x => x.totalStock <= 0).length}</strong><span>aksiyon gerekli</span></article><article><small>Düşük stok</small><strong>{products.filter(x => x.totalStock > 0 && x.totalStock <= 5).length}</strong><span>5 ve altı</span></article></div>
-    <div className="product-toolbar"><label className="order-search"><span aria-hidden="true">⌕</span><input aria-label="Ürün ara" placeholder="Ürün adı, model, SKU veya barkod..." value={search} onChange={event => setSearch(event.target.value)} /></label><select aria-label="Ürün durumu" value={status} onChange={event => setStatus(event.target.value)}><option value="">Tüm durumlar</option><option value="ACTIVE">Aktif</option><option value="DRAFT">Taslak</option><option value="ARCHIVED">Arşiv</option></select><select aria-label="Platform filtresi" value={platform} onChange={event => setPlatform(event.target.value)}><option value="">Tüm platformlar</option>{platforms.map(item => <option key={item}>{item}</option>)}</select><select aria-label="Stok filtresi" value={stock} onChange={event => setStock(event.target.value)}><option value="">Tüm stoklar</option><option value="OUT">Stoksuz</option><option value="LOW">Düşük stok</option><option value="OK">Yeterli stok</option></select></div>
-    {!query.isLoading && visible.length > 0 && <div className="product-catalog-table preferred-product-catalog"><div className="product-catalog-head"><label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} /><span>Ürün Bilgisi</span></label><span>Varyant</span><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span></div>{visible.map(product => <ProductColorRows key={product.id} product={product} selected={selectedProductIds.includes(product.id)} onSelect={() => toggleProduct(product.id)} onQuickEdit={mode => setQuickEdit({ productIds: [product.id], mode })} />)}</div>}
+    <div className="product-toolbar">
+      <div className="bulk-menu-shell">
+        <button type="button" className="bulk-action" disabled={!selectedProductIds.length} aria-expanded={bulkOpen} onClick={() => setBulkOpen(v => !v)}>
+          Toplu işlemler {selectedProductIds.length > 0 ? `(${selectedProductIds.length})` : ''} ⌄
+        </button>
+        {bulkOpen && (
+          <div className="bulk-action-menu" role="menu">
+            <button type="button" role="menuitem" onClick={() => { setBulkOpen(false); setQuickEdit({ productIds: selectedProductIds, mode: 'both' }); }}>
+              <b>01</b><span>Toplu Fiyat &amp; Stok Düzenle<small>Seçili ürünler</small></span>
+            </button>
+            <button type="button" role="menuitem" onClick={() => { setBulkOpen(false); setQuickEdit({ productIds: selectedProductIds, mode: 'price' }); }}>
+              <b>02</b><span>Toplu Fiyat Düzenle<small>Fiyatları tek seferde güncelle</small></span>
+            </button>
+            <button type="button" role="menuitem" onClick={() => { setBulkOpen(false); setQuickEdit({ productIds: selectedProductIds, mode: 'stock' }); }}>
+              <b>03</b><span>Toplu Stok Düzenle<small>Stokları artır / azalt / eşitle</small></span>
+            </button>
+            <button type="button" role="menuitem" onClick={() => void bulkSetProductStatus('ACTIVE')}>
+              <b>04</b><span>Toplu Satışa Aç<small>Seçili ürünleri satışta yap</small></span>
+            </button>
+            <button type="button" role="menuitem" className="destructive" onClick={() => void bulkSetProductStatus('ARCHIVED')}>
+              <b>05</b><span>Toplu Satışa Kapat<small>Seçili ürünleri arşive al</small></span>
+            </button>
+          </div>
+        )}
+      </div>
+      <label className="order-search"><span aria-hidden="true">⌕</span><input aria-label="Ürün ara" placeholder="Ürün adı, model, SKU veya barkod..." value={search} onChange={event => setSearch(event.target.value)} /></label>
+      <select aria-label="Ürün durumu" value={status} onChange={event => setStatus(event.target.value)}><option value="">Tüm durumlar</option><option value="ACTIVE">Aktif</option><option value="DRAFT">Taslak</option><option value="ARCHIVED">Arşiv</option></select>
+      <select aria-label="Platform filtresi" value={platform} onChange={event => setPlatform(event.target.value)}><option value="">Tüm platformlar</option>{platforms.map(item => <option key={item}>{item}</option>)}</select>
+      <select aria-label="Stok filtresi" value={stock} onChange={event => setStock(event.target.value)}><option value="">Tüm stoklar</option><option value="OUT">Stoksuz</option><option value="LOW">Düşük stok</option><option value="OK">Yeterli stok</option></select>
+    </div>
+    <ErrorBox error={query.error ?? connectionsQuery.error} />
+    {query.isLoading ? <p>Yükleniyor…</p> : !visible.length ? <div className="empty">Filtrelerle eşleşen ürün yok.</div> : (
+      <div className="product-catalog-table preferred-product-catalog">
+        <div className="product-catalog-head">
+          <label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} /><span>Ürün Bilgisi</span></label>
+          <span>Varyant</span><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
+        </div>
+        {visible.map(product => (
+          <ProductColorRows key={product.id} product={product} selected={selectedProductIds.includes(product.id)} onSelect={() => toggleProduct(product.id)} onQuickEdit={mode => setQuickEdit({ productIds: [product.id], mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} />
+        ))}
+      </div>
+    )}
     {quickEdit && <ProductQuickEditModal products={selectedProducts} connections={connections} mode={quickEdit.mode} onChanged={refresh} onResult={showProductToast} onClose={() => setQuickEdit(null)} />}
     {productToast && <div className={`product-operation-toast ${productToast.kind}`} role={productToast.kind === 'success' ? 'status' : 'alert'}><strong>{productToast.kind === 'success' ? 'Güncellendi' : 'Başarısız'}</strong><span>{productToast.message}</span></div>}
-    <ErrorBox error={query.error ?? connectionsQuery.error} />{query.isLoading ? <p>Yükleniyor…</p> : !visible.length ? <div className="empty">Filtrelerle eşleşen ürün yok.</div> : <><div className="product-bulk-bar"><label><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} /> Tümünü seç</label><span>{selectedProductIds.length ? `${selectedProductIds.length} ürün seçildi` : 'Toplu işlem için ürün seçin'}</span><button type="button" disabled={!selectedProductIds.length} onClick={() => setQuickProductIds(selectedProductIds)}>Toplu fiyat ve stok düzenle</button></div><div className="product-catalog-table"><div className="product-catalog-head"><label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} /><span>Ürün</span></label><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span></div>{visible.map(product => { const expanded = expandedProductId === product.id; const platformActive = Boolean(product.activePlatforms?.length); const colorGroups = product.variants.reduce<Record<string, Variant[]>>((groups, variant) => { const match = variant.optionSignature?.match(/(?:RENK|Renk|WEB COLOR|Web Color)\s*[:=]\s*([^|_]+)/); const color = match?.[1]?.trim() || 'Diğer'; (groups[color] ??= []).push(variant); return groups }, {}); return <article className={`product-catalog-item${expanded ? ' expanded' : ''}`} key={product.id}><div className="product-catalog-row"><input className="product-row-select" type="checkbox" aria-label={`${product.title} seç`} checked={selectedProductIds.includes(product.id)} onChange={() => toggleProduct(product.id)} /><button type="button" className="product-expand-button" aria-label={`${product.title} varyantlarını ${expanded ? 'kapat' : 'aç'}`} aria-expanded={expanded} onClick={() => setExpandedProductId(expanded ? null : product.id)}>{expanded ? '⌃' : '⌄'}</button>{product.primaryImageUrl ? <img src={product.primaryImageUrl} alt={product.title} /> : <span className="product-list-placeholder">Görsel yok</span>}<div className="product-list-identity"><strong>{product.title}</strong><small>Model Kodu: {product.modelCode ?? '—'}</small><span>{product.variants.length} varyant</span></div><strong className="product-list-price">{money(product.startingPrice, product.currency)}</strong><strong>{product.totalStock}</strong><div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ''}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'}>TY<i /></span><small>{platformActive ? 'Eşleşti' : 'Eşleşmedi'}</small></div><div className="product-list-status"><Tag>{product.status === 'ACTIVE' ? 'SATIŞTA' : 'KAPALI'}</Tag><small>{product.status === 'ACTIVE' ? 'Satışa açık' : 'Satışa kapalı'}</small></div><div className="product-list-actions"><button type="button" onClick={() => setQuickProductIds([product.id])}>Hızlı düzenle</button><Link className="product-edit-link" to={`/products/${product.id}`}>Düzenle</Link></div></div>{expanded && <div className="product-color-groups" aria-label={`${product.title} renk grupları`}>{Object.entries(colorGroups).map(([color, variants]) => <details className="product-color-group" key={color} open={Object.keys(colorGroups).length === 1}><summary><span className={`color-swatch color-${color.toLocaleLowerCase('tr-TR').replaceAll(' ', '-')}`} /><strong>{color}</strong><small>{variants.length} varyant</small><b>⌄</b></summary><div className="product-variant-table" role="table" aria-label={`${color} varyantları`}><div className="product-variant-head" role="row"><span>Varyant bilgisi</span><span>Seçenek</span><span>Durum</span><span>Model kodu</span><span>Fiyat</span><span>Stok</span></div>{variants.map(variant => <div className="product-variant-row" role="row" key={variant.id}><div><strong>Stok Kodu: {variant.sku}</strong><small>Barkod: {variant.barcode ?? '—'}</small></div><strong>{variant.optionSignature ? variant.optionSignature.replaceAll('_', ' · ').replaceAll('|', ' · ').replaceAll('=', ': ') : 'Ana varyant'}</strong><span className={`variant-sale-state ${variant.status === 'ACTIVE' ? 'active' : ''}`}>{variant.status === 'ACTIVE' ? '● Satışta' : variant.status === 'DRAFT' ? 'Kapalı' : variant.status}</span><span>{variant.modelCode ?? product.modelCode ?? '—'}</span><strong>{money(variant.salePrice ?? variant.listPrice, variant.currency ?? product.currency)}</strong><strong>{variant.available}</strong></div>)}</div></details>)}</div>}</article> })}</div></>}{quickProductIds && <ProductQuickEditModal products={selectedProducts} connections={connections} onChanged={refresh} onClose={() => setQuickProductIds(null)} />}
+    {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
   </Page>
 }
 
@@ -351,6 +424,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '2', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([])
   const [channelDropdownOpen, setChannelDropdownOpen] = useState(false)
+  const [onlySelectedAttributes, setOnlySelectedAttributes] = useState(false)
+  const [customVisibleAttrIds, setCustomVisibleAttrIds] = useState<string[] | null>(null)
+  const [attrFilterOpen, setAttrFilterOpen] = useState(false)
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const productToEdit = useQuery({ queryKey: ['product', editProductId], queryFn: () => hubApi<Product>(`/products/${editProductId}`), enabled: !!editProductId })
@@ -363,6 +440,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const fallbackListPrice = Number(form.listPrice || 0); const fallbackSalePrice = Number(form.salePrice || 0); const initialStock = Number(form.initialStock || 0)
   const desi = useMemo(() => { const width = Number(form.width); const length = Number(form.length); const height = Number(form.height); return width > 0 && length > 0 && height > 0 ? width * length * height / 3000 : 0 }, [form.width, form.length, form.height])
   const mediaUrls = useMemo(() => form.mediaUrls.split(/\r?\n/).map(item => item.trim()).filter(Boolean), [form.mediaUrls])
+
+  const allRequirements = useMemo(() => (requirements.data ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder), [requirements.data])
+  const visibleRequirements = useMemo(() => {
+    return allRequirements.filter(item => {
+      const isSelected = (attributeSelections[item.attributeId]?.length ?? 0) > 0 || Boolean((attributeTextValues[item.attributeId] ?? '').trim()) || variantAttributeIds.includes(item.attributeId)
+      if (onlySelectedAttributes && !isSelected) return false
+      if (customVisibleAttrIds && !customVisibleAttrIds.includes(item.attributeId)) return false
+      return true
+    })
+  }, [allRequirements, attributeSelections, attributeTextValues, variantAttributeIds, onlySelectedAttributes, customVisibleAttrIds])
 
   useEffect(() => {
     const product = productToEdit.data
@@ -378,7 +465,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   function updateField(name: keyof typeof form, value: string) { setForm(current => ({ ...current, [name]: value })) }
   function toggleAttributeValue(attributeId: string, valueId: string) {
     const requirement = requirements.data?.find(item => item.attributeId === attributeId)
-    if (variantAttributeIds.includes(attributeId)) setVariantRows([])
     setAttributeSelections(current => {
       const values = current[attributeId] ?? []
       if (values.includes(valueId)) return { ...current, [attributeId]: values.filter(item => item !== valueId) }
@@ -389,16 +475,27 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
   function toggleVariantAttribute(attributeId: string) {
     setVariantAttributeIds(current => current.includes(attributeId) ? current.filter(item => item !== attributeId) : [...current, attributeId])
-    setVariantRows([])
   }
   function generateVariants() {
     try {
       const generated = buildVariantMatrix(requirements.data ?? [], variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, initialStock)
+      if (!generated.length) {
+        setNotice('Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.')
+        return
+      }
       setVariantRows(current => {
-        const existingSignatures = new Set(current.map(row => row.optionSignature))
-        return [...current, ...generated.filter(row => !existingSignatures.has(row.optionSignature))]
+        const existingMap = new Map(current.map(row => [row.optionSignature, row]))
+        const merged = generated.map(gen => {
+          const match = existingMap.get(gen.optionSignature)
+          if (match) {
+            existingMap.delete(gen.optionSignature)
+            return match
+          }
+          return gen
+        })
+        return [...merged, ...Array.from(existingMap.values())]
       })
-      setNotice(generated.length ? `${generated.length} varyant satırı hazırlandı.` : 'Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.')
+      setNotice(`${generated.length} varyant satırı hazırlandı.`)
     } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Varyantlar oluşturulamadı.') }
   }
   function clearVariants() { setVariantRows([]); setNotice('Oluşan varyant satırları temizlendi.') }
@@ -493,15 +590,107 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     <div className="product-layout-grid"><div className="product-main-stack">
       <section className="panel product-step-card"><div className="editor-section-title"><span>2</span><div><h2>Fiyat, stok ve vergi</h2><p>Merkezi başlangıç değerleri varyant oluşturulurken satırlara uygulanır.</p></div></div><div className="product-step-grid"><label>Liste fiyatı<input value={form.listPrice} onChange={event => updateField('listPrice', event.target.value)} type="number" min="0" step="0.01" /></label><label>Satış fiyatı<input value={form.salePrice} onChange={event => updateField('salePrice', event.target.value)} type="number" min="0" step="0.01" /></label><label>Para birimi<select value={form.currency} onChange={event => updateField('currency', event.target.value)}><option>TRY</option><option>USD</option><option>EUR</option></select></label><label>KDV oranı<select value={form.vatRate} onChange={event => updateField('vatRate', event.target.value)}><option value="1">%1</option><option value="10">%10</option><option value="20">%20</option></select></label><label>KDV dahil mi<select value={form.vatIncluded} onChange={event => updateField('vatIncluded', event.target.value)}><option value="INCLUDED">Evet</option><option value="EXCLUDED">Hayır</option></select></label><label>Stok<input value={form.initialStock} onChange={event => updateField('initialStock', event.target.value)} type="number" min="0" step="1" /></label><label>Güvenlik stoğu<input value={form.safetyStock} onChange={event => updateField('safetyStock', event.target.value)} type="number" min="0" step="1" /></label></div></section>
 
-      <section className="panel product-step-card"><div className="editor-section-title"><span>4</span><div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilir veya internetten erişilebilen HTTPS adresleri ekleyebilirsiniz.</p></div></div><label className="upload-ghost-box product-media-upload"><input type="file" accept="image/jpeg,image/png" multiple onChange={event => setMediaFiles(current => [...current, ...Array.from(event.target.files ?? [])].slice(0, 8))} /><strong>{mediaFiles.length ? `${mediaFiles.length} dosya seçildi` : 'Ürün görsellerini dosya olarak seç'}</strong><small>En fazla 8 adet JPEG veya PNG, dosya başına 10 MB</small></label><label>Görsel URL listesi<textarea value={form.mediaUrls} onChange={event => updateField('mediaUrls', event.target.value)} placeholder="İsteğe bağlı: Her satıra bir HTTPS görsel adresi girin" /></label>{(mediaUrls.length > 0 || mediaFiles.length > 0) && <div className="media-preview-strip">{mediaFiles.map((file, index) => <LocalImagePreview key={`${file.name}-${file.lastModified}-${index}`} file={file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={index === 0 && !mediaUrls.length ? 'Ana görsel' : file.name} onRemove={() => setMediaFiles(files => files.filter((_, i) => i !== index))} />)}{mediaUrls.slice(0, 8 - mediaFiles.length).map((url, index) => <figure key={`${url}-${index}`} className="image-preview-card"><img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} /><button type="button" className="image-remove-btn" title="Görseli kaldır" onClick={e => { e.stopPropagation(); const next = mediaUrls.filter((_, i) => i !== index).join('\n'); updateField('mediaUrls', next) }}>✕</button><figcaption>{index === 0 && !mediaFiles.length ? 'Ana görsel' : `${index + 1}. görsel`}</figcaption></figure>)}</div>}</section>
+      <section className="panel product-step-card"><div className="editor-section-title"><span>4</span><div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilir veya internetten erişilebilen HTTPS adresleri ekleyebilirsiniz.</p></div></div><label className="upload-ghost-box product-media-upload"><input type="file" accept="image/jpeg,image/png" multiple onChange={event => setMediaFiles(current => [...current, ...Array.from(event.target.files ?? [])].slice(0, 8))} /><strong>{mediaFiles.length ? `${mediaFiles.length} dosya seçildi` : 'Ürün görsellerini dosya olarak seç'}</strong><small>En fazla 8 adet JPEG veya PNG, dosya başına 10 MB</small></label><label>Görsel URL listesi<textarea value={form.mediaUrls} onChange={event => updateField('mediaUrls', event.target.value)} placeholder="İsteğe bağlı: Her satıra bir HTTPS görsel adresi girin" /></label>{(mediaUrls.length > 0 || mediaFiles.length > 0) && <div className="media-preview-strip">{mediaFiles.map((file, index) => <LocalImagePreview key={`${file.name}-${file.lastModified}-${index}`} file={file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={index === 0 && !mediaUrls.length ? 'Ana görsel' : file.name} onRemove={() => setMediaFiles(files => files.filter((_, i) => i !== index))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}{mediaUrls.slice(0, 8 - mediaFiles.length).map((url, index) => <figure key={`${url}-${index}`} className="image-preview-card"><img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} title="Büyütmek için tıklayın" /><button type="button" className="image-remove-btn" title="Görseli kaldır" onClick={e => { e.stopPropagation(); const next = mediaUrls.filter((_, i) => i !== index).join('\n'); updateField('mediaUrls', next) }}>✕</button><figcaption>{index === 0 && !mediaFiles.length ? 'Ana görsel' : `${index + 1}. görsel`}</figcaption></figure>)}</div>}</section>
 
-      <section className="panel product-step-card"><div className="editor-section-title"><span>5</span><div><h2>Ürün özellikleri</h2><p>Bilgiler kategori &amp; özellik eşleme sayfasındaki kategori özellik başlıklarından gelir.</p></div></div><div className="attribute-variant-action"><div><strong>Varyantları oluştur</strong><small>Varyant olacak özellikleri ve değerleri seçtikten sonra kombinasyonları oluşturun.</small></div><div className="attribute-variant-actions"><button type="button" onClick={generateVariants}>Ürünleri ekle</button><button type="button" className="secondary" onClick={clearVariants}>Oluşan varyantları temizle</button></div></div>{!form.categoryId ? <div className="unknown"><strong>Önce kategori seçin</strong><p>Kategori seçildiğinde o kategoriye bağlanan özellikler burada görünür.</p></div> : requirements.isLoading ? <p>Kategori özellikleri yükleniyor…</p> : requirements.isError ? <div className="unknown"><strong>Kategori özellikleri alınamadı</strong><p>Önce kategori eşleme ekranında ilgili kategorinin özellik başlıklarını hazırlayın.</p></div> : <div className="attribute-builder-list">{(requirements.data ?? []).sort((a, b) => a.displayOrder - b.displayOrder).map(item => <article className="attribute-builder-card" key={item.attributeId}><div className="attribute-builder-head"><label className="attribute-builder-toggle"><input type="checkbox" checked={variantAttributeIds.includes(item.attributeId)} onChange={() => toggleVariantAttribute(item.attributeId)} disabled={!item.attribute.values.length} /> <span>{item.attribute.name}{item.isRequired ? ' *' : ''}</span></label><small>{item.attribute.values.length} değer · {variantAttributeIds.includes(item.attributeId) ? 'varyant özelliği' : 'ürün özelliği'}</small></div>{item.attribute.values.length ? <div className="option-chip-list">{item.attribute.values.map(value => <button type="button" key={value.id} className={`option-chip ${(attributeSelections[item.attributeId] ?? []).includes(value.id) ? 'active' : ''}`} onClick={() => toggleAttributeValue(item.attributeId, value.id)}>{value.value}</button>)}</div> : item.attribute.dataType === 'BOOLEAN' ? <label>Değer<select value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))}><option value="">Seçin</option><option value="evet">Evet</option><option value="hayır">Hayır</option></select></label> : <label>Değer<input value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))} type={item.attribute.dataType === 'NUMBER' ? 'number' : 'text'} placeholder="Değer girin" /></label>}</article>)}</div>}</section>
+      <section className="panel product-step-card">
+        <div className="editor-section-title">
+          <span>5</span>
+          <div>
+            <h2>Ürün özellikleri</h2>
+            <p>Bilgiler kategori &amp; özellik eşleme sayfasındaki kategori özellik başlıklarından gelir.</p>
+          </div>
+        </div>
+        <div className="attribute-variant-action">
+          <div>
+            <strong>Varyantları oluştur</strong>
+            <small>Varyant olacak özellikleri ve değerleri seçtikten sonra kombinasyonları oluşturun.</small>
+          </div>
+          <div className="attribute-variant-actions">
+            <div className="attr-filter-menu-shell">
+              <button type="button" className="secondary attr-filter-trigger" onClick={() => setAttrFilterOpen(v => !v)}>
+                ⚙ Özellikleri Filtrele {onlySelectedAttributes ? '(Seçililer)' : ''} ⌄
+              </button>
+              {attrFilterOpen && (
+                <div className="attr-filter-popover">
+                  <label className="attr-filter-toggle-row">
+                    <input type="checkbox" checked={onlySelectedAttributes} onChange={e => setOnlySelectedAttributes(e.target.checked)} />
+                    <strong>Yalnızca seçili özellikleri göster</strong>
+                  </label>
+                  <div className="attr-filter-divider" />
+                  <div className="attr-filter-checklist">
+                    <div className="attr-filter-check-head">
+                      <small>Gösterilecek Özellikler</small>
+                      <button type="button" onClick={() => setCustomVisibleAttrIds(null)}>Tümünü Aç</button>
+                    </div>
+                    {allRequirements.map(req => {
+                      const isChecked = customVisibleAttrIds ? customVisibleAttrIds.includes(req.attributeId) : true
+                      return (
+                        <label key={req.attributeId} className="attr-filter-check-item">
+                          <input type="checkbox" checked={isChecked} onChange={e => {
+                            const current = customVisibleAttrIds ? [...customVisibleAttrIds] : allRequirements.map(r => r.attributeId)
+                            const next = e.target.checked ? [...new Set([...current, req.attributeId])] : current.filter(id => id !== req.attributeId)
+                            setCustomVisibleAttrIds(next)
+                          }} />
+                          <span>{req.attribute.name}</span>
+                          {variantAttributeIds.includes(req.attributeId) && <small className="attr-tag">Varyant</small>}
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            <button type="button" onClick={generateVariants}>Ürünleri ekle</button>
+            <button type="button" className="secondary" onClick={clearVariants}>Oluşan varyantları temizle</button>
+          </div>
+        </div>
+        {!form.categoryId ? (
+          <div className="unknown"><strong>Önce kategori seçin</strong><p>Kategori seçildiğinde o kategoriye bağlanan özellikler burada görünür.</p></div>
+        ) : requirements.isLoading ? (
+          <p>Kategori özellikleri yükleniyor…</p>
+        ) : requirements.isError ? (
+          <div className="unknown"><strong>Kategori özellikleri alınamadı</strong><p>Önce kategori eşleme ekranında ilgili kategorinin özellik başlıklarını hazırlayın.</p></div>
+        ) : (
+          <div className="attribute-builder-list">
+            {visibleRequirements.map(item => (
+              <article className="attribute-builder-card" key={item.attributeId}>
+                <div className="attribute-builder-head">
+                  <label className="attribute-builder-toggle">
+                    <input type="checkbox" checked={variantAttributeIds.includes(item.attributeId)} onChange={() => toggleVariantAttribute(item.attributeId)} disabled={!item.attribute.values.length} />
+                    <span>{item.attribute.name}{item.isRequired ? ' *' : ''}</span>
+                  </label>
+                  <small>{item.attribute.values.length} değer · {variantAttributeIds.includes(item.attributeId) ? 'varyant özelliği' : 'ürün özelliği'}</small>
+                </div>
+                {item.attribute.values.length ? (
+                  <div className="option-chip-list">
+                    {item.attribute.values.map(value => (
+                      <button type="button" key={value.id} className={`option-chip ${(attributeSelections[item.attributeId] ?? []).includes(value.id) ? 'active' : ''}`} onClick={() => toggleAttributeValue(item.attributeId, value.id)}>
+                        {value.value}
+                      </button>
+                    ))}
+                  </div>
+                ) : item.attribute.dataType === 'BOOLEAN' ? (
+                  <label>Değer<select value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))}><option value="">Seçin</option><option value="evet">Evet</option><option value="hayır">Hayır</option></select></label>
+                ) : (
+                  <label>Değer<input value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))} type={item.attribute.dataType === 'NUMBER' ? 'number' : 'text'} placeholder="Değer girin" /></label>
+                )}
+              </article>
+            ))}
+            {!visibleRequirements.length && (
+              <div className="empty small" style={{ gridColumn: '1 / -1' }}>
+                <p>Filtreye uygun özellik bulunamadı. “Özellikleri Filtrele” menüsünden görünürlük ayarlarını değiştirebilirsiniz.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       <section className="panel product-step-card"><div className="editor-section-title"><span>6</span><div><h2>Ürün seçenek grupları</h2><p>İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</p></div></div>{variantRows.length > 0 && <div className="variant-bulk-editor"><input value={bulkStock} onChange={event => setBulkStock(event.target.value)} type="number" min="0" placeholder="Tüm stoklar" /><input value={bulkSalePrice} onChange={event => setBulkSalePrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm satış fiyatları" /><input value={bulkListPrice} onChange={event => setBulkListPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm liste fiyatları" /><button type="button" className="secondary" onClick={applyBulk}>Tümüne uygula</button></div>}<div className="variant-table-editor"><div className="variant-table-head"><span aria-hidden="true" /><span>Seçenek</span><span>Barkod</span><span>Stok kodu</span><span>Stok</span><span>Fiyat</span><span>Liste fiyatı</span><span>İşlem</span></div>{variantRows.length ? variantRows.map(row => <div className={`variant-table-row ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key} onDragOver={event => event.preventDefault()} onDragEnter={() => { if (!draggedVariantKey || draggedVariantKey === row.key || dragOverVariantKey === row.key) return; swapVariants(draggedVariantKey, row.key); setDragOverVariantKey(row.key) }}><span className="variant-drag-handle" draggable title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; setDraggedVariantKey(row.key); setDragOverVariantKey(null) }} onDragEnd={() => { setDraggedVariantKey(null); setDragOverVariantKey(null) }}>☰</span><input value={row.optionSignature} readOnly /><input value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" /><input value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" /><input value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" /><input value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /><input value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /><button type="button" className="secondary" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))}>Sil</button></div>) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini işaretleyip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}</div></section>
     </div><aside className="panel publish-channel-panel"><div className="editor-section-title"><span>7</span><div><h2>Yayınlanacak kanallar</h2><p>Seçilen aktif Trendyol bağlantılarında fiyat teklifi, listing profile ve yayın işi hazırlanır.</p></div></div><div className="channel-dropdown-wrapper"><button type="button" className="channel-dropdown-toggle" onClick={() => setChannelDropdownOpen(prev => !prev)} aria-expanded={channelDropdownOpen}><span>{selectedChannelIds.length ? `${selectedChannelIds.length} kanal seçildi (${activeConnections.filter(c => selectedChannelIds.includes(c.id)).map(c => c.displayName).join(', ')})` : 'Kanal seçin (Açılır Menü)'}</span><b style={{ transform: channelDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block' }}>⌄</b></button>{channelDropdownOpen && <div className="channel-choice-list dropdown-list">{activeConnections.map(item => <label key={item.id} className="channel-choice"><input type="checkbox" checked={selectedChannelIds.includes(item.id)} onChange={() => updateChannel(item.id)} /> <span>{item.displayName}</span><small>{selectedChannelIds.includes(item.id) ? 'Seçildi' : 'Seçilmedi'}</small></label>)}{!activeConnections.length && <p style={{ padding: '0.6rem', margin: 0, color: 'var(--rv-muted)', fontSize: '0.85rem' }}>Aktif Trendyol bağlantısı bulunamadı.</p>}</div>}</div><div className="channel-help"><strong>Güvenli yayın</strong><p>Stage manuel yayın; aktif bağlantı, doğrulanmış kimlik bilgisi, geçerli ürün verisi ve tekrar korumasıyla çalışır. Production yayınında master ve bağlantı dış-yazma anahtarları ayrıca zorunludur.</p></div></aside></div>
 
     <section className="product-submit-sticky"><div><strong>Ürün kayda hazır</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><button disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Ürünü kaydet'}</button></section>
     <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />{notice && <p className="notice" role="status">{notice}</p>}{created && <p className="success">Oluşturuldu: <Link to={`/products/${created.id}`}>ürünü aç</Link></p>}
+    {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
   </form></Page>
 }
 
