@@ -93,19 +93,18 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const toggleColor = (color: string) => {
     const next = selectedColors.includes(color) ? selectedColors.filter(item => item !== color) : [...selectedColors, color]
     setSelectedColors(next)
+    applyFilterSelection(next, selectedSizes)
   }
   const toggleSize = (size: string) => {
     const next = selectedSizes.includes(size) ? selectedSizes.filter(item => item !== size) : [...selectedSizes, size]
     setSelectedSizes(next)
+    applyFilterSelection(selectedColors, next)
   }
   const toggle = (id: string) => { setSelectionDraft(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]) }
   const toggleGroup = (items: typeof variants) => { const ids = items.map(item => item.variant.id); const every = ids.every(id => selectedSet.has(id)); setSelectionDraft(current => every ? current.filter(id => !ids.includes(id)) : [...new Set([...current, ...ids])]) }
-  function applyFilterSelection() {
-    if (!selectedColors.length && !selectedSizes.length) return setNotice('Önce renk veya beden filtresi seçin.')
-    const ids = variants.filter(item => (!selectedColors.length || selectedColors.includes(colorOf(item))) && (!selectedSizes.length || selectedSizes.includes(sizeOf(item)))).map(item => item.variant.id)
-    if (!ids.length) return setNotice('Seçtiğiniz filtrelerle eşleşen varyant bulunamadı.')
+  function applyFilterSelection(colors: string[], sizes: string[]) {
+    const ids = variants.filter(item => (!colors.length || colors.includes(colorOf(item))) && (!sizes.length || sizes.includes(sizeOf(item)))).map(item => item.variant.id)
     setSelectionDraft(ids)
-    setNotice(`${ids.length} varyant alttaki listede otomatik işaretlendi.`)
   }
   async function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (saving || !selectionDraft.length) return setNotice('Önce en az bir varyant seçin.')
@@ -155,7 +154,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
               <div className="quick-edit-filter-options">{sizeOptions.map(size => <label key={size}><input type="checkbox" checked={selectedSizes.includes(size)} onChange={() => toggleSize(size)} /><span>{size}</span><small>{variants.filter(item => (!selectedColors.length || selectedColors.includes(colorOf(item))) && sizeOf(item) === size).length} varyant</small></label>)}</div>
             </details>
           </div>
-          <div className="quick-edit-filter-action"><p>Örneğin Siyah rengini ve 3XL + 4XL + 5XL bedenlerini seçip alttaki varyantları işaretleyin.</p><button type="button" onClick={applyFilterSelection} disabled={!selectedColors.length && !selectedSizes.length}>Seç</button></div>
+          <div className="quick-edit-filter-action"><p>Renk ve beden filtrelerini seçtikçe alttaki eşleşen varyantlar otomatik işaretlenir.</p></div>
           <div className="quick-edit-selection">
             {Object.entries(groups).map(([color, items]) => <details className="quick-edit-color" key={color} open={Object.keys(groups).length === 1}>
               <summary><label onClick={event => event.stopPropagation()}><input type="checkbox" checked={items.every(item => selectedSet.has(item.variant.id))} onChange={() => toggleGroup(items)} /> {color}</label><small>{items.length} varyant · {items.reduce((sum, item) => sum + item.variant.available, 0)} stok</small><b>⌄</b></summary>
