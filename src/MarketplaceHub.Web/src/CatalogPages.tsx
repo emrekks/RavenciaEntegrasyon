@@ -89,7 +89,8 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
   const selectedSet = new Set(selectionDraft)
-  const appliedSelectedSet = new Set(selected)
+  const activeSelection = selectionConfirmed ? selected : selectionDraft
+  const activeSelectedSet = new Set(activeSelection)
   const sizeOptions = [...new Set(variants.filter(item => !selectedColors.length || selectedColors.includes(colorOf(item))).map(sizeOf))]
   const toggleColor = (color: string) => {
     const next = selectedColors.includes(color) ? selectedColors.filter(item => item !== color) : [...selectedColors, color]
@@ -116,14 +117,16 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     setNotice(`${selectionDraft.length} varyant fiyat güncellemesi için hazır.`)
   }
   async function apply(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (saving || !selectionConfirmed || !selected.length) return setNotice('Önce seçtiğiniz varyantları onaylayın.')
+    event.preventDefault(); if (saving || !selectionDraft.length) return setNotice('Önce en az bir varyant seçin.')
+    const targetSelection = selectionConfirmed ? selected : selectionDraft
+    const targetSelectionSet = new Set(targetSelection)
     const priceRequested = mode !== 'stock' && (listPrice !== '' || salePrice !== ''); const stockRequested = mode !== 'price' && stockAmount !== ''
     if (!priceRequested && !stockRequested) return setNotice('Uygulanacak fiyat veya stok değerini girin.')
     const list = listPrice === '' ? null : Number(listPrice); const sale = salePrice === '' ? null : Number(salePrice); const amount = stockAmount === '' ? null : Number(stockAmount)
     if ((list != null && (!Number.isFinite(list) || list < 0)) || (sale != null && (!Number.isFinite(sale) || sale < 0)) || (list != null && sale != null && list < sale) || (amount != null && (!Number.isFinite(amount) || amount < 0))) return setNotice('Değerleri kontrol edin; negatif fiyat/stok veya hatalı fiyat sıralaması kullanılamaz.')
     setSaving(true); setNotice('Seçilen varyantlar güncelleniyor…')
     try {
-      for (const item of variants.filter(value => appliedSelectedSet.has(value.variant.id))) {
+      for (const item of variants.filter(value => targetSelectionSet.has(value.variant.id))) {
         const variant = item.variant
         if (priceRequested) {
           const connectionId = variant.offerId ? '' : connections[0]?.id ?? ''; const nextSale = sale ?? variant.salePrice ?? variant.listPrice ?? 0; const nextList = list ?? variant.listPrice ?? nextSale
@@ -139,7 +142,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           if (delta !== 0) await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Toplu ürün stok düzenleme', sourceEventId: key() }) })
         }
       }
-      setNotice(`${selected.length} varyant güncellendi.`); await onChanged()
+      setNotice(`${targetSelection.length} varyant güncellendi.`); await onChanged()
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Toplu düzenleme tamamlanamadı.') } finally { setSaving(false) }
   }
   return <div className="workspace-modal-backdrop product-quick-edit-backdrop" role="presentation" onMouseDown={onClose}>
@@ -168,12 +171,12 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
               <div className="quick-edit-variants">{items.map(item => <label className="quick-edit-variant" key={item.variant.id}><input type="checkbox" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} /><span><strong>{item.variant.optionSignature || item.product.title}</strong><small>{item.product.title} · Stok kodu: {item.variant.sku}</small></span><em>{item.variant.available} stok</em></label>)}</div>
             </details>)}
           </div>
-          <div className="quick-edit-step-action"><p>{selectionConfirmed ? `${selected.length} varyant onaylandı. Seçim değişirse yeniden onaylayın.` : `${selectionDraft.length} varyant seçili. Fiyat düzenlemesine aktarmak için onaylayın.`}</p><button type="button" onClick={confirmSelection}>Seçimi onayla</button></div>
+          <div className="quick-edit-step-action"><p>{selectionConfirmed ? `${selected.length} varyant onaylandı. Seçim değişirse yeniden onaylayın.` : selectionDraft.length ? `${selectionDraft.length} varyant seçili. İsterseniz onaylayın veya aşağıdaki değerleri doğrudan uygulayın.` : 'Önce alt listeden varyant seçin veya üst filtreyi kullanın.'}</p><button type="button" onClick={confirmSelection}>Seçimi onayla</button></div>
         </details>
-        <details className="quick-edit-step quick-edit-pricing-step" open={selectionConfirmed}>
-          <summary><span><b>2</b> {mode === 'stock' ? 'Stok değerini düzenle' : mode === 'price' ? 'Fiyatı düzenle' : 'Fiyat ve stok değerini düzenle'}</span><small>{selectionConfirmed ? `${selected.length} onaylı varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small><i>⌄</i></summary>
-          {selectionConfirmed ? <div className="quick-edit-step-body">
-            <div className="quick-edit-selected-list">{variants.filter(item => appliedSelectedSet.has(item.variant.id)).map(item => <span key={item.variant.id}>{item.variant.optionSignature || item.variant.sku}</span>)}</div>
+        <details className="quick-edit-step quick-edit-pricing-step" open={Boolean(selectionDraft.length)}>
+          <summary><span><b>2</b> {mode === 'stock' ? 'Stok değerini düzenle' : mode === 'price' ? 'Fiyatı düzenle' : 'Fiyat ve stok değerini düzenle'}</span><small>{activeSelection.length ? `${activeSelection.length} varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small><i>⌄</i></summary>
+          {selectionDraft.length ? <div className="quick-edit-step-body">
+            <div className="quick-edit-selected-list">{variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => <span key={item.variant.id}>{item.variant.optionSignature || item.variant.sku}</span>)}</div>
             <div className="quick-edit-fields">
               {mode !== 'stock' && <fieldset><legend>Fiyat</legend><label>Liste fiyatı<input type="number" min="0" step="0.01" value={listPrice} onChange={event => setListPrice(event.target.value)} placeholder="Değiştirme" /></label><label>Satış fiyatı<input type="number" min="0" step="0.01" value={salePrice} onChange={event => setSalePrice(event.target.value)} placeholder="Değiştirme" /></label></fieldset>}
               {mode !== 'price' && <fieldset><legend>Stok</legend><label>İşlem<select value={stockAction} onChange={event => setStockAction(event.target.value as typeof stockAction)}><option value="SET">Bu sayıya eşitle</option><option value="ADD">Bu kadar ekle (+)</option><option value="SUBTRACT">Bu kadar çıkar (−)</option></select></label><label>Miktar<input type="number" min="0" step="1" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" /></label></fieldset>}
@@ -181,7 +184,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           </div> : <p className="quick-edit-step-empty">Fiyat alanlarını açmak için önce varyant seçimini onaylayın.</p>}
         </details>
         {notice && <p className="notice" role="status">{notice}</p>}
-        <footer className="quick-edit-footer"><span>{selectionConfirmed ? `${selected.length} varyant seçildi` : 'Varyant seçimi bekleniyor'}</span><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="submit" disabled={saving || !selectionConfirmed}>{saving ? 'Uygulanıyor…' : 'Seçilenlere uygula'}</button></footer>
+        <footer className="quick-edit-footer"><span>{activeSelection.length ? `${activeSelection.length} varyant seçildi` : 'Varyant seçimi bekleniyor'}</span><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="submit" disabled={saving || !selectionDraft.length}>{saving ? 'Uygulanıyor…' : 'Seçilenlere uygula'}</button></footer>
       </form>
     </section>
   </div>
