@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type MutableRefObject, type ReactNode, type RefObject } from 'react'
+﻿import { useEffect, useRef, useState, type FormEvent, type MutableRefObject, type ReactNode, type RefObject } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, hubApi, type Me } from './api'
@@ -36,7 +36,7 @@ function Shell({ me }: { me: Me }) {
 
 export function App() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me'), retry: false })
-  if (me.isLoading) return <Status title="Güvenli oturum doğrulanıyor" />
+  if (me.isLoading) return null
   if (me.isError) return <Routes><Route path="*" element={<Login />} /></Routes>
   if (!me.data) return <Status title="Oturum bilgisi alınamadı" />
   if (me.data.state === 'PASSWORD_CHANGE_REQUIRED') return <ChangePassword />
