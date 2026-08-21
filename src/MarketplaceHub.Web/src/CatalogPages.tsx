@@ -228,11 +228,11 @@ function ProductColorRows({ product, selected, onSelect, onQuickEdit }: { produc
         {product.primaryImageUrl ? <img src={product.primaryImageUrl} alt={product.title} /> : <span className="product-list-placeholder">Görsel yok</span>}
         <div className="product-list-identity"><strong>{product.title}</strong><small>Model Kodu: {product.modelCode ?? '—'}</small></div>
         <strong className="product-list-variants">{product.variants.length} varyant</strong>
-        <div className="product-list-price"><strong>{money(product.startingPrice, product.currency)}</strong><button type="button" className="product-quick-link" onClick={() => onQuickEdit('price')}>Fiyatı güncelle</button></div>
-        <div className="product-list-stock"><strong>{product.totalStock}</strong><button type="button" className="product-quick-link" onClick={() => onQuickEdit('stock')}>Stokları güncelle</button></div>
+        <div className="product-list-price"><strong>{money(product.startingPrice, product.currency)}</strong></div>
+        <div className="product-list-stock"><strong>{product.totalStock}</strong></div>
         <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ''}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'}>TY<i /></span><small>{platformActive ? 'Eşleşti' : 'Eşleşmedi'}</small></div>
         <div className="product-list-status"><Tag>{product.status}</Tag><small>{product.status === 'ACTIVE' ? 'Satışa açık' : product.status === 'DRAFT' ? 'Taslak ürün' : 'Arşivlenmiş'}</small></div>
-        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`}>Düzenle</Link></div>
+        <div className="product-list-actions"><button type="button" className="product-price-action" onClick={() => onQuickEdit('price')}>Fiyatı güncelle</button><Link className="product-edit-link" to={`/products/${product.id}`}>Düzenle</Link></div>
       </div>
     </article>
 }
