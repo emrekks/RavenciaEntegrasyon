@@ -108,18 +108,29 @@ function Login() {
             ))}
          </div>
 
-         {/* SVG Connection Lines */}
+         {/* SVG Connection Lines - Zigzag Curved Paths */}
          <svg className="net-svg" viewBox="0 0 700 600" fill="none">
             <defs>
-               <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#6366f1" stopOpacity="0" /><stop offset="50%" stopColor="#6366f1" stopOpacity="1" /><stop offset="100%" stopColor="#6366f1" stopOpacity="0" /></linearGradient>
+               <linearGradient id="lg-out" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#6366f1" stopOpacity="0" /><stop offset="50%" stopColor="#818cf8" stopOpacity="1" /><stop offset="100%" stopColor="#6366f1" stopOpacity="0" /></linearGradient>
+               <linearGradient id="lg-in" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#22d3ee" stopOpacity="0" /><stop offset="50%" stopColor="#22d3ee" stopOpacity="1" /><stop offset="100%" stopColor="#22d3ee" stopOpacity="0" /></linearGradient>
                <filter id="glow"><feGaussianBlur stdDeviation="3" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
             </defs>
 
-            {/* Connection paths from center to each node */}
-            {[ [350,300,350,80], [350,300,580,120], [350,300,640,300], [350,300,580,480], [350,300,350,520], [350,300,120,480], [350,300,60,300], [350,300,120,120] ].map(([x1,y1,x2,y2], i) => (
+            {/* Curved zigzag paths + bidirectional pulses */}
+            {[
+               'M350,300 C350,240 350,200 350,80',
+               'M350,300 C380,260 500,180 580,120',
+               'M350,300 C420,300 540,310 640,300',
+               'M350,300 C400,350 520,420 580,480',
+               'M350,300 C350,370 340,440 350,520',
+               'M350,300 C300,350 180,420 120,480',
+               'M350,300 C280,300 160,290 60,300',
+               'M350,300 C320,260 200,180 120,120',
+            ].map((d, i) => (
                <g key={i}>
-                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(99,102,241,0.15)" strokeWidth="1" strokeDasharray="6 6" />
-                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="url(#lg1)" strokeWidth="2" strokeDasharray="20 80" filter="url(#glow)" className="data-pulse" style={{animationDelay: `${i * 0.4}s`} as React.CSSProperties} />
+                  <path d={d} stroke="rgba(99,102,241,0.12)" strokeWidth="1" strokeDasharray="6 6" fill="none" />
+                  <path d={d} stroke="url(#lg-out)" strokeWidth="2" strokeDasharray="16 84" fill="none" filter="url(#glow)" className="data-pulse" style={{animationDelay: `${i * 0.35}s`} as React.CSSProperties} pathLength="100" />
+                  <path d={d} stroke="url(#lg-in)" strokeWidth="1.5" strokeDasharray="12 88" fill="none" filter="url(#glow)" className="data-pulse-rev" style={{animationDelay: `${i * 0.35 + 1.2}s`} as React.CSSProperties} pathLength="100" />
                </g>
             ))}
          </svg>
@@ -140,33 +151,41 @@ function Login() {
          <div className="api-ticker">
             <div className="ticker-track">
                <span className="tick">📦 Trendyol → 847 sipariş senkronize</span>
-               <span className="tick">🔄 Amazon API v3.2 bağlantısı aktif</span>
+               <span className="tick">🔄 Amazon bağlantısı aktif</span>
                <span className="tick">✅ Hepsiburada stok güncellendi (2.4s)</span>
                <span className="tick">📊 N11 fiyat analizi tamamlandı</span>
                <span className="tick">🧾 e-Fatura: 126 fatura kesildi</span>
                <span className="tick">🛒 Pazarama: 312 ürün listelendi</span>
                <span className="tick">⚡ Shopify webhook tetiklendi</span>
                <span className="tick">📦 Trendyol → 847 sipariş senkronize</span>
-               <span className="tick">🔄 Amazon API v3.2 bağlantısı aktif</span>
+               <span className="tick">🔄 Amazon bağlantısı aktif</span>
                <span className="tick">✅ Hepsiburada stok güncellendi (2.4s)</span>
             </div>
          </div>
 
-         {/* Marketplace Nodes */}
+         {/* Marketplace Nodes with Brand Logos */}
          {([
-            { name: 'Hepsiburada', sub: 'Pazaryeri', icon: '🛍️', color: '#a855f7', pos: 'n-top', stat: '2.4K ürün' },
-            { name: 'Trendyol', sub: 'Pazaryeri', icon: '🛒', color: '#f97316', pos: 'n-top-left', stat: '847 sipariş' },
-            { name: 'e-Fatura', sub: 'Finans', icon: '🧾', color: '#06b6d4', pos: 'n-top-right', stat: '126 fatura' },
-            { name: 'Amazon API', sub: 'Entegrasyon', icon: '📦', color: '#f97316', pos: 'n-left', stat: 'v3.2 aktif' },
-            { name: 'PttAVM', sub: 'Pazaryeri', icon: '📮', color: '#3b82f6', pos: 'n-right', stat: '89 ürün' },
-            { name: 'Shopify', sub: 'E-ticaret', icon: '🛍️', color: '#22c55e', pos: 'n-bot-left', stat: 'Webhook ✓' },
-            { name: 'Pazarama', sub: 'Pazaryeri', icon: '🏪', color: '#ec4899', pos: 'n-bot-right', stat: '312 aktif' },
-            { name: 'N11', sub: 'Pazaryeri', icon: '🛒', color: '#ef4444', pos: 'n-bottom', stat: '1.1K ürün' },
+            { name: 'Hepsiburada', sub: 'Pazaryeri', color: '#ff6000', pos: 'n-top', stat: '2.4K ürün',
+              logo: <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" fill="none" stroke="#ff6000" strokeWidth="2"/><path d="M3 6h18" stroke="#ff6000" strokeWidth="2"/><path d="M16 10a4 4 0 01-8 0" fill="none" stroke="#ff6000" strokeWidth="2"/></svg> },
+            { name: 'Trendyol', sub: 'Pazaryeri', color: '#f27a1a', pos: 'n-top-left', stat: '847 sipariş',
+              logo: <span style={{fontWeight:800, fontSize:'1.1rem', color:'#f27a1a'}}>t</span> },
+            { name: 'e-Fatura', sub: 'Finans', color: '#06b6d4', pos: 'n-top-right', stat: '126 fatura',
+              logo: <svg viewBox="0 0 24 24" width="18" height="18"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke="#06b6d4" strokeWidth="2"/><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2" stroke="#06b6d4" strokeWidth="2"/></svg> },
+            { name: 'Amazon', sub: 'Pazaryeri', color: '#ff9900', pos: 'n-left', stat: '1.8K ürün',
+              logo: <span style={{fontWeight:800, fontSize:'1.1rem', color:'#ff9900', fontFamily:'Arial'}}>a</span> },
+            { name: 'PttAVM', sub: 'Pazaryeri', color: '#ffd100', pos: 'n-right', stat: '89 ürün',
+              logo: <span style={{fontWeight:800, fontSize:'0.65rem', color:'#ffd100', letterSpacing:'1px'}}>PTT</span> },
+            { name: 'Shopify', sub: 'E-ticaret', color: '#96bf48', pos: 'n-bot-left', stat: 'Webhook ✓',
+              logo: <svg viewBox="0 0 24 24" width="18" height="18"><path d="M15 2l-1 6h4l-8 14 1-8H7z" fill="none" stroke="#96bf48" strokeWidth="2" strokeLinejoin="round"/></svg> },
+            { name: 'Pazarama', sub: 'Pazaryeri', color: '#e91e8c', pos: 'n-bot-right', stat: '312 aktif',
+              logo: <span style={{fontWeight:800, fontSize:'1.1rem', color:'#e91e8c'}}>P</span> },
+            { name: 'N11', sub: 'Pazaryeri', color: '#ea2228', pos: 'n-bottom', stat: '1.1K ürün',
+              logo: <span style={{fontWeight:800, fontSize:'0.8rem', color:'#ea2228', fontFamily:'Arial'}}>n11</span> },
          ] as const).map((n) => (
             <div key={n.name} className={`mp-node ${n.pos}`} style={{'--nc': n.color} as React.CSSProperties}>
                <div className="node-glow"></div>
                <div className="node-body">
-                  <div className="node-icon">{n.icon}</div>
+                  <div className="node-icon">{n.logo}</div>
                   <div className="node-info">
                      <strong>{n.name}</strong>
                      <small>{n.sub}</small>

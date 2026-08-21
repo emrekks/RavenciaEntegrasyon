@@ -15,7 +15,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .auth-isometric-page { min-height: 100vh; background-color: #02040a; font-family: Inter, ui-sans-serif, system-ui, sans-serif; display: flex; overflow: hidden; position: relative; color: #f8fafc; padding: 16px; gap: 16px; }
 
 /* Form Panel */
-.iso-form-panel { position: relative; z-index: 10; width: 500px; display: flex; align-items: center; justify-content: center; padding: 40px; background: rgba(11, 15, 25, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; box-shadow: 0 10px 50px rgba(0,0,0,0.5); }
+.iso-form-panel { position: relative; z-index: 10; width: 500px; display: flex; align-items: center; justify-content: center; padding: 40px; background: linear-gradient(180deg, rgba(8,10,24,0.95) 0%, rgba(4,7,20,0.98) 100%); backdrop-filter: blur(20px); border: 1px solid rgba(99,102,241,0.08); border-radius: 24px; box-shadow: 0 10px 50px rgba(0,0,0,0.5), inset 0 0 80px rgba(99,102,241,0.03); }
 .iso-card { width: 100%; max-width: 360px; transform: translateY(-8vh); }
 
 .iso-header { margin-bottom: 32px; display: flex; flex-direction: column; align-items: center; text-align: center; }
@@ -53,8 +53,10 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 
 /* SVG Network */
 .net-svg { position: absolute; width: 700px; height: 600px; z-index: 1; pointer-events: none; }
-.data-pulse { stroke-dasharray: 20 80; animation: pulseLine 2.5s linear infinite; }
+.data-pulse { animation: pulseLine 3s linear infinite; }
+.data-pulse-rev { animation: pulseLineRev 3s linear infinite; }
 @keyframes pulseLine { 0% { stroke-dashoffset: 100; } 100% { stroke-dashoffset: 0; } }
+@keyframes pulseLineRev { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 100; } }
 
 /* Orbit Rings */
 .orbit { position: absolute; top: 50%; left: 50%; border-radius: 50%; border: 1px solid rgba(99,102,241,0.08); transform: translate(-50%, -50%); pointer-events: none; z-index: 1; }
@@ -64,10 +66,10 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 
 /* Central Hub */
 .hub { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; }
-.hub-ring { position: absolute; inset: -20px; border-radius: 50%; border: 2px solid #6366f1; box-shadow: 0 0 30px rgba(99,102,241,0.3), inset 0 0 30px rgba(99,102,241,0.1); animation: hubPulse 3s ease-in-out infinite; }
+.hub-ring { position: absolute; inset: -16px; border-radius: 50%; border: 2px solid #6366f1; box-shadow: 0 0 30px rgba(99,102,241,0.3), inset 0 0 30px rgba(99,102,241,0.1); animation: hubPulse 3s ease-in-out infinite; }
 @keyframes hubPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: 0.7; } }
-.hub-inner { width: 130px; height: 130px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #1e1b4b, #0c0a2a 70%); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(99,102,241,0.3); box-shadow: 0 0 60px rgba(99,102,241,0.2); overflow: hidden; }
-.hub-logo-img { width: 110px; height: auto; filter: drop-shadow(0 0 12px rgba(255,255,255,0.3)); object-fit: contain; }
+.hub-inner { width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(circle at 40% 40%, #1e1b4b, #0c0a2a 70%); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(99,102,241,0.3); box-shadow: 0 0 60px rgba(99,102,241,0.2); overflow: hidden; padding: 12px; }
+.hub-logo-img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 8px rgba(255,255,255,0.2)); }
 
 /* Marketplace Node Cards */
 .mp-node { position: absolute; z-index: 5; }
