@@ -343,6 +343,15 @@ html, body, #root {
 .app-shell .quick-edit-footer span,
 .app-shell .quick-edit-variant small,
 .app-shell .quick-edit-variant em { color: var(--rv-muted); }
+.app-shell .quick-edit-variant { display: grid; grid-template-columns: 18px minmax(0, 1fr) minmax(178px, .42fr); align-items: center; gap: 10px; padding: 9px 10px; }
+.app-shell .quick-edit-variant > input { width: 15px; height: 15px; min-height: 15px; accent-color: var(--rv-primary); }
+.app-shell .quick-edit-variant > span { display: grid; min-width: 0; gap: 2px; }
+.app-shell .quick-edit-variant > span strong { overflow: hidden; color: #dbeaff; font-size: .74rem; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell .quick-edit-variant-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.app-shell .quick-edit-variant-controls label { display: grid; gap: 3px; min-width: 0; }
+.app-shell .quick-edit-variant-controls small { font-size: .58rem; font-weight: 800; text-transform: uppercase; }
+.app-shell .quick-edit-variant-controls input { width: 100%; min-height: 29px; padding: 5px 7px; color: var(--rv-ink); background: rgba(4, 17, 37, .92); border: 1px solid var(--rv-line-strong); border-radius: 6px; font-size: .7rem; }
+.app-shell .quick-edit-variant-controls input:focus { outline: 2px solid rgba(24, 186, 255, .45); outline-offset: 1px; border-color: var(--rv-primary); }
 .app-shell .quick-edit-step {
   margin-top: 14px;
   overflow: hidden;
@@ -402,6 +411,8 @@ html, body, #root {
   .app-shell .quick-edit-step-action button { width: 100%; }
   .app-shell .quick-edit-filter-action { align-items: stretch; flex-direction: column; }
   .app-shell .quick-edit-filter-action button { width: 100%; }
+  .app-shell .quick-edit-variant { grid-template-columns: 18px minmax(0, 1fr); }
+  .app-shell .quick-edit-variant-controls { grid-column: 2; }
   .app-shell .quick-edit-filter-row { grid-template-columns: 1fr; }
 }
 
