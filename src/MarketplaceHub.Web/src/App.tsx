@@ -83,14 +83,14 @@ function Login() {
       </svg>
 
       {/* Pre-rendered Platform Cards positioned perfectly */}
-      <img src="/pack/marketplace/cards/trendyol-card.png" className="rv-card rv-l1" alt="Trendyol" />
-      <img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-card rv-l2" alt="Hepsiburada" />
-      <img src="/pack/marketplace/cards/n11-card.png" className="rv-card rv-l3" alt="N11" />
-      <img src="/pack/marketplace/cards/pazarama-card.png" className="rv-card rv-l4" alt="Pazarama" />
+      <img src="/pack/marketplace/cards/trendyol-card.png" className="rv-card rv-l1" alt="Trendyol" loading="eager" />
+      <img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-card rv-l2" alt="Hepsiburada" loading="eager" />
+      <img src="/pack/marketplace/cards/n11-card.png" className="rv-card rv-l3" alt="n11" loading="eager" />
+      <img src="/pack/marketplace/cards/pazarama-card.png" className="rv-card rv-l4" alt="Pazarama" loading="eager" />
       
-      <img src="/pack/marketplace/cards/pttavm-card.png" className="rv-card rv-r1" alt="PttAVM" />
-      <img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-card rv-r2" alt="Trendyol e-Faturam" />
-      <img src="/pack/marketplace/cards/shopify-card.png" className="rv-card rv-r3" alt="Shopify" />
+      <img src="/pack/marketplace/cards/pttavm-card.png" className="rv-card rv-r1" alt="PttAVM" loading="eager" />
+      <img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-card rv-r2" alt="Trendyol e-Faturam" loading="eager" />
+      <img src="/pack/marketplace/cards/shopify-card.png" className="rv-card rv-r3" alt="Shopify" loading="eager" />
 
       {/* Center Login Card matching mockup exactly */}
       <div className="rv-login-card">
@@ -104,13 +104,15 @@ function Login() {
          <form onSubmit={submit} className="rv-form">
             <div className="rv-input-wrap">
                <svg className="rv-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-               <input name="email" type="email" required placeholder="Kullanıcı Adı" />
+               <label className="sr-only" htmlFor="login-email">E-posta adresi</label>
+               <input id="login-email" name="email" type="email" required autoComplete="username" placeholder="Kullanıcı Adı" />
             </div>
 
             <div className="rv-input-wrap">
                <svg className="rv-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
-               <input name="password" type={showPw ? 'text' : 'password'} required placeholder="Şifre" />
-               <button type="button" className="rv-eye" onClick={() => setShowPw(!showPw)}>
+               <label className="sr-only" htmlFor="login-password">Şifre</label>
+               <input id="login-password" name="password" type={showPw ? 'text' : 'password'} required autoComplete="current-password" placeholder="Şifre" />
+               <button type="button" className="rv-eye" aria-label={showPw ? 'Şifreyi gizle' : 'Şifreyi göster'} onClick={() => setShowPw(!showPw)}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">{showPw ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" /><path d="M1 1l22 22" /></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>}</svg>
                </button>
             </div>
@@ -120,10 +122,10 @@ function Login() {
                   <div className="rv-checkbox"><input type="checkbox" /><div className="rv-chk-bg"></div></div>
                   <span>Beni Hatırla</span>
                </label>
-               <a href="#" className="rv-forgot">Şifremi Unuttum?</a>
+               <button type="button" className="rv-forgot" onClick={() => setError('Şifre sıfırlama için sistem yöneticinizle iletişime geçin.')}>Şifremi Unuttum?</button>
             </div>
 
-            {error && <div className="rv-error">{error}</div>}
+            {error && <div className="rv-error" role="alert">{error}</div>}
 
             <button type="submit" disabled={loading} className="rv-submit">
                {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}

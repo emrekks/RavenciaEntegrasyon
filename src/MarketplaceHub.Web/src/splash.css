@@ -144,3 +144,13 @@
 @keyframes circle-fade {
   to { opacity: 1; }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .rv-login-card,
+  .rv-card,
+  .rv-lines path,
+  .rv-lines circle {
+    animation: none !important;
+    opacity: 1;
+  }
+}
