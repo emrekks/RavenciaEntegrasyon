@@ -83,14 +83,14 @@ function Login() {
       </svg>
 
       {/* Pre-rendered Platform Cards positioned perfectly */}
-      <img src="/pack/marketplace/cards/trendyol-card.png" className="rv-card rv-l1" alt="Trendyol" loading="eager" />
-      <img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-card rv-l2" alt="Hepsiburada" loading="eager" />
-      <img src="/pack/marketplace/cards/n11-card.png" className="rv-card rv-l3" alt="n11" loading="eager" />
-      <img src="/pack/marketplace/cards/pazarama-card.png" className="rv-card rv-l4" alt="Pazarama" loading="eager" />
+      <img src="/pack/marketplace/cards/trendyol-card.png" className="rv-card rv-l1" alt="Trendyol" loading="eager" draggable={false} />
+      <img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-card rv-l2" alt="Hepsiburada" loading="eager" draggable={false} />
+      <img src="/pack/marketplace/cards/n11-card.png" className="rv-card rv-l3" alt="n11" loading="eager" draggable={false} />
+      <img src="/pack/marketplace/cards/pazarama-card.png" className="rv-card rv-l4" alt="Pazarama" loading="eager" draggable={false} />
       
-      <img src="/pack/marketplace/cards/pttavm-card.png" className="rv-card rv-r1" alt="PttAVM" loading="eager" />
-      <img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-card rv-r2" alt="Trendyol e-Faturam" loading="eager" />
-      <img src="/pack/marketplace/cards/shopify-card.png" className="rv-card rv-r3" alt="Shopify" loading="eager" />
+      <img src="/pack/marketplace/cards/pttavm-card.png" className="rv-card rv-r1" alt="PttAVM" loading="eager" draggable={false} />
+      <img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-card rv-r2" alt="Trendyol e-Faturam" loading="eager" draggable={false} />
+      <img src="/pack/marketplace/cards/shopify-card.png" className="rv-card rv-r3" alt="Shopify" loading="eager" draggable={false} />
 
       {/* Center Login Card matching mockup exactly */}
       <div className="rv-login-card">
