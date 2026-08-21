@@ -1,4 +1,4 @@
-namespace MarketplaceHub.Application;
+﻿namespace MarketplaceHub.Application;
 
 public sealed record ServiceError(string Code, string Message, int Status, IReadOnlyDictionary<string, string[]>? FieldErrors = null);
 public sealed record ServiceResult<T>(T? Value, ServiceError? Error)
