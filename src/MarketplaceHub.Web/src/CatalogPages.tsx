@@ -82,15 +82,13 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const sizeOf = (item: typeof variants[number]) => optionValue(item.variant.optionSignature || '', ['BEDEN', 'SIZE'], item.variant.optionSignature || 'Ana varyant')
   const colorOptions = Object.keys(groups)
   const [selectionDraft, setSelectionDraft] = useState<string[]>([])
-  const [selected, setSelected] = useState<string[]>([])
-  const [selectionConfirmed, setSelectionConfirmed] = useState(false)
   const [selectedColors, setSelectedColors] = useState<string[]>([])
   const [selectedSizes, setSelectedSizes] = useState<string[]>([])
   const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
   const selectedSet = new Set(selectionDraft)
-  const activeSelection = selectionConfirmed ? selected : selectionDraft
-  const activeSelectedSet = new Set(activeSelection)
+  const activeSelection = selectionDraft
+  const activeSelectedSet = selectedSet
   const sizeOptions = [...new Set(variants.filter(item => !selectedColors.length || selectedColors.includes(colorOf(item))).map(sizeOf))]
   const toggleColor = (color: string) => {
     const next = selectedColors.includes(color) ? selectedColors.filter(item => item !== color) : [...selectedColors, color]
@@ -100,25 +98,18 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     const next = selectedSizes.includes(size) ? selectedSizes.filter(item => item !== size) : [...selectedSizes, size]
     setSelectedSizes(next)
   }
-  const toggle = (id: string) => { setSelectionConfirmed(false); setSelectionDraft(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]) }
-  const toggleGroup = (items: typeof variants) => { const ids = items.map(item => item.variant.id); const every = ids.every(id => selectedSet.has(id)); setSelectionConfirmed(false); setSelectionDraft(current => every ? current.filter(id => !ids.includes(id)) : [...new Set([...current, ...ids])]) }
+  const toggle = (id: string) => { setSelectionDraft(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]) }
+  const toggleGroup = (items: typeof variants) => { const ids = items.map(item => item.variant.id); const every = ids.every(id => selectedSet.has(id)); setSelectionDraft(current => every ? current.filter(id => !ids.includes(id)) : [...new Set([...current, ...ids])]) }
   function applyFilterSelection() {
     if (!selectedColors.length && !selectedSizes.length) return setNotice('Önce renk veya beden filtresi seçin.')
     const ids = variants.filter(item => (!selectedColors.length || selectedColors.includes(colorOf(item))) && (!selectedSizes.length || selectedSizes.includes(sizeOf(item)))).map(item => item.variant.id)
     if (!ids.length) return setNotice('Seçtiğiniz filtrelerle eşleşen varyant bulunamadı.')
     setSelectionDraft(ids)
-    setSelectionConfirmed(false)
     setNotice(`${ids.length} varyant alttaki listede otomatik işaretlendi.`)
-  }
-  function confirmSelection() {
-    if (!selectionDraft.length) return setNotice('Önce en az bir varyant seçin.')
-    setSelected(selectionDraft)
-    setSelectionConfirmed(true)
-    setNotice(`${selectionDraft.length} varyant fiyat güncellemesi için hazır.`)
   }
   async function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (saving || !selectionDraft.length) return setNotice('Önce en az bir varyant seçin.')
-    const targetSelection = selectionConfirmed ? selected : selectionDraft
+    const targetSelection = selectionDraft
     const targetSelectionSet = new Set(targetSelection)
     const priceRequested = mode !== 'stock' && (listPrice !== '' || salePrice !== ''); const stockRequested = mode !== 'price' && stockAmount !== ''
     if (!priceRequested && !stockRequested) return setNotice('Uygulanacak fiyat veya stok değerini girin.')
@@ -171,10 +162,10 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
               <div className="quick-edit-variants">{items.map(item => <label className="quick-edit-variant" key={item.variant.id}><input type="checkbox" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} /><span><strong>{item.variant.optionSignature || item.product.title}</strong><small>{item.product.title} · Stok kodu: {item.variant.sku}</small></span><em>{item.variant.available} stok</em></label>)}</div>
             </details>)}
           </div>
-          <div className="quick-edit-step-action"><p>{selectionConfirmed ? `${selected.length} varyant onaylandı. Seçim değişirse yeniden onaylayın.` : selectionDraft.length ? `${selectionDraft.length} varyant seçili. İsterseniz onaylayın veya aşağıdaki değerleri doğrudan uygulayın.` : 'Önce alt listeden varyant seçin veya üst filtreyi kullanın.'}</p><button type="button" onClick={confirmSelection}>Seçimi onayla</button></div>
+          <div className="quick-edit-step-action"><p>{selectionDraft.length ? `${selectionDraft.length} varyant işaretli. Değerleri doğrudan uygulayabilirsiniz.` : 'Önce alt listeden varyant seçin veya üst filtreyi kullanın.'}</p></div>
         </details>
         <details className="quick-edit-step quick-edit-pricing-step" open={Boolean(selectionDraft.length)}>
-          <summary><span><b>2</b> {mode === 'stock' ? 'Stok değerini düzenle' : mode === 'price' ? 'Fiyatı düzenle' : 'Fiyat ve stok değerini düzenle'}</span><small>{activeSelection.length ? `${activeSelection.length} varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small><i>⌄</i></summary>
+          <summary><span><b>2</b> {mode === 'stock' ? 'Stok değerini düzenle' : mode === 'price' ? 'Fiyatı düzenle' : 'Fiyat ve stok değerini düzenle'}</span><small>{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small><i>⌄</i></summary>
           {selectionDraft.length ? <div className="quick-edit-step-body">
             <div className="quick-edit-selected-list">{variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => <span key={item.variant.id}>{item.variant.optionSignature || item.variant.sku}</span>)}</div>
             <div className="quick-edit-fields">
