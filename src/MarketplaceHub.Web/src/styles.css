@@ -165,21 +165,57 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   text-align: center;
   margin-bottom: 1.15rem;
 }
-.rv-login-logo {
-  display: block;
-  width: min(165px, 56%);
-  aspect-ratio: 1.1;
-  height: auto;
-  margin: 0 auto .8rem;
-  object-fit: cover;
-  object-position: center 46%;
-  mix-blend-mode: screen;
+.rv-brand-lockup {
+  display: grid;
+  justify-items: center;
+  gap: .35rem;
+  margin: 0 auto .85rem;
   user-select: none;
-  pointer-events: none;
-  -webkit-user-drag: none;
-  filter: drop-shadow(0 0 9px rgba(162, 216, 255, .38)) drop-shadow(0 0 24px rgba(25, 120, 255, .22));
-  animation: none;
 }
+.rv-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  color: #f8fbff;
+  border: 1px solid rgba(136, 211, 255, .8);
+  border-radius: 50%;
+  box-shadow: inset 0 0 16px rgba(41, 150, 255, .24), 0 0 18px rgba(30, 147, 255, .3);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 3.5rem;
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1;
+  text-indent: -.12em;
+  text-shadow: 0 0 12px rgba(215, 244, 255, .58);
+}
+.rv-brand-name {
+  color: #f8fbff;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.45rem;
+  font-weight: 500;
+  letter-spacing: .28em;
+  line-height: 1;
+  text-indent: .28em;
+  text-shadow: 0 0 12px rgba(166, 219, 255, .32);
+}
+.rv-brand-subtitle {
+  display: flex;
+  align-items: center;
+  gap: .42rem;
+  color: #b8cff0;
+  font-size: .48rem;
+  font-weight: 800;
+  letter-spacing: .26em;
+  line-height: 1;
+  text-indent: .26em;
+}
+.rv-brand-subtitle i {
+  width: 18px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(131, 203, 255, .9));
+}
+.rv-brand-subtitle i:last-child { background: linear-gradient(90deg, rgba(131, 203, 255, .9), transparent); }
 .rv-security-note {
   display: inline-flex;
   align-items: center;
@@ -479,7 +515,8 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   .rv-page { padding: 1rem; background-position: 52% center; }
   .rv-login-card { width: min(100%, 390px); border-radius: 20px; padding-top: 1.7rem; }
   .rv-logo-area { margin-bottom: 1.1rem; }
-  .rv-login-logo { width: min(150px, 52%); }
+  .rv-brand-mark { width: 62px; height: 62px; font-size: 3rem; }
+  .rv-brand-name { font-size: 1.22rem; }
   .rv-center-logo { width: 62px; }
   .rv-wordmark { width: 140px; }
   .rv-greeting { font-size: 1.28rem; }

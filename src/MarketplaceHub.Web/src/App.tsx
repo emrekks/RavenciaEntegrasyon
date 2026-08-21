@@ -68,7 +68,11 @@ function Login() {
       {/* Center Login Card matching mockup exactly */}
       <div className="rv-login-card" ref={loginCardRef}>
          <div className="rv-logo-area">
-            <img src="/pack/brand/ravencia-login-logo.png" alt="RAVENCIA" className="rv-login-logo" draggable={false} />
+            <div className="rv-brand-lockup" aria-label="Ravencia Entegrasyon">
+               <span className="rv-brand-mark" aria-hidden="true">R</span>
+               <strong className="rv-brand-name">RAVENCIA</strong>
+               <span className="rv-brand-subtitle"><i />ENTEGRASYON<i /></span>
+            </div>
             <h2 className="rv-greeting">Hoş Geldiniz</h2>
             <p className="rv-subgreeting">Pazaryeri entegrasyon panelinize giriş yapın</p>
          </div>
@@ -198,12 +202,12 @@ function IntegrationLines({ pageRef, loginCardRef, nodeRefs }: { pageRef: RefObj
     window.addEventListener('resize', scheduleDraw)
     renderPaths()
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) frame = window.requestAnimationFrame(animate)
-    const bootTimer = window.setTimeout(() => nodes.forEach(([id]) => pause(id, true)), 350)
+    const bootTimers = nodes.map(([id], index) => window.setTimeout(() => travel(id, index % 2 === 0), 220 + Math.random() * 1800))
     return () => {
       if (frame) window.cancelAnimationFrame(frame)
       pulseFrames.forEach(cancelAnimationFrame)
       pulseTimers.forEach(clearTimeout)
-      window.clearTimeout(bootTimer)
+      bootTimers.forEach(clearTimeout)
       observer.disconnect()
       page.querySelectorAll('img').forEach(image => image.removeEventListener('load', scheduleDraw))
       window.removeEventListener('resize', scheduleDraw)
