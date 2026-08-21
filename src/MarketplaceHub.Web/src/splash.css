@@ -232,3 +232,110 @@
 .dashboard .button-link:hover, .button-link:hover, button:not([class]):hover, .connection-button:hover, .integration-card-actions button:hover {
   background: linear-gradient(110deg, var(--rv-primary-strong), #3730A3) !important;
 }
+
+/* --- DETAILED COMPONENT OVERRIDES --- */
+
+/* Fix filter panels and search bars */
+.orders-page .order-filter-panel,
+.order-filter-primary,
+.order-filter-advanced {
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line) !important;
+  color: var(--rv-ink) !important;
+}
+.order-filter-primary label, .order-filter-advanced label {
+  color: var(--rv-muted) !important;
+}
+.order-filter-primary select, .order-filter-primary input, .order-filter-advanced select, .order-filter-advanced input {
+  background: var(--rv-bg) !important;
+  border-color: var(--rv-line-strong) !important;
+  color: var(--rv-ink) !important;
+}
+.order-filter-primary .order-search input {
+  background: var(--rv-bg-raised) !important;
+  border-color: var(--rv-line-strong) !important;
+  color: var(--rv-ink) !important;
+}
+.order-filter-primary .order-search > span {
+  color: var(--rv-muted) !important;
+}
+
+/* Fix filter buttons */
+.bulk-action, .filter-toggle, .filter-clear {
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-line-strong) !important;
+  color: var(--rv-ink) !important;
+}
+.bulk-action:hover, .filter-toggle:hover, .filter-clear:hover {
+  background: var(--rv-line) !important;
+}
+.filter-apply {
+  background: var(--rv-primary) !important;
+  border-color: var(--rv-primary) !important;
+  color: #fff !important;
+}
+
+/* Fix bulk action dropdown */
+.bulk-action-menu {
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-line) !important;
+  box-shadow: 0 16px 38px rgba(0,0,0,0.5) !important;
+}
+.bulk-action-menu button {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-ink) !important;
+}
+.bulk-action-menu button:hover {
+  background: var(--rv-line) !important;
+  color: #fff !important;
+}
+.bulk-action-menu button > b {
+  background: var(--rv-primary) !important;
+  color: #fff !important;
+}
+.bulk-action-menu small {
+  color: var(--rv-muted) !important;
+}
+
+/* Fix Tables and Rows */
+.orders-page .order-reference-head, .orders-page .order-reference-row {
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line) !important;
+  color: var(--rv-ink) !important;
+}
+.orders-page .order-reference-row:hover {
+  background: var(--rv-surface-raised) !important;
+}
+
+/* Fix Invoice specific components */
+.invoice-draft-notice {
+  background: rgba(245, 158, 11, 0.1) !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+  color: #FCD34D !important;
+}
+.invoice-draft-customer {
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-line) !important;
+}
+.invoice-draft-customer > span {
+  background: var(--rv-surface) !important;
+}
+.invoice-draft-table {
+  border-color: var(--rv-line) !important;
+}
+.invoice-draft-head {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-ink) !important;
+}
+.invoice-draft-table > [role=row] > * {
+  border-color: var(--rv-line) !important;
+}
+.invoice-document-upload {
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line-strong) !important;
+}
+.invoice-document-upload input {
+  background: var(--rv-bg) !important;
+  border-color: var(--rv-line) !important;
+  color: var(--rv-ink) !important;
+}
