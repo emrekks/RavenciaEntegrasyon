@@ -45,7 +45,7 @@ export function App() {
 }
 
 function Login() {
-  const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false); const [showPw, setShowPw] = useState(false)
+  const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false); const [showPw, setShowPw] = useState(false); const [rememberMe, setRememberMe] = useState(false)
   
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
 
@@ -83,20 +83,18 @@ function Login() {
       </svg>
 
       {/* Pre-rendered Platform Cards positioned perfectly */}
-      <img src="/pack/marketplace/cards/trendyol-card.png" className="rv-card rv-l1" alt="Trendyol" loading="eager" draggable={false} />
-      <img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-card rv-l2" alt="Hepsiburada" loading="eager" draggable={false} />
-      <img src="/pack/marketplace/cards/n11-card.png" className="rv-card rv-l3" alt="n11" loading="eager" draggable={false} />
-      <img src="/pack/marketplace/cards/pazarama-card.png" className="rv-card rv-l4" alt="Pazarama" loading="eager" draggable={false} />
-      
-      <img src="/pack/marketplace/cards/pttavm-card.png" className="rv-card rv-r1" alt="PttAVM" loading="eager" draggable={false} />
-      <img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-card rv-r2" alt="Trendyol e-Faturam" loading="eager" draggable={false} />
-      <img src="/pack/marketplace/cards/shopify-card.png" className="rv-card rv-r3" alt="Shopify" loading="eager" draggable={false} />
+      <div className="rv-platform-node rv-l1"><img src="/pack/marketplace/cards/trendyol-card.png" className="rv-card" alt="Trendyol" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
+      <div className="rv-platform-node rv-l2"><img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-card" alt="Hepsiburada" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
+      <div className="rv-platform-node rv-l3"><img src="/pack/marketplace/cards/n11-card.png" className="rv-card" alt="n11" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
+      <div className="rv-platform-node rv-l4"><img src="/pack/marketplace/cards/pazarama-card.png" className="rv-card" alt="Pazarama" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
+      <div className="rv-platform-node rv-r1"><img src="/pack/marketplace/cards/pttavm-card.png" className="rv-card" alt="PttAVM" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
+      <div className="rv-platform-node rv-r2"><img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-card" alt="Trendyol e-Faturam" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
+      <div className="rv-platform-node rv-r3"><img src="/pack/marketplace/cards/shopify-card.png" className="rv-card" alt="Shopify" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
 
       {/* Center Login Card matching mockup exactly */}
       <div className="rv-login-card">
          <div className="rv-logo-area">
-            <img src="/pack/brand/ravencia-symbol-transparent.png" alt="Ravencia Symbol" className="rv-center-logo" />
-            <img src="/pack/brand/ravencia-wordmark-transparent.png" alt="RAVENCIA" className="rv-wordmark" />
+            <img src="/pack/brand/ravencia-login-logo.png" alt="RAVENCIA" className="rv-login-logo" draggable={false} />
             <h2 className="rv-greeting">Hoş Geldiniz</h2>
             <p className="rv-subgreeting">Pazaryeri entegrasyon panelinize giriş yapın</p>
          </div>
@@ -118,8 +116,8 @@ function Login() {
             </div>
 
             <div className="rv-meta">
-               <label className="rv-remember">
-                  <div className="rv-checkbox"><input type="checkbox" /><div className="rv-chk-bg"></div></div>
+               <label className="rv-remember" htmlFor="remember-me">
+                  <span className="rv-checkbox"><input id="remember-me" name="rememberMe" type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} /><span className="rv-chk-bg"></span></span>
                   <span>Beni Hatırla</span>
                </label>
                <button type="button" className="rv-forgot" onClick={() => setError('Şifre sıfırlama için sistem yöneticinizle iletişime geçin.')}>Şifremi Unuttum?</button>
