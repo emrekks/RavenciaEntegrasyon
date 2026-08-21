@@ -90,8 +90,100 @@ function Login() {
          </div>
       </div>
 
-      {/* Right Side Image (70%) */}
-      <div className="login-image-wrapper">
+      {/* Animated Marketplace Integration Network */}
+      <div className="net-showcase">
+
+         {/* Animated background particles */}
+         <div className="net-particles">
+            {Array.from({length: 30}, (_, i) => (
+               <div key={i} className="particle" style={{
+                  left: `${Math.random() * 100}%`,
+                  top: `${Math.random() * 100}%`,
+                  animationDelay: `${Math.random() * 8}s`,
+                  animationDuration: `${6 + Math.random() * 8}s`,
+                  opacity: 0.15 + Math.random() * 0.35,
+                  width: `${2 + Math.random() * 3}px`,
+                  height: `${2 + Math.random() * 3}px`,
+               } as React.CSSProperties} />
+            ))}
+         </div>
+
+         {/* SVG Connection Lines */}
+         <svg className="net-svg" viewBox="0 0 700 600" fill="none">
+            <defs>
+               <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#6366f1" stopOpacity="0" /><stop offset="50%" stopColor="#6366f1" stopOpacity="1" /><stop offset="100%" stopColor="#6366f1" stopOpacity="0" /></linearGradient>
+               <filter id="glow"><feGaussianBlur stdDeviation="3" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+            </defs>
+
+            {/* Connection paths from center to each node */}
+            {[ [350,300,350,80], [350,300,580,120], [350,300,640,300], [350,300,580,480], [350,300,350,520], [350,300,120,480], [350,300,60,300], [350,300,120,120] ].map(([x1,y1,x2,y2], i) => (
+               <g key={i}>
+                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(99,102,241,0.15)" strokeWidth="1" strokeDasharray="6 6" />
+                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="url(#lg1)" strokeWidth="2" strokeDasharray="20 80" filter="url(#glow)" className="data-pulse" style={{animationDelay: `${i * 0.4}s`} as React.CSSProperties} />
+               </g>
+            ))}
+         </svg>
+
+         {/* Outer orbit rings */}
+         <div className="orbit o1"></div>
+         <div className="orbit o2"></div>
+
+         {/* Central Hub */}
+         <div className="hub">
+            <div className="hub-ring"></div>
+            <div className="hub-inner">
+               <span className="hub-logo">R</span>
+               <span className="hub-name">Ravencia</span>
+               <span className="hub-tag">Core Engine</span>
+            </div>
+         </div>
+
+         {/* Live API Status Bar */}
+         <div className="api-ticker">
+            <div className="ticker-track">
+               <span className="tick">📦 Trendyol → 847 sipariş senkronize</span>
+               <span className="tick">🔄 Amazon API v3.2 bağlantısı aktif</span>
+               <span className="tick">✅ Hepsiburada stok güncellendi (2.4s)</span>
+               <span className="tick">📊 N11 fiyat analizi tamamlandı</span>
+               <span className="tick">🧾 e-Fatura: 126 fatura kesildi</span>
+               <span className="tick">🛒 Pazarama: 312 ürün listelendi</span>
+               <span className="tick">⚡ Shopify webhook tetiklendi</span>
+               <span className="tick">📦 Trendyol → 847 sipariş senkronize</span>
+               <span className="tick">🔄 Amazon API v3.2 bağlantısı aktif</span>
+               <span className="tick">✅ Hepsiburada stok güncellendi (2.4s)</span>
+            </div>
+         </div>
+
+         {/* Marketplace Nodes */}
+         {([
+            { name: 'Hepsiburada', sub: 'Pazaryeri', icon: '🛍️', color: '#a855f7', pos: 'n-top', stat: '2.4K ürün' },
+            { name: 'Trendyol', sub: 'Pazaryeri', icon: '🛒', color: '#f97316', pos: 'n-top-left', stat: '847 sipariş' },
+            { name: 'e-Fatura', sub: 'Finans', icon: '🧾', color: '#06b6d4', pos: 'n-top-right', stat: '126 fatura' },
+            { name: 'Amazon API', sub: 'Entegrasyon', icon: '📦', color: '#f97316', pos: 'n-left', stat: 'v3.2 aktif' },
+            { name: 'PttAVM', sub: 'Pazaryeri', icon: '📮', color: '#3b82f6', pos: 'n-right', stat: '89 ürün' },
+            { name: 'Shopify', sub: 'E-ticaret', icon: '🛍️', color: '#22c55e', pos: 'n-bot-left', stat: 'Webhook ✓' },
+            { name: 'Pazarama', sub: 'Pazaryeri', icon: '🏪', color: '#ec4899', pos: 'n-bot-right', stat: '312 aktif' },
+            { name: 'N11', sub: 'Pazaryeri', icon: '🛒', color: '#ef4444', pos: 'n-bottom', stat: '1.1K ürün' },
+         ] as const).map((n) => (
+            <div key={n.name} className={`mp-node ${n.pos}`} style={{'--nc': n.color} as React.CSSProperties}>
+               <div className="node-glow"></div>
+               <div className="node-body">
+                  <div className="node-icon">{n.icon}</div>
+                  <div className="node-info">
+                     <strong>{n.name}</strong>
+                     <small>{n.sub}</small>
+                  </div>
+                  <div className="node-stat">{n.stat}</div>
+               </div>
+               <div className="node-ping"></div>
+            </div>
+         ))}
+
+         {/* Floating Data Badges */}
+         <div className="data-badge db1">⚡ 99.8% Uptime</div>
+         <div className="data-badge db2">🔐 256-bit TLS</div>
+         <div className="data-badge db3">📡 Real-time Sync</div>
+
       </div>
 
     </div>
