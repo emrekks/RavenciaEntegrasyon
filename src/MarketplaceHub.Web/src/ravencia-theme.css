@@ -404,6 +404,12 @@ html, body, #root {
 .app-shell .quick-edit-filter-action { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 14px 4px; }
 .app-shell .quick-edit-filter-action p { margin: 0; color: var(--rv-muted); font-size: .72rem; }
 .app-shell .quick-edit-filter-action button { min-width: 92px; }
+.app-shell .product-operation-toast { position: fixed; right: 24px; bottom: 24px; z-index: 100; display: grid; gap: 4px; min-width: 280px; max-width: min(420px, calc(100vw - 32px)); padding: 14px 16px; color: #dff7ff; background: rgba(6, 25, 52, .97); border: 1px solid rgba(24, 186, 255, .58); border-radius: 12px; box-shadow: 0 18px 42px rgba(0, 0, 0, .42); animation: rv-toast-in .2s ease-out; }
+.app-shell .product-operation-toast strong { color: #58e0bd; font-size: .82rem; }
+.app-shell .product-operation-toast span { color: #b9d8f8; font-size: .74rem; }
+.app-shell .product-operation-toast.error { border-color: rgba(255, 102, 113, .64); }
+.app-shell .product-operation-toast.error strong { color: #ff8991; }
+@keyframes rv-toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 620px) {
   .app-shell .quick-edit-step > summary { grid-template-columns: minmax(0, 1fr) 20px; }
   .app-shell .quick-edit-step > summary small { display: none; }
