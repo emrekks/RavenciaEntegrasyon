@@ -45,164 +45,106 @@ export function App() {
 }
 
 function Login() {
-  const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
+  const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false); const [showPw, setShowPw] = useState(false)
   
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
 
   return (
-    <div className="auth-isometric-page">
-      
-      {/* Modern Clean Form (Stripe Dark Style) */}
-      <div className="iso-form-panel">
-         <div className="iso-card">
-            <div className="iso-header">
-               <img src="/logo.png" alt="Ravencia" className="iso-logo" />
-               <h1>Sisteme Bağlan</h1>
-               <p>E-ticaret veri merkezinize güvenli giriş yapın.</p>
-            </div>
-            
-            <form onSubmit={submit} className="iso-form">
-               <div className="iso-field">
-                  <label>Kurumsal E-posta</label>
-                  <input name="email" type="email" autoComplete="email" required placeholder="ornek@sirket.com" />
-               </div>
-               
-               <div className="iso-field">
-                  <label>Güvenlik Parolası</label>
-                  <input name="password" type="password" autoComplete="current-password" required minLength={15} maxLength={64} placeholder="••••••••" />
-               </div>
-               
-               <div className="iso-options">
-                  <label className="iso-checkbox">
-                     <input type="checkbox" />
-                     <div className="cb-box"></div>
-                     <span>Beni Hatırla</span>
-                  </label>
-                  <a href="#" className="iso-link">Şifremi unuttum</a>
-               </div>
-               
-               {error && <div className="iso-error">{error}</div>}
-               
-               <button type="submit" disabled={loading} className="iso-button">
-                  {loading ? 'Doğrulanıyor...' : 'Giriş Yap'}
-               </button>
-            </form>
-         </div>
-      </div>
+    <div className="rv-page">
+      {/* Background effects */}
+      <div className="rv-bg-glow" />
+      <div className="rv-bg-grid" />
 
-      {/* Animated Marketplace Integration Network */}
-      <div className="net-showcase">
-
-         {/* Animated background particles */}
-         <div className="net-particles">
-            {Array.from({length: 30}, (_, i) => (
-               <div key={i} className="particle" style={{
-                  left: `${Math.random() * 100}%`,
-                  top: `${Math.random() * 100}%`,
-                  animationDelay: `${Math.random() * 8}s`,
-                  animationDuration: `${6 + Math.random() * 8}s`,
-                  opacity: 0.15 + Math.random() * 0.35,
-                  width: `${2 + Math.random() * 3}px`,
-                  height: `${2 + Math.random() * 3}px`,
-               } as React.CSSProperties} />
-            ))}
-         </div>
-
-         {/* SVG Connection Lines - Zigzag Curved Paths */}
-         <svg className="net-svg" viewBox="0 0 700 600" fill="none">
-            <defs>
-               <linearGradient id="lg-out" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#6366f1" stopOpacity="0" /><stop offset="50%" stopColor="#818cf8" stopOpacity="1" /><stop offset="100%" stopColor="#6366f1" stopOpacity="0" /></linearGradient>
-               <linearGradient id="lg-in" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#22d3ee" stopOpacity="0" /><stop offset="50%" stopColor="#22d3ee" stopOpacity="1" /><stop offset="100%" stopColor="#22d3ee" stopOpacity="0" /></linearGradient>
-               <filter id="glow"><feGaussianBlur stdDeviation="3" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
-            </defs>
-
-            {/* Curved zigzag paths + bidirectional pulses */}
-            {[
-               'M350,300 C350,240 350,200 350,80',
-               'M350,300 C380,260 500,180 580,120',
-               'M350,300 C420,300 540,310 640,300',
-               'M350,300 C400,350 520,420 580,480',
-               'M350,300 C350,370 340,440 350,520',
-               'M350,300 C300,350 180,420 120,480',
-               'M350,300 C280,300 160,290 60,300',
-               'M350,300 C320,260 200,180 120,120',
-            ].map((d, i) => (
-               <g key={i}>
-                  <path d={d} stroke="rgba(99,102,241,0.12)" strokeWidth="1" strokeDasharray="6 6" fill="none" />
-                  <path d={d} stroke="url(#lg-out)" strokeWidth="2" strokeDasharray="16 84" fill="none" filter="url(#glow)" className="data-pulse" style={{animationDelay: `${i * 0.35}s`} as React.CSSProperties} pathLength="100" />
-                  <path d={d} stroke="url(#lg-in)" strokeWidth="1.5" strokeDasharray="12 88" fill="none" filter="url(#glow)" className="data-pulse-rev" style={{animationDelay: `${i * 0.35 + 1.2}s`} as React.CSSProperties} pathLength="100" />
-               </g>
-            ))}
-         </svg>
-
-         {/* Outer orbit rings */}
-         <div className="orbit o1"></div>
-         <div className="orbit o2"></div>
-
-         {/* Central Hub */}
-         <div className="hub">
-            <div className="hub-ring"></div>
-            <div className="hub-inner">
-               <img src="/ravencia-hub-logo.png" alt="Ravencia" className="hub-logo-img" />
-            </div>
-         </div>
-
-         {/* Live API Status Bar */}
-         <div className="api-ticker">
-            <div className="ticker-track">
-               <span className="tick">📦 Trendyol → 847 sipariş senkronize</span>
-               <span className="tick">🔄 Amazon bağlantısı aktif</span>
-               <span className="tick">✅ Hepsiburada stok güncellendi (2.4s)</span>
-               <span className="tick">📊 N11 fiyat analizi tamamlandı</span>
-               <span className="tick">🧾 e-Fatura: 126 fatura kesildi</span>
-               <span className="tick">🛒 Pazarama: 312 ürün listelendi</span>
-               <span className="tick">⚡ Shopify webhook tetiklendi</span>
-               <span className="tick">📦 Trendyol → 847 sipariş senkronize</span>
-               <span className="tick">🔄 Amazon bağlantısı aktif</span>
-               <span className="tick">✅ Hepsiburada stok güncellendi (2.4s)</span>
-            </div>
-         </div>
-
-         {/* Marketplace Nodes with Brand Logos */}
-         {([
-            { name: 'Hepsiburada', sub: 'Pazaryeri', color: '#ff6000', pos: 'n-top', stat: '2.4K ürün',
-              logo: <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" fill="none" stroke="#ff6000" strokeWidth="2"/><path d="M3 6h18" stroke="#ff6000" strokeWidth="2"/><path d="M16 10a4 4 0 01-8 0" fill="none" stroke="#ff6000" strokeWidth="2"/></svg> },
-            { name: 'Trendyol', sub: 'Pazaryeri', color: '#f27a1a', pos: 'n-top-left', stat: '847 sipariş',
-              logo: <span style={{fontWeight:800, fontSize:'1.1rem', color:'#f27a1a'}}>t</span> },
-            { name: 'e-Fatura', sub: 'Finans', color: '#06b6d4', pos: 'n-top-right', stat: '126 fatura',
-              logo: <svg viewBox="0 0 24 24" width="18" height="18"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke="#06b6d4" strokeWidth="2"/><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2" stroke="#06b6d4" strokeWidth="2"/></svg> },
-            { name: 'Amazon', sub: 'Pazaryeri', color: '#ff9900', pos: 'n-left', stat: '1.8K ürün',
-              logo: <span style={{fontWeight:800, fontSize:'1.1rem', color:'#ff9900', fontFamily:'Arial'}}>a</span> },
-            { name: 'PttAVM', sub: 'Pazaryeri', color: '#ffd100', pos: 'n-right', stat: '89 ürün',
-              logo: <span style={{fontWeight:800, fontSize:'0.65rem', color:'#ffd100', letterSpacing:'1px'}}>PTT</span> },
-            { name: 'Shopify', sub: 'E-ticaret', color: '#96bf48', pos: 'n-bot-left', stat: 'Webhook ✓',
-              logo: <svg viewBox="0 0 24 24" width="18" height="18"><path d="M15 2l-1 6h4l-8 14 1-8H7z" fill="none" stroke="#96bf48" strokeWidth="2" strokeLinejoin="round"/></svg> },
-            { name: 'Pazarama', sub: 'Pazaryeri', color: '#e91e8c', pos: 'n-bot-right', stat: '312 aktif',
-              logo: <span style={{fontWeight:800, fontSize:'1.1rem', color:'#e91e8c'}}>P</span> },
-            { name: 'N11', sub: 'Pazaryeri', color: '#ea2228', pos: 'n-bottom', stat: '1.1K ürün',
-              logo: <span style={{fontWeight:800, fontSize:'0.8rem', color:'#ea2228', fontFamily:'Arial'}}>n11</span> },
-         ] as const).map((n) => (
-            <div key={n.name} className={`mp-node ${n.pos}`} style={{'--nc': n.color} as React.CSSProperties}>
-               <div className="node-glow"></div>
-               <div className="node-body">
-                  <div className="node-icon">{n.logo}</div>
-                  <div className="node-info">
-                     <strong>{n.name}</strong>
-                     <small>{n.sub}</small>
-                  </div>
-                  <div className="node-stat">{n.stat}</div>
-               </div>
-               <div className="node-ping"></div>
-            </div>
+      {/* SVG Connection Lines */}
+      <svg className="rv-lines" viewBox="0 0 1200 675" preserveAspectRatio="xMidYMid slice" fill="none">
+         <defs>
+            <filter id="lGlow"><feGaussianBlur stdDeviation="4" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+            <linearGradient id="lGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#1e40af" stopOpacity="0.6" /><stop offset="50%" stopColor="#3b82f6" stopOpacity="1" /><stop offset="100%" stopColor="#1e40af" stopOpacity="0.6" /></linearGradient>
+         </defs>
+         {/* Trendyol → Center */}
+         <path d="M600,72 C600,150 600,220 600,270" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
+         {/* Amazon → Center */}
+         <path d="M225,182 C340,210 430,245 475,275" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
+         {/* Hepsiburada → Center */}
+         <path d="M940,182 C830,210 740,245 700,275" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
+         {/* N11 → Center */}
+         <path d="M175,340 C290,340 390,338 470,337" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
+         {/* Pazarama → Center */}
+         <path d="M1010,340 C900,340 800,338 720,337" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
+         {/* PttAVM → Center */}
+         <path d="M225,490 C340,465 430,430 475,405" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
+         {/* Trendyol e-faturam → Center */}
+         <path d="M940,490 C830,465 740,430 700,405" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
+         {/* Shopify → Center */}
+         <path d="M580,590 C585,530 590,460 598,410" stroke="url(#lGrad)" strokeWidth="1.5" filter="url(#lGlow)" />
+         {/* Animated pulses */}
+         {[
+           "M600,72 C600,150 600,220 600,270",
+           "M225,182 C340,210 430,245 475,275",
+           "M940,182 C830,210 740,245 700,275",
+           "M175,340 C290,340 390,338 470,337",
+           "M1010,340 C900,340 800,338 720,337",
+           "M225,490 C340,465 430,430 475,405",
+           "M940,490 C830,465 740,430 700,405",
+           "M580,590 C585,530 590,460 598,410",
+         ].map((d, i) => (
+           <circle key={i} r="3" fill="#60a5fa" filter="url(#lGlow)">
+             <animateMotion dur={`${2.5 + i * 0.2}s`} repeatCount="indefinite" path={d} />
+           </circle>
          ))}
+      </svg>
 
-         {/* Floating Data Badges */}
-         <div className="data-badge db1">⚡ 99.8% Uptime</div>
-         <div className="data-badge db2">🔐 256-bit TLS</div>
-         <div className="data-badge db3">📡 Real-time Sync</div>
+      {/* Platform Cards */}
+      <div className="rv-platform rv-p1"><span className="rv-brand" style={{color:'#f27a1a', fontStyle:'italic'}}>trendyol</span></div>
+      <div className="rv-platform rv-p2"><span className="rv-brand" style={{color:'#ff9900'}}>amazon</span></div>
+      <div className="rv-platform rv-p3"><span className="rv-brand" style={{color:'#ff6000'}}>hepsiburada</span></div>
+      <div className="rv-platform rv-p4"><span className="rv-brand"><span style={{color:'#22c55e', fontWeight:800}}>n11</span><span style={{color:'#ef4444'}}>.</span><span style={{color:'#f59e0b'}}>c</span><span style={{color:'#3b82f6'}}>o</span><span style={{color:'#8b5cf6'}}>m</span></span></div>
+      <div className="rv-platform rv-p5"><span className="rv-brand" style={{color:'#64748b'}}>pazarama</span></div>
+      <div className="rv-platform rv-p6"><span className="rv-brand"><span style={{color:'#fbbf24', fontWeight:900}}>Ptt</span><span style={{color:'#2563eb', fontWeight:900}}>AVM</span><small style={{color:'#94a3b8', fontSize:'0.55rem'}}>.com</small></span></div>
+      <div className="rv-platform rv-p7"><span className="rv-brand" style={{color:'#f27a1a', fontSize:'0.8rem'}}><span style={{fontStyle:'italic'}}>trendyol</span><br/><span style={{fontWeight:400}}>e-faturam</span></span></div>
+      <div className="rv-platform rv-p8"><span className="rv-brand" style={{color:'#96bf48'}}><svg viewBox="0 0 24 24" width="16" height="16" style={{verticalAlign:'middle', marginRight:4}}><path d="M7 22h10a2 2 0 002-2V9l-4-4-4 4v3H7v8a2 2 0 002 2z" fill="#96bf48" opacity="0.3"/><path d="M11 9V5l-4 4h4z" fill="#96bf48"/></svg>shopify</span></div>
 
+      {/* Center Login Card */}
+      <div className="rv-login-card">
+         <div className="rv-logo-area">
+            <img src="/ravencia-hub-logo.png" alt="Ravencia" className="rv-center-logo" />
+            <h1>R A V E N C I A</h1>
+            <p>PAZARYERİ ENTEGRASYON API</p>
+         </div>
+
+         <form onSubmit={submit} className="rv-form">
+            <div className="rv-input-wrap">
+               <svg className="rv-input-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#64748b" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+               <input name="email" type="email" autoComplete="email" required placeholder="Kullanıcı Adı" />
+            </div>
+
+            <div className="rv-input-wrap">
+               <svg className="rv-input-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#64748b" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+               <input name="password" type={showPw ? 'text' : 'password'} autoComplete="current-password" required placeholder="Şifre" />
+               <button type="button" className="rv-eye" onClick={() => setShowPw(!showPw)}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#64748b" strokeWidth="2">{showPw ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" /><path d="M1 1l22 22" /></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>}</svg>
+               </button>
+            </div>
+
+            <div className="rv-meta">
+               <label className="rv-remember"><input type="checkbox" /><span>Beni hatırla</span></label>
+               <a href="#" className="rv-forgot">Şifremi Unuttum?</a>
+            </div>
+
+            {error && <div className="rv-error">{error}</div>}
+
+            <button type="submit" disabled={loading} className="rv-submit">
+               {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+            </button>
+
+            <div className="rv-divider"><span>veya</span></div>
+
+            <button type="button" className="rv-google-btn">
+               <svg viewBox="0 0 24 24" width="18" height="18"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 001 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+               Google Authenticator ile Giriş
+            </button>
+         </form>
       </div>
-
     </div>
   );
 }
