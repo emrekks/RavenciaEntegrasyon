@@ -12,266 +12,383 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .auth-login-page { position:relative; min-height:100vh; overflow:hidden; background-color:#03040b; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
 
 /* ─── Login Page (Radial Network Layout) ─── */
-/* ─── Login Page (Radial Network Layout) ─── */
-.rv-page {
+/* ─── NexGen Animated Login Page ─── */
+.nx-wrapper {
   position: relative;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #03050c;
-  background-image: url('/pack/backgrounds/login-background-1920x1080.svg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background-color: #020617; /* Very dark slate */
   overflow: hidden;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  color: #fff;
+  color: #f8fafc;
 }
 
-/* Background Effects */
-.rv-bg-glow {
+/* Ambient Animated Orbs */
+.nx-orb {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 100vw;
-  height: 100vh;
-  transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(14,26,60,0.3) 0%, rgba(3,5,12,0) 60%);
-  z-index: 0;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.5;
+  animation: orbDrift 20s infinite alternate ease-in-out;
   pointer-events: none;
 }
-
-/* Platform Image Cards (Transparent PNG wrappers) */
-.rv-platform {
-  position: absolute;
-  z-index: 5;
-  background: rgba(7, 18, 38, 0.6); /* var(--rav-panel) but transparent */
-  border: 1px solid rgba(49, 89, 135, 0.4); /* var(--rav-border) */
-  border-radius: 12px;
-  padding: 10px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+.nx-orb-1 {
+  width: 40vw; height: 40vw;
+  background: #3b82f6; /* Blue */
+  top: -10%; left: -10%;
+  animation-duration: 25s;
 }
-.rv-platform img {
-  height: 18px; /* Correct proportion for marketplace transparent logos */
-  width: auto;
-  object-fit: contain;
+.nx-orb-2 {
+  width: 35vw; height: 35vw;
+  background: #8b5cf6; /* Purple */
+  bottom: -20%; right: -10%;
+  animation-duration: 22s;
+  animation-delay: -5s;
+}
+.nx-orb-3 {
+  width: 30vw; height: 30vw;
+  background: #06b6d4; /* Cyan */
+  top: 40%; left: 60%;
+  animation-duration: 28s;
+  animation-delay: -10s;
+}
+
+@keyframes orbDrift {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(5vw, 5vh) scale(1.1); }
+  100% { transform: translate(-5vw, -5vh) scale(0.9); }
+}
+
+/* Floating Background Icons */
+.nx-float {
+  position: absolute;
+  opacity: 0.15;
+  filter: grayscale(100%);
+  animation: floatIcon 12s infinite ease-in-out alternate;
   pointer-events: none;
 }
-.rv-platform:hover {
-  transform: scale(1.1) !important;
-  box-shadow: 0 0 20px rgba(45,140,255,0.4);
-  border-color: rgba(45,140,255,0.8);
+.nx-float img { height: 24px; width: auto; }
+.nx-f1 { top: 20%; left: 15%; animation-delay: 0s; }
+.nx-f2 { top: 15%; right: 20%; animation-delay: -2s; }
+.nx-f3 { bottom: 25%; left: 25%; animation-delay: -4s; }
+.nx-f4 { bottom: 20%; right: 15%; animation-delay: -6s; }
+.nx-f5 { top: 50%; left: 5%; animation-delay: -8s; }
+
+@keyframes floatIcon {
+  0% { transform: translateY(0) rotate(0deg); opacity: 0.1; }
+  100% { transform: translateY(-30px) rotate(10deg); opacity: 0.25; filter: grayscale(50%); }
 }
 
-/* Radial Positions (Pushed outward to prevent overlap) */
-.rv-p1 { top: 8vh; left: 50%; transform: translateX(-50%); } /* Trendyol */
-.rv-p2 { top: 22vh; left: 12vw; } /* Amazon */
-.rv-p3 { top: 22vh; right: 12vw; } /* Hepsiburada */
-.rv-p4 { top: 48vh; left: 8vw; transform: translateY(-50%); } /* N11 */
-.rv-p5 { top: 48vh; right: 8vw; transform: translateY(-50%); } /* Pazarama */
-.rv-p6 { top: 76vh; left: 12vw; } /* PttAVM */
-.rv-p7 { top: 76vh; right: 12vw; } /* Trendyol E-faturam */
-.rv-p8 { bottom: 8vh; left: 50%; transform: translateX(-50%); } /* Shopify */
-
-/* Center Login Card */
-.rv-login-card {
+/* Glass Card & Entrance Animation */
+.nx-glass-card {
   position: relative;
   z-index: 10;
-  width: 360px; /* Shrunk from 420px to prevent overlap */
-  background: rgba(7, 18, 38, 0.92); /* var(--rav-panel) */
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(49, 89, 135, 0.68); /* var(--rav-border) */
-  border-radius: 28px; /* var(--rav-radius-card) */
-  padding: 32px; /* Shrunk from 44px */
-  box-shadow: 0 20px 70px rgba(0,0,0,0.6); /* var(--rav-shadow) */
+  width: 100%;
+  max-width: 400px;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  padding: 40px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.nx-slide-up {
+  animation: slideUpFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes slideUpFade {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* Logo Area */
-.rv-logo-area {
+/* Staggered Children Entrance */
+.nx-stagger-1 { opacity: 0; animation: fadeIn 0.6s 0.2s forwards; }
+.nx-stagger-2 { opacity: 0; animation: fadeIn 0.6s 0.3s forwards; }
+.nx-stagger-3 { opacity: 0; animation: fadeIn 0.6s 0.4s forwards; }
+.nx-stagger-4 { opacity: 0; animation: fadeIn 0.6s 0.5s forwards; }
+.nx-stagger-5 { opacity: 0; animation: fadeIn 0.6s 0.6s forwards; }
+.nx-stagger-6 { opacity: 0; animation: fadeIn 0.6s 0.7s forwards; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Header & Logo */
+.nx-header {
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 32px;
 }
-.rv-center-logo {
-  width: 70px;
-  object-fit: contain;
-  margin: 0 auto 10px;
+.nx-logo-ring {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
+  border: 1px solid rgba(255,255,255,0.1);
+  margin-bottom: 16px;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  animation: pulseGlow 4s infinite alternate;
 }
-.rv-wordmark {
-  width: 120px;
-  object-fit: contain;
-  margin: 0 auto 6px;
-  display: block;
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 15px rgba(59, 130, 246, 0.2); }
+  100% { box-shadow: 0 0 30px rgba(139, 92, 246, 0.5); }
 }
-.rv-logo-area p {
-  font-size: 0.55rem;
-  color: #8ea5c2; /* var(--rav-muted) */
-  letter-spacing: 2px;
-  margin: 0;
+.nx-logo {
+  width: 40px;
+  height: auto;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+.nx-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 4px;
+  margin: 0 0 4px;
+  background: linear-gradient(to right, #fff, #94a3b8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.nx-subtitle {
+  font-size: 0.75rem;
+  color: #64748b;
+  letter-spacing: 1px;
   text-transform: uppercase;
+  margin: 0;
 }
 
 /* Form Styles */
-.rv-form {
+.nx-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 20px;
 }
-.rv-input-wrap {
+
+/* Floating Label Inputs */
+.nx-input-group {
   position: relative;
   display: flex;
   align-items: center;
 }
-.rv-input-icon {
+.nx-input {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 16px 16px 16px 44px;
+  color: #f8fafc;
+  font-size: 0.95rem;
+  outline: none;
+  transition: all 0.3s ease;
+}
+.nx-input:focus {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(15, 23, 42, 0.8);
+}
+.nx-label {
+  position: absolute;
+  left: 44px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  font-size: 0.95rem;
+  pointer-events: none;
+  transition: all 0.2s ease;
+}
+/* Move label up on focus or when not empty (using placeholder-shown trick with whitespace placeholder) */
+.nx-input:focus ~ .nx-label,
+.nx-input:not(:placeholder-shown) ~ .nx-label {
+  top: -10px;
+  left: 12px;
+  font-size: 0.75rem;
+  color: #3b82f6;
+  background: #0a0f1e; /* matches ambient dark behind it */
+  padding: 0 8px;
+  border-radius: 4px;
+}
+.nx-input-icon {
   position: absolute;
   left: 14px;
-  opacity: 0.8;
+  width: 18px;
+  height: 18px;
   color: #64748b;
+  transition: color 0.3s;
 }
-.rv-input-wrap input {
-  width: 100%;
-  background: #f5f7fb; /* White/Light background from screenshot */
-  border: 1px solid transparent;
-  border-radius: 8px; /* var(--rav-radius-control) */
-  padding: 12px 12px 12px 40px;
-  color: #1e293b;
-  font-size: 0.85rem;
-  font-weight: 500;
-  outline: none;
-  transition: all 0.2s;
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+.nx-input:focus ~ .nx-input-icon {
+  color: #3b82f6;
 }
-.rv-input-wrap input:focus {
-  border-color: #2d8cff; /* var(--rav-blue) */
-  box-shadow: 0 0 0 3px rgba(45,140,255,0.2), inset 0 2px 4px rgba(0,0,0,0.05); 
-}
-.rv-input-wrap input::placeholder {
-  color: #94a3b8;
-}
-.rv-eye {
+.nx-eye-btn {
   position: absolute;
   right: 14px;
   background: none;
   border: none;
   color: #64748b;
   cursor: pointer;
-  padding: 0;
+  padding: 4px;
   display: flex;
-  opacity: 0.8;
+  transition: color 0.2s;
 }
-.rv-eye:hover {
-  color: #2d8cff;
+.nx-eye-btn:hover {
+  color: #f8fafc;
+}
+.nx-input-glow {
+  position: absolute;
+  inset: -1px;
+  border-radius: 13px;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #3b82f6);
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.nx-input:focus ~ .nx-input-glow {
+  opacity: 0.5;
+  filter: blur(4px);
 }
 
-.rv-meta {
+/* Form Actions */
+.nx-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.75rem;
-  margin-top: 4px;
-  margin-bottom: 8px;
+  font-size: 0.8rem;
+  margin-top: -4px;
 }
-.rv-remember {
+.nx-checkbox-wrap {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #8ea5c2;
   cursor: pointer;
-  line-height: 1.1;
+  color: #94a3b8;
+  user-select: none;
 }
-.rv-checkbox-wrapper {
-  width: 20px;
-  height: 20px;
-  background: #fff;
+.nx-checkbox-wrap input {
+  display: none;
+}
+.nx-checkbox-box {
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(255,255,255,0.2);
   border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s;
 }
-.rv-checkbox-wrapper input {
-  width: 14px;
-  height: 14px;
-  accent-color: #2d8cff;
-  cursor: pointer;
+.nx-checkbox-box svg {
+  width: 12px; height: 12px;
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  transition: stroke-dashoffset 0.3s ease;
 }
-.rv-forgot {
-  color: #4aa7ff;
+.nx-checkbox-wrap input:checked + .nx-checkbox-box {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+.nx-checkbox-wrap input:checked + .nx-checkbox-box svg {
+  stroke-dashoffset: 0;
+}
+.nx-forgot {
+  color: #94a3b8;
   text-decoration: none;
   transition: color 0.2s;
 }
-.rv-forgot:hover {
-  color: #2d8cff;
+.nx-forgot:hover {
+  color: #f8fafc;
 }
 
-.rv-error {
-  color: #ff4a4a;
-  font-size: 0.8rem;
-  text-align: center;
-  background: rgba(255, 74, 74, 0.1);
-  padding: 8px;
-  border-radius: 8px;
-}
-
-.rv-submit {
-  background: #3b82f6; 
-  color: #fff;
+/* Submit Button */
+.nx-submit-btn {
+  position: relative;
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(90deg, #2563eb, #7c3aed);
   border: none;
-  border-radius: 8px;
-  padding: 12px;
-  font-size: 0.9rem;
+  border-radius: 12px;
+  color: #fff;
   font-weight: 600;
+  font-size: 0.95rem;
   cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 4px 14px rgba(45, 140, 255, 0.3);
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
 }
-.rv-submit:hover {
-  background: #2563eb;
-  box-shadow: 0 0 18px rgba(45, 140, 255, 0.4);
+.nx-submit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.5);
+}
+.nx-submit-btn:active {
+  transform: translateY(0);
+}
+.nx-submit-text {
+  position: relative;
+  z-index: 2;
+}
+.nx-shimmer {
+  position: absolute;
+  top: 0; left: -100%;
+  width: 50%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  transform: skewX(-20deg);
+  animation: shimmer 3s infinite;
+  z-index: 1;
+}
+@keyframes shimmer {
+  0% { left: -100%; }
+  20% { left: 200%; }
+  100% { left: 200%; }
 }
 
-.rv-divider {
+/* Error */
+.nx-error {
+  color: #f87171;
+  font-size: 0.85rem;
+  text-align: center;
+  background: rgba(248, 113, 113, 0.1);
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(248, 113, 113, 0.2);
+}
+
+/* Divider */
+.nx-divider {
   display: flex;
   align-items: center;
   text-align: center;
-  color: #8ea5c2;
-  font-size: 0.7rem;
-  margin: 0;
+  color: #475569;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
 }
-.rv-divider::before, .rv-divider::after {
+.nx-divider::before, .nx-divider::after {
   content: '';
   flex: 1;
-  border-bottom: 1px solid rgba(49, 89, 135, 0.4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
-.rv-divider span {
-  padding: 0 10px;
+.nx-divider span {
+  padding: 0 16px;
 }
 
-.rv-google-btn {
+/* Secondary Button */
+.nx-google-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(49, 89, 135, 0.4);
-  border-radius: 8px;
-  padding: 10px;
-  color: #f5f7fb;
-  font-size: 0.8rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px;
+  color: #cbd5e1;
+  font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 }
-.rv-google-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-@media (max-width: 1024px) {
-  .rv-platform { display: none; }
+.nx-google-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 
