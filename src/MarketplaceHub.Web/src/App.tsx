@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type MutableRefObject, type ReactNode, type RefObject } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, hubApi, type Me } from './api'
@@ -46,57 +46,32 @@ export function App() {
 
 function Login() {
   const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false); const [showPw, setShowPw] = useState(false); const [rememberMe, setRememberMe] = useState(false)
+  const pageRef = useRef<HTMLDivElement>(null)
+  const loginCardRef = useRef<HTMLDivElement>(null)
+  const nodeRefs = useRef<Record<string, HTMLDivElement | null>>({})
   
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
 
   return (
-    <div className="rv-page">
-      {/* Background is handled by CSS using the pack's login-background */}
-      
-      {/* SVG Connecting Lines exactly like the mockup */}
-      <svg className="rv-lines" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" fill="none">
-         <defs>
-            <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-            <linearGradient id="grad-left" x1="100%" y1="0%" x2="0%" y2="0%"><stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" /><stop offset="100%" stopColor="#06b6d4" stopOpacity="0.2" /></linearGradient>
-            <linearGradient id="grad-right" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" /><stop offset="100%" stopColor="#06b6d4" stopOpacity="0.2" /></linearGradient>
-         </defs>
-
-         {/* Left Side Lines */}
-         <path d="M 720 540 C 600 540, 500 280, 360 280" stroke="url(#grad-left)" strokeWidth="2" filter="url(#glow)" />
-         <path d="M 720 540 C 600 540, 550 440, 360 440" stroke="url(#grad-left)" strokeWidth="2" filter="url(#glow)" />
-         <path d="M 720 540 C 600 540, 550 640, 360 640" stroke="url(#grad-left)" strokeWidth="2" filter="url(#glow)" />
-         <path d="M 720 540 C 600 540, 500 800, 360 800" stroke="url(#grad-left)" strokeWidth="2" filter="url(#glow)" />
-
-         {/* Right Side Lines */}
-         <path d="M 1200 540 C 1320 540, 1420 280, 1560 280" stroke="url(#grad-right)" strokeWidth="2" filter="url(#glow)" />
-         <path d="M 1200 540 C 1320 540, 1370 480, 1560 480" stroke="url(#grad-right)" strokeWidth="2" filter="url(#glow)" />
-         <path d="M 1200 540 C 1320 540, 1370 680, 1560 680" stroke="url(#grad-right)" strokeWidth="2" filter="url(#glow)" />
-         
-         {/* Dots at connection points */}
-         <circle cx="360" cy="280" r="4" fill="#60a5fa" filter="url(#glow)" />
-         <circle cx="360" cy="440" r="4" fill="#60a5fa" filter="url(#glow)" />
-         <circle cx="360" cy="640" r="4" fill="#60a5fa" filter="url(#glow)" />
-         <circle cx="360" cy="800" r="4" fill="#60a5fa" filter="url(#glow)" />
-         <circle cx="1560" cy="280" r="4" fill="#60a5fa" filter="url(#glow)" />
-         <circle cx="1560" cy="480" r="4" fill="#60a5fa" filter="url(#glow)" />
-         <circle cx="1560" cy="680" r="4" fill="#60a5fa" filter="url(#glow)" />
-      </svg>
+    <div className="rv-page" ref={pageRef}>
+      <IntegrationLines pageRef={pageRef} loginCardRef={loginCardRef} nodeRefs={nodeRefs} />
 
       {/* Pre-rendered Platform Cards positioned perfectly */}
-      <div className="rv-platform-node rv-l1"><img src="/pack/marketplace/cards/trendyol-card.png" className="rv-card" alt="Trendyol" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
-      <div className="rv-platform-node rv-l2"><img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-card" alt="Hepsiburada" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
-      <div className="rv-platform-node rv-l3"><img src="/pack/marketplace/cards/n11-card.png" className="rv-card" alt="n11" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
-      <div className="rv-platform-node rv-l4"><img src="/pack/marketplace/cards/pazarama-card.png" className="rv-card" alt="Pazarama" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
-      <div className="rv-platform-node rv-r1"><img src="/pack/marketplace/cards/pttavm-card.png" className="rv-card" alt="PttAVM" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
-      <div className="rv-platform-node rv-r2"><img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-card" alt="Trendyol e-Faturam" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
-      <div className="rv-platform-node rv-r3"><img src="/pack/marketplace/cards/shopify-card.png" className="rv-card" alt="Shopify" loading="eager" draggable={false} /><span className="rv-card-meta" aria-hidden="true"><i />256-bit · SSH güvenli kanal</span></div>
+      <div className="rv-platform-node rv-l1" ref={element => { nodeRefs.current.l1 = element }}><img src="/pack/marketplace/cards/trendyol-card.png" className="rv-card" alt="Trendyol" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div>
+      <div className="rv-platform-node rv-l2" ref={element => { nodeRefs.current.l2 = element }}><img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-card" alt="Hepsiburada" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div>
+      <div className="rv-platform-node rv-l3" ref={element => { nodeRefs.current.l3 = element }}><img src="/pack/marketplace/cards/n11-card.png" className="rv-card" alt="n11" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div>
+      <div className="rv-platform-node rv-l4" ref={element => { nodeRefs.current.l4 = element }}><img src="/pack/marketplace/cards/pazarama-card.png" className="rv-card" alt="Pazarama" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div>
+      <div className="rv-platform-node rv-r1" ref={element => { nodeRefs.current.r1 = element }}><img src="/pack/marketplace/cards/pttavm-card.png" className="rv-card" alt="PttAVM" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div>
+      <div className="rv-platform-node rv-r2" ref={element => { nodeRefs.current.r2 = element }}><img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-card" alt="Trendyol e-Faturam" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div>
+      <div className="rv-platform-node rv-r3" ref={element => { nodeRefs.current.r3 = element }}><img src="/pack/marketplace/cards/shopify-card.png" className="rv-card" alt="Shopify" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div>
 
       {/* Center Login Card matching mockup exactly */}
-      <div className="rv-login-card">
+      <div className="rv-login-card" ref={loginCardRef}>
          <div className="rv-logo-area">
             <img src="/pack/brand/ravencia-login-logo.png" alt="RAVENCIA" className="rv-login-logo" draggable={false} />
             <h2 className="rv-greeting">Hoş Geldiniz</h2>
             <p className="rv-subgreeting">Pazaryeri entegrasyon panelinize giriş yapın</p>
+            <p className="rv-security-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z" /><path d="m9 12 2 2 4-5" /></svg>TLS ile şifrelenmiş güvenli bağlantı</p>
          </div>
 
          <form onSubmit={submit} className="rv-form">
@@ -111,7 +86,7 @@ function Login() {
                <label className="sr-only" htmlFor="login-password">Şifre</label>
                <input id="login-password" name="password" type={showPw ? 'text' : 'password'} required autoComplete="current-password" placeholder="Şifre" />
                <button type="button" className="rv-eye" aria-label={showPw ? 'Şifreyi gizle' : 'Şifreyi göster'} onClick={() => setShowPw(!showPw)}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">{showPw ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" /><path d="M1 1l22 22" /></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>}</svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{showPw ? <><path d="m3 3 18 18" /><path d="M10.58 10.58a2 2 0 0 0 2.83 2.83" /><path d="M9.36 4.24A10.9 10.9 0 0 1 12 4c7 0 10 8 10 8a18.43 18.43 0 0 1-2.17 3.19" /><path d="M6.61 6.61A18.47 18.47 0 0 0 2 12s3 8 10 8a10.78 10.78 0 0 0 4.14-.81" /></> : <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>}</svg>
                </button>
             </div>
 
@@ -139,6 +114,57 @@ function Login() {
       </div>
     </div>
   );
+}
+
+type ConnectionPath = { id: string; d: string }
+
+function IntegrationLines({ pageRef, loginCardRef, nodeRefs }: { pageRef: RefObject<HTMLDivElement | null>; loginCardRef: RefObject<HTMLDivElement | null>; nodeRefs: MutableRefObject<Record<string, HTMLDivElement | null>> }) {
+  const [paths, setPaths] = useState<ConnectionPath[]>([])
+
+  useEffect(() => {
+    const page = pageRef.current
+    const loginCard = loginCardRef.current
+    if (!page || !loginCard) return
+
+    const nodes = [['l1', 'left'], ['l2', 'left'], ['l3', 'left'], ['l4', 'left'], ['r1', 'right'], ['r2', 'right'], ['r3', 'right']] as const
+    let frame = 0
+    const draw = () => {
+      frame = 0
+      if (!window.matchMedia('(min-width: 1121px)').matches) { setPaths([]); return }
+      const pageBox = page.getBoundingClientRect()
+      const loginBox = loginCard.getBoundingClientRect()
+      const next = nodes.flatMap(([id, side]) => {
+        const image = nodeRefs.current[id]?.querySelector<HTMLImageElement>('.rv-card')
+        if (!image) return []
+        const cardBox = image.getBoundingClientRect()
+        if (!cardBox.width || !cardBox.height) return []
+        const direction = side === 'left' ? -1 : 1
+        const startX = (side === 'left' ? loginBox.left : loginBox.right) - pageBox.left
+        const startY = loginBox.top - pageBox.top + loginBox.height * .5
+        const endX = (side === 'left' ? cardBox.right - 2 : cardBox.left + 2) - pageBox.left
+        const endY = cardBox.top - pageBox.top + cardBox.height * .5
+        const curve = Math.max(64, Math.abs(startX - endX) * .42)
+        return [{ id, d: `M ${startX} ${startY} C ${startX + direction * curve} ${startY}, ${endX - direction * curve} ${endY}, ${endX} ${endY}` }]
+      })
+      setPaths(next)
+    }
+    const scheduleDraw = () => { if (!frame) frame = window.requestAnimationFrame(draw) }
+    const observer = new ResizeObserver(scheduleDraw)
+    observer.observe(page)
+    observer.observe(loginCard)
+    Object.values(nodeRefs.current).forEach(node => { if (node) observer.observe(node) })
+    page.querySelectorAll('img').forEach(image => image.addEventListener('load', scheduleDraw))
+    window.addEventListener('resize', scheduleDraw)
+    scheduleDraw()
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      observer.disconnect()
+      page.querySelectorAll('img').forEach(image => image.removeEventListener('load', scheduleDraw))
+      window.removeEventListener('resize', scheduleDraw)
+    }
+  }, [pageRef, loginCardRef, nodeRefs])
+
+  return <svg className="rv-lines" aria-hidden="true" viewBox={`0 0 ${window.innerWidth} ${window.innerHeight}`} preserveAspectRatio="none">{paths.map(path => <path key={path.id} d={path.d} />)}</svg>
 }
 
 function ChangePassword() { const client = useQueryClient(); const [message, setMessage] = useState('İlk girişte parolanızı değiştirmeniz gerekir.'); async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await api('/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: data.get('current'), newPassword: data.get('next') }) }); await client.invalidateQueries({ queryKey: ['me'] }) } catch { setMessage('Parola değiştirilemedi; politika ve mevcut parolayı kontrol edin.') } } return <div className="auth-page"><section className="auth-card"><h1>Parolanızı değiştirin</h1><p role="status">{message}</p><form onSubmit={submit}><label>Geçerli parola<input name="current" type="password" required /></label><label>Yeni parola<input name="next" type="password" minLength={15} maxLength={64} required /></label><button>Parolayı değiştir</button></form></section></div> }
