@@ -1187,4 +1187,187 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
   cursor: pointer !important;
 }
 
+/* Compact Section 7 Publish Channel Panel */
+.publish-channel-panel {
+  padding: 1rem !important;
+  border-radius: var(--rv-radius-md) !important;
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.75rem !important;
+  max-width: 320px !important;
+}
+.publish-channel-panel .editor-section-title {
+  margin-bottom: 0.25rem !important;
+}
+.publish-channel-panel .editor-section-title h2 {
+  font-size: 0.95rem !important;
+  margin: 0 !important;
+}
+.publish-channel-panel .editor-section-title p,
+.publish-channel-panel .channel-help {
+  display: none !important;
+}
+
+/* Option Chips with High-Contrast Feedback */
+.option-chip-list {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  margin-top: 8px !important;
+}
+.option-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  background: var(--rv-bg) !important;
+  color: var(--rv-muted) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: var(--rv-radius-sm) !important;
+  padding: 6px 14px !important;
+  font-size: 0.84rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+.option-chip:hover {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-ink) !important;
+  border-color: var(--rv-line-strong) !important;
+}
+.option-chip.active {
+  background: var(--rv-primary) !important;
+  color: #ffffff !important;
+  border-color: #818cf8 !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.45) !important;
+}
+.option-chip .chip-check {
+  font-weight: 800 !important;
+  color: #ffffff !important;
+}
+
+/* Attribute Filter Popover Redesign */
+.attr-filter-menu-shell {
+  position: relative !important;
+  display: inline-block !important;
+}
+.attr-filter-popover {
+  position: absolute !important;
+  top: calc(100% + 6px) !important;
+  right: 0 !important;
+  z-index: 100 !important;
+  width: 280px !important;
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  border-radius: var(--rv-radius-md) !important;
+  padding: 12px !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65) !important;
+  backdrop-filter: blur(8px) !important;
+}
+.attr-filter-toggle-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 6px 8px !important;
+  border-radius: var(--rv-radius-sm) !important;
+  cursor: pointer !important;
+  color: var(--rv-ink) !important;
+  font-size: 0.84rem !important;
+}
+.attr-filter-toggle-row input[type="checkbox"],
+.attr-filter-check-item input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  margin: 0 !important;
+  accent-color: var(--rv-primary) !important;
+  cursor: pointer !important;
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
+}
+.attr-filter-divider {
+  height: 1px !important;
+  background: var(--rv-line) !important;
+  margin: 8px 0 !important;
+}
+.attr-filter-checklist {
+  max-height: 220px !important;
+  overflow-y: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3px !important;
+}
+.attr-filter-check-head {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 4px 6px !important;
+  font-size: 0.72rem !important;
+  color: var(--rv-muted) !important;
+  text-transform: uppercase !important;
+  font-weight: 700 !important;
+}
+.attr-filter-check-head button {
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--rv-primary) !important;
+  padding: 0 !important;
+  font-size: 0.74rem !important;
+  cursor: pointer !important;
+  text-decoration: underline !important;
+}
+.attr-filter-check-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 6px 8px !important;
+  border-radius: var(--rv-radius-sm) !important;
+  color: var(--rv-ink) !important;
+  font-size: 0.82rem !important;
+  cursor: pointer !important;
+  transition: background 0.12s ease !important;
+}
+.attr-filter-check-item:hover {
+  background: var(--rv-surface-raised) !important;
+}
+.attr-filter-check-item span {
+  flex: 1 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.attr-filter-check-item .attr-tag {
+  background: rgba(99, 102, 241, 0.18) !important;
+  color: var(--rv-primary) !important;
+  font-size: 0.68rem !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+  font-weight: 600 !important;
+}
+
+/* Single Order Sync Button & Modal */
+.single-order-sync-btn {
+  font-weight: 600 !important;
+  border-color: var(--rv-primary) !important;
+  color: var(--rv-primary) !important;
+}
+.single-order-sync-btn:hover {
+  background: rgba(99, 102, 241, 0.12) !important;
+  color: #fff !important;
+}
+.single-order-sync-modal {
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  color: var(--rv-ink) !important;
+}
+.single-order-sync-modal header h2 {
+  color: var(--rv-ink) !important;
+}
+.single-order-sync-modal header p {
+  color: var(--rv-muted) !important;
+}
+
+
 

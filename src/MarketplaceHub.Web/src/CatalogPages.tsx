@@ -424,9 +424,31 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '2', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([])
   const [channelDropdownOpen, setChannelDropdownOpen] = useState(false)
-  const [onlySelectedAttributes, setOnlySelectedAttributes] = useState(false)
-  const [customVisibleAttrIds, setCustomVisibleAttrIds] = useState<string[] | null>(null)
+  const [onlySelectedAttributes, setOnlySelectedAttributes] = useState<boolean>(() => {
+    try { return localStorage.getItem('rv_attr_only_selected') === 'true' } catch { return false }
+  })
+  const [customVisibleAttrIds, setCustomVisibleAttrIds] = useState<string[] | null>(() => {
+    try {
+      const saved = localStorage.getItem('rv_attr_visible_ids')
+      return saved ? JSON.parse(saved) : null
+    } catch { return null }
+  })
   const [attrFilterOpen, setAttrFilterOpen] = useState(false)
+
+  useEffect(() => {
+    try { localStorage.setItem('rv_attr_only_selected', String(onlySelectedAttributes)) } catch {}
+  }, [onlySelectedAttributes])
+
+  useEffect(() => {
+    try {
+      if (customVisibleAttrIds === null) {
+        localStorage.removeItem('rv_attr_visible_ids')
+      } else {
+        localStorage.setItem('rv_attr_visible_ids', JSON.stringify(customVisibleAttrIds))
+      }
+    } catch {}
+  }, [customVisibleAttrIds])
+
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
@@ -663,11 +685,20 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                 </div>
                 {item.attribute.values.length ? (
                   <div className="option-chip-list">
-                    {item.attribute.values.map(value => (
-                      <button type="button" key={value.id} className={`option-chip ${(attributeSelections[item.attributeId] ?? []).includes(value.id) ? 'active' : ''}`} onClick={() => toggleAttributeValue(item.attributeId, value.id)}>
-                        {value.value}
-                      </button>
-                    ))}
+                    {item.attribute.values.map(value => {
+                      const isSelected = (attributeSelections[item.attributeId] ?? []).includes(value.id)
+                      return (
+                        <button
+                          type="button"
+                          key={value.id}
+                          className={`option-chip ${isSelected ? 'active' : ''}`}
+                          onClick={() => toggleAttributeValue(item.attributeId, value.id)}
+                        >
+                          {isSelected && <span className="chip-check" aria-hidden="true">✓ </span>}
+                          {value.value}
+                        </button>
+                      )
+                    })}
                   </div>
                 ) : item.attribute.dataType === 'BOOLEAN' ? (
                   <label>Değer<select value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))}><option value="">Seçin</option><option value="evet">Evet</option><option value="hayır">Hayır</option></select></label>
@@ -686,7 +717,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       </section>
 
       <section className="panel product-step-card"><div className="editor-section-title"><span>6</span><div><h2>Ürün seçenek grupları</h2><p>İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</p></div></div>{variantRows.length > 0 && <div className="variant-bulk-editor"><input value={bulkStock} onChange={event => setBulkStock(event.target.value)} type="number" min="0" placeholder="Tüm stoklar" /><input value={bulkSalePrice} onChange={event => setBulkSalePrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm satış fiyatları" /><input value={bulkListPrice} onChange={event => setBulkListPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm liste fiyatları" /><button type="button" className="secondary" onClick={applyBulk}>Tümüne uygula</button></div>}<div className="variant-table-editor"><div className="variant-table-head"><span aria-hidden="true" /><span>Seçenek</span><span>Barkod</span><span>Stok kodu</span><span>Stok</span><span>Fiyat</span><span>Liste fiyatı</span><span>İşlem</span></div>{variantRows.length ? variantRows.map(row => <div className={`variant-table-row ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key} onDragOver={event => event.preventDefault()} onDragEnter={() => { if (!draggedVariantKey || draggedVariantKey === row.key || dragOverVariantKey === row.key) return; swapVariants(draggedVariantKey, row.key); setDragOverVariantKey(row.key) }}><span className="variant-drag-handle" draggable title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; setDraggedVariantKey(row.key); setDragOverVariantKey(null) }} onDragEnd={() => { setDraggedVariantKey(null); setDragOverVariantKey(null) }}>☰</span><input value={row.optionSignature} readOnly /><input value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" /><input value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" /><input value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" /><input value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /><input value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /><button type="button" className="secondary" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))}>Sil</button></div>) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini işaretleyip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}</div></section>
-    </div><aside className="panel publish-channel-panel"><div className="editor-section-title"><span>7</span><div><h2>Yayınlanacak kanallar</h2><p>Seçilen aktif Trendyol bağlantılarında fiyat teklifi, listing profile ve yayın işi hazırlanır.</p></div></div><div className="channel-dropdown-wrapper"><button type="button" className="channel-dropdown-toggle" onClick={() => setChannelDropdownOpen(prev => !prev)} aria-expanded={channelDropdownOpen}><span>{selectedChannelIds.length ? `${selectedChannelIds.length} kanal seçildi (${activeConnections.filter(c => selectedChannelIds.includes(c.id)).map(c => c.displayName).join(', ')})` : 'Kanal seçin (Açılır Menü)'}</span><b style={{ transform: channelDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block' }}>⌄</b></button>{channelDropdownOpen && <div className="channel-choice-list dropdown-list">{activeConnections.map(item => <label key={item.id} className="channel-choice"><input type="checkbox" checked={selectedChannelIds.includes(item.id)} onChange={() => updateChannel(item.id)} /> <span>{item.displayName}</span><small>{selectedChannelIds.includes(item.id) ? 'Seçildi' : 'Seçilmedi'}</small></label>)}{!activeConnections.length && <p style={{ padding: '0.6rem', margin: 0, color: 'var(--rv-muted)', fontSize: '0.85rem' }}>Aktif Trendyol bağlantısı bulunamadı.</p>}</div>}</div><div className="channel-help"><strong>Güvenli yayın</strong><p>Stage manuel yayın; aktif bağlantı, doğrulanmış kimlik bilgisi, geçerli ürün verisi ve tekrar korumasıyla çalışır. Production yayınında master ve bağlantı dış-yazma anahtarları ayrıca zorunludur.</p></div></aside></div>
+    </div><aside className="panel publish-channel-panel"><div className="editor-section-title"><span>7</span><div><h2>Yayınlanacak kanallar</h2></div></div><div className="channel-dropdown-wrapper"><button type="button" className="channel-dropdown-toggle" onClick={() => setChannelDropdownOpen(prev => !prev)} aria-expanded={channelDropdownOpen}><span>{selectedChannelIds.length ? `${selectedChannelIds.length} kanal seçildi (${activeConnections.filter(c => selectedChannelIds.includes(c.id)).map(c => c.displayName).join(', ')})` : 'Kanal seçin (Açılır Menü)'}</span><b style={{ transform: channelDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block' }}>⌄</b></button>{channelDropdownOpen && <div className="channel-choice-list dropdown-list">{activeConnections.map(item => <label key={item.id} className="channel-choice"><input type="checkbox" checked={selectedChannelIds.includes(item.id)} onChange={() => updateChannel(item.id)} /> <span>{item.displayName}</span><small>{selectedChannelIds.includes(item.id) ? 'Seçildi' : 'Seçilmedi'}</small></label>)}{!activeConnections.length && <p style={{ padding: '0.6rem', margin: 0, color: 'var(--rv-muted)', fontSize: '0.85rem' }}>Aktif Trendyol bağlantısı bulunamadı.</p>}</div>}</div></aside></div>
 
     <section className="product-submit-sticky"><div><strong>Ürün kayda hazır</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><button disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Ürünü kaydet'}</button></section>
     <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />{notice && <p className="notice" role="status">{notice}</p>}{created && <p className="success">Oluşturuldu: <Link to={`/products/${created.id}`}>ürünü aç</Link></p>}
