@@ -489,3 +489,131 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
 }
 .rv-lines path { stroke: var(--rv-primary) !important; }
 .rv-lines circle { fill: var(--rv-warning) !important; }
+/* Fix info/warning blocks like 'Önce kategori seçin' */
+.unknown, .notice, .warning, .info-box {
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line) !important;
+  color: var(--rv-ink) !important;
+}
+.unknown strong, .notice strong { color: var(--rv-warning) !important; }
+.unknown p, .notice p { color: var(--rv-muted) !important; }
+
+/* Fix sticky submit bar at the bottom */
+.product-submit-sticky {
+  background: var(--rv-surface-raised) !important;
+  border: 1px solid var(--rv-line) !important;
+  color: var(--rv-ink) !important;
+  box-shadow: 0 -4px 10px rgba(0,0,0, 0.5) !important;
+}
+.product-submit-sticky strong { color: var(--rv-ink) !important; }
+.product-submit-sticky p { color: var(--rv-muted) !important; }
+
+/* Fix the number circles in editor sections */
+.editor-section-title span {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-primary) !important;
+  border: 1px solid var(--rv-primary) !important;
+}
+.editor-section-title h2 { color: var(--rv-ink) !important; }
+.editor-section-title p { color: var(--rv-muted) !important; }
+
+/* Fix Rich Text Editor Quill Toolbar */
+.ql-toolbar, .ql-toolbar.ql-snow {
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-line) !important;
+}
+.ql-toolbar button, .ql-toolbar .ql-picker-label {
+  color: var(--rv-muted) !important;
+  background: transparent !important;
+}
+.ql-toolbar button:hover, .ql-toolbar button.ql-active, .ql-toolbar .ql-picker-label:hover {
+  background: var(--rv-surface) !important;
+  color: var(--rv-primary) !important;
+}
+.ql-toolbar .ql-stroke { stroke: var(--rv-muted) !important; }
+.ql-toolbar .ql-fill { fill: var(--rv-muted) !important; }
+.ql-toolbar button:hover .ql-stroke, .ql-toolbar button.ql-active .ql-stroke { stroke: var(--rv-primary) !important; }
+.ql-toolbar button:hover .ql-fill, .ql-toolbar button.ql-active .ql-fill { fill: var(--rv-primary) !important; }
+.ql-container, .ql-container.ql-snow {
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line) !important;
+  color: var(--rv-ink) !important;
+}
+.ql-editor {
+  background: var(--rv-surface) !important;
+  color: var(--rv-ink) !important;
+}
+.ql-editor.ql-blank::before {
+  color: var(--rv-muted) !important;
+  font-style: normal !important;
+}
+
+/* Fix Page Heading box */
+.page-heading, .stitch-page .page-heading {
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: var(--rv-radius) !important;
+}
+.page-heading h1 {
+  color: var(--rv-ink) !important;
+}
+.page-heading .eyebrow {
+  color: var(--rv-muted) !important;
+}
+
+/* Fix HTML Göster button under editor */
+.rich-text-editor > button {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-muted) !important;
+  border: 1px solid var(--rv-line) !important;
+}
+.rich-text-editor > button:hover {
+  background: var(--rv-surface) !important;
+  color: var(--rv-primary) !important;
+  border-color: var(--rv-primary) !important;
+}
+/* Fix attribute variant action box */
+.attribute-variant-action {
+  background: var(--rv-surface-raised) !important;
+  border: 1px solid var(--rv-line) !important;
+}
+.attribute-variant-action small { color: var(--rv-muted) !important; }
+.attribute-variant-actions .secondary { 
+  background: transparent !important; 
+  color: var(--rv-ink) !important; 
+  border: 1px solid var(--rv-line) !important; 
+}
+.attribute-variant-actions .secondary:hover {
+  background: var(--rv-line) !important;
+}
+/* Fix Rich Text Editor Pro Styles */
+.rich-text-editor-pro {
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line) !important;
+}
+.rich-text-editor-head {
+  border-bottom: 1px solid var(--rv-line) !important;
+  background: var(--rv-surface-raised) !important;
+}
+.rich-text-editor-head strong { color: var(--rv-ink) !important; }
+.rich-text-editor-head span { background: var(--rv-bg) !important; color: var(--rv-muted) !important; }
+.rich-text-toolbar { background: var(--rv-bg) !important; border-bottom: 1px solid var(--rv-line) !important; }
+.rich-text-tool-group { border-color: var(--rv-line) !important; }
+.rich-text-tool-group button { background: var(--rv-primary) !important; color: #fff !important; }
+.rich-text-tool-group button:hover { opacity: 0.8 !important; }
+.rich-text-editor-pro textarea { background: var(--rv-surface) !important; color: var(--rv-ink) !important; }
+.rich-text-editor-pro details { border-top: 1px solid var(--rv-line) !important; background: var(--rv-surface-raised) !important; }
+.rich-text-editor-pro summary { color: var(--rv-muted) !important; background: var(--rv-surface) !important; border: 1px solid var(--rv-line) !important; }
+.rich-text-editor-pro summary:hover { background: var(--rv-line) !important; color: var(--rv-ink) !important; }
+/* Make the tool buttons dark theme instead of bright purple */
+.rich-text-tool-group button, .rich-text-tool-group select {
+  background: var(--rv-surface) !important;
+  color: var(--rv-muted) !important;
+  border: 1px solid var(--rv-line) !important;
+}
+.rich-text-tool-group button:hover {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-primary) !important;
+  border-color: var(--rv-primary) !important;
+  opacity: 1 !important;
+}
