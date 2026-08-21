@@ -758,3 +758,157 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
   max-height: 250px !important;
   overflow-y: auto !important;
 }
+
+/* ==========================================================================
+   High-Contrast Dark Theme: Popovers, Menus, Action Dropdowns & Tabs
+   ========================================================================== */
+
+/* Popover Shell */
+.row-popover,
+.invoice-popover,
+.action-popover,
+.bulk-action-menu {
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  border-radius: var(--rv-radius-sm) !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+  padding: 6px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  z-index: 50 !important;
+}
+
+/* Menu Items (Links & Buttons) */
+.row-popover > a,
+.row-popover > button,
+.bulk-action-menu button,
+.bulk-action-menu a {
+  background: transparent !important;
+  color: var(--rv-ink) !important;
+  border: 0 !important;
+  border-radius: var(--rv-radius-sm) !important;
+  padding: 8px 12px !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  transition: all 0.15s ease !important;
+  text-align: left !important;
+  cursor: pointer !important;
+}
+
+.row-popover > a:hover,
+.row-popover > button:hover:not(:disabled),
+.bulk-action-menu button:hover:not(:disabled),
+.bulk-action-menu a:hover {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-primary) !important;
+  transform: none !important;
+}
+
+/* Disabled State */
+.row-popover > button:disabled,
+.row-popover > a:disabled,
+.bulk-action-menu button:disabled {
+  color: var(--rv-muted) !important;
+  opacity: 0.38 !important;
+  background: transparent !important;
+  cursor: not-allowed !important;
+}
+
+/* Create Invoice Primary Button */
+.row-popover .create-invoice {
+  background: var(--rv-primary) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+.row-popover .create-invoice:hover {
+  opacity: 0.9 !important;
+  color: #ffffff !important;
+  background: var(--rv-primary-hover) !important;
+}
+
+/* Destructive Actions (Fatura İptal, etc.) */
+.row-popover [role="menuitem"].destructive {
+  color: #f87171 !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+}
+.row-popover [role="menuitem"].destructive:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.16) !important;
+  color: #fca5a5 !important;
+}
+.row-popover [role="menuitem"].destructive:disabled {
+  color: #ef4444 !important;
+  opacity: 0.35 !important;
+  background: transparent !important;
+}
+
+/* Trigger Button */
+.row-menu-trigger,
+.order-action-menu.row-menu-trigger {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-ink) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: var(--rv-radius-sm) !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  padding: 4px 8px !important;
+  transition: all 0.15s ease !important;
+}
+.row-menu-trigger:hover,
+.order-action-menu.row-menu-trigger:hover {
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-primary) !important;
+  color: var(--rv-primary) !important;
+}
+
+/* Job tabs and general tabs */
+.job-tabs, .order-tabs {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  margin-bottom: 1.25rem !important;
+}
+.job-tabs button, .order-tabs button {
+  background: var(--rv-surface) !important;
+  color: var(--rv-muted) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: var(--rv-radius-sm) !important;
+  padding: 8px 14px !important;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+.job-tabs button:hover, .order-tabs button:hover {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-ink) !important;
+  border-color: var(--rv-line-strong) !important;
+}
+.job-tabs button.active, .order-tabs button.active {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-primary) !important;
+  border-color: var(--rv-primary) !important;
+}
+.job-tabs button b, .order-tabs button b {
+  background: var(--rv-bg) !important;
+  color: var(--rv-ink) !important;
+  padding: 2px 7px !important;
+  border-radius: 999px !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+}
+.job-tabs button.active b, .order-tabs button.active b {
+  background: var(--rv-primary) !important;
+  color: #fff !important;
+}
+
