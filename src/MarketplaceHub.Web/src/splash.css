@@ -156,43 +156,43 @@
 
 /* --- MODERN UI OVERHAUL (Strict User Defined Palette) --- */
 :root {
-  /* Core Colors */
-  --rv-bg: #0a0e1a !important;
-  --rv-bg-raised: #0f1826 !important;
-  --rv-sidebar: #111827 !important;
-  --rv-topbar: #111827 !important;
-  --rv-surface: #111827 !important;
-  --rv-surface-raised: #1a2235 !important;
-  --rv-line: #1e2d45 !important;
-  --rv-line-strong: #1e2d45 !important;
+  /* Core Colors (Exact match to Moda Zeyn reference) */
+  --rv-bg: #10141f !important;
+  --rv-bg-raised: #151a28 !important;
+  --rv-sidebar: #10141f !important;
+  --rv-topbar: #10141f !important;
+  --rv-surface: #171c2b !important;
+  --rv-surface-raised: #1f2638 !important;
+  --rv-line: #272e40 !important;
+  --rv-line-strong: #333c52 !important;
   
   /* Text */
-  --rv-ink: #f1f5f9 !important;
-  --rv-muted: #94a3b8 !important;
+  --rv-ink: #f8fafc !important;
+  --rv-muted: #8b96a8 !important;
   
   /* Accent & Action Colors */
   --rv-primary: #6366f1 !important;
-  --rv-primary-strong: #6366f1 !important;
+  --rv-primary-strong: #4f46e5 !important;
   --rv-success: #10b981 !important;
   --rv-warning: #f59e0b !important;
   --rv-danger: #ef4444 !important;
   --rv-info: #3b82f6 !important;
   
   /* Structure & Layout */
-  --rv-radius: 12px !important;
-  --rv-radius-sm: 8px !important;
+  --rv-radius: 8px !important;
+  --rv-radius-sm: 6px !important;
   --rv-shadow: none !important;
   --rv-shadow-hover: none !important;
   
   /* Calm variables overridden */
-  --calm-bg: #0a0e1a !important;
-  --calm-sidebar: #111827 !important;
-  --calm-top: #111827 !important;
-  --calm-card: #111827 !important;
-  --calm-card-raised: #1a2235 !important;
-  --calm-line: #1e2d45 !important;
-  --calm-text: #f1f5f9 !important;
-  --calm-muted: #94a3b8 !important;
+  --calm-bg: #10141f !important;
+  --calm-sidebar: #10141f !important;
+  --calm-top: #10141f !important;
+  --calm-card: #171c2b !important;
+  --calm-card-raised: #1f2638 !important;
+  --calm-line: #272e40 !important;
+  --calm-text: #f8fafc !important;
+  --calm-muted: #8b96a8 !important;
   --calm-primary: #6366f1 !important;
   --calm-indigo: #6366f1 !important;
   --calm-success: #10b981 !important;
@@ -296,11 +296,16 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
   color: var(--rv-ink) !important;
 }
 
+/* Kill all weird background glows / pseudo elements that use radials */
+.dashboard-metrics article::before, .dashboard-metrics article::after {
+  display: none !important;
+}
+
 .dashboard-metrics article:hover, .dashboard-report-grid > .panel:hover, .dashboard-panels > .panel:hover,
 .app-shell .record-card:hover, .app-shell .order-card:hover, .app-shell .invoice-card:hover, 
 .app-shell .return-card:hover, .app-shell .product-operation-card:hover, .orders-page .order-reference-row:hover {
   background: var(--rv-surface-raised) !important;
-  border-color: var(--rv-primary) !important;
+  border-color: var(--rv-line-strong) !important;
   transform: translateY(-2px);
 }
 
@@ -387,12 +392,20 @@ aside .settings-toggle, aside .logout-link, aside .sidebar-collapse-toggle, asid
   color: var(--rv-muted) !important;
 }
 aside .settings-toggle:hover, aside .logout-link:hover, aside .sidebar-collapse-toggle:hover, aside nav a:hover {
-  background: var(--rv-surface-raised) !important;
-  color: var(--rv-primary) !important;
+  background: var(--rv-surface) !important;
+  color: var(--rv-ink) !important;
   transform: translateX(2px) !important;
 }
-aside nav a.active {
-  color: var(--rv-primary) !important;
+aside nav a.active, .app-shell aside nav a.active {
+  background: var(--rv-primary) !important;
+  color: #fff !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: var(--rv-radius-sm) !important;
+}
+aside nav a.active .nav-icon {
+  color: #fff !important;
+  background: transparent !important;
 }
 aside nav, aside .settings-nav {
   scrollbar-width: none !important; /* Firefox */
