@@ -160,7 +160,14 @@ function IntegrationLines({ pageRef, loginCardRef, nodeRefs }: { pageRef: RefObj
       apply(calculate())
       frame = window.requestAnimationFrame(animate)
     }
+    const hidePulse = (pulse: SVGCircleElement | null) => {
+      if (!pulse) return
+      pulse.style.opacity = '0'
+      pulse.setAttribute('cx', '-100')
+      pulse.setAttribute('cy', '-100')
+    }
     const pause = (id: string, toPanel: boolean) => {
+      hidePulse(pulseRefs.current[id])
       const timeout = window.setTimeout(() => {
         pulseTimers.delete(timeout)
         travel(id, toPanel)
@@ -187,7 +194,7 @@ function IntegrationLines({ pageRef, loginCardRef, nodeRefs }: { pageRef: RefObj
           pulseFrames.add(pulseFrame)
           return
         }
-        pulse.style.opacity = '0'
+        hidePulse(pulse)
         pause(id, !toPanel)
       }
       pulseFrame = window.requestAnimationFrame(step)
