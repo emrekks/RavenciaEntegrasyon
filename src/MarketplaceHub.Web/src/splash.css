@@ -421,25 +421,51 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
   height: 22px !important;
   margin: 0 !important;
 }
-@media (max-width: 900px) {
-  aside nav a span, 
-  aside .settings-toggle span, 
-  aside .logout-link span {
-    display: none !important;
-  }
-  aside nav a, 
-  aside .settings-toggle, 
-  aside .logout-link {
-    justify-content: center !important;
-    padding: 10px !important;
-  }
-  aside nav a svg,
-  aside .settings-toggle svg,
-  aside .logout-link svg {
-    width: 22px !important;
-    height: 22px !important;
-    margin: 0 !important;
-  }
+
+/* --- BRUTAL TEXT & COMPONENT CONSISTENCY --- */
+/* Force all dashboard and metric cards to use proper colors */
+.dashboard-metrics article small, .dashboard-metrics article p,
+.product-metrics span, .flow-grid a small, .order-reference-row small, 
+.data-table small, .product-list-platforms small, .product-list-status small {
+  color: var(--rv-muted) !important;
+}
+.dashboard-metrics article strong, .product-metrics strong, 
+.flow-grid a span, .flow-grid a strong, .order-reference-row strong,
+.order-reference-row b, .data-table strong, .product-list-identity strong, 
+.product-list-price, .order-reference-row {
+  color: var(--rv-ink) !important;
+}
+
+/* Force Table Inner Buttons (like A4 Kargo Etiket) to use strict theme */
+.order-reference-actions a, .product-list-actions a, .product-list-actions button,
+.table-wrap a:not(.text-link), .data-table a:not(.text-link) {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-ink) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: var(--rv-radius-sm) !important;
+  padding: 0.5rem 0.8rem !important;
+  text-decoration: none !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+.order-reference-actions a:hover, .product-list-actions a:hover, 
+.product-list-actions button:hover, .table-wrap a:not(.text-link):hover {
+  background: var(--rv-line) !important;
+  border-color: var(--rv-primary) !important;
+  transform: translateY(-1px);
+}
+
+/* Fix product table color groups and nested rows */
+.product-variant-row, .product-variant-head {
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line) !important;
+  color: var(--rv-ink) !important;
+}
+
+/* Fix white backgrounds explicitly */
+.orders-page .order-tabs, .order-filter-panel, .invoice-tabs, .return-tabs, .mapping-view-tabs {
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line) !important;
 }
 
 /* Login Screen overrides adjusted for strict palette */
