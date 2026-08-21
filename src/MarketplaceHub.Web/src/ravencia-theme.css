@@ -20,7 +20,7 @@
 html, body, #root {
   min-height: 100%;
   color: var(--rv-ink);
-  background: var(--rv-bg);
+  background: var(--rv-bg) !important;
 }
 
 .app-shell {
@@ -128,6 +128,7 @@ html, body, #root {
 /* Route workspaces: legacy pages use highly-specific local surfaces, so they are
    deliberately normalized here after the original stylesheet. */
 .app-shell .order-toolbar,
+.app-shell .order-filter-panel,
 .app-shell .order-filter-advanced,
 .app-shell .order-filter-primary,
 .app-shell .return-reference-filters,
@@ -138,6 +139,7 @@ html, body, #root {
 .app-shell .invoice-viewer-summary,
 .app-shell .invoice-viewer-lines,
 .app-shell .invoice-viewer-documents,
+.app-shell .invoice-document-upload,
 .app-shell .operation-details,
 .app-shell .detail-grid > *,
 .app-shell .cards > article,
@@ -187,6 +189,13 @@ html, body, #root {
 .app-shell .mapping-workspace label,
 .app-shell .quick-edit-fields label,
 .app-shell .security-page label { color: #b9cbe3; }
+.app-shell .filter-toggle,
+.app-shell .bulk-action,
+.app-shell .filter-clear { color: #b9d8f8 !important; background: rgba(14, 40, 80, .72) !important; border-color: var(--rv-line-strong) !important; box-shadow: none; }
+.app-shell .filter-toggle:hover,
+.app-shell .bulk-action:hover,
+.app-shell .filter-clear:hover { color: #fff !important; background: rgba(24, 186, 255, .16) !important; border-color: var(--rv-primary) !important; }
+.app-shell .filter-apply { color: #031426 !important; background: linear-gradient(110deg, var(--rv-primary), var(--rv-primary-strong)) !important; border-color: transparent !important; }
 
 /* Reference order and return tables. */
 .app-shell .order-reference-head,
@@ -239,6 +248,7 @@ html, body, #root {
 .app-shell .return-cargo-track:hover,
 .app-shell .return-detail-trigger:hover { color: #fff !important; background: rgba(24, 186, 255, .16) !important; border-color: var(--rv-primary) !important; }
 .app-shell .order-reference-invoice .micro-invoice-chip { color: #a9d9ff; background: rgba(53, 91, 255, .18); }
+.app-shell .order-reference-actions .cargo-track-action { color: #031426 !important; background: linear-gradient(110deg, var(--rv-primary), var(--rv-primary-strong)) !important; border-color: transparent !important; }
 
 /* Integrations and category / attribute mapping. */
 .app-shell .integration-card-empty { color: var(--rv-primary); background: transparent !important; }
