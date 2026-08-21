@@ -63,36 +63,35 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .rv-card {
   position: absolute;
   z-index: 5;
-  width: clamp(160px, 12vw, 230px);
+  width: clamp(165px, 13vw, 235px);
   height: auto;
   object-fit: contain;
-  filter: drop-shadow(0 14px 24px rgba(0,0,0,.62));
+  filter: drop-shadow(0 14px 24px rgba(0,0,0,.62)) drop-shadow(0 0 12px rgba(18, 123, 255, .24));
   user-select: none;
   will-change: transform, opacity;
+  animation: rv-card-float 6s ease-in-out infinite;
 }
 
-/* Radial Positions */
-/* Left side: Trendyol, Hepsiburada, N11, Pazarama */
-.rv-l1 { top: 20%; right: calc(50% + 220px + 60px); }
-.rv-l2 { top: 35%; right: calc(50% + 220px + 100px); }
-.rv-l3 { top: 54%; right: calc(50% + 220px + 100px); }
-.rv-l4 { top: 69%; right: calc(50% + 220px + 60px); }
+/* Outer columns: cards sit near the red endpoint markers in the reference. */
+.rv-l1 { top: 15%; left: clamp(7rem, 12vw, 14rem); animation-delay: -.6s; }
+.rv-l2 { top: 34%; left: clamp(5.5rem, 10vw, 12rem); animation-delay: -2.1s; }
+.rv-l3 { top: 55%; left: clamp(5.5rem, 10vw, 12rem); animation-delay: -3.7s; }
+.rv-l4 { top: 73%; left: clamp(7rem, 12vw, 14rem); animation-delay: -1.4s; }
 
-/* Right side: PttAVM, Trendyol E-faturam, Shopify */
-.rv-r1 { top: 20%; left: calc(50% + 220px + 60px); }
-.rv-r2 { top: 38%; left: calc(50% + 220px + 100px); }
-.rv-r3 { top: 57%; left: calc(50% + 220px + 100px); }
+.rv-r1 { top: 15%; right: clamp(7rem, 12vw, 14rem); animation-delay: -1.8s; }
+.rv-r2 { top: 38%; right: clamp(5.5rem, 10vw, 12rem); animation-delay: -4.2s; }
+.rv-r3 { top: 59%; right: clamp(5.5rem, 10vw, 12rem); animation-delay: -2.8s; }
 
 /* Center Login Card */
 .rv-login-card {
   position: relative;
   z-index: 10;
-  width: min(430px, calc(100vw - 2rem));
-  padding: clamp(2rem, 4vw, 3rem) clamp(1.35rem, 4vw, 2.5rem);
-  background: linear-gradient(145deg, rgba(10, 30, 66, .74), rgba(3, 12, 31, .86));
-  backdrop-filter: blur(18px) saturate(1.18);
-  border: 1px solid rgba(74, 167, 255, .52);
-  border-radius: 22px;
+  width: min(520px, calc(100vw - 2rem));
+  padding: clamp(2.5rem, 5vw, 3.5rem) clamp(1.5rem, 4vw, 2.7rem) clamp(2.3rem, 4vw, 3rem);
+  background: linear-gradient(145deg, rgba(7, 26, 63, .78), rgba(2, 10, 28, .92));
+  backdrop-filter: blur(22px) saturate(1.24);
+  border: 1px solid rgba(94, 177, 255, .58);
+  border-radius: 28px;
   box-shadow:
     0 30px 70px rgba(0, 0, 0, .72),
     0 0 0 1px rgba(111, 198, 255, .08) inset,
@@ -125,27 +124,27 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   margin-bottom: 2rem;
 }
 .rv-center-logo {
-  width: 74px;
+  width: 88px;
   object-fit: contain;
   margin: 0 auto .75rem;
   filter: drop-shadow(0 0 14px rgba(67, 179, 255, .75));
 }
 .rv-wordmark {
-  width: 156px;
+  width: 190px;
   object-fit: contain;
   margin: 0 auto 1rem;
   display: block;
   filter: drop-shadow(0 0 10px rgba(255, 255, 255, .14));
 }
 .rv-greeting {
-  font-size: 1.45rem;
+  font-size: 1.7rem;
   font-weight: 650;
   color: #f1f5f9;
   margin: 0 0 .35rem;
   letter-spacing: -.02em;
 }
 .rv-subgreeting {
-  font-size: .8rem;
+  font-size: .9rem;
   color: #9eb4d8;
   margin: 0;
 }
@@ -171,10 +170,10 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 }
 .rv-input-wrap input {
   width: 100%;
-  height: 3.4rem;
-  background: rgba(2, 12, 32, .54);
-  border: 1px solid rgba(107, 177, 255, .3);
-  border-radius: 12px;
+  height: 3.8rem;
+  background: rgba(4, 21, 51, .66);
+  border: 1px solid rgba(107, 177, 255, .46);
+  border-radius: 15px;
   padding: .85rem 2.9rem .85rem 3rem;
   color: #f8fafc;
   font-size: .9rem;
@@ -289,9 +288,9 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   background: linear-gradient(105deg, #26c7ff, #1479ff 48%, #273fd4);
   color: #fff;
   border: none;
-  border-radius: 12px;
-  padding: 1rem;
-  font-size: .95rem;
+  border-radius: 15px;
+  padding: 1.1rem;
+  font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
   transition: transform .25s ease, box-shadow .25s ease, filter .25s ease;
@@ -349,6 +348,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 
 @keyframes rv-ambient-breathe { from { opacity: .62; transform: scale(1); } to { opacity: 1; transform: scale(1.06); } }
 @keyframes rv-scan { 0%, 20% { transform: translateX(-65%); opacity: 0; } 45% { opacity: .7; } 75%, 100% { transform: translateX(65%); opacity: 0; } }
+@keyframes rv-card-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-7px) rotate(.35deg); } }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
@@ -359,7 +359,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 
 @media (max-width: 560px) {
   .rv-page { padding: 1rem; background-position: 52% center; }
-  .rv-login-card { border-radius: 18px; }
+  .rv-login-card { border-radius: 20px; padding-top: 2.2rem; }
   .rv-logo-area { margin-bottom: 1.5rem; }
   .rv-center-logo { width: 62px; }
   .rv-wordmark { width: 140px; }
