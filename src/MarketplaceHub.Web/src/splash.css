@@ -154,17 +154,17 @@
   }
 }
 
-/* --- MODERN UI OVERHAUL (User Defined Palette & Structural Modernization) --- */
+/* --- MODERN UI OVERHAUL (Strict User Defined Palette) --- */
 :root {
   /* Core Colors */
   --rv-bg: #0a0e1a !important;
   --rv-bg-raised: #0f1826 !important;
-  --rv-sidebar: #0a0e1a !important;
-  --rv-topbar: rgba(10, 14, 26, 0.85) !important;
+  --rv-sidebar: #111827 !important;
+  --rv-topbar: #111827 !important;
   --rv-surface: #111827 !important;
   --rv-surface-raised: #1a2235 !important;
   --rv-line: #1e2d45 !important;
-  --rv-line-strong: #2c3e5d !important;
+  --rv-line-strong: #1e2d45 !important;
   
   /* Text */
   --rv-ink: #f1f5f9 !important;
@@ -172,7 +172,7 @@
   
   /* Accent & Action Colors */
   --rv-primary: #6366f1 !important;
-  --rv-primary-strong: #4f46e5 !important;
+  --rv-primary-strong: #6366f1 !important;
   --rv-success: #10b981 !important;
   --rv-warning: #f59e0b !important;
   --rv-danger: #ef4444 !important;
@@ -181,20 +181,20 @@
   /* Structure & Layout */
   --rv-radius: 12px !important;
   --rv-radius-sm: 8px !important;
-  --rv-shadow: 0 4px 6px -1px rgba(0,0,0,0.3), 0 2px 4px -2px rgba(0,0,0,0.2) !important;
-  --rv-shadow-hover: 0 10px 15px -3px rgba(0,0,0,0.4), 0 4px 6px -4px rgba(0,0,0,0.3) !important;
+  --rv-shadow: none !important;
+  --rv-shadow-hover: none !important;
   
-  /* Also override UI & Calm variables just in case */
+  /* Calm variables overridden */
   --calm-bg: #0a0e1a !important;
-  --calm-sidebar: #0a0e1a !important;
-  --calm-top: rgba(10, 14, 26, 0.85) !important;
+  --calm-sidebar: #111827 !important;
+  --calm-top: #111827 !important;
   --calm-card: #111827 !important;
   --calm-card-raised: #1a2235 !important;
   --calm-line: #1e2d45 !important;
   --calm-text: #f1f5f9 !important;
   --calm-muted: #94a3b8 !important;
   --calm-primary: #6366f1 !important;
-  --calm-indigo: #4f46e5 !important;
+  --calm-indigo: #6366f1 !important;
   --calm-success: #10b981 !important;
   --calm-warning: #f59e0b !important;
   --calm-danger: #ef4444 !important;
@@ -219,7 +219,6 @@ button:active, .button-link:active, .bulk-action:active, .filter-toggle:active, 
 input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible {
   outline: none !important;
   border-color: var(--rv-primary) !important;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25) !important;
 }
 
 /* --- 3. INPUTS & FORMS --- */
@@ -240,21 +239,21 @@ input::placeholder, textarea::placeholder {
 /* --- 4. BUTTONS & BAR ACTIONS --- */
 button, .button-link, .connection-button, .integration-card-actions button {
   background: var(--rv-primary) !important;
-  color: #ffffff !important;
+  color: #f1f5f9 !important;
   border-radius: var(--rv-radius-sm) !important;
   border: 1px solid transparent !important;
-  box-shadow: var(--rv-shadow) !important;
+  box-shadow: none !important;
   font-weight: 600 !important;
 }
 button:hover, .button-link:hover, .connection-button:hover, .integration-card-actions button:hover {
-  background: var(--rv-primary-strong) !important;
-  box-shadow: var(--rv-shadow-hover) !important;
+  background: var(--rv-primary) !important;
+  opacity: 0.9 !important;
   transform: translateY(-1px);
 }
 button.secondary, .button-link.secondary, .bulk-action, .filter-toggle, .filter-clear {
   background: var(--rv-surface-raised) !important;
   color: var(--rv-ink) !important;
-  border: 1px solid var(--rv-line-strong) !important;
+  border: 1px solid var(--rv-line) !important;
 }
 button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filter-toggle:hover, .filter-clear:hover {
   background: var(--rv-line) !important;
@@ -263,9 +262,9 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
 
 /* Thematic Overrides */
 .danger-button, .btn-danger { background: var(--rv-danger) !important; }
-.danger-button:hover { background: #dc2626 !important; }
+.danger-button:hover { background: var(--rv-danger) !important; opacity: 0.9 !important; }
 .success-button, .btn-success { background: var(--rv-success) !important; }
-.success-button:hover { background: #059669 !important; }
+.success-button:hover { background: var(--rv-success) !important; opacity: 0.9 !important; }
 
 /* --- 5. SHELL, SIDEBAR & TOPBAR --- */
 .app-shell, .app-shell > main {
@@ -280,8 +279,6 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
 .topbar {
   background: var(--rv-topbar) !important;
   border-bottom: 1px solid var(--rv-line) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
 }
 
 /* --- 6. CARDS, PANELS, AND TABLES --- */
@@ -295,7 +292,7 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
   background-image: none !important;
   border: 1px solid var(--rv-line) !important;
   border-radius: var(--rv-radius) !important;
-  box-shadow: var(--rv-shadow) !important;
+  box-shadow: none !important;
   color: var(--rv-ink) !important;
 }
 
@@ -303,8 +300,7 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
 .app-shell .record-card:hover, .app-shell .order-card:hover, .app-shell .invoice-card:hover, 
 .app-shell .return-card:hover, .app-shell .product-operation-card:hover, .orders-page .order-reference-row:hover {
   background: var(--rv-surface-raised) !important;
-  border-color: var(--rv-line-strong) !important;
-  box-shadow: var(--rv-shadow-hover) !important;
+  border-color: var(--rv-primary) !important;
   transform: translateY(-2px);
 }
 
@@ -314,7 +310,7 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
   border-color: var(--rv-line) !important;
 }
 .data-table .table-head, .product-catalog-head, .orders-page .order-reference-head {
-  background: var(--rv-bg-raised) !important;
+  background: var(--rv-surface-raised) !important;
   color: var(--rv-muted) !important;
   text-transform: uppercase !important;
   font-size: 0.72rem !important;
@@ -323,11 +319,11 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
 }
 .order-filter-primary label, .order-filter-advanced label { color: var(--rv-muted) !important; }
 
-/* Status tags and badges based on user defined colors */
-.tag.good, .badge.good, .success-metric { color: var(--rv-success) !important; background: rgba(16, 185, 129, 0.15) !important; border-color: rgba(16, 185, 129, 0.3) !important; }
-.tag.warn, .badge.warn, .warning-metric { color: var(--rv-warning) !important; background: rgba(245, 158, 11, 0.15) !important; border-color: rgba(245, 158, 11, 0.3) !important; }
-.tag.danger, .badge.danger, .error, .danger-metric { color: var(--rv-danger) !important; background: rgba(239, 68, 68, 0.15) !important; border-color: rgba(239, 68, 68, 0.3) !important; }
-.notice, .tag.info { color: var(--rv-info) !important; background: rgba(59, 130, 246, 0.15) !important; border-color: rgba(59, 130, 246, 0.3) !important; }
+/* Status tags and badges based on exact user defined colors */
+.tag.good, .badge.good, .success-metric { color: var(--rv-success) !important; background: var(--rv-surface-raised) !important; border-color: var(--rv-success) !important; }
+.tag.warn, .badge.warn, .warning-metric { color: var(--rv-warning) !important; background: var(--rv-surface-raised) !important; border-color: var(--rv-warning) !important; }
+.tag.danger, .badge.danger, .error, .danger-metric { color: var(--rv-danger) !important; background: var(--rv-surface-raised) !important; border-color: var(--rv-danger) !important; }
+.notice, .tag.info { color: var(--rv-info) !important; background: var(--rv-surface-raised) !important; border-color: var(--rv-info) !important; }
 
 /* --- 7. MODERN SCROLLBARS --- */
 ::-webkit-scrollbar {
@@ -338,7 +334,7 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
   background: var(--rv-bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--rv-line-strong);
+  background: var(--rv-line);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
@@ -352,16 +348,16 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
   border-radius: var(--rv-radius-sm) !important;
 }
 .bulk-action-menu button:hover {
-  background: var(--rv-line) !important;
-  color: var(--rv-ink) !important;
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-primary) !important;
   transform: translateX(4px) !important; /* Slide in menu item effect */
 }
 
-/* Login Screen overrides adjusted for new palette */
+/* Login Screen overrides adjusted for strict palette */
 .rv-login-card {
   background: var(--rv-surface) !important;
-  border-color: var(--rv-line-strong) !important;
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.9), 0 0 40px rgba(99, 102, 241, 0.1) !important;
+  border-color: var(--rv-primary) !important;
+  box-shadow: none !important;
 }
-.rv-lines path { stroke: rgba(99, 102, 241, 0.4) !important; }
+.rv-lines path { stroke: var(--rv-primary) !important; }
 .rv-lines circle { fill: var(--rv-warning) !important; }
