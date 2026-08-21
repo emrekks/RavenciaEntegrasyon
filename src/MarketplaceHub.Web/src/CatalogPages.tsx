@@ -91,7 +91,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const appliedSelectedSet = new Set(selected)
   const sizeOptions = [...new Set(variants.filter(item => !selectedColors.length || selectedColors.includes(colorOf(item))).map(sizeOf))]
   const syncFilterSelection = (colors: string[], sizes: string[]) => {
-    const ids = variants.filter(item => colors.includes(colorOf(item)) && sizes.includes(sizeOf(item))).map(item => item.variant.id)
+    const ids = variants.filter(item => (!colors.length || colors.includes(colorOf(item))) && (!sizes.length || sizes.includes(sizeOf(item)))).map(item => item.variant.id)
     setSelectionDraft(ids)
     setSelectionConfirmed(false)
   }
@@ -148,11 +148,11 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
         <details className="quick-edit-step" open>
           <summary><span><b>1</b> Varyantları seç</span><small>{selectionDraft.length ? `${selectionDraft.length} varyant işaretlendi` : 'Önce renk, sonra beden seçin'}</small><i>⌄</i></summary>
           <div className="quick-edit-filter-row">
-            <details className="quick-edit-filter" open>
+            <details className="quick-edit-filter">
               <summary><span>Renk</span><small>{selectedColors.length ? `${selectedColors.length} renk seçildi` : 'Renk seçin'}</small><i>⌄</i></summary>
               <div className="quick-edit-filter-options">{colorOptions.map(color => <label key={color}><input type="checkbox" checked={selectedColors.includes(color)} onChange={() => toggleColor(color)} /><span>{color}</span><small>{groups[color].length} varyant</small></label>)}</div>
             </details>
-            <details className="quick-edit-filter" open>
+            <details className="quick-edit-filter">
               <summary><span>Beden</span><small>{selectedSizes.length ? `${selectedSizes.length} beden seçildi` : 'Beden seçin'}</small><i>⌄</i></summary>
               <div className="quick-edit-filter-options">{sizeOptions.map(size => <label key={size}><input type="checkbox" checked={selectedSizes.includes(size)} onChange={() => toggleSize(size)} /><span>{size}</span><small>{variants.filter(item => (!selectedColors.length || selectedColors.includes(colorOf(item))) && sizeOf(item) === size).length} varyant</small></label>)}</div>
             </details>
