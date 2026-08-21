@@ -17,6 +17,12 @@
   --rv-shadow: 0 18px 44px rgba(0, 0, 0, .24);
 }
 
+html, body, #root {
+  min-height: 100%;
+  color: var(--rv-ink);
+  background: var(--rv-bg);
+}
+
 .app-shell {
   color: var(--rv-ink);
   background: radial-gradient(circle at 84% -10%, rgba(30, 112, 255, .18), transparent 34%), var(--rv-bg);
