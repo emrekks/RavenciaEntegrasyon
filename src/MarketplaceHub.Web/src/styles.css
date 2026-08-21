@@ -17,7 +17,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   isolation: isolate;
   padding: 2rem;
   background-color: #030a1c;
-  background-image: url('/pack/backgrounds/login-atmosphere.png');
+  background-image: url('/pack/backgrounds/login-background-1920x1080.png');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
