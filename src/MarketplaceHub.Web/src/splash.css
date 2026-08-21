@@ -153,3 +153,82 @@
     opacity: 1;
   }
 }
+
+/* --- THEME OVERRIDES (Dynamic Dark from Rushly CMS) --- */
+:root {
+  /* Ravencia variables overridden */
+  --rv-bg: #050914 !important;
+  --rv-bg-raised: #0F172A !important;
+  --rv-sidebar: #050914 !important;
+  --rv-topbar: rgba(5, 9, 20, 0.88) !important;
+  --rv-surface: #0F172A !important;
+  --rv-surface-raised: #1E293B !important;
+  --rv-line: #1E293B !important;
+  --rv-line-strong: #334155 !important;
+  --rv-ink: #FFFFFF !important;
+  --rv-muted: #94A3B8 !important;
+  --rv-primary: #4F5CD1 !important;
+  --rv-primary-strong: #4338CA !important;
+  
+  /* Calm variables overridden */
+  --calm-bg: #050914 !important;
+  --calm-sidebar: #050914 !important;
+  --calm-top: rgba(5, 9, 20, 0.88) !important;
+  --calm-card: #0F172A !important;
+  --calm-card-raised: #1E293B !important;
+  --calm-line: #1E293B !important;
+  --calm-text: #FFFFFF !important;
+  --calm-muted: #94A3B8 !important;
+  --calm-primary: #4F5CD1 !important;
+  --calm-indigo: #4338CA !important;
+}
+
+/* Enforce backgrounds */
+.app-shell, .app-shell > main {
+  background: var(--rv-bg) !important;
+}
+
+.app-shell > aside {
+  background: var(--rv-sidebar) !important;
+  border-right: 1px solid var(--rv-line) !important;
+}
+
+.topbar {
+  background: var(--rv-topbar) !important;
+  border-bottom: 1px solid var(--rv-line) !important;
+}
+
+.dashboard-metrics article, .dashboard-report-grid > .panel, .dashboard-panels > .panel,
+.app-shell .panel, .app-shell .grid article, .app-shell .metrics article, .app-shell .record-card, .app-shell .integration-card, .app-shell .product-operation-card, .app-shell .order-card, .app-shell .invoice-card, .app-shell .return-card, .app-shell .table-wrap, .app-shell .data-table, .app-shell .product-catalog-table {
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line) !important;
+}
+
+.dashboard-metrics article:hover, .dashboard-report-grid > .panel:hover, .dashboard-panels > .panel:hover,
+.app-shell .record-card:hover, .app-shell .order-card:hover, .app-shell .invoice-card:hover, .app-shell .return-card:hover, .app-shell .product-operation-card:hover {
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-line-strong) !important;
+}
+
+/* Hardcoded login overrides */
+.rv-login-card {
+  background: rgba(15, 23, 42, 0.8) !important;
+  border-color: rgba(79, 92, 209, 0.3) !important;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(79, 92, 209, 0.15) !important;
+}
+
+.rv-lines path {
+  stroke: rgba(79, 92, 209, 0.4) !important;
+}
+
+.rv-lines circle {
+  fill: #F59E0B !important;
+}
+
+.dashboard .button-link, .button-link, button:not([class]), .connection-button, .integration-card-actions button {
+  background: linear-gradient(110deg, var(--rv-primary), var(--rv-primary-strong)) !important;
+  color: #ffffff !important;
+}
+.dashboard .button-link:hover, .button-link:hover, button:not([class]):hover, .connection-button:hover, .integration-card-actions button:hover {
+  background: linear-gradient(110deg, var(--rv-primary-strong), #3730A3) !important;
+}
