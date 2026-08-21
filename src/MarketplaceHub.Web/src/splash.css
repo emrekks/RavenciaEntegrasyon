@@ -137,8 +137,7 @@
 
 .rv-lines circle {
   opacity: 0;
-  animation: circle-fade 1s ease-out forwards 1.5s,
-             rv-pulse 2s infinite alternate 2s;
+  animation: none;
 }
 
 @keyframes circle-fade {
