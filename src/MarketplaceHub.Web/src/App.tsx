@@ -50,41 +50,18 @@ function Login() {
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
 
   return (
-    <div className="rv-page" style={{ backgroundImage: "url('/pack/backgrounds/login-background-1920x1080.svg')" }}>
+    <div className="rv-page">
+      {/* Background container handled via CSS to ensure perfect fit (cover/center) */}
 
-      {/* SVG Connection Lines - We can keep these for animation, or they might be baked into the background. 
-          Assuming we keep our animated lines as an overlay. */}
-      <svg className="rv-lines" viewBox="0 0 1200 675" preserveAspectRatio="xMidYMid slice" fill="none">
-         <defs>
-            <filter id="lGlow"><feGaussianBlur stdDeviation="4" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
-            <linearGradient id="lGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#1e40af" stopOpacity="0.6" /><stop offset="50%" stopColor="#3b82f6" stopOpacity="1" /><stop offset="100%" stopColor="#1e40af" stopOpacity="0.6" /></linearGradient>
-         </defs>
-         {/* Animated pulses only, since static lines are likely in the background image */}
-         {[
-           "M600,72 C600,150 600,220 600,270",
-           "M225,182 C340,210 430,245 475,275",
-           "M940,182 C830,210 740,245 700,275",
-           "M175,340 C290,340 390,338 470,337",
-           "M1010,340 C900,340 800,338 720,337",
-           "M225,490 C340,465 430,430 475,405",
-           "M940,490 C830,465 740,430 700,405",
-           "M580,590 C585,530 590,460 598,410",
-         ].map((d, i) => (
-           <circle key={i} r="3" fill="#60a5fa" filter="url(#lGlow)">
-             <animateMotion dur={`${2.5 + i * 0.2}s`} repeatCount="indefinite" path={d} />
-           </circle>
-         ))}
-      </svg>
-
-      {/* Pre-rendered Platform Cards from Asset Pack */}
-      <img src="/pack/marketplace/cards/trendyol-card.png" className="rv-platform-img rv-p1" alt="Trendyol" />
-      <img src="/pack/marketplace/cards/amazon-card.png" className="rv-platform-img rv-p2" alt="Amazon" />
-      <img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-platform-img rv-p3" alt="Hepsiburada" />
-      <img src="/pack/marketplace/cards/n11-card.png" className="rv-platform-img rv-p4" alt="N11" />
-      <img src="/pack/marketplace/cards/pazarama-card.png" className="rv-platform-img rv-p5" alt="Pazarama" />
-      <img src="/pack/marketplace/cards/pttavm-card.png" className="rv-platform-img rv-p6" alt="PttAVM" />
-      <img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-platform-img rv-p7" alt="Trendyol e-Faturam" />
-      <img src="/pack/marketplace/cards/shopify-card.png" className="rv-platform-img rv-p8" alt="Shopify" />
+      {/* Platform Cards (CSS styled with transparent logos to avoid JPEG artifact backgrounds) */}
+      <div className="rv-platform rv-p1"><img src="/pack/marketplace/logos/trendyol-logo-transparent.png" alt="Trendyol" /></div>
+      <div className="rv-platform rv-p2"><img src="/pack/marketplace/logos/amazon-logo-transparent.png" alt="Amazon" /></div>
+      <div className="rv-platform rv-p3"><img src="/pack/marketplace/logos/hepsiburada-logo-transparent.png" alt="Hepsiburada" /></div>
+      <div className="rv-platform rv-p4"><img src="/pack/marketplace/logos/n11-logo-transparent.png" alt="N11" /></div>
+      <div className="rv-platform rv-p5"><img src="/pack/marketplace/logos/pazarama-logo-transparent.png" alt="Pazarama" /></div>
+      <div className="rv-platform rv-p6"><img src="/pack/marketplace/logos/pttavm-logo-transparent.png" alt="PttAVM" /></div>
+      <div className="rv-platform rv-p7"><img src="/pack/marketplace/logos/trendyol-efaturam-logo-transparent.png" alt="Trendyol e-Faturam" /></div>
+      <div className="rv-platform rv-p8"><img src="/pack/marketplace/logos/shopify-logo-transparent.png" alt="Shopify" /></div>
 
       {/* Center Login Card */}
       <div className="rv-login-card">
@@ -96,20 +73,23 @@ function Login() {
 
          <form onSubmit={submit} className="rv-form">
             <div className="rv-input-wrap">
-               <svg className="rv-input-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#64748b" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-               <input name="email" type="email" autoComplete="email" required placeholder="Kullanıcı Adı" />
+               <svg className="rv-input-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+               <input name="email" type="email" autoComplete="email" required placeholder="businessravencia@gmail.com" />
             </div>
 
             <div className="rv-input-wrap">
-               <svg className="rv-input-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#64748b" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
-               <input name="password" type={showPw ? 'text' : 'password'} autoComplete="current-password" required placeholder="Şifre" />
+               <svg className="rv-input-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+               <input name="password" type={showPw ? 'text' : 'password'} autoComplete="current-password" required placeholder="••••••••••••••••" />
                <button type="button" className="rv-eye" onClick={() => setShowPw(!showPw)}>
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#64748b" strokeWidth="2">{showPw ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" /><path d="M1 1l22 22" /></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>}</svg>
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">{showPw ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" /><path d="M1 1l22 22" /></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>}</svg>
                </button>
             </div>
 
             <div className="rv-meta">
-               <label className="rv-remember"><input type="checkbox" /><span>Beni hatırla</span></label>
+               <label className="rv-remember">
+                  <div className="rv-checkbox-wrapper"><input type="checkbox" /></div>
+                  <span>Beni<br/>hatırla</span>
+               </label>
                <a href="#" className="rv-forgot">Şifremi Unuttum?</a>
             </div>
 

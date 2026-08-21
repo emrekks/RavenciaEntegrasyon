@@ -12,6 +12,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .auth-login-page { position:relative; min-height:100vh; overflow:hidden; background-color:#03040b; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
 
 /* ─── Login Page (Radial Network Layout) ─── */
+/* ─── Login Page (Radial Network Layout) ─── */
 .rv-page {
   position: relative;
   min-height: 100vh;
@@ -19,6 +20,10 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   align-items: center;
   justify-content: center;
   background-color: #03050c;
+  background-image: url('/pack/backgrounds/login-background-1920x1080.svg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   overflow: hidden;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   color: #fff;
@@ -29,88 +34,82 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 80vw;
-  height: 80vh;
+  width: 100vw;
+  height: 100vh;
   transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(14,26,60,0.4) 0%, rgba(3,5,12,0) 70%);
+  background: radial-gradient(circle, rgba(14,26,60,0.3) 0%, rgba(3,5,12,0) 60%);
   z-index: 0;
   pointer-events: none;
 }
-/* rv-bg-grid removed since background image provides it */
 
-/* SVG Connection Lines */
-.rv-lines {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 1;
-  pointer-events: none;
-}
-
-/* Platform Image Cards */
-.rv-platform-img {
+/* Platform Image Cards (Transparent PNG wrappers) */
+.rv-platform {
   position: absolute;
   z-index: 5;
-  width: auto;
-  height: 60px; /* Adjust scale based on your original pack resolution */
-  object-fit: contain;
-  transition: transform 0.3s ease;
-  filter: drop-shadow(0 10px 20px rgba(0,0,0,0.6));
+  background: rgba(7, 18, 38, 0.6); /* var(--rav-panel) but transparent */
+  border: 1px solid rgba(49, 89, 135, 0.4); /* var(--rav-border) */
+  border-radius: 12px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
 }
-.rv-platform-img:hover {
-  transform: scale(1.1);
-  filter: drop-shadow(0 15px 30px rgba(59, 130, 246, 0.4));
+.rv-platform img {
+  height: 18px; /* Correct proportion for marketplace transparent logos */
+  width: auto;
+  object-fit: contain;
+  pointer-events: none;
+}
+.rv-platform:hover {
+  transform: scale(1.1) !important;
+  box-shadow: 0 0 20px rgba(45,140,255,0.4);
+  border-color: rgba(45,140,255,0.8);
 }
 
-/* Radial Positions (Responsive based on vh/vw) */
-.rv-p1 { top: 12vh; left: 50%; transform: translateX(-50%); } /* Trendyol */
-.rv-p2 { top: 22vh; left: 18vw; } /* Amazon */
-.rv-p3 { top: 22vh; right: 18vw; } /* Hepsiburada */
-.rv-p4 { top: 48vh; left: 12vw; transform: translateY(-50%); } /* N11 */
-.rv-p5 { top: 48vh; right: 12vw; transform: translateY(-50%); } /* Pazarama */
-.rv-p6 { top: 72vh; left: 18vw; } /* PttAVM */
-.rv-p7 { top: 72vh; right: 18vw; } /* Trendyol E-faturam */
-.rv-p8 { bottom: 12vh; left: 50%; transform: translateX(-50%); } /* Shopify */
-.rv-p1:hover, .rv-p8:hover {
-  transform: translateX(-50%) scale(1.1);
-}
-.rv-p4:hover, .rv-p5:hover {
-  transform: translateY(-50%) scale(1.1);
-}
+/* Radial Positions (Pushed outward to prevent overlap) */
+.rv-p1 { top: 8vh; left: 50%; transform: translateX(-50%); } /* Trendyol */
+.rv-p2 { top: 22vh; left: 12vw; } /* Amazon */
+.rv-p3 { top: 22vh; right: 12vw; } /* Hepsiburada */
+.rv-p4 { top: 48vh; left: 8vw; transform: translateY(-50%); } /* N11 */
+.rv-p5 { top: 48vh; right: 8vw; transform: translateY(-50%); } /* Pazarama */
+.rv-p6 { top: 76vh; left: 12vw; } /* PttAVM */
+.rv-p7 { top: 76vh; right: 12vw; } /* Trendyol E-faturam */
+.rv-p8 { bottom: 8vh; left: 50%; transform: translateX(-50%); } /* Shopify */
 
 /* Center Login Card */
 .rv-login-card {
   position: relative;
   z-index: 10;
-  width: 420px;
+  width: 360px; /* Shrunk from 420px to prevent overlap */
   background: rgba(7, 18, 38, 0.92); /* var(--rav-panel) */
   backdrop-filter: blur(20px);
   border: 1px solid rgba(49, 89, 135, 0.68); /* var(--rav-border) */
   border-radius: 28px; /* var(--rav-radius-card) */
-  padding: 44px;
-  box-shadow: 0 20px 70px rgba(0,0,0,0.45); /* var(--rav-shadow) */
+  padding: 32px; /* Shrunk from 44px */
+  box-shadow: 0 20px 70px rgba(0,0,0,0.6); /* var(--rav-shadow) */
 }
 
 /* Logo Area */
 .rv-logo-area {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
 }
 .rv-center-logo {
-  width: 80px;
+  width: 70px;
   object-fit: contain;
-  margin: 0 auto 12px;
+  margin: 0 auto 10px;
 }
 .rv-wordmark {
-  width: 140px;
+  width: 120px;
   object-fit: contain;
-  margin: 0 auto 8px;
+  margin: 0 auto 6px;
   display: block;
 }
 .rv-logo-area p {
-  font-size: 0.62rem;
+  font-size: 0.55rem;
   color: #8ea5c2; /* var(--rav-muted) */
   letter-spacing: 2px;
   margin: 0;
@@ -121,7 +120,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .rv-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 .rv-input-wrap {
   position: relative;
@@ -131,48 +130,51 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .rv-input-icon {
   position: absolute;
   left: 14px;
-  opacity: 0.4;
-  color: #f5f7fb;
+  opacity: 0.8;
+  color: #64748b;
 }
 .rv-input-wrap input {
   width: 100%;
-  background: rgba(2, 8, 20, 0.5); /* var(--rav-bg-950) with opacity */
-  border: 1px solid rgba(49, 89, 135, 0.4);
+  background: #f5f7fb; /* White/Light background from screenshot */
+  border: 1px solid transparent;
   border-radius: 8px; /* var(--rav-radius-control) */
-  padding: 14px 14px 14px 44px;
-  color: #f5f7fb;
-  font-size: 0.9rem;
+  padding: 12px 12px 12px 40px;
+  color: #1e293b;
+  font-size: 0.85rem;
+  font-weight: 500;
   outline: none;
   transition: all 0.2s;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
 }
 .rv-input-wrap input:focus {
   border-color: #2d8cff; /* var(--rav-blue) */
-  box-shadow: 0 0 18px rgba(45,140,255,0.28); /* var(--rav-glow) */
+  box-shadow: 0 0 0 3px rgba(45,140,255,0.2), inset 0 2px 4px rgba(0,0,0,0.05); 
 }
 .rv-input-wrap input::placeholder {
-  color: #8ea5c2;
+  color: #94a3b8;
 }
 .rv-eye {
   position: absolute;
   right: 14px;
   background: none;
   border: none;
-  color: #8ea5c2;
+  color: #64748b;
   cursor: pointer;
   padding: 0;
   display: flex;
-  opacity: 0.6;
+  opacity: 0.8;
 }
 .rv-eye:hover {
-  opacity: 1;
+  color: #2d8cff;
 }
 
 .rv-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.8rem;
-  margin-top: -4px;
+  font-size: 0.75rem;
+  margin-top: 4px;
+  margin-bottom: 8px;
 }
 .rv-remember {
   display: flex;
@@ -180,9 +182,22 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   gap: 8px;
   color: #8ea5c2;
   cursor: pointer;
+  line-height: 1.1;
 }
-.rv-remember input {
+.rv-checkbox-wrapper {
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rv-checkbox-wrapper input {
+  width: 14px;
+  height: 14px;
   accent-color: #2d8cff;
+  cursor: pointer;
 }
 .rv-forgot {
   color: #4aa7ff;
@@ -195,7 +210,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 
 .rv-error {
   color: #ff4a4a;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   text-align: center;
   background: rgba(255, 74, 74, 0.1);
   padding: 8px;
@@ -203,19 +218,19 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 }
 
 .rv-submit {
-  background: #2d8cff; /* var(--rav-blue) */
+  background: #3b82f6; 
   color: #fff;
   border: none;
   border-radius: 8px;
-  padding: 14px;
-  font-size: 0.95rem;
+  padding: 12px;
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
   box-shadow: 0 4px 14px rgba(45, 140, 255, 0.3);
 }
 .rv-submit:hover {
-  background: #4aa7ff;
+  background: #2563eb;
   box-shadow: 0 0 18px rgba(45, 140, 255, 0.4);
 }
 
@@ -223,14 +238,14 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   display: flex;
   align-items: center;
   text-align: center;
-  color: #64748b;
-  font-size: 0.8rem;
-  margin: 4px 0;
+  color: #8ea5c2;
+  font-size: 0.7rem;
+  margin: 0;
 }
 .rv-divider::before, .rv-divider::after {
   content: '';
   flex: 1;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(49, 89, 135, 0.4);
 }
 .rv-divider span {
   padding: 0 10px;
@@ -242,11 +257,11 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   justify-content: center;
   gap: 12px;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(49, 89, 135, 0.4);
   border-radius: 8px;
-  padding: 12px;
-  color: #cbd5e1;
-  font-size: 0.9rem;
+  padding: 10px;
+  color: #f5f7fb;
+  font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -257,7 +272,6 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 
 @media (max-width: 1024px) {
   .rv-platform { display: none; }
-  .rv-lines { display: none; }
 }
 
 
