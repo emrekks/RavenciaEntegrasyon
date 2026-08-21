@@ -353,6 +353,55 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
   transform: translateX(4px) !important; /* Slide in menu item effect */
 }
 
+/* Fix Tab Containers (Tümü, Yeni vs) */
+.orders-page .order-tabs, .invoice-tabs, .return-tabs, .return-reference-tabs, .mapping-view-tabs {
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line) !important;
+}
+.orders-page .order-tabs button, .invoice-tabs button, .return-tabs button, .return-reference-tabs button, .mapping-view-tabs a {
+  background: transparent !important;
+  color: var(--rv-muted) !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+}
+.orders-page .order-tabs button:hover, .invoice-tabs button:hover, .return-tabs button:hover, .return-reference-tabs button:hover, .mapping-view-tabs a:hover {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-ink) !important;
+  transform: none !important;
+}
+.orders-page .order-tabs button.active, .invoice-tabs button.active, .return-tabs button.active, .return-reference-tabs button.active, .mapping-view-tabs a.active {
+  background: var(--rv-primary) !important;
+  color: #fff !important;
+  border-color: var(--rv-primary) !important;
+}
+.orders-page .order-tabs button b, .return-tabs b {
+  background: var(--rv-bg-raised) !important;
+  color: #fff !important;
+}
+
+/* Fix Aggressive Sidebar Button Overrides */
+aside .settings-toggle, aside .logout-link, aside .sidebar-collapse-toggle, aside nav a {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--rv-muted) !important;
+}
+aside .settings-toggle:hover, aside .logout-link:hover, aside .sidebar-collapse-toggle:hover, aside nav a:hover {
+  background: var(--rv-surface-raised) !important;
+  color: var(--rv-primary) !important;
+  transform: translateX(2px) !important;
+}
+aside nav a.active {
+  color: var(--rv-primary) !important;
+}
+aside nav, aside .settings-nav {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE */
+}
+aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
+  display: none !important; /* Chrome/Safari */
+}
+
 /* Login Screen overrides adjusted for strict palette */
 .rv-login-card {
   background: var(--rv-surface) !important;
