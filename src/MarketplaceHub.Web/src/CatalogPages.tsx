@@ -74,21 +74,30 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     ;(result[color] ??= []).push(item)
     return result
   }, {})
-  const [selected, setSelected] = useState<string[]>(variants.map(item => item.variant.id))
+  const [selectionDraft, setSelectionDraft] = useState<string[]>([])
+  const [selected, setSelected] = useState<string[]>([])
+  const [selectionConfirmed, setSelectionConfirmed] = useState(false)
   const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
-  const selectedSet = new Set(selected)
-  const toggle = (id: string) => setSelected(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
-  const toggleGroup = (items: typeof variants) => { const ids = items.map(item => item.variant.id); const every = ids.every(id => selectedSet.has(id)); setSelected(current => every ? current.filter(id => !ids.includes(id)) : [...new Set([...current, ...ids])]) }
+  const selectedSet = new Set(selectionDraft)
+  const appliedSelectedSet = new Set(selected)
+  const toggle = (id: string) => { setSelectionConfirmed(false); setSelectionDraft(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]) }
+  const toggleGroup = (items: typeof variants) => { const ids = items.map(item => item.variant.id); const every = ids.every(id => selectedSet.has(id)); setSelectionConfirmed(false); setSelectionDraft(current => every ? current.filter(id => !ids.includes(id)) : [...new Set([...current, ...ids])]) }
+  function confirmSelection() {
+    if (!selectionDraft.length) return setNotice('Önce en az bir varyant seçin.')
+    setSelected(selectionDraft)
+    setSelectionConfirmed(true)
+    setNotice(`${selectionDraft.length} varyant fiyat güncellemesi için hazır.`)
+  }
   async function apply(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (saving || !selected.length) return setNotice('En az bir renk veya varyant seçin.')
+    event.preventDefault(); if (saving || !selectionConfirmed || !selected.length) return setNotice('Önce seçtiğiniz varyantları onaylayın.')
     const priceRequested = mode !== 'stock' && (listPrice !== '' || salePrice !== ''); const stockRequested = mode !== 'price' && stockAmount !== ''
     if (!priceRequested && !stockRequested) return setNotice('Uygulanacak fiyat veya stok değerini girin.')
     const list = listPrice === '' ? null : Number(listPrice); const sale = salePrice === '' ? null : Number(salePrice); const amount = stockAmount === '' ? null : Number(stockAmount)
     if ((list != null && (!Number.isFinite(list) || list < 0)) || (sale != null && (!Number.isFinite(sale) || sale < 0)) || (list != null && sale != null && list < sale) || (amount != null && (!Number.isFinite(amount) || amount < 0))) return setNotice('Değerleri kontrol edin; negatif fiyat/stok veya hatalı fiyat sıralaması kullanılamaz.')
     setSaving(true); setNotice('Seçilen varyantlar güncelleniyor…')
     try {
-      for (const item of variants.filter(value => selectedSet.has(value.variant.id))) {
+      for (const item of variants.filter(value => appliedSelectedSet.has(value.variant.id))) {
         const variant = item.variant
         if (priceRequested) {
           const connectionId = variant.offerId ? '' : connections[0]?.id ?? ''; const nextSale = sale ?? variant.salePrice ?? variant.listPrice ?? 0; const nextList = list ?? variant.listPrice ?? nextSale
@@ -107,7 +116,38 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
       setNotice(`${selected.length} varyant güncellendi.`); await onChanged()
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Toplu düzenleme tamamlanamadı.') } finally { setSaving(false) }
   }
-  return <div className="workspace-modal-backdrop product-quick-edit-backdrop" role="presentation" onMouseDown={onClose}><section className="workspace-modal product-quick-edit-modal" role="dialog" aria-modal="true" aria-label={title} onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>Renkleri açıp yalnızca güncellemek istediğiniz varyantları seçin.</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat">×</button></header><form onSubmit={apply}><div className="quick-edit-selection">{Object.entries(groups).map(([color, items]) => <details className="quick-edit-color" key={color} open><summary><label onClick={event => event.stopPropagation()}><input type="checkbox" checked={items.every(item => selectedSet.has(item.variant.id))} onChange={() => toggleGroup(items)} /> {color}</label><small>{items.length} varyant · {items.reduce((sum, item) => sum + item.variant.available, 0)} stok</small><b>⌄</b></summary><div className="quick-edit-variants">{items.map(item => <label className="quick-edit-variant" key={item.variant.id}><input type="checkbox" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} /><span><strong>{item.product.title}</strong><small>{item.variant.optionSignature || 'Ana varyant'} · Stok kodu: {item.variant.sku}</small></span><em>{item.variant.available} stok</em></label>)}</div></details>)}</div><div className="quick-edit-fields">{mode !== 'stock' && <fieldset><legend>Fiyat</legend><label>Liste fiyatı<input type="number" min="0" step="0.01" value={listPrice} onChange={event => setListPrice(event.target.value)} placeholder="Değiştirme" /></label><label>Satış fiyatı<input type="number" min="0" step="0.01" value={salePrice} onChange={event => setSalePrice(event.target.value)} placeholder="Değiştirme" /></label></fieldset>}{mode !== 'price' && <fieldset><legend>Stok</legend><label>İşlem<select value={stockAction} onChange={event => setStockAction(event.target.value as typeof stockAction)}><option value="SET">Bu sayıya eşitle</option><option value="ADD">Bu kadar ekle (+)</option><option value="SUBTRACT">Bu kadar çıkar (−)</option></select></label><label>Miktar<input type="number" min="0" step="1" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" /></label></fieldset>}</div>{notice && <p className="notice" role="status">{notice}</p>}<footer className="quick-edit-footer"><span>{selected.length} varyant seçildi</span><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="submit" disabled={saving}>{saving ? 'Uygulanıyor…' : 'Seçilenlere uygula'}</button></footer></form></section></div>
+  return <div className="workspace-modal-backdrop product-quick-edit-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="workspace-modal product-quick-edit-modal" role="dialog" aria-modal="true" aria-label={title} onMouseDown={event => event.stopPropagation()}>
+      <header>
+        <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>Önce varyantları onaylayın, ardından fiyat veya stok değerini tek seferde uygulayın.</p></div>
+        <button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat">×</button>
+      </header>
+      <form onSubmit={apply}>
+        <details className="quick-edit-step" open>
+          <summary><span><b>1</b> Varyantları seç</span><small>{selectionDraft.length ? `${selectionDraft.length} varyant işaretlendi` : 'Renk ve bedenleri işaretleyin'}</small><i>⌄</i></summary>
+          <div className="quick-edit-selection">
+            {Object.entries(groups).map(([color, items]) => <details className="quick-edit-color" key={color}>
+              <summary><label onClick={event => event.stopPropagation()}><input type="checkbox" checked={items.every(item => selectedSet.has(item.variant.id))} onChange={() => toggleGroup(items)} /> {color}</label><small>{items.length} varyant · {items.reduce((sum, item) => sum + item.variant.available, 0)} stok</small><b>⌄</b></summary>
+              <div className="quick-edit-variants">{items.map(item => <label className="quick-edit-variant" key={item.variant.id}><input type="checkbox" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} /><span><strong>{item.variant.optionSignature || item.product.title}</strong><small>{item.product.title} · Stok kodu: {item.variant.sku}</small></span><em>{item.variant.available} stok</em></label>)}</div>
+            </details>)}
+          </div>
+          <div className="quick-edit-step-action"><p>{selectionConfirmed ? `${selected.length} varyant onaylandı. Seçim değişirse yeniden onaylayın.` : 'Örneğin Siyah içinden 3, 4 ve 5XL bedenlerini işaretleyin.'}</p><button type="button" onClick={confirmSelection}>Seçimi onayla</button></div>
+        </details>
+        <details className="quick-edit-step quick-edit-pricing-step" open={selectionConfirmed}>
+          <summary><span><b>2</b> {mode === 'stock' ? 'Stok değerini düzenle' : mode === 'price' ? 'Fiyatı düzenle' : 'Fiyat ve stok değerini düzenle'}</span><small>{selectionConfirmed ? `${selected.length} onaylı varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small><i>⌄</i></summary>
+          {selectionConfirmed ? <div className="quick-edit-step-body">
+            <div className="quick-edit-selected-list">{variants.filter(item => appliedSelectedSet.has(item.variant.id)).map(item => <span key={item.variant.id}>{item.variant.optionSignature || item.variant.sku}</span>)}</div>
+            <div className="quick-edit-fields">
+              {mode !== 'stock' && <fieldset><legend>Fiyat</legend><label>Liste fiyatı<input type="number" min="0" step="0.01" value={listPrice} onChange={event => setListPrice(event.target.value)} placeholder="Değiştirme" /></label><label>Satış fiyatı<input type="number" min="0" step="0.01" value={salePrice} onChange={event => setSalePrice(event.target.value)} placeholder="Değiştirme" /></label></fieldset>}
+              {mode !== 'price' && <fieldset><legend>Stok</legend><label>İşlem<select value={stockAction} onChange={event => setStockAction(event.target.value as typeof stockAction)}><option value="SET">Bu sayıya eşitle</option><option value="ADD">Bu kadar ekle (+)</option><option value="SUBTRACT">Bu kadar çıkar (−)</option></select></label><label>Miktar<input type="number" min="0" step="1" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" /></label></fieldset>}
+            </div>
+          </div> : <p className="quick-edit-step-empty">Fiyat alanlarını açmak için önce varyant seçimini onaylayın.</p>}
+        </details>
+        {notice && <p className="notice" role="status">{notice}</p>}
+        <footer className="quick-edit-footer"><span>{selectionConfirmed ? `${selected.length} varyant seçildi` : 'Varyant seçimi bekleniyor'}</span><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="submit" disabled={saving || !selectionConfirmed}>{saving ? 'Uygulanıyor…' : 'Seçilenlere uygula'}</button></footer>
+      </form>
+    </section>
+  </div>
 }
 
 function InlineVariantInputs({ variant, connections, onChanged }: { variant: Variant; connections: TrendyolConnection[]; onChanged: () => Promise<unknown> }) {
