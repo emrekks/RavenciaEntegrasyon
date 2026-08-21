@@ -291,6 +291,7 @@ function SingleOrderSyncModal({ activeConnection, onClose, onSuccess }: { active
   const [orderNumber, setOrderNumber] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const [successMsg, setSuccessMsg] = useState('')
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -300,21 +301,24 @@ function SingleOrderSyncModal({ activeConnection, onClose, onSuccess }: { active
       return
     }
     if (!activeConnection) {
-      setErrorMsg('Aktif Trendyol bağlantısı bulunamadı.')
+      setErrorMsg('Aktif Trendyol bağlantısı bulunamadı. Platformlar sayfasında Trendyol bağlantınızı kontrol edin.')
       return
     }
     setIsSubmitting(true)
     setErrorMsg('')
+    setSuccessMsg('')
     try {
       await hubApi(`/connections/${activeConnection.id}/order-sync-jobs`, {
         method: 'POST',
         headers: { 'Idempotency-Key': idempotency() },
         body: JSON.stringify({ externalOrderId: trimmed })
       })
+      setSuccessMsg(`Sipariş #${trimmed} çekme işi kuyruğa alındı. Sipariş birkaç saniye içinde listede görünecek…`)
       onSuccess(trimmed)
-      onClose()
+      // Close modal after short delay so user sees success message
+      window.setTimeout(() => onClose(), 2500)
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Sipariş çekme işi başlatılamadı.')
+      setErrorMsg(err instanceof Error ? err.message : 'Sipariş çekme işi başlatılamadı. Sipariş numarasını ve Trendyol bağlantı durumunu kontrol edin.')
     } finally {
       setIsSubmitting(false)
     }
@@ -325,29 +329,40 @@ function SingleOrderSyncModal({ activeConnection, onClose, onSuccess }: { active
       <section className="workspace-modal single-order-sync-modal" role="dialog" aria-modal="true" onMouseDown={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
         <header>
           <div>
-            <h2>Tekil Sipariş Çek (Sipariş No İle)</h2>
+            <h2>Tekil Sipariş Çek</h2>
             <p>Trendyol sipariş numarasını girerek sipariş ve kargo bilgilerini anında içeri aktarın.</p>
           </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Kapat">×</button>
         </header>
         <form onSubmit={handleSubmit} style={{ padding: '0 24px 20px', display: 'grid', gap: '14px' }}>
+          {!activeConnection && (
+            <div className="notice" role="alert" style={{ margin: 0, borderRadius: '8px', fontSize: '0.84rem' }}>
+              ⚠️ Aktif Trendyol bağlantısı bulunamadı. Platformlar sayfasından bağlantınızı etkinleştirin.
+            </div>
+          )}
           <label style={{ display: 'grid', gap: '6px' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Trendyol Sipariş Numarası</span>
             <input
               type="text"
+              inputMode="numeric"
               value={orderNumber}
               onChange={e => setOrderNumber(e.target.value)}
               placeholder="Örn: 1014529381"
               autoFocus
-              required
+              disabled={isSubmitting || !!successMsg}
               style={{ padding: '10px 14px', borderRadius: '8px', fontSize: '0.95rem' }}
             />
           </label>
           {errorMsg && <p className="error" role="alert" style={{ margin: 0 }}>{errorMsg}</p>}
+          {successMsg && (
+            <p role="status" style={{ margin: 0, color: '#22c55e', fontSize: '0.85rem', fontWeight: 600, display: 'flex', gap: '6px', alignItems: 'center' }}>
+              ✓ {successMsg}
+            </p>
+          )}
           <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
             <button type="button" className="secondary" onClick={onClose} disabled={isSubmitting}>İptal</button>
-            <button type="submit" disabled={isSubmitting || !orderNumber.trim()}>
-              {isSubmitting ? 'Çekiliyor…' : 'Siparişi Getir'}
+            <button type="submit" disabled={isSubmitting || !orderNumber.trim() || !!successMsg}>
+              {isSubmitting ? 'Çekiliyor…' : successMsg ? '✓ Tamamlandı' : 'Siparişi Getir'}
             </button>
           </footer>
         </form>
@@ -355,6 +370,7 @@ function SingleOrderSyncModal({ activeConnection, onClose, onSuccess }: { active
     </div>
   )
 }
+
 
 function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, onInvoiceCreate, onInvoiceDetails, onInvoiceUpload, onCourierChange, onProcessOrder }: { item: Order; selected: boolean; onSelect: (checked: boolean) => void; openMenu: 'invoice' | 'actions' | null; onMenuChange: (value: 'invoice' | 'actions' | null) => void; onInvoiceCreate: () => void; onInvoiceDetails: () => void; onInvoiceUpload: () => void; onCourierChange: () => void; onProcessOrder: () => void }) {
   const lines = item.lines ?? []
@@ -530,8 +546,9 @@ export function OrdersPage() {
     <div className="order-tabs" role="tablist" aria-label="Sipariş durumları">{statuses.map(([value,label]) => <button type="button" role="tab" aria-selected={filters.status === value} className={filters.status === value ? 'active' : ''} key={value} onClick={() => selectStatus(value)}><span>{label}</span><b>{value === 'ALL' ? all.length : all.filter(x => x.derivedStatus.toUpperCase() === value).length}</b></button>)}</div>
     <section className="order-filter-panel" aria-label="Sipariş filtreleri"><div className="order-filter-primary"><div className="bulk-menu-shell"><button type="button" className="bulk-action" disabled={!selectedIds.length} aria-expanded={bulkOpen} onClick={() => setBulkOpen(value => !value)}>Toplu işlemler⌄</button>{bulkOpen && <div className="bulk-action-menu" role="menu"><button type="button" role="menuitem" onClick={() => void bulkAction('processing')}><b>01</b><span>İşleme Al<small>Yalnız yeni siparişler</small></span></button><button type="button" role="menuitem" onClick={() => void bulkAction('courier')}><b>02</b><span>Kargo Firmasını Değiştir<small>Seçili paketler</small></span></button><button type="button" role="menuitem" onClick={() => void bulkAction('invoice')}><b>03</b><span>Toplu Fatura Kes<small>Önce taslakları kontrol edin</small></span></button><button type="button" role="menuitem" onClick={() => void bulkAction('labels')}><b>04</b><span>Kargo Stickerlarını Yazdır<small>Takip numarası olanlar</small></span></button></div>}</div><label className="order-search"><span aria-hidden="true">⌕</span><input aria-label="Sipariş ara" value={filterForm.search} onChange={event => updateFilter('search', event.target.value)} placeholder="Sipariş no, paket no, takip no, alıcı, stok/model kodu veya barkod ara…" onKeyDown={event => { if (event.key === 'Enter') applyFilters() }} /></label><label>Platform<select value={filterForm.platform} onChange={event => updateFilter('platform', event.target.value)}><option value="ALL">Tüm platformlar</option>{platforms.map(value => <option key={value} value={value}>{value === 'TRENDYOL' ? 'Trendyol' : value}</option>)}</select></label><label>Sipariş durumu<select value={filterForm.status} onChange={event => updateFilter('status', event.target.value)}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button type="button" className="filter-toggle" onClick={() => setAdvancedFilters(value => !value)} aria-expanded={advancedFilters}>Gelişmiş Filtreler {advancedFilters ? '⌃' : '⌄'}</button><button type="button" className="secondary filter-clear" onClick={clearFilters}>Temizle</button><button type="button" className="filter-apply" onClick={applyFilters}>Uygula</button><button type="button" className="secondary single-order-sync-btn" onClick={() => setSingleSyncOpen(true)} title="Trendyol'dan sipariş numarası ile tekil sipariş çek">⚡ Tekil Sipariş Çek</button></div>{advancedFilters && <div className="order-filter-advanced"><label>Listeleme durumu<select value={filterForm.listing} onChange={event => updateFilter('listing', event.target.value)}><option value="ALL">Tüm kayıtlar</option><option value="OPEN">Açık siparişler</option><option value="CLOSED">Kapanan siparişler</option></select></label><label>Sipariş tarihi başlangıç<input type="date" value={filterForm.dateFrom} onChange={event => updateFilter('dateFrom', event.target.value)} /></label><label>Sipariş tarihi bitiş<input type="date" value={filterForm.dateTo} onChange={event => updateFilter('dateTo', event.target.value)} /></label><label>Kargo<select value={filterForm.cargo} onChange={event => updateFilter('cargo', event.target.value)}><option value="ALL">Tüm kargolar</option>{cargos.map(value => <option key={value}>{value}</option>)}</select></label><label>Fatura<select value={filterForm.invoice} onChange={event => updateFilter('invoice', event.target.value)}><option value="ALL">Tüm durumlar</option><option value="FATURA_BEKLIYOR">Fatura bekliyor</option><option value="FATURA_KESILDI">Fatura kesildi</option><option value="FATURA_REDDEDILDI">Fatura reddedildi</option></select></label><label>Sayfada<select value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1) }}>{[10, 20, 50, 100, 150].map(value => <option key={value} value={value}>{value} sipariş</option>)}</select></label></div>}</section>
     {query.isLoading ? <Busy /> : query.isError ? <ErrorBox error={query.error} /> : !all.length ? <Empty>Aktif ve kanıtlanmış bağlantıdan sipariş eşitlemesi çalıştırıldığında kayıtlar burada görünür.</Empty> : !items.length ? <Empty>Seçili durum ve filtrelerle eşleşen sipariş yok.</Empty> : <><div className="order-reference-table"><div className="order-reference-head"><label className="order-select"><input type="checkbox" checked={allPageSelected} onChange={event => togglePageSelection(event.target.checked)} aria-label="Sayfadaki siparişleri seç" /></label><strong>Sipariş Bilgileri</strong><strong>Alıcı</strong><strong>Bilgiler</strong><strong>Birim Fiyat</strong><strong>Kargo</strong><strong>Fatura</strong><strong>Durum</strong></div>{pageItems.map(item => <OrderReferenceRow item={item} key={item.id} selected={selectedIds.includes(item.id)} onSelect={checked => updateSelection(item.id, checked)} openMenu={menu?.orderId === item.id ? menu.kind : null} onMenuChange={kind => setMenu(kind ? { orderId: item.id, kind } : null)} onInvoiceCreate={() => { setMenu(null); setInvoiceDraftOrder(item) }} onInvoiceDetails={() => { setMenu(null); setInvoiceInfoOrder(item) }} onInvoiceUpload={() => { setMenu(null); setInvoiceUploadOrder(item) }} onCourierChange={() => { setMenu(null); setCourierOrder(item) }} onProcessOrder={() => void processSingleOrder(item)} />)}</div><div className="order-pagination"><span>{items.length} siparişten {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, items.length)} arası gösteriliyor</span><div><button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>‹ Önceki</button><b>{safePage} / {totalPages}</b><button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>Sonraki ›</button></div></div></>}
-    {invoiceInfoOrder && <InvoiceInfoModal item={invoiceInfoOrder} onClose={() => setInvoiceInfoOrder(null)} />}{invoiceViewerOrder && <InvoiceViewerModal item={invoiceViewerOrder} onClose={() => setInvoiceViewerOrder(null)} />}{invoiceDraftOrder && <InvoiceDraftModal item={invoiceDraftOrder} provider={provider} onClose={() => setInvoiceDraftOrder(null)} />}{invoiceUploadOrder && <InvoiceUploadModal item={invoiceUploadOrder} provider={provider} onClose={() => setInvoiceUploadOrder(null)} />}{courierOrder && <CourierChangeModal item={courierOrder} onClose={() => setCourierOrder(null)} />}{singleSyncOpen && <SingleOrderSyncModal activeConnection={trendyolConnection} onClose={() => setSingleSyncOpen(false)} onSuccess={orderNo => { setBulkNotice(`Sipariş #${orderNo} çekme işi kuyruğa alındı; veriler getiriliyor.`); client.invalidateQueries({ queryKey: ['orders'] }) }} />}
+    {invoiceInfoOrder && <InvoiceInfoModal item={invoiceInfoOrder} onClose={() => setInvoiceInfoOrder(null)} />}{invoiceViewerOrder && <InvoiceViewerModal item={invoiceViewerOrder} onClose={() => setInvoiceViewerOrder(null)} />}{invoiceDraftOrder && <InvoiceDraftModal item={invoiceDraftOrder} provider={provider} onClose={() => setInvoiceDraftOrder(null)} />}{invoiceUploadOrder && <InvoiceUploadModal item={invoiceUploadOrder} provider={provider} onClose={() => setInvoiceUploadOrder(null)} />}{courierOrder && <CourierChangeModal item={courierOrder} onClose={() => setCourierOrder(null)} />}{singleSyncOpen && <SingleOrderSyncModal activeConnection={trendyolConnection} onClose={() => setSingleSyncOpen(false)} onSuccess={orderNo => { setBulkNotice(`Sipariş #${orderNo} çekme işi kuyruğa alındı; birkaç saniye içinde listede görünecek.`); void client.invalidateQueries({ queryKey: ['orders'] }); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 4000) }} />}
   </section>
+
 }
 
 
