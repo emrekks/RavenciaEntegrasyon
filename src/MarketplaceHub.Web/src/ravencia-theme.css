@@ -119,6 +119,229 @@
 .app-shell .modal-close { color: #b8ccef; background: transparent; box-shadow: none; }
 .app-shell .modal-close:hover { color: #fff; background: rgba(24, 186, 255, .14); box-shadow: none; transform: none; }
 
+/* Route workspaces: legacy pages use highly-specific local surfaces, so they are
+   deliberately normalized here after the original stylesheet. */
+.app-shell .order-toolbar,
+.app-shell .order-filter-advanced,
+.app-shell .order-filter-primary,
+.app-shell .return-reference-filters,
+.app-shell .return-reference-workspace,
+.app-shell .invoice-draft-head,
+.app-shell .invoice-draft-customer,
+.app-shell .invoice-address-sheet,
+.app-shell .invoice-viewer-summary,
+.app-shell .invoice-viewer-lines,
+.app-shell .invoice-viewer-documents,
+.app-shell .operation-details,
+.app-shell .detail-grid > *,
+.app-shell .cards > article,
+.app-shell .card-list > *,
+.app-shell .capability-list > *,
+.app-shell .desi-calculation-toggle,
+.app-shell .calculated-field,
+.app-shell .variant-generation-box,
+.app-shell .attribute-builder-card,
+.app-shell .attribute-summary-card,
+.app-shell .attribute-mapping-card,
+.app-shell .embedded-attribute-grid > *,
+.app-shell .rich-text-editor,
+.app-shell .quick-edit-color,
+.app-shell .quick-edit-fields fieldset,
+.app-shell .return-detail-summary,
+.app-shell .return-detail-lines,
+.app-shell .selected-attribute-preview,
+.app-shell .attribute-library-note,
+.app-shell .platform-category-create,
+.app-shell .inline-category-create,
+.app-shell .product-submit-bar,
+.app-shell .upload-ghost-box {
+  color: var(--rv-ink);
+  background: rgba(9, 29, 60, .88);
+  border-color: var(--rv-line);
+}
+
+.app-shell .orders-page .order-toolbar,
+.app-shell .returns-page .return-reference-workspace,
+.app-shell .invoices-page .invoice-workspace,
+.app-shell .mapping-console,
+.app-shell .product-creation-workspace .product-step-card,
+.app-shell .security-page .panel {
+  box-shadow: var(--rv-shadow);
+}
+
+.app-shell .order-filter-primary,
+.app-shell .order-filter-advanced,
+.app-shell .return-reference-filters,
+.app-shell .invoice-toolbar,
+.app-shell .product-toolbar { border-radius: var(--rv-radius); }
+.app-shell .order-filter-primary label,
+.app-shell .order-filter-advanced label,
+.app-shell .return-reference-filters label,
+.app-shell .integration-fields label,
+.app-shell .mapping-workspace label,
+.app-shell .quick-edit-fields label,
+.app-shell .security-page label { color: #b9cbe3; }
+
+/* Reference order and return tables. */
+.app-shell .order-reference-head,
+.app-shell .return-reference-head,
+.app-shell .invoice-viewer-line-head {
+  color: #a9bdd8;
+  background: rgba(16, 49, 95, .96);
+  border-color: var(--rv-line-strong);
+  box-shadow: none;
+}
+.app-shell .orders-page .order-reference-head { background: rgba(16, 49, 95, .96); box-shadow: 0 1px 0 var(--rv-line-strong); }
+.app-shell .order-reference-head strong,
+.app-shell .return-reference-head strong { color: #a9bdd8; border-color: var(--rv-line); }
+.app-shell .order-reference-row,
+.app-shell .return-reference-row,
+.app-shell .invoice-viewer-line,
+.app-shell .return-detail-lines > div,
+.app-shell .quick-edit-variant {
+  color: #dbeaff;
+  background: rgba(7, 24, 50, .9);
+  border-color: var(--rv-line);
+}
+.app-shell .order-reference-row:hover,
+.app-shell .return-reference-row:hover { background: rgba(18, 54, 102, .72); }
+.app-shell .order-reference-row > span,
+.app-shell .return-reference-row > span,
+.app-shell .invoice-viewer-line > *,
+.app-shell .return-detail-lines > div + div { border-color: var(--rv-line); }
+.app-shell .order-reference-row strong,
+.app-shell .order-reference-row b,
+.app-shell .return-reference-row strong,
+.app-shell .return-reference-row b,
+.app-shell .return-detail-summary strong,
+.app-shell .return-detail-lines strong { color: var(--rv-ink); }
+.app-shell .order-reference-row small,
+.app-shell .return-reference-row small,
+.app-shell .return-detail-summary small,
+.app-shell .return-detail-lines small { color: var(--rv-muted); }
+.app-shell .return-reference-tabs { background: rgba(7, 22, 46, .94); border-color: var(--rv-line); }
+.app-shell .return-reference-tabs button { color: var(--rv-muted); background: transparent; border-color: var(--rv-line); }
+.app-shell .return-reference-tabs button:hover,
+.app-shell .return-reference-tabs button.active { color: var(--rv-primary); background: rgba(24, 186, 255, .08); border-bottom-color: var(--rv-primary); }
+.app-shell .row-menu-trigger,
+.app-shell .orders-page .invoice-menu-view,
+.app-shell .return-cargo-track,
+.app-shell .return-detail-trigger,
+.app-shell .order-action-menu { color: #bce4ff !important; background: rgba(12, 40, 80, .92) !important; border-color: var(--rv-line-strong) !important; box-shadow: none !important; }
+.app-shell .row-menu-trigger:hover,
+.app-shell .orders-page .invoice-menu-view:hover,
+.app-shell .return-cargo-track:hover,
+.app-shell .return-detail-trigger:hover { color: #fff !important; background: rgba(24, 186, 255, .16) !important; border-color: var(--rv-primary) !important; }
+.app-shell .order-reference-invoice .micro-invoice-chip { color: #a9d9ff; background: rgba(53, 91, 255, .18); }
+
+/* Integrations and category / attribute mapping. */
+.app-shell .integration-card-empty { color: var(--rv-primary); background: transparent !important; }
+.app-shell .integration-card-empty:hover { color: #fff; background: rgba(24, 186, 255, .1) !important; }
+.app-shell .integration-add-icon { border-color: var(--rv-primary); background: rgba(24, 186, 255, .1); box-shadow: 0 0 22px rgba(24, 186, 255, .14); }
+.app-shell .integration-details span,
+.app-shell .integration-fields label,
+.app-shell .integration-card p { color: var(--rv-muted); }
+.app-shell .integration-details strong { color: var(--rv-ink); }
+.app-shell .integration-card-notice,
+.app-shell .integration-test-result.success { color: #9af2bf; background: rgba(37, 142, 91, .16); border: 1px solid rgba(86, 217, 139, .35); }
+.app-shell .integration-test-result.failed,
+.app-shell .attribute-feedback { color: #ffbac1; background: rgba(155, 36, 54, .18); border-color: rgba(255, 104, 117, .4); }
+.app-shell .mapping-workspace { --mapping-ink: var(--rv-ink); --mapping-muted: var(--rv-muted); --mapping-line: var(--rv-line); --mapping-soft: rgba(9, 29, 60, .88); }
+.app-shell .mapping-workspace-heading { border-color: var(--rv-line); }
+.app-shell .mapping-view-tabs { background: rgba(8, 24, 49, .9); border-color: var(--rv-line); }
+.app-shell .mapping-view-tabs a { color: var(--rv-muted); }
+.app-shell .mapping-view-tabs a.active { color: var(--rv-primary); background: rgba(24, 186, 255, .12); border-color: var(--rv-line-strong); box-shadow: none; }
+.app-shell .mapping-console > header { border-color: var(--rv-line); }
+.app-shell .mapping-side { background: rgba(8, 24, 49, .84); border-color: var(--rv-line); }
+.app-shell .mapping-side.remote { background: rgba(12, 37, 75, .84); border-color: rgba(83, 147, 255, .34); }
+.app-shell .mapping-side-head span,
+.app-shell .step-kicker,
+.app-shell .mapping-link-rail { color: var(--rv-primary); }
+.app-shell .mapping-link-rail span { color: var(--rv-primary); background: rgba(24, 186, 255, .12); border-color: var(--rv-line-strong); }
+.app-shell .searchable-select-control,
+.app-shell .searchable-select-menu,
+.app-shell .searchable-select-menu button,
+.app-shell .category-chip-list > span,
+.app-shell .attribute-value-list > span,
+.app-shell .saved-mapping-list span,
+.app-shell .option-chip,
+.app-shell .attribute-mini-values span { color: #d9ebff; background: #081a35; border-color: var(--rv-line); }
+.app-shell .searchable-select-control > span,
+.app-shell .searchable-select > span,
+.app-shell .inline-category-create > label,
+.app-shell .matched-category-select { color: #b9cbe3; }
+.app-shell .searchable-select.open .searchable-select-control { border-color: var(--rv-primary); box-shadow: 0 0 0 3px rgba(24, 186, 255, .12); }
+.app-shell .searchable-select-menu button:hover,
+.app-shell .searchable-select-menu button[aria-selected=true],
+.app-shell .category-chip-list > span.active,
+.app-shell .attribute-summary-card.selectable:hover,
+.app-shell .attribute-summary-card.selectable.selected { color: #eaf7ff; background: rgba(24, 186, 255, .12); border-color: var(--rv-primary); box-shadow: none; }
+.app-shell .attribute-value-list button:hover,
+.app-shell .category-chip-list .category-chip-remove:hover { color: #fff; background: rgba(255, 104, 117, .72); }
+
+/* Invoice drafting and document management. */
+.app-shell .invoice-tabs { box-shadow: none; }
+.app-shell .invoice-tabs button:hover { color: #fff; background: rgba(24, 186, 255, .1); }
+.app-shell .invoice-draft-table,
+.app-shell .invoice-viewer-lines,
+.app-shell .invoice-viewer-documents { border-color: var(--rv-line); }
+.app-shell .invoice-draft-table > *,
+.app-shell .invoice-viewer-line { border-color: var(--rv-line); }
+.app-shell .invoice-document-link,
+.app-shell .invoice-menu-view { color: #aee4ff; }
+.app-shell .invoice-continue { color: #041426; background: linear-gradient(110deg, var(--rv-primary), var(--rv-primary-strong)); border-color: transparent; }
+.app-shell .invoice-dropzone { color: #d6e9ff; background: rgba(8, 24, 49, .84); border-color: var(--rv-line-strong); }
+.app-shell .invoice-dropzone:hover,
+.app-shell .invoice-dropzone:focus-within,
+.app-shell .invoice-dropzone.dragging { color: #eff9ff; background: rgba(24, 186, 255, .1); border-color: var(--rv-primary); box-shadow: 0 10px 28px rgba(24, 137, 255, .16); }
+.app-shell .invoice-dropzone .invoice-upload-icon,
+.app-shell .invoice-dropzone b { color: var(--rv-primary); border-color: var(--rv-primary); }
+
+/* Product editing, media and quick edit modal. */
+.app-shell .product-image-placeholder,
+.app-shell .product-color-summary-media,
+.app-shell .reference-product-placeholder,
+.app-shell .return-product i { color: var(--rv-muted); background: rgba(8, 24, 49, .84); border-color: var(--rv-line); }
+.app-shell .product-image-button:hover { background: transparent; box-shadow: 0 0 0 3px rgba(24, 186, 255, .25); }
+.app-shell .upload-ghost-box,
+.app-shell .product-media-upload:hover,
+.app-shell .product-media-upload:focus-within { color: #aee4ff; background: rgba(24, 186, 255, .08); border-color: var(--rv-primary); }
+.app-shell .attribute-builder-card:not(:has(.attribute-builder-toggle input:checked)) { background: rgba(8, 24, 49, .72); }
+.app-shell .option-chip.active { color: #031426; background: var(--rv-primary); border-color: var(--rv-primary); }
+.app-shell .variant-table-row,
+.app-shell .product-quick-edit-variant { color: var(--rv-ink); background: rgba(8, 24, 49, .88); border-color: var(--rv-line); }
+.app-shell .variant-drag-handle { color: var(--rv-primary); background: rgba(24, 186, 255, .1); border-color: var(--rv-line-strong); }
+.app-shell .variant-drag-handle:hover { background: rgba(24, 186, 255, .18); }
+.app-shell .rich-text-editor-head,
+.app-shell .rich-text-toolbar,
+.app-shell .rich-text-editor-pro .rich-text-editor-head,
+.app-shell .rich-text-editor-pro .rich-text-toolbar,
+.app-shell .quick-edit-footer { color: var(--rv-ink); background: rgba(10, 29, 59, .96); border-color: var(--rv-line); }
+.app-shell .rich-text-toolbar button,
+.app-shell .rich-text-editor-pro .rich-text-toolbar button { color: #b9d8f8; background: rgba(14, 40, 80, .72); border-color: var(--rv-line); }
+.app-shell .rich-text-toolbar button:hover,
+.app-shell .rich-text-editor-pro .rich-text-toolbar button:hover { color: #fff; background: rgba(24, 186, 255, .16); }
+.app-shell .rich-text-preview { color: var(--rv-ink); background: rgba(7, 24, 50, .9); border-color: var(--rv-line); }
+.app-shell .quick-edit-variants { background: var(--rv-line); }
+.app-shell .quick-edit-color > summary b { color: var(--rv-primary); }
+.app-shell .quick-edit-footer span,
+.app-shell .quick-edit-variant small,
+.app-shell .quick-edit-variant em { color: var(--rv-muted); }
+
+/* Security and destructive actions retain clear semantic status without reintroducing white cards. */
+.app-shell .security-authenticator-card p,
+.app-shell .security-page .sessions li b,
+.app-shell .security-page .sessions li em { color: var(--rv-muted); }
+.app-shell .security-state { color: #ffd68a; background: rgba(181, 125, 22, .18); }
+.app-shell .security-state.enabled { color: #90eeb5; background: rgba(35, 142, 91, .18); }
+.app-shell .security-check { background: linear-gradient(145deg, var(--rv-primary), var(--rv-primary-strong)); box-shadow: 0 0 18px rgba(24, 186, 255, .26); }
+.app-shell .sessions li.current { background: rgba(24, 186, 255, .09); }
+.app-shell .session-device-icon { color: var(--rv-primary); background: rgba(24, 186, 255, .1); }
+.app-shell .danger-outline,
+.app-shell .destructive { color: #ffb5bc !important; background: rgba(155, 36, 54, .18) !important; border-color: rgba(255, 104, 117, .48) !important; }
+.app-shell .danger-outline:hover,
+.app-shell .destructive:hover { color: #fff !important; background: rgba(220, 55, 75, .42) !important; }
+
 @media (max-width: 620px) {
   .app-shell { background: var(--rv-bg); }
   .app-shell > aside { background: var(--rv-sidebar); border-bottom-color: var(--rv-line); }
