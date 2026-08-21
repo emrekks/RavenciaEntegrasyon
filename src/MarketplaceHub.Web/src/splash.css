@@ -617,3 +617,51 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
   border-color: var(--rv-primary) !important;
   opacity: 1 !important;
 }
+/* Fix New Product Page Overlapping and extend width */
+.content {
+  max-width: 1720px !important;
+}
+.product-main-stack > section.product-step-card:last-child {
+  width: 100% !important;
+}
+/* Also extend dashboard width to match */
+.content.dashboard {
+  max-width: 1720px !important;
+}
+/* Fix New Product Variant Table and Rows */
+.variant-bulk-editor {
+  background: var(--rv-surface-raised) !important;
+  border: 1px solid var(--rv-line) !important;
+}
+.variant-table-row {
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line) !important;
+  color: var(--rv-ink) !important;
+}
+.variant-table-row:hover {
+  border-color: var(--rv-primary) !important;
+}
+.variant-table-head {
+  color: var(--rv-muted) !important;
+}
+.variant-table-head span {
+  color: var(--rv-muted) !important;
+}
+.empty.small {
+  background: var(--rv-surface) !important;
+  border: 1px dashed var(--rv-line) !important;
+  color: var(--rv-muted) !important;
+}
+/* Fix Channel Choice sidebar items */
+.channel-choice {
+  border-bottom: 1px solid var(--rv-line) !important;
+  color: var(--rv-ink) !important;
+}
+.channel-help {
+  background: var(--rv-surface-raised) !important;
+  border: 1px solid var(--rv-line) !important;
+  color: var(--rv-muted) !important;
+}
+.channel-help strong {
+  color: var(--rv-ink) !important;
+}
