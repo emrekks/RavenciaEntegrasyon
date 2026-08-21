@@ -402,6 +402,46 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
   display: none !important; /* Chrome/Safari */
 }
 
+/* Sidebar Collapsed State Fixes */
+.sidebar-collapsed aside nav a span, 
+.sidebar-collapsed aside .settings-toggle span, 
+.sidebar-collapsed aside .logout-link span {
+  display: none !important;
+}
+.sidebar-collapsed aside nav a, 
+.sidebar-collapsed aside .settings-toggle, 
+.sidebar-collapsed aside .logout-link {
+  justify-content: center !important;
+  padding: 10px !important;
+}
+.sidebar-collapsed aside nav a svg,
+.sidebar-collapsed aside .settings-toggle svg,
+.sidebar-collapsed aside .logout-link svg {
+  width: 22px !important;
+  height: 22px !important;
+  margin: 0 !important;
+}
+@media (max-width: 900px) {
+  aside nav a span, 
+  aside .settings-toggle span, 
+  aside .logout-link span {
+    display: none !important;
+  }
+  aside nav a, 
+  aside .settings-toggle, 
+  aside .logout-link {
+    justify-content: center !important;
+    padding: 10px !important;
+  }
+  aside nav a svg,
+  aside .settings-toggle svg,
+  aside .logout-link svg {
+    width: 22px !important;
+    height: 22px !important;
+    margin: 0 !important;
+  }
+}
+
 /* Login Screen overrides adjusted for strict palette */
 .rv-login-card {
   background: var(--rv-surface) !important;
