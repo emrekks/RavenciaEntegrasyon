@@ -103,7 +103,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const toggle = (id: string) => { setSelectionDraft(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]) }
   const toggleGroup = (items: typeof variants) => { const ids = items.map(item => item.variant.id); const every = ids.every(id => selectedSet.has(id)); setSelectionDraft(current => every ? current.filter(id => !ids.includes(id)) : [...new Set([...current, ...ids])]) }
   function applyFilterSelection(colors: string[], sizes: string[]) {
-    const ids = variants.filter(item => (!colors.length || colors.includes(colorOf(item))) && (!sizes.length || sizes.includes(sizeOf(item)))).map(item => item.variant.id)
+    const ids = !colors.length && !sizes.length ? [] : variants.filter(item => (!colors.length || colors.includes(colorOf(item))) && (!sizes.length || sizes.includes(sizeOf(item)))).map(item => item.variant.id)
     setSelectionDraft(ids)
   }
   async function apply(event: FormEvent<HTMLFormElement>) {
@@ -163,15 +163,15 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           </div>
           <div className="quick-edit-step-action"><p>{selectionDraft.length ? `${selectionDraft.length} varyant işaretli. Değerleri doğrudan uygulayabilirsiniz.` : 'Önce alt listeden varyant seçin veya üst filtreyi kullanın.'}</p></div>
         </details>
-        <details className="quick-edit-step quick-edit-pricing-step" open={Boolean(selectionDraft.length)}>
+        <details className="quick-edit-step quick-edit-pricing-step" open>
           <summary><span><b>2</b> {mode === 'stock' ? 'Stok değerini düzenle' : mode === 'price' ? 'Fiyatı düzenle' : 'Fiyat ve stok değerini düzenle'}</span><small>{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small><i>⌄</i></summary>
-          {selectionDraft.length ? <div className="quick-edit-step-body">
-            <div className="quick-edit-selected-list">{variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => <span key={item.variant.id}>{item.variant.optionSignature || item.variant.sku}</span>)}</div>
+          <div className="quick-edit-step-body">
+            {activeSelection.length ? <div className="quick-edit-selected-list">{variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => <span key={item.variant.id}>{item.variant.optionSignature || item.variant.sku}</span>)}</div> : <p className="quick-edit-step-empty">Fiyat/stok değerini şimdi girebilirsiniz; uygulamak için en az bir varyantı işaretleyin.</p>}
             <div className="quick-edit-fields">
               {mode !== 'stock' && <fieldset><legend>Fiyat</legend><label>Liste fiyatı<input type="number" min="0" step="0.01" value={listPrice} onChange={event => setListPrice(event.target.value)} placeholder="Değiştirme" /></label><label>Satış fiyatı<input type="number" min="0" step="0.01" value={salePrice} onChange={event => setSalePrice(event.target.value)} placeholder="Değiştirme" /></label></fieldset>}
               {mode !== 'price' && <fieldset><legend>Stok</legend><label>İşlem<select value={stockAction} onChange={event => setStockAction(event.target.value as typeof stockAction)}><option value="SET">Bu sayıya eşitle</option><option value="ADD">Bu kadar ekle (+)</option><option value="SUBTRACT">Bu kadar çıkar (−)</option></select></label><label>Miktar<input type="number" min="0" step="1" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" /></label></fieldset>}
             </div>
-          </div> : <p className="quick-edit-step-empty">Fiyat alanlarını açmak için önce varyant seçimini onaylayın.</p>}
+          </div>
         </details>
         {notice && <p className="notice" role="status">{notice}</p>}
         <footer className="quick-edit-footer"><span>{activeSelection.length ? `${activeSelection.length} varyant seçildi` : 'Varyant seçimi bekleniyor'}</span><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="submit" disabled={saving || !selectionDraft.length}>{saving ? 'Uygulanıyor…' : 'Seçilenlere uygula'}</button></footer>
