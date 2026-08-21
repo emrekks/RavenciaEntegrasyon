@@ -79,7 +79,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .rv-data-pulse {
   fill: #a8f7ff;
   filter: drop-shadow(0 0 4px #6de3ff) drop-shadow(0 0 9px rgba(39, 177, 255, .9));
-  animation: rv-data-blink 1.1s ease-in-out infinite;
+  opacity: 0;
 }
 
 /* Platform integration nodes */
@@ -105,18 +105,6 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
   position: relative;
   width: 100%;
   line-height: 0;
-}
-.rv-card-status {
-  position: absolute;
-  top: 12%;
-  right: 8%;
-  width: 6px;
-  height: 6px;
-  transform: none;
-  border-radius: 50%;
-  background: #54e29b;
-  box-shadow: 0 0 5px #54e29b, 0 0 12px rgba(84, 226, 155, .9);
-  animation: rv-status-breathe 2.4s ease-in-out infinite;
 }
 
 /* Outer columns: cards sit near the red endpoint markers in the reference. */
@@ -297,6 +285,21 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .rv-eye:hover {
   color: #d7ebff;
 }
+.rv-page .rv-eye,
+.rv-page .rv-forgot,
+.rv-page .rv-eye:hover,
+.rv-page .rv-forgot:hover,
+.rv-page .rv-eye:focus,
+.rv-page .rv-forgot:focus,
+.rv-page .rv-eye:focus-visible,
+.rv-page .rv-forgot:focus-visible {
+  appearance: none;
+  outline: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 
 .rv-meta {
   display: flex;
@@ -453,8 +456,6 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 @keyframes rv-card-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-7px) rotate(.35deg); } }
 @keyframes rv-card-breathe { 0%, 100% { filter: brightness(.96) drop-shadow(0 14px 24px rgba(0,0,0,.62)) drop-shadow(0 0 12px rgba(18, 123, 255, .24)); } 50% { filter: brightness(1.08) drop-shadow(0 14px 24px rgba(0,0,0,.62)) drop-shadow(0 0 22px rgba(56, 199, 255, .46)); } }
 @keyframes rv-node-drift { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(var(--node-drift-distance, 4px)); } }
-@keyframes rv-status-breathe { 0%, 100% { opacity: .55; transform: scale(.84); } 50% { opacity: 1; transform: scale(1.16); } }
-@keyframes rv-data-blink { 0%, 100% { opacity: .2; } 48% { opacity: 1; } }
 @keyframes rv-line-flow { to { stroke-dashoffset: -84; } }
 @keyframes rv-node-pulse { 0%, 100% { opacity: .45; r: 3px; } 50% { opacity: 1; r: 5px; } }
 
@@ -488,7 +489,7 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rv-page::before, .rv-page::after, .rv-login-card, .rv-platform-node, .rv-card, .rv-card-status, .rv-lines path, .rv-data-pulse { animation: none !important; }
+  .rv-page::before, .rv-page::after, .rv-login-card, .rv-platform-node, .rv-card, .rv-lines path, .rv-data-pulse { animation: none !important; }
   .rv-submit:hover, .rv-google-btn:hover, .rv-input-wrap input:focus { transform: none; }
 }
 

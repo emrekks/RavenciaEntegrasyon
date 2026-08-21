@@ -57,13 +57,13 @@ function Login() {
       <IntegrationLines pageRef={pageRef} loginCardRef={loginCardRef} nodeRefs={nodeRefs} />
 
       {/* Pre-rendered Platform Cards positioned perfectly */}
-      <div className="rv-platform-node rv-l1" ref={element => { nodeRefs.current.l1 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/trendyol-card.png" className="rv-card" alt="Trendyol" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div></div>
-      <div className="rv-platform-node rv-l2" ref={element => { nodeRefs.current.l2 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-card" alt="Hepsiburada" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div></div>
-      <div className="rv-platform-node rv-l3" ref={element => { nodeRefs.current.l3 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/n11-card.png" className="rv-card" alt="n11" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div></div>
-      <div className="rv-platform-node rv-l4" ref={element => { nodeRefs.current.l4 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/pazarama-card.png" className="rv-card" alt="Pazarama" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div></div>
-      <div className="rv-platform-node rv-r1" ref={element => { nodeRefs.current.r1 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/pttavm-card.png" className="rv-card" alt="PttAVM" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div></div>
-      <div className="rv-platform-node rv-r2" ref={element => { nodeRefs.current.r2 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-card" alt="Trendyol e-Faturam" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div></div>
-      <div className="rv-platform-node rv-r3" ref={element => { nodeRefs.current.r3 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/shopify-card.png" className="rv-card" alt="Shopify" loading="eager" draggable={false} /><span className="rv-card-status" aria-hidden="true" /></div></div>
+      <div className="rv-platform-node rv-l1" ref={element => { nodeRefs.current.l1 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/trendyol-card.png" className="rv-card" alt="Trendyol" loading="eager" draggable={false} /></div></div>
+      <div className="rv-platform-node rv-l2" ref={element => { nodeRefs.current.l2 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-card" alt="Hepsiburada" loading="eager" draggable={false} /></div></div>
+      <div className="rv-platform-node rv-l3" ref={element => { nodeRefs.current.l3 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/n11-card.png" className="rv-card" alt="n11" loading="eager" draggable={false} /></div></div>
+      <div className="rv-platform-node rv-l4" ref={element => { nodeRefs.current.l4 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/pazarama-card.png" className="rv-card" alt="Pazarama" loading="eager" draggable={false} /></div></div>
+      <div className="rv-platform-node rv-r1" ref={element => { nodeRefs.current.r1 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/pttavm-card.png" className="rv-card" alt="PttAVM" loading="eager" draggable={false} /></div></div>
+      <div className="rv-platform-node rv-r2" ref={element => { nodeRefs.current.r2 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-card" alt="Trendyol e-Faturam" loading="eager" draggable={false} /></div></div>
+      <div className="rv-platform-node rv-r3" ref={element => { nodeRefs.current.r3 = element }}><div className="rv-card-frame"><img src="/pack/marketplace/cards/shopify-card.png" className="rv-card" alt="Shopify" loading="eager" draggable={false} /></div></div>
 
       {/* Center Login Card matching mockup exactly */}
       <div className="rv-login-card" ref={loginCardRef}>
@@ -115,7 +115,7 @@ type ConnectionPath = { id: string; d: string }
 function IntegrationLines({ pageRef, loginCardRef, nodeRefs }: { pageRef: RefObject<HTMLDivElement | null>; loginCardRef: RefObject<HTMLDivElement | null>; nodeRefs: MutableRefObject<Record<string, HTMLDivElement | null>> }) {
   const [paths, setPaths] = useState<ConnectionPath[]>([])
   const pathRefs = useRef<Record<string, SVGPathElement | null>>({})
-  const motionRefs = useRef<Record<string, SVGElement | null>>({})
+  const pulseRefs = useRef<Record<string, SVGCircleElement | null>>({})
 
   useEffect(() => {
     const page = pageRef.current
@@ -124,6 +124,8 @@ function IntegrationLines({ pageRef, loginCardRef, nodeRefs }: { pageRef: RefObj
 
     const nodes = [['l1', 'left'], ['l2', 'left'], ['l3', 'left'], ['l4', 'left'], ['r1', 'right'], ['r2', 'right'], ['r3', 'right']] as const
     let frame = 0
+    const pulseFrames = new Set<number>()
+    const pulseTimers = new Set<number>()
     const calculate = () => {
       if (!window.matchMedia('(min-width: 1121px)').matches) return []
       const pageBox = page.getBoundingClientRect()
@@ -144,7 +146,6 @@ function IntegrationLines({ pageRef, loginCardRef, nodeRefs }: { pageRef: RefObj
     }
     const apply = (next: ConnectionPath[]) => next.forEach(path => {
       pathRefs.current[path.id]?.setAttribute('d', path.d)
-      motionRefs.current[path.id]?.setAttribute('path', path.d)
     })
     const renderPaths = () => {
       const next = calculate()
@@ -155,6 +156,39 @@ function IntegrationLines({ pageRef, loginCardRef, nodeRefs }: { pageRef: RefObj
       apply(calculate())
       frame = window.requestAnimationFrame(animate)
     }
+    const pause = (id: string, toPanel: boolean) => {
+      const timeout = window.setTimeout(() => {
+        pulseTimers.delete(timeout)
+        travel(id, toPanel)
+      }, 3000 + Math.random() * 3000)
+      pulseTimers.add(timeout)
+    }
+    const travel = (id: string, toPanel: boolean) => {
+      const path = pathRefs.current[id]
+      const pulse = pulseRefs.current[id]
+      if (!path || !pulse || !window.matchMedia('(min-width: 1121px)').matches) { pause(id, toPanel); return }
+      const length = path.getTotalLength()
+      const duration = 1050 + Math.random() * 650
+      const started = performance.now()
+      let pulseFrame = 0
+      pulse.style.opacity = '1'
+      const step = (now: number) => {
+        pulseFrames.delete(pulseFrame)
+        const progress = Math.min(1, (now - started) / duration)
+        const point = path.getPointAtLength(length * (toPanel ? 1 - progress : progress))
+        pulse.setAttribute('cx', `${point.x}`)
+        pulse.setAttribute('cy', `${point.y}`)
+        if (progress < 1) {
+          pulseFrame = window.requestAnimationFrame(step)
+          pulseFrames.add(pulseFrame)
+          return
+        }
+        pulse.style.opacity = '0'
+        pause(id, !toPanel)
+      }
+      pulseFrame = window.requestAnimationFrame(step)
+      pulseFrames.add(pulseFrame)
+    }
     const scheduleDraw = () => renderPaths()
     const observer = new ResizeObserver(scheduleDraw)
     observer.observe(page)
@@ -164,15 +198,19 @@ function IntegrationLines({ pageRef, loginCardRef, nodeRefs }: { pageRef: RefObj
     window.addEventListener('resize', scheduleDraw)
     renderPaths()
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) frame = window.requestAnimationFrame(animate)
+    const bootTimer = window.setTimeout(() => nodes.forEach(([id]) => pause(id, true)), 350)
     return () => {
       if (frame) window.cancelAnimationFrame(frame)
+      pulseFrames.forEach(cancelAnimationFrame)
+      pulseTimers.forEach(clearTimeout)
+      window.clearTimeout(bootTimer)
       observer.disconnect()
       page.querySelectorAll('img').forEach(image => image.removeEventListener('load', scheduleDraw))
       window.removeEventListener('resize', scheduleDraw)
     }
   }, [pageRef, loginCardRef, nodeRefs])
 
-  return <svg className="rv-lines" aria-hidden="true" viewBox={`0 0 ${window.innerWidth} ${window.innerHeight}`} preserveAspectRatio="none">{paths.map((path, index) => <g key={path.id}><path ref={element => { pathRefs.current[path.id] = element }} d={path.d} /><circle className="rv-data-pulse" r="3"><animateMotion ref={element => { motionRefs.current[path.id] = element }} begin={`${index * .83}s`} dur={`${4.8 + (index % 3) * .85}s`} repeatCount="indefinite" path={path.d} keyPoints="1;0;1" keyTimes="0;0.5;1" calcMode="linear" /></circle></g>)}</svg>
+  return <svg className="rv-lines" aria-hidden="true" viewBox={`0 0 ${window.innerWidth} ${window.innerHeight}`} preserveAspectRatio="none">{paths.map(path => <g key={path.id}><path ref={element => { pathRefs.current[path.id] = element }} d={path.d} /><circle ref={element => { pulseRefs.current[path.id] = element }} className="rv-data-pulse" r="3" /></g>)}</svg>
 }
 
 function ChangePassword() { const client = useQueryClient(); const [message, setMessage] = useState('İlk girişte parolanızı değiştirmeniz gerekir.'); async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await api('/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: data.get('current'), newPassword: data.get('next') }) }); await client.invalidateQueries({ queryKey: ['me'] }) } catch { setMessage('Parola değiştirilemedi; politika ve mevcut parolayı kontrol edin.') } } return <div className="auth-page"><section className="auth-card"><h1>Parolanızı değiştirin</h1><p role="status">{message}</p><form onSubmit={submit}><label>Geçerli parola<input name="current" type="password" required /></label><label>Yeni parola<input name="next" type="password" minLength={15} maxLength={64} required /></label><button>Parolayı değiştir</button></form></section></div> }
