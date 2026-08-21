@@ -1,0 +1,33 @@
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Link, useParams } from 'react-router'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { hubApi } from './api'
+
+type PageData<T> = { items: T[]; nextCursor: string | null; hasMore: boolean }
+type Versioned = { id: string; version: number }
+type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
+type Brand = Versioned & { name: string; isActive: boolean }
+type Attribute = Versioned & { code: string; name: string; dataType: string; values: Array<{ id: string; value: string }> }
+type Variant = Versioned & {
+  sku: string; barcode: string | null; modelCode: string | null; optionSignature: string; status: string
+  weight: number | null; width: number | null; height: number | null; length: number | null; desi: number | null
+  onHand: number; available: number; inventoryVersion: number | null
+  offerId: string | null; listPrice: number | null; salePrice: number | null; currency: string | null; offerStatus: string | null
+  priceVersion: number | null; offerVersion: number | null; vatRate: number | null; vatInclusion: string | null; roundingMode: string | null; safetyStock: number | null
+}
+type Product = Versioned & {
+  title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
+  variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null
+  attributes?: Array<{ attributeId: string; valueId: string | null; textValue: string | null; numberValue: number | null; booleanValue: boolean | null; sortOrder: number }>
+}
+type ImportSession = Versioned & { sourceType: string; status: string; totalRows: number; validRows: number; errorRows: number; reviewRows: number; sourceAssetId: string | null }
+type Candidate = Versioned & { matchRule: string; safeSummary: string; productId: string | null; variantId: string | null }
+type Inventory = Versioned & { variantId: string; sku: string; locationCode: string; onHand: number; reserved: number; available: number }
+type TrendyolConnection = { id: string; platformCode: string; displayName: string; externalStoreId: string; status: string }
+type PublicationStatus = { productId: string; connectionId: string; profileId: string | null; desiredStatus: string | null; actualStatus: string | null; lastRejectionCode: string | null; lastJobId: string | null; lastJobStatus: string | null; lines: Array<{ variantId: string; sku: string; barcode: string | null; desiredStatus: string; actualStatus: string; rejectionCode: string | null }> }
+
+const key = () => crypto.randomUUID()
+const ErrorBox = ({ error }: { error: unknown }) => error ? <div className="error" role="alert">{error instanceof Error ? error.message : 'Ýþlem tamamlanamadý.'}</div> : null
+function LocalImagePreview({ file, alt, caption }: { file: File, alt: string, caption: string }) { const [url, setUrl] = useState(''); useEffect(() => { const objectUrl = URL.createObjectURL(file); setUrl(objectUrl); return () => URL.revokeObjectURL(objectUrl); }, [file]); return <figure><img src={url} alt={alt} /><figcaption>{caption}</figcaption></figure> }
+const Tag = ({ children }: { children: ReactNode }) => <span className="tag">{children}</span>
+
