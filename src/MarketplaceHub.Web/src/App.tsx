@@ -50,73 +50,92 @@ function Login() {
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget); try { await api('/login', { method: 'POST', body: JSON.stringify({ email: data.get('email'), password: data.get('password') }) }); await client.invalidateQueries({ queryKey: ['me'] }); navigate('/dashboard') } catch (reason) { setError(reason instanceof Error ? reason.message : 'Giriş başarısız.') } finally { setLoading(false) } }
 
   return (
-    <div className="nx-wrapper">
-      {/* Ambient Animated Orbs */}
-      <div className="nx-orb nx-orb-1"></div>
-      <div className="nx-orb nx-orb-2"></div>
-      <div className="nx-orb nx-orb-3"></div>
+    <div className="rv-page">
+      {/* Background is handled by CSS using the pack's login-background */}
+      
+      {/* SVG Connecting Lines exactly like the mockup */}
+      <svg className="rv-lines" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" fill="none">
+         <defs>
+            <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <linearGradient id="grad-left" x1="100%" y1="0%" x2="0%" y2="0%"><stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" /><stop offset="100%" stopColor="#06b6d4" stopOpacity="0.2" /></linearGradient>
+            <linearGradient id="grad-right" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" /><stop offset="100%" stopColor="#06b6d4" stopOpacity="0.2" /></linearGradient>
+         </defs>
 
-      {/* Floating Background Icons */}
-      <div className="nx-float nx-f1"><img src="/pack/marketplace/logos/trendyol-logo-transparent.png" alt="Trendyol" /></div>
-      <div className="nx-float nx-f2"><img src="/pack/marketplace/logos/amazon-logo-transparent.png" alt="Amazon" /></div>
-      <div className="nx-float nx-f3"><img src="/pack/marketplace/logos/hepsiburada-logo-transparent.png" alt="Hepsiburada" /></div>
-      <div className="nx-float nx-f4"><img src="/pack/marketplace/logos/shopify-logo-transparent.png" alt="Shopify" /></div>
-      <div className="nx-float nx-f5"><img src="/pack/marketplace/logos/n11-logo-transparent.png" alt="n11" /></div>
+         {/* Left Side Lines */}
+         <path d="M 720 540 C 600 540, 500 280, 360 280" stroke="url(#grad-left)" strokeWidth="2" filter="url(#glow)" />
+         <path d="M 720 540 C 600 540, 550 440, 360 440" stroke="url(#grad-left)" strokeWidth="2" filter="url(#glow)" />
+         <path d="M 720 540 C 600 540, 550 640, 360 640" stroke="url(#grad-left)" strokeWidth="2" filter="url(#glow)" />
+         <path d="M 720 540 C 600 540, 500 800, 360 800" stroke="url(#grad-left)" strokeWidth="2" filter="url(#glow)" />
 
-      <div className="nx-glass-card nx-slide-up">
-        <div className="nx-header nx-stagger-1">
-          <div className="nx-logo-ring">
-             <img src="/pack/brand/ravencia-symbol-transparent.png" alt="Ravencia" className="nx-logo" />
-          </div>
-          <h2 className="nx-title">RAVENCIA</h2>
-          <p className="nx-subtitle">Akıllı Entegrasyon Ağı</p>
-        </div>
+         {/* Right Side Lines */}
+         <path d="M 1200 540 C 1320 540, 1420 280, 1560 280" stroke="url(#grad-right)" strokeWidth="2" filter="url(#glow)" />
+         <path d="M 1200 540 C 1320 540, 1370 480, 1560 480" stroke="url(#grad-right)" strokeWidth="2" filter="url(#glow)" />
+         <path d="M 1200 540 C 1320 540, 1370 680, 1560 680" stroke="url(#grad-right)" strokeWidth="2" filter="url(#glow)" />
+         
+         {/* Dots at connection points */}
+         <circle cx="360" cy="280" r="4" fill="#60a5fa" filter="url(#glow)" />
+         <circle cx="360" cy="440" r="4" fill="#60a5fa" filter="url(#glow)" />
+         <circle cx="360" cy="640" r="4" fill="#60a5fa" filter="url(#glow)" />
+         <circle cx="360" cy="800" r="4" fill="#60a5fa" filter="url(#glow)" />
+         <circle cx="1560" cy="280" r="4" fill="#60a5fa" filter="url(#glow)" />
+         <circle cx="1560" cy="480" r="4" fill="#60a5fa" filter="url(#glow)" />
+         <circle cx="1560" cy="680" r="4" fill="#60a5fa" filter="url(#glow)" />
+      </svg>
 
-        <form onSubmit={submit} className="nx-form">
-          <div className="nx-input-group nx-stagger-2">
-            <input name="email" type="email" required placeholder=" " className="nx-input nx-peer" />
-            <label className="nx-label">E-posta Adresi</label>
-            <div className="nx-input-glow"></div>
-            <svg className="nx-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          </div>
+      {/* Pre-rendered Platform Cards positioned perfectly */}
+      <img src="/pack/marketplace/cards/trendyol-card.png" className="rv-card rv-l1" alt="Trendyol" />
+      <img src="/pack/marketplace/cards/hepsiburada-card.png" className="rv-card rv-l2" alt="Hepsiburada" />
+      <img src="/pack/marketplace/cards/n11-card.png" className="rv-card rv-l3" alt="N11" />
+      <img src="/pack/marketplace/cards/pazarama-card.png" className="rv-card rv-l4" alt="Pazarama" />
+      
+      <img src="/pack/marketplace/cards/pttavm-card.png" className="rv-card rv-r1" alt="PttAVM" />
+      <img src="/pack/marketplace/cards/trendyol-efaturam-card.png" className="rv-card rv-r2" alt="Trendyol e-Faturam" />
+      <img src="/pack/marketplace/cards/shopify-card.png" className="rv-card rv-r3" alt="Shopify" />
 
-          <div className="nx-input-group nx-stagger-3">
-            <input name="password" type={showPw ? 'text' : 'password'} required placeholder=" " className="nx-input nx-peer" />
-            <label className="nx-label">Şifre</label>
-            <div className="nx-input-glow"></div>
-            <svg className="nx-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-            <button type="button" className="nx-eye-btn" onClick={() => setShowPw(!showPw)}>
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">{showPw ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" /><path d="M1 1l22 22" /></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>}</svg>
+      {/* Center Login Card matching mockup exactly */}
+      <div className="rv-login-card">
+         <div className="rv-logo-area">
+            <img src="/pack/brand/ravencia-symbol-transparent.png" alt="Ravencia Symbol" className="rv-center-logo" />
+            <img src="/pack/brand/ravencia-wordmark-transparent.png" alt="RAVENCIA" className="rv-wordmark" />
+            <h2 className="rv-greeting">Hoş Geldiniz</h2>
+            <p className="rv-subgreeting">Pazaryeri entegrasyon panelinize giriş yapın</p>
+         </div>
+
+         <form onSubmit={submit} className="rv-form">
+            <div className="rv-input-wrap">
+               <svg className="rv-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+               <input name="email" type="email" required placeholder="Kullanıcı Adı" />
+            </div>
+
+            <div className="rv-input-wrap">
+               <svg className="rv-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+               <input name="password" type={showPw ? 'text' : 'password'} required placeholder="Şifre" />
+               <button type="button" className="rv-eye" onClick={() => setShowPw(!showPw)}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">{showPw ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" /><path d="M1 1l22 22" /></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>}</svg>
+               </button>
+            </div>
+
+            <div className="rv-meta">
+               <label className="rv-remember">
+                  <div className="rv-checkbox"><input type="checkbox" /><div className="rv-chk-bg"></div></div>
+                  <span>Beni Hatırla</span>
+               </label>
+               <a href="#" className="rv-forgot">Şifremi Unuttum?</a>
+            </div>
+
+            {error && <div className="rv-error">{error}</div>}
+
+            <button type="submit" disabled={loading} className="rv-submit">
+               {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
             </button>
-          </div>
 
-          <div className="nx-actions nx-stagger-4">
-            <label className="nx-checkbox-wrap">
-              <input type="checkbox" />
-              <div className="nx-checkbox-box">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              </div>
-              <span>Oturumu açık tut</span>
-            </label>
-            <a href="#" className="nx-forgot">Şifremi Unuttum</a>
-          </div>
+            <div className="rv-divider"><span>veya</span></div>
 
-          {error && <div className="nx-error nx-stagger-4">{error}</div>}
-
-          <button type="submit" disabled={loading} className="nx-submit-btn nx-stagger-5">
-            <span className="nx-submit-text">{loading ? 'Ağa Bağlanıyor...' : 'Sisteme Giriş Yap'}</span>
-            <div className="nx-shimmer"></div>
-          </button>
-
-          <div className="nx-divider nx-stagger-6">
-            <span>veya</span>
-          </div>
-
-          <button type="button" className="nx-google-btn nx-stagger-6">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 001 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-            Google Authenticator
-          </button>
-        </form>
+            <button type="button" className="rv-google-btn">
+               <svg viewBox="0 0 24 24" width="16" height="16"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 001 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+               Google Authenticator ile Giriş
+            </button>
+         </form>
       </div>
     </div>
   );

@@ -12,383 +12,276 @@ form { display: grid; gap: 1rem; margin-top: 1.6rem; } label { display: grid; ga
 .auth-login-page { position:relative; min-height:100vh; overflow:hidden; background-color:#03040b; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
 
 /* ─── Login Page (Radial Network Layout) ─── */
-/* ─── NexGen Animated Login Page ─── */
-.nx-wrapper {
+/* ─── Login Page (Mockup Reference Layout) ─── */
+.rv-page {
   position: relative;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #020617; /* Very dark slate */
+  background-color: #030a1c; /* Very deep blue fallback */
+  background-image: url('/pack/backgrounds/login-background-1920x1080.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   overflow: hidden;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  color: #f8fafc;
+  color: #fff;
 }
 
-/* Ambient Animated Orbs */
-.nx-orb {
+/* SVG Connection Lines */
+.rv-lines {
   position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.5;
-  animation: orbDrift 20s infinite alternate ease-in-out;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
   pointer-events: none;
 }
-.nx-orb-1 {
-  width: 40vw; height: 40vw;
-  background: #3b82f6; /* Blue */
-  top: -10%; left: -10%;
-  animation-duration: 25s;
-}
-.nx-orb-2 {
-  width: 35vw; height: 35vw;
-  background: #8b5cf6; /* Purple */
-  bottom: -20%; right: -10%;
-  animation-duration: 22s;
-  animation-delay: -5s;
-}
-.nx-orb-3 {
-  width: 30vw; height: 30vw;
-  background: #06b6d4; /* Cyan */
-  top: 40%; left: 60%;
-  animation-duration: 28s;
-  animation-delay: -10s;
-}
 
-@keyframes orbDrift {
-  0% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(5vw, 5vh) scale(1.1); }
-  100% { transform: translate(-5vw, -5vh) scale(0.9); }
-}
-
-/* Floating Background Icons */
-.nx-float {
+/* Platform Image Cards */
+.rv-card {
   position: absolute;
-  opacity: 0.15;
-  filter: grayscale(100%);
-  animation: floatIcon 12s infinite ease-in-out alternate;
-  pointer-events: none;
+  z-index: 5;
+  width: auto;
+  height: 80px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 20px rgba(0,0,0,0.6));
+  transition: transform 0.2s ease;
 }
-.nx-float img { height: 24px; width: auto; }
-.nx-f1 { top: 20%; left: 15%; animation-delay: 0s; }
-.nx-f2 { top: 15%; right: 20%; animation-delay: -2s; }
-.nx-f3 { bottom: 25%; left: 25%; animation-delay: -4s; }
-.nx-f4 { bottom: 20%; right: 15%; animation-delay: -6s; }
-.nx-f5 { top: 50%; left: 5%; animation-delay: -8s; }
-
-@keyframes floatIcon {
-  0% { transform: translateY(0) rotate(0deg); opacity: 0.1; }
-  100% { transform: translateY(-30px) rotate(10deg); opacity: 0.25; filter: grayscale(50%); }
+.rv-card:hover {
+  transform: scale(1.05);
 }
 
-/* Glass Card & Entrance Animation */
-.nx-glass-card {
+/* Radial Positions */
+/* Left side: Trendyol, Hepsiburada, N11, Pazarama */
+.rv-l1 { top: 20%; right: calc(50% + 220px + 60px); }
+.rv-l2 { top: 35%; right: calc(50% + 220px + 100px); }
+.rv-l3 { top: 54%; right: calc(50% + 220px + 100px); }
+.rv-l4 { top: 69%; right: calc(50% + 220px + 60px); }
+
+/* Right side: PttAVM, Trendyol E-faturam, Shopify */
+.rv-r1 { top: 20%; left: calc(50% + 220px + 60px); }
+.rv-r2 { top: 38%; left: calc(50% + 220px + 100px); }
+.rv-r3 { top: 57%; left: calc(50% + 220px + 100px); }
+
+/* Center Login Card */
+.rv-login-card {
   position: relative;
   z-index: 10;
-  width: 100%;
-  max-width: 400px;
-  background: rgba(15, 23, 42, 0.4);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 24px;
-  padding: 40px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-.nx-slide-up {
-  animation: slideUpFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-@keyframes slideUpFade {
-  from { opacity: 0; transform: translateY(40px); }
-  to { opacity: 1; transform: translateY(0); }
+  width: 440px;
+  background: rgba(10, 18, 35, 0.7);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(49, 89, 135, 0.5);
+  border-radius: 12px;
+  padding: 48px 40px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(59, 130, 246, 0.1);
 }
 
-/* Staggered Children Entrance */
-.nx-stagger-1 { opacity: 0; animation: fadeIn 0.6s 0.2s forwards; }
-.nx-stagger-2 { opacity: 0; animation: fadeIn 0.6s 0.3s forwards; }
-.nx-stagger-3 { opacity: 0; animation: fadeIn 0.6s 0.4s forwards; }
-.nx-stagger-4 { opacity: 0; animation: fadeIn 0.6s 0.5s forwards; }
-.nx-stagger-5 { opacity: 0; animation: fadeIn 0.6s 0.6s forwards; }
-.nx-stagger-6 { opacity: 0; animation: fadeIn 0.6s 0.7s forwards; }
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* Header & Logo */
-.nx-header {
+/* Logo Area */
+.rv-logo-area {
   text-align: center;
   margin-bottom: 32px;
 }
-.nx-logo-ring {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
-  border: 1px solid rgba(255,255,255,0.1);
-  margin-bottom: 16px;
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
-  animation: pulseGlow 4s infinite alternate;
+.rv-center-logo {
+  width: 70px;
+  object-fit: contain;
+  margin: 0 auto 12px;
 }
-@keyframes pulseGlow {
-  0% { box-shadow: 0 0 15px rgba(59, 130, 246, 0.2); }
-  100% { box-shadow: 0 0 30px rgba(139, 92, 246, 0.5); }
+.rv-wordmark {
+  width: 140px;
+  object-fit: contain;
+  margin: 0 auto 16px;
+  display: block;
 }
-.nx-logo {
-  width: 40px;
-  height: auto;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
-}
-.nx-title {
+.rv-greeting {
   font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: 4px;
-  margin: 0 0 4px;
-  background: linear-gradient(to right, #fff, #94a3b8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  font-weight: 500;
+  color: #f1f5f9;
+  margin: 0 0 6px;
+  letter-spacing: 0.5px;
 }
-.nx-subtitle {
+.rv-subgreeting {
   font-size: 0.75rem;
-  color: #64748b;
-  letter-spacing: 1px;
-  text-transform: uppercase;
+  color: #94a3b8;
   margin: 0;
 }
 
 /* Form Styles */
-.nx-form {
+.rv-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
-
-/* Floating Label Inputs */
-.nx-input-group {
+.rv-input-wrap {
   position: relative;
   display: flex;
   align-items: center;
 }
-.nx-input {
-  width: 100%;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 16px 16px 16px 44px;
-  color: #f8fafc;
-  font-size: 0.95rem;
-  outline: none;
-  transition: all 0.3s ease;
-}
-.nx-input:focus {
-  border-color: rgba(59, 130, 246, 0.5);
-  background: rgba(15, 23, 42, 0.8);
-}
-.nx-label {
-  position: absolute;
-  left: 44px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #64748b;
-  font-size: 0.95rem;
-  pointer-events: none;
-  transition: all 0.2s ease;
-}
-/* Move label up on focus or when not empty (using placeholder-shown trick with whitespace placeholder) */
-.nx-input:focus ~ .nx-label,
-.nx-input:not(:placeholder-shown) ~ .nx-label {
-  top: -10px;
-  left: 12px;
-  font-size: 0.75rem;
-  color: #3b82f6;
-  background: #0a0f1e; /* matches ambient dark behind it */
-  padding: 0 8px;
-  border-radius: 4px;
-}
-.nx-input-icon {
+.rv-input-icon {
   position: absolute;
   left: 14px;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   color: #64748b;
-  transition: color 0.3s;
 }
-.nx-input:focus ~ .nx-input-icon {
-  color: #3b82f6;
+.rv-input-wrap input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 14px 14px 14px 40px;
+  color: #f8fafc;
+  font-size: 0.85rem;
+  outline: none;
+  transition: all 0.2s;
 }
-.nx-eye-btn {
+.rv-input-wrap input:focus {
+  border-color: rgba(59, 130, 246, 0.6);
+  background: rgba(0, 0, 0, 0.4);
+}
+.rv-input-wrap input::placeholder {
+  color: #64748b;
+}
+.rv-eye {
   position: absolute;
   right: 14px;
+  width: 16px;
+  height: 16px;
   background: none;
   border: none;
   color: #64748b;
   cursor: pointer;
-  padding: 4px;
+  padding: 0;
   display: flex;
-  transition: color 0.2s;
 }
-.nx-eye-btn:hover {
-  color: #f8fafc;
-}
-.nx-input-glow {
-  position: absolute;
-  inset: -1px;
-  border-radius: 13px;
-  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #3b82f6);
-  z-index: -1;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-.nx-input:focus ~ .nx-input-glow {
-  opacity: 0.5;
-  filter: blur(4px);
+.rv-eye:hover {
+  color: #94a3b8;
 }
 
-/* Form Actions */
-.nx-actions {
+.rv-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   margin-top: -4px;
 }
-.nx-checkbox-wrap {
+.rv-remember {
   display: flex;
   align-items: center;
   gap: 8px;
+  color: #cbd5e1;
   cursor: pointer;
-  color: #94a3b8;
-  user-select: none;
 }
-.nx-checkbox-wrap input {
-  display: none;
+.rv-checkbox {
+  position: relative;
+  width: 16px;
+  height: 16px;
 }
-.nx-checkbox-box {
-  width: 18px;
-  height: 18px;
-  border: 1px solid rgba(255,255,255,0.2);
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.rv-checkbox input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+.rv-chk-bg {
+  position: absolute;
+  top: 0; left: 0;
+  height: 16px; width: 16px;
+  background-color: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
   transition: all 0.2s;
 }
-.nx-checkbox-box svg {
-  width: 12px; height: 12px;
-  stroke-dasharray: 24;
-  stroke-dashoffset: 24;
-  transition: stroke-dashoffset 0.3s ease;
+.rv-checkbox input:checked ~ .rv-chk-bg {
+  background-color: #2563eb;
+  border-color: #2563eb;
 }
-.nx-checkbox-wrap input:checked + .nx-checkbox-box {
-  background: #3b82f6;
-  border-color: #3b82f6;
+.rv-checkbox input:checked ~ .rv-chk-bg:after {
+  content: '';
+  position: absolute;
+  left: 5px; top: 1px;
+  width: 4px; height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
-.nx-checkbox-wrap input:checked + .nx-checkbox-box svg {
-  stroke-dashoffset: 0;
-}
-.nx-forgot {
-  color: #94a3b8;
+
+.rv-forgot {
+  color: #3b82f6;
   text-decoration: none;
   transition: color 0.2s;
 }
-.nx-forgot:hover {
-  color: #f8fafc;
+.rv-forgot:hover {
+  color: #60a5fa;
 }
 
-/* Submit Button */
-.nx-submit-btn {
-  position: relative;
-  width: 100%;
-  padding: 14px;
-  background: linear-gradient(90deg, #2563eb, #7c3aed);
-  border: none;
-  border-radius: 12px;
+.rv-error {
+  color: #ef4444;
+  font-size: 0.8rem;
+  text-align: center;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.rv-submit {
+  background: linear-gradient(to right, #4aa7ff, #1e40af);
   color: #fff;
-  font-weight: 600;
-  font-size: 0.95rem;
-  cursor: pointer;
-  overflow: hidden;
-  transition: transform 0.2s, box-shadow 0.2s;
-  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
-}
-.nx-submit-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.5);
-}
-.nx-submit-btn:active {
-  transform: translateY(0);
-}
-.nx-submit-text {
-  position: relative;
-  z-index: 2;
-}
-.nx-shimmer {
-  position: absolute;
-  top: 0; left: -100%;
-  width: 50%; height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-  transform: skewX(-20deg);
-  animation: shimmer 3s infinite;
-  z-index: 1;
-}
-@keyframes shimmer {
-  0% { left: -100%; }
-  20% { left: 200%; }
-  100% { left: 200%; }
-}
-
-/* Error */
-.nx-error {
-  color: #f87171;
-  font-size: 0.85rem;
-  text-align: center;
-  background: rgba(248, 113, 113, 0.1);
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(248, 113, 113, 0.2);
-}
-
-/* Divider */
-.nx-divider {
-  display: flex;
-  align-items: center;
-  text-align: center;
-  color: #475569;
-  font-size: 0.75rem;
-  letter-spacing: 1px;
-}
-.nx-divider::before, .nx-divider::after {
-  content: '';
-  flex: 1;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-.nx-divider span {
-  padding: 0 16px;
-}
-
-/* Secondary Button */
-.nx-google-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 12px;
-  color: #cbd5e1;
+  border: none;
+  border-radius: 6px;
+  padding: 14px;
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
 }
-.nx-google-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
+.rv-submit:hover {
+  background: linear-gradient(to right, #3b82f6, #1d4ed8);
+}
+
+.rv-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.7rem;
+  margin: 4px 0;
+}
+.rv-divider::before, .rv-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.rv-divider span {
+  padding: 0 12px;
+}
+
+.rv-google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 12px;
+  color: #cbd5e1;
+  font-size: 0.8rem;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.rv-google-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+@media (max-width: 1024px) {
+  .rv-card { display: none; }
+  .rv-lines { display: none; }
 }
 
 
