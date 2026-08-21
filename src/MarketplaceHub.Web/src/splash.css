@@ -1137,3 +1137,54 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
   color: #fff !important;
 }
 
+/* Courier Selection Modal Dark Theme */
+.courier-change-modal {
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  color: var(--rv-ink) !important;
+}
+.courier-change-modal header h2, .courier-change-modal h3 {
+  color: var(--rv-ink) !important;
+}
+.courier-change-modal header p, .courier-change-modal .courier-description {
+  color: var(--rv-muted) !important;
+}
+.courier-options {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  padding: 0 24px !important;
+}
+.courier-options label, .carrier-card {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-height: 52px !important;
+  padding: 10px 14px !important;
+  color: var(--rv-ink) !important;
+  background: var(--rv-bg) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: var(--rv-radius-sm) !important;
+  font-size: 0.84rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+.courier-options label:hover, .carrier-card:hover {
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-line-strong) !important;
+}
+.courier-options label.selected, .carrier-card.selected {
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-primary) !important;
+  color: #fff !important;
+  box-shadow: 0 0 0 1px var(--rv-primary), 0 4px 12px rgba(99, 102, 241, 0.2) !important;
+}
+.courier-options input[type="radio"] {
+  accent-color: var(--rv-primary) !important;
+  width: 16px !important;
+  height: 16px !important;
+  cursor: pointer !important;
+}
+
+

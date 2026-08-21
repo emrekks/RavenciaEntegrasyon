@@ -178,9 +178,113 @@ function InvoiceUploadModal({ item, provider, onClose }: { item: Order; provider
   return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}><section className="workspace-modal invoice-upload-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-upload-title" onMouseDown={event => event.stopPropagation()}><header><h2 id="invoice-upload-title">Fatura Yükle</h2><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat">×</button></header>{detail.isError ? <ErrorBox error={detail.error} /> : <><label className={`invoice-dropzone${dragging ? ' dragging' : ''}`} onDragEnter={event => { event.preventDefault(); setDragging(true) }} onDragOver={event => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files[0]) }}><input type="file" accept=".pdf,.jpeg,.jpg,.png,application/pdf,image/jpeg,image/png" onChange={event => choose(event.target.files?.[0])} /><span className="invoice-upload-icon" aria-hidden="true">⇧</span><strong>{file ? file.name : 'Fatura Dosyası Yükle'}</strong><small>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'Dosyanızı seçin ya da bu alana sürükleyin.'}</small><b>Dosya Seç</b></label>{message && <p className="error" role="alert">{message}</p>}<footer><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" disabled={!file || detail.isLoading || upload.isPending} onClick={() => upload.mutate()}>{upload.isPending ? 'Yükleniyor…' : 'Faturayı Yükle'}</button></footer></>}</section></div>
 }
 
+function customerDisplayName(item: Order) {
+  if (item.customerName && item.customerName !== '—' && item.customerName.trim() !== '') return item.customerName
+  const ship = safeJson(item.shipmentAddressJson)
+  const shipData = ([ship.shipmentAddress, ship.address, ship].find(x => x && typeof x === 'object') ?? ship) as Record<string, unknown>
+  const shipParts = [shipData.firstName ?? shipData.shippingFirstName, shipData.lastName ?? shipData.shippingLastName].filter(meaningfulText)
+  const shipName = shipParts.length ? shipParts.join(' ') : (shipData.fullName as string) ?? (shipData.name as string)
+  if (shipName && shipName.trim()) return shipName.trim()
+  const inv = safeJson(item.invoiceAddressJson)
+  const invData = ([inv.invoiceAddress, inv.address, inv].find(x => x && typeof x === 'object') ?? inv) as Record<string, unknown>
+  const invParts = [invData.firstName ?? invData.invoiceFirstName, invData.lastName ?? invData.invoiceLastName].filter(meaningfulText)
+  const invName = invParts.length ? invParts.join(' ') : (invData.fullName as string) ?? (invData.company as string) ?? (invData.name as string)
+  if (invName && invName.trim()) return invName.trim()
+  return '—'
+}
+
 function CourierChangeModal({ item, onClose }: { item: Order; onClose: () => void }) {
-  const carriers = ['Yurtiçi Kargo', 'Sürat Kargo', 'DHL eCommerce', 'PTT Kargo', 'Kolay Gelsin', 'Aras Kargo', 'Horoz Kargo', 'CEVA Logistics']
-  return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}><section className="workspace-modal courier-change-modal" role="dialog" aria-modal="true" aria-labelledby="courier-change-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="courier-change-title">Paketi hangi firma ile göndermek istiyorsunuz?</h2><p>Seçilen kargo firması için fiyat ve uygunluk bilgisi, işlem açılmadan önce doğrulanır.</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat">×</button></header><p className="courier-description"><strong>#{item.orderNumber}</strong> numaralı paket için kargo firması değişikliği şu anda yalnız ön izleme modunda gösterilir; hiçbir dış işlem başlatılmaz.</p><h3>Standart Kargo Firmaları <span>(0–30 desi)</span></h3><div className="courier-options">{carriers.map(carrier => <label key={carrier}><input type="radio" name="courier" disabled /><span>{carrier}</span></label>)}</div><footer><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" disabled>İşlemi Yap</button></footer></section></div>
+  const [selectedCarrier, setSelectedCarrier] = useState<string>('Yurtiçi Kargo')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
+  const client = useQueryClient()
+
+  const carriers = [
+    { label: 'Yurtiçi Kargo', code: 'YURTICI' },
+    { label: 'Sürat Kargo', code: 'SURAT' },
+    { label: 'DHL eCommerce', code: 'DHL' },
+    { label: 'PTT Kargo', code: 'PTT' },
+    { label: 'Kolay Gelsin', code: 'KOLAY_GELSIN' },
+    { label: 'Aras Kargo', code: 'ARAS' },
+    { label: 'Horoz Kargo', code: 'HOROZ' },
+    { label: 'CEVA Logistics', code: 'CEVA' }
+  ]
+
+  const shipment = item.packages?.[0]
+
+  async function handleCarrierChange() {
+    if (!shipment) {
+      setErrorMsg('Paket kaydı bulunamadı.')
+      return
+    }
+    const chosen = carriers.find(c => c.label === selectedCarrier)
+    if (!chosen) return
+    setIsSubmitting(true)
+    setErrorMsg('')
+    try {
+      await hubApi(`/shipments/${shipment.id}/actions`, {
+        method: 'POST',
+        headers: {
+          'Idempotency-Key': idempotency(),
+          'If-Match': `"v${shipment.version}"`
+        },
+        body: JSON.stringify({
+          action: 'CHANGE_CARGO_PROVIDER',
+          payloadJson: JSON.stringify({ cargoProvider: chosen.code })
+        })
+      })
+      await client.invalidateQueries({ queryKey: ['orders'] })
+      onClose()
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Kargo firması güncellenemedi.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section className="workspace-modal courier-change-modal" role="dialog" aria-modal="true" aria-labelledby="courier-change-title" onMouseDown={event => event.stopPropagation()}>
+        <header>
+          <div>
+            <h2 id="courier-change-title">Paketi hangi firma ile göndermek istiyorsunuz?</h2>
+            <p>Seçilen kargo firması Trendyol sistemine bildirilerek güncellenir.</p>
+          </div>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat">×</button>
+        </header>
+        <p className="courier-description">
+          <strong>#{item.orderNumber}</strong> numaralı paket için yeni kargo firması seçin:
+        </p>
+        <h3>Standart Kargo Firmaları <span>(0–30 desi)</span></h3>
+        <div className="courier-options">
+          {carriers.map(carrier => (
+            <label
+              key={carrier.code}
+              className={selectedCarrier === carrier.label ? 'carrier-card selected' : 'carrier-card'}
+              onClick={() => setSelectedCarrier(carrier.label)}
+              style={{ cursor: 'pointer' }}
+            >
+              <input
+                type="radio"
+                name="courier"
+                value={carrier.label}
+                checked={selectedCarrier === carrier.label}
+                onChange={() => setSelectedCarrier(carrier.label)}
+              />
+              <span>{carrier.label}</span>
+            </label>
+          ))}
+        </div>
+        {errorMsg && <p className="error" role="alert" style={{ margin: '12px 24px 0' }}>{errorMsg}</p>}
+        <footer>
+          <button type="button" className="secondary" onClick={onClose} disabled={isSubmitting}>Vazgeç</button>
+          <button type="button" disabled={isSubmitting || !shipment} onClick={handleCarrierChange}>
+            {isSubmitting ? 'İşleniyor…' : 'İşlemi Yap'}
+          </button>
+        </footer>
+      </section>
+    </div>
+  )
 }
 
 function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, onInvoiceCreate, onInvoiceDetails, onInvoiceUpload, onCourierChange, onProcessOrder }: { item: Order; selected: boolean; onSelect: (checked: boolean) => void; openMenu: 'invoice' | 'actions' | null; onMenuChange: (value: 'invoice' | 'actions' | null) => void; onInvoiceCreate: () => void; onInvoiceDetails: () => void; onInvoiceUpload: () => void; onCourierChange: () => void; onProcessOrder: () => void }) {
@@ -206,7 +310,7 @@ function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, o
     <div className="order-reference-grid">
       <label className="order-select"><input type="checkbox" checked={selected} onChange={event => onSelect(event.target.checked)} aria-label={`Sipariş ${item.orderNumber} seç`} /></label>
       <div className="order-reference-meta"><div className="order-number"><strong><i className="order-package-mark" aria-hidden="true" />#{item.orderNumber}</strong><button type="button" className="order-number-copy" onClick={copyOrderNumber} aria-label={`Sipariş numarası ${item.orderNumber} kopyala`} title={copied ? 'Kopyalandı' : 'Sipariş numarasını kopyala'}><span className="copy-icon" aria-hidden="true" /></button></div><small>Sipariş Tarihi: <DateText value={item.orderedAt} /></small><small>Paket No: {shipment?.externalPackageId ?? 'Bekleniyor'}</small><small>Teslimat No: {shipment?.cargoTrackingNumber ?? 'Bekleniyor'}</small><span className={delivery.overdue ? 'delivery-overdue' : ''}>{delivery.label && <>{delivery.label}: </>}<b>{delivery.value}</b>{delivery.note && <em>{delivery.note}</em>}</span></div>
-      <div className="order-reference-buyer"><strong>{item.customerName}</strong></div>
+      <div className="order-reference-buyer"><strong>{customerDisplayName(item)}</strong></div>
       <div className="order-reference-products">{lines.length ? lines.map(line => { const imageUrl = line.imageUrl ?? item.primaryImageUrl; return <article key={line.id}><span className="reference-product-media">{imageUrl ? <button type="button" className="product-image-button" onClick={() => setPreviewImage({ url: imageUrl, title: line.title })} aria-label={`${line.title} görselini büyüt`}><img src={imageUrl} alt={`${line.title} ürün görseli`} /></button> : <span className="reference-product-placeholder" aria-label="Ürün görseli eşleştirmesi bekleniyor">▧</span>}<b className="quantity-bubble">{line.orderedQuantity}</b></span><div><strong>{line.title}</strong><small>Stok Kodu: {line.sku}</small>{optionRows(line.optionSignature).map(option => <small key={`${option.label}:${option.value}`}>{option.label}: {option.value}</small>)}<small>Barkod: {line.barcode ?? '—'}</small><small>Model Kodu: {line.modelCode ?? '—'}</small></div></article> }) : <div className="reference-no-product">Ürün bilgisi eşitleme bekliyor</div>}</div>
       <div className="order-reference-prices">{lines.length ? lines.map(line => <strong key={line.id}>{money(line.unitPrice)}</strong>) : <strong>{money(item.netAmount)}</strong>}</div>
       <div className="order-reference-cargo"><strong>{shipment?.cargoProviderName ?? item.cargoProviderName ?? 'Kargo bekleniyor'}</strong><b>{shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? 'Takip no bekleniyor'}</b></div>

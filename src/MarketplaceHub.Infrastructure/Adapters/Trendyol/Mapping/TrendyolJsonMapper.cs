@@ -12,7 +12,7 @@ public static class TrendyolJsonMapper
         var rows = new List<RemoteOrder>();
         foreach (var package in Content(root))
         {
-            var externalPackageId = Text(package, "shipmentPackageId"); var orderNumber = Text(package, "orderNumber");
+            var externalPackageId = Text(package, "id", "shipmentPackageId", "packageId"); var orderNumber = Text(package, "orderNumber");
             if (string.IsNullOrWhiteSpace(externalPackageId) || string.IsNullOrWhiteSpace(orderNumber)) continue;
             var lines = new List<RemoteOrderLine>(); var allocations = new List<RemotePackageAllocation>();
             if (package.TryGetProperty("lines", out var lineArray) && lineArray.ValueKind == JsonValueKind.Array)
@@ -29,14 +29,10 @@ public static class TrendyolJsonMapper
             var discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
             var net = Decimal(package, "packageTotalPrice", "totalPrice");
             var rawStatusPackage = Text(package, "shipmentPackageStatus", "status"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
-            var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net);
+            var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net);
             rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
-                Snapshot(package,
-                    "customerFirstName", "customerLastName", "customerEmail", "customerPhone", "customerPhoneNumber", "phone", "phoneNumber", "commercial", "micro", "microExport", "3pByTrendyol", "shipmentPackageType", "orderType", "eInvoiceAvailable", "isEInvoice",
-                    "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber",
-                    "estimatedDeliveryStartDate", "estimatedDeliveryEndDate", "agreedDeliveryDate", "lastDeliveryDate", "deliveryDate", "fastDelivery",
-                    "cargoProviderName", "cargoTrackingNumber", "cargoSenderNumber", "invoiceStatus", "invoiceNumber", "invoiceLink", "invoiceRejectedReasonKeys"),
-                Snapshot(package, "shipmentAddress"), Snapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText()));
+                CustomerSnapshot(package),
+                ObjectSnapshot(package, "shipmentAddress"), ObjectSnapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText()));
         }
         return new(rows, NullText(root, "nextCursor"), Bool(root, "hasMore"));
     }
@@ -139,7 +135,6 @@ public static class TrendyolJsonMapper
         return new(rows, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore);
     }
 
-
     public static IReadOnlyList<ReturnIssueReason> ReturnIssueReasons(string json)
     {
         using var document = JsonDocument.Parse(json); var root = document.RootElement; var rows = new List<ReturnIssueReason>();
@@ -234,6 +229,30 @@ public static class TrendyolJsonMapper
     private static string? ClaimReasonText(JsonElement claim) => NestedReason(claim, "name");
     private static string? NestedReason(JsonElement claim, string field) { foreach (var item in ClaimItems(claim)) if (item.TryGetProperty("customerClaimItemReason", out var reason)) return NullText(reason, field); return null; }
     private static string Snapshot(JsonElement value, params string[] fields) { var map = new Dictionary<string, JsonElement>(); foreach (var field in fields) if (value.TryGetProperty(field, out var item)) map[field] = item.Clone(); return JsonSerializer.Serialize(map); }
+    private static string ObjectSnapshot(JsonElement value, string field) { if (value.TryGetProperty(field, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.GetRawText(); return "{}"; }
+    private static string CustomerSnapshot(JsonElement package)
+    {
+        var map = new Dictionary<string, JsonElement>();
+        var fields = new[]
+        {
+            "customerFirstName", "customerLastName", "customerEmail", "customerPhone", "customerPhoneNumber", "phone", "phoneNumber", "commercial", "micro", "microExport", "3pByTrendyol", "shipmentPackageType", "orderType", "eInvoiceAvailable", "isEInvoice",
+            "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber",
+            "estimatedDeliveryStartDate", "estimatedDeliveryEndDate", "agreedDeliveryDate", "lastDeliveryDate", "deliveryDate", "fastDelivery",
+            "cargoProviderName", "cargoTrackingNumber", "cargoSenderNumber", "invoiceStatus", "invoiceNumber", "invoiceLink", "invoiceRejectedReasonKeys"
+        };
+        foreach (var field in fields) if (package.TryGetProperty(field, out var item)) map[field] = item.Clone();
+        if ((!map.ContainsKey("customerFirstName") || string.IsNullOrWhiteSpace(map["customerFirstName"].ToString())) && package.TryGetProperty("shipmentAddress", out var sa))
+        {
+            if (sa.TryGetProperty("firstName", out var fn)) map["customerFirstName"] = fn.Clone();
+            if (sa.TryGetProperty("lastName", out var ln)) map["customerLastName"] = ln.Clone();
+        }
+        if ((!map.ContainsKey("customerFirstName") || string.IsNullOrWhiteSpace(map["customerFirstName"].ToString())) && package.TryGetProperty("invoiceAddress", out var ia))
+        {
+            if (ia.TryGetProperty("firstName", out var fn)) map["customerFirstName"] = fn.Clone();
+            if (ia.TryGetProperty("lastName", out var ln)) map["customerLastName"] = ln.Clone();
+        }
+        return JsonSerializer.Serialize(map);
+    }
     private static string? FirstArrayText(JsonElement value, string field) => value.TryGetProperty(field, out var array) && array.ValueKind == JsonValueKind.Array && array.GetArrayLength() > 0 ? array[0].ToString() : null;
     private static string Text(JsonElement value, params string[] names) => NullText(value, names) ?? "";
     private static string? NullText(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.ToString(); return null; }
