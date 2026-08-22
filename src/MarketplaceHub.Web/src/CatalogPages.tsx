@@ -486,13 +486,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
 
   function updateField(name: keyof typeof form, value: string) { setForm(current => ({ ...current, [name]: value })) }
   function toggleAttributeValue(attributeId: string, valueId: string) {
-    const requirement = requirements.data?.find(item => item.attributeId === attributeId)
     setAttributeSelections(current => {
       const values = current[attributeId] ?? []
       if (values.includes(valueId)) return { ...current, [attributeId]: values.filter(item => item !== valueId) }
-      const variantAxis = variantAttributeIds.includes(attributeId)
-      const singleProductValue = requirement?.attribute.dataType === 'SINGLE_SELECT' && !variantAxis
-      return { ...current, [attributeId]: singleProductValue ? [valueId] : [...values, valueId] }
+      return { ...current, [attributeId]: [...values, valueId] }
     })
   }
   function toggleVariantAttribute(attributeId: string) {
@@ -694,7 +691,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                           className={`option-chip ${isSelected ? 'active' : ''}`}
                           onClick={() => toggleAttributeValue(item.attributeId, value.id)}
                         >
-                          {isSelected && <span className="chip-check" aria-hidden="true">✓ </span>}
                           {value.value}
                         </button>
                       )
