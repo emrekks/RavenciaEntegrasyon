@@ -5,10 +5,11 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IReturnPort returns, IPrivateFileStorage files, TimeProvider timeProvider) : IMarketplaceJobProcessor
+public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IReturnPort returns, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider) : IMarketplaceJobProcessor
 {
     // The payload deadline is the authoritative approval bound. The worker currently
     // applies exponential backoff, but this ceiling also keeps retry accounting from
@@ -927,6 +928,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> SyncOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
+        if (!configuration.GetValue("Marketplace:PersistOrderSnapshots", false))
+            return true;
+
         var productSnapshots = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var hydrationFallbackRecorded = false;
         string? externalOrderId = null;
@@ -1007,7 +1011,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         string raw; string externalMessageId; try { using var payload = JsonDocument.Parse(payloadJson); raw = payload.RootElement.GetProperty("rawJson").GetString() ?? ""; externalMessageId = payload.RootElement.GetProperty("externalMessageId").GetString() ?? ""; } catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException) { return false; }
         AdapterPageResult<RemoteOrder> page; try { page = TrendyolJsonMapper.Orders(raw); } catch (JsonException) { return false; }
-        foreach (var order in page.Items) await UpsertOrder(tenantId, connectionId, order, cancellationToken); var inbox = await db.InboxMessages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Source == "TRENDYOL_WEBHOOK" && x.ExternalMessageId == externalMessageId, cancellationToken); if (inbox is not null) inbox.ProcessedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return true;
+        if (configuration.GetValue("Marketplace:PersistOrderSnapshots", false))
+            foreach (var order in page.Items) await UpsertOrder(tenantId, connectionId, order, cancellationToken);
+        var inbox = await db.InboxMessages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Source == "TRENDYOL_WEBHOOK" && x.ExternalMessageId == externalMessageId, cancellationToken); if (inbox is not null) inbox.ProcessedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return true;
     }
 
     private async Task UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken)
