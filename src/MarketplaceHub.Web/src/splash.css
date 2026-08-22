@@ -1375,7 +1375,15 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
 }
 
 /* Product Image Preview Modal Fix */
+.product-image-backdrop {
+  z-index: 99999 !important;
+  position: fixed !important;
+  inset: 0 !important;
+}
+
 .product-image-modal {
+  z-index: 100000 !important;
+  position: relative !important;
   max-width: 540px !important;
   width: min(540px, 92vw) !important;
   max-height: 88vh !important;
@@ -1385,7 +1393,9 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
   flex-direction: column !important;
   overflow: hidden !important;
   border-radius: var(--rv-radius-md) !important;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6) !important;
 }
+
 
 .product-image-modal header {
   padding: 16px 20px !important;
