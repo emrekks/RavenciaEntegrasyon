@@ -449,7 +449,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     internal static bool IsLegacyTrendyolExportPartner(string name) =>
         name.Contains("PM3", StringComparison.OrdinalIgnoreCase) && name.Contains("ARVATO", StringComparison.OrdinalIgnoreCase);
 
-    private static DateTimeOffset? OperationalDueAt(string json) => JsonInstant(json, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate");
+    private static DateTimeOffset? OperationalDueAt(string json) =>
+        JsonInstant(json, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
 
     private static string InvoiceLabel(Invoice? invoice, string customerJson)
     {

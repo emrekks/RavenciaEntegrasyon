@@ -233,14 +233,11 @@ public static class TrendyolJsonMapper
     private static string CustomerSnapshot(JsonElement package)
     {
         var map = new Dictionary<string, JsonElement>();
-        var fields = new[]
+        if (package.ValueKind == JsonValueKind.Object)
         {
-            "customerFirstName", "customerLastName", "customerEmail", "customerPhone", "customerPhoneNumber", "phone", "phoneNumber", "commercial", "micro", "microExport", "3pByTrendyol", "shipmentPackageType", "orderType", "eInvoiceAvailable", "isEInvoice",
-            "customerTaxNumber", "taxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber",
-            "estimatedDeliveryStartDate", "estimatedDeliveryEndDate", "agreedDeliveryDate", "lastDeliveryDate", "deliveryDate", "fastDelivery",
-            "cargoProviderName", "cargoTrackingNumber", "cargoSenderNumber", "invoiceStatus", "invoiceNumber", "invoiceLink", "invoiceRejectedReasonKeys"
-        };
-        foreach (var field in fields) if (package.TryGetProperty(field, out var item)) map[field] = item.Clone();
+            foreach (var prop in package.EnumerateObject())
+                map[prop.Name] = prop.Value.Clone();
+        }
         if ((!map.ContainsKey("customerFirstName") || string.IsNullOrWhiteSpace(map["customerFirstName"].ToString())) && package.TryGetProperty("shipmentAddress", out var sa))
         {
             if (sa.TryGetProperty("firstName", out var fn)) map["customerFirstName"] = fn.Clone();
@@ -253,6 +250,7 @@ public static class TrendyolJsonMapper
         }
         return JsonSerializer.Serialize(map);
     }
+
     private static string? FirstArrayText(JsonElement value, string field) => value.TryGetProperty(field, out var array) && array.ValueKind == JsonValueKind.Array && array.GetArrayLength() > 0 ? array[0].ToString() : null;
     private static string Text(JsonElement value, params string[] names) => NullText(value, names) ?? "";
     private static string? NullText(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.ToString(); return null; }
