@@ -216,6 +216,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
+        var hasOperationalTrendyol = await db.PlatformConnections.AsNoTracking()
+            .AnyAsync(x => x.TenantId == tenantId
+                && x.PlatformCode == "TRENDYOL"
+                && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
+        if (!hasOperationalTrendyol) return new([], null, false);
+
         var afterId = Decode(after);
         var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId);
         if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
