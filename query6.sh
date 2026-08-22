@@ -1,1 +1,0 @@
-﻿sudo docker exec marketplacehub-postgres-1 psql -U marketplacehub -d marketplacehub -c "SELECT \"RawStatus\" FROM sales.shipment_packages WHERE \"OrderId\" = (SELECT \"Id\" FROM sales.orders WHERE \"OrderNumber\" = '1254185617');"
