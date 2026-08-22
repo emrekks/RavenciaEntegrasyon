@@ -571,14 +571,52 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     private static DateTimeOffset? JsonInstant(string json, params string[] names)
     {
-        var value = JsonText(json, names);
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        if (long.TryParse(value, out var milliseconds))
+        try
         {
-            try { return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds); } catch (ArgumentOutOfRangeException) { }
+            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
+            var namesSet = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
+            return FindInstant(document.RootElement, namesSet);
         }
-        return DateTimeOffset.TryParse(value, out var parsed) ? parsed : null;
+        catch (JsonException) { return null; }
     }
+
+    private static DateTimeOffset? FindInstant(JsonElement element, HashSet<string> names)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (names.Contains(property.Name))
+                {
+                    if (property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetInt64(out var num) && num > 0)
+                    {
+                        try { return DateTimeOffset.FromUnixTimeMilliseconds(num); } catch (ArgumentOutOfRangeException) { }
+                    }
+                    else if (property.Value.ValueKind == JsonValueKind.String)
+                    {
+                        var str = property.Value.GetString();
+                        if (long.TryParse(str, out var numStr) && numStr > 0)
+                        {
+                            try { return DateTimeOffset.FromUnixTimeMilliseconds(numStr); } catch (ArgumentOutOfRangeException) { }
+                        }
+                        if (DateTimeOffset.TryParse(str, out var parsed)) return parsed;
+                    }
+                }
+                var nested = FindInstant(property.Value, names);
+                if (nested is not null) return nested;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                var nested = FindInstant(item, names);
+                if (nested is not null) return nested;
+            }
+        }
+        return null;
+    }
+
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }

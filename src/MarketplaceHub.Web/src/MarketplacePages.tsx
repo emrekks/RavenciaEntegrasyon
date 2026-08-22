@@ -494,7 +494,15 @@ export function OrdersPage() {
   const providers = connections.data?.items.filter(x => x.platformCode === 'TRENDYOL_EFATURAM' && !x.lastErrorCode && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? []
   const provider = providers.find(x => x.environment === 'PRODUCTION') ?? providers.find(x => x.environment === 'STAGE') ?? null
   const trendyolConnection = connections.data?.items.find(x => x.platformCode === 'TRENDYOL' && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? connections.data?.items.find(x => x.platformCode === 'TRENDYOL') ?? null
-  const statuses = [['ALL', 'Tümü'], ['NEW', 'Yeni'], ['PROCESSING', 'İşleme Alınanlar'], ['SHIPPED', 'Kargoda'], ['DELIVERED', 'Teslim Edildi'], ['CANCELLED', 'İptal']] as const
+  const statuses = [
+    ['ALL', 'Tüm Siparişler'],
+    ['NEW', 'Yeni'],
+    ['PROCESSING', 'İşleme Alınanlar'],
+    ['SHIPPED', 'Taşıma Durumunda'],
+    ['DELIVERED', 'Teslim Edilen'],
+    ['CANCELLED', 'İptal']
+  ] as const
+
   const all = query.data?.items ?? []; const normalized = filters.search.trim().toLocaleLowerCase('tr-TR')
   const cargos = Array.from(new Set(all.map(item => item.packages?.[0]?.cargoProviderName ?? item.cargoProviderName).filter((value): value is string => !!value)))
   const platforms = Array.from(new Set(all.map(item => item.platformCode).filter(Boolean)))
