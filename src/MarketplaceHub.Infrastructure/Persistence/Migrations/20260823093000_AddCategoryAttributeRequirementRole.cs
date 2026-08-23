@@ -1,3 +1,5 @@
+using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -5,6 +7,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(AppDbContext))]
     [Migration("20260823093000_AddCategoryAttributeRequirementRole")]
     public partial class AddCategoryAttributeRequirementRole : Migration
     {
