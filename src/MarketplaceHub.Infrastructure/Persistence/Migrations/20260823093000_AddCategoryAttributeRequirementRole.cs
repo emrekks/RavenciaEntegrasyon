@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [Migration("20260823093000_AddCategoryAttributeRequirementRole")]
     public partial class AddCategoryAttributeRequirementRole : Migration
     {
         /// <inheritdoc />
