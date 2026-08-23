@@ -14,10 +14,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         var now = timeProvider.GetUtcNow();
         var added = 0;
         await EnsureDefaultOrderPoliciesAsync(cancellationToken);
+        await EnsureDefaultProductPoliciesAsync(cancellationToken);
         var policies = await (from policy in db.ConnectionSyncPolicies.AsNoTracking()
                               join connection in db.PlatformConnections.AsNoTracking()
                                   on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
-                              where policy.Enabled && connection.Status == "ACTIVE" && connection.PlatformCode == "TRENDYOL"
+                              where policy.Enabled && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.PlatformCode == "TRENDYOL"
                               select new { Policy = policy, Connection = connection }).ToListAsync(cancellationToken);
 
         foreach (var row in policies)
@@ -29,7 +30,13 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var latest = await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-            if (latest is not null && latest > now.AddSeconds(-interval)) continue;
+            var hasOrderSnapshots = definition.Value.JobType != MarketplaceJobTypes.OrderSync
+                || await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken);
+            var hasCatalogSnapshots = definition.Value.JobType != MarketplaceJobTypes.ProductSync
+                || await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken);
+            // A completed no-op/failure before the first snapshot must not suppress
+            // the initial import for the whole interval.
+            if (hasOrderSnapshots && hasCatalogSnapshots && latest is not null && latest > now.AddSeconds(-interval)) continue;
 
             var bucket = now.ToUnixTimeSeconds() / interval;
             var dedup = $"{definition.Value.DedupPrefix}:{bucket}";
@@ -67,41 +74,70 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     private async Task EnsureDefaultOrderPoliciesAsync(CancellationToken cancellationToken)
     {
-        var activeConnections = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.Status == "ACTIVE" && x.PlatformCode == "TRENDYOL")
+        var operationalConnections = await db.PlatformConnections.AsNoTracking()
+            .Where(x => (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.PlatformCode == "TRENDYOL")
             .Select(x => new { x.TenantId, ConnectionId = x.Id })
             .ToListAsync(cancellationToken);
-        if (activeConnections.Count == 0) return;
+        if (operationalConnections.Count == 0) return;
 
-        var connectionIds = activeConnections.Select(x => x.ConnectionId).ToArray();
+        var connectionIds = operationalConnections.Select(x => x.ConnectionId).ToArray();
         var existing = await db.ConnectionSyncPolicies.AsNoTracking()
-            .Where(x => connectionIds.Contains(x.ConnectionId) && x.ResourceType == "ORDERS")
-            .Select(x => new { x.TenantId, x.ConnectionId })
+            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "RETURNS"))
+            .Select(x => new { x.TenantId, x.ConnectionId, x.ResourceType })
             .ToListAsync(cancellationToken);
-        var existingKeys = existing.Select(x => (x.TenantId, x.ConnectionId)).ToHashSet();
-        foreach (var connection in activeConnections)
+        var existingKeys = existing.Select(x => (x.TenantId, x.ConnectionId, x.ResourceType)).ToHashSet();
+        foreach (var connection in operationalConnections)
         {
-            if (existingKeys.Contains((connection.TenantId, connection.ConnectionId))) continue;
-            db.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy
+            foreach (var resourceType in new[] { "ORDERS", "RETURNS" })
             {
-                Id = Guid.CreateVersion7(),
-                TenantId = connection.TenantId,
-                ConnectionId = connection.ConnectionId,
-                ResourceType = "ORDERS",
-                IntervalSeconds = 300,
-                OverlapSeconds = 60,
-                JitterSeconds = 15,
-                Enabled = true,
-                Version = 1
-            });
+                if (existingKeys.Contains((connection.TenantId, connection.ConnectionId, resourceType))) continue;
+                db.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = connection.TenantId,
+                    ConnectionId = connection.ConnectionId,
+                    ResourceType = resourceType,
+                    IntervalSeconds = 300,
+                    OverlapSeconds = 60,
+                    JitterSeconds = 15,
+                    Enabled = true,
+                    Version = 1
+                });
+            }
         }
         if (db.ChangeTracker.Entries<ConnectionSyncPolicy>().Any(x => x.State == EntityState.Added))
             await db.SaveChangesAsync(cancellationToken);
     }
 
+    private async Task EnsureDefaultProductPoliciesAsync(CancellationToken cancellationToken)
+    {
+        var stageConnections = await db.PlatformConnections.AsNoTracking()
+            .Where(x => (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.PlatformCode == "TRENDYOL" && x.Environment == "STAGE" && x.ExternalStoreId == "2738")
+            .Select(x => new { x.TenantId, ConnectionId = x.Id })
+            .ToListAsync(cancellationToken);
+        if (stageConnections.Count == 0) return;
+        var connectionIds = stageConnections.Select(x => x.ConnectionId).ToArray();
+        var existing = await db.ConnectionSyncPolicies.AsNoTracking()
+            .Where(x => connectionIds.Contains(x.ConnectionId) && x.ResourceType == "PRODUCTS")
+            .Select(x => new { x.TenantId, x.ConnectionId })
+            .ToListAsync(cancellationToken);
+        var existingKeys = existing.Select(x => (x.TenantId, x.ConnectionId)).ToHashSet();
+        foreach (var connection in stageConnections)
+        {
+            if (existingKeys.Contains((connection.TenantId, connection.ConnectionId))) continue;
+            db.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy
+            {
+                Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.ConnectionId, ResourceType = "PRODUCTS",
+                IntervalSeconds = 300, OverlapSeconds = 60, JitterSeconds = 15, Enabled = true, Version = 1
+            });
+        }
+        if (db.ChangeTracker.Entries<ConnectionSyncPolicy>().Any(x => x.State == EntityState.Added)) await db.SaveChangesAsync(cancellationToken);
+    }
+
     private static (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId) => resourceType switch
     {
         "ORDERS" => (MarketplaceJobTypes.OrderSync, $"scheduled:orders:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null })),
+        "PRODUCTS" => (MarketplaceJobTypes.ProductSync, $"scheduled:products:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "RETURNS" => (MarketplaceJobTypes.ReturnSync, $"scheduled:returns:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "REFERENCE_DATA" => (MarketplaceJobTypes.ReferenceSync, $"scheduled:reference:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })),
         _ => null

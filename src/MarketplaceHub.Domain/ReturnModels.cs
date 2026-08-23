@@ -20,7 +20,7 @@ public static class ReturnClaimStateMachine
     private static readonly IReadOnlyDictionary<ReturnClaimStatus, ReturnClaimStatus[]> Allowed =
         new Dictionary<ReturnClaimStatus, ReturnClaimStatus[]>
         {
-            [ReturnClaimStatus.Requested] = [ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Cancelled],
+            [ReturnClaimStatus.Requested] = [ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Cancelled],
             [ReturnClaimStatus.AwaitingShipment] = [ReturnClaimStatus.InTransit, ReturnClaimStatus.Cancelled],
             [ReturnClaimStatus.InTransit] = [ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Approved, ReturnClaimStatus.Disputed],
             [ReturnClaimStatus.ActionRequired] = [ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Disputed],

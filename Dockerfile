@@ -18,6 +18,9 @@ RUN mkdir -p /var/lib/marketplacehub/files /var/lib/marketplacehub/dp-keys \
  && chown -R ${APP_UID}:${APP_UID} /var/lib/marketplacehub
 COPY --from=build --chown=${APP_UID}:${APP_UID} /out/api ./api
 COPY --from=build --chown=${APP_UID}:${APP_UID} /out/worker ./worker
+# API and worker both use /app as the content root in the production compose.
+# Keep the shared marketplace persistence settings at that common root.
+COPY --from=build --chown=${APP_UID}:${APP_UID} /out/api/appsettings*.json ./
 USER ${APP_UID}
 ENV ASPNETCORE_URLS=http://+:8080 DOTNET_EnableDiagnostics=0
 EXPOSE 8080

@@ -23,7 +23,9 @@ public static class IntegrationRuntimePolicy
         IsOperationalStage(connection) && context.Operation == IntegrationOperation.Manual;
 
     public static bool AllowsManualRead(PlatformConnection connection) =>
-        IsOperationalStage(connection) || (IsProduction(connection) && IsActive(connection));
+        IsOperationalStage(connection)
+        || (IsProduction(connection)
+            && (IsActive(connection) || string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase)));
 
     public static bool AllowsManualWrite(PlatformConnection connection, AdapterContext context, bool globalWritesEnabled, bool connectionWritesEnabled) =>
         IsManualStage(connection, context)

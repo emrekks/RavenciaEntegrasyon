@@ -93,6 +93,19 @@ public static class CatalogEndpoints
         });
         api.MapGet("/products/{id:guid}/publication-status/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.GetPublicationStatusAsync(tenant.TenantId, id, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapGet("/files/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == assetId && x.Classification == "PRODUCT_MEDIA" && x.Status == "ACTIVE" && x.ArchivedAt == null, http.RequestAborted);
+            if (asset is null) return Results.NotFound();
+            try
+            {
+                var content = await storage.OpenReadAsync(tenant.TenantId, asset.RelativePath, http.RequestAborted);
+                http.Response.Headers.CacheControl = "private, max-age=300";
+                return Results.File(content, asset.MimeType, asset.OriginalNameSafe, enableRangeProcessing: false);
+            }
+            catch (FileNotFoundException) { return Results.NotFound(); }
+        });
         api.MapPost("/files/product-media", UploadProductMediaAsync).DisableAntiforgery();
         api.MapPost("/files/product-media-url", RegisterProductMediaUrlAsync);
 

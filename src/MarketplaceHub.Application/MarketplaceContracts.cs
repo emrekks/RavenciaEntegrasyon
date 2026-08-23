@@ -10,6 +10,7 @@ public static class MarketplaceJobTypes
     public const string ConnectionTest = "TRENDYOL_CONNECTION_TEST";
     public const string ReferenceSync = "TRENDYOL_REFERENCE_SYNC";
     public const string OrderSync = "TRENDYOL_ORDER_SYNC";
+    public const string ProductSync = "TRENDYOL_PRODUCT_SYNC";
     public const string ShipmentAction = "TRENDYOL_SHIPMENT_ACTION";
     public const string ReturnSync = "TRENDYOL_RETURN_SYNC";
     public const string ReturnAction = "TRENDYOL_RETURN_ACTION";
@@ -81,6 +82,29 @@ public sealed record ProductUpdateJobPayload(Guid JobId, Guid ProductId, Guid Pr
 public sealed record ProductArchiveJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, bool Archived, string Phase, string PayloadHash, string PayloadJson, string? ExternalOperationId, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
 public sealed record ExternalProductIdentity(string ExternalProductId, string? ExternalVariantId);
 public sealed record RemoteProduct(string ExternalProductId, string? ExternalVariantId, string? Barcode, string? Sku, string RawJson);
+public sealed record RemoteCatalogProduct(
+    string ExternalProductId,
+    string? ProductMainId,
+    string Title,
+    string Description,
+    string? BrandExternalId,
+    string? BrandName,
+    string? CategoryExternalId,
+    string? CategoryName,
+    IReadOnlyList<string> ImageUrls,
+    IReadOnlyList<RemoteCatalogVariant> Variants,
+    string RawJson);
+public sealed record RemoteCatalogVariant(
+    string ExternalVariantId,
+    string Sku,
+    string? Barcode,
+    string? ModelCode,
+    IReadOnlyDictionary<string, string> Options,
+    bool Archived,
+    decimal? SalePrice,
+    decimal? ListPrice,
+    decimal? VatRate,
+    string RawJson);
 public sealed record RemotePublicationStatus(string Barcode, string Status, string? ExternalProductId, string? ExternalVariantId, string? RejectionCode, string RawJson);
 public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter);
 public sealed record StockPushLine(Guid VariantId, string Barcode, decimal Quantity, long ProjectionVersion);
@@ -89,7 +113,7 @@ public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string
 public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, string Phase, string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines, string? ExternalOperationId, DateTimeOffset? SubmittedAt);
 public sealed record BatchLineResult(Guid LocalId, bool Succeeded, string? ErrorCode, bool Retryable);
 public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOperationId, bool IsPartial);
-public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore);
+public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? PackageItemStatuses = null, string? StoreFrontCode = null);
 public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal VatRate, string RawStatus, string SourceSnapshotJson = "{}");
 public sealed record RemotePackageAllocation(string ExternalLineId, decimal AllocatedQuantity, decimal CancelledQuantity, decimal ShippedQuantity, decimal DeliveredQuantity, decimal ReturnedQuantity);
 public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0);
@@ -103,9 +127,9 @@ public sealed record CommonLabelJobPayload(Guid JobId, Guid PackageId, string Ph
 public sealed record CapabilityProbeJobPayload(Guid JobId, Guid PackageId, Guid ActorUserId, string CapabilityCode, int BoxQuantity, decimal VolumetricHeight, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
 public sealed record StageTestOrderJobPayload(Guid JobId, Guid ActorUserId, string Barcode, DateTimeOffset StartedAt);
 public sealed record StageTestOrderResult(string OrderNumber);
-public sealed record ReturnPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore);
-public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity);
-public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson);
+public sealed record ReturnPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null);
+public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity, IReadOnlyList<string>? AlternateExternalOrderLineIds = null);
+public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoTrackingLink = null);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
 public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles);
 public sealed record ReturnActionResult(string ExternalClaimId, string Status, string? ExternalOperationId);
@@ -126,6 +150,7 @@ public interface IReferenceDataPort
 public interface IProductPort
 {
     Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken);
+    Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken);
@@ -235,6 +260,14 @@ public sealed record OrderListView(
     IReadOnlyList<ShipmentView>? Packages = null,
     Guid? InvoiceId = null,
     string? InvoiceDocumentUrl = null);
+public sealed record OrderSummaryView(
+    int All,
+    int New,
+    int Processing,
+    int Shipped,
+    int Delivered,
+    int Resent,
+    int OnHold);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,
@@ -262,7 +295,8 @@ public sealed record ShipmentView(
     string? CargoTrackingNumber,
     DateTimeOffset StatusOccurredAt,
     long Version,
-    string? CargoProviderName = null);
+    string? CargoProviderName = null,
+    bool IsResend = false);
 public sealed record OrderDetailView(
     Guid Id,
     string OrderNumber,
@@ -328,7 +362,8 @@ public sealed record ReturnListView(
     string? PackageNumber = null,
     string InvoiceStatus = "FATURA_BEKLIYOR",
     decimal GrossAmount = 0,
-    decimal DiscountAmount = 0);
+    decimal DiscountAmount = 0,
+    bool IsMicroExport = false);
 public sealed record ReturnDetailView(
     Guid Id,
     string ExternalClaimId,
@@ -354,16 +389,19 @@ public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposit
 public interface IMarketplaceSalesService
 {
     Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
+    Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<PageResult<ShipmentView>> ShipmentsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
     Task<ServiceResult<ShipmentDetailView>> ShipmentAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
-    Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueShipmentActionAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueLabelCapabilityProbeAsync(Guid tenantId, Guid actorUserId, Guid packageId, long expectedVersion, string capabilityCode, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueStageTestOrderAsync(Guid tenantId, Guid actorUserId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
-    Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
+    Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, string? status, bool latest, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueReturnSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);

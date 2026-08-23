@@ -41,6 +41,8 @@ public sealed record ProductVariantView(
     string? RoundingMode = null,
     decimal? SafetyStock = null);
 public sealed record ProductAttributeAssignmentView(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
+public sealed record ProductOptionValueView(Guid Id, string Label);
+public sealed record ProductOptionView(Guid Id, string Label, IReadOnlyList<ProductOptionValueView> Values);
 public sealed record ProductView(
     Guid Id,
     string Title,
@@ -57,7 +59,8 @@ public sealed record ProductView(
     string Currency = "TRY",
     string? ModelCode = null,
     IReadOnlyList<string>? ActivePlatforms = null,
-    IReadOnlyList<ProductAttributeAssignmentView>? Attributes = null);
+    IReadOnlyList<ProductAttributeAssignmentView>? Attributes = null,
+    IReadOnlyList<ProductOptionView>? Options = null);
 public sealed record ListingProfileView(Guid Id, Guid ProductId, Guid ConnectionId, string? TitleOverride, string? DescriptionOverride, string? ExternalCategoryId, string? ExternalBrandId, int? DeliveryTimeDays, bool Enabled, string DesiredStatus, string ActualStatus, long Version);
 public sealed record PublicationLineView(Guid VariantId, string Sku, string? Barcode, string DesiredStatus, string ActualStatus, string? RejectionCode);
 public sealed record PublicationStatusView(Guid ProductId, Guid ConnectionId, Guid? ProfileId, string? DesiredStatus, string? ActualStatus, string? LastRejectionCode, Guid? LastJobId, string? LastJobStatus, IReadOnlyList<PublicationLineView> Lines);
@@ -68,8 +71,8 @@ public sealed record CreateBrandCommand(string Name);
 public sealed record UpdateBrandCommand(string Name, bool IsActive);
 public sealed record CreateAttributeValueCommand(string Value, int SortOrder);
 public sealed record CreateAttributeCommand(string Code, string Name, string DataType, string? SelectionMode, string? Unit, IReadOnlyList<CreateAttributeValueCommand> Values);
-public sealed record AttributeRequirementCommand(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder);
-public sealed record CategoryAttributeRequirementView(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder, AttributeView Attribute);
+public sealed record AttributeRequirementCommand(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder, string Role = "ATTRIBUTE");
+public sealed record CategoryAttributeRequirementView(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder, AttributeView Attribute, string Role = "ATTRIBUTE");
 public sealed record CreateVariantCommand(string Sku, string? Barcode, string? ModelCode, IReadOnlyDictionary<string, string>? Options = null, decimal? Weight = null, decimal? Width = null, decimal? Height = null, decimal? Length = null, decimal? Desi = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null);
 public sealed record UpdateVariantCommand(Guid Id, string Sku, string? Barcode, string? ModelCode);
 public sealed record ProductAttributeCommand(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);

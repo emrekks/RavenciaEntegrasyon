@@ -62,6 +62,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
         }
 
         var assignments = await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);
+        var mappedLocalAttributes = await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && mappingByLocalId.Keys.Contains(x.Id)).ToListAsync(cancellationToken);
+        var mappedLocalValues = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && mappingByLocalId.Keys.Contains(x.AttributeId) && x.IsActive).ToListAsync(cancellationToken);
         foreach (var assignment in assignments)
         {
             if (!mappingByLocalId.TryGetValue(assignment.AttributeId, out var attributeMapping)) return Fail("ATTRIBUTE_MAPPING_REQUIRED", "Üründe kullanılan her özellik seçili Trendyol kategorisinin güncel snapshot'ında eşlenmelidir.");
@@ -88,6 +90,11 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
         if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0]) || modelCodes[0]!.Length > 40) return Fail("MODEL_CODE_REQUIRED", "Varyant grubu tek bir ortak ve en fazla 40 karakterlik model kodu kullanmalıdır.");
 
         var variantIds = variants.Select(x => x.Id).ToArray();
+        var optionRows = await (from option in db.ProductOptions.AsNoTracking()
+                                join optionValue in db.ProductOptionValues.AsNoTracking() on new { option.TenantId, OptionId = option.Id } equals new { optionValue.TenantId, OptionId = optionValue.OptionId }
+                                join variantOption in db.VariantOptionValues.AsNoTracking() on new { optionValue.TenantId, OptionValueId = optionValue.Id } equals new { variantOption.TenantId, OptionValueId = variantOption.OptionValueId }
+                                where option.TenantId == tenantId && option.ProductId == productId && variantIds.Contains(variantOption.VariantId)
+                                select new { variantOption.VariantId, option.Label, ValueLabel = optionValue.Label }).ToListAsync(cancellationToken);
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId) && x.Status == "ACTIVE").ToDictionaryAsync(x => x.VariantId, cancellationToken);
         var inventories = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").ToDictionaryAsync(x => x.VariantId, cancellationToken);
         if (offers.Count != variants.Count) return Fail("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin Trendyol fiyat teklifi gerekir.");
@@ -120,8 +127,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
             if (imageUrls.Count > 8) return Fail("PRODUCT_MEDIA_LIMIT_EXCEEDED", $"'{variant.Sku}' için en fazla 8 farklı görsel URL'si yayınlanabilir.");
 
             var effectiveAssignments = assignments.Where(x => x.VariantId is null || x.VariantId == variant.Id).GroupBy(x => x.AttributeId).ToList();
-            if (requiredLocalIds.Any(id => effectiveAssignments.All(group => group.Key != id))) return Fail("REQUIRED_ATTRIBUTE_MISSING", $"'{variant.Sku}' için Trendyol kategorisinin zorunlu özelliklerinden en az biri eksik.");
             var payloadAttributes = new List<Dictionary<string, object?>>();
+            var emittedRemoteAttributeIds = new HashSet<long>();
             foreach (var group in effectiveAssignments)
             {
                 var mapping = mappingByLocalId[group.Key];
@@ -156,7 +163,40 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
                     attribute["customAttributeValue"] = customValue;
                 }
                 payloadAttributes.Add(attribute);
+                emittedRemoteAttributeIds.Add(remoteAttributeId);
             }
+
+            foreach (var option in optionRows.Where(x => x.VariantId == variant.Id).OrderBy(x => x.Label, StringComparer.OrdinalIgnoreCase))
+            {
+                var localAttribute = mappedLocalAttributes.FirstOrDefault(x => NormalizeLabel(x.Name) == NormalizeLabel(option.Label));
+                if (localAttribute is null || !mappingByLocalId.TryGetValue(localAttribute.Id, out var optionMapping))
+                    return Fail("OPTION_MAPPING_REQUIRED", $"'{option.Label}' seçeneği için güncel Trendyol özellik eşlemesi bulunamadı.");
+                if (!long.TryParse(optionMapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var optionRemoteId)) return Fail("MAPPING_IDENTIFIER_INVALID", "Trendyol seçenek kimlikleri sayısal olmalıdır.");
+                if (!emittedRemoteAttributeIds.Add(optionRemoteId)) continue;
+                var optionRemote = remoteAttributes.SingleOrDefault(x => x.ExternalId == optionMapping.ExternalId);
+                if (optionRemote is null) return Fail("OPTION_MAPPING_REQUIRED", $"'{option.Label}' seçeneği güncel kategori snapshot'ında bulunamadı.");
+                var localValue = mappedLocalValues.FirstOrDefault(x => x.AttributeId == localAttribute.Id && NormalizeLabel(x.Value) == NormalizeLabel(option.ValueLabel));
+                var optionPayload = new Dictionary<string, object?> { ["attributeId"] = optionRemoteId };
+                if (localValue is not null)
+                {
+                    var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, optionMapping.ExternalId, localValue.Id, cancellationToken);
+                    if (externalValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(externalValue.Error.Code, externalValue.Error.Message, externalValue.Error.Status, externalValue.Error.FieldErrors);
+                    optionPayload["attributeValueId"] = externalValue.Value;
+                }
+                else if (optionRemote.AllowsCustomValue == true)
+                {
+                    optionPayload["customAttributeValue"] = option.ValueLabel.Trim();
+                }
+                else
+                {
+                    return Fail("OPTION_VALUE_MAPPING_REQUIRED", $"'{option.Label}: {option.ValueLabel}' seçeneği için doğrulanmış Trendyol değer eşlemesi bulunamadı.");
+                }
+                payloadAttributes.Add(optionPayload);
+            }
+            if (requiredLocalIds.Any(id => !mappingByLocalId.TryGetValue(id, out var requiredMapping)
+                || !long.TryParse(requiredMapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var requiredRemoteId)
+                || !emittedRemoteAttributeIds.Contains(requiredRemoteId)))
+                return Fail("REQUIRED_ATTRIBUTE_MISSING", $"'{variant.Sku}' için Trendyol kategorisinin zorunlu özelliklerinden en az biri eksik.");
 
             var publishable = Math.Max(0, inventories[variant.Id].Available - offer.SafetyStock);
             var item = new Dictionary<string, object?>
@@ -198,6 +238,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
     private static string? CustomValue(ProductAttributeAssignment value) => value.TextValue?.Trim()
         ?? value.NumberValue?.ToString(CultureInfo.InvariantCulture)
         ?? value.BooleanValue?.ToString().ToLowerInvariant();
+
+    private static string NormalizeLabel(string value) => value.Trim().ToUpperInvariant();
 
     private static bool IsValidBarcode(string value) => value.All(character => char.IsLetterOrDigit(character) || character is '.' or '-' or '_');
 

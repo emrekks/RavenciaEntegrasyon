@@ -21,20 +21,37 @@ public static class TrendyolJsonMapper
                 {
                     var externalLineId = Text(line, "lineId", "id"); if (string.IsNullOrWhiteSpace(externalLineId)) continue;
                     var quantity = Decimal(line, "quantity"); var rawStatus = Text(line, "orderLineItemStatusName");
-                    lines.Add(new(externalLineId, Text(line, "stockCode", "merchantSku"), NullText(line, "barcode"), Text(line, "productName"), quantity, Decimal(line, "lineUnitPrice", "price", "amount"), Decimal(line, "vatRate", "vatBaseAmount"), rawStatus, line.GetRawText()));
+                    lines.Add(new(externalLineId, Text(line, "stockCode", "merchantSku"), NullText(line, "barcode"), Text(line, "productName"), quantity, Decimal(line, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount"), Decimal(line, "vatRate", "vatBaseAmount"), rawStatus, line.GetRawText()));
                     allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
                 }
             }
             var gross = Decimal(package, "packageGrossAmount", "grossAmount", "packageTotalPrice");
-            var discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
+            var discount = Decimal(package, "packageTotalDiscount");
+            if (discount == 0) discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
             var net = Decimal(package, "packageTotalPrice", "totalPrice");
-            var rawStatusPackage = Text(package, "shipmentPackageStatus", "status"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
+            // Trendyol's Yeni tab is driven by the top-level package status.
+            // For newly created packages shipmentPackageStatus may already be
+            // ReadyToShip while status is still Created; the latter is the
+            // authoritative workflow state for the order projection.
+            var rawStatusPackage = Text(package, "status", "shipmentPackageStatus"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
             var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net);
             rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
                 CustomerSnapshot(package),
                 ObjectSnapshot(package, "shipmentAddress"), ObjectSnapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText()));
         }
-        return new(rows, NullText(root, "nextCursor"), Bool(root, "hasMore"));
+        var next = NullText(root, "nextCursor");
+        var hasMore = Bool(root, "hasMore");
+        if (string.IsNullOrWhiteSpace(next))
+        {
+            var currentPage = Long(root, "page");
+            var totalPages = Long(root, "totalPages");
+            if (totalPages > 0 && currentPage + 1 < totalPages)
+            {
+                next = $"p:{currentPage + 1}";
+                hasMore = true;
+            }
+        }
+        return new(rows, next, hasMore);
     }
 
     public static AdapterPageResult<RemoteProduct> Products(string json)
@@ -58,6 +75,112 @@ public static class TrendyolJsonMapper
         else if (!string.IsNullOrWhiteSpace(token))
             next = $"t:{token}";
         return new(rows, next, !string.IsNullOrWhiteSpace(next));
+    }
+
+    public static AdapterPageResult<RemoteCatalogProduct> CatalogProducts(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var rows = Content(root)
+            .Select(ProductSnapshot)
+            .Where(x => !string.IsNullOrWhiteSpace(x.ExternalProductId))
+            .ToList();
+        var currentPage = Long(root, "page");
+        var pageSize = Math.Max(1, Long(root, "size"));
+        var totalPages = Long(root, "totalPages");
+        var token = NullText(root, "nextPageToken");
+        string? next = null;
+        if (totalPages > 0 && currentPage + 1 < totalPages && (currentPage + 1) * pageSize < 10_000)
+            next = $"p:{currentPage + 1}";
+        else if (!string.IsNullOrWhiteSpace(token))
+            next = $"t:{token}";
+        return new(rows, next, !string.IsNullOrWhiteSpace(next));
+    }
+
+    public static RemoteCatalogProduct ProductSnapshot(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return ProductSnapshot(document.RootElement);
+    }
+
+    private static RemoteCatalogProduct ProductSnapshot(JsonElement product)
+    {
+        var productId = Text(product, "contentId", "id", "productMainId");
+        var productMainId = NullText(product, "productMainId", "contentId");
+        var title = Text(product, "title", "name");
+        var description = NullText(product, "description") ?? "";
+        var brand = NamedReference(product, "brand");
+        var category = NamedReference(product, "category");
+        var images = ImageUrls(product);
+        var variants = new List<RemoteCatalogVariant>();
+        if (product.TryGetProperty("variants", out var variantArray) && variantArray.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var variant in variantArray.EnumerateArray())
+            {
+                var variantId = NullText(variant, "variantId", "id", "barcode", "stockCode") ?? "";
+                var barcode = NullText(variant, "barcode");
+                var sku = NullText(variant, "stockCode", "merchantSku", "sku") ?? barcode ?? variantId;
+                if (string.IsNullOrWhiteSpace(variantId) || string.IsNullOrWhiteSpace(sku)) continue;
+                variants.Add(new(
+                    variantId,
+                    sku,
+                    barcode,
+                    NullText(variant, "modelCode", "productMainId") ?? productMainId,
+                    Options(variant),
+                    Bool(variant, "archived"),
+                    DecimalNullable(variant, "salePrice") ?? DecimalNullable(variant, "price", "salePrice"),
+                    DecimalNullable(variant, "listPrice") ?? DecimalNullable(variant, "price", "listPrice"),
+                    DecimalNullable(variant, "vatRate"),
+                    variant.GetRawText()));
+            }
+        }
+        if (variants.Count == 0)
+        {
+            var barcode = NullText(product, "barcode");
+            var sku = NullText(product, "stockCode", "merchantSku", "sku") ?? barcode;
+            var variantId = NullText(product, "variantId", "id", "barcode", "stockCode");
+            if (!string.IsNullOrWhiteSpace(variantId) && !string.IsNullOrWhiteSpace(sku))
+                variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, Options(product), Bool(product, "archived"), DecimalNullable(product, "salePrice"), DecimalNullable(product, "listPrice"), DecimalNullable(product, "vatRate"), product.GetRawText()));
+        }
+        return new(productId, productMainId, title, description, brand.Id, brand.Name, category.Id, category.Name, images, variants, product.GetRawText());
+    }
+
+    private static (string? Id, string? Name) NamedReference(JsonElement value, string propertyName)
+    {
+        if (!value.TryGetProperty(propertyName, out var reference) || reference.ValueKind != JsonValueKind.Object) return (null, null);
+        return (NullText(reference, "id", "code"), NullText(reference, "name", "title"));
+    }
+
+    private static IReadOnlyList<string> ImageUrls(JsonElement product)
+    {
+        if (!product.TryGetProperty("images", out var images) || images.ValueKind != JsonValueKind.Array) return [];
+        return images.EnumerateArray()
+            .Select(image => image.ValueKind == JsonValueKind.Object ? NullText(image, "url", "imageUrl") : image.ToString())
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Select(url => url!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(8)
+            .ToList();
+    }
+
+    private static IReadOnlyDictionary<string, string> Options(JsonElement value)
+    {
+        if (!value.TryGetProperty("attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Array) return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        return attributes.EnumerateArray()
+            .Select(attribute => (Key: NullText(attribute, "attributeName", "name"), Value: NullText(attribute, "attributeValue", "value")))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Value))
+            .GroupBy(x => x.Key!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.Last().Value!, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public static RemoteProduct Product(string json, string barcode)
+    {
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var contentId = Text(root, "contentId", "id", "productMainId");
+        var variantId = NullText(root, "variantId", "id");
+        var sku = NullText(root, "stockCode", "merchantSku");
+        return new(contentId, variantId, NullText(root, "barcode") ?? barcode, sku, root.GetRawText());
     }
 
     public static RemotePublicationStatus? ApprovedPublicationStatus(string json, string barcode)
@@ -122,17 +245,76 @@ public static class TrendyolJsonMapper
         foreach (var claim in Content(root))
         {
             var claimId = Text(claim, "claimId", "id"); var orderNumber = Text(claim, "orderNumber"); if (claimId.Length == 0 || orderNumber.Length == 0) continue;
-            var lines = new List<RemoteReturnLine>();
-            foreach (var (item, externalOrderLineId) in ClaimLinePairs(claim))
-            {
-                var lineId = Text(item, "id"); var quantity = Decimal(item, "quantity");
-                if (quantity <= 0) quantity = 1;
-                if (lineId.Length > 0 && externalOrderLineId.Length > 0) lines.Add(new(lineId, externalOrderLineId, quantity));
-            }
-            var status = ClaimStatus(claim); rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate"), Instant(claim, "lastModifiedDate") ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText()));
+            var lines = ReturnLines(claim);
+            var status = ClaimStatus(claim); rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate"), Instant(claim, "lastModifiedDate") ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText(), NullText(claim, "cargoTrackingLink", "trackingLink")));
         }
         var page = Long(root, "page"); var totalPages = Long(root, "totalPages"); var hasMore = totalPages > 0 && page + 1 < totalPages;
         return new(rows, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore);
+    }
+
+    public static IReadOnlyList<RemoteReturnLine> ReturnLines(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return ReturnLines(document.RootElement);
+    }
+
+    private static IReadOnlyList<RemoteReturnLine> ReturnLines(JsonElement claim)
+    {
+        var lines = new List<RemoteReturnLine>();
+        foreach (var entry in ClaimLineEntries(claim))
+        {
+            var lineId = Text(entry.Item, "id");
+            var quantity = Decimal(entry.Item, "quantity", "returnedQuantity");
+            if (quantity <= 0) quantity = 1;
+            if (lineId.Length > 0 && entry.ExternalOrderLineId.Length > 0)
+                lines.Add(new(lineId, entry.ExternalOrderLineId, quantity, entry.AlternateExternalOrderLineIds));
+        }
+        return lines
+            .GroupBy(x => $"{x.ExternalLineId}:{x.ExternalOrderLineId}", StringComparer.Ordinal)
+            .Select(group => group.First() with { Quantity = group.Sum(x => x.Quantity) })
+            .ToList();
+    }
+
+    // getClaims contains enough order-line and customer identity data to
+    // reconstruct a local read model when the order package itself is outside
+    // Trendyol's order-history window. This is deliberately a read-only
+    // fallback: it never calls a marketplace write endpoint and is replaced by
+    // the authoritative order package if that package is later returned.
+    public static RemoteOrder? OrderFromReturnClaim(string json)
+    {
+        using var document = JsonDocument.Parse(json); var claim = document.RootElement;
+        var orderNumber = Text(claim, "orderNumber");
+        if (string.IsNullOrWhiteSpace(orderNumber)) return null;
+
+        var ordered = Instant(claim, "orderDate") ?? Instant(claim, "claimDate") ?? DateTimeOffset.UnixEpoch;
+        var modified = Instant(claim, "lastModifiedDate") ?? Instant(claim, "claimDate") ?? ordered;
+        var lines = new List<RemoteOrderLine>();
+        foreach (var entry in ClaimLineEntries(claim))
+        {
+            if (entry.OrderLine is not { } orderLine) continue;
+            AddReturnOrderLine(lines, entry.ExternalOrderLineId, orderLine, Decimal(entry.Item, "quantity", "returnedQuantity"));
+        }
+
+        var gross = Decimal(claim, "packageGrossAmount", "grossAmount", "packageTotalPrice");
+        if (gross == 0) gross = lines.Sum(x => x.UnitPrice * x.Quantity);
+        var packageId = Text(claim, "orderOutboundPackageId", "orderShipmentPackageId");
+        if (string.IsNullOrWhiteSpace(packageId)) packageId = $"return-claim:{Text(claim, "claimId", "id")}";
+        var allocations = lines.Select(x => new RemotePackageAllocation(x.ExternalLineId, x.Quantity, 0, x.Quantity, x.Quantity, 0)).ToList();
+        var package = new RemotePackage(packageId, null, "Delivered", modified,
+            NullText(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider"),
+            NullText(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, 0, gross);
+        return new(orderNumber, orderNumber, ordered, modified, NullText(claim, "currencyCode") ?? "TRY", gross, 0, gross,
+            CustomerSnapshot(claim), ObjectSnapshot(claim, "shipmentAddress"), ObjectSnapshot(claim, "invoiceAddress"), lines, [package], claim.GetRawText());
+    }
+
+    private static void AddReturnOrderLine(List<RemoteOrderLine> lines, string externalLineId, JsonElement orderLine, decimal quantity)
+    {
+        if (quantity <= 0) quantity = 1;
+        var index = lines.FindIndex(x => string.Equals(x.ExternalLineId, externalLineId, StringComparison.Ordinal));
+        if (index >= 0) { lines[index] = lines[index] with { Quantity = lines[index].Quantity + quantity }; return; }
+        lines.Add(new(externalLineId, Text(orderLine, "merchantSku", "stockCode", "sku"), NullText(orderLine, "barcode"),
+            Text(orderLine, "productName", "title"), quantity, Decimal(orderLine, "price", "lineUnitPrice", "amount"),
+            Decimal(orderLine, "vatRate"), "Delivered", orderLine.GetRawText()));
     }
 
     public static IReadOnlyList<ReturnIssueReason> ReturnIssueReasons(string json)
@@ -205,23 +387,57 @@ public static class TrendyolJsonMapper
             if (item.TryGetProperty("id", out _) && item.TryGetProperty("orderLineItemId", out _)) yield return item;
         }
     }
-    private static IEnumerable<(JsonElement ClaimItem, string ExternalOrderLineId)> ClaimLinePairs(JsonElement claim)
+    private static IReadOnlyList<(JsonElement Item, string ExternalOrderLineId, JsonElement? OrderLine, IReadOnlyList<string> AlternateExternalOrderLineIds)> ClaimLineEntries(JsonElement claim)
     {
-        if (claim.TryGetProperty("claimItems", out var directClaimItems) && directClaimItems.ValueKind == JsonValueKind.Array)
-            foreach (var claimItem in directClaimItems.EnumerateArray()) yield return (claimItem, Text(claimItem, "orderLineItemId"));
+        var rows = new List<(JsonElement Item, string ExternalOrderLineId, JsonElement? OrderLine, IReadOnlyList<string> AlternateExternalOrderLineIds)>();
+        WalkClaimLineEntries(claim, null, rows);
+        return rows;
+    }
 
-        if (!claim.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array) yield break;
-        foreach (var item in items.EnumerateArray())
+    private static void WalkClaimLineEntries(JsonElement value, JsonElement? parentOrderLine, List<(JsonElement Item, string ExternalOrderLineId, JsonElement? OrderLine, IReadOnlyList<string> AlternateExternalOrderLineIds)> rows)
+    {
+        if (value.ValueKind == JsonValueKind.Array)
         {
-            if (item.TryGetProperty("claimItems", out var nestedClaimItems) && nestedClaimItems.ValueKind == JsonValueKind.Array)
-            {
-                var parentOrderLineId = item.TryGetProperty("orderLine", out var orderLine) ? Text(orderLine, "id", "lineId") : "";
-                foreach (var claimItem in nestedClaimItems.EnumerateArray())
-                    yield return (claimItem, parentOrderLineId.Length > 0 ? parentOrderLineId : Text(claimItem, "orderLineItemId"));
-                continue;
-            }
+            foreach (var item in value.EnumerateArray()) WalkClaimLineEntries(item, parentOrderLine, rows);
+            return;
+        }
+        if (value.ValueKind != JsonValueKind.Object) return;
 
-            if (item.TryGetProperty("id", out _) && item.TryGetProperty("orderLineItemId", out _)) yield return (item, Text(item, "orderLineItemId"));
+        var currentOrderLine = parentOrderLine;
+        if (value.TryGetProperty("orderLine", out var orderLine) && orderLine.ValueKind == JsonValueKind.Object)
+            currentOrderLine = orderLine;
+
+        if (value.TryGetProperty("claimItems", out var claimItems) && claimItems.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var claimItem in claimItems.EnumerateArray())
+            {
+                // In the nested Trendyol shape, the parent orderLine.id is the
+                // same identifier used by the order feed and therefore the
+                // stable local OrderLine key. Some payloads also expose
+                // orderLineItemId on the claim item, but that value is not the
+                // order-line id used by the order snapshot. Keep it as a
+                // fallback for the direct/root claimItems shape.
+                var parentOrderLineId = currentOrderLine is { } parent ? Text(parent, "id", "lineId") : "";
+                var claimOrderLineId = Text(claimItem, "orderLineItemId");
+                var externalOrderLineId = string.IsNullOrWhiteSpace(parentOrderLineId) ? claimOrderLineId : parentOrderLineId;
+                var alternates = new[] { parentOrderLineId, claimOrderLineId }
+                    .Where(id => !string.IsNullOrWhiteSpace(id) && !string.Equals(id, externalOrderLineId, StringComparison.Ordinal))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                if (Text(claimItem, "id").Length > 0 && externalOrderLineId.Length > 0)
+                    rows.Add((claimItem, externalOrderLineId, currentOrderLine, alternates));
+            }
+        }
+
+        var directOrderLineId = Text(value, "orderLineItemId");
+        if (Text(value, "id").Length > 0 && directOrderLineId.Length > 0)
+            rows.Add((value, directOrderLineId, currentOrderLine, []));
+
+        foreach (var property in value.EnumerateObject())
+        {
+            if (property.NameEquals("claimItems") || property.NameEquals("orderLine")) continue;
+            if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+                WalkClaimLineEntries(property.Value, currentOrderLine, rows);
         }
     }
     private static string ClaimStatus(JsonElement claim) { if (claim.TryGetProperty("claimItemStatus", out var value)) return value.ValueKind == JsonValueKind.Object ? Text(value, "name") : value.ToString(); foreach (var item in ClaimItems(claim)) if (item.TryGetProperty("claimItemStatus", out var status)) return status.ValueKind == JsonValueKind.Object ? Text(status, "name") : status.ToString(); return ""; }
@@ -255,6 +471,20 @@ public static class TrendyolJsonMapper
     private static string Text(JsonElement value, params string[] names) => NullText(value, names) ?? "";
     private static string? NullText(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.ToString(); return null; }
     private static decimal Decimal(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && (item.TryGetDecimal(out var result) || decimal.TryParse(item.ToString(), CultureInfo.InvariantCulture, out result))) return result; return 0; }
+    private static decimal? DecimalNullable(JsonElement value, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!value.TryGetProperty(name, out var item)) continue;
+            if (item.ValueKind == JsonValueKind.Object)
+            {
+                var nested = DecimalNullable(item, name is "price" ? "salePrice" : "listPrice");
+                if (nested is not null) return nested;
+            }
+            else if (item.TryGetDecimal(out var result) || decimal.TryParse(item.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out result)) return result;
+        }
+        return null;
+    }
     private static long Long(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result) ? result : 0;
     private static bool Bool(JsonElement value, string name)
     {

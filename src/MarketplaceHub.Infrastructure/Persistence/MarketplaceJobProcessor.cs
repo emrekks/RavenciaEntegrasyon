@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -36,6 +37,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 MarketplaceJobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
                 MarketplaceJobTypes.ReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                 MarketplaceJobTypes.OrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                MarketplaceJobTypes.ProductSync => await SyncProducts(tenantId, connectionId.Value, correlationId, cancellationToken),
                 MarketplaceJobTypes.ReturnSync => await SyncReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                 MarketplaceJobTypes.WebhookIngest => await IngestWebhook(tenantId, connectionId.Value, payloadJson, cancellationToken),
                 MarketplaceJobTypes.ShipmentAction => await ShipmentAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
@@ -928,59 +930,731 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> SyncOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
-        if (!configuration.GetValue("Marketplace:PersistOrderSnapshots", false))
+        if (!configuration.GetValue("Marketplace:PersistOrderSnapshots", true))
             return true;
 
-        var productSnapshots = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        var hydrationFallbackRecorded = false;
         string? externalOrderId = null;
-        try { using var payload = JsonDocument.Parse(payloadJson); if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString(); }
+        var full = false;
+        try
+        {
+            using var payload = JsonDocument.Parse(payloadJson);
+            if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString();
+            if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
+        }
         catch (JsonException) { return false; }
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
             var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
             if (!single.IsSuccess) throw JobProcessingException.FromAdapter(single.Error!);
-            await UpsertOrder(tenantId, connectionId, await EnrichOrderLineSources(tenantId, connectionId, correlationId, single.Value!, productSnapshots, cancellationToken), cancellationToken);
+            await UpsertOrder(tenantId, connectionId, single.Value!, cancellationToken);
             return true;
         }
 
-        var cursor = await Cursor(tenantId, connectionId, "ORDERS", cancellationToken); var policy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ORDERS", cancellationToken); var modifiedAfter = cursor.LastModifiedWatermark?.Subtract(TimeSpan.FromSeconds(policy?.OverlapSeconds ?? 0)); var next = cursor.OpaqueCursor; var resetExpiredCursor = false;
+        var cursor = await Cursor(tenantId, connectionId, "ORDERS", cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        // A reset/empty snapshot store must always get a complete baseline, even if
+        // an older cursor survived the reset. This keeps the first import idempotent
+        // without requiring any direct database mutation.
+        var hasSnapshots = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
+        var state = ReadOrderSyncState(cursor, now, forceBaseline: full || !hasSnapshots);
+        var resetExpiredCursor = false;
         do
         {
-            var result = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync:{next}"), new(modifiedAfter, null), new(next, 200), cancellationToken);
-            if (!result.IsSuccess && !resetExpiredCursor && !string.IsNullOrWhiteSpace(next) && result.Error is { Class: AdapterErrorClass.Validation, HttpStatus: 400 })
+            var (modifiedAfter, modifiedBefore) = OrderWindow(state);
+            var storefront = TrendyolReadStorefronts.Codes[state.StoreFrontIndex];
+            var result = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync:{storefront}:{state.NextCursor ?? state.WindowIndex.ToString()}"), new(modifiedAfter, modifiedBefore, null, storefront), new(state.NextCursor, 200), cancellationToken);
+            if (!result.IsSuccess && !resetExpiredCursor && !string.IsNullOrWhiteSpace(state.NextCursor) && result.Error is { Class: AdapterErrorClass.Validation, HttpStatus: 400 })
             {
-                // Stream cursors are short-lived in Stage. Restart once from the durable watermark when a
-                // previously persisted cursor expires; preserve all other validation failures for audit/retry.
-                next = null;
+                // Stream cursors can expire. Restart once from the durable watermark; preserve all other
+                // validation failures for audit/retry.
+                state = state with { NextCursor = null };
                 cursor.OpaqueCursor = null;
                 resetExpiredCursor = true;
                 continue;
             }
+            if (!result.IsSuccess && state.StoreFrontIndex > 0 && state.NextCursor is null && result.Error?.HttpStatus is 400 or 404)
+            {
+                // Some seller accounts do not expose every international storefront. A
+                // rejected optional storefront must not prevent TR or another storefront
+                // from being imported and persisted.
+                if (state.StoreFrontIndex + 1 < TrendyolReadStorefronts.Codes.Length)
+                {
+                    state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, NextCursor = null };
+                    cursor.OpaqueCursor = SerializeOrderSyncState(state);
+                    cursor.LastSuccessAt = timeProvider.GetUtcNow();
+                    cursor.Version++;
+                    await db.SaveChangesAsync(cancellationToken);
+                    continue;
+                }
+                if (state.Mode == OrderSyncMode.Baseline && HasEarlierOrderWindow(state))
+                {
+                    state = state with { WindowIndex = state.WindowIndex + 1, StoreFrontIndex = 0, NextCursor = null };
+                    cursor.OpaqueCursor = SerializeOrderSyncState(state);
+                    cursor.LastSuccessAt = timeProvider.GetUtcNow();
+                    cursor.Version++;
+                    await db.SaveChangesAsync(cancellationToken);
+                    continue;
+                }
+                cursor.OpaqueCursor = null;
+                cursor.LastSuccessAt = timeProvider.GetUtcNow();
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                break;
+            }
             if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
             foreach (var streamedOrder in result.Value!.Items)
             {
-                var fullOrder = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-hydrate:{streamedOrder.ExternalOrderId}"), streamedOrder.ExternalOrderId, cancellationToken);
-                // A package may disappear between the stream page and its exact read (for example after a
-                // marketplace-side cancellation). Keep the stream record instead of aborting the whole
-                // read-only synchronization; all other adapter failures remain visible and retryable.
-                var safeHydrationFallback = !fullOrder.IsSuccess && (fullOrder.Error?.Class == AdapterErrorClass.NotFound || fullOrder.Error is { Class: AdapterErrorClass.Validation, HttpStatus: 400 });
-                if (!fullOrder.IsSuccess && !safeHydrationFallback)
-                    throw JobProcessingException.FromAdapter(fullOrder.Error!);
-
-                if (safeHydrationFallback && !hydrationFallbackRecorded)
-                {
-                    db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "ORDER_STREAM_HYDRATION_FALLBACK", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = fullOrder.Error!.Code, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
-                    hydrationFallbackRecorded = true;
-                }
-
-                var hydratedOrder = fullOrder.IsSuccess ? fullOrder.Value! : streamedOrder;
-                await UpsertOrder(tenantId, connectionId, await EnrichOrderLineSources(tenantId, connectionId, correlationId, hydratedOrder, productSnapshots, cancellationToken), cancellationToken);
+                await UpsertOrder(tenantId, connectionId, streamedOrder, cancellationToken);
             }
-            next = result.Value.NextCursor; cursor.OpaqueCursor = next; cursor.LastModifiedWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max() ?? cursor.LastModifiedWatermark; cursor.LastSuccessAt = timeProvider.GetUtcNow(); cursor.Version++; await db.SaveChangesAsync(cancellationToken); if (!result.Value.HasMore) break;
+            var pageWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max();
+            cursor.LastModifiedWatermark = pageWatermark ?? cursor.LastModifiedWatermark;
+            if (result.Value.HasMore)
+            {
+                if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol stream hasMore=true ancak nextCursor boş döndü.");
+                state = state with { NextCursor = result.Value.NextCursor };
+            }
+            else if (state.StoreFrontIndex + 1 < TrendyolReadStorefronts.Codes.Length)
+            {
+                state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, NextCursor = null };
+            }
+            else if (state.Mode == OrderSyncMode.Baseline && HasEarlierOrderWindow(state))
+            {
+                state = state with { WindowIndex = state.WindowIndex + 1, StoreFrontIndex = 0, NextCursor = null };
+            }
+            else
+            {
+                cursor.OpaqueCursor = null;
+                cursor.LastModifiedWatermark = state.AnchorEnd;
+                cursor.LastSuccessAt = timeProvider.GetUtcNow();
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            cursor.OpaqueCursor = SerializeOrderSyncState(state);
+            cursor.LastSuccessAt = timeProvider.GetUtcNow();
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
         } while (!cancellationToken.IsCancellationRequested);
         return true;
     }
+
+    private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
+        // Product import is intentionally fail-closed to the approved Stage seller.
+        // A production connection can never be selected by this job, even if a bad
+        // payload or scheduler policy is introduced later.
+        if (connection is null || connection.Environment != "STAGE" || connection.ExternalStoreId != "2738" || connection.Status is not ("ACTIVE" or "VERIFIED")) return false;
+
+        var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
+        var hasSnapshots = await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
+        var hasCategoryMappings = await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
+        // The first attribute backfill must revisit the already imported catalog. Keep
+        // LastModifiedWatermark null until that full pass is complete so a retry cannot
+        // accidentally switch to the incremental window halfway through the backfill.
+        if (!hasCategoryMappings && cursor.OpaqueCursor is null && cursor.LastModifiedWatermark is not null)
+        {
+            cursor.LastModifiedWatermark = null;
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        DateTimeOffset? modifiedAfter = hasSnapshots && cursor.LastModifiedWatermark is not null ? cursor.LastModifiedWatermark.Value.AddMinutes(-2) : null;
+        var categoryReferences = await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
+        IReadOnlyList<ReferenceItem> categoryItems = categoryReferences is null
+            ? []
+            : await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == categoryReferences.Id && x.ResourceType == "CATEGORIES" && x.IsActive).ToListAsync(cancellationToken);
+        var categoryContexts = new Dictionary<string, CategoryAttributeContext>(StringComparer.Ordinal);
+        var nextCursor = cursor.OpaqueCursor;
+        do
+        {
+            var result = await products.ListCatalogAsync(
+                Context(tenantId, connectionId, correlationId, $"product-sync:{nextCursor ?? "0"}"),
+                new(nextCursor, 100),
+                new(modifiedAfter),
+                cancellationToken);
+            if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
+
+            foreach (var snapshot in result.Value!.Items
+                         .Where(x => !string.IsNullOrWhiteSpace(x.ExternalProductId))
+                         .GroupBy(x => x.ExternalProductId, StringComparer.OrdinalIgnoreCase)
+                         .Select(x => x.Last()))
+            {
+                var categoryContext = categoryReferences is null
+                    ? null
+                    : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, categoryContexts, correlationId, cancellationToken);
+                await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, cancellationToken);
+            }
+
+            if (result.Value.HasMore)
+            {
+                if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol ürün sayfası hasMore=true ancak nextPageToken boş döndü.");
+                nextCursor = result.Value.NextCursor;
+                cursor.OpaqueCursor = nextCursor;
+                cursor.LastSuccessAt = timeProvider.GetUtcNow();
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            else
+            {
+                cursor.OpaqueCursor = null;
+                // Approved-products supports a modified-date filter. Keep a short
+                // overlap so a variant changed while a page was being read is not lost.
+                cursor.LastModifiedWatermark = timeProvider.GetUtcNow().AddSeconds(-60);
+                cursor.LastSuccessAt = timeProvider.GetUtcNow();
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+        } while (!cancellationToken.IsCancellationRequested);
+        return true;
+    }
+
+    private async Task<ReferenceSnapshot?> EnsureReferenceSnapshot(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)
+    {
+        var scope = string.IsNullOrWhiteSpace(parentExternalId) ? "" : parentExternalId.Trim();
+        var current = await db.ReferenceSnapshots
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType && x.ScopeExternalId == scope && x.IsCurrent)
+            .OrderByDescending(x => x.FetchedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (current is not null && timeProvider.GetUtcNow() - current.FetchedAt < TimeSpan.FromHours(24)) return current;
+
+        var payload = JsonSerializer.Serialize(new { resourceType, parentExternalId });
+        try
+        {
+            if (!await SyncReferences(tenantId, connectionId, payload, correlationId, cancellationToken)) return current;
+        }
+        catch (JobProcessingException exception)
+        {
+            await RecordIssue(tenantId, $"product-reference-sync:{connectionId}:{resourceType}:{scope}", exception.Result.ErrorCode ?? "REFERENCE_SYNC_FAILED", exception.Result.ErrorSummary ?? "Trendyol kategori referansı eşitlenemedi; mevcut panel kayıtları korundu.", cancellationToken);
+            return current;
+        }
+
+        return await db.ReferenceSnapshots
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType && x.ScopeExternalId == scope && x.IsCurrent)
+            .OrderByDescending(x => x.FetchedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<CategoryAttributeContext?> EnsureCategoryAttributeContext(
+        Guid tenantId,
+        Guid connectionId,
+        ReferenceSnapshot categorySnapshot,
+        RemoteCatalogProduct snapshot,
+        IReadOnlyList<ReferenceItem> categoryItems,
+        IDictionary<string, CategoryAttributeContext> cache,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        var externalCategoryId = Short(snapshot.CategoryExternalId, 256);
+        if (string.IsNullOrWhiteSpace(externalCategoryId)) return null;
+        if (cache.TryGetValue(externalCategoryId, out var cached)) return cached;
+
+        var categoryItem = categoryItems.FirstOrDefault(x => string.Equals(x.ExternalId, externalCategoryId, StringComparison.Ordinal));
+        if (categoryItem is null)
+        {
+            await RecordIssue(tenantId, $"product-category-reference:{connectionId}:{externalCategoryId}", "PRODUCT_CATEGORY_REFERENCE_MISSING", "Ürünün Trendyol kategori kimliği güncel kategori snapshot'ında bulunamadı; kategori özellikleri eşlenmedi.", cancellationToken);
+            return null;
+        }
+
+        var attributeSnapshot = await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORY_ATTRIBUTES", externalCategoryId, correlationId, cancellationToken);
+        if (attributeSnapshot is null) return null;
+        var remoteAttributes = await db.ReferenceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.SnapshotId == attributeSnapshot.Id && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.IsActive)
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+
+        var observedNames = snapshot.Variants
+            .SelectMany(x => x.Options.Keys)
+            .Select(x => NormalizeCatalogKey(x, 320))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.Ordinal);
+        var valuesByAttribute = new Dictionary<string, IReadOnlyList<ReferenceItem>>(StringComparer.Ordinal);
+        foreach (var remoteAttribute in remoteAttributes.Where(x => x.IsRequired == true || observedNames.Contains(NormalizeCatalogKey(x.Name, 320))))
+        {
+            var valueSnapshot = await EnsureReferenceSnapshot(tenantId, connectionId, "ATTRIBUTE_VALUES", $"{externalCategoryId}/{remoteAttribute.ExternalId}", correlationId, cancellationToken);
+            if (valueSnapshot is null) continue;
+            var values = await db.ReferenceItems.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.SnapshotId == valueSnapshot.Id && x.ResourceType == "ATTRIBUTE_VALUES" && x.IsActive)
+                .OrderBy(x => x.SortOrder).ThenBy(x => x.Name)
+                .ToListAsync(cancellationToken);
+            valuesByAttribute[remoteAttribute.ExternalId] = values;
+        }
+
+        var localCategory = await EnsureMappedCategory(tenantId, connectionId, categorySnapshot, categoryItem, cancellationToken);
+        var attributes = new Dictionary<string, LocalCategoryAttribute>(StringComparer.Ordinal);
+        foreach (var remoteAttribute in remoteAttributes)
+        {
+            var values = valuesByAttribute.TryGetValue(remoteAttribute.ExternalId, out var fetchedValues) ? fetchedValues : [];
+            var localAttribute = await EnsureMappedAttribute(tenantId, connectionId, localCategory, categoryItem, attributeSnapshot, remoteAttribute, values, cancellationToken);
+            attributes[NormalizeCatalogKey(remoteAttribute.Name, 320)] = localAttribute;
+        }
+
+        var result = new CategoryAttributeContext(localCategory, externalCategoryId, attributes);
+        cache[externalCategoryId] = result;
+        return result;
+    }
+
+    private async Task<Category> EnsureMappedCategory(Guid tenantId, Guid connectionId, ReferenceSnapshot categorySnapshot, ReferenceItem remoteCategory, CancellationToken cancellationToken)
+    {
+        var mapping = await db.CategoryMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == categorySnapshot.ScopeExternalId && x.ExternalId == remoteCategory.ExternalId, cancellationToken);
+        Category? category = mapping is null ? null : await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == mapping.LocalId, cancellationToken);
+        var normalized = NormalizeCatalogKey(remoteCategory.Name, 160);
+        category ??= db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId is null && x.NormalizedName == normalized)
+            ?? await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ParentId == null && x.NormalizedName == normalized, cancellationToken);
+        if (category is null)
+        {
+            var now = timeProvider.GetUtcNow();
+            category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(remoteCategory.Name, 160), NormalizedName = normalized, Path = Short(remoteCategory.Path, 1024), Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
+            db.Categories.Add(category);
+        }
+        else
+        {
+            category.Name = Short(remoteCategory.Name, 160);
+            category.Path = Short(remoteCategory.Path, 1024);
+            category.IsLeaf = true;
+            category.IsActive = true;
+            category.UpdatedAt = timeProvider.GetUtcNow();
+            category.Version++;
+        }
+
+        if (mapping is null)
+        {
+            mapping = new CategoryMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = categorySnapshot.Id, LocalId = category.Id, ScopeExternalId = categorySnapshot.ScopeExternalId, ExternalId = remoteCategory.ExternalId, Status = "VERIFIED", VerifiedAt = timeProvider.GetUtcNow(), Version = 1 };
+            db.CategoryMappings.Add(mapping);
+        }
+        else
+        {
+            mapping.SnapshotId = categorySnapshot.Id;
+            mapping.Status = "VERIFIED";
+            mapping.VerifiedAt = timeProvider.GetUtcNow();
+            mapping.Version++;
+        }
+        return category;
+    }
+
+    private async Task<LocalCategoryAttribute> EnsureMappedAttribute(
+        Guid tenantId,
+        Guid connectionId,
+        Category category,
+        ReferenceItem remoteCategory,
+        ReferenceSnapshot attributeSnapshot,
+        ReferenceItem remoteAttribute,
+        IReadOnlyList<ReferenceItem> values,
+        CancellationToken cancellationToken)
+    {
+        var code = Short($"TRD_{remoteCategory.ExternalId}_{remoteAttribute.ExternalId}", 96);
+        var dataType = values.Count > 0
+            ? (remoteAttribute.AllowsMultipleValues == true ? AttributeDataType.MultiSelect : AttributeDataType.SingleSelect)
+            : AttributeDataType.Text;
+        var attribute = db.AttributeDefinitions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Code == code)
+            ?? await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Code == code, cancellationToken);
+        if (attribute is null)
+        {
+            attribute = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = tenantId, Code = code, Name = Short(remoteAttribute.Name, 160), DataType = dataType, SelectionMode = dataType == AttributeDataType.MultiSelect ? "MULTI" : dataType == AttributeDataType.SingleSelect ? "SINGLE" : null, IsActive = true, CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
+            db.AttributeDefinitions.Add(attribute);
+        }
+        else
+        {
+            attribute.Name = Short(remoteAttribute.Name, 160);
+            attribute.DataType = dataType;
+            attribute.SelectionMode = dataType == AttributeDataType.MultiSelect ? "MULTI" : dataType == AttributeDataType.SingleSelect ? "SINGLE" : null;
+            attribute.IsActive = true;
+            attribute.UpdatedAt = timeProvider.GetUtcNow();
+            attribute.Version++;
+        }
+
+        var requirement = await db.CategoryAttributeRequirements.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == category.Id && x.AttributeId == attribute.Id, cancellationToken);
+        var role = requirement?.Role == "OPTION" ? "OPTION" : "ATTRIBUTE";
+        if (requirement is null)
+            db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = category.Id, AttributeId = attribute.Id, IsRequired = remoteAttribute.IsRequired == true, AllowsCustomValue = remoteAttribute.AllowsCustomValue == true, DisplayOrder = remoteAttribute.SortOrder ?? 0, Version = 1 });
+        else
+        {
+            requirement.IsRequired = remoteAttribute.IsRequired == true;
+            requirement.AllowsCustomValue = remoteAttribute.AllowsCustomValue == true;
+            requirement.DisplayOrder = remoteAttribute.SortOrder ?? requirement.DisplayOrder;
+            requirement.Version++;
+        }
+
+        var attributeMapping = await db.AttributeMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == attribute.Id && x.ScopeExternalId == remoteCategory.ExternalId, cancellationToken);
+        if (attributeMapping is null)
+            db.AttributeMappings.Add(new AttributeMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = attributeSnapshot.Id, LocalId = attribute.Id, ScopeExternalId = remoteCategory.ExternalId, ExternalId = remoteAttribute.ExternalId, Status = "VERIFIED", VerifiedAt = timeProvider.GetUtcNow(), Version = 1 });
+        else
+        {
+            attributeMapping.SnapshotId = attributeSnapshot.Id;
+            attributeMapping.ExternalId = remoteAttribute.ExternalId;
+            attributeMapping.Status = "VERIFIED";
+            attributeMapping.VerifiedAt = timeProvider.GetUtcNow();
+            attributeMapping.Version++;
+        }
+
+        foreach (var remoteValue in values)
+        {
+            var normalizedValue = NormalizeCatalogKey(remoteValue.Name, 320);
+            var value = db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == attribute.Id && x.NormalizedValue == normalizedValue)
+                ?? await db.AttributeValues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == attribute.Id && x.NormalizedValue == normalizedValue, cancellationToken);
+            if (value is null)
+            {
+                value = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenantId, AttributeId = attribute.Id, Value = Short(remoteValue.Name, 320), NormalizedValue = normalizedValue, SortOrder = remoteValue.SortOrder ?? 0, IsActive = true, Version = 1 };
+                db.AttributeValues.Add(value);
+            }
+            else
+            {
+                value.Value = Short(remoteValue.Name, 320);
+                value.SortOrder = remoteValue.SortOrder ?? value.SortOrder;
+                value.IsActive = true;
+                value.Version++;
+            }
+            var valueScope = $"{remoteCategory.ExternalId}/{remoteAttribute.ExternalId}";
+            var valueSnapshot = await db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ATTRIBUTE_VALUES" && x.ScopeExternalId == valueScope && x.IsCurrent).OrderByDescending(x => x.FetchedAt).FirstOrDefaultAsync(cancellationToken);
+            if (valueSnapshot is null) continue;
+            var valueMapping = db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == value.Id && x.ScopeExternalId == valueScope)
+                ?? await db.AttributeValueMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == value.Id && x.ScopeExternalId == valueScope, cancellationToken);
+            valueMapping ??= db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId)
+                ?? await db.AttributeValueMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId, cancellationToken);
+            if (valueMapping is null)
+                db.AttributeValueMappings.Add(new AttributeValueMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = valueSnapshot.Id, LocalId = value.Id, ScopeExternalId = valueScope, ExternalId = remoteValue.ExternalId, Status = "VERIFIED", VerifiedAt = timeProvider.GetUtcNow(), Version = 1 });
+            else
+            {
+                valueMapping.SnapshotId = valueSnapshot.Id;
+                valueMapping.ExternalId = remoteValue.ExternalId;
+                valueMapping.Status = "VERIFIED";
+                valueMapping.VerifiedAt = timeProvider.GetUtcNow();
+                valueMapping.Version++;
+            }
+        }
+        return new LocalCategoryAttribute(attribute, remoteAttribute, values, role);
+    }
+
+    private async Task UpsertProductAttributeAssignments(Guid tenantId, Product product, ProductVariant variant, IReadOnlyDictionary<string, string> options, CategoryAttributeContext categoryContext, CancellationToken cancellationToken)
+    {
+        var sortOrder = 0;
+        foreach (var pair in options.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            var optionKey = NormalizeCatalogKey(pair.Key, 320);
+            if (!categoryContext.Attributes.TryGetValue(optionKey, out var mapped))
+            {
+                sortOrder++;
+                continue;
+            }
+            if (mapped.Role == "OPTION")
+            {
+                sortOrder++;
+                continue;
+            }
+
+            var valueKey = NormalizeCatalogKey(pair.Value, 320);
+            var remoteValue = mapped.Values.FirstOrDefault(x => NormalizeCatalogKey(x.Name, 320) == valueKey);
+            Guid? valueId = null;
+            string? textValue = null;
+            decimal? numberValue = null;
+            bool? booleanValue = null;
+            if (remoteValue is not null)
+            {
+                valueId = await db.AttributeValues.Where(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.NormalizedValue == valueKey).Select(x => (Guid?)x.Id).SingleOrDefaultAsync(cancellationToken);
+            }
+            else if (mapped.Remote.AllowsCustomValue == true)
+            {
+                if (mapped.Definition.DataType == AttributeDataType.Number && decimal.TryParse(pair.Value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var number)) numberValue = number;
+                else if (mapped.Definition.DataType == AttributeDataType.Boolean && bool.TryParse(pair.Value, out var boolean)) booleanValue = boolean;
+                else textValue = Short(pair.Value, 320);
+            }
+            else
+            {
+                await RecordIssue(tenantId, $"product-attribute-value:{product.Id}:{variant.Id}:{mapped.Definition.Id}:{valueKey}", "PRODUCT_ATTRIBUTE_VALUE_UNMAPPED", $"Trendyol ürün özelliği '{pair.Key}: {pair.Value}' için güncel panel değeri bulunamadı; atama yapılmadı.", cancellationToken);
+                sortOrder++;
+                continue;
+            }
+            if (valueId is null && textValue is null && numberValue is null && booleanValue is null)
+            {
+                await RecordIssue(tenantId, $"product-attribute-value:{product.Id}:{variant.Id}:{mapped.Definition.Id}:{valueKey}", "PRODUCT_ATTRIBUTE_VALUE_UNMAPPED", $"Trendyol ürün özelliği '{pair.Key}: {pair.Value}' için panel değeri eşlenemedi; atama yapılmadı.", cancellationToken);
+                sortOrder++;
+                continue;
+            }
+
+            var assignment = db.ProductAttributeAssignments.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId == variant.Id && x.AttributeId == mapped.Definition.Id)
+                ?? await db.ProductAttributeAssignments.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId == variant.Id && x.AttributeId == mapped.Definition.Id, cancellationToken);
+            if (assignment is null)
+            {
+                assignment = new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, VariantId = variant.Id, AttributeId = mapped.Definition.Id, ValueId = valueId, TextValue = textValue, NumberValue = numberValue, BooleanValue = booleanValue, SortOrder = sortOrder, Version = 1 };
+                db.ProductAttributeAssignments.Add(assignment);
+            }
+            else
+            {
+                assignment.ValueId = valueId;
+                assignment.TextValue = textValue;
+                assignment.NumberValue = numberValue;
+                assignment.BooleanValue = booleanValue;
+                assignment.SortOrder = sortOrder;
+                assignment.Version++;
+            }
+            sortOrder++;
+        }
+    }
+
+    private async Task UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var externalProductId = Short(snapshot.ExternalProductId, 256);
+        var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
+        Product? product = link is null
+            ? null
+            : await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == link.ProductId, cancellationToken);
+        if (product is null)
+        {
+            product = new Product
+            {
+                Id = Guid.CreateVersion7(), TenantId = tenantId, Title = ProductTitle(snapshot.Title, externalProductId), Description = snapshot.Description ?? "",
+                Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1
+            };
+            db.Products.Add(product);
+            if (link is null)
+            {
+                link = new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ProductId = product.Id, ExternalId = externalProductId, Version = 1 };
+                db.MarketplaceProductLinks.Add(link);
+            }
+        }
+
+        product.Title = ProductTitle(snapshot.Title, externalProductId);
+        product.Description = snapshot.Description ?? "";
+        product.Status = ProductStatus.Active;
+        product.ArchivedAt = null;
+        product.UpdatedAt = now;
+        product.Version++;
+
+        var brand = await UpsertCatalogBrand(tenantId, snapshot.BrandName, cancellationToken);
+        var category = categoryContext?.LocalCategory ?? await UpsertCatalogCategory(tenantId, snapshot.CategoryName, cancellationToken);
+        product.BrandId = brand?.Id;
+        product.CategoryId = category?.Id;
+
+        foreach (var remote in snapshot.Variants)
+            await UpsertCatalogVariant(tenantId, connectionId, product, remote, categoryContext, now, cancellationToken);
+
+        await UpsertCatalogMedia(tenantId, product, snapshot.ImageUrls, product.Title, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<Brand?> UpsertCatalogBrand(Guid tenantId, string? name, CancellationToken cancellationToken)
+    {
+        var normalized = NormalizeCatalogKey(name, 160);
+        if (string.IsNullOrWhiteSpace(normalized)) return null;
+        var brand = db.Brands.Local.FirstOrDefault(x => x.TenantId == tenantId && x.NormalizedName == normalized)
+            ?? await db.Brands.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.NormalizedName == normalized, cancellationToken);
+        if (brand is not null) { brand.Name = Short(name!.Trim(), 160); brand.IsActive = true; brand.UpdatedAt = timeProvider.GetUtcNow(); brand.Version++; return brand; }
+        brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(name!.Trim(), 160), NormalizedName = normalized, IsActive = true, CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
+        db.Brands.Add(brand);
+        return brand;
+    }
+
+    private async Task<Category?> UpsertCatalogCategory(Guid tenantId, string? name, CancellationToken cancellationToken)
+    {
+        var normalized = NormalizeCatalogKey(name, 160);
+        if (string.IsNullOrWhiteSpace(normalized)) return null;
+        var category = db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId == null && x.NormalizedName == normalized)
+            ?? await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ParentId == null && x.NormalizedName == normalized, cancellationToken);
+        if (category is not null) { category.Name = Short(name!.Trim(), 160); category.Path = category.Name; category.IsActive = true; category.IsLeaf = true; category.UpdatedAt = timeProvider.GetUtcNow(); category.Version++; return category; }
+        category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(name!.Trim(), 160), NormalizedName = normalized, Path = Short(name!.Trim(), 1024), Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
+        db.Categories.Add(category);
+        return category;
+    }
+
+    private async Task UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, CategoryAttributeContext? categoryContext, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var sku = Short(string.IsNullOrWhiteSpace(remote.Sku) ? remote.Barcode ?? remote.ExternalVariantId : remote.Sku, 160);
+        var skuNormalized = NormalizeCatalogKey(sku, 160);
+        if (string.IsNullOrWhiteSpace(skuNormalized)) return;
+        var barcode = string.IsNullOrWhiteSpace(remote.Barcode) ? null : Short(remote.Barcode.Trim(), 160);
+        var barcodeNormalized = NormalizeCatalogKey(barcode, 160);
+        var externalVariantId = Short(remote.ExternalVariantId, 256);
+        var optionSignature = categoryContext is null ? OptionSignature(remote.Options) : await PanelOptionSignatureAsync(tenantId, connectionId, categoryContext, remote.Options, cancellationToken);
+        var link = await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalVariantId, cancellationToken);
+        ProductVariant? variant = link is null ? null : await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == link.VariantId, cancellationToken);
+        variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.SkuNormalized == skuNormalized)
+            ?? await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SkuNormalized == skuNormalized, cancellationToken);
+        if (variant is not null && variant.ProductId != product.Id)
+        {
+            await RecordIssue(tenantId, $"product-sync-variant-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_CONFLICT", "Trendyol varyantı başka bir yerel üründe kullanılan stok koduyla eşleşti; mevcut kayıt korunarak atlandı.", cancellationToken);
+            return;
+        }
+        if (variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
+            variant = await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized, cancellationToken);
+        if (variant is null)
+        {
+            variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, Sku = sku, SkuNormalized = skuNormalized, Barcode = barcode, BarcodeNormalized = barcodeNormalized, ModelCode = Short(remote.ModelCode, 160), OptionSignature = optionSignature, Status = remote.Archived ? ProductStatus.Archived : ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+            db.ProductVariants.Add(variant);
+        }
+        else
+        {
+            variant.Sku = sku; variant.SkuNormalized = skuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = barcodeNormalized; variant.ModelCode = Short(remote.ModelCode, 160); variant.OptionSignature = optionSignature; variant.Status = remote.Archived ? ProductStatus.Archived : ProductStatus.Active; variant.UpdatedAt = now; variant.Version++;
+        }
+        if (link is null)
+        {
+            var existingVariantLink = db.MarketplaceVariantLinks.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id)
+                ?? await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id, cancellationToken);
+            if (existingVariantLink is null)
+                db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ExternalId = externalVariantId, Version = 1 });
+            else if (!string.Equals(existingVariantLink.ExternalId, externalVariantId, StringComparison.Ordinal))
+            {
+                await RecordIssue(tenantId, $"product-sync-variant-link-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_LINK_CONFLICT", "Aynı yerel varyantın başka bir Trendyol varyant linki zaten var; ikinci link güvenli biçimde atlandı.", cancellationToken);
+                return;
+            }
+        }
+        await UpsertCatalogOptions(tenantId, connectionId, product.Id, variant.Id, remote.Options, categoryContext, cancellationToken);
+        if (categoryContext is not null)
+            await UpsertProductAttributeAssignments(tenantId, product, variant, remote.Options, categoryContext, cancellationToken);
+    }
+
+    private async Task<string> PanelOptionSignatureAsync(Guid tenantId, Guid connectionId, CategoryAttributeContext categoryContext, IReadOnlyDictionary<string, string> options, CancellationToken cancellationToken)
+    {
+        var panelOptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in options)
+        {
+            var optionKey = NormalizeCatalogKey(pair.Key, 320);
+            if (!categoryContext.Attributes.TryGetValue(optionKey, out var mapped) || mapped.Role != "OPTION") continue;
+            panelOptions[mapped.Definition.Name] = await PanelOptionValueAsync(tenantId, connectionId, categoryContext, mapped, pair.Value, cancellationToken);
+        }
+        return OptionSignature(panelOptions.Count > 0 ? panelOptions : options);
+    }
+
+    private async Task<string> PanelOptionValueAsync(Guid tenantId, Guid connectionId, CategoryAttributeContext categoryContext, LocalCategoryAttribute mapped, string remoteValue, CancellationToken cancellationToken)
+    {
+        var remote = mapped.Values.FirstOrDefault(value => NormalizeCatalogKey(value.Name, 320) == NormalizeCatalogKey(remoteValue, 320));
+        if (remote is not null)
+        {
+            var scope = $"{categoryContext.ExternalCategoryId}/{mapped.Remote.ExternalId}";
+            var mapping = await db.AttributeValueMappings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == scope && x.ExternalId == remote.ExternalId && x.Status == "VERIFIED", cancellationToken);
+            if (mapping is not null)
+            {
+                var localValue = await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == mapping.LocalId && x.AttributeId == mapped.Definition.Id && x.IsActive, cancellationToken);
+                if (localValue is not null) return localValue.Value;
+            }
+        }
+        var direct = await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == NormalizeCatalogKey(remoteValue, 320), cancellationToken);
+        return direct?.Value ?? remoteValue;
+    }
+
+    private async Task UpsertCatalogOptions(Guid tenantId, Guid connectionId, Guid productId, Guid variantId, IReadOnlyDictionary<string, string> options, CategoryAttributeContext? categoryContext, CancellationToken cancellationToken)
+    {
+        var order = 0;
+        foreach (var pair in options.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            var optionKey = NormalizeCatalogKey(pair.Key, 160); var valueKey = NormalizeCatalogKey(pair.Value, 160);
+            if (string.IsNullOrWhiteSpace(optionKey) || string.IsNullOrWhiteSpace(valueKey)) continue;
+            LocalCategoryAttribute? mapped = null;
+            if (categoryContext is not null && (!categoryContext.Attributes.TryGetValue(optionKey, out mapped) || mapped.Role != "OPTION")) continue;
+            var panelLabel = mapped?.Definition.Name ?? pair.Key;
+            var panelValue = mapped is null ? pair.Value : await PanelOptionValueAsync(tenantId, connectionId, categoryContext!, mapped, pair.Value, cancellationToken);
+            optionKey = NormalizeCatalogKey(panelLabel, 160);
+            valueKey = NormalizeCatalogKey(panelValue, 160);
+            var option = db.ProductOptions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == productId && x.NormalizedKey == optionKey)
+                ?? await db.ProductOptions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.NormalizedKey == optionKey, cancellationToken);
+            if (option is null) { option = new ProductOption { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = productId, Label = Short(panelLabel, 160), NormalizedKey = optionKey, SortOrder = order }; db.ProductOptions.Add(option); }
+            var optionValue = db.ProductOptionValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.OptionId == option.Id && x.NormalizedKey == valueKey)
+                ?? await db.ProductOptionValues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OptionId == option.Id && x.NormalizedKey == valueKey, cancellationToken);
+            if (optionValue is null) { optionValue = new ProductOptionValue { Id = Guid.CreateVersion7(), TenantId = tenantId, OptionId = option.Id, Label = Short(panelValue, 160), NormalizedKey = valueKey, SortOrder = order }; db.ProductOptionValues.Add(optionValue); }
+            var assignment = db.VariantOptionValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.VariantId == variantId && x.OptionId == option.Id)
+                ?? await db.VariantOptionValues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.OptionId == option.Id, cancellationToken);
+            if (assignment is null) db.VariantOptionValues.Add(new VariantOptionValue { Id = Guid.CreateVersion7(), TenantId = tenantId, VariantId = variantId, OptionId = option.Id, OptionValueId = optionValue.Id });
+            else assignment.OptionValueId = optionValue.Id;
+            order++;
+        }
+    }
+
+    private async Task UpsertCatalogMedia(Guid tenantId, Product product, IReadOnlyList<string> sourceUrls, string altText, CancellationToken cancellationToken)
+    {
+        var urls = sourceUrls.Select(NormalizeCatalogImageUrl).Where(x => x is not null).Select(x => x!).Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToArray();
+        var existing = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId == null).ToListAsync(cancellationToken);
+        foreach (var row in existing.Where(x => x.SortOrder >= urls.Length)) row.Status = "ARCHIVED";
+        for (var index = 0; index < urls.Length; index++)
+        {
+            var url = urls[index];
+            var asset = db.FileAssets.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Classification == "PRODUCT_MEDIA_URL" && x.RelativePath == url)
+                ?? await db.FileAssets.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Classification == "PRODUCT_MEDIA_URL" && x.RelativePath == url, cancellationToken);
+            if (asset is null)
+            {
+                asset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenantId, Classification = "PRODUCT_MEDIA_URL", RelativePath = url, OriginalNameSafe = Path.GetFileName(new Uri(url).AbsolutePath), MimeType = ImageMime(url), SizeBytes = 0, Sha256 = Hash(url), Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
+                db.FileAssets.Add(asset);
+            }
+            else { asset.Status = "ACTIVE"; asset.ArchivedAt = null; }
+            var media = existing.SingleOrDefault(x => x.SortOrder == index);
+            if (media is null) db.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, VariantId = null, FileAssetId = asset.Id, MediaRole = index == 0 ? "PRIMARY" : "GALLERY", SortOrder = index, AltText = Short(altText, 320), Status = "ACTIVE" });
+            else { media.FileAssetId = asset.Id; media.MediaRole = index == 0 ? "PRIMARY" : "GALLERY"; media.AltText = Short(altText, 320); media.Status = "ACTIVE"; }
+        }
+    }
+
+    private static string ProductTitle(string? title, string externalId) => Short(string.IsNullOrWhiteSpace(title) ? $"Trendyol ürün {externalId}" : title.Trim(), 320);
+    private static string OptionSignature(IReadOnlyDictionary<string, string> options) => string.Join(" | ", options.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase).Select(x => $"{Short(x.Key, 80)}: {Short(x.Value, 120)}"));
+    private static string Short(string? value, int maximum) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Length <= maximum ? value.Trim() : value.Trim()[..maximum];
+    private static string NormalizeCatalogKey(string? value, int maximum)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        var form = value.Trim().Normalize(System.Text.NormalizationForm.FormD);
+        var builder = new StringBuilder(form.Length);
+        foreach (var ch in form)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
+            if (char.IsLetterOrDigit(ch)) builder.Append(char.ToUpperInvariant(ch)); else if (builder.Length > 0 && builder[^1] != '-') builder.Append('-');
+        }
+        return builder.ToString().Trim('-')[..Math.Min(maximum, builder.ToString().Trim('-').Length)];
+    }
+    private static string? NormalizeCatalogImageUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var candidate = value.Trim();
+        if (candidate.StartsWith("//", StringComparison.Ordinal)) candidate = "https:" + candidate;
+        else if (candidate.StartsWith("/", StringComparison.Ordinal)) candidate = "https://cdn.dsmcdn.com" + candidate;
+        return Uri.TryCreate(candidate, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
+    }
+    private static string ImageMime(string url) => new Uri(url).AbsolutePath.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
+
+    // Bump the durable state version so the next order sync starts a bounded
+    // three-month baseline instead of continuing the old incremental cursor.
+    private const string OrderSyncStateVersion = "orders-v4";
+    private static readonly TimeSpan OrderStreamWindowSpan = TimeSpan.FromDays(14);
+    private enum OrderSyncMode { Baseline, Incremental }
+    private sealed record OrderSyncState(string Version, OrderSyncMode Mode, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, string? NextCursor, int StoreFrontIndex = 0);
+    private sealed record CategoryAttributeContext(Category LocalCategory, string ExternalCategoryId, IReadOnlyDictionary<string, LocalCategoryAttribute> Attributes);
+    private sealed record LocalCategoryAttribute(AttributeDefinition Definition, ReferenceItem Remote, IReadOnlyList<ReferenceItem> Values, string Role);
+
+    private static OrderSyncState ReadOrderSyncState(SyncCursor cursor, DateTimeOffset now, bool forceBaseline = false)
+    {
+        if (!forceBaseline && !string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
+        {
+            try
+            {
+                var state = JsonSerializer.Deserialize<OrderSyncState>(cursor.OpaqueCursor);
+                if (state is { Version: OrderSyncStateVersion, WindowIndex: >= 0, StoreFrontIndex: >= 0 } && state.StoreFrontIndex < TrendyolReadStorefronts.Codes.Length) return state;
+            }
+            catch (JsonException) { }
+        }
+
+        var baseline = forceBaseline || (cursor.LastSuccessAt is null && cursor.LastModifiedWatermark is null && string.IsNullOrWhiteSpace(cursor.OpaqueCursor));
+        var anchor = now;
+        var start = baseline
+            ? anchor.AddMonths(-3)
+            : anchor.Subtract(OrderStreamWindowSpan);
+        return new(OrderSyncStateVersion, baseline ? OrderSyncMode.Baseline : OrderSyncMode.Incremental, anchor, start, 0, null, 0);
+    }
+
+    private static (DateTimeOffset Start, DateTimeOffset End) OrderWindow(OrderSyncState state)
+    {
+        if (state.Mode == OrderSyncMode.Incremental)
+            return (state.StartAt, state.AnchorEnd);
+
+        var end = state.AnchorEnd - TimeSpan.FromTicks(state.WindowIndex * (OrderStreamWindowSpan.Ticks + TimeSpan.TicksPerMillisecond));
+        var start = end - OrderStreamWindowSpan;
+        return (start < state.StartAt ? state.StartAt : start, end);
+    }
+
+    private static bool HasEarlierOrderWindow(OrderSyncState state)
+    {
+        if (state.Mode != OrderSyncMode.Baseline) return false;
+        var nextEnd = state.AnchorEnd - TimeSpan.FromTicks((state.WindowIndex + 1L) * (OrderStreamWindowSpan.Ticks + TimeSpan.TicksPerMillisecond));
+        return nextEnd >= state.StartAt;
+    }
+
+    private static string SerializeOrderSyncState(OrderSyncState state) => JsonSerializer.Serialize(state);
 
     private async Task<RemoteOrder> EnrichOrderLineSources(Guid tenantId, Guid connectionId, string correlationId, RemoteOrder remote, Dictionary<string, string?> cache, CancellationToken cancellationToken)
     {
@@ -1011,7 +1685,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         string raw; string externalMessageId; try { using var payload = JsonDocument.Parse(payloadJson); raw = payload.RootElement.GetProperty("rawJson").GetString() ?? ""; externalMessageId = payload.RootElement.GetProperty("externalMessageId").GetString() ?? ""; } catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException) { return false; }
         AdapterPageResult<RemoteOrder> page; try { page = TrendyolJsonMapper.Orders(raw); } catch (JsonException) { return false; }
-        if (configuration.GetValue("Marketplace:PersistOrderSnapshots", false))
+        if (configuration.GetValue("Marketplace:PersistOrderSnapshots", true))
             foreach (var order in page.Items) await UpsertOrder(tenantId, connectionId, order, cancellationToken);
         var inbox = await db.InboxMessages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Source == "TRENDYOL_WEBHOOK" && x.ExternalMessageId == externalMessageId, cancellationToken); if (inbox is not null) inbox.ProcessedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return true;
     }
@@ -1036,7 +1710,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var lines = new Dictionary<string, OrderLine>(StringComparer.Ordinal);
         foreach (var remoteLine in remote.Lines)
         {
-            var line = await db.OrderLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken); if (line is null) { line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = remoteLine.ExternalLineId, Sku = remoteLine.Sku, TitleSnapshot = remoteLine.Title, RawStatus = remoteLine.RawStatus, Version = 1 }; db.OrderLines.Add(line); }
+            var line = await db.OrderLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken);
+            if (line is null && !string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}")
+                line = await db.OrderLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.SourceSnapshotJson == remoteLine.SourceSnapshotJson, cancellationToken);
+            if (line is null) { line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = remoteLine.ExternalLineId, Sku = remoteLine.Sku, TitleSnapshot = remoteLine.Title, RawStatus = remoteLine.RawStatus, Version = 1 }; db.OrderLines.Add(line); }
+            else line.ExternalLineId = remoteLine.ExternalLineId;
             line.Sku = remoteLine.Sku; line.Barcode = remoteLine.Barcode; line.TitleSnapshot = remoteLine.Title; line.SourceSnapshotJson = remoteLine.SourceSnapshotJson; line.OrderedQuantity = remoteLine.Quantity; line.UnitPrice = remoteLine.UnitPrice; line.VatRate = remoteLine.VatRate; line.RawStatus = remoteLine.RawStatus; if (db.Entry(line).State != EntityState.Added) line.Version++; lines[remoteLine.ExternalLineId] = line;
         }
         foreach (var remotePackage in remote.Packages)
@@ -1048,6 +1726,25 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var eventAlreadyRecorded = db.OrderStatusHistory.Local.Any(x => x.TenantId == tenantId && x.OrderId == order.Id && x.SourceEventId == eventId) || await db.OrderStatusHistory.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.SourceEventId == eventId, cancellationToken);
             if (eventAlreadyRecorded)
             {
+                // The initial projection used shipmentPackageStatus before the
+                // authoritative top-level status. When the same package event
+                // is replayed after that mapper correction, repair only this
+                // known ReadyToShip -> New projection mismatch. This is a
+                // local idempotent repair; it does not create a new remote
+                // event or perform any marketplace write.
+                if (package is not null
+                    && package.Status == ShipmentPackageStatus.ReadyToShip
+                    && string.Equals(package.RawStatus, "ReadyToShip", StringComparison.OrdinalIgnoreCase)
+                    && target == ShipmentPackageStatus.New
+                    && string.Equals(remotePackage.RawStatus, "Created", StringComparison.OrdinalIgnoreCase))
+                {
+                    package.Status = target;
+                    package.RawStatus = remotePackage.RawStatus;
+                    package.StatusOccurredAt = remotePackage.OccurredAt;
+                    package.UpdatedAt = now;
+                    package.Version++;
+                    repairedProjection = true;
+                }
                 if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; }
                 continue;
             }
@@ -1064,24 +1761,107 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var persistedStatuses = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => new { x.Id, x.Status }).ToListAsync(cancellationToken); var acceptedStatuses = persistedStatuses.ToDictionary(x => x.Id, x => x.Status); foreach (var tracked in db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id)) acceptedStatuses[tracked.Id] = tracked.Status; order.DerivedStatus = Wire(acceptedStatuses.Count == 0 ? ShipmentPackageStatus.New : acceptedStatuses.Values.OrderByDescending(StatusRank).First()); await db.SaveChangesAsync(cancellationToken);
     }
 
+    // Trendyol's claims feed is date-bounded for the initial scan. Invalidating
+    // the previous all-time cursor makes the next read start at three months.
+    private const string ReturnSyncStateVersion = "returns-v8";
+    private sealed record ReturnSyncState(string Version, int StoreFrontIndex, int Page, bool Full = true, DateTimeOffset? StartAt = null, DateTimeOffset? EndAt = null);
+
     private async Task<bool> SyncReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
-        var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken); var pageNumber = cursor.OpaqueCursor; var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
+        var state = ReadReturnSyncState(cursor, timeProvider.GetUtcNow());
+        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         do
         {
-            var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-sync:{pageNumber}"), new(cursor.LastModifiedWatermark, null), new(pageNumber, 200), cancellationToken); if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!); foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken); pageNumber = result.Value.NextCursor; cursor.OpaqueCursor = pageNumber; cursor.LastModifiedWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max() ?? cursor.LastModifiedWatermark; cursor.LastSuccessAt = timeProvider.GetUtcNow(); cursor.Version++; await db.SaveChangesAsync(cancellationToken); if (!result.Value.HasMore) break;
-        } while (!cancellationToken.IsCancellationRequested); return true;
+            var storefront = TrendyolReadStorefronts.ReturnCodes[state.StoreFrontIndex];
+            // getClaims startDate/endDate are claim-creation filters, while the
+            // local cursor watermark is lastModifiedDate. Reusing that watermark
+            // as startDate can silently skip claims, so each read starts from page 0
+            // and remains idempotent at the local claim key.
+            var window = state.Full || state.StartAt is null || state.EndAt is null
+                ? new ReturnPollWindow(null, null, storefront)
+                : new ReturnPollWindow(state.StartAt, state.EndAt, storefront);
+            var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-sync:{storefront}:{state.Page}"), window, new(state.Page.ToString(), 50), cancellationToken);
+            if (!result.IsSuccess && state.StoreFrontIndex > 0 && state.Page == 0 && result.Error?.HttpStatus is 400 or 404)
+            {
+                if (state.StoreFrontIndex + 1 < TrendyolReadStorefronts.ReturnCodes.Length)
+                {
+                    state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, Page = 0 };
+                    cursor.OpaqueCursor = SerializeReturnSyncState(state);
+                    cursor.LastSuccessAt = timeProvider.GetUtcNow();
+                    cursor.Version++;
+                    await db.SaveChangesAsync(cancellationToken);
+                    continue;
+                }
+                cursor.OpaqueCursor = SerializeReturnSyncState(NextReturnWindow(timeProvider.GetUtcNow()));
+                cursor.LastSuccessAt = timeProvider.GetUtcNow();
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
+            foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+            cursor.LastModifiedWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max() ?? cursor.LastModifiedWatermark;
+            if (result.Value.HasMore)
+            {
+                var nextPage = int.TryParse(result.Value.NextCursor, out var parsedPage) ? parsedPage : state.Page + 1;
+                state = state with { Page = nextPage };
+            }
+            else if (state.StoreFrontIndex + 1 < TrendyolReadStorefronts.ReturnCodes.Length)
+            {
+                state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, Page = 0 };
+            }
+            else
+            {
+                cursor.OpaqueCursor = SerializeReturnSyncState(NextReturnWindow(timeProvider.GetUtcNow()));
+                cursor.LastSuccessAt = timeProvider.GetUtcNow();
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            cursor.OpaqueCursor = SerializeReturnSyncState(state);
+            cursor.LastSuccessAt = timeProvider.GetUtcNow();
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        } while (!cancellationToken.IsCancellationRequested);
+        return true;
     }
+
+    private static ReturnSyncState ReadReturnSyncState(SyncCursor cursor, DateTimeOffset now)
+    {
+        if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
+        {
+            try
+            {
+                var state = JsonSerializer.Deserialize<ReturnSyncState>(cursor.OpaqueCursor);
+                if (state is { Version: ReturnSyncStateVersion, StoreFrontIndex: >= 0, Page: >= 0 } && state.StoreFrontIndex < TrendyolReadStorefronts.ReturnCodes.Length) return state;
+                if (int.TryParse(cursor.OpaqueCursor, out var oldPage) && oldPage >= 0) return InitialReturnWindow(now) with { Page = oldPage };
+            }
+            catch (JsonException) { }
+        }
+        return InitialReturnWindow(now);
+    }
+
+    private static string SerializeReturnSyncState(ReturnSyncState state) => JsonSerializer.Serialize(state);
+    private static ReturnSyncState InitialReturnWindow(DateTimeOffset now) => new(ReturnSyncStateVersion, 0, 0, false, now.AddMonths(-3), now);
+    private static ReturnSyncState NextReturnWindow(DateTimeOffset now) => new(ReturnSyncStateVersion, 0, 0, false, now.AddDays(-14), now);
 
     private async Task UpsertReturn(Guid tenantId, Guid connectionId, string correlationId, RemoteReturnClaim remote, Dictionary<string, string?> productSnapshots, CancellationToken cancellationToken)
     {
         var order = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.ExternalOrderId == remote.ExternalOrderId || x.OrderNumber == remote.ExternalOrderId), cancellationToken);
         if (order is null)
         {
-            var remoteOrder = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"return-order-hydrate:{remote.ExternalOrderId}"), remote.ExternalOrderId, cancellationToken);
-            if (remoteOrder.IsSuccess)
+            // Claims carry the order line/customer snapshot even when the
+            // order package is no longer available in Trendyol's order API
+            // window. Prefer this local read-model reconstruction so a full
+            // return scan does not issue one doomed remote lookup per claim.
+            var claimOrder = TrendyolJsonMapper.OrderFromReturnClaim(remote.RawJson);
+            if (claimOrder is not null)
             {
-                await UpsertOrder(tenantId, connectionId, await EnrichOrderLineSources(tenantId, connectionId, correlationId, remoteOrder.Value!, productSnapshots, cancellationToken), cancellationToken);
+                // The claim already contains the product snapshot. Avoid
+                // remote product lookups during a historical return scan.
+                await UpsertOrder(tenantId, connectionId, claimOrder, cancellationToken);
+                await ResolveIssue(tenantId, $"return-order:{connectionId}:{remote.ExternalOrderId}", cancellationToken);
                 order = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.ExternalOrderId == remote.ExternalOrderId || x.OrderNumber == remote.ExternalOrderId), cancellationToken);
             }
         }
@@ -1091,11 +1871,31 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await db.SaveChangesAsync(cancellationToken);
             return;
         }
-        var now = timeProvider.GetUtcNow(); var target = CanonicalReturn(remote.RawStatus); var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalClaimId == remote.ExternalClaimId, cancellationToken);
+        // A previous scan may have reconstructed the order after recording the
+        // diagnostic. Resolve that stale diagnostic on the next successful read.
+        await ResolveIssue(tenantId, $"return-order:{connectionId}:{remote.ExternalOrderId}", cancellationToken);
+        var now = timeProvider.GetUtcNow(); var target = CanonicalReturn(remote.RawStatus, remote.CargoTrackingLink); var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalClaimId == remote.ExternalClaimId, cancellationToken);
         if (claim is null) { claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalClaimId = remote.ExternalClaimId, Status = target, RawStatus = remote.RawStatus, LastRemoteModifiedAt = remote.LastModifiedAt, CreatedAt = now, UpdatedAt = now, Version = 1 }; db.ReturnClaims.Add(claim); }
-        else { if (remote.LastModifiedAt < claim.LastRemoteModifiedAt || !ReturnClaimStateMachine.CanTransition(claim.Status, target)) return; claim.Status = target; claim.RawStatus = remote.RawStatus; claim.LastRemoteModifiedAt = remote.LastModifiedAt; claim.UpdatedAt = now; claim.Version++; }
-        claim.ReasonCode = remote.ReasonCode; claim.ReasonText = remote.ReasonText; claim.ActionDueAt = remote.ActionDueAt;
-        foreach (var remoteLine in remote.Lines) { var orderLine = await db.OrderLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.ExternalLineId == remoteLine.ExternalOrderLineId, cancellationToken); if (orderLine is null) continue; var line = await db.ReturnLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken); if (line is null) db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = remoteLine.ExternalLineId, Quantity = remoteLine.Quantity }); else line.Quantity = remoteLine.Quantity; }
+        else if (remote.LastModifiedAt >= claim.LastRemoteModifiedAt && ReturnClaimStateMachine.CanTransition(claim.Status, target)) { claim.Status = target; claim.RawStatus = remote.RawStatus; claim.LastRemoteModifiedAt = remote.LastModifiedAt; claim.UpdatedAt = now; claim.Version++; }
+        if (claim.LastRemoteModifiedAt <= remote.LastModifiedAt) { claim.ReasonCode = remote.ReasonCode; claim.ReasonText = remote.ReasonText; claim.ActionDueAt = remote.ActionDueAt; }
+        var remoteLines = remote.Lines.Count > 0 ? remote.Lines : TrendyolJsonMapper.ReturnLines(remote.RawJson);
+        foreach (var remoteLine in remoteLines)
+        {
+            var candidateIds = new[] { remoteLine.ExternalOrderLineId }
+                .Concat(remoteLine.AlternateExternalOrderLineIds ?? [])
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            OrderLine? orderLine = null;
+            foreach (var candidateId in candidateIds)
+            {
+                orderLine = await db.OrderLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.ExternalLineId == candidateId, cancellationToken);
+                if (orderLine is not null) break;
+            }
+            if (orderLine is null) continue;
+            var line = await db.ReturnLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken);
+            if (line is null) db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = remoteLine.ExternalLineId, Quantity = remoteLine.Quantity }); else line.Quantity = remoteLine.Quantity;
+        }
         var decision = await db.ReturnDecisions.Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && (x.Status == "PENDING" || x.Status == "SUBMITTED")).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
         if (decision is not null)
         {
@@ -1189,10 +1989,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<SyncCursor> Cursor(Guid tenantId, Guid connectionId, string resource, CancellationToken cancellationToken) { var cursor = await db.SyncCursors.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resource, cancellationToken); if (cursor is not null) return cursor; cursor = new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ResourceType = resource, Version = 1 }; db.SyncCursors.Add(cursor); return cursor; }
     private async Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken) { var now = timeProvider.GetUtcNow(); var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is null) db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenantId, DedupeKey = key, Code = code, Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 }); else { issue.LastSeenAt = now; issue.OccurrenceCount++; } }
+    private async Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) { var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is not null) issue.Status = IssueStatus.Resolved; }
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static ShipmentPackageStatus CanonicalPackage(string raw) => raw.ToUpperInvariant() switch { "CREATED" => ShipmentPackageStatus.New, "PICKING" => ShipmentPackageStatus.Processing, "INVOICED" or "READY_TO_SHIP" or "READYTOSHIP" => ShipmentPackageStatus.ReadyToShip, "SHIPPED" => ShipmentPackageStatus.Shipped, "DELIVERED" => ShipmentPackageStatus.Delivered, "CANCELLED" or "UNSUPPLIED" => ShipmentPackageStatus.Cancelled, "UNDELIVERED" => ShipmentPackageStatus.Undelivered, "RETURNED" => ShipmentPackageStatus.Returned, "AWAITING" or "UNPACKED" or "AT_COLLECTION_POINT" => ShipmentPackageStatus.OnHold, _ => ShipmentPackageStatus.ManualReview };
-    private static ReturnClaimStatus CanonicalReturn(string raw) => raw.ToUpperInvariant() switch { "CREATED" => ReturnClaimStatus.Requested, "WAITINGFORSHIPMENT" or "WAITINGINCARGO" => ReturnClaimStatus.AwaitingShipment, "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit, "WAITINGINACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" => ReturnClaimStatus.Disputed, "COMPLETED" => ReturnClaimStatus.Completed, "CANCELLED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
+    private static ReturnClaimStatus CanonicalReturn(string raw, string? cargoTrackingLink = null) => raw.ToUpperInvariant() switch { "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit, "CREATED" => ReturnClaimStatus.Requested, "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment, "WAITINGINCARGO" => ReturnClaimStatus.InTransit, "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit, "WAITINGINACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" => ReturnClaimStatus.Disputed, "COMPLETED" => ReturnClaimStatus.Completed, "CANCELLED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
     private static int StatusRank(ShipmentPackageStatus status) => status switch { ShipmentPackageStatus.New => 1, ShipmentPackageStatus.Processing => 2, ShipmentPackageStatus.OnHold => 3, ShipmentPackageStatus.ReadyToShip => 4, ShipmentPackageStatus.Shipped => 5, ShipmentPackageStatus.Undelivered => 6, ShipmentPackageStatus.Delivered => 7, ShipmentPackageStatus.ReturnInTransit => 8, ShipmentPackageStatus.Returned => 9, ShipmentPackageStatus.PartiallyCancelled => 2, ShipmentPackageStatus.Cancelled => 9, _ => 10 };
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
 }

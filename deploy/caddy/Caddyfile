@@ -29,7 +29,6 @@
     try_files {path} /index.html
     file_server
   }
-  tls internal
   log {
     output stdout
     format json

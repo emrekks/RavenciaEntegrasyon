@@ -82,6 +82,7 @@ public sealed class CategoryAttributeRequirement
     public Guid AttributeId { get; set; }
     public bool IsRequired { get; set; }
     public bool AllowsCustomValue { get; set; }
+    public string Role { get; set; } = "ATTRIBUTE";
     public int DisplayOrder { get; set; }
     public long Version { get; set; } = 1;
 }

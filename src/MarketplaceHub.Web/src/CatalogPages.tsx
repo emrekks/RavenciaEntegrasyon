@@ -19,6 +19,7 @@ type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
   variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null
   attributes?: Array<{ attributeId: string; valueId: string | null; textValue: string | null; numberValue: number | null; booleanValue: boolean | null; sortOrder: number }>
+  options?: Array<{ id: string; label: string; values: Array<{ id: string; label: string }> }>
 }
 type ImportSession = Versioned & { sourceType: string; status: string; totalRows: number; validRows: number; errorRows: number; reviewRows: number; sourceAssetId: string | null }
 type Candidate = Versioned & { matchRule: string; safeSummary: string; productId: string | null; variantId: string | null }
@@ -351,7 +352,7 @@ export function ProductsPage() {
   </Page>
 }
 
-type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; attribute: Attribute }
+type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; attribute: Attribute }
 type VariantDraft = {
   key: string
   optionSignature: string
@@ -367,6 +368,7 @@ type ProductAttributePayload = { attributeId: string; valueId: string | null; te
 // API, inventory and publication safeguards retain the actual 1000-line limit.
 // The product workspace intentionally does not display an arbitrary UI quota.
 const MAX_VARIANTS = 1000
+const MAX_PRODUCT_ATTRIBUTES = 3
 
 function RichTextEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const editor = useRef<HTMLTextAreaElement>(null)
@@ -464,6 +466,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const mediaUrls = useMemo(() => form.mediaUrls.split(/\r?\n/).map(item => item.trim()).filter(Boolean), [form.mediaUrls])
 
   const allRequirements = useMemo(() => (requirements.data ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder), [requirements.data])
+  const optionRequirements = useMemo(() => allRequirements.filter(item => item.role === 'OPTION').slice(0, 2), [allRequirements])
+  useEffect(() => {
+    const optionIds = optionRequirements.map(item => item.attributeId)
+    setVariantAttributeIds(current => current.filter(id => optionIds.includes(id)))
+  }, [optionRequirements])
   const visibleRequirements = useMemo(() => {
     return allRequirements.filter(item => {
       const isSelected = (attributeSelections[item.attributeId]?.length ?? 0) > 0 || Boolean((attributeTextValues[item.attributeId] ?? '').trim()) || variantAttributeIds.includes(item.attributeId)
@@ -481,19 +488,35 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setVariantRows(product.variants.map(variant => ({ key: variant.id, optionSignature: variant.optionSignature || 'Tek Ürün', options: {}, attributeValueIds: {}, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.salePrice ?? 0, listPrice: variant.listPrice ?? variant.salePrice ?? 0 })))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
-    setAttributeSelections(selected); setAttributeTextValues(typed)
-  }, [productToEdit.data?.id, productToEdit.data?.version])
+    const importedOptionIds: string[] = []
+    for (const option of product.options ?? []) {
+      const requirement = allRequirements.find(item => item.role === 'OPTION' && item.attribute.name.trim().toLocaleUpperCase('tr-TR') === option.label.trim().toLocaleUpperCase('tr-TR'))
+      if (!requirement) continue
+      importedOptionIds.push(requirement.attributeId)
+      selected[requirement.attributeId] = option.values.map(value => requirement.attribute.values.find(candidate => candidate.value.trim().toLocaleUpperCase('tr-TR') === value.label.trim().toLocaleUpperCase('tr-TR'))?.id).filter((id): id is string => Boolean(id))
+    }
+    setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds(importedOptionIds.slice(0, 2))
+  }, [productToEdit.data?.id, productToEdit.data?.version, allRequirements])
 
   function updateField(name: keyof typeof form, value: string) { setForm(current => ({ ...current, [name]: value })) }
   function toggleAttributeValue(attributeId: string, valueId: string) {
+    const requirement = allRequirements.find(item => item.attributeId === attributeId)
     setAttributeSelections(current => {
       const values = current[attributeId] ?? []
       if (values.includes(valueId)) return { ...current, [attributeId]: values.filter(item => item !== valueId) }
+      const selectedOptionalAttributeCount = allRequirements.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && (current[item.attributeId]?.length ?? 0) > 0).length
+      if (requirement?.role === 'ATTRIBUTE' && !requirement.isRequired && values.length === 0 && selectedOptionalAttributeCount >= MAX_PRODUCT_ATTRIBUTES) { setNotice(`Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`); return current }
       return { ...current, [attributeId]: [...values, valueId] }
     })
   }
   function toggleVariantAttribute(attributeId: string) {
-    setVariantAttributeIds(current => current.includes(attributeId) ? current.filter(item => item !== attributeId) : [...current, attributeId])
+    const requirement = allRequirements.find(item => item.attributeId === attributeId)
+    if (requirement?.role !== 'OPTION') { setNotice('Varyant ekseni yalnız Seçenek Eşitleme olarak işaretlenmiş başlıklardan seçilebilir.'); return }
+    setVariantAttributeIds(current => {
+      if (current.includes(attributeId)) return current.filter(item => item !== attributeId)
+      if (current.length >= 2) { setNotice('Bir ürün en fazla 2 seçenek grubuyla varyantlanabilir.'); return current }
+      return [...current, attributeId]
+    })
   }
   function generateVariants() {
     try {
@@ -541,6 +564,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
   function validate(rows: VariantDraft[]) {
     const issues: string[] = []; const requirementList = requirements.data ?? []
+    if (variantAttributeIds.length > 2 || variantAttributeIds.some(id => requirementList.find(item => item.attributeId === id)?.role !== 'OPTION')) issues.push('Varyant için en fazla 2 Seçenek Eşitleme başlığı kullanılabilir.')
+    const selectedOptionalProductAttributes = requirementList.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && ((attributeSelections[item.attributeId]?.length ?? 0) > 0 || Boolean((attributeTextValues[item.attributeId] ?? '').trim()))).length
+    if (selectedOptionalProductAttributes > MAX_PRODUCT_ATTRIBUTES) issues.push(`Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`)
     if (!form.title.trim()) issues.push('Ürün adı zorunludur.'); if (!form.description.trim()) issues.push('Açıklama zorunludur.'); if (!form.categoryId) issues.push('Panel kategorisi zorunludur.')
     for (const requirement of requirementList) {
       const selectedCount = attributeSelections[requirement.attributeId]?.length ?? 0
@@ -615,8 +641,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         <div className="editor-section-title">
           <span>5</span>
           <div>
-            <h2>Ürün özellikleri</h2>
-            <p>Bilgiler kategori &amp; özellik eşleme sayfasındaki kategori özellik başlıklarından gelir.</p>
+            <h2>Ürün özellikleri ve Seçenek Eşitleme</h2>
+            <p>Ürün özellikleri ayrı kalır; en fazla 3 isteğe bağlı ürün özelliği ve 2 Seçenek Eşitleme başlığı kullanılabilir.</p>
           </div>
         </div>
         <div className="attribute-variant-action">
@@ -675,10 +701,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               <article className="attribute-builder-card" key={item.attributeId}>
                 <div className="attribute-builder-head">
                   <label className="attribute-builder-toggle">
-                    <input type="checkbox" checked={variantAttributeIds.includes(item.attributeId)} onChange={() => toggleVariantAttribute(item.attributeId)} disabled={!item.attribute.values.length} />
+                    <input type="checkbox" checked={variantAttributeIds.includes(item.attributeId)} onChange={() => toggleVariantAttribute(item.attributeId)} disabled={item.role !== 'OPTION' || !item.attribute.values.length} />
                     <span>{item.attribute.name}{item.isRequired ? ' *' : ''}</span>
                   </label>
-                  <small>{item.attribute.values.length} değer · {variantAttributeIds.includes(item.attributeId) ? 'varyant özelliği' : 'ürün özelliği'}</small>
+                  <small>{item.attribute.values.length} değer · {item.role === 'OPTION' ? 'Seçenek Eşitleme' : 'ürün özelliği'}{variantAttributeIds.includes(item.attributeId) ? ' · varyant ekseni' : ''}</small>
                 </div>
                 {item.attribute.values.length ? (
                   <div className="option-chip-list">

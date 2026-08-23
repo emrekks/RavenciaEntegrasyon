@@ -8,13 +8,12 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IOrderPort liveOrders, IReturnPort returns, TimeProvider timeProvider) : IMarketplaceSalesService
+public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IOrderPort liveOrders, IProductVisualLookupPort productVisuals, IReturnPort returns, TimeProvider timeProvider) : IMarketplaceSalesService
 {
+    private static readonly string[] LiveRemoteStatuses = ["Created", "Picking", "Invoiced", "Shipped", "Delivered", "Awaiting"];
     public async Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
-        if (!configuration.GetValue("Marketplace:PersistOrderSnapshots", false))
-            return await LiveOrdersAsync(tenantId, limit, after, status, cancellationToken);
-
+        // The panel is a local read model. Remote reads belong to the scheduled worker.
         var afterId = Decode(after);
         var query = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId);
         if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
@@ -65,11 +64,26 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return Page(rows, limit, x => x.Id);
     }
 
+    public async Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var summary = await db.ShipmentPackages.AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .GroupBy(_ => 1)
+            .Select(group => new OrderSummaryView(
+                group.Count(),
+                group.Count(x => x.Status == ShipmentPackageStatus.New),
+                group.Count(x => x.Status == ShipmentPackageStatus.Processing || x.Status == ShipmentPackageStatus.ReadyToShip),
+                group.Count(x => x.Status == ShipmentPackageStatus.Shipped || x.Status == ShipmentPackageStatus.Undelivered),
+                group.Count(x => x.Status == ShipmentPackageStatus.Delivered),
+                group.Count(x => x.OriginExternalPackageId != null),
+                group.Count(x => x.Status == ShipmentPackageStatus.OnHold)))
+            .SingleOrDefaultAsync(cancellationToken);
+        return summary ?? new OrderSummaryView(0, 0, 0, 0, 0, 0, 0);
+    }
+
     public async Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        if (!configuration.GetValue("Marketplace:PersistOrderSnapshots", false))
-            return await LiveOrderAsync(tenantId, id, cancellationToken);
-
+        // Detail pages also read the persisted snapshot; they never call the marketplace.
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (order is null) return NotFound<OrderDetailView>();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
@@ -99,6 +113,26 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             customer.Phone, customer.IsEInvoiceAvailable, InvoiceDocumentUrl(order.CustomerSnapshotJson)));
     }
 
+    public async Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken)
+    {
+        var normalizedBarcode = barcode?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedBarcode) || normalizedBarcode.Length > 128)
+            return ServiceResult<string>.Fail("PRODUCT_BARCODE_INVALID", "Geçerli bir ürün barkodu gereklidir.", 400);
+
+        var connection = await LiveConnection(tenantId, cancellationToken);
+        if (connection is null) return NotFound<string>();
+
+        var result = await productVisuals.FindByBarcodeAsync(
+            new AdapterContext(tenantId, connection.Id, correlationId, $"order-product-image:{normalizedBarcode}", timeProvider.GetUtcNow().AddSeconds(20)),
+            normalizedBarcode,
+            cancellationToken);
+        if (!result.IsSuccess)
+            return ServiceResult<string>.Fail("LIVE_PRODUCT_IMAGE_READ_FAILED", result.Error?.SafeMessage ?? "Ürün görseli okunamadı.", result.Error?.HttpStatus is >= 400 and <= 599 ? result.Error.HttpStatus.Value : 502);
+
+        var image = result.Value is null ? null : NormalizeImageUrl(SourceImageUrl(result.Value.RawJson));
+        return image is not null ? ServiceResult<string>.Ok(image) : NotFound<string>();
+    }
+
     public async Task<PageResult<ShipmentView>> ShipmentsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
         var afterId = Decode(after); var query = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId); if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0); if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ShipmentPackageStatus>(status, true, out var parsed)) query = query.Where(x => x.Status == parsed);
@@ -120,7 +154,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return ServiceResult<ShipmentDetailView>.Ok(new(Map(row.Package, row.OrderNumber), actions, formats, stage, documents));
     }
 
-    public Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, MarketplaceJobTypes.OrderSync, JsonSerializer.Serialize(new { connectionId, externalOrderId }), correlationId, cancellationToken);
+      public Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, MarketplaceJobTypes.OrderSync, JsonSerializer.Serialize(new { connectionId, externalOrderId, full }), correlationId, cancellationToken);
+
+      public Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, MarketplaceJobTypes.ProductSync, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken);
 
     public Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)
     {
@@ -214,7 +250,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return ServiceResult<Guid>.Ok(jobId);
     }
 
-    public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
+    public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, string? status, bool latest, CancellationToken cancellationToken)
     {
         var hasOperationalTrendyol = await db.PlatformConnections.AsNoTracking()
             .AnyAsync(x => x.TenantId == tenantId
@@ -222,11 +258,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
         if (!hasOperationalTrendyol) return new([], null, false);
 
-        var afterId = Decode(after);
+        var afterId = latest ? Guid.Empty : Decode(after);
         var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId);
-        if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
+        if (!latest && afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ReturnClaimStatus>(status, true, out var parsed)) query = query.Where(x => x.Status == parsed);
-        var claims = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+        var claims = latest
+            ? await query.OrderByDescending(x => x.LastRemoteModifiedAt).ThenByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken)
+            : await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
         var orderIds = claims.Select(x => x.OrderId).Distinct().ToArray();
         var claimIds = claims.Select(x => x.Id).ToArray();
         var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
@@ -254,9 +292,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, claim.ActionDueAt, claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", package?.CargoProviderExternalId, package?.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode,
-                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : InvoiceLabel(invoice, order.CustomerSnapshotJson), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0);
+                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : InvoiceLabel(invoice, order.CustomerSnapshotJson), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
+                order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport);
         }).ToList();
-        return Page(rows, limit, x => x.Id);
+        return latest ? new(rows.Take(limit).ToList(), null, rows.Count > limit) : Page(rows, limit, x => x.Id);
     }
 
     public async Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -380,11 +419,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     private async Task<ServiceResult<Guid>> EnqueueRead(Guid tenantId, Guid connectionId, string capability, string type, string payload, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL" && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken); if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Aktif veya doğrulanmış Trendyol bağlantısı gerekir.", 422); if (!IntegrationRuntimePolicy.AllowsManualRead(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Read işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422); return await Enqueue(tenantId, connectionId, type, $"{type.ToLowerInvariant()}:{connectionId}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)))}", payload, correlationId, cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL" && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken); if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Aktif veya doğrulanmış Trendyol bağlantısı gerekir.", 422); if (!IntegrationRuntimePolicy.AllowsManualRead(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Read işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422); if (type == MarketplaceJobTypes.ProductSync && (connection.Environment != "STAGE" || connection.ExternalStoreId != "2738")) return ServiceResult<Guid>.Fail("PRODUCT_SYNC_STAGE_SCOPE_REQUIRED", "Ürün çekme yalnız Trendyol STAGE seller 2738 bağlantısında kullanılabilir.", 422); return await Enqueue(tenantId, connectionId, type, $"{type.ToLowerInvariant()}:{connectionId}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)))}", payload, correlationId, cancellationToken);
     }
     private async Task<ServiceResult<Guid>> Enqueue(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId, CancellationToken cancellationToken)
     {
-        var recurringRead = type is MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ReturnSync;
+        var recurringRead = type is MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ReturnSync;
         var active = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == type && (recurringRead ? x.JobDedupKey.StartsWith(dedup) : x.JobDedupKey == dedup) && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
         if (active is not null) return ServiceResult<Guid>.Ok(active.Id);
 
@@ -408,10 +447,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var rows = await (from variant in db.ProductVariants.AsNoTracking()
                           join media in db.ProductMedia.AsNoTracking() on new { variant.TenantId, variant.ProductId } equals new { media.TenantId, media.ProductId }
                           join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
-                          where variant.TenantId == tenantId && ids.Contains(variant.Id) && (media.VariantId == null || media.VariantId == variant.Id) && media.Status == "ACTIVE" && asset.Status == "ACTIVE" && asset.Classification == "PRODUCT_MEDIA_URL"
+                          where variant.TenantId == tenantId && ids.Contains(variant.Id) && (media.VariantId == null || media.VariantId == variant.Id) && media.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                           orderby media.VariantId == variant.Id ? 0 : 1, media.SortOrder
-                          select new { VariantId = variant.Id, Url = asset.RelativePath }).ToListAsync(cancellationToken);
-        return rows.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Url);
+                          select new { VariantId = variant.Id, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+        return rows.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Classification == "PRODUCT_MEDIA_URL" ? x.First().Url : $"/api/v1/files/product-media/{x.First().Id:D}/content");
     }
 
     private static (string Name, string? Email, string? Phone, string? TaxOrIdentityNumber, string OrderType, bool IsMicroExport, bool? IsEInvoiceAvailable) Customer(string customerJson, string invoiceAddressJson, string shipmentAddressJson)
@@ -495,8 +534,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private static SourceLineView SourceLine(string? json)
     {
         var snapshot = json ?? "{}";
-        var image = SourceImageUrl(snapshot);
-        if (!Uri.TryCreate(image, UriKind.Absolute, out var imageUri) || imageUri.Scheme != Uri.UriSchemeHttps) image = null;
+        var image = NormalizeImageUrl(SourceImageUrl(snapshot));
         var color = JsonText(snapshot, "productColor", "color", "colorName");
         var size = JsonText(snapshot, "productSize", "size", "sizeName");
         var options = new List<string>();
@@ -513,6 +551,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return FindImageUrl(document.RootElement) ?? JsonText(json, "productImageUrl", "imageUrl", "productImage", "image");
         }
         catch (JsonException) { return null; }
+    }
+
+    private static string? NormalizeImageUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var candidate = value.Trim();
+        if (candidate.StartsWith("//", StringComparison.Ordinal)) candidate = "https:" + candidate;
+        else if (candidate.StartsWith("/", StringComparison.Ordinal)) candidate = "https://cdn.dsmcdn.com" + candidate;
+        return Uri.TryCreate(candidate, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
     }
 
     private static string? FindImageUrl(JsonElement element)
@@ -636,9 +683,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (connection is null) return new([], null, false);
 
         var cursor = DecodeLiveCursor(after);
+        var remoteStatus = RemoteStatus(status);
         var result = await liveOrders.PollAsync(
             new AdapterContext(tenantId, connection.Id, "orders-live", $"orders-live:{connection.Id:N}:{cursor ?? "first"}", timeProvider.GetUtcNow().AddSeconds(45)),
-            new(null, null), new(cursor, Math.Clamp(limit, 1, 200)), cancellationToken);
+            new(null, null, remoteStatus), new(cursor, Math.Clamp(limit, 1, 200)), cancellationToken);
         if (!result.IsSuccess)
             throw new InvalidOperationException(result.Error?.SafeMessage ?? "Trendyol siparişleri canlı olarak okunamadı.");
 
@@ -655,27 +703,30 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var connection = await LiveConnection(tenantId, cancellationToken);
         if (connection is null) return NotFound<OrderDetailView>();
 
-        string? cursor = null;
-        do
+        foreach (var remoteStatus in LiveRemoteStatuses)
         {
-            var result = await liveOrders.PollAsync(
-                new AdapterContext(tenantId, connection.Id, "order-live-detail", $"order-live-detail:{connection.Id:N}:{id:N}", timeProvider.GetUtcNow().AddSeconds(45)),
-                new(null, null), new(cursor, 200), cancellationToken);
-            if (!result.IsSuccess) return ServiceResult<OrderDetailView>.Fail("LIVE_ORDER_READ_FAILED", result.Error?.SafeMessage ?? "Trendyol siparişi okunamadı.", 502);
-
-            var remote = result.Value!.Items.FirstOrDefault(x => StableGuid($"order:{x.ExternalOrderId}") == id);
-            if (remote is not null)
+            string? cursor = null;
+            do
             {
-                var row = LiveOrderView(remote, connection.Id);
-                return ServiceResult<OrderDetailView>.Ok(new(
-                    row.Id, row.OrderNumber, row.DerivedStatus, row.Currency, row.GrossAmount, row.DiscountAmount, row.NetAmount, row.OrderedAt,
-                    row.Lines ?? [], row.Packages ?? [], row.Version, row.ConnectionId, row.PlatformCode, row.PlatformDisplayName,
-                    row.CustomerName, row.CustomerEmail, row.CustomerTaxOrIdentityNumber, row.OrderType, row.IsMicroExport,
-                    row.ShipmentAddressJson, row.InvoiceAddressJson, row.ShipmentDueAt, row.InvoiceStatus, null, null, row.InvoiceDocumentUrl));
-            }
+                var result = await liveOrders.PollAsync(
+                    new AdapterContext(tenantId, connection.Id, "order-live-detail", $"order-live-detail:{connection.Id:N}:{id:N}:{remoteStatus}:{cursor ?? "first"}", timeProvider.GetUtcNow().AddSeconds(45)),
+                    new(null, null, remoteStatus), new(cursor, 200), cancellationToken);
+                if (!result.IsSuccess) return ServiceResult<OrderDetailView>.Fail("LIVE_ORDER_READ_FAILED", result.Error?.SafeMessage ?? "Trendyol siparişi okunamadı.", 502);
 
-            cursor = result.Value.HasMore ? result.Value.NextCursor : null;
-        } while (!string.IsNullOrWhiteSpace(cursor));
+                var remote = result.Value!.Items.FirstOrDefault(x => StableGuid($"order:{x.ExternalOrderId}") == id);
+                if (remote is not null)
+                {
+                    var row = LiveOrderView(remote, connection.Id);
+                    return ServiceResult<OrderDetailView>.Ok(new(
+                        row.Id, row.OrderNumber, row.DerivedStatus, row.Currency, row.GrossAmount, row.DiscountAmount, row.NetAmount, row.OrderedAt,
+                        row.Lines ?? [], row.Packages ?? [], row.Version, row.ConnectionId, row.PlatformCode, row.PlatformDisplayName,
+                        row.CustomerName, row.CustomerEmail, row.CustomerTaxOrIdentityNumber, row.OrderType, row.IsMicroExport,
+                        row.ShipmentAddressJson, row.InvoiceAddressJson, row.ShipmentDueAt, row.InvoiceStatus, null, null, row.InvoiceDocumentUrl));
+                }
+
+                cursor = result.Value.HasMore ? result.Value.NextCursor : null;
+            } while (!string.IsNullOrWhiteSpace(cursor));
+        }
 
         return NotFound<OrderDetailView>();
     }
@@ -701,7 +752,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         }).ToList();
         var packages = remote.Packages.Select(package => new ShipmentView(
             StableGuid($"package:{remote.ExternalOrderId}:{package.ExternalPackageId}"), orderId, remote.OrderNumber, package.ExternalPackageId,
-            LivePackageStatus(package.RawStatus), package.RawStatus, package.CargoTrackingNumber, package.OccurredAt, 1, package.CargoProviderExternalId)).ToList();
+            LivePackageStatus(package.RawStatus), package.RawStatus, package.CargoTrackingNumber, package.OccurredAt, 1, package.CargoProviderExternalId,
+            !string.IsNullOrWhiteSpace(package.OriginExternalPackageId))).ToList();
         var customer = Customer(remote.CustomerSnapshotJson, remote.InvoiceAddressSnapshotJson, remote.ShipmentAddressSnapshotJson);
         var dueAt = OperationalDueAt(remote.CustomerSnapshotJson);
         var primaryImage = lines.Select(x => x.ImageUrl).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
@@ -724,6 +776,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         "CREATED" => "NEW",
         "PICKING" => "PROCESSING",
         "INVOICED" or "READY_TO_SHIP" => "READY_TO_SHIP",
+        "REPACK" => "PROCESSING",
         "SHIPPED" => "SHIPPED",
         "DELIVERED" => "DELIVERED",
         "CANCELLED" or "UNSUPPLIED" => "CANCELLED",
@@ -731,6 +784,17 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         "RETURNED" => "RETURNED",
         "AWAITING" or "UNPACKED" or "AT_COLLECTION_POINT" => "ON_HOLD",
         _ => "MANUAL_REVIEW"
+    };
+
+    private static string? RemoteStatus(string? canonicalStatus) => canonicalStatus?.Trim().ToUpperInvariant() switch
+    {
+        "NEW" => "Created",
+        "PROCESSING" => "Picking",
+        "READY_TO_SHIP" => "Invoiced",
+        "SHIPPED" => "Shipped",
+        "DELIVERED" => "Delivered",
+        "ON_HOLD" => "Awaiting",
+        _ => null
     };
 
     private static int LiveStatusRank(string rawStatus) => LivePackageStatus(rawStatus) switch

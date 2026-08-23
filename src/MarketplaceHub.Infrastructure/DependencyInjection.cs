@@ -65,6 +65,7 @@ public static class DependencyInjection
         services.AddScoped<IConnectionPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IReferenceDataPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IProductPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
+        services.AddScoped<IProductVisualLookupPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IInventoryPricePort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IOrderPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IReturnPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());

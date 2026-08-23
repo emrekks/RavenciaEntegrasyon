@@ -457,6 +457,13 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsRequired")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasDefaultValue("ATTRIBUTE");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 

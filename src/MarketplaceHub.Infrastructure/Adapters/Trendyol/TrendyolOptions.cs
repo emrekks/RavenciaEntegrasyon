@@ -17,6 +17,7 @@ internal static class TrendyolEndpoints
     public static string ProductUpdateDelivery(string sellerId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/delivery-info-bulk-update";
     public static string ProductArchiveState(string sellerId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/archive-state";
     public static string ApprovedProducts(string sellerId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/approved";
+    public static string ProductByBarcode(string sellerId, string barcode) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/product/{Uri.EscapeDataString(barcode)}";
     public static string UnapprovedProducts(string sellerId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/unapproved";
     public static string BatchResult(string sellerId, string batchId) => $"product/sellers/{Uri.EscapeDataString(sellerId)}/products/batch-requests/{Uri.EscapeDataString(batchId)}";
     public static string PriceAndInventory(string sellerId) => $"inventory/sellers/{Uri.EscapeDataString(sellerId)}/products/price-and-inventory";
@@ -42,4 +43,18 @@ internal static class TrendyolEndpoints
     public const string Brands = "product/brands";
     public static string CategoryAttributes(string categoryId) => $"product/categories/{Uri.EscapeDataString(categoryId)}/attributes";
     public static string AttributeValues(string categoryId, string attributeId) => $"product/categories/{Uri.EscapeDataString(categoryId)}/attributes/{Uri.EscapeDataString(attributeId)}/values";
+}
+
+internal static class TrendyolReadStorefronts
+{
+    // The seller panel exposes Türkiye and international/micro-export packages
+    // under separate storefront headers. Reads are intentionally broader than
+    // writes; the latter remain guarded by IntegrationRuntimePolicy.
+    public static readonly string[] Codes = ["TR", "AE", "SA", "GR", "DE", "BG", "QA", "KW", "OM", "BH", "AZ", "SK", "RO", "CZ"];
+    // getClaims is a global claims endpoint in the documented V2 contract; the
+    // storefront header is required for order stream reads, not claims reads.
+    public static readonly string[] ReturnCodes = ["TR"];
+    // Return hydration is a bounded fallback for the seller's Türkiye and UAE
+    // order scopes. Other storefront orders arrive through the full order stream.
+    public static readonly string[] ReturnOrderCodes = ["AE", "TR"];
 }
