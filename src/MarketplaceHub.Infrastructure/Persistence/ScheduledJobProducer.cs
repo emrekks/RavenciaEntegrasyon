@@ -27,6 +27,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             if (definition is null) continue;
 
             var interval = Math.Clamp(row.Policy.IntervalSeconds, 60, 86_400);
+            var active = await db.IntegrationJobs.AsNoTracking()
+                .AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType
+                    && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
+            if (active) continue;
             var latest = await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
