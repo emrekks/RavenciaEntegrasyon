@@ -74,7 +74,7 @@ export function InvoiceDetailPage() {
 
 export function BillingSettingsPage() {
   const client = useQueryClient(); const [connectionId, setConnectionId] = useState(''); const [message, setMessage] = useState('')
-  const connections = useQuery({ queryKey: ['connections'], queryFn: () => hubApi<Page<Connection>>('/connections') })
+  const connections = useQuery({ queryKey: ['connections'], queryFn: () => loadAllPages<Connection>('/connections') })
   const policy = useQuery({ queryKey: ['invoice-policy', connectionId], queryFn: () => hubApi<Policy>(`/billing/invoice-policies/${connectionId}`), enabled: !!connectionId, retry: false })
   async function savePolicy(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!connectionId) return; try { await hubApi(`/billing/invoice-policies/${connectionId}`, { method: 'PUT', headers: policy.data ? { 'If-Match': `"v${policy.data.version}"` } : {}, body: JSON.stringify({ triggerState: 'MANUAL_CONFIRMED', packageScope: 'SHIPMENT_PACKAGE', dueRule: 'IMMEDIATE', roundingRule: 'LINE_HALF_AWAY_FROM_ZERO', adjustmentRule: 'REJECT_OVER_ONE_KURUS', autoSubmit: false }) }); setMessage('Manuel paket faturası politikası kaydedildi; otomatik gönderim kapalı kaldı.'); await client.invalidateQueries({ queryKey: ['invoice-policy', connectionId] }) } catch (error) { setMessage(error instanceof Error ? error.message : 'Kayıt başarısız.') } }
   const providers = connections.data?.items.filter(x => x.platformCode === 'TRENDYOL_EFATURAM') ?? []

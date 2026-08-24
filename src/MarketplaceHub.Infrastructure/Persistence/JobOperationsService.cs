@@ -6,7 +6,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvider) : IJobOperationsService
 {
-    public async Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, int limit, string? status, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, string? status, CancellationToken cancellationToken)
     {
         var query = db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId);
         if (!string.IsNullOrWhiteSpace(status))
@@ -14,7 +14,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             if (!TryParseStatus(status, out var parsed)) return [];
             query = query.Where(x => x.Status == parsed);
         }
-        var jobs = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(Math.Clamp(limit, 1, 200)).ToListAsync(cancellationToken);
+        var jobs = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
         return jobs.Select(Summary).ToList();
     }
 

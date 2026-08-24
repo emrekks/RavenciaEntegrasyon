@@ -68,7 +68,7 @@ public sealed record JobDetailView(JobSummaryView Job, IReadOnlyList<JobAttemptD
 
 public interface IJobOperationsService
 {
-    Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, int limit, string? status, CancellationToken cancellationToken);
+    Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, string? status, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> GetAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> RetryAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> CancelAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);

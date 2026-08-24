@@ -7,9 +7,9 @@ public static class JobEndpoints
     public static IEndpointRouteBuilder MapJobEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.MapGroup("/api/v1/jobs");
-        api.MapGet("", async (HttpContext http, IJobOperationsService service, int? limit, string? status) =>
+        api.MapGet("", async (HttpContext http, IJobOperationsService service, string? status) =>
             Tenant(http) is { } tenant
-                ? Results.Ok(await service.ListAsync(tenant.TenantId, limit is >= 1 and <= 200 ? limit.Value : 50, status, http.RequestAborted))
+                ? Results.Ok(await service.ListAsync(tenant.TenantId, status, http.RequestAborted))
                 : Unauthorized(http));
         api.MapGet("/{id:guid}", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant

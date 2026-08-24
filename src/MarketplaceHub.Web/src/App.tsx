@@ -227,7 +227,6 @@ function IntegrationLines({ pageRef, loginCardRef, nodeRefs }: { pageRef: RefObj
 
 function ChangePassword() { const client = useQueryClient(); const [message, setMessage] = useState('İlk girişte parolanızı değiştirmeniz gerekir.'); async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await api('/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: data.get('current'), newPassword: data.get('next') }) }); await client.invalidateQueries({ queryKey: ['me'] }) } catch { setMessage('Parola değiştirilemedi; politika ve mevcut parolayı kontrol edin.') } } return <div className="auth-page"><section className="auth-card"><h1>Parolanızı değiştirin</h1><p role="status">{message}</p><form onSubmit={submit}><label>Geçerli parola<input name="current" type="password" required /></label><label>Yeni parola<input name="next" type="password" minLength={15} maxLength={64} required /></label><button>Parolayı değiştir</button></form></section></div> }
 function MfaChallenge() { const client = useQueryClient(); const [error, setError] = useState(''); async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await api('/mfa/challenge', { method: 'POST', body: JSON.stringify({ code: data.get('code'), recoveryCode: data.get('recovery') || null }) }); await client.invalidateQueries({ queryKey: ['me'] }) } catch { setError('Kod geçersiz veya daha önce kullanılmış.') } } return <div className="auth-page"><section className="auth-card"><h1>İki adımlı doğrulama</h1><p>Authenticator uygulamanızdaki 6 haneli kodu girin.</p><form onSubmit={submit}><label>Doğrulama kodu<input name="code" inputMode="numeric" pattern="[0-9]{6}" /></label><label>Kurtarma kodu (alternatif)<input name="recovery" /></label>{error && <div role="alert" className="error">{error}</div>}<button>Doğrula</button></form></section></div> }
-type DashboardPage<T> = { items: T[]; hasMore: boolean }
 type DashboardOrder = { orderNumber: string; derivedStatus: string; orderedAt: string; platformDisplayName: string; shipmentDueAt: string | null; isDeadlineCritical: boolean; cargoProviderName: string | null; productQuantity: number }
 type DashboardReturn = { status: string }
 type DashboardInvoice = { invoiceId: string | null; isDueSoon: boolean; canCreateInvoice: boolean }
@@ -236,7 +235,7 @@ function Dashboard({ me }: { me: Me }) {
   const connections = useQuery({ queryKey: ['dashboard-connections'], queryFn: () => loadAllPages<{ status: string }>('/connections') })
   const orders = useQuery({ queryKey: ['dashboard-orders'], queryFn: () => loadAllPages<DashboardOrder>('/orders') })
   const returns = useQuery({ queryKey: ['dashboard-returns'], queryFn: () => loadAllPages<DashboardReturn>('/returns') })
-  const invoices = useQuery({ queryKey: ['dashboard-invoice-workspace'], queryFn: () => hubApi<DashboardPage<DashboardInvoice>>('/invoice-workspace') })
+  const invoices = useQuery({ queryKey: ['dashboard-invoice-workspace'], queryFn: () => hubApi<DashboardInvoice[]>('/invoice-workspace') })
   const products = useQuery({ queryKey: ['dashboard-products'], queryFn: () => loadAllPages<DashboardProduct>('/products') })
   const loading = [connections, orders, returns, invoices, products].some(query => query.isLoading)
   const now = new Date(); const orderItems = orders.data?.items ?? []; const productItems = products.data?.items ?? []
@@ -246,8 +245,8 @@ function Dashboard({ me }: { me: Me }) {
   const today = orderItems.filter(item => { const value = new Date(item.orderedAt); return value.getFullYear() === now.getFullYear() && value.getMonth() === now.getMonth() && value.getDate() === now.getDate() })
   const month = orderItems.filter(item => { const value = new Date(item.orderedAt); return value.getFullYear() === now.getFullYear() && value.getMonth() === now.getMonth() })
   const pendingReturns = (returns.data?.items ?? []).filter(item => ['REQUESTED', 'AWAITING_SHIPMENT', 'IN_TRANSIT', 'ACTION_REQUIRED', 'DISPUTED'].includes(item.status)).length
-  const uninvoiced = (invoices.data?.items ?? []).filter(item => !item.invoiceId && item.canCreateInvoice).length
-  const dueSoon = (invoices.data?.items ?? []).filter(item => !item.invoiceId && item.isDueSoon).length
+  const uninvoiced = (invoices.data ?? []).filter(item => !item.invoiceId && item.canCreateInvoice).length
+  const dueSoon = (invoices.data ?? []).filter(item => !item.invoiceId && item.isDueSoon).length
   const lowStock = productItems.filter(item => item.totalStock <= 5)
   const verified = (connections.data?.items ?? []).filter(item => item.status === 'VERIFIED' || item.status === 'ACTIVE').length
   const group = (values: string[]) => Object.entries(values.reduce<Record<string, number>>((acc, value) => { const label = value || 'Belirtilmemiş'; acc[label] = (acc[label] ?? 0) + 1; return acc }, {})).sort((a, b) => b[1] - a[1])

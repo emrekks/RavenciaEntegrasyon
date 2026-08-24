@@ -482,7 +482,7 @@ export function IntegrationsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [createPlatform, setCreatePlatform] = useState('TRENDYOL')
   const [createError, setCreateError] = useState('')
-  const query = useQuery({ queryKey: ['connections'], queryFn: () => hubApi<Page<Connection>>('/connections') })
+  const query = useQuery({ queryKey: ['connections'], queryFn: () => loadAllPages<Connection>('/connections') })
   const activeConnections = query.data?.items.filter(item => activePlatformCodes.has(item.platformCode)) ?? []
   const create = useMutation({ mutationFn: (body: object) => hubApi('/connections', { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify(body) }), onSuccess: () => { setCreateOpen(false); setCreateError(''); void client.invalidateQueries({ queryKey: ['connections'] }) }, onError: reason => setCreateError(reason instanceof Error ? reason.message : 'Bağlantı oluşturulamadı.') })
   function submitCreate(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); create.mutate({ displayName: data.get('displayName'), environment: data.get('environment'), externalStoreId: data.get('externalStoreId'), platformCode: createPlatform, apiVersion: createPlatform === 'TRENDYOL' ? 'V2' : '1.0.0', userAgentIdentity: createPlatform === 'TRENDYOL' ? data.get('userAgentIdentity') : null }) }
