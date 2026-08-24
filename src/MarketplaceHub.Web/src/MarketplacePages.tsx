@@ -925,33 +925,51 @@ function CategoryRequirementBuilder({ categoryId, categoryVersion, attributes, r
 
 function PanelAttributeLibraryBuilder({ role, attributes, onNotice }: { role: 'ATTRIBUTE' | 'OPTION'; attributes: LocalAttribute[]; onNotice: (value: string) => void }) {
   const client = useQueryClient()
-  const [title, setTitle] = useState(''); const [values, setValues] = useState(''); const [selectedId, setSelectedId] = useState(''); const [newValues, setNewValues] = useState(''); const [feedback, setFeedback] = useState('')
+  const [title, setTitle] = useState(''); const [values, setValues] = useState(''); const [editingId, setEditingId] = useState(''); const [newValues, setNewValues] = useState(''); const [editingValue, setEditingValue] = useState<{ id: string; value: string } | null>(null); const [feedback, setFeedback] = useState('')
   const isOption = role === 'OPTION'
   const prefix = isOption ? 'option-' : 'attribute-'
   const records = attributes.filter(attribute => isOption ? attribute.code.startsWith('option-') : !attribute.code.startsWith('option-'))
+  const editingAttribute = records.find(attribute => attribute.id === editingId) ?? null
   function updateCache(attribute: LocalAttribute) { client.setQueryData<Page<LocalAttribute>>(['attributes', 'mapping-builder'], current => current ? { ...current, items: [...current.items.filter(item => item.id !== attribute.id), attribute] } : current) }
   async function create() {
     try {
       if (!title.trim()) return setFeedback(isOption ? 'Seçenek başlığı girin.' : 'Özellik başlığı girin.')
       const parsedValues = values.split(',').map(value => value.trim()).filter(Boolean)
       const attribute = await hubApi<LocalAttribute>('/catalog/attributes', { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ code: `${prefix}${slug(title)}`, name: title.trim(), dataType: parsedValues.length ? 'SINGLE_SELECT' : 'TEXT', selectionMode: parsedValues.length ? 'SINGLE' : null, unit: null, values: parsedValues.map((value, index) => ({ value, sortOrder: index })) }) })
-      updateCache(attribute); setSelectedId(attribute.id); setTitle(''); setValues(''); setFeedback(`${attribute.name} panele kaydedildi.`); onNotice(`${attribute.name} panele kaydedildi.`)
+      updateCache(attribute); setEditingId(attribute.id); setTitle(''); setValues(''); setFeedback(`${attribute.name} panele kaydedildi.`); onNotice(`${attribute.name} panele kaydedildi.`)
     } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Kayıt oluşturulamadı.') }
   }
-  async function addValues() {
+  async function addValues(attributeId: string, source: string) {
     try {
-      if (!selectedId) return setFeedback('Önce listeden bir başlık seçin.')
-      const parsedValues = newValues.split(',').map(value => value.trim()).filter(Boolean)
+      const parsedValues = source.split(',').map(value => value.trim()).filter(Boolean)
       if (!parsedValues.length) return setFeedback('Eklenecek değerleri virgülle girin.')
-      const attribute = await hubApi<LocalAttribute>(`/catalog/attributes/${selectedId}/values`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify(parsedValues.map((value, index) => ({ value, sortOrder: index }))) })
+      const attribute = await hubApi<LocalAttribute>(`/catalog/attributes/${attributeId}/values`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify(parsedValues.map((value, index) => ({ value, sortOrder: index }))) })
       updateCache(attribute); setNewValues(''); setFeedback('Yeni değerler panele kaydedildi.'); onNotice('Yeni değerler panele kaydedildi.')
     } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Değerler kaydedilemedi.') }
   }
-  async function removeValue(attributeId: string, valueId: string) {
-    try { const attribute = await hubApi<LocalAttribute>(`/catalog/attributes/${attributeId}/values/${valueId}`, { method: 'DELETE' }); updateCache(attribute); setFeedback('Değer kaldırıldı.') } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Değer kaldırılamadı.') }
+  async function removeAttribute(attribute: LocalAttribute) {
+    if (!window.confirm(`“${attribute.name}” ve bağlı değerleri kaldırılsın mı?`)) return
+    try {
+      await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${attribute.version}"` } })
+      client.setQueryData<Page<LocalAttribute>>(['attributes', 'mapping-builder'], current => current ? { ...current, items: current.items.filter(item => item.id !== attribute.id) } : current)
+      setEditingId(''); setFeedback(`${attribute.name} kaldırıldı.`)
+    } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Başlık kaldırılamadı.') }
   }
-  return <div className="panel-attribute-library"><div className="panel-attribute-create"><label>{isOption ? 'Yeni seçenek başlığı' : 'Yeni özellik başlığı'}<input value={title} onChange={event => setTitle(event.target.value)} placeholder={isOption ? 'Örn. Beden, Renk' : 'Örn. Materyal, Kol Boyu'} /></label><label>İlk değerler <input value={values} onChange={event => setValues(event.target.value)} placeholder="Virgülle: S, M, L" /></label><button type="button" onClick={() => void create()}>+ Panele kaydet</button></div><div className="panel-attribute-values"><label>Kayıtlı başlık<select value={selectedId} onChange={event => setSelectedId(event.target.value)}><option value="">Başlık seçin</option>{records.map(attribute => <option key={attribute.id} value={attribute.id}>{attribute.name} · {attribute.values.filter(value => value.isActive).length} değer</option>)}</select></label><label>Yeni değerler<input value={newValues} onChange={event => setNewValues(event.target.value)} placeholder="Virgülle yeni değer ekleyin" /></label><button type="button" className="secondary" disabled={!selectedId || !newValues.trim()} onClick={() => void addValues()}>Değerleri ekle</button></div>{feedback && <p className="attribute-feedback" role="status">{feedback}</p>}<div className="panel-attribute-records">{records.length ? records.map(attribute => <article className={attribute.id === selectedId ? 'selected' : ''} key={attribute.id}><button type="button" onClick={() => setSelectedId(attribute.id)}><strong>{attribute.name}</strong><small>{attribute.values.filter(value => value.isActive).length ? `${attribute.values.filter(value => value.isActive).length} değer kaydedildi` : 'Serbest değer'}</small></button>{attribute.values.length > 0 && <CompactAttributeValues attributeId={attribute.id} values={attribute.values} onRemove={removeValue} />}</article>) : <div className="mapping-empty-row"><span>{isOption ? 'Henüz panel seçeneği oluşturulmadı.' : 'Henüz panel özelliği oluşturulmadı.'}</span></div>}</div></div>
+  async function removeValue(attributeId: string, valueId: string) {
+    try { const attribute = await hubApi<LocalAttribute>(`/catalog/attributes/${attributeId}/values/${valueId}`, { method: 'DELETE' }); updateCache(attribute); setEditingValue(null); setFeedback('Değer kaldırıldı.') } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Değer kaldırılamadı.') }
+  }
+  async function updateValue(attributeId: string, originalId: string, nextValue: string) {
+    const value = nextValue.trim()
+    if (!value) return setFeedback('Değer boş olamaz.')
+    try {
+      await hubApi<LocalAttribute>(`/catalog/attributes/${attributeId}/values/${originalId}`, { method: 'DELETE' })
+      const attribute = await hubApi<LocalAttribute>(`/catalog/attributes/${attributeId}/values`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify([{ value, sortOrder: 9999 }]) })
+      updateCache(attribute); setEditingValue(null); setFeedback('Değer güncellendi.')
+    } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Değer güncellenemedi.') }
+  }
+  return <div className="panel-attribute-library"><div className="panel-attribute-create"><label>{isOption ? 'Yeni seçenek başlığı' : 'Yeni özellik başlığı'}<input value={title} onChange={event => setTitle(event.target.value)} placeholder={isOption ? 'Örn. Beden, Renk' : 'Örn. Materyal, Kol Boyu'} /></label><label>İlk değerler <input value={values} onChange={event => setValues(event.target.value)} placeholder="Virgülle: S, M, L" /></label><button type="button" onClick={() => void create()}>+ Panele kaydet</button></div>{feedback && <p className="attribute-feedback" role="status">{feedback}</p>}<div className="panel-attribute-records">{records.length ? records.map(attribute => <article className={attribute.id === editingId ? 'selected' : ''} key={attribute.id}><button type="button" className="panel-attribute-record-main" onClick={() => setEditingId(attribute.id)}><strong>{attribute.name}</strong><small>{attribute.values.filter(value => value.isActive).length ? `${attribute.values.filter(value => value.isActive).length} değer kaydedildi` : 'Serbest değer'}</small></button><div className="panel-attribute-record-actions"><button type="button" aria-label={`${attribute.name} düzenle`} onClick={() => setEditingId(attribute.id)}>✎</button><button type="button" aria-label={`${attribute.name} sil`} onClick={() => void removeAttribute(attribute)}>×</button></div></article>) : <div className="mapping-empty-row"><span>{isOption ? 'Henüz panel seçeneği oluşturulmadı.' : 'Henüz panel özelliği oluşturulmadı.'}</span></div>}</div>{editingAttribute && <div className="panel-attribute-modal" role="dialog" aria-modal="true" aria-label={`${editingAttribute.name} değer düzenleme`}><div className="panel-attribute-modal-card"><header><div><strong>{editingAttribute.name}</strong><small>{isOption ? 'Panel seçeneği' : 'Panel özelliği'} · değerleri yönetin</small></div><button type="button" aria-label="Düzenleme penceresini kapat" onClick={() => { setEditingId(''); setEditingValue(null) }}>×</button></header><div className="panel-attribute-add-value"><input value={newValues} onChange={event => setNewValues(event.target.value)} placeholder="Yeni değerleri virgülle yazın" /><button type="button" disabled={!newValues.trim()} onClick={() => void addValues(editingAttribute.id, newValues)}>+ Değer ekle</button></div><div className="panel-attribute-value-editor">{editingAttribute.values.filter(value => value.isActive).length ? editingAttribute.values.filter(value => value.isActive).map(value => <div key={value.id}>{editingValue?.id === value.id ? <input autoFocus value={editingValue.value} onChange={event => setEditingValue({ id: value.id, value: event.target.value })} /> : <span>{value.value}</span>}<div>{editingValue?.id === value.id ? <><button type="button" aria-label={`${value.value} değerini kaydet`} onClick={() => void updateValue(editingAttribute.id, value.id, editingValue.value)}>✓</button><button type="button" aria-label="Değer düzenlemeyi iptal et" onClick={() => setEditingValue(null)}>×</button></> : <><button type="button" aria-label={`${value.value} değerini düzenle`} onClick={() => setEditingValue({ id: value.id, value: value.value })}>✎</button><button type="button" aria-label={`${value.value} değerini sil`} onClick={() => void removeValue(editingAttribute.id, value.id)}>×</button></>}</div></div>) : <span className="panel-value-empty">Henüz değer eklenmedi.</span>}</div></div></div>}</div>
 }
+
 
 function CompactAttributeValues({ attributeId, values, onRemove }: { attributeId: string; values: LocalAttribute['values']; onRemove: (attributeId: string, valueId: string) => Promise<void> }) {
   const [search, setSearch] = useState('')
