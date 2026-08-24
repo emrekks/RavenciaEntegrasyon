@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi } from './api'
+import { hubApi, loadAllPages } from './api'
 
 type PageData<T> = { items: T[]; nextCursor: string | null; hasMore: boolean }
 type Versioned = { id: string; version: number }
@@ -262,9 +262,9 @@ function ProductColorRows({ product, selected, onSelect, onQuickEdit, onImageCli
 }
 
 export function ProductsPage() {
-  const client = useQueryClient(); const [search, setSearch] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [expandedProductId, setExpandedProductId] = useState<string | null>(null); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
-  const query = useQuery({ queryKey: ['products'], queryFn: () => hubApi<PageData<Product>>('/products?limit=200') })
-  const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => hubApi<PageData<TrendyolConnection>>('/connections?limit=200') })
+  const client = useQueryClient(); const [search, setSearch] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [expandedProductId, setExpandedProductId] = useState<string | null>(null); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1)
+  const query = useQuery({ queryKey: ['products'], queryFn: () => loadAllPages<Product>('/products') })
+  const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<TrendyolConnection>('/connections') })
   const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(item => item.status === 'ACTIVE')
   const platforms = useMemo(() => [...new Set(products.flatMap(product => product.activePlatforms ?? []))].sort(), [products])
   const normalized = search.trim().toLocaleLowerCase('tr-TR')
@@ -275,11 +275,13 @@ export function ProductsPage() {
     return searchMatch && statusMatch && platformMatch && stockMatch
   })
   const selectedProducts = products.filter(product => quickEdit?.productIds.includes(product.id))
-  const allVisibleSelected = visible.length > 0 && visible.every(product => selectedProductIds.includes(product.id))
+  const totalPages = Math.max(1, Math.ceil(visible.length / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  useEffect(() => { setPageNumber(1) }, [search, status, platform, stock, pageSize])
+  const allVisibleSelected = pageProducts.length > 0 && pageProducts.every(product => selectedProductIds.includes(product.id))
   const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
   function showProductToast(message: string, kind: 'success' | 'error') { setProductToast({ message, kind }); window.setTimeout(() => setProductToast(current => current?.message === message ? null : current), 4000) }
   function toggleProduct(id: string) { setSelectedProductIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id]) }
-  function toggleAllVisible() { setSelectedProductIds(ids => allVisibleSelected ? ids.filter(id => !visible.some(product => product.id === id)) : [...new Set([...ids, ...visible.map(product => product.id)])]) }
+  function toggleAllVisible() { setSelectedProductIds(ids => allVisibleSelected ? ids.filter(id => !pageProducts.some(product => product.id === id)) : [...new Set([...ids, ...pageProducts.map(product => product.id)])]) }
 
   async function bulkSetProductStatus(newStatus: 'ACTIVE' | 'ARCHIVED') {
     setBulkOpen(false)
@@ -341,11 +343,12 @@ export function ProductsPage() {
           <label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} /><span>Ürün Bilgisi</span></label>
           <span>Varyant</span><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
         </div>
-        {visible.map(product => (
+        {pageProducts.map(product => (
           <ProductColorRows key={product.id} product={product} selected={selectedProductIds.includes(product.id)} onSelect={() => toggleProduct(product.id)} onQuickEdit={mode => setQuickEdit({ productIds: [product.id], mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} />
         ))}
       </div>
     )}
+    {visible.length > 0 && <div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına ürün" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label><span>{(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, visible.length)} / {visible.length} ürün</span><div><button type="button" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>Önceki</button><b>Sayfa {currentPage} / {totalPages}</b><button type="button" disabled={currentPage >= totalPages} onClick={() => setPageNumber(value => Math.min(totalPages, value + 1))}>Sonraki</button></div></div>}
     {quickEdit && <ProductQuickEditModal products={selectedProducts} connections={connections} mode={quickEdit.mode} onChanged={refresh} onResult={showProductToast} onClose={() => setQuickEdit(null)} />}
     {productToast && <div className={`product-operation-toast ${productToast.kind}`} role={productToast.kind === 'success' ? 'status' : 'alert'}><strong>{productToast.kind === 'success' ? 'Güncellendi' : 'Başarısız'}</strong><span>{productToast.message}</span></div>}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
@@ -455,9 +458,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const productToEdit = useQuery({ queryKey: ['product', editProductId], queryFn: () => hubApi<Product>(`/products/${editProductId}`), enabled: !!editProductId })
-  const categories = useQuery({ queryKey: ['categories', 'new-product'], queryFn: () => hubApi<PageData<Category>>('/catalog/categories?limit=200') })
-  const brands = useQuery({ queryKey: ['brands', 'new-product'], queryFn: () => hubApi<PageData<Brand>>('/catalog/brands?limit=200') })
-  const connections = useQuery({ queryKey: ['connections', 'new-product'], queryFn: () => hubApi<PageData<TrendyolConnection>>('/connections?limit=200') })
+  const categories = useQuery({ queryKey: ['categories', 'new-product'], queryFn: () => loadAllPages<Category>('/catalog/categories') })
+  const brands = useQuery({ queryKey: ['brands', 'new-product'], queryFn: () => loadAllPages<Brand>('/catalog/brands') })
+  const connections = useQuery({ queryKey: ['connections', 'new-product'], queryFn: () => loadAllPages<TrendyolConnection>('/connections') })
   const requirements = useQuery({ queryKey: ['category-requirements', form.categoryId], queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`), enabled: !!form.categoryId, retry: false })
   const leafCategories = (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive); const activeBrands = (brands.data?.items ?? []).filter(item => item.isActive)
   const activeConnections = (connections.data?.items ?? []).filter(item => item.status === 'ACTIVE' && item.platformCode === 'TRENDYOL')
@@ -775,10 +778,10 @@ export function ProductDetailPage() {
       setNotice('Ürün bilgileri ve kategori özellikleri güncellendi.'); await refresh()
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Ürün güncellenemedi.') }
   }
-  const categories = useQuery({ queryKey: ['categories', 'edit-product'], queryFn: () => hubApi<PageData<Category>>('/catalog/categories?limit=200') })
-  const brands = useQuery({ queryKey: ['brands', 'edit-product'], queryFn: () => hubApi<PageData<Brand>>('/catalog/brands?limit=200') })
+  const categories = useQuery({ queryKey: ['categories', 'edit-product'], queryFn: () => loadAllPages<Category>('/catalog/categories') })
+  const brands = useQuery({ queryKey: ['brands', 'edit-product'], queryFn: () => loadAllPages<Brand>('/catalog/brands') })
   const requirements = useQuery({ queryKey: ['category-requirements', 'edit-product', form.categoryId], queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`), enabled: !!form.categoryId, retry: false })
-  const connections = useQuery({ queryKey: ['connections', 'product-publication'], queryFn: () => hubApi<PageData<TrendyolConnection>>('/connections?limit=200') })
+  const connections = useQuery({ queryKey: ['connections', 'product-publication'], queryFn: () => loadAllPages<TrendyolConnection>('/connections') })
   const status = useQuery({ queryKey: ['publication-status', id, connectionId], queryFn: () => hubApi<PublicationStatus>(`/products/${id}/publication-status/${connectionId}`), enabled: !!id && !!connectionId, retry: false })
   const activeConnections = connections.data?.items.filter(item => item.platformCode === 'TRENDYOL' && item.status === 'ACTIVE') ?? []
   const leafCategories = (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive); const activeBrands = (brands.data?.items ?? []).filter(item => item.isActive)
@@ -842,7 +845,7 @@ export function ImportDetailPage() {
 
 export function InventoryPage() {
   const client = useQueryClient(); const [error, setError] = useState<unknown>(); const [connectionId, setConnectionId] = useState(''); const [notice, setNotice] = useState(''); const query = useQuery({ queryKey: ['inventory'], queryFn: () => hubApi<PageData<Inventory>>('/inventory') })
-  const connections = useQuery({ queryKey: ['connections', 'inventory-sync'], queryFn: () => hubApi<PageData<TrendyolConnection>>('/connections?limit=200') })
+  const connections = useQuery({ queryKey: ['connections', 'inventory-sync'], queryFn: () => loadAllPages<TrendyolConnection>('/connections') })
   const activeConnections = connections.data?.items.filter(item => item.platformCode === 'TRENDYOL' && item.status === 'ACTIVE') ?? []
   async function adjust(item: Inventory, delta: number) { const reason = window.prompt('Düzeltme nedeni'); if (!reason) return; try { await hubApi(`/inventory/${item.variantId}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: delta, reason, sourceEventId: key() }) }); await client.invalidateQueries({ queryKey: ['inventory'] }) } catch (failure) { setError(failure) } }
   async function sync() { if (!connectionId) return; try { const jobId = await hubApi<string>(`/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': key() } }); setNotice(`Birleşik fiyat-stok işi kuyruğa alındı: ${jobId}`) } catch (failure) { setNotice(failure instanceof Error ? failure.message : 'Senkronizasyon başlatılamadı.') } }

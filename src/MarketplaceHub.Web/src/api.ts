@@ -48,3 +48,27 @@ export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
+
+export type CursorPage<T> = { items: T[]; nextCursor: string | null; hasMore: boolean }
+
+/** Reads every cursor page. The server still keeps each individual request bounded. */
+export async function loadAllPages<T>(path: string, limit = 200): Promise<CursorPage<T>> {
+  const items: T[] = []
+  const seenCursors = new Set<string>()
+  let after: string | null = null
+
+  while (true) {
+    const [basePath, queryString = ''] = path.split('?')
+    const params = new URLSearchParams(queryString)
+    params.set('limit', String(limit))
+    if (after) params.set('after', after)
+    else params.delete('after')
+
+    const page = await hubApi<CursorPage<T>>(`${basePath}?${params.toString()}`)
+    items.push(...page.items)
+    if (!page.hasMore) return { items, nextCursor: null, hasMore: false }
+    if (!page.nextCursor || seenCursors.has(page.nextCursor)) throw new Error('Listenin devam sayfası güvenli biçimde alınamadı.')
+    seenCursors.add(page.nextCursor)
+    after = page.nextCursor
+  }
+}

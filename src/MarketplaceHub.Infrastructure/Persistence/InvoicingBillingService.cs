@@ -66,7 +66,7 @@ public sealed partial class InvoicingBillingService(
         return new(items, hasMore ? cursors.Encode(rows[limit - 1].Id) : null, hasMore);
     }
 
-    public async Task<IReadOnlyList<InvoiceWorkspaceItemView>> WorkspaceAsync(Guid tenantId, int limit, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<InvoiceWorkspaceItemView>> WorkspaceAsync(Guid tenantId, CancellationToken cancellationToken)
     {
         var hasOperationalTrendyol = await db.PlatformConnections.AsNoTracking()
             .AnyAsync(x => x.TenantId == tenantId
@@ -77,7 +77,6 @@ public sealed partial class InvoicingBillingService(
         var packages = await db.ShipmentPackages.AsNoTracking()
             .Where(x => x.TenantId == tenantId)
             .OrderByDescending(x => x.StatusOccurredAt)
-            .Take(limit)
             .ToListAsync(cancellationToken);
         if (packages.Count == 0) return [];
 
