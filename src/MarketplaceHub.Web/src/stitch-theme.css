@@ -2529,3 +2529,105 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   border-color: #444654 !important;
 }
 .mapping-advanced-tools .value-mapping-row select { background-color: #252732 !important; }
+
+/* Platform connection cards: keep every credential readable and let the card
+   grow with its content instead of clipping labels or masked values. */
+.integrations-reference-page .integration-grid {
+  align-items: start !important;
+}
+.integrations-reference-page .reference-integration-card {
+  min-height: 540px !important;
+  height: auto !important;
+}
+.integrations-reference-page .reference-integration-header {
+  min-height: 106px !important;
+  padding: 22px 24px 18px !important;
+}
+.integrations-reference-page .reference-integration-brand {
+  align-items: flex-start !important;
+  min-width: 0;
+}
+.integrations-reference-page .reference-integration-header h2 {
+  max-width: 100% !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  line-height: 1.2 !important;
+}
+.integrations-reference-page .reference-integration-warning {
+  min-height: 104px !important;
+  padding: 18px 24px !important;
+}
+.integrations-reference-page .reference-integration-warning p {
+  line-height: 1.55 !important;
+}
+.integrations-reference-page .reference-integration-body {
+  align-content: start !important;
+  gap: 26px 28px !important;
+  padding: 28px 24px 34px !important;
+  flex: 1 1 auto !important;
+}
+.integrations-reference-page .reference-data-point {
+  min-width: 0 !important;
+}
+.integrations-reference-page .reference-data-point > span {
+  line-height: 1.35 !important;
+}
+.integrations-reference-page .reference-data-point > strong {
+  width: 100% !important;
+  min-height: 40px !important;
+  display: flex !important;
+  align-items: center !important;
+  overflow: visible !important;
+  overflow-wrap: anywhere !important;
+  white-space: normal !important;
+  text-overflow: clip !important;
+  line-height: 1.35 !important;
+}
+.integrations-reference-page .reference-secret {
+  flex-wrap: wrap !important;
+  gap: 6px 10px !important;
+}
+.integrations-reference-page .reference-secret b {
+  overflow-wrap: anywhere !important;
+  letter-spacing: 1.5px !important;
+}
+.integrations-reference-page .reference-data-point-wide > strong {
+  width: auto !important;
+  min-height: 0 !important;
+  display: inline-flex !important;
+  padding: 0 !important;
+  white-space: normal !important;
+}
+.integrations-reference-page .reference-integration-footer {
+  min-height: 76px !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-start !important;
+  padding: 16px 20px !important;
+}
+.integrations-reference-page .reference-action {
+  white-space: normal !important;
+  line-height: 1.25 !important;
+  text-align: center !important;
+}
+@media (max-width: 900px) {
+  .integrations-reference-page .integration-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+@media (max-width: 620px) {
+  .integrations-reference-page .reference-integration-card {
+    min-height: auto !important;
+  }
+  .integrations-reference-page .reference-integration-body {
+    grid-template-columns: 1fr !important;
+  }
+  .integrations-reference-page .reference-data-point-wide {
+    grid-column: auto !important;
+  }
+  .integrations-reference-page .reference-integration-footer {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+}
