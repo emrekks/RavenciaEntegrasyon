@@ -2308,6 +2308,85 @@ textarea {
 /* Saved brand rows edit the main selector instead of opening a dialog. */
 .brand-mapping-modal-backdrop { display: none !important; }
 
+/* Panel kategorileri seçim alanının içinde görünür; eski yönetim popup'ı kullanılmaz. */
+.mapping-category-builder .inline-category-manager {
+  display: block !important;
+  margin-top: 12px !important;
+  color: var(--st-text) !important;
+}
+.mapping-category-builder .inline-category-manager > summary { display: none !important; }
+.mapping-category-builder .inline-category-manager > .mapping-local-manager-dialog {
+  position: static !important;
+  display: grid !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: auto !important;
+  max-height: none !important;
+  padding: 14px !important;
+  overflow: hidden !important;
+  background: var(--st-surface-low) !important;
+  border: 1px solid var(--st-surface-highest) !important;
+  border-radius: var(--st-radius) !important;
+  box-shadow: none !important;
+}
+.mapping-category-builder .inline-category-manager .mapping-local-manager-dialog > header { display: flex !important; }
+.mapping-category-builder .inline-category-manager .mapping-local-manager-dialog > header > button { display: none !important; }
+.mapping-category-builder .inline-category-manager .category-chip-list {
+  max-height: 168px !important;
+  overflow-y: auto !important;
+  scrollbar-gutter: stable;
+}
+
+/* Inline saved-brand editing uses the same searchable dropdown everywhere. */
+.brand-mapping-inline-editor { min-width: 250px; }
+.brand-mapping-inline-editor .searchable-select { display: block; margin: 0 !important; }
+.brand-mapping-inline-editor .searchable-select > span { display: none !important; }
+.brand-mapping-inline-editor .searchable-select-trigger { min-height: 34px !important; padding: 0 9px !important; }
+.brand-mapping-inline-editor .searchable-select-menu { z-index: 80 !important; min-width: 270px; }
+.brand-mapping-saved-card tr.is-editing { background: rgba(104, 114, 232, .08) !important; }
+
+/* A value editor must trap scrolling inside its own list. */
+body:has(.panel-attribute-modal) { overflow: hidden !important; }
+.panel-attribute-modal { touch-action: none; }
+.panel-attribute-modal-card,
+.panel-attribute-value-editor { overscroll-behavior: contain !important; }
+
+/* Platformlar: neutral Obsidian surfaces; status colors remain semantic, not decorative blue. */
+.integrations-reference-page .reference-integration-card {
+  background: #1a1b22 !important;
+  border-color: #454652 !important;
+  box-shadow: 0 14px 30px rgba(0,0,0,.28) !important;
+}
+.integrations-reference-page .reference-integration-card:hover { border-color: #686a78 !important; }
+.integrations-reference-page .reference-integration-card-active { border-color: rgba(117, 211, 174, .42) !important; }
+.integrations-reference-page .reference-integration-card-error { border-color: rgba(255, 172, 158, .48) !important; }
+.integrations-reference-page .reference-integration-accent { background: #e68b7d !important; box-shadow: none !important; }
+.integrations-reference-page .reference-integration-card-active .reference-integration-accent { background: #70c9a3 !important; box-shadow: none !important; }
+.integrations-reference-page .reference-integration-header,
+.integrations-reference-page .reference-integration-footer { background: #202128 !important; border-color: #3c3e4a !important; }
+.integrations-reference-page .reference-integration-header { padding: 20px 22px 17px !important; }
+.integrations-reference-page .reference-integration-header h2 { font-size: 21px !important; }
+.integrations-reference-page .reference-provider-logo { background: #292a31 !important; border-color: #555764 !important; }
+.integrations-reference-page .reference-provider-logo.trendyol { color: #f0a18f !important; }
+.integrations-reference-page .reference-provider-logo.efaturam { color: #e9b36f !important; }
+.integrations-reference-page .reference-connection-state.connected,
+.integrations-reference-page .reference-last-success i { color: #70c9a3 !important; }
+.integrations-reference-page .reference-connection-state.inactive { color: #f0a18f !important; }
+.integrations-reference-page .reference-integration-warning { color: #f0a18f !important; background: rgba(105, 40, 50, .28) !important; border-color: rgba(230, 139, 125, .25) !important; }
+.integrations-reference-page .reference-integration-warning p { color: #d6a7a0 !important; }
+.integrations-reference-page .reference-integration-body { gap: 20px 24px !important; padding: 22px !important; }
+.integrations-reference-page .reference-data-point > strong { color: #e6e4ef !important; background: #121319 !important; border-color: #4b4d59 !important; }
+.integrations-reference-page .reference-data-point-wide > strong { background: transparent !important; border: 0 !important; }
+.integrations-reference-page .reference-secret em { color: #b7b5c4 !important; }
+.integrations-reference-page .reference-action { border-color: #555764 !important; }
+.integrations-reference-page .reference-action.secondary,
+.integrations-reference-page .reference-action.link-action { color: #e5e3ed !important; background: #292a31 !important; }
+.integrations-reference-page .reference-action.primary-action { color: #191a20 !important; background: #e6a18f !important; border-color: #e6a18f !important; }
+.integrations-reference-page .reference-card-notice { color: #bde2cf !important; background: rgba(112, 201, 163, .1) !important; border-color: rgba(112, 201, 163, .34) !important; }
+.integrations-reference-page .reference-menu-popover { background: #202128 !important; border-color: #555764 !important; }
+.integrations-reference-page .reference-menu-popover a:hover,
+.integrations-reference-page .reference-menu-popover button:hover { background: #2a2b33 !important; }
+
 /* Replace the legacy blue category-attribute workspace with neutral Obsidian surfaces. */
 .mapping-advanced-tools[open] {
   --mapping-modal-bg: #171820;
