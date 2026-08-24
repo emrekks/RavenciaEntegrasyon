@@ -1910,10 +1910,22 @@ textarea {
 .brand-mapping-console {
   display: grid !important;
   gap: 16px !important;
-  padding: 20px !important;
-  background: #101827 !important;
-  border: 1px solid #2d3b57 !important;
+  padding: 24px !important;
+  background: #1a1b23 !important;
+  border: 1px solid rgba(69, 70, 85, .58) !important;
+  border-radius: 3px !important;
 }
+.brand-mapping-console > h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 0 !important;
+  color: #e3e1ed !important;
+  font: 600 20px/28px Manrope, sans-serif !important;
+  letter-spacing: -.01em !important;
+}
+.brand-mapping-console > h2 > span { color: #bec2ff; font: 600 21px/1 Inter, sans-serif; }
+.brand-mapping-intro { margin: -8px 0 4px !important; color: #c6c5d7 !important; font-size: 12px !important; line-height: 18px !important; }
 .brand-mapping-console > .editor-section-title {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
