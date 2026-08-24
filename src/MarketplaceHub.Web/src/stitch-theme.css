@@ -1808,6 +1808,98 @@ textarea {
   .panel-attribute-add-value { grid-template-columns: 1fr; }
 }
 
+/* Final alignment pass for the compact platform cards. */
+.integrations-reference-page .reference-integration-body {
+  grid-template-columns: 1fr !important;
+  gap: 14px !important;
+  padding: 22px 24px 24px !important;
+}
+.integrations-reference-page .reference-integration-footer {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px !important;
+  align-items: stretch !important;
+  padding: 14px 16px !important;
+}
+.integrations-reference-page .reference-integration-footer:has(.primary-action) {
+  grid-template-columns: minmax(58px, .65fr) minmax(0, 1.45fr) minmax(102px, 1.1fr);
+}
+.integrations-reference-page .reference-action {
+  min-width: 0 !important;
+  padding-inline: 8px !important;
+  font-size: 11px !important;
+  white-space: normal !important;
+}
+.integrations-reference-page .reference-menu-trigger {
+  display: grid !important;
+  place-items: center !important;
+  width: 34px !important;
+  height: 34px !important;
+  padding: 0 !important;
+  color: #e8e6f0 !important;
+  background: #30313b !important;
+  border: 1px solid #555764 !important;
+  border-radius: 5px !important;
+  font-size: 24px !important;
+  line-height: 1 !important;
+}
+.integrations-reference-page .reference-menu-trigger:hover {
+  background: #3a3b47 !important;
+  border-color: #777a8c !important;
+}
+
+/* Category library behaves like a dropdown: the compact control opens the list. */
+.mapping-category-builder .mapping-local-manager-dialog > header strong {
+  font-size: 0 !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog > header strong::after {
+  content: 'Kategori ekleme';
+  color: var(--st-text);
+  font-size: 12px;
+}
+.mapping-category-builder .mapping-local-manager-dialog > header small {
+  font-size: 0 !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog > header small::after {
+  content: 'Panel kategorileri ekleyin, arayın veya kaldırın.';
+  color: var(--st-muted);
+  font-size: 10px;
+}
+.mapping-category-builder .mapping-local-manager-dialog .category-library-tools {
+  grid-template-columns: minmax(0, 1fr) 82px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog .category-library-tools input {
+  width: 100% !important;
+  padding-right: 34px !important;
+  background-image: linear-gradient(45deg, transparent 50%, #9da2b4 50%), linear-gradient(135deg, #9da2b4 50%, transparent 50%) !important;
+  background-position: calc(100% - 15px) 16px, calc(100% - 10px) 16px !important;
+  background-size: 5px 5px, 5px 5px !important;
+  background-repeat: no-repeat !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog .category-library-tools > span {
+  display: none !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog > .category-chip-list {
+  display: none !important;
+  width: 100% !important;
+  margin-top: 0 !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog:has(.category-library-tools:focus-within) > .category-chip-list,
+.mapping-category-builder .mapping-local-manager-dialog:has(> .category-chip-list:focus-within) > .category-chip-list {
+  display: grid !important;
+}
+@media (max-width: 620px) {
+  .integrations-reference-page .reference-integration-footer:has(.primary-action) {
+    grid-template-columns: 1fr !important;
+  }
+  .mapping-category-builder .mapping-local-manager-dialog .category-library-tools {
+    grid-template-columns: minmax(0, 1fr) 82px !important;
+  }
+}
+
 /* Category mapping modal v11: a self-contained Obsidian workspace. */
 .mapping-advanced-tools[open] {
   --mapping-modal-bg: #0b1220;
