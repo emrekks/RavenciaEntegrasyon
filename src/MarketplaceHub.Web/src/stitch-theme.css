@@ -1523,6 +1523,35 @@ textarea {
 .mapping-popup-content .button-row .secondary:hover { color: #fff !important; background: #252e45 !important; border-color: #5865f2 !important; }
 .panel-attribute-record-actions { justify-content: center; }
 
+/* Attribute mapping popup: the content, not the dialog shell, owns scrolling. */
+.mapping-advanced-tools[open] {
+  height: calc(100vh - 106px);
+  max-height: calc(100vh - 106px);
+}
+.mapping-advanced-tools[open] > div,
+.mapping-advanced-tools[open] > div > .mapping-popup-content {
+  min-height: 0 !important;
+  height: 100% !important;
+}
+.mapping-advanced-tools[open] > div > .mapping-popup-content {
+  display: block !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-gutter: stable;
+}
+.mapping-advanced-tools[open] > div > .mapping-popup-content > .mapping-step { min-height: max-content !important; }
+
+/* Tabs and actions share one toolbar so refresh has a clear, stable location. */
+.mapping-popup-content .mapping-section-toolbar { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.mapping-popup-content .mapping-section-toolbar .mapping-section-tabs { flex: 1 1 auto; min-width: 0; margin: 0; }
+.mapping-popup-content .mapping-section-toolbar .button-row { flex: 0 0 auto; align-items: center; gap: 6px; margin: 0; }
+.mapping-popup-content .mapping-section-toolbar .button-row button { white-space: nowrap; }
+
+@media (max-width: 720px) {
+  .mapping-popup-content .mapping-section-toolbar { align-items: stretch; flex-direction: column; }
+  .mapping-popup-content .mapping-section-toolbar .button-row { justify-content: flex-end; flex-wrap: wrap; }
+}
+
 @media (max-width: 720px) {
   .mapping-local-manager-dialog .platform-category-create,
   .mapping-local-manager-dialog .category-chip-list { grid-template-columns: 1fr; }
