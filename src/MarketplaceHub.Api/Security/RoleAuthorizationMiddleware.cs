@@ -47,6 +47,7 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         if (path.StartsWithSegments("/api/v1/connections") && path.Value?.EndsWith("/credential", StringComparison.OrdinalIgnoreCase) == true) return ElevatedRoles;
         if (path.StartsWithSegments("/api/v1/shipments") && path.Value?.EndsWith("/label-capability-probes", StringComparison.OrdinalIgnoreCase) == true) return ElevatedRoles;
         if (path.StartsWithSegments("/api/v1/connections") && path.Value?.EndsWith("/stage-test-order-jobs", StringComparison.OrdinalIgnoreCase) == true) return ElevatedRoles;
+        if (path.StartsWithSegments("/api/v1/connections") && path.Value?.EndsWith("/deep-delete", StringComparison.OrdinalIgnoreCase) == true) return ElevatedRoles;
         if (path.StartsWithSegments("/api/v1/connections")) return OperationalRoles;
         if (path.StartsWithSegments("/api/v1/jobs")) return ElevatedRoles;
         if (path.StartsWithSegments("/api/v1/catalog") || path.StartsWithSegments("/api/v1/products") || path.StartsWithSegments("/api/v1/files") ||
