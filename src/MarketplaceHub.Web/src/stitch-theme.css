@@ -2131,3 +2131,156 @@ textarea {
   .brand-mapping-console > .mapping-action { align-items: stretch !important; flex-direction: column !important; }
   .brand-mapping-console > .mapping-action button { width: 100% !important; }
 }
+
+/* The category library is part of the mapping form, not a modal workflow. */
+.mapping-category-builder .mapping-local-manager {
+  display: block !important;
+  margin-top: 16px !important;
+  color: var(--st-muted) !important;
+}
+.mapping-category-builder .mapping-local-manager > summary {
+  display: none !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog {
+  display: grid !important;
+  gap: 12px !important;
+  width: 100% !important;
+  max-height: none !important;
+  padding: 14px !important;
+  overflow: visible !important;
+  background: #1a1b23 !important;
+  border: 1px solid #454655 !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog > header {
+  align-items: center !important;
+  padding-bottom: 10px !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog > header > button {
+  display: none !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog > header strong {
+  color: var(--st-text) !important;
+  font-size: 12px !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog > header small {
+  color: var(--st-muted) !important;
+  font-size: 10px !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog .platform-category-create {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 8px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog .platform-category-create label {
+  color: var(--st-muted) !important;
+  font-size: 10px !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog .platform-category-create input {
+  min-height: 38px !important;
+  color: var(--st-text) !important;
+  background: #1a1b23 !important;
+  border-color: #454655 !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog .platform-category-create > button {
+  align-self: end !important;
+  min-height: 38px !important;
+  color: #fff !important;
+  background: var(--st-primary) !important;
+  border-color: #8a83ff !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+  font-size: 10px !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog .category-library-tools {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog .category-library-tools input,
+.mapping-category-builder .mapping-local-manager-dialog .category-library-tools select {
+  min-height: 36px !important;
+  height: 36px !important;
+  color: var(--st-text) !important;
+  background: #1a1b23 !important;
+  border-color: #454655 !important;
+  border-radius: 3px !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog .category-library-tools span {
+  color: var(--st-muted) !important;
+  font-size: 10px !important;
+  white-space: nowrap;
+}
+.mapping-category-builder .mapping-local-manager-dialog > .category-chip-list {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  max-height: 190px !important;
+  padding: 2px !important;
+  overflow-y: auto !important;
+  background: #1a1b23 !important;
+  border: 1px solid #454655 !important;
+  border-radius: 3px !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog > .category-chip-list > span {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 28px !important;
+  min-height: 34px !important;
+  overflow: hidden !important;
+  background: #22232c !important;
+  border: 1px solid #454655 !important;
+  border-radius: 3px !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog > .category-chip-list > span.active {
+  background: #292a35 !important;
+  border-color: #6872e8 !important;
+  box-shadow: inset 3px 0 0 #6872e8 !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog > .category-chip-list > span > button:first-child {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  padding: 0 8px !important;
+  color: #e3e1ed !important;
+  background: transparent !important;
+  border: 0 !important;
+  text-align: left !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog > .category-chip-list .category-chip-remove {
+  width: 28px !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  color: #c6c5d7 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-left: 1px solid #454655 !important;
+  border-radius: 0 !important;
+  font-size: 15px !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog > .category-chip-list .category-chip-remove:hover {
+  color: #ff91a1 !important;
+  background: rgba(242, 107, 122, .1) !important;
+}
+
+@media (max-width: 760px) {
+  .mapping-category-builder .mapping-local-manager-dialog .platform-category-create,
+  .mapping-category-builder .mapping-local-manager-dialog .category-library-tools {
+    grid-template-columns: 1fr !important;
+  }
+  .mapping-category-builder .mapping-local-manager-dialog .platform-category-create > button {
+    width: 100% !important;
+  }
+  .mapping-category-builder .mapping-local-manager-dialog > .category-chip-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
