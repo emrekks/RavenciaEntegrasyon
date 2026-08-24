@@ -812,15 +812,37 @@ textarea {
   }
   .stitch-brand-mark { width: 32px; height: 32px; flex-basis: 32px; }
   .sidebar-collapse-toggle,
-  .brand.wordmark,
+  .stitch-shell .brand.wordmark,
   .sidebar-utility-links { display: none !important; }
   .sidebar-primary-action { min-width: 40px; min-height: 38px; margin-block: 12px; padding: 0 !important; font-size: 0 !important; }
   .sidebar-primary-action span { font-size: 17px; }
+  .stitch-shell > aside nav {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-auto-flow: row !important;
+    grid-auto-rows: 42px !important;
+    gap: 3px !important;
+    width: 100% !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .stitch-shell > aside nav a,
+  .stitch-shell > aside nav a.active,
+  .stitch-shell > aside nav a:not(.active) {
+    position: static !important;
+    display: flex !important;
+    width: 46px !important;
+    height: 42px !important;
+    min-width: 46px !important;
+    min-height: 42px !important;
+    padding: 0 !important;
+    flex: 0 0 42px !important;
+  }
   .stitch-shell > main { margin-left: 62px; }
   .stitch-shell .topbar { min-height: 54px !important; padding: 0 12px !important; }
   .topbar-workspace { min-width: 0; }
   .stitch-shell .breadcrumb strong { display: none; }
-  .stitch-shell .breadcrumb span { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stitch-shell .breadcrumb span { display: block !important; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .workspace-connection-select,
   .environment-badge,
   .sync-center-link,
@@ -846,5 +868,25 @@ textarea {
   .order-tabs button,
   .settings-tabs button,
   .mapping-tabs button { white-space: nowrap; }
+  .stitch-shell nav.dashboard-toolbar {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 3px !important;
+    padding: 4px !important;
+    overflow-x: auto !important;
+  }
+  .stitch-shell nav.dashboard-toolbar a,
+  .stitch-shell nav.dashboard-toolbar a.active,
+  .stitch-shell nav.dashboard-toolbar a:not(.active) {
+    display: inline-flex !important;
+    align-items: center !important;
+    width: auto !important;
+    min-width: max-content !important;
+    min-height: 34px !important;
+    padding: 0 10px !important;
+    flex: 0 0 auto !important;
+    color: var(--st-muted) !important;
+    font-size: 10px !important;
+  }
 }
-
