@@ -2314,6 +2314,14 @@ textarea {
   margin-top: 12px !important;
   color: var(--st-text) !important;
 }
+.mapping-category-builder .mapping-local-manager[open] {
+  position: static !important;
+  inset: auto !important;
+  display: block !important;
+  margin: 12px 0 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
 .mapping-category-builder .mapping-local-manager > summary { display: none !important; }
 .mapping-category-builder .mapping-local-manager > .mapping-local-manager-dialog {
   position: static !important;
