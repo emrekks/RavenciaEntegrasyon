@@ -2860,3 +2860,78 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Category pickers: the library opens from its search control, while the
+   panel-category field uses the same compact four-column dropdown pattern. */
+.mapping-category-builder .mapping-local-manager-dialog > .category-chip-list {
+  display: none !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog:has(.category-library-tools:focus-within) > .category-chip-list,
+.mapping-category-builder .mapping-local-manager-dialog:has(> .category-chip-list:hover) > .category-chip-list,
+.mapping-category-builder .mapping-local-manager-dialog:has(> .category-chip-list:focus-within) > .category-chip-list {
+  display: grid !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog .category-library-tools {
+  width: 100% !important;
+  margin: 0 !important;
+  grid-template-columns: minmax(0, 1fr) 82px !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog .category-library-tools > span {
+  display: none !important;
+}
+
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) {
+  position: absolute !important;
+  z-index: 90 !important;
+  top: 67px !important;
+  left: 0 !important;
+  width: 100% !important;
+  max-height: 328px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: var(--st-surface-container) !important;
+  border: 1px solid var(--st-primary) !important;
+  border-radius: var(--st-radius) !important;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, .46) !important;
+}
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) > div:first-child {
+  padding: 9px !important;
+  background: var(--st-surface-container) !important;
+  border-bottom: 1px solid var(--st-surface-highest) !important;
+}
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) > div:last-child {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  max-height: 267px !important;
+  padding: 8px !important;
+  overflow-y: auto !important;
+  background: var(--st-surface-low) !important;
+}
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) [role="option"] {
+  min-width: 0 !important;
+  min-height: 38px !important;
+  padding: 8px 9px !important;
+  overflow: hidden !important;
+  color: var(--st-text) !important;
+  background: var(--st-surface-container) !important;
+  border: 1px solid var(--st-surface-highest) !important;
+  border-radius: calc(var(--st-radius) - 2px) !important;
+  text-align: left !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) [role="option"]:hover,
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) [role="option"][aria-selected="true"] {
+  color: #fff !important;
+  background: var(--st-primary) !important;
+  border-color: var(--st-primary-soft) !important;
+}
+@media (max-width: 760px) {
+  .mapping-category-builder .mapping-local-manager-dialog > .category-chip-list,
+  .mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) > div:last-child {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
