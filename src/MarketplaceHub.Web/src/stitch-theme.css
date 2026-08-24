@@ -1571,6 +1571,18 @@ textarea {
 .mapping-reference-target .mapping-category-results > button:hover { background: #23263a !important; border-color: #34394d !important; }
 .mapping-reference-target .mapping-category-results > button[aria-selected="true"] { background: rgba(88, 101, 242, .2) !important; border-color: #34394d !important; box-shadow: inset 3px 0 0 #6571f7 !important; }
 
+/* The marketplace selector intentionally shares the exact picker structure of Panel kategorisi. */
+.platform-category-picker-wrap { position: relative; min-width: 0; }
+.platform-category-picker-wrap .panel-category-picker-trigger { width: 100%; }
+.platform-category-picker-wrap .platform-category-picker {
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  width: auto;
+  min-width: 0;
+}
+.platform-category-picker [role="option"] { padding-left: 12px !important; }
+
 @media (max-width: 720px) {
   .mapping-local-manager-dialog { width: calc(100vw - 24px); height: min(620px, calc(100vh - 24px)); }
   .mapping-local-manager-dialog .category-library-tools { grid-template-columns: minmax(0, 1fr) auto; }
