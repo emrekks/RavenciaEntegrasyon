@@ -1235,7 +1235,7 @@ textarea {
 }
 .mapping-advanced-tools[open] > div {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 0;
   padding: 0;
   overflow: hidden;
@@ -1314,12 +1314,62 @@ textarea {
 .mapping-advanced-tools .attribute-mapping-card { padding: 11px !important; border-radius: 5px !important; }
 .mapping-advanced-tools .matched-category-select { margin-bottom: 10px; }
 
+/* Value mapping belongs to step 3 and stays in the page context. */
+.mapping-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.mapping-section-heading h2 { display: flex; align-items: center; gap: 10px; margin: 0; color: #e3e1ed; font-size: 20px; }
+.mapping-section-heading h2 > span { color: #bec2ff; font-size: 18px; }
+.mapping-section-heading > button { min-height: 36px !important; padding: 7px 13px !important; font-size: 10px !important; }
+.mapping-attribute-preview-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.mapping-attribute-preview-list > button {
+  display: grid !important;
+  grid-template-columns: minmax(110px, .8fr) minmax(150px, 1.2fr) 16px;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px !important;
+  padding: 8px 11px !important;
+  color: #c6c5d7 !important;
+  text-align: left;
+  background: #1b1c24 !important;
+  border: 1px solid #34343d !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+.mapping-attribute-preview-list > button:hover { border-color: rgba(88, 101, 242, .5) !important; background: #20212b !important; }
+.mapping-attribute-preview-list > button > span { display: grid; gap: 2px; min-width: 0; }
+.mapping-attribute-preview-list strong { overflow: hidden; color: #e3e1ed; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.mapping-attribute-preview-list small { overflow: hidden; color: #898a9a; font-size: 9px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.mapping-attribute-preview-list .mapped { color: #31d6a5; }
+.mapping-attribute-preview-list > button > i { color: #bfc3ff; font-size: 18px; font-style: normal; }
+.inline-attribute-workspace {
+  max-height: 620px;
+  margin-top: 16px;
+  padding-top: 14px;
+  overflow-y: auto;
+  border-top: 1px solid #34343d;
+  overscroll-behavior: contain;
+}
+.inline-attribute-workspace > .mapping-step { margin: 0 !important; padding: 14px !important; background: #171820 !important; border-radius: 5px !important; }
+.inline-attribute-workspace .editor-section-title { padding-bottom: 10px; }
+.inline-attribute-workspace .editor-section-title h2 { font-size: 16px !important; }
+.inline-attribute-workspace .editor-section-title p { font-size: 10px; }
+.inline-attribute-workspace .mapping-progress { margin: 10px 0; padding: 10px 12px; }
+.inline-attribute-workspace .mapping-section-tabs { margin-top: 10px; }
+.inline-attribute-workspace .embedded-attribute-grid { gap: 7px; }
+.inline-attribute-workspace .attribute-mapping-card { padding: 10px !important; border-radius: 4px !important; }
+
 @media (max-width: 900px) {
   .mapping-reference-grid,
   .mapping-attribute-selects { grid-template-columns: 1fr; }
   .mapping-option-row { grid-template-columns: minmax(110px, 1fr) 22px minmax(110px, 1fr); }
   .mapping-option-row > button { grid-column: 1 / -1; justify-self: start; }
   .mapping-advanced-tools[open] { inset: 64px auto 20px 50%; width: min(760px, calc(100vw - 120px)); }
+  .mapping-attribute-preview-list { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 620px) {
@@ -1348,4 +1398,9 @@ textarea {
   .mapping-advanced-tools .attribute-summary-title > p { grid-column: 1 / -1 !important; }
   .mapping-advanced-tools .attribute-summary-title > .role-transfer-button { grid-column: 1 !important; grid-row: auto; }
   .mapping-advanced-tools .attribute-summary-title > button:last-child { grid-column: 2 !important; grid-row: auto; }
+  .mapping-section-heading { align-items: stretch; flex-direction: column; }
+  .mapping-section-heading > button { width: 100%; }
+  .mapping-attribute-preview-list > button { grid-template-columns: 1fr 16px; }
+  .mapping-attribute-preview-list > button > span:nth-child(2) { grid-column: 1; }
+  .mapping-attribute-preview-list > button > i { grid-column: 2; grid-row: 1 / 3; }
 }
