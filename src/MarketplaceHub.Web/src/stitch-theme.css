@@ -1383,27 +1383,29 @@ textarea {
 .panel-category-picker-trigger i { color: #bfc3ff; font-size: 17px; font-style: normal; }
 .panel-category-picker-trigger:hover { border-color: #6d77ff !important; }
 .panel-category-picker {
-  position: absolute;
-  z-index: 70;
-  top: 67px;
-  left: 0;
-  width: 100%;
+  position: fixed;
+  z-index: 1250;
+  top: 50%;
+  left: 50%;
+  width: min(620px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 48px));
+  transform: translate(-50%, -50%);
   overflow: hidden;
   background: #1a1b23;
   border: 1px solid #555767;
   border-radius: 5px;
-  box-shadow: 0 20px 46px rgba(0, 0, 0, .5);
+  box-shadow: 0 0 0 100vmax rgba(4, 4, 9, .64), 0 20px 46px rgba(0, 0, 0, .5);
 }
 .panel-category-picker > div:first-child { display: grid; grid-template-columns: 1fr 34px; gap: 7px; padding: 9px; border-bottom: 1px solid #34343d; }
 .panel-category-picker > div:first-child input { min-height: 34px !important; }
 .panel-category-picker > div:first-child button { min-height: 34px !important; padding: 0 !important; color: #bfc3ff !important; background: transparent !important; border: 1px solid #444553 !important; }
-.panel-category-picker > div:last-child { display: grid; max-height: 300px; overflow-y: auto; }
+.panel-category-picker > div:last-child { display: grid; max-height: min(470px, calc(100vh - 154px)); overflow-y: auto; }
 .panel-category-picker [role="option"] { min-height: 38px !important; padding: 9px 12px !important; color: #d4d3df !important; text-align: left; background: transparent !important; border: 0 !important; border-bottom: 1px solid rgba(68, 69, 83, .45) !important; border-radius: 0 !important; box-shadow: none !important; font-size: 11px !important; }
 .panel-category-picker [role="option"]:hover,.panel-category-picker [role="option"][aria-selected="true"] { color: #fff !important; background: rgba(88, 101, 242, .14) !important; }
 .mapping-dropdown-input { position: relative; }
 .mapping-dropdown-input input { padding-right: 42px !important; }
-.mapping-dropdown-input::after { content: "⌄"; position: absolute; top: 50%; right: 13px; color: #bfc3ff; font-size: 17px; pointer-events: none; transform: translateY(-50%); }
-.mapping-dropdown-input::before { content: "Kategori menüsü"; position: absolute; z-index: 2; right: 34px; bottom: -18px; color: #77798b; font-size: 9px; pointer-events: none; }
+.mapping-dropdown-input::after { content: "⌄"; position: absolute; inset: 0 12px 0 auto; display: grid; place-items: center; width: 18px; color: #bfc3ff; font-size: 17px; line-height: 1; pointer-events: none; }
+.mapping-dropdown-input::before { content: none; }
 
 /* Category-independent panel option and attribute libraries */
 .panel-library-section .mapping-section-heading { align-items: flex-start; }
@@ -1438,7 +1440,10 @@ textarea {
 .panel-attribute-value-editor > div > div { display: flex; gap: 3px; }
 .panel-attribute-value-editor button { display: grid !important; place-items: center; width: 27px !important; min-width: 27px !important; height: 27px !important; min-height: 27px !important; padding: 0 !important; color: #bfc3ff !important; background: transparent !important; border: 1px solid #444553 !important; border-radius: 3px !important; }
 .panel-value-empty { padding: 16px; color: #9293a3; text-align: center; border: 1px dashed #444553; border-radius: 4px; font-size: 11px; }
-.mapping-platform-filter { width: 118px; min-width: 118px; height: 36px !important; min-height: 36px !important; padding: 0 30px 0 10px !important; color: #c6c5d7 !important; font-size: 10px !important; background-position: right 10px center !important; }
+.mapping-saved-card > header > div { align-items: center; }
+.mapping-saved-card > header > div > .mapping-platform-filter,
+.mapping-saved-card > header > div > button { width: 34px; min-width: 34px; height: 34px !important; min-height: 34px !important; max-height: 34px !important; }
+.mapping-saved-card > header > div > .mapping-platform-filter { width: 118px; min-width: 118px; padding: 0 30px 0 10px !important; color: #c6c5d7 !important; font-size: 10px !important; line-height: 32px !important; background-position: right 10px center !important; }
 
 @media (max-width: 900px) {
   .mapping-reference-grid,
