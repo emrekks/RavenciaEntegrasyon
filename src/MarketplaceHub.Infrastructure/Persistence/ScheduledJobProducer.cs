@@ -102,7 +102,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                     ConnectionId = connection.ConnectionId,
                     ResourceType = resourceType,
                     IntervalSeconds = 300,
-                    OverlapSeconds = 60,
+                    OverlapSeconds = 120,
                     JitterSeconds = 15,
                     Enabled = true,
                     Version = 1

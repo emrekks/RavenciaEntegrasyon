@@ -204,7 +204,16 @@ public sealed record CredentialCommand(
     string? ApiSecret,
     string? Email = null,
     string? Password = null);
-public sealed record SyncPolicyView(Guid Id, string ResourceType, int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled, long Version);
+public sealed record SyncPolicyView(
+    Guid Id,
+    string ResourceType,
+    int IntervalSeconds,
+    int OverlapSeconds,
+    int JitterSeconds,
+    bool Enabled,
+    long Version,
+    DateTimeOffset? LastSuccessAt = null,
+    DateTimeOffset? LastModifiedWatermark = null);
 public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);
 public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType, string? Username, string? Password, string? ApiKey);

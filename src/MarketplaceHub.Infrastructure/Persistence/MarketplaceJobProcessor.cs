@@ -952,11 +952,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         var cursor = await Cursor(tenantId, connectionId, "ORDERS", cancellationToken);
         var now = timeProvider.GetUtcNow();
+        var configuredOverlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ORDERS")
+            .Select(x => (int?)x.OverlapSeconds)
+            .SingleOrDefaultAsync(cancellationToken) ?? DefaultOrderSyncOverlapSeconds;
+        var overlap = TimeSpan.FromSeconds(Math.Clamp(configuredOverlapSeconds, 0, (int)OrderStreamWindowSpan.TotalSeconds - 1));
         // A reset/empty snapshot store must always get a complete baseline, even if
         // an older cursor survived the reset. This keeps the first import idempotent
         // without requiring any direct database mutation.
         var hasSnapshots = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
-        var state = ReadOrderSyncState(cursor, now, forceBaseline: full || !hasSnapshots);
+        var state = ReadOrderSyncState(cursor, now, overlap, forceBaseline: full || !hasSnapshots);
         var resetExpiredCursor = false;
         do
         {
@@ -970,6 +975,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 state = state with { NextCursor = null };
                 cursor.OpaqueCursor = null;
                 resetExpiredCursor = true;
+                await Task.Delay(OrderStreamRequestInterval, cancellationToken);
                 continue;
             }
             if (!result.IsSuccess && state.StoreFrontIndex > 0 && state.NextCursor is null && result.Error?.HttpStatus is 400 or 404)
@@ -984,6 +990,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     cursor.LastSuccessAt = timeProvider.GetUtcNow();
                     cursor.Version++;
                     await db.SaveChangesAsync(cancellationToken);
+                    await Task.Delay(OrderStreamRequestInterval, cancellationToken);
                     continue;
                 }
                 if (state.Mode == OrderSyncMode.Baseline && HasEarlierOrderWindow(state))
@@ -993,9 +1000,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     cursor.LastSuccessAt = timeProvider.GetUtcNow();
                     cursor.Version++;
                     await db.SaveChangesAsync(cancellationToken);
+                    await Task.Delay(OrderStreamRequestInterval, cancellationToken);
                     continue;
                 }
                 cursor.OpaqueCursor = null;
+                cursor.LastModifiedWatermark = state.AnchorEnd;
                 cursor.LastSuccessAt = timeProvider.GetUtcNow();
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
@@ -1007,7 +1016,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 await UpsertOrder(tenantId, connectionId, streamedOrder, cancellationToken);
             }
             var pageWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max();
-            cursor.LastModifiedWatermark = pageWatermark ?? cursor.LastModifiedWatermark;
+            if (pageWatermark is not null && (cursor.LastModifiedWatermark is null || pageWatermark > cursor.LastModifiedWatermark))
+                cursor.LastModifiedWatermark = pageWatermark;
             if (result.Value.HasMore)
             {
                 if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol stream hasMore=true ancak nextCursor boş döndü.");
@@ -1034,7 +1044,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             cursor.LastSuccessAt = timeProvider.GetUtcNow();
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
-            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            await Task.Delay(OrderStreamRequestInterval, cancellationToken);
         } while (!cancellationToken.IsCancellationRequested);
         return true;
     }
@@ -1612,12 +1622,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     // three-month baseline instead of continuing the old incremental cursor.
     private const string OrderSyncStateVersion = "orders-v4";
     private static readonly TimeSpan OrderStreamWindowSpan = TimeSpan.FromDays(14);
+    private static readonly TimeSpan OrderStreamRequestInterval = TimeSpan.FromSeconds(5);
+    private const int DefaultOrderSyncOverlapSeconds = 120;
     private enum OrderSyncMode { Baseline, Incremental }
     private sealed record OrderSyncState(string Version, OrderSyncMode Mode, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, string? NextCursor, int StoreFrontIndex = 0);
     private sealed record CategoryAttributeContext(Category LocalCategory, string ExternalCategoryId, IReadOnlyDictionary<string, LocalCategoryAttribute> Attributes);
     private sealed record LocalCategoryAttribute(AttributeDefinition Definition, ReferenceItem Remote, IReadOnlyList<ReferenceItem> Values, string Role);
 
-    private static OrderSyncState ReadOrderSyncState(SyncCursor cursor, DateTimeOffset now, bool forceBaseline = false)
+    private static OrderSyncState ReadOrderSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool forceBaseline = false)
     {
         if (!forceBaseline && !string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
         {
@@ -1631,10 +1643,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         var baseline = forceBaseline || (cursor.LastSuccessAt is null && cursor.LastModifiedWatermark is null && string.IsNullOrWhiteSpace(cursor.OpaqueCursor));
         var anchor = now;
-        var start = baseline
-            ? anchor.AddMonths(-3)
-            : anchor.Subtract(OrderStreamWindowSpan);
-        return new(OrderSyncStateVersion, baseline ? OrderSyncMode.Baseline : OrderSyncMode.Incremental, anchor, start, 0, null, 0);
+        var oldestAvailable = anchor.AddMonths(-3);
+        var watermark = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt ?? anchor.Subtract(OrderStreamWindowSpan);
+        if (watermark > anchor) watermark = anchor;
+        var start = baseline ? oldestAvailable : watermark.Subtract(overlap);
+        if (start < oldestAvailable) start = oldestAvailable;
+
+        // A normal run reads only the changes since the last completed anchor,
+        // plus the configured safety overlap. If the worker was offline for more
+        // than Trendyol's 14-day stream window, reuse the durable multi-window
+        // state to catch up without skipping any still-accessible change.
+        var mode = baseline || anchor - start > OrderStreamWindowSpan
+            ? OrderSyncMode.Baseline
+            : OrderSyncMode.Incremental;
+        return new(OrderSyncStateVersion, mode, anchor, start, 0, null, 0);
     }
 
     private static (DateTimeOffset Start, DateTimeOffset End) OrderWindow(OrderSyncState state)

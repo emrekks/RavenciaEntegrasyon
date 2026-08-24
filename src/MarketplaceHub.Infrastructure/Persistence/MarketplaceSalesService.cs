@@ -8,9 +8,8 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IOrderPort liveOrders, IProductVisualLookupPort productVisuals, IReturnPort returns, TimeProvider timeProvider) : IMarketplaceSalesService
+public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IReturnPort returns, TimeProvider timeProvider) : IMarketplaceSalesService
 {
-    private static readonly string[] LiveRemoteStatuses = ["Created", "Picking", "Invoiced", "Shipped", "Delivered", "Awaiting"];
     public async Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
         // The panel is a local read model. Remote reads belong to the scheduled worker.
@@ -119,7 +118,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (string.IsNullOrWhiteSpace(normalizedBarcode) || normalizedBarcode.Length > 128)
             return ServiceResult<string>.Fail("PRODUCT_BARCODE_INVALID", "Geçerli bir ürün barkodu gereklidir.", 400);
 
-        var connection = await LiveConnection(tenantId, cancellationToken);
+        var connection = await ActiveTrendyolConnection(tenantId, cancellationToken);
         if (connection is null) return NotFound<string>();
 
         var result = await productVisuals.FindByBarcodeAsync(
@@ -675,147 +674,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         }
         return null;
     }
-
-
-    private async Task<PageResult<OrderListView>> LiveOrdersAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
-    {
-        var connection = await LiveConnection(tenantId, cancellationToken);
-        if (connection is null) return new([], null, false);
-
-        var cursor = DecodeLiveCursor(after);
-        var remoteStatus = RemoteStatus(status);
-        var result = await liveOrders.PollAsync(
-            new AdapterContext(tenantId, connection.Id, "orders-live", $"orders-live:{connection.Id:N}:{cursor ?? "first"}", timeProvider.GetUtcNow().AddSeconds(45)),
-            new(null, null, remoteStatus), new(cursor, Math.Clamp(limit, 1, 200)), cancellationToken);
-        if (!result.IsSuccess)
-            throw new InvalidOperationException(result.Error?.SafeMessage ?? "Trendyol siparişleri canlı olarak okunamadı.");
-
-        var rows = result.Value!.Items
-            .Select(x => LiveOrderView(x, connection.Id))
-            .Where(x => string.IsNullOrWhiteSpace(status) || string.Equals(x.DerivedStatus, status.Trim(), StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        var next = result.Value.HasMore && !string.IsNullOrWhiteSpace(result.Value.NextCursor) ? EncodeLiveCursor(result.Value.NextCursor) : null;
-        return new(rows, next, result.Value.HasMore && next is not null);
-    }
-
-    private async Task<ServiceResult<OrderDetailView>> LiveOrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
-    {
-        var connection = await LiveConnection(tenantId, cancellationToken);
-        if (connection is null) return NotFound<OrderDetailView>();
-
-        foreach (var remoteStatus in LiveRemoteStatuses)
-        {
-            string? cursor = null;
-            do
-            {
-                var result = await liveOrders.PollAsync(
-                    new AdapterContext(tenantId, connection.Id, "order-live-detail", $"order-live-detail:{connection.Id:N}:{id:N}:{remoteStatus}:{cursor ?? "first"}", timeProvider.GetUtcNow().AddSeconds(45)),
-                    new(null, null, remoteStatus), new(cursor, 200), cancellationToken);
-                if (!result.IsSuccess) return ServiceResult<OrderDetailView>.Fail("LIVE_ORDER_READ_FAILED", result.Error?.SafeMessage ?? "Trendyol siparişi okunamadı.", 502);
-
-                var remote = result.Value!.Items.FirstOrDefault(x => StableGuid($"order:{x.ExternalOrderId}") == id);
-                if (remote is not null)
-                {
-                    var row = LiveOrderView(remote, connection.Id);
-                    return ServiceResult<OrderDetailView>.Ok(new(
-                        row.Id, row.OrderNumber, row.DerivedStatus, row.Currency, row.GrossAmount, row.DiscountAmount, row.NetAmount, row.OrderedAt,
-                        row.Lines ?? [], row.Packages ?? [], row.Version, row.ConnectionId, row.PlatformCode, row.PlatformDisplayName,
-                        row.CustomerName, row.CustomerEmail, row.CustomerTaxOrIdentityNumber, row.OrderType, row.IsMicroExport,
-                        row.ShipmentAddressJson, row.InvoiceAddressJson, row.ShipmentDueAt, row.InvoiceStatus, null, null, row.InvoiceDocumentUrl));
-                }
-
-                cursor = result.Value.HasMore ? result.Value.NextCursor : null;
-            } while (!string.IsNullOrWhiteSpace(cursor));
-        }
-
-        return NotFound<OrderDetailView>();
-    }
-
-    private async Task<PlatformConnection?> LiveConnection(Guid tenantId, CancellationToken cancellationToken) =>
+    private async Task<PlatformConnection?> ActiveTrendyolConnection(Guid tenantId, CancellationToken cancellationToken) =>
         await (from connection in db.PlatformConnections.AsNoTracking()
                where connection.TenantId == tenantId && connection.PlatformCode == "TRENDYOL" && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
-                  && db.PlatformCredentials.Any(credential => credential.TenantId == tenantId && credential.ConnectionId == connection.Id && credential.RevokedAt == null)
+                   && db.PlatformCredentials.Any(credential => credential.TenantId == tenantId && credential.ConnectionId == connection.Id && credential.RevokedAt == null)
                orderby connection.Id
                select connection).FirstOrDefaultAsync(cancellationToken);
-
-    private static OrderListView LiveOrderView(RemoteOrder remote, Guid connectionId)
-    {
-        var orderId = StableGuid($"order:{remote.ExternalOrderId}");
-        var lines = remote.Lines.Select(line =>
-        {
-            var allocations = remote.Packages.SelectMany(x => x.Allocations).Where(x => string.Equals(x.ExternalLineId, line.ExternalLineId, StringComparison.Ordinal));
-            var source = SourceLine(line.SourceSnapshotJson);
-            return new OrderLineView(
-                StableGuid($"line:{remote.ExternalOrderId}:{line.ExternalLineId}"), line.Sku, line.Barcode, line.Title, line.Quantity,
-                allocations.Sum(x => x.CancelledQuantity), allocations.Sum(x => x.ShippedQuantity), allocations.Sum(x => x.DeliveredQuantity),
-                allocations.Sum(x => x.ReturnedQuantity), line.UnitPrice, line.VatRate, line.RawStatus, null, source.ModelCode, source.OptionSignature, source.ImageUrl);
-        }).ToList();
-        var packages = remote.Packages.Select(package => new ShipmentView(
-            StableGuid($"package:{remote.ExternalOrderId}:{package.ExternalPackageId}"), orderId, remote.OrderNumber, package.ExternalPackageId,
-            LivePackageStatus(package.RawStatus), package.RawStatus, package.CargoTrackingNumber, package.OccurredAt, 1, package.CargoProviderExternalId,
-            !string.IsNullOrWhiteSpace(package.OriginExternalPackageId))).ToList();
-        var customer = Customer(remote.CustomerSnapshotJson, remote.InvoiceAddressSnapshotJson, remote.ShipmentAddressSnapshotJson);
-        var dueAt = OperationalDueAt(remote.CustomerSnapshotJson);
-        var primaryImage = lines.Select(x => x.ImageUrl).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-        var package = remote.Packages.FirstOrDefault();
-        var terminal = LivePackageStatus(remote.Packages.Select(x => x.RawStatus).OrderByDescending(LiveStatusRank).FirstOrDefault() ?? "NEW") is "DELIVERED" or "CANCELLED" or "RETURNED";
-        return new OrderListView(
-            orderId, remote.OrderNumber, LiveDerivedStatus(remote.Packages), remote.Currency, remote.NetAmount, remote.OrderedAt,
-            lines.Count, packages.Count, 1, connectionId, "TRENDYOL", "Trendyol", customer.Name, customer.OrderType, customer.IsMicroExport,
-            dueAt, !terminal && dueAt is not null && dueAt <= DateTimeOffset.UtcNow.AddHours(24), InvoiceLabel(null, remote.CustomerSnapshotJson),
-            package?.CargoProviderExternalId, package?.CargoTrackingNumber, primaryImage, lines.Sum(x => x.OrderedQuantity), customer.Email,
-            customer.TaxOrIdentityNumber, remote.ShipmentAddressSnapshotJson, remote.InvoiceAddressSnapshotJson, remote.GrossAmount, remote.DiscountAmount,
-            lines, packages, null, InvoiceDocumentUrl(remote.CustomerSnapshotJson));
-    }
-
-    private static string LiveDerivedStatus(IReadOnlyList<RemotePackage> packages) =>
-        packages.Count == 0 ? "NEW" : LivePackageStatus(packages.Select(x => x.RawStatus).OrderByDescending(LiveStatusRank).First());
-
-    private static string LivePackageStatus(string rawStatus) => rawStatus.Trim().ToUpperInvariant() switch
-    {
-        "CREATED" => "NEW",
-        "PICKING" => "PROCESSING",
-        "INVOICED" or "READY_TO_SHIP" => "READY_TO_SHIP",
-        "REPACK" => "PROCESSING",
-        "SHIPPED" => "SHIPPED",
-        "DELIVERED" => "DELIVERED",
-        "CANCELLED" or "UNSUPPLIED" => "CANCELLED",
-        "UNDELIVERED" => "UNDELIVERED",
-        "RETURNED" => "RETURNED",
-        "AWAITING" or "UNPACKED" or "AT_COLLECTION_POINT" => "ON_HOLD",
-        _ => "MANUAL_REVIEW"
-    };
-
-    private static string? RemoteStatus(string? canonicalStatus) => canonicalStatus?.Trim().ToUpperInvariant() switch
-    {
-        "NEW" => "Created",
-        "PROCESSING" => "Picking",
-        "READY_TO_SHIP" => "Invoiced",
-        "SHIPPED" => "Shipped",
-        "DELIVERED" => "Delivered",
-        "ON_HOLD" => "Awaiting",
-        _ => null
-    };
-
-    private static int LiveStatusRank(string rawStatus) => LivePackageStatus(rawStatus) switch
-    {
-        "MANUAL_REVIEW" => 90, "RETURNED" => 80, "DELIVERED" => 70, "UNDELIVERED" => 65, "SHIPPED" => 60,
-        "READY_TO_SHIP" => 50, "PROCESSING" => 40, "ON_HOLD" => 30, "CANCELLED" => 20, _ => 10
-    };
-
-    private static Guid StableGuid(string value) => new(SHA256.HashData(Encoding.UTF8.GetBytes(value))[..16]);
-    private static string? EncodeLiveCursor(string cursor) => "live:" + Convert.ToBase64String(Encoding.UTF8.GetBytes(cursor)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-    private static string? DecodeLiveCursor(string? cursor)
-    {
-        if (string.IsNullOrWhiteSpace(cursor) || !cursor.StartsWith("live:", StringComparison.Ordinal)) return null;
-        try
-        {
-            var value = cursor[5..].Replace('-', '+').Replace('_', '/');
-            value = value.PadRight(value.Length + (4 - value.Length % 4) % 4, '=');
-            return Encoding.UTF8.GetString(Convert.FromBase64String(value));
-        }
-        catch (FormatException) { throw new ArgumentException("Canlı sipariş imleci geçersiz.", nameof(cursor)); }
-    }
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
