@@ -1727,6 +1727,51 @@ textarea {
   .panel-attribute-create > button,.panel-attribute-values > button { grid-column: 1 / -1; }
 }
 
+/* Keep the primary platform action beside the filter, outside its menu. */
+.integrations-reference-page .integration-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.integrations-reference-page .integration-add-button {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 16px !important;
+  color: #171820 !important;
+  background: var(--st-primary-soft) !important;
+  border: 1px solid var(--st-primary-soft) !important;
+  border-radius: 6px !important;
+  font-weight: 750;
+  cursor: pointer;
+}
+.integrations-reference-page .integration-add-button:hover {
+  color: #fff !important;
+  background: var(--st-primary) !important;
+  border-color: var(--st-primary) !important;
+}
+@media (max-width: 900px) {
+  .integrations-reference-page .integration-heading-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 560px) {
+  .integrations-reference-page .integration-heading-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .integrations-reference-page .integration-filter-wrap,
+  .integrations-reference-page .integration-filter-button,
+  .integrations-reference-page .integration-add-button {
+    width: 100%;
+  }
+}
+
 @media (max-width: 620px) {
   .stitch-shell .content.stitch-reference-mapping { padding: 18px 12px 28px !important; }
   .stitch-reference-mapping .mapping-reference-heading h1 { font-size: 26px !important; line-height: 32px !important; }
