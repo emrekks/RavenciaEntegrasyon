@@ -1528,6 +1528,54 @@ textarea {
   .mapping-local-manager-dialog .category-chip-list { grid-template-columns: 1fr; }
   .mapping-local-manager-dialog .platform-category-create button { width: 100%; }
 }
+
+/* Keep the category manager steady while filtering, with aligned controls and rows. */
+.mapping-local-manager-dialog {
+  width: min(640px, calc(100vw - 128px));
+  height: min(560px, calc(100vh - 128px));
+  max-height: none;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  align-items: stretch;
+  overflow: hidden;
+}
+.mapping-local-manager-dialog .category-library-tools { grid-template-columns: minmax(0, 1fr) 82px auto; }
+.mapping-local-manager-dialog .category-library-tools select {
+  min-width: 82px;
+  min-height: 38px;
+  padding: 0 28px 0 10px;
+  color: #dfe2f2;
+  font-size: 11px;
+  background: #1b1d29;
+  border-color: #42465a;
+}
+.mapping-local-manager-dialog .category-chip-list { min-height: 0; max-height: none; grid-auto-rows: 38px; }
+
+/* Use the same uninterrupted result-row construction for both category pickers. */
+.mapping-reference-target .mapping-category-results {
+  gap: 0;
+  padding: 0;
+  overflow-y: auto;
+  background: #1b1d29;
+  border-color: #42465a;
+  border-radius: 4px;
+}
+.mapping-reference-target .mapping-category-results > button {
+  min-height: 39px;
+  padding: 0 11px;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid #34394d !important;
+  border-radius: 0;
+}
+.mapping-reference-target .mapping-category-results > button:last-child { border-bottom: 0 !important; }
+.mapping-reference-target .mapping-category-results > button:hover { background: #23263a !important; border-color: #34394d !important; }
+.mapping-reference-target .mapping-category-results > button[aria-selected="true"] { background: rgba(88, 101, 242, .2) !important; border-color: #34394d !important; box-shadow: inset 3px 0 0 #6571f7 !important; }
+
+@media (max-width: 720px) {
+  .mapping-local-manager-dialog { width: calc(100vw - 24px); height: min(620px, calc(100vh - 24px)); }
+  .mapping-local-manager-dialog .category-library-tools { grid-template-columns: minmax(0, 1fr) auto; }
+  .mapping-local-manager-dialog .category-library-tools select { grid-column: 2; grid-row: 1; }
+}
 .panel-attribute-records details { margin-top: 8px; }
 .panel-attribute-modal { position: fixed; z-index: 1300; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(3, 4, 8, .7); }
 .panel-attribute-modal-card { display: grid; gap: 12px; width: min(580px, 100%); max-height: min(650px, calc(100vh - 40px)); padding: 16px; overflow: auto; background: #191a22; border: 1px solid #5b5d70; border-radius: 7px; box-shadow: 0 26px 80px rgba(0, 0, 0, .62); }
