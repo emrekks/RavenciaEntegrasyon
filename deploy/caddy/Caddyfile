@@ -26,6 +26,10 @@
   }
   handle {
     root * /srv
+    @static_assets path /assets/*
+    header @static_assets Cache-Control "public, max-age=31536000, immutable"
+    @application_shell not path /assets/*
+    header @application_shell Cache-Control "no-store, no-cache, must-revalidate"
     try_files {path} /index.html
     file_server
   }
