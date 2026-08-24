@@ -218,6 +218,15 @@ public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSec
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);
 public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType, string? Username, string? Password, string? ApiKey);
 public sealed record CreatedWebhookSubscription(WebhookSubscriptionView Subscription, Guid ConnectionPublicId, string RouteToken);
+public sealed record DeleteConnectionCommand(string Confirmation);
+public sealed record ResetOperationalDataCommand(IReadOnlyList<string> Scopes, string Confirmation);
+public sealed record OperationalDataResetView(int Products, int Orders, int Returns, int Invoices, bool ConnectionDeleted = false);
+
+public interface IOperationalDataMaintenanceService
+{
+    Task<ServiceResult<OperationalDataResetView>> DeleteConnectionAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, DeleteConnectionCommand command, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<OperationalDataResetView>> ResetAsync(Guid tenantId, Guid actorUserId, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken);
+}
 
 public interface IMarketplaceConnectionService
 {

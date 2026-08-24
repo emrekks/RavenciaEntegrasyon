@@ -71,6 +71,7 @@ public static class DependencyInjection
         services.AddScoped<IReturnPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IWebhookVerifier, TrendyolWebhookVerifier>();
         services.AddScoped<IMarketplaceConnectionService, MarketplaceConnectionService>();
+        services.AddScoped<IOperationalDataMaintenanceService, OperationalDataMaintenanceService>();
         services.AddScoped<IMarketplaceSalesService, MarketplaceSalesService>();
         services.AddScoped<IMarketplaceWebhookService, MarketplaceWebhookService>();
         services.AddScoped<IMarketplaceJobProcessor, MarketplaceJobProcessor>();
