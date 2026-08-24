@@ -2309,13 +2309,13 @@ textarea {
 .brand-mapping-modal-backdrop { display: none !important; }
 
 /* Panel kategorileri seçim alanının içinde görünür; eski yönetim popup'ı kullanılmaz. */
-.mapping-category-builder .inline-category-manager {
+.mapping-category-builder .mapping-local-manager {
   display: block !important;
   margin-top: 12px !important;
   color: var(--st-text) !important;
 }
-.mapping-category-builder .inline-category-manager > summary { display: none !important; }
-.mapping-category-builder .inline-category-manager > .mapping-local-manager-dialog {
+.mapping-category-builder .mapping-local-manager > summary { display: none !important; }
+.mapping-category-builder .mapping-local-manager > .mapping-local-manager-dialog {
   position: static !important;
   display: grid !important;
   width: 100% !important;
@@ -2329,9 +2329,9 @@ textarea {
   border-radius: var(--st-radius) !important;
   box-shadow: none !important;
 }
-.mapping-category-builder .inline-category-manager .mapping-local-manager-dialog > header { display: flex !important; }
-.mapping-category-builder .inline-category-manager .mapping-local-manager-dialog > header > button { display: none !important; }
-.mapping-category-builder .inline-category-manager .category-chip-list {
+.mapping-category-builder .mapping-local-manager .mapping-local-manager-dialog > header { display: flex !important; }
+.mapping-category-builder .mapping-local-manager .mapping-local-manager-dialog > header > button { display: none !important; }
+.mapping-category-builder .mapping-local-manager .category-chip-list {
   max-height: 168px !important;
   overflow-y: auto !important;
   scrollbar-gutter: stable;
