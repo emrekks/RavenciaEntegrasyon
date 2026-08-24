@@ -21,7 +21,13 @@
 
 	@backend path /api/* /health/*
 	handle @backend {
-		reverse_proxy api:8080
+		reverse_proxy api:8080 {
+			@unauthenticated status 401
+			handle_response @unauthenticated {
+				header Clear-Site-Data "\"cache\""
+				copy_response
+			}
+		}
 	}
 	handle {
 		root * /srv
