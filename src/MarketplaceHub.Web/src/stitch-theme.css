@@ -2413,6 +2413,98 @@ textarea {
 .brand-mapping-inline-editor .searchable-select { display: block; margin: 0 !important; }
 .brand-mapping-inline-editor .searchable-select > span { display: none !important; }
 .brand-mapping-inline-editor .searchable-select-trigger { min-height: 34px !important; padding: 0 9px !important; }
+
+/* Category creation behaves like a compact dropdown instead of a large
+   management block. The details element remains keyboard accessible and can
+   be collapsed when the category list is not needed. */
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .mapping-local-manager > summary {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  min-height: 44px !important;
+  margin: 0 !important;
+  padding: 0 14px !important;
+  color: var(--st-text) !important;
+  font-size: 0 !important;
+  font-weight: 750 !important;
+  background: var(--st-surface-container) !important;
+  border: 1px solid var(--st-surface-highest) !important;
+  border-radius: var(--st-radius) !important;
+  cursor: pointer !important;
+}
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .mapping-local-manager > summary::before {
+  content: 'Kategori ekleme' !important;
+  color: var(--st-text) !important;
+  font-size: 13px !important;
+  letter-spacing: .01em;
+}
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .mapping-local-manager > summary::after {
+  content: '⌄' !important;
+  color: var(--st-primary-soft) !important;
+  font-size: 17px !important;
+  line-height: 1 !important;
+  transition: transform .16s ease;
+}
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .mapping-local-manager[open] > summary {
+  border-color: var(--st-primary) !important;
+  border-radius: var(--st-radius) var(--st-radius) 0 0 !important;
+}
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .mapping-local-manager[open] > summary::after {
+  transform: rotate(180deg);
+}
+.mapping-category-builder .mapping-local-manager .mapping-local-manager-dialog > header {
+  display: none !important;
+}
+.mapping-category-builder .mapping-local-manager > .mapping-local-manager-dialog {
+  margin-top: 0 !important;
+  padding: 14px !important;
+  gap: 11px !important;
+  background: var(--st-surface-container) !important;
+  border: 1px solid var(--st-primary) !important;
+  border-top: 0 !important;
+  border-radius: 0 0 var(--st-radius) var(--st-radius) !important;
+}
+.mapping-category-builder .mapping-local-manager .platform-category-create {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: end !important;
+  gap: 10px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+.mapping-category-builder .mapping-local-manager .platform-category-create label {
+  gap: 5px !important;
+}
+.mapping-category-builder .mapping-local-manager .platform-category-create input,
+.mapping-category-builder .mapping-local-manager .platform-category-create > button,
+.mapping-category-builder .mapping-local-manager .category-library-tools input,
+.mapping-category-builder .mapping-local-manager .category-library-tools select {
+  min-height: 38px !important;
+}
+.mapping-category-builder .mapping-local-manager .category-library-tools {
+  grid-template-columns: minmax(0, 1fr) 82px auto !important;
+  gap: 8px !important;
+  padding: 0 !important;
+}
+.mapping-category-builder .mapping-local-manager > .mapping-local-manager-dialog > .category-chip-list {
+  max-height: 176px !important;
+  min-height: 176px !important;
+  padding: 8px !important;
+  background: var(--st-surface-low) !important;
+  border: 1px solid var(--st-surface-highest) !important;
+  border-radius: calc(var(--st-radius) - 2px) !important;
+}
+@media (max-width: 900px) {
+  .mapping-category-builder .mapping-local-manager .platform-category-create,
+  .mapping-category-builder .mapping-local-manager .category-library-tools {
+    grid-template-columns: 1fr !important;
+  }
+  .mapping-category-builder .mapping-local-manager .category-library-tools select,
+  .mapping-category-builder .mapping-local-manager .category-library-tools span {
+    grid-column: auto !important;
+  }
+}
 .brand-mapping-inline-editor .searchable-select-menu { z-index: 80 !important; min-width: 270px; }
 .brand-mapping-saved-card tr.is-editing { background: rgba(104, 114, 232, .08) !important; }
 
