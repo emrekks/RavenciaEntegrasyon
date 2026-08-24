@@ -2284,3 +2284,98 @@ textarea {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
+
+/* Final interaction polish: keep editors local to their own surface. */
+.panel-attribute-modal {
+  overflow: hidden !important;
+  overscroll-behavior: contain;
+}
+.panel-attribute-modal-card {
+  grid-template-rows: auto auto minmax(0, 1fr) !important;
+  height: min(650px, calc(100vh - 40px)) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  overscroll-behavior: contain;
+}
+.panel-attribute-value-editor {
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+/* Saved brand rows edit the main selector instead of opening a dialog. */
+.brand-mapping-modal-backdrop { display: none !important; }
+
+/* Replace the legacy blue category-attribute workspace with neutral Obsidian surfaces. */
+.mapping-advanced-tools[open] {
+  --mapping-modal-bg: #171820;
+  --mapping-modal-surface: #1d1f28;
+  --mapping-modal-surface-raised: #252732;
+  --mapping-modal-surface-deep: #12141b;
+  --mapping-modal-line: #444654;
+  --mapping-modal-line-soft: rgba(164, 166, 181, .18);
+  --mapping-modal-text: #e9e7f2;
+  --mapping-modal-muted: #9da2b4;
+  --mapping-modal-primary: #6872e8;
+  --mapping-modal-primary-soft: rgba(104, 114, 232, .14);
+}
+.mapping-advanced-tools[open],
+.mapping-advanced-tools[open] > summary,
+.mapping-advanced-tools[open] > div,
+.mapping-advanced-tools[open] > div > .mapping-popup-content {
+  background: var(--mapping-modal-bg) !important;
+  border-color: var(--mapping-modal-line) !important;
+}
+.mapping-advanced-tools[open] > summary { background: #1d1f28 !important; }
+.mapping-advanced-tools[open] > summary small {
+  color: #d9d7e5 !important;
+  background: #252732 !important;
+  border-color: #4a4c5b !important;
+}
+.mapping-popup-content .mapping-section-toolbar {
+  background: #1d1f28 !important;
+  border-color: var(--mapping-modal-line) !important;
+}
+.mapping-popup-content .mapping-section-tabs > button.active {
+  background: var(--mapping-modal-primary) !important;
+  border-color: #858aff !important;
+  box-shadow: none !important;
+}
+.mapping-popup-content .mapping-section-tabs > button small {
+  color: #d8dbff !important;
+  background: rgba(104, 114, 232, .18) !important;
+}
+.mapping-popup-content .mapping-section-toolbar .button-row button {
+  background: #252732 !important;
+  border-color: #4a4c5b !important;
+}
+.mapping-advanced-tools .attribute-mapping-card,
+.mapping-advanced-tools .option-mapping-card,
+.mapping-advanced-tools .attribute-mapping-card.required,
+.mapping-advanced-tools .attribute-mapping-card.unmapped {
+  background: #1d1f28 !important;
+  border-color: #444654 !important;
+  box-shadow: none !important;
+}
+.mapping-advanced-tools .mapping-fields.compact select,
+.mapping-advanced-tools .value-mapping-row select {
+  background-color: #252732 !important;
+  border-color: #4a4c5b !important;
+}
+.mapping-advanced-tools .mapping-fields.compact > button {
+  background: #252732 !important;
+  border-color: #4a4c5b !important;
+}
+.mapping-advanced-tools .value-mapping-toggle {
+  color: #dfe1ff !important;
+  background: var(--mapping-modal-primary-soft) !important;
+  border-color: rgba(104, 114, 232, .58) !important;
+}
+.mapping-advanced-tools .value-mapping-editor,
+.mapping-advanced-tools .value-mapping-row {
+  background: #12141b !important;
+  border-color: #444654 !important;
+}
+.mapping-advanced-tools .value-mapping-row select { background-color: #252732 !important; }
