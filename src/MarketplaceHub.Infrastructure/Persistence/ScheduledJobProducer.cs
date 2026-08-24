@@ -115,18 +115,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     private async Task EnsureDefaultProductPoliciesAsync(CancellationToken cancellationToken)
     {
-        var stageConnections = await db.PlatformConnections.AsNoTracking()
-            .Where(x => (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.PlatformCode == "TRENDYOL" && x.Environment == "STAGE" && x.ExternalStoreId == "2738")
+        var operationalConnections = await db.PlatformConnections.AsNoTracking()
+            .Where(x => (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.PlatformCode == "TRENDYOL" && (x.Environment == "STAGE" || x.Environment == "PRODUCTION"))
             .Select(x => new { x.TenantId, ConnectionId = x.Id })
             .ToListAsync(cancellationToken);
-        if (stageConnections.Count == 0) return;
-        var connectionIds = stageConnections.Select(x => x.ConnectionId).ToArray();
+        if (operationalConnections.Count == 0) return;
+        var connectionIds = operationalConnections.Select(x => x.ConnectionId).ToArray();
         var existing = await db.ConnectionSyncPolicies.AsNoTracking()
             .Where(x => connectionIds.Contains(x.ConnectionId) && x.ResourceType == "PRODUCTS")
             .Select(x => new { x.TenantId, x.ConnectionId })
             .ToListAsync(cancellationToken);
         var existingKeys = existing.Select(x => (x.TenantId, x.ConnectionId)).ToHashSet();
-        foreach (var connection in stageConnections)
+        foreach (var connection in operationalConnections)
         {
             if (existingKeys.Contains((connection.TenantId, connection.ConnectionId))) continue;
             db.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy

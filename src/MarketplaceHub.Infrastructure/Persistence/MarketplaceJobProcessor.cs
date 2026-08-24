@@ -1053,10 +1053,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var connection = await db.PlatformConnections.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
-        // Product import is intentionally fail-closed to the approved Stage seller.
-        // A production connection can never be selected by this job, even if a bad
-        // payload or scheduler policy is introduced later.
-        if (connection is null || connection.Environment != "STAGE" || connection.ExternalStoreId != "2738" || connection.Status is not ("ACTIVE" or "VERIFIED")) return false;
+        // Product import is read-only on Trendyol and writes only to the local catalog.
+        // Keep it restricted to operational connections and recognised environments.
+        if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED")) return false;
 
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
         var hasSnapshots = await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);

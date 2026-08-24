@@ -33,6 +33,10 @@ Webhook alım hattı düşük gecikmeli tam sipariş paketini dayanıklı inbox 
 
 `getClaims` tarih filtresi `lastModifiedDate` yerine iade oluşturma tarihine göre çalıştığından sipariş watermark mantığı doğrudan iadelere uygulanmaz. İade işi son 14 günlük oluşturma penceresini idempotent biçimde yeniden tarar; durum değişiklikleri `lastModifiedDate` sırasından alınarak yerel claim ve satır kayıtlarına yazılır. İlk tarama erişilebilir son üç ayı alır.
 
+## Ürün akışı
+
+Aktif veya doğrulanmış STAGE/PRODUCTION Trendyol bağlantılarında onaylı ürünler arka planda yerel kataloğa alınır. Sağlayıcının en fazla 100 kayıtlık sayfaları `nextPageToken` ile sonuna kadar izlenir; ilk tarama tüm erişilebilir kataloğu, sonraki taramalar kısa bir güvenlik örtüşmesiyle değişen ürünleri işler. Panel toplamı tek bir sağlayıcı sayfasıyla sınırlandırılmaz.
+
 ## Yönetim
 
 Trendyol bağlantı detayındaki **Otomatik veritabanı eşitleme** bölümü şunları yönetir:
@@ -49,3 +53,4 @@ Trendyol bağlantı detayındaki **Otomatik veritabanı eşitleme** bölümü ş
 - Stream: <https://developers.trendyol.com/docs/sipari%C5%9F-paketlerini-ak%C4%B1%C5%9F-ile-%C3%A7ekme>
 - Webhook modeli: <https://developers.trendyol.com/docs/webhook-model>
 - İade talepleri: <https://developers.trendyol.com/docs/i%CC%87adesi-olu%C5%9Fturulan-sipari%C5%9Fleri-%C3%A7ekme-getclaims>
+- Onaylı ürünler: <https://developers.trendyol.com/tr/v2.0/docs/product-filtering-approved-products-v2>
