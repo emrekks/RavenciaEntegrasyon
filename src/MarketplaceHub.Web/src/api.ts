@@ -31,19 +31,33 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetchWithCsrf(`/api/v1/auth${path}`, init)
   if (!response.ok) {
     if (response.status === 401) csrfToken = null
-    throw new Error(response.status === 401 ? 'Oturum açılamadı.' : 'İşlem tamamlanamadı.')
+    const problem = await response.json().catch(() => ({})) as ApiProblem
+    const message = response.status === 401
+      ? 'Oturum açılamadı.'
+      : response.status === 429
+        ? 'Çok fazla istek gönderildi. Kısa süre sonra yeniden deneyin.'
+        : problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`
+    throw new ApiRequestError(message, response.status, problem.code, problem.fieldErrors)
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
 export type ApiProblem = { type?: string; title?: string; code?: string; fieldErrors?: Record<string, string[]> }
+
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly status: number, public readonly code?: string, public readonly fieldErrors?: Record<string, string[]>) {
+    super(message)
+    this.name = 'ApiRequestError'
+  }
+}
+
 export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetchWithCsrf(`/api/v1${path}`, init)
   if (!response.ok) {
     if (response.status === 401) csrfToken = null
     const problem = await response.json().catch(() => ({})) as ApiProblem
-    throw new Error(problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`)
+    throw new ApiRequestError(problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`, response.status, problem.code, problem.fieldErrors)
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>

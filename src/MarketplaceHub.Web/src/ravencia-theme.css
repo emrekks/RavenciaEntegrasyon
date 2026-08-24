@@ -756,3 +756,134 @@ html, body, #root {
   .sync-center-link.syncing svg { animation: none; }
   .app-shell .job-detail-drawer { animation: none; }
 }
+
+/* Auth workspace — deliberately calmer and structurally distinct from the
+   legacy marketplace-logo splash screen. */
+.cyber-login-page {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(430px, .88fr);
+  min-height: 100vh;
+  overflow: hidden;
+  color: var(--rv-ink);
+  background:
+    radial-gradient(circle at 18% 24%, rgba(57, 191, 209, .08), transparent 30%),
+    radial-gradient(circle at 78% 74%, rgba(113, 104, 245, .08), transparent 32%),
+    var(--rv-bg);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.cyber-login-grid {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  opacity: .28;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, .06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, .06) 1px, transparent 1px);
+  background-size: 52px 52px;
+  mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, .6) 48%, transparent 78%);
+}
+.cyber-login-story {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(34px, 5vh, 64px);
+  min-width: 0;
+  padding: clamp(40px, 6vw, 92px);
+  border-right: 1px solid var(--rv-line);
+}
+.cyber-login-brand { position: absolute; top: 38px; left: clamp(40px, 6vw, 92px); display: flex; align-items: center; gap: 13px; }
+.cyber-login-brand > span { display: grid; place-items: center; width: 42px; height: 42px; color: #fff; background: var(--rv-primary); border: 1px solid rgba(255, 255, 255, .14); border-radius: 11px; font-family: Georgia, serif; font-size: 1.45rem; font-style: italic; box-shadow: 0 12px 30px rgba(113, 104, 245, .16); }
+.cyber-login-brand > div { display: grid; gap: 4px; }
+.cyber-login-brand strong { color: var(--rv-ink); font-family: Georgia, 'Times New Roman', serif; font-size: .98rem; letter-spacing: .25em; }
+.cyber-login-brand small { color: var(--rv-muted-2); font-size: .56rem; font-weight: 850; letter-spacing: .2em; }
+.cyber-login-copy { display: grid; gap: 15px; max-width: 690px; }
+.cyber-login-copy p { margin: 0; color: var(--rv-cyan); font-size: .67rem; font-weight: 900; letter-spacing: .18em; }
+.cyber-login-copy h1 { max-width: 650px; margin: 0; color: var(--rv-ink); font-family: Manrope, Inter, ui-sans-serif, sans-serif; font-size: clamp(2.2rem, 4.4vw, 4.7rem); font-weight: 760; letter-spacing: -.045em; line-height: 1.03; text-wrap: balance; }
+.cyber-login-copy > span { max-width: 600px; color: var(--rv-muted); font-size: clamp(.86rem, 1.15vw, 1rem); line-height: 1.72; }
+.cyber-login-signals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 760px; }
+.cyber-login-signals article { display: grid; grid-template-columns: 9px minmax(0, 1fr); gap: 11px; min-width: 0; padding: 14px; background: rgba(14, 20, 32, .72); border: 1px solid var(--rv-line); border-radius: 10px; }
+.cyber-login-signals article > i { width: 7px; height: 7px; margin-top: 4px; background: var(--rv-cyan); border-radius: 50%; box-shadow: 0 0 0 3px rgba(57, 191, 209, .08); }
+.cyber-login-signals article > i.good { background: var(--rv-success); box-shadow: 0 0 0 3px rgba(47, 203, 155, .08); }
+.cyber-login-signals article > i.violet { background: var(--rv-primary); box-shadow: 0 0 0 3px rgba(113, 104, 245, .1); }
+.cyber-login-signals article > div { display: grid; gap: 5px; min-width: 0; }
+.cyber-login-signals strong { color: var(--rv-ink); font-size: .7rem; }
+.cyber-login-signals small { color: var(--rv-muted-2); font-size: .61rem; line-height: 1.45; }
+.cyber-login-route { display: grid; grid-template-columns: auto minmax(50px, 150px) 38px minmax(50px, 150px) auto; align-items: center; gap: 10px; max-width: 560px; color: var(--rv-muted-2); font-size: .57rem; font-weight: 900; letter-spacing: .12em; }
+.cyber-login-route b { height: 1px; background: linear-gradient(90deg, transparent, rgba(57, 191, 209, .5), transparent); }
+.cyber-login-route i { display: grid; place-items: center; width: 38px; height: 38px; color: #fff; background: rgba(113, 104, 245, .16); border: 1px solid rgba(113, 104, 245, .32); border-radius: 50%; font-family: Georgia, serif; font-style: italic; }
+
+.cyber-login-panel { display: grid; place-items: center; min-width: 0; padding: clamp(28px, 5vw, 72px); background: rgba(9, 12, 18, .72); backdrop-filter: blur(18px); }
+.cyber-login-card { width: min(100%, 460px); overflow: hidden; background: rgba(17, 23, 34, .96); border: 1px solid var(--rv-line-strong); border-radius: 16px; box-shadow: 0 32px 80px rgba(0, 0, 0, .42); }
+.cyber-login-card > header { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 15px; padding: 28px 28px 23px; border-bottom: 1px solid var(--rv-line); }
+.cyber-login-shield { display: grid; place-items: center; width: 48px; height: 48px; color: #cbc8ff; background: rgba(113, 104, 245, .1); border: 1px solid rgba(113, 104, 245, .25); border-radius: 12px; }
+.cyber-login-shield svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.cyber-login-card > header > div { display: grid; gap: 5px; }
+.cyber-login-card > header p { margin: 0; color: var(--rv-primary-hover); font-size: .59rem; font-weight: 900; letter-spacing: .15em; }
+.cyber-login-card > header h2 { margin: 0; color: var(--rv-ink); font-family: Manrope, Inter, sans-serif; font-size: 1.28rem; letter-spacing: -.025em; }
+.cyber-login-card > header div > span { color: var(--rv-muted); font-size: .7rem; }
+.cyber-login-form { display: grid; gap: 10px; padding: 24px 28px 27px; }
+.cyber-login-form > label,
+.cyber-login-label-row label { color: var(--rv-muted); font-size: .65rem; font-weight: 800; }
+.cyber-login-label-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
+.cyber-login-label-row button { width: auto; min-height: 0; height: auto; padding: 0; color: var(--rv-cyan) !important; background: transparent !important; border: 0; border-radius: 0; box-shadow: none !important; font-size: .62rem; font-weight: 750; white-space: nowrap; }
+.cyber-login-label-row button:hover { color: #79d9e5 !important; background: transparent !important; box-shadow: none !important; text-decoration: underline; transform: none; }
+.cyber-login-input { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 47px; padding: 0 12px; color: var(--rv-muted-2); background: #0c121c; border: 1px solid var(--rv-line-strong); border-radius: 9px; transition: border-color .15s ease, box-shadow .15s ease; }
+.cyber-login-input:focus-within { color: var(--rv-primary-hover); border-color: var(--rv-primary); box-shadow: 0 0 0 3px rgba(113, 104, 245, .1); }
+.cyber-login-input > svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.cyber-login-input input { width: 100%; min-width: 0; height: 44px; padding: 0; color: var(--rv-ink); background: transparent; border: 0; outline: 0; font: inherit; font-size: .76rem; }
+.cyber-login-input input::placeholder { color: #596579; }
+.cyber-password-toggle { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; color: var(--rv-muted-2); background: transparent; border: 0; border-radius: 7px; box-shadow: none; }
+.cyber-password-toggle:hover { color: var(--rv-ink); background: var(--rv-surface-raised); box-shadow: none; transform: none; }
+.cyber-password-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cyber-remember { display: flex; align-items: center; gap: 8px; margin: 3px 0 5px; color: var(--rv-muted) !important; cursor: pointer; }
+.cyber-remember input { width: 15px; height: 15px; margin: 0; accent-color: var(--rv-primary); }
+.cyber-remember span { font-size: .65rem; font-weight: 650; }
+.cyber-login-error { display: grid; grid-template-columns: 7px minmax(0, 1fr); align-items: start; gap: 9px; padding: 11px 12px; color: #ffb0b9; background: rgba(242, 107, 122, .08); border: 1px solid rgba(242, 107, 122, .28); border-radius: 8px; font-size: .66rem; line-height: 1.45; }
+.cyber-login-error i { width: 6px; height: 6px; margin-top: 4px; background: var(--rv-danger); border-radius: 50%; }
+.cyber-login-submit { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 46px; margin-top: 5px; color: #fff; background: var(--rv-primary); border: 1px solid var(--rv-primary); border-radius: 9px; box-shadow: 0 12px 25px rgba(113, 104, 245, .18); font-size: .72rem; font-weight: 850; }
+.cyber-login-submit:hover { background: var(--rv-primary-hover); border-color: var(--rv-primary-hover); box-shadow: 0 15px 30px rgba(113, 104, 245, .24); transform: translateY(-1px); }
+.cyber-login-submit:disabled { opacity: .66; cursor: wait; transform: none; }
+.cyber-login-submit > i { width: 12px; height: 12px; border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff; border-radius: 50%; animation: cyber-login-spin .75s linear infinite; }
+.cyber-login-submit > span { font-size: 1rem; line-height: 1; }
+@keyframes cyber-login-spin { to { transform: rotate(360deg); } }
+.cyber-login-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 28px; background: var(--rv-surface-deep); border-top: 1px solid var(--rv-line); }
+.cyber-login-card > footer span { display: flex; align-items: center; gap: 7px; color: var(--rv-muted); font-size: .59rem; }
+.cyber-login-card > footer span i { width: 6px; height: 6px; background: var(--rv-success); border-radius: 50%; box-shadow: 0 0 0 3px rgba(47, 203, 155, .08); }
+.cyber-login-card > footer small { color: var(--rv-muted-2); font-size: .56rem; }
+
+@media (max-width: 1040px) {
+  .cyber-login-page { grid-template-columns: minmax(0, .9fr) minmax(420px, 1.1fr); }
+  .cyber-login-story { padding-right: 42px; padding-left: 42px; }
+  .cyber-login-brand { left: 42px; }
+  .cyber-login-signals { grid-template-columns: 1fr; }
+  .cyber-login-signals article:nth-child(n+3) { display: none; }
+  .cyber-login-route { display: none; }
+}
+@media (max-width: 780px) {
+  .cyber-login-page { display: flex; min-height: 100svh; overflow-y: auto; flex-direction: column; }
+  .cyber-login-grid { mask-image: linear-gradient(#000, transparent 70%); }
+  .cyber-login-story { display: grid; gap: 22px; padding: 30px 24px 24px; border: 0; border-bottom: 1px solid var(--rv-line); }
+  .cyber-login-brand { position: static; }
+  .cyber-login-copy { gap: 9px; }
+  .cyber-login-copy h1 { max-width: 540px; font-size: clamp(1.8rem, 7vw, 2.5rem); }
+  .cyber-login-copy > span { font-size: .76rem; line-height: 1.55; }
+  .cyber-login-signals { display: none; }
+  .cyber-login-panel { flex: 1; padding: 24px; background: transparent; }
+}
+@media (max-width: 460px) {
+  .cyber-login-story { padding: 24px 18px 20px; }
+  .cyber-login-copy h1 { font-size: 1.65rem; }
+  .cyber-login-copy > span { display: none; }
+  .cyber-login-panel { align-items: start; padding: 18px 14px 28px; }
+  .cyber-login-card { border-radius: 13px; }
+  .cyber-login-card > header { grid-template-columns: 42px minmax(0, 1fr); padding: 22px 20px 18px; }
+  .cyber-login-shield { width: 42px; height: 42px; }
+  .cyber-login-form { padding: 20px; }
+  .cyber-login-card > footer { padding: 12px 20px; }
+  .cyber-login-card > footer small { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cyber-login-submit > i { animation: none; }
+}

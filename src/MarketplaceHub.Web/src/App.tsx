@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type MutableRefObject, type ReactNode, type RefObject } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, hubApi, loadAllPages, type Me } from './api'
+import { api, ApiRequestError, hubApi, loadAllPages, type Me } from './api'
 import { AttributesPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, InventoryPage, NewProductPage, ProductDetailPage, ProductsPage } from './CatalogPages'
 import { IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage } from './MarketplacePages'
 import { InvoicesPage } from './InvoicingPages'
@@ -139,6 +139,83 @@ export function App() {
 }
 
 function Login() {
+  const navigate = useNavigate()
+  const client = useQueryClient()
+  const rememberedEmail = localStorage.getItem('ravencia.rememberedEmail') ?? ''
+  const [email, setEmail] = useState(rememberedEmail)
+  const [rememberMe, setRememberMe] = useState(Boolean(rememberedEmail))
+  const [showPw, setShowPw] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setLoading(true)
+    const data = new FormData(event.currentTarget)
+    try {
+      await api<{ state: string }>('/login', { method: 'POST', body: JSON.stringify({ email: email.trim(), password: data.get('password') }) })
+      const currentUser = await api<Me>('/me')
+      if (rememberMe) localStorage.setItem('ravencia.rememberedEmail', email.trim())
+      else localStorage.removeItem('ravencia.rememberedEmail')
+      client.setQueryData(['me'], currentUser)
+      navigate('/dashboard', { replace: true })
+    } catch (reason) {
+      if (reason instanceof ApiRequestError && reason.status === 401) setError('E-posta veya parola hatalı. Art arda başarısız denemelerde hesap 15 dakika geçici olarak kilitlenir.')
+      else if (reason instanceof ApiRequestError && reason.status === 429) setError('Çok fazla giriş denemesi yapıldı. Bir dakika bekleyip yeniden deneyin.')
+      else if (reason instanceof ApiRequestError && reason.status === 400) setError('Güvenlik doğrulaması tamamlanamadı. Sayfayı yenileyip tekrar deneyin.')
+      else setError('Giriş servisine ulaşılamadı. Bağlantınızı kontrol edip yeniden deneyin.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return <main className="cyber-login-page">
+    <div className="cyber-login-grid" aria-hidden="true" />
+    <section className="cyber-login-story" aria-label="Ravencia operasyon merkezi">
+      <div className="cyber-login-brand"><span>R</span><div><strong>RAVENCIA</strong><small>MARKETPLACEHUB</small></div></div>
+      <div className="cyber-login-copy">
+        <p>OPERASYON MERKEZİ</p>
+        <h1>Tüm pazaryeri operasyonu, tek güvenli merkezde.</h1>
+        <span>Sipariş, ürün, stok, iade, fatura ve entegrasyon akışlarını yerel veritabanınızdan yönetin.</span>
+      </div>
+      <div className="cyber-login-signals">
+        <article><i className="good" /><div><strong>Yerel veri katmanı</strong><small>Liste ekranları API yerine Ravencia veritabanından okunur.</small></div></article>
+        <article><i /><div><strong>Asenkron senkronizasyon</strong><small>Pazaryeri güncellemeleri güvenli işlem kuyruğunda yürütülür.</small></div></article>
+        <article><i className="violet" /><div><strong>İzlenebilir operasyon</strong><small>Her kritik işlem sonuç ve hata geçmişiyle takip edilir.</small></div></article>
+      </div>
+      <div className="cyber-login-route" aria-hidden="true"><span>PAZARYERİ</span><b /><i>R</i><b /><span>YEREL VERİ</span></div>
+    </section>
+
+    <section className="cyber-login-panel">
+      <div className="cyber-login-card">
+        <header>
+          <span className="cyber-login-shield" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-5"/></svg></span>
+          <div><p>GÜVENLİ OTURUM</p><h2>Yönetim paneline giriş</h2><span>Yetkili hesabınızla devam edin.</span></div>
+        </header>
+        <form className="cyber-login-form" onSubmit={submit}>
+          <label htmlFor="login-email">E-posta adresi</label>
+          <div className="cyber-login-input">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="m4 7 8 6 8-6"/></svg>
+            <input id="login-email" name="email" type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="username" placeholder="ornek@ravencia.com" autoFocus />
+          </div>
+          <div className="cyber-login-label-row"><label htmlFor="login-password">Parola</label><button type="button" onClick={() => setError('Parola sıfırlama için sistem yöneticinizle iletişime geçin.')}>Parolamı unuttum</button></div>
+          <div className="cyber-login-input">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+            <input id="login-password" name="password" type={showPw ? 'text' : 'password'} required autoComplete="current-password" placeholder="Parolanızı girin" />
+            <button type="button" className="cyber-password-toggle" aria-label={showPw ? 'Parolayı gizle' : 'Parolayı göster'} onClick={() => setShowPw(value => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+          <label className="cyber-remember"><input type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} /><span>E-posta adresimi bu cihazda hatırla</span></label>
+          {error && <div className="cyber-login-error" role="alert"><i /> <span>{error}</span></div>}
+          <button className="cyber-login-submit" type="submit" disabled={loading}>{loading ? <><i /> Oturum doğrulanıyor…</> : <>Güvenli giriş yap <span>→</span></>}</button>
+        </form>
+        <footer><span><i /> TLS ile şifrelenmiş bağlantı</span><small>Ravencia · Yetkili erişim</small></footer>
+      </div>
+    </section>
+  </main>
+}
+
+function LegacyLogin() {
   const navigate = useNavigate(); const client = useQueryClient(); const [error, setError] = useState(''); const [loading, setLoading] = useState(false); const [showPw, setShowPw] = useState(false); const [rememberMe, setRememberMe] = useState(false)
   const pageRef = useRef<HTMLDivElement>(null)
   const loginCardRef = useRef<HTMLDivElement>(null)
