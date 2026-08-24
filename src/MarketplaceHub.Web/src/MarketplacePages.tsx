@@ -74,18 +74,18 @@ type SearchOption = { value: string; label: string; description?: string }
 
 function SearchableSelect({ label, value, options, placeholder, disabled = false, onChange }: { label: string; value: string; options: SearchOption[]; placeholder: string; disabled?: boolean; onChange: (value: string) => void }) {
   const selected = options.find(option => option.value === value)
-  const [query, setQuery] = useState(selected?.label ?? '')
+  const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
-  useEffect(() => { setQuery(selected?.label ?? '') }, [selected?.label])
   const normalized = query.trim().toLocaleLowerCase('tr-TR')
   const filtered = options.filter(option => !normalized || `${option.label} ${option.description ?? ''}`.toLocaleLowerCase('tr-TR').includes(normalized)).slice(0, normalized ? 500 : 100)
-  function choose(option: SearchOption) { onChange(option.value); setQuery(option.label); setOpen(false) }
+  function toggleMenu() { if (disabled) return; setQuery(''); setOpen(current => !current) }
+  function choose(option: SearchOption) { onChange(option.value); setQuery(''); setOpen(false) }
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === 'Escape') setOpen(false)
     if (event.key === 'Enter' && open && filtered.length) { event.preventDefault(); choose(filtered[0]) }
   }
   const listId = `search-select-${label.toLocaleLowerCase('tr-TR').replace(/[^a-z0-9]+/g, '-')}`
-  return <label className={`searchable-select${open ? ' open' : ''}${disabled ? ' disabled' : ''}`}><span>{label}</span><div className="searchable-select-control"><span aria-hidden="true">⌕</span><input role="combobox" aria-label={label} aria-controls={listId} aria-expanded={open} aria-autocomplete="list" value={query} placeholder={placeholder} disabled={disabled} onFocus={() => setOpen(true)} onClick={() => setOpen(true)} onKeyDown={keyDown} onChange={event => { setQuery(event.target.value); if (value) onChange(''); setOpen(true) }} onBlur={() => window.setTimeout(() => setOpen(false), 120)} /><button type="button" tabIndex={-1} aria-label={`${label} seçeneklerini göster`} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => setOpen(current => !current)}>⌄</button></div>{open && <div id={listId} className="searchable-select-menu" role="listbox">{filtered.length ? filtered.map(option => <button type="button" role="option" aria-selected={option.value === value} key={option.value} onMouseDown={event => { event.preventDefault(); choose(option) }}><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</button>) : <span className="searchable-select-empty">Eşleşen kayıt bulunamadı.</span>}</div>}</label>
+  return <label className={`searchable-select${open ? ' open' : ''}${disabled ? ' disabled' : ''}`}><span>{label}</span><button type="button" className="searchable-select-trigger" aria-expanded={open} aria-haspopup="listbox" disabled={disabled} onClick={toggleMenu}><span>{selected?.label ?? placeholder}</span><i aria-hidden="true">⌄</i></button>{open && <div id={listId} className="searchable-select-menu" role="listbox"><div className="searchable-select-search"><span aria-hidden="true">⌕</span><input autoFocus role="combobox" aria-label={`${label} ara`} aria-controls={listId} aria-expanded={open} aria-autocomplete="list" value={query} placeholder={placeholder} onKeyDown={keyDown} onChange={event => { setQuery(event.target.value); if (value) onChange('') }} onBlur={() => window.setTimeout(() => setOpen(false), 120)} /></div><div className="searchable-select-options">{filtered.length ? filtered.map(option => <button type="button" role="option" aria-selected={option.value === value} key={option.value} onMouseDown={event => { event.preventDefault(); choose(option) }}><span>{option.label}</span>{option.description && <small>{option.description}</small>}</button>) : <span className="searchable-select-empty">Eşleşen kayıt bulunamadı.</span>}</div></div>}</label>
 }
 function MappingViewTabs({ active }: { active: 'category' | 'brand' | 'attribute' }) {
   return <nav className="mapping-view-tabs" aria-label="Eşleştirme türü" role="tablist"><Link role="tab" aria-selected={active === 'category'} className={active === 'category' ? 'active' : ''} to="/mappings/categories">Kategori Eşleme</Link><Link role="tab" aria-selected={active === 'brand'} className={active === 'brand' ? 'active' : ''} to="/mappings/categories?view=brands">Marka Eşleme</Link></nav>
