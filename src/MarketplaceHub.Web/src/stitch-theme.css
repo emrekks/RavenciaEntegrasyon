@@ -1443,6 +1443,91 @@ textarea {
 .panel-attribute-record-actions button:last-child { color: #ffb8b0 !important; font-size: 18px !important; font-weight: 500; line-height: 1 !important; }
 .panel-attribute-records strong { font-size: 11px; }
 .panel-attribute-records small { color: #9293a3; font-size: 9px; }
+
+/* Mapping library refinements: list-oriented, quiet, and consistent with the panel. */
+.mapping-local-manager-dialog .platform-category-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  background: #111827;
+  border: 1px solid #2d3854;
+  border-radius: 6px;
+}
+.mapping-local-manager-dialog .platform-category-create label { display: grid; gap: 7px; color: #b8bed3; font-size: 11px; font-weight: 650; }
+.mapping-local-manager-dialog .platform-category-create input { min-height: 40px; color: #eff1ff; background: #1b1d29; border-color: #42465a; }
+.mapping-local-manager-dialog .platform-category-create button { min-height: 40px !important; padding: 0 15px !important; color: #fff !important; background: #5865f2 !important; border-color: #6873ff !important; box-shadow: 0 7px 16px rgba(88, 101, 242, .18) !important; }
+.mapping-local-manager-dialog .category-library-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.mapping-local-manager-dialog .category-library-tools input { min-height: 38px; background: #1b1d29; border-color: #42465a; }
+.mapping-local-manager-dialog .category-library-tools span { color: #9299b0; font-size: 11px; white-space: nowrap; }
+.mapping-local-manager-dialog .category-chip-list {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 6px;
+  max-height: 300px;
+  padding: 7px;
+  overflow: auto;
+  background: #11131c;
+  border: 1px solid #303548;
+  border-radius: 6px;
+}
+.mapping-local-manager-dialog .category-chip-list > span {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 31px;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 !important;
+  overflow: hidden;
+  color: #dfe2f2;
+  background: #1b1e2a !important;
+  border: 1px solid #34394d !important;
+  border-radius: 4px !important;
+}
+.mapping-local-manager-dialog .category-chip-list > span > button:first-child { min-width: 0; padding: 0 10px !important; overflow: hidden; color: inherit !important; font-size: 11px; text-align: left; text-overflow: ellipsis; white-space: nowrap; background: transparent !important; border: 0 !important; border-radius: 0 !important; }
+.mapping-local-manager-dialog .category-chip-list > span > button:last-child { display: grid; place-items: center; padding: 0 !important; color: #ffaaa2 !important; font-size: 17px; line-height: 1; background: #212331 !important; border: 0 !important; border-left: 1px solid #34394d !important; border-radius: 0 !important; }
+.mapping-local-manager-dialog .category-chip-list > span:hover { border-color: #4c58bb !important; background: #20243a !important; }
+
+.mapping-reference-target .mapping-category-results {
+  gap: 4px;
+  padding: 7px;
+  background: #11131c;
+  border-color: #303a56;
+  border-radius: 6px;
+}
+.mapping-reference-target .mapping-category-results > button {
+  align-items: center;
+  min-height: 38px;
+  padding: 0 10px;
+  color: #dfe2f2 !important;
+  font-size: 11px;
+  background: #1b1e2a !important;
+  border: 1px solid #34394d !important;
+  border-radius: 4px;
+}
+.mapping-reference-target .mapping-category-results > button:hover { background: #20243a !important; border-color: #4c58bb !important; }
+.mapping-reference-target .mapping-category-results > button[aria-selected="true"] { color: #f3f4ff !important; background: rgba(88, 101, 242, .22) !important; border-color: #6571f7 !important; box-shadow: none !important; }
+
+.mapping-advanced-tools[open] > div { min-height: 0; }
+.mapping-advanced-tools[open] .mapping-popup-content { display: block; min-height: 0; height: 100%; overflow-y: scroll !important; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.mapping-advanced-tools[open] .mapping-popup-content > .mapping-step { min-height: auto !important; margin-bottom: 18px; }
+.mapping-popup-content .mapping-section-tabs { padding: 4px; background: #101827; border-color: #2d3854; }
+.mapping-popup-content .mapping-section-tabs > button { color: #aeb5cb !important; }
+.mapping-popup-content .mapping-section-tabs > button small { color: #cfd4ff !important; background: rgba(88, 101, 242, .15) !important; }
+.mapping-popup-content .mapping-section-tabs > button.active { color: #fff !important; background: #5865f2 !important; border-color: #6d78ff !important; box-shadow: 0 7px 16px rgba(88, 101, 242, .18) !important; }
+.mapping-popup-content .mapping-section-tabs > button.active small { color: #fff !important; background: rgba(255, 255, 255, .18) !important; }
+.mapping-popup-content .button-row { display: flex; justify-content: flex-end; margin: 4px 0 10px; }
+.mapping-popup-content .button-row .secondary { min-height: 32px !important; padding: 0 11px !important; color: #cbd0e8 !important; font-size: 11px; background: #1b2130 !important; border-color: #38435e !important; box-shadow: none !important; }
+.mapping-popup-content .button-row .secondary:hover { color: #fff !important; background: #252e45 !important; border-color: #5865f2 !important; }
+.panel-attribute-record-actions { justify-content: center; }
+
+@media (max-width: 720px) {
+  .mapping-local-manager-dialog .platform-category-create,
+  .mapping-local-manager-dialog .category-chip-list { grid-template-columns: 1fr; }
+  .mapping-local-manager-dialog .platform-category-create button { width: 100%; }
+}
 .panel-attribute-records details { margin-top: 8px; }
 .panel-attribute-modal { position: fixed; z-index: 1300; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(3, 4, 8, .7); }
 .panel-attribute-modal-card { display: grid; gap: 12px; width: min(580px, 100%); max-height: min(650px, calc(100vh - 40px)); padding: 16px; overflow: auto; background: #191a22; border: 1px solid #5b5d70; border-radius: 7px; box-shadow: 0 26px 80px rgba(0, 0, 0, .62); }
