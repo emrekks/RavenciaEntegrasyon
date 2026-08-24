@@ -305,6 +305,15 @@ export function ProductsPage() {
 
   return <Page title="Ürünler" eyebrow="Katalog" action={<Link className="button-link" to="/products/new">+ Yeni Ürün Ekle</Link>}>
     <p className="lede page-lede">Ürün, varyant, stok, fiyat ve pazaryeri yayın durumlarını tek kartta yönetin.</p>
+    <nav className="catalog-context-nav" aria-label="Katalog yönetimi">
+      <span>Katalog yönetimi</span>
+      <Link to="/catalog/categories">Kategoriler</Link>
+      <Link to="/catalog/brands">Markalar</Link>
+      <Link to="/catalog/attributes">Özellikler</Link>
+      <Link to="/imports">İçe aktarımlar</Link>
+      <Link to="/inventory">Stok ve fiyat</Link>
+      <Link className="catalog-sync-link" to="/integrations">Trendyol’dan ürün getir</Link>
+    </nav>
     <div className="product-metrics metrics"><article><small>Toplam ürün</small><strong>{products.length}</strong><span>katalog kaydı</span></article><article><small>Aktif</small><strong>{products.filter(x => x.status === 'ACTIVE').length}</strong><span>ürün</span></article><article><small>Stoksuz</small><strong>{products.filter(x => x.totalStock <= 0).length}</strong><span>aksiyon gerekli</span></article><article><small>Düşük stok</small><strong>{products.filter(x => x.totalStock > 0 && x.totalStock <= 5).length}</strong><span>5 ve altı</span></article></div>
     <div className="product-toolbar">
       <div className="bulk-menu-shell">

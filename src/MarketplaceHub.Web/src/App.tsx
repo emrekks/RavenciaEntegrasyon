@@ -7,6 +7,100 @@ import { IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, Retur
 import { InvoicesPage } from './InvoicingPages'
 import { JobsPage } from './OperationsPages'
 
+type ShellConnection = {
+  id: string
+  displayName: string
+  platformCode: string
+  environment: string
+  status: string
+  lastSuccessAt: string | null
+}
+
+type ShellJob = {
+  id: string
+  jobType: string
+  status: string
+  lastErrorSummary: string | null
+  createdAt: string
+}
+
+function WorkspaceTopActions({ me, onLogout }: { me: Me; onLogout: () => Promise<void> }) {
+  const navigate = useNavigate()
+  const [openPanel, setOpenPanel] = useState<'notifications' | 'user' | null>(null)
+  const [selectedConnectionId, setSelectedConnectionId] = useState(() => localStorage.getItem('ravencia.activeConnectionId') ?? '')
+  const connections = useQuery({
+    queryKey: ['connections', 'shell'],
+    queryFn: async () => (await loadAllPages<ShellConnection>('/connections')).items,
+    staleTime: 30_000
+  })
+  const jobs = useQuery({
+    queryKey: ['jobs', 'shell'],
+    queryFn: () => hubApi<ShellJob[]>('/jobs'),
+    refetchInterval: 15_000,
+    retry: 1
+  })
+  const connectionItems = connections.data ?? []
+  const selectedConnection = connectionItems.find(item => item.id === selectedConnectionId)
+    ?? connectionItems.find(item => ['ACTIVE', 'VERIFIED', 'CONNECTED'].includes(item.status.toUpperCase()))
+    ?? connectionItems[0]
+  const attentionJobs = (jobs.data ?? []).filter(job => ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status))
+  const activeJobs = (jobs.data ?? []).filter(job => ['PENDING', 'LEASED', 'RETRY_SCHEDULED'].includes(job.status))
+  const initials = (me.displayName || me.email).split(/\s+/).slice(0, 2).map(part => part[0]?.toLocaleUpperCase('tr-TR')).join('')
+  const syncLabel = activeJobs.length > 0
+    ? `${activeJobs.length} işlem`
+    : selectedConnection?.lastSuccessAt
+      ? `Son ${new Date(selectedConnection.lastSuccessAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`
+      : 'Senkron'
+
+  useEffect(() => {
+    if (!selectedConnection || selectedConnectionId) return
+    setSelectedConnectionId(selectedConnection.id)
+    localStorage.setItem('ravencia.activeConnectionId', selectedConnection.id)
+  }, [selectedConnection, selectedConnectionId])
+
+  function selectConnection(id: string) {
+    setSelectedConnectionId(id)
+    localStorage.setItem('ravencia.activeConnectionId', id)
+    if (id) navigate(`/integrations/${id}`)
+  }
+
+  return <div className="top-actions">
+    <label className="workspace-connection-select">
+      <span>Bağlantı</span>
+      <select aria-label="Bağlantıya git" value={selectedConnection?.id ?? ''} disabled={connections.isLoading || connectionItems.length === 0} onChange={event => selectConnection(event.target.value)}>
+        {connectionItems.length === 0 && <option value="">Bağlantı yok</option>}
+        {connectionItems.map(connection => <option key={connection.id} value={connection.id}>{connection.displayName} · {connection.environment}</option>)}
+      </select>
+    </label>
+    {selectedConnection?.environment.toUpperCase() === 'STAGE' && <span className="environment-badge">STAGE</span>}
+    <Link className={`sync-center-link ${activeJobs.length > 0 ? 'syncing' : ''}`} to="/jobs" title="Senkronizasyon merkezini aç">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7h-5V2"/><path d="M4 17h5v5"/><path d="M5.1 9a7 7 0 0 1 11.8-3L20 9"/><path d="M18.9 15A7 7 0 0 1 7.1 18L4 15"/></svg>
+      <span>{syncLabel}</span>
+    </Link>
+    <span className="live-state"><i /> Sistem aktif</span>
+    <div className="topbar-popover-shell">
+      <button type="button" className="topbar-icon-button" aria-label="Bildirimler" aria-expanded={openPanel === 'notifications'} onClick={() => setOpenPanel(openPanel === 'notifications' ? null : 'notifications')}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>
+        {attentionJobs.length > 0 && <b>{Math.min(attentionJobs.length, 99)}</b>}
+      </button>
+      {openPanel === 'notifications' && <div className="topbar-popover notification-popover">
+        <header><strong>İşlem bildirimleri</strong><Link to="/jobs" onClick={() => setOpenPanel(null)}>Tümünü gör</Link></header>
+        {attentionJobs.length === 0 ? <p className="topbar-empty">İncelenmesi gereken işlem yok.</p> : attentionJobs.slice(0, 5).map(job => <Link key={job.id} to="/jobs" onClick={() => setOpenPanel(null)}><i /> <span><strong>{job.jobType}</strong><small>{job.lastErrorSummary ?? job.status}</small></span></Link>)}
+      </div>}
+    </div>
+    <div className="topbar-popover-shell">
+      <button type="button" className="user-menu-button" aria-label="Kullanıcı menüsü" aria-expanded={openPanel === 'user'} onClick={() => setOpenPanel(openPanel === 'user' ? null : 'user')}>
+        <span>{initials || 'RV'}</span><i><strong>{me.displayName || me.email}</strong><small>{me.role ?? 'Kullanıcı'}</small></i>
+      </button>
+      {openPanel === 'user' && <div className="topbar-popover user-popover">
+        <div><span>{initials || 'RV'}</span><p><strong>{me.displayName || 'Ravencia kullanıcısı'}</strong><small>{me.email}</small></p></div>
+        <Link to="/settings" onClick={() => setOpenPanel(null)}>Hesap ve sistem ayarları</Link>
+        <button type="button" onClick={() => void onLogout()}>Güvenli çıkış yap</button>
+      </div>}
+    </div>
+  </div>
+}
+
 function Shell({ me }: { me: Me }) {
   const location = useLocation()
   const titles: Record<string, string> = { dashboard: 'Dashboard', products: 'Ürünler', catalog: 'Katalog', imports: 'İçe Aktarım', inventory: 'Stok', integrations: 'Platformlar · Trendyol · E-Faturam', mappings: 'Kategori Eşitleme', orders: 'Siparişler', shipments: 'Gönderiler', returns: 'İadeler', invoices: 'Faturalar', jobs: 'İşlem Takibi', settings: 'Ayarlar' }
@@ -30,7 +124,7 @@ function Shell({ me }: { me: Me }) {
   }
   const icon = (name: string) => <svg className="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{icons[name]}</svg>
   const item = (to: string, iconName: string, label: string) => <NavLink to={to}>{icon(iconName)}{label}</NavLink>
-  return <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}><aside><div className="sidebar-brand-row"><div className="brand wordmark"><strong>RAVENCIA</strong><small>MERKEZ PANEL</small></div></div><button type="button" className="sidebar-collapse-toggle" onClick={toggleSidebar} aria-label={sidebarCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'} title={sidebarCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}><svg viewBox="0 0 20 20" aria-hidden="true"><path d={sidebarCollapsed ? 'm8 5 5 5-5 5' : 'm12 5-5 5 5 5'} /></svg></button><nav aria-label="Ana menü"><span className="nav-section">Operasyon</span>{item('/dashboard', 'dashboard', 'Dashboard')}{item('/products', 'products', 'Ürünler')}{item('/orders', 'orders', 'Siparişler')}{item('/returns', 'returns', 'İadeler')}{item('/invoices', 'invoices', 'Faturalar')}{item('/jobs', 'jobs', 'İşlem Takibi')}{item('/integrations', 'platforms', 'Platformlar')}{item('/mappings/categories', 'mappings', 'Kategori Eşitleme')}</nav><div className="settings-nav">{item('/settings', 'settings', 'Ayarlar')}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}Çıkış Yap</button></div></aside><main><header className="topbar"><div className="breadcrumb"><span>OPERASYON MERKEZİ</span><b>›</b><strong>{current.toLocaleUpperCase('tr-TR')}</strong></div><div className="top-actions"><span className="live-state"><i /> Sistem aktif</span></div></header><Routes><Route path="/dashboard" element={<Dashboard me={me} />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/inventory" element={<InventoryPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage kind="categories" />} /><Route path="/mappings/attributes" element={<MappingPage kind="attributes" />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/shipments" element={<Navigate to="/orders" replace />} /><Route path="/shipments/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/invoices/:id" element={<Navigate to="/orders" replace />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/billing" element={<Navigate to="/settings" replace />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></main></div>
+  return <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}><aside><div className="sidebar-brand-row"><div className="brand wordmark"><strong>RAVENCIA</strong><small>MERKEZ PANEL</small></div></div><button type="button" className="sidebar-collapse-toggle" onClick={toggleSidebar} aria-label={sidebarCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'} title={sidebarCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}><svg viewBox="0 0 20 20" aria-hidden="true"><path d={sidebarCollapsed ? 'm8 5 5 5-5 5' : 'm12 5-5 5 5 5'} /></svg></button><nav aria-label="Ana menü"><span className="nav-section">Operasyon</span>{item('/dashboard', 'dashboard', 'Dashboard')}{item('/products', 'products', 'Ürünler')}{item('/orders', 'orders', 'Siparişler')}{item('/returns', 'returns', 'İadeler')}{item('/invoices', 'invoices', 'Faturalar')}{item('/jobs', 'jobs', 'İşlem Takibi')}{item('/integrations', 'platforms', 'Platformlar')}{item('/mappings/categories', 'mappings', 'Kategori Eşitleme')}</nav><div className="settings-nav">{item('/settings', 'settings', 'Ayarlar')}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}Çıkış Yap</button></div></aside><main><header className="topbar"><div className="breadcrumb"><span>OPERASYON MERKEZİ</span><b>›</b><strong>{current.toLocaleUpperCase('tr-TR')}</strong></div><WorkspaceTopActions me={me} onLogout={logout} /></header><Routes><Route path="/dashboard" element={<Dashboard me={me} />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/inventory" element={<InventoryPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage kind="categories" />} /><Route path="/mappings/attributes" element={<MappingPage kind="attributes" />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/shipments" element={<Navigate to="/orders" replace />} /><Route path="/shipments/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/invoices/:id" element={<Navigate to="/orders" replace />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/billing" element={<Navigate to="/settings" replace />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></main></div>
 }
 
 export function App() {
