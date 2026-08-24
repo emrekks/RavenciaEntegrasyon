@@ -1986,6 +1986,36 @@ textarea {
 .brand-mapping-console > .mapping-action { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; padding-top: 14px !important; margin-top: 0 !important; border-top: 1px solid rgba(148, 163, 184, .16) !important; color: var(--st-muted) !important; font-size: 10px !important; }
 .brand-mapping-console > .mapping-action button { min-height: 36px !important; padding: 0 14px !important; color: #fff !important; background: var(--st-primary) !important; border-color: #8a83ff !important; border-radius: 6px !important; box-shadow: none !important; font-size: 10px !important; }
 
+.brand-mapping-saved-card .mapping-icon-button { font-size: 0 !important; }
+.brand-mapping-saved-card .mapping-icon-button::before { content: "✎"; color: #c6c5d7; font-size: 16px; line-height: 1; }
+.brand-mapping-saved-card .mapping-icon-button:hover { color: #fff !important; background: rgba(104, 114, 232, .14) !important; border-color: #6872e8 !important; }
+.brand-mapping-modal-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(7, 8, 13, .76); }
+.brand-mapping-modal { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(560px, calc(100vw - 40px)); max-height: min(620px, calc(100vh - 48px)); overflow: hidden; color: #e3e1ed; background: #1a1b23; border: 1px solid #454655; border-radius: 6px; box-shadow: 0 24px 70px rgba(0, 0, 0, .55); }
+.brand-mapping-modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px 20px; border-bottom: 1px solid #454655; }
+.brand-mapping-modal > header small { display: block; margin-bottom: 5px; color: #aeb6ff; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.brand-mapping-modal > header h2 { margin: 0; color: #f0eff8; font-size: 17px; line-height: 1.25; }
+.brand-mapping-modal > header p { margin: 5px 0 0; color: #9da3b8; font-size: 11px; }
+.brand-mapping-modal > header .modal-close { display: grid; place-items: center; width: 30px; height: 30px; min-height: 30px; padding: 0; color: #c6c5d7; background: #22232c; border: 1px solid #454655; border-radius: 3px; font-size: 18px; line-height: 1; }
+.brand-mapping-modal > header .modal-close:hover { color: #fff; background: #292a35; border-color: #6872e8; }
+.brand-mapping-modal-body { display: grid; align-content: start; gap: 16px; min-height: 0; padding: 20px; overflow-y: auto; }
+.brand-mapping-selected-local { display: grid; gap: 6px; padding: 13px 14px; background: #22232c; border: 1px solid #454655; border-radius: 3px; }
+.brand-mapping-selected-local small { color: #9da3b8; font-size: 10px; }
+.brand-mapping-selected-local strong { color: #f0eff8; font-size: 13px; }
+.brand-mapping-modal-body .searchable-select > span { color: #9da3b8; font-size: 10px; }
+.brand-mapping-modal-body .searchable-select-trigger { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 42px; padding: 0 12px; color: #e3e1ed; background: #1a1b23; border: 1px solid #454655; border-radius: 3px; text-align: left; }
+.brand-mapping-modal-body .searchable-select-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-mapping-modal-body .searchable-select-trigger > i { color: #c6c5d7; font-style: normal; }
+.brand-mapping-modal-body .searchable-select-menu { display: grid; grid-template-rows: auto minmax(0, 1fr); max-height: 260px; overflow: hidden; background: #1a1b23; border: 1px solid #454655; border-radius: 3px; }
+.brand-mapping-modal-body .searchable-select-search { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px; padding: 8px; border-bottom: 1px solid #454655; }
+.brand-mapping-modal-body .searchable-select-search input { min-height: 36px; height: 36px; color: #e3e1ed; background: #22232c; border: 1px solid #454655; border-radius: 3px; }
+.brand-mapping-modal-body .searchable-select-options { min-height: 0; padding: 6px; overflow-y: auto; }
+.brand-mapping-modal-body .searchable-select-options > button { display: grid; width: 100%; min-height: 36px; padding: 7px 10px; color: #e3e1ed; background: #22232c; border: 1px solid #454655; border-radius: 3px; text-align: left; }
+.brand-mapping-modal-body .searchable-select-options > button + button { margin-top: 4px; }
+.brand-mapping-modal-body .searchable-select-options > button:hover, .brand-mapping-modal-body .searchable-select-options > button[aria-selected="true"] { color: #fff; background: #292a35; border-color: #6872e8; }
+.brand-mapping-modal > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid #454655; }
+.brand-mapping-modal > footer button { min-height: 36px; padding: 0 13px; color: #fff; background: var(--st-primary); border-color: #8a83ff; border-radius: 3px; }
+.brand-mapping-modal > footer button.secondary { color: #c6c5d7; background: #22232c; border-color: #454655; }
+
 /* Brand mapping follows the neutral reference surface; avoid introducing a second blue workspace. */
 .brand-library-panel,
 .brand-mapping-pair-grid .mapping-side,
