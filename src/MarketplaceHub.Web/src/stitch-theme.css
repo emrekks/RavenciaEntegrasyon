@@ -1149,6 +1149,8 @@ textarea {
 .mapping-table-status.active i { background: #20d5a0; box-shadow: 0 0 8px rgba(32, 213, 160, .5); }
 .mapping-row-actions { display: flex; justify-content: flex-end; gap: 3px; }
 .mapping-row-actions button { width: 28px !important; min-width: 28px !important; height: 28px !important; min-height: 28px !important; border-color: transparent !important; }
+.mapping-row-actions button[aria-label="Eşleştirmeyi sil"] { font-size: 0; }
+.mapping-row-actions button[aria-label="Eşleştirmeyi sil"]::before { content: "×"; font-size: 20px; line-height: 1; }
 .mapping-row-actions button:last-child:hover { color: #ffb4ab !important; background: rgba(147, 0, 10, .15) !important; }
 
 .mapping-saved-card > footer { display: flex; align-items: center; justify-content: space-between; min-height: 58px; padding: 10px 16px; color: #c6c5d7; font-size: 12px; background: #12131b; border-top: 1px solid #34343d; }
