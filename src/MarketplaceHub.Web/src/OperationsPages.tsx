@@ -94,6 +94,16 @@ function timeRangeLabel(value: JobTimeRange) {
   return 'Son 24 Saat'
 }
 
+type JobsIconName = 'calendar' | 'chevron-down' | 'filter' | 'refresh'
+
+function JobsIcon({ name }: { name: JobsIconName }) {
+  const common = { className: `jobs-reference-icon jobs-reference-icon-${name}`, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true, focusable: false }
+  if (name === 'calendar') return <svg {...common}><rect x="3.5" y="4.5" width="17" height="16" rx="2" /><path d="M7.5 3.5v3M16.5 3.5v3M3.5 9h17M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01M16 17h.01" /></svg>
+  if (name === 'chevron-down') return <svg {...common}><path d="m7 9 5 5 5-5" /></svg>
+  if (name === 'filter') return <svg {...common}><path d="M4 5h16M7 12h10M10 19h4" /></svg>
+  return <svg {...common}><path d="M20 11a8 8 0 0 0-14.8-4L4 9" /><path d="M4 5v4h4M4 13a8 8 0 0 0 14.8 4L20 15" /><path d="M20 19v-4h-4" /></svg>
+}
+
 type JobCategory = 'ALL' | 'ORDERS' | 'PRICE_INVENTORY' | 'CATALOG' | 'INVOICES' | 'RETURNS' | 'SYSTEM'
 
 const categoryTabs: Array<{ key: JobCategory; label: string; match: (type: string) => boolean }> = [
@@ -164,6 +174,7 @@ export function JobsPage({ me }: { me: Me }) {
   const retryable = selected && ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(selected.status)
   const cancellable = selected && !['LEASED', 'SUCCEEDED', 'DEAD', 'CANCELLED'].includes(selected.status)
   const errorCount = rangeFiltered.filter(job => ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status)).length
+  const categoryCounts = useMemo(() => new Map(categoryTabs.map(tab => [tab.key, rangeFiltered.filter(job => tab.match(job.jobType)).length])), [rangeFiltered])
   const pageNumbers = useMemo(() => {
     const pages = new Set([1, totalPages, currentPage, Math.max(1, currentPage - 1), Math.min(totalPages, currentPage + 1)])
     return [...pages].sort((a, b) => a - b)
@@ -183,25 +194,25 @@ export function JobsPage({ me }: { me: Me }) {
       </div>
       <div className="jobs-reference-heading-actions">
         <div className="jobs-reference-range-wrap">
-          <button type="button" className="jobs-reference-range" aria-expanded={timeRangeOpen} onClick={() => setTimeRangeOpen(value => !value)}><span aria-hidden="true">◷</span>{timeRangeLabel(timeRange)}<span aria-hidden="true">⌄</span></button>
+          <button type="button" className="jobs-reference-range" aria-expanded={timeRangeOpen} onClick={() => setTimeRangeOpen(value => !value)}><JobsIcon name="calendar" />{timeRangeLabel(timeRange)}<JobsIcon name="chevron-down" /></button>
           {timeRangeOpen && <div className="jobs-reference-range-menu" role="menu" aria-label="Zaman aralığı">
             {([['24h', 'Son 24 Saat'], ['7d', 'Son 7 Gün'], ['all', 'Tüm Zamanlar']] as const).map(([value, label]) => <button type="button" role="menuitem" className={timeRange === value ? 'active' : ''} key={value} onClick={() => { setTimeRange(value); setTimeRangeOpen(false) }}>{label}</button>)}
           </div>}
         </div>
-        <button type="button" className="jobs-reference-filter-toggle" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><span aria-hidden="true">☷</span>Filtrele</button>
+        <button type="button" className="jobs-reference-filter-toggle" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><JobsIcon name="filter" />Filtrele</button>
       </div>
     </div>
     <div className="jobs-reference-canvas">
       <div className="jobs-reference-tabs" role="tablist" aria-label="İşlem kategorileri">
         {categoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => (
-          <button type="button" role="tab" aria-selected={category === tab.key} className={category === tab.key ? 'active' : ''} key={tab.key} onClick={() => setCategory(tab.key)}>{tab.label}</button>
+          <button type="button" role="tab" aria-selected={category === tab.key} className={category === tab.key ? 'active' : ''} key={tab.key} onClick={() => setCategory(tab.key)}><span>{tab.label}</span><small className="jobs-reference-tab-count">{categoryCounts.get(tab.key) ?? 0}</small></button>
         ))}
       </div>
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-error-summary"><i aria-hidden="true" /> <strong>{errorCount}</strong> işlem hata verdi</div>
         <div className="jobs-reference-toolbar-actions">
           <label className="jobs-reference-search"><span aria-hidden="true">⌕</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Correlation ID..." aria-label="Correlation ID ile işlem ara" /></label>
-          <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="İşlemleri yenile" onClick={refreshJobs}>↻</button>
+          <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="İşlemleri yenile" onClick={refreshJobs}><JobsIcon name="refresh" /></button>
         </div>
       </div>
       {filterOpen && <div className="jobs-reference-filter-panel">
