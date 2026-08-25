@@ -3558,8 +3558,8 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .mapping-category-builder .category-library-search-toggle {
   top: 50% !important;
   transform: translateY(-50%) !important;
-  height: 34px !important;
-  min-height: 34px !important;
+  height: 43px !important;
+  min-height: 43px !important;
   font-size: 0 !important;
   line-height: 0 !important;
 }
@@ -4272,8 +4272,8 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   box-sizing: border-box !important;
 }
 .app-shell .orders-page .orders-reference-filter-shell .bulk-menu-shell > .bulk-action {
-  height: 34px !important;
-  min-height: 34px !important;
+  height: 43px !important;
+  min-height: 43px !important;
   box-sizing: border-box !important;
 }
 .app-shell .orders-page .order-reference-invoice .row-menu {
