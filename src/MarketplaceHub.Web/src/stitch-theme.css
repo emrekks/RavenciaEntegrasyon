@@ -3737,10 +3737,16 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   border-radius: 0 !important;
 }
 .mapping-category-builder .category-library-search-control.is-open .category-library-search-toggle,
-.mapping-category-builder .category-library-search-control.is-open .category-library-search-toggle:hover,
-.mapping-category-builder .category-library-search-control.is-open .category-library-search-toggle:focus,
-.mapping-category-builder .category-library-search-control.is-open .category-library-search-toggle:focus-visible {
+.mapping-category-builder .category-library-search-control.is-open .category-library-search-toggle:focus {
   background: transparent !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
+
+.mapping-category-builder .category-library-search-control.is-open .category-library-search-toggle:hover,
+.mapping-category-builder .category-library-search-control.is-open .category-library-search-toggle:focus-visible {
+  color: #fff !important;
+  background: rgba(88, 101, 242, .2) !important;
   box-shadow: none !important;
   outline: 0 !important;
 }
