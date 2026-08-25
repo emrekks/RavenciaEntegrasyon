@@ -3005,6 +3005,27 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   }
 }
 
+/* The category library starts collapsed and opens only while its search
+   control is focused. Keep a single dropdown affordance on the input. */
+.mapping-category-builder .mapping-local-manager .category-library-tools::after {
+  display: none !important;
+  content: none !important;
+}
+.mapping-category-builder .mapping-local-manager[open] > .mapping-local-manager-dialog > .category-chip-list {
+  display: none !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  padding-block: 0 !important;
+  border-width: 0 !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog:has(.category-library-tools:focus-within) > .category-chip-list {
+  display: grid !important;
+  min-height: 300px !important;
+  max-height: 300px !important;
+  padding: 8px !important;
+  border-width: 1px !important;
+}
+
 /* İşlem Takibi — operations hub reference layout */
 .jobs-reference-page {
   max-width: none !important;
