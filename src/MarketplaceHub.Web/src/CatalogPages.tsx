@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from './api'
@@ -54,7 +54,7 @@ function ImageLightboxModal({ image, onClose }: { image: { url: string; title: s
 }
 const Tag = ({ children }: { children: ReactNode }) => <span className="tag">{children}</span>
 const money = (value: number | null | undefined, currency = 'TRY') => value == null ? '—' : new Intl.NumberFormat('tr-TR', { style: 'currency', currency }).format(value)
-function Page({ title, eyebrow, action, children }: { title: string; eyebrow: string; action?: ReactNode; children: ReactNode }) { return <section className="content stitch-page"><div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>{action}</div>{children}</section> }
+function Page({ title, eyebrow, action, className, children }: { title: string; eyebrow: string; action?: ReactNode; className?: string; children: ReactNode }) { return <section className={`content stitch-page ${className ?? ''}`}><div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>{action}</div>{children}</section> }
 
 type QuickEditMode = 'stock' | 'price' | 'both'
 
@@ -255,8 +255,8 @@ function ProductColorRows({ product, selected, onSelect, onQuickEdit, onImageCli
         <div className="product-list-price clickable-cell" title="Fiyatı hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('price')}><strong>{money(product.startingPrice, product.currency)}</strong></div>
         <div className="product-list-stock clickable-cell" title="Stoğu hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('stock')}><strong>{product.totalStock}</strong></div>
         <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ''}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'}>TY<i /></span><small>{platformActive ? 'Eşleşti' : 'Eşleşmedi'}</small></div>
-        <div className="product-list-status"><Tag>{product.status === 'ACTIVE' ? 'SATIŞTA' : 'KAPALI'}</Tag><small>{product.status === 'ACTIVE' ? 'Satışa açık' : 'Satışa kapalı'}</small></div>
-        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`}>Düzenle</Link></div>
+        <div className="product-list-status"><Tag>{product.status === 'ACTIVE' ? 'SATIŞTA' : 'KAPALI'}</Tag><small>{product.status === 'ACTIVE' ? 'Aktif' : product.status === 'ARCHIVED' ? 'Pasif' : 'Taslak'}</small></div>
+        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`}>⋮</Link></div>
       </div>
     </article>
 }
@@ -276,6 +276,7 @@ export function ProductsPage() {
   })
   const selectedProducts = products.filter(product => quickEdit?.productIds.includes(product.id))
   const totalPages = Math.max(1, Math.ceil(visible.length / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const pageNumbers = [...new Set([1, currentPage - 1, currentPage, currentPage + 1, totalPages].filter(page => page >= 1 && page <= totalPages))].sort((a, b) => a - b)
   useEffect(() => { setPageNumber(1) }, [search, status, platform, stock, pageSize])
   const allVisibleSelected = pageProducts.length > 0 && pageProducts.every(product => selectedProductIds.includes(product.id))
   const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
@@ -303,18 +304,8 @@ export function ProductsPage() {
     }
   }
 
-  return <Page title="Ürünler" eyebrow="Katalog" action={<Link className="button-link" to="/products/new">+ Yeni Ürün Ekle</Link>}>
-    <p className="lede page-lede">Ürün, varyant, stok, fiyat ve pazaryeri yayın durumlarını tek kartta yönetin.</p>
-    <nav className="catalog-context-nav" aria-label="Katalog yönetimi">
-      <span>Katalog yönetimi</span>
-      <Link to="/catalog/categories">Kategoriler</Link>
-      <Link to="/catalog/brands">Markalar</Link>
-      <Link to="/catalog/attributes">Özellikler</Link>
-      <Link to="/imports">İçe aktarımlar</Link>
-      <Link to="/inventory">Stok ve fiyat</Link>
-      <Link className="catalog-sync-link" to="/integrations">Trendyol’dan ürün getir</Link>
-    </nav>
-    <div className="product-metrics metrics"><article><small>Toplam ürün</small><strong>{products.length}</strong><span>katalog kaydı</span></article><article><small>Aktif</small><strong>{products.filter(x => x.status === 'ACTIVE').length}</strong><span>ürün</span></article><article><small>Stoksuz</small><strong>{products.filter(x => x.totalStock <= 0).length}</strong><span>aksiyon gerekli</span></article><article><small>Düşük stok</small><strong>{products.filter(x => x.totalStock > 0 && x.totalStock <= 5).length}</strong><span>5 ve altı</span></article></div>
+  return <Page className="products-page" title="Ürünler" eyebrow="Katalog" action={<Link className="button-link" to="/products/new"><span aria-hidden="true">＋</span> Yeni Ürün Ekle</Link>}>
+    <div className="product-metrics metrics"><article className="product-metric-total"><small>Toplam Ürün</small><strong>{products.length}</strong><span>katalog kaydı</span></article><article className="product-metric-active"><small>Aktif Ürün</small><strong>{products.filter(x => x.status === 'ACTIVE').length}</strong><span>ürün</span></article><article className="product-metric-empty"><small>Stoksuz Ürün</small><strong>{products.filter(x => x.totalStock <= 0).length}</strong><span>aksiyon gerekli</span></article><article className="product-metric-low"><small>Düşük Stoklu</small><strong>{products.filter(x => x.totalStock > 0 && x.totalStock <= 5).length}</strong><span>5 ve altı</span></article></div>
     <div className="product-toolbar">
       <div className="bulk-menu-shell">
         <button type="button" className="bulk-action" disabled={!selectedProductIds.length} aria-expanded={bulkOpen} onClick={() => setBulkOpen(v => !v)}>
@@ -340,16 +331,16 @@ export function ProductsPage() {
           </div>
         )}
       </div>
-      <label className="order-search"><span aria-hidden="true">⌕</span><input aria-label="Ürün ara" placeholder="Ürün adı, model, SKU veya barkod..." value={search} onChange={event => setSearch(event.target.value)} /></label>
-      <select aria-label="Ürün durumu" value={status} onChange={event => setStatus(event.target.value)}><option value="">Tüm durumlar</option><option value="ACTIVE">Aktif</option><option value="DRAFT">Taslak</option><option value="ARCHIVED">Arşiv</option></select>
-      <select aria-label="Platform filtresi" value={platform} onChange={event => setPlatform(event.target.value)}><option value="">Tüm platformlar</option>{platforms.map(item => <option key={item}>{item}</option>)}</select>
-      <select aria-label="Stok filtresi" value={stock} onChange={event => setStock(event.target.value)}><option value="">Tüm stoklar</option><option value="OUT">Stoksuz</option><option value="LOW">Düşük stok</option><option value="OK">Yeterli stok</option></select>
+      <label className="order-search"><span aria-hidden="true">⌕</span><input aria-label="Ürün ara" placeholder="SKU veya Barkod Ara..." value={search} onChange={event => setSearch(event.target.value)} /></label>
+      <select aria-label="Ürün durumu" value={status} onChange={event => setStatus(event.target.value)}><option value="">Tüm Durumlar</option><option value="ACTIVE">Aktif</option><option value="DRAFT">Taslak</option><option value="ARCHIVED">Arşiv</option></select>
+      <select aria-label="Platform filtresi" value={platform} onChange={event => setPlatform(event.target.value)}><option value="">Platform Durumu</option>{platforms.map(item => <option key={item}>{item}</option>)}</select>
+      <select aria-label="Stok filtresi" value={stock} onChange={event => setStock(event.target.value)}><option value="">Stok Durumu</option><option value="OUT">Stoksuz</option><option value="LOW">Düşük stok</option><option value="OK">Yeterli stok</option></select>
     </div>
     <ErrorBox error={query.error ?? connectionsQuery.error} />
     {query.isLoading ? <p>Yükleniyor…</p> : !visible.length ? <div className="empty">Filtrelerle eşleşen ürün yok.</div> : (
       <div className="product-catalog-table preferred-product-catalog">
         <div className="product-catalog-head">
-          <label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} /><span>Ürün Bilgisi</span></label>
+          <label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} /><span>Ürün Detayı</span></label>
           <span>Varyant</span><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
         </div>
         {pageProducts.map(product => (
@@ -357,7 +348,7 @@ export function ProductsPage() {
         ))}
       </div>
     )}
-    {visible.length > 0 && <div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına ürün" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label><span>{(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, visible.length)} / {visible.length} ürün</span><div><button type="button" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>Önceki</button><b>Sayfa {currentPage} / {totalPages}</b><button type="button" disabled={currentPage >= totalPages} onClick={() => setPageNumber(value => Math.min(totalPages, value + 1))}>Sonraki</button></div></div>}
+    {visible.length > 0 && <div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına ürün" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label><span>Toplam {visible.length.toLocaleString('tr-TR')} kayıttan {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, visible.length)} arası gösteriliyor</span><div className="product-pagination-controls"><button type="button" aria-label="Önceki sayfa" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>‹</button>{pageNumbers.map((page, index) => <Fragment key={page}>{index > 0 && page - pageNumbers[index - 1] > 1 && <span className="pagination-ellipsis">…</span>}<button type="button" className={page === currentPage ? 'active' : ''} onClick={() => setPageNumber(page)}>{page}</button></Fragment>)}<button type="button" aria-label="Sonraki sayfa" disabled={currentPage >= totalPages} onClick={() => setPageNumber(value => Math.min(totalPages, value + 1))}>›</button></div></div>}
     {quickEdit && <ProductQuickEditModal products={selectedProducts} connections={connections} mode={quickEdit.mode} onChanged={refresh} onResult={showProductToast} onClose={() => setQuickEdit(null)} />}
     {productToast && <div className={`product-operation-toast ${productToast.kind}`} role={productToast.kind === 'success' ? 'status' : 'alert'}><strong>{productToast.kind === 'success' ? 'Güncellendi' : 'Başarısız'}</strong><span>{productToast.message}</span></div>}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
