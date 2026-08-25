@@ -4228,3 +4228,35 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   .orders-reference-filter-shell .order-search { grid-column: auto !important; }
   .app-shell .orders-page .order-pagination { align-items: flex-start !important; flex-direction: column !important; padding: 12px 14px !important; }
 }
+
+/* Keep the quantity badge anchored to the product image corner. */
+.app-shell .orders-page .reference-product-media {
+  position: relative !important;
+  display: block !important;
+  width: 54px !important;
+  height: 74px !important;
+  min-width: 54px !important;
+}
+.app-shell .orders-page .reference-product-media .product-image-button {
+  display: block !important;
+  width: 54px !important;
+  height: 74px !important;
+  min-height: 74px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.app-shell .orders-page .reference-product-media .product-image-button img,
+.app-shell .orders-page .reference-product-media > .reference-product-placeholder {
+  display: block !important;
+  width: 54px !important;
+  height: 74px !important;
+}
+.app-shell .orders-page .reference-product-media .quantity-bubble {
+  top: -10px !important;
+  right: -10px !important;
+  left: auto !important;
+  transform: none !important;
+  z-index: 2 !important;
+}
