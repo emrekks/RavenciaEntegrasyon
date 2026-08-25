@@ -5786,9 +5786,9 @@ body:has(.product-add-page),
   vertical-align: 2px;
 }
 .product-add-wizardbar {
-  display: grid;
-  grid-template-columns: minmax(110px, 1fr) auto minmax(0, 1fr);
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 18px;
   min-height: 54px;
   margin: 0 0 18px;
@@ -5806,16 +5806,22 @@ body:has(.product-add-page),
   letter-spacing: .08em;
   text-decoration: none;
 }
-.product-add-cancel { justify-self: start; }
 .product-add-cancel span { font-size: 20px; font-weight: 400; letter-spacing: 0; }
 .product-add-cancel:hover { color: var(--st-primary-soft) !important; }
+.product-add-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  min-width: 0;
+  margin-left: auto;
+}
 .product-add-brand-mark {
   display: grid;
   place-items: center;
   width: 27px;
   height: 27px;
-  margin-left: 0;
-  justify-self: center;
+  flex: 0 0 27px;
   color: var(--st-primary-soft);
   border: 1px solid var(--st-outline);
   border-radius: 50%;
@@ -5824,7 +5830,7 @@ body:has(.product-add-page),
 .product-add-progress {
   display: flex;
   align-items: center;
-  justify-self: end;
+  flex: 0 1 auto;
   min-width: 0;
   gap: 11px;
 }
@@ -6157,6 +6163,7 @@ body:has(.product-add-page),
 @media (max-width: 650px) {
   .app-shell .product-add-page { padding-inline: 14px !important; }
   .app-shell .product-add-page .page-heading h1 { font-size: 24px !important; }
+  .product-add-stepper { width: 100%; }
   .product-add-progress { width: 100%; justify-content: flex-end; }
   .product-add-progress > i { width: 22px; }
   .product-add-progress button strong { display: none; }
