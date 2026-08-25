@@ -5745,6 +5745,21 @@ html { overflow-y: auto !important; }
 .app-shell .product-add-page {
   max-width: 1320px !important;
   padding: 0 26px 42px !important;
+  min-height: calc(100vh - 64px);
+}
+html:has(.product-add-page),
+body:has(.product-add-page),
+#root:has(.product-add-page) {
+  height: auto !important;
+  min-height: 100%;
+  overflow-y: auto !important;
+}
+.app-shell.stitch-shell:has(.product-add-page),
+.stitch-shell > main:has(.product-add-page) {
+  height: auto !important;
+  min-height: 100vh !important;
+  max-height: none !important;
+  overflow: visible !important;
 }
 .app-shell .product-add-page .page-heading {
   align-items: center;
@@ -5771,9 +5786,9 @@ html { overflow-y: auto !important; }
   vertical-align: 2px;
 }
 .product-add-wizardbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 18px;
   min-height: 54px;
   margin: 0 0 18px;
@@ -5791,6 +5806,7 @@ html { overflow-y: auto !important; }
   letter-spacing: .08em;
   text-decoration: none;
 }
+.product-add-cancel { justify-self: start; }
 .product-add-cancel span { font-size: 20px; font-weight: 400; letter-spacing: 0; }
 .product-add-cancel:hover { color: var(--st-primary-soft) !important; }
 .product-add-brand-mark {
@@ -5798,7 +5814,8 @@ html { overflow-y: auto !important; }
   place-items: center;
   width: 27px;
   height: 27px;
-  margin-left: auto;
+  margin-left: 0;
+  justify-self: center;
   color: var(--st-primary-soft);
   border: 1px solid var(--st-outline);
   border-radius: 50%;
@@ -5807,6 +5824,8 @@ html { overflow-y: auto !important; }
 .product-add-progress {
   display: flex;
   align-items: center;
+  justify-self: end;
+  min-width: 0;
   gap: 11px;
 }
 .product-add-progress > i {
@@ -6129,7 +6148,7 @@ html { overflow-y: auto !important; }
 .publish-checklist-footer small { grid-column: 1 / -1; color: var(--st-muted); font-size: 10px; text-align: center; }
 
 @media (max-width: 900px) {
-  .product-add-wizardbar { align-items: flex-start; flex-wrap: wrap; }
+  .product-add-wizardbar { display: flex; align-items: flex-start; flex-wrap: wrap; }
   .product-add-brand-mark { display: none; }
   .product-add-progress { margin-left: auto; }
   .product-publish-layout { grid-template-columns: 1fr; }
