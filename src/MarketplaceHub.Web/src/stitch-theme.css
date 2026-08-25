@@ -5269,7 +5269,7 @@ html { overflow-y: auto !important; }
 
 /* Products reference skin: compact catalog overview and data table. */
 .app-shell .products-page {
-  padding: 12px 18px 28px !important;
+  padding: 4px 18px 28px !important;
 }
 .app-shell .products-page .page-heading {
   margin-bottom: 14px !important;
@@ -5373,7 +5373,9 @@ html { overflow-y: auto !important; }
 }
 .app-shell .products-page .product-toolbar .order-search input {
   min-width: 0;
-  min-height: 28px;
+  width: 100%;
+  height: 30px !important;
+  min-height: 30px !important;
   padding: 0 !important;
   background: transparent !important;
   border: 0 !important;
@@ -5585,7 +5587,10 @@ html { overflow-y: auto !important; }
   border-radius: 50%;
   box-shadow: 0 0 6px rgba(57, 230, 176, .7);
 }
-.app-shell .products-page .product-list-status small:where(:not(:first-child)) { }
+.app-shell .products-page .product-list-status.inactive small::before {
+  background: #8f8fa0;
+  box-shadow: none;
+}
 .app-shell .products-page .product-list-actions {
   display: flex;
   align-items: center;
