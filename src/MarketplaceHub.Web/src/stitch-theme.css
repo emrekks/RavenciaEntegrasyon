@@ -3678,3 +3678,69 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   .settings-tabs button,
   .mapping-popup-content .mapping-section-tabs > button { min-height: 38px !important; padding: 0 10px !important; }
 }
+
+/* Jobs category navigation follows the same quiet underline treatment as the
+   mapping and settings tabs. */
+.jobs-reference-tabs {
+  align-items: flex-end !important;
+  gap: 2px !important;
+  min-height: 45px !important;
+  padding: 0 8px !important;
+  background: transparent !important;
+  border-bottom: 1px solid var(--st-surface-highest) !important;
+}
+.jobs-reference-tabs button {
+  position: relative;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 7px;
+  min-height: 45px !important;
+  padding: 0 14px !important;
+  color: var(--st-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+}
+.jobs-reference-tabs button:hover {
+  color: var(--st-text) !important;
+  background: rgba(255,255,255,.035) !important;
+  border-bottom-color: transparent !important;
+}
+.jobs-reference-tabs button.active,
+.jobs-reference-tabs button[aria-selected="true"] {
+  color: var(--st-primary-soft) !important;
+  background: transparent !important;
+  border-bottom-color: var(--st-primary) !important;
+}
+.jobs-reference-tabs .jobs-reference-tab-count {
+  color: var(--st-text);
+  background: var(--st-surface-highest);
+}
+.jobs-reference-tabs button.active .jobs-reference-tab-count,
+.jobs-reference-tabs button[aria-selected="true"] .jobs-reference-tab-count {
+  color: #fff;
+  background: rgba(88,101,242,.26);
+}
+.jobs-reference-search > .jobs-reference-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 7px;
+  flex: 0 0 16px;
+  color: var(--st-primary-soft);
+}
+.jobs-reference-status-summary > span.error {
+  padding: 0 !important;
+  color: #ffb4ab !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+.mapping-category-builder .category-library-search-control.is-open .category-library-search-toggle,
+.mapping-category-builder .category-library-search-control.is-open .category-library-search-toggle:hover,
+.mapping-category-builder .category-library-search-control.is-open .category-library-search-toggle:focus,
+.mapping-category-builder .category-library-search-control.is-open .category-library-search-toggle:focus-visible {
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}

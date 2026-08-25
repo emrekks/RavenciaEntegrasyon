@@ -94,13 +94,14 @@ function timeRangeLabel(value: JobTimeRange) {
   return 'Son 24 Saat'
 }
 
-type JobsIconName = 'calendar' | 'chevron-down' | 'filter' | 'refresh'
+type JobsIconName = 'calendar' | 'chevron-down' | 'filter' | 'refresh' | 'search'
 
 function JobsIcon({ name }: { name: JobsIconName }) {
   const common = { className: `jobs-reference-icon jobs-reference-icon-${name}`, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true, focusable: false }
   if (name === 'calendar') return <svg {...common}><rect x="3.5" y="4.5" width="17" height="16" rx="2" /><path d="M7.5 3.5v3M16.5 3.5v3M3.5 9h17M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01M16 17h.01" /></svg>
   if (name === 'chevron-down') return <svg {...common}><path d="m7 9 5 5 5-5" /></svg>
   if (name === 'filter') return <svg {...common}><path d="M4 5h16M7 12h10M10 19h4" /></svg>
+  if (name === 'search') return <svg {...common}><circle cx="10.5" cy="10.5" r="5.75" /><path d="m15 15 5 5" /></svg>
   return <svg {...common}><path d="M20 11a8 8 0 0 0-14.8-4L4 9" /><path d="M4 5v4h4M4 13a8 8 0 0 0 14.8 4L20 15" /><path d="M20 19v-4h-4" /></svg>
 }
 
@@ -223,7 +224,7 @@ export function JobsPage({ me }: { me: Me }) {
           {statusSummary.cancelled > 0 && <span className="cancelled"><i aria-hidden="true" />İptal <strong>{statusSummary.cancelled}</strong></span>}
         </div>
         <div className="jobs-reference-toolbar-actions">
-          <label className="jobs-reference-search"><span aria-hidden="true">⌕</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Correlation ID..." aria-label="Correlation ID ile işlem ara" /></label>
+          <label className="jobs-reference-search"><JobsIcon name="search" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Correlation ID..." aria-label="Correlation ID ile işlem ara" /></label>
           <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="İşlemleri yenile" onClick={refreshJobs}><JobsIcon name="refresh" /></button>
         </div>
       </div>
