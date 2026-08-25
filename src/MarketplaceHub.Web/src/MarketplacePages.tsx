@@ -851,6 +851,23 @@ function CategoryMappingWorkspace() {
   const createCategory = useMutation({ mutationFn: () => { if (!categoryName.trim()) throw new Error('Kategori adı zorunludur.'); return hubApi<LocalCategory>('/catalog/categories', { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ name: categoryName.trim(), parentId: null }) }) }, onSuccess: async category => { client.setQueryData<Page<LocalCategory>>(['categories', 'mapping'], current => current ? { ...current, items: [...current.items.filter(item => item.id !== category.id), category] } : current); setLocalId(category.id); setExternalId(''); setCategoryName(''); setNotice(`“${category.name}” panel kategorisi oluşturuldu ve seçildi.`); await client.invalidateQueries({ queryKey: ['categories', 'mapping'] }) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Kategori oluşturulamadı.') })
   useEffect(() => { setExternalId(mapping.data?.externalId ?? '') }, [mapping.data])
   useEffect(() => { document.querySelector<HTMLDetailsElement>('.mapping-category-builder .mapping-local-manager')?.setAttribute('open', '') }, [])
+  useEffect(() => {
+    if (!panelPickerOpen) return
+    const positionPicker = () => {
+      const trigger = document.querySelector<HTMLElement>('.mapping-category-builder .mapping-reference-local .panel-category-picker-trigger')
+      const picker = document.querySelector<HTMLElement>('.mapping-category-builder .mapping-reference-local > .panel-category-picker')
+      if (!trigger || !picker) return
+      const rect = trigger.getBoundingClientRect()
+      picker.style.setProperty('position', 'fixed', 'important')
+      picker.style.setProperty('top', `${Math.round(rect.bottom + 6)}px`, 'important')
+      picker.style.setProperty('left', `${Math.round(rect.left)}px`, 'important')
+      picker.style.setProperty('width', `${Math.round(rect.width)}px`, 'important')
+    }
+    positionPicker()
+    window.addEventListener('resize', positionPicker)
+    window.addEventListener('scroll', positionPicker, true)
+    return () => { window.removeEventListener('resize', positionPicker); window.removeEventListener('scroll', positionPicker, true) }
+  }, [panelPickerOpen])
   const trendyolConnections = connections.data?.items.filter(item => item.platformCode === 'TRENDYOL' && (item.status === 'ACTIVE' || item.status === 'VERIFIED')) ?? []
   useEffect(() => { if (!connectionId && trendyolConnections.length) setConnectionId(trendyolConnections[0].id) }, [connectionId, trendyolConnections])
   const activeCategories = localCategories.data?.items.filter(item => item.isActive) ?? []
