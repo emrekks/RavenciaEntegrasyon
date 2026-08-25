@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, type Me } from './api'
 
@@ -36,19 +36,63 @@ function idempotencyKey(action: string, jobId: string) {
   return `${action}-${jobId}-${crypto.randomUUID()}`
 }
 
-function statusClass(status: JobStatus) {
-  if (status === 'SUCCEEDED') return 'badge good'
-  if (status === 'PENDING' || status === 'LEASED' || status === 'RETRY_SCHEDULED') return 'badge warn'
-  return 'badge neutral'
+function jobStatusLabel(status: JobStatus) {
+  if (status === 'PENDING') return 'Bekliyor'
+  if (status === 'LEASED') return 'Çalışıyor'
+  if (status === 'RETRY_SCHEDULED') return 'Yeniden denenecek'
+  if (status === 'BLOCKED') return 'Engellendi'
+  if (status === 'MANUAL_REVIEW') return 'İnceleme bekliyor'
+  if (status === 'SUCCEEDED') return 'Başarılı'
+  if (status === 'DEAD') return 'Deneme limiti doldu'
+  return 'İptal edildi'
+}
+
+function jobStatusTone(status: JobStatus) {
+  if (status === 'SUCCEEDED') return 'success'
+  if (status === 'LEASED') return 'running'
+  if (status === 'RETRY_SCHEDULED') return 'retry'
+  if (status === 'BLOCKED' || status === 'MANUAL_REVIEW' || status === 'DEAD') return 'error'
+  return 'neutral'
+}
+
+function jobPresentation(jobType: string) {
+  const type = jobType.toUpperCase()
+  if (type.includes('PRICE') || type.includes('INVENTORY') || type.includes('STOCK')) return { title: 'Fiyat Güncelleme', icon: '◈' }
+  if (type.includes('ORDER') || type.includes('SHIPMENT') || type.includes('PACKAGE') || type.includes('COURIER') || type.includes('LABEL')) return { title: 'Sipariş Aktarımı', icon: '▱' }
+  if (type.includes('INVOICE') || type.includes('EFATURAM') || type.includes('BILLING')) return { title: 'Fatura İletimi', icon: '▤' }
+  if (type.includes('RETURN') || type.includes('CLAIM')) return { title: 'İade Senkronizasyonu', icon: '↩' }
+  if (type.includes('PRODUCT') || type.includes('CATALOG') || type.includes('PUBLICATION') || type.includes('ATTRIBUTE') || type.includes('CATEGORY') || type.includes('BRAND')) return { title: 'Ürün Senkronizasyonu', icon: '□' }
+  if (type.includes('CONNECTION') || type.includes('PROBE') || type.includes('TEST')) return { title: 'Bağlantı Kontrolü', icon: '⌁' }
+  return { title: jobType.replaceAll('_', ' ').toLocaleLowerCase('tr-TR').replace(/(^|\s)\S/g, value => value.toLocaleUpperCase('tr-TR')), icon: '•' }
+}
+
+function jobSource(jobType: string) {
+  const type = jobType.toUpperCase()
+  if (type.includes('EFATURAM') || type.includes('INVOICE')) return 'e-Faturam API'
+  if (type.includes('TRENDYOL')) return 'Trendyol API'
+  if (type.includes('HEPSIBURADA')) return 'Hepsiburada API'
+  if (type.includes('AMAZON')) return 'Amazon API'
+  return 'Ravencia Worker'
+}
+
+function formatJobTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return { time: '—', day: '—' }
+  const now = new Date()
+  const sameDay = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
+  return {
+    time: date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    day: sameDay ? 'Bugün' : date.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
 }
 
 type JobCategory = 'ALL' | 'ORDERS' | 'PRICE_INVENTORY' | 'CATALOG' | 'INVOICES' | 'RETURNS' | 'SYSTEM'
 
 const categoryTabs: Array<{ key: JobCategory; label: string; match: (type: string) => boolean }> = [
-  { key: 'ALL', label: 'Tüm İşlemler', match: () => true },
-  { key: 'ORDERS', label: 'Sipariş & Kargo', match: t => /ORDER|SHIPMENT|PACKAGE|COURIER|LABEL/i.test(t) },
-  { key: 'PRICE_INVENTORY', label: 'Fiyat & Stok', match: t => /PRICE|INVENTORY|STOCK|OFFER/i.test(t) },
-  { key: 'CATALOG', label: 'Ürün & Yayın', match: t => /PRODUCT|CATALOG|IMPORT|ATTRIBUTE|CATEGORY|BRAND|PUBLICATION/i.test(t) },
+  { key: 'ALL', label: 'Tüm işlemler', match: () => true },
+  { key: 'ORDERS', label: 'Sipariş/Kargo', match: t => /ORDER|SHIPMENT|PACKAGE|COURIER|LABEL/i.test(t) },
+  { key: 'PRICE_INVENTORY', label: 'Fiyat/Stok', match: t => /PRICE|INVENTORY|STOCK|OFFER/i.test(t) },
+  { key: 'CATALOG', label: 'Ürün/Yayın', match: t => /PRODUCT|CATALOG|IMPORT|ATTRIBUTE|CATEGORY|BRAND|PUBLICATION/i.test(t) },
   { key: 'INVOICES', label: 'Faturalar', match: t => /INVOICE|EFATURAM|BILLING/i.test(t) },
   { key: 'RETURNS', label: 'İadeler', match: t => /RETURN|CLAIM/i.test(t) },
   { key: 'SYSTEM', label: 'Sistem & Test', match: t => /TEST|PROBE|PING|MIGRATION|SCAN|SCHEDULER/i.test(t) }
@@ -59,6 +103,7 @@ export function JobsPage({ me }: { me: Me }) {
   const [category, setCategory] = useState<JobCategory>('ALL')
   const [status, setStatus] = useState<'' | JobStatus>('')
   const [search, setSearch] = useState('')
+  const [filterOpen, setFilterOpen] = useState(false)
   const [pageSize, setPageSize] = useState(20)
   const [pageNumber, setPageNumber] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -99,28 +144,72 @@ export function JobsPage({ me }: { me: Me }) {
   const selected = detail.data?.job
   const retryable = selected && ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(selected.status)
   const cancellable = selected && !['LEASED', 'SUCCEEDED', 'DEAD', 'CANCELLED'].includes(selected.status)
+  const errorCount = rawJobs.filter(job => ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status)).length
+  const pageNumbers = useMemo(() => {
+    const pages = new Set([1, totalPages, currentPage, Math.max(1, currentPage - 1), Math.min(totalPages, currentPage + 1)])
+    return [...pages].sort((a, b) => a - b)
+  }, [currentPage, totalPages])
+  const refreshJobs = () => {
+    void Promise.all([
+      client.invalidateQueries({ queryKey: ['jobs'] }),
+      selectedId ? client.invalidateQueries({ queryKey: ['job', selectedId] }) : Promise.resolve()
+    ])
+  }
 
-  return <section className="content jobs-page"><div className="page-heading"><div><p className="eyebrow">Operasyon</p><h1>İşlem Takibi</h1><p className="lede">Arka plan işlemlerini, senkronizasyon raporlarını, denemeleri ve çalışma durumlarını izleyin.</p></div></div>
-    <div className="order-tabs job-tabs" role="tablist" aria-label="İşlem kategorileri">
-      {categoryTabs.map(tab => {
-        const count = rawJobs.filter(j => tab.match(j.jobType)).length
-        return (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={category === tab.key}
-            className={category === tab.key ? 'active' : ''}
-            key={tab.key}
-            onClick={() => setCategory(tab.key)}
-          >
-            <span>{tab.label}</span>
-            <b>{count}</b>
-          </button>
-        )
-      })}
+  return <section className="content jobs-page jobs-reference-page">
+    <div className="jobs-reference-heading">
+      <div>
+        <h1>Arka Plan İşlemleri</h1>
+        <p>Pazaryerleri ile sistem arasındaki senkronizasyon kuyruğunu ve hataları izleyin.</p>
+      </div>
+      <div className="jobs-reference-heading-actions">
+        <button type="button" className="jobs-reference-range"><span aria-hidden="true">◷</span>Son 24 Saat<span aria-hidden="true">⌄</span></button>
+        <button type="button" className="jobs-reference-filter-toggle" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><span aria-hidden="true">☷</span>Filtrele</button>
+      </div>
     </div>
-    <div className="order-toolbar"><input className="order-search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Job türü, hata veya correlation ID ara…" aria-label="İşlem ara" /><select value={status} onChange={event => setStatus(event.target.value as '' | JobStatus)} aria-label="Duruma göre filtrele">{statuses.map(item => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select><label>Sayfa başına<select aria-label="Sayfa başına işlem" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label></div>
-    {list.isLoading ? <p>İşlemler yükleniyor…</p> : list.isError ? <div role="alert" className="error">İşlem listesi alınamadı.</div> : <><div className="table-wrap"><table><thead><tr><th>İşlem</th><th>Durum</th><th>Deneme</th><th>Oluşturulma</th></tr></thead><tbody>{pageJobs.map(job => <tr key={job.id} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') setSelectedId(job.id) }} style={{ cursor: 'pointer' }}><td><strong>{job.jobType}</strong><small>{job.lastErrorCode ?? job.correlationId}</small></td><td><span className={statusClass(job.status)}>{job.status}</span></td><td>{job.attemptCount}/{job.maxAttempts}</td><td>{new Date(job.createdAt).toLocaleString('tr-TR')}</td></tr>)}{filtered.length === 0 && <tr><td colSpan={4}>Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.</td></tr>}</tbody></table></div>{filtered.length > 0 && <div className="order-pagination"><span>{(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filtered.length)} / {filtered.length} işlem</span><div><button type="button" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>Önceki</button><b>Sayfa {currentPage} / {totalPages}</b><button type="button" disabled={currentPage >= totalPages} onClick={() => setPageNumber(value => Math.min(totalPages, value + 1))}>Sonraki</button></div></div>}</>}
-    {selectedId && <div className="job-detail-backdrop" role="presentation" onMouseDown={() => setSelectedId(null)}><aside className="job-detail-drawer panel" role="dialog" aria-modal="true" aria-labelledby="job-detail-title" onMouseDown={event => event.stopPropagation()}><div className="panel-title"><div><p className="eyebrow">İŞLEM TAKİBİ</p><h2 id="job-detail-title">İşlem ayrıntısı</h2><p>{selected?.id ?? selectedId}</p></div><button type="button" className="secondary" onClick={() => setSelectedId(null)}>Kapat</button></div>{detail.isLoading ? <p>Yükleniyor…</p> : detail.isError || !detail.data ? <div role="alert" className="error">İşlem ayrıntısı alınamadı.</div> : <><div className="job-detail-facts"><p><small>Correlation ID</small><strong>{detail.data.job.correlationId}</strong></p><p><small>Son hata</small><strong>{detail.data.job.lastErrorCode ?? 'Yok'}</strong><span>{detail.data.job.lastErrorSummary ?? 'Hata açıklaması bulunmuyor.'}</span></p></div>{elevated && <div className="job-detail-actions">{retryable && <button type="button" disabled={action.isPending} onClick={() => action.mutate({ id: detail.data.job.id, verb: 'retry' })}>Yeniden dene</button>}{cancellable && <button type="button" className="secondary" disabled={action.isPending} onClick={() => action.mutate({ id: detail.data.job.id, verb: 'cancel' })}>İptal et</button>}</div>}{action.isError && <div role="alert" className="error">İşlem güncellenemedi.</div>}<h3>Deneme geçmişi</h3><div className="table-wrap"><table><thead><tr><th>#</th><th>Başlangıç</th><th>Sonuç</th><th>Hata</th></tr></thead><tbody>{detail.data.attempts.map(attempt => <tr key={attempt.attemptNumber}><td>{attempt.attemptNumber}</td><td>{new Date(attempt.startedAt).toLocaleString('tr-TR')}</td><td>{attempt.completedAt ? (attempt.succeeded ? 'Başarılı' : 'Başarısız') : 'Çalışıyor'}</td><td>{attempt.errorCode ?? '—'}<small>{attempt.errorSummary ?? ''}</small></td></tr>)}{detail.data.attempts.length === 0 && <tr><td colSpan={4}>Henüz deneme yok.</td></tr>}</tbody></table></div></>}</aside></div>}
+    <div className="jobs-reference-canvas">
+      <div className="jobs-reference-tabs" role="tablist" aria-label="İşlem kategorileri">
+        {categoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => (
+          <button type="button" role="tab" aria-selected={category === tab.key} className={category === tab.key ? 'active' : ''} key={tab.key} onClick={() => setCategory(tab.key)}>{tab.label}</button>
+        ))}
+      </div>
+      <div className="jobs-reference-toolbar">
+        <div className="jobs-reference-error-summary"><i aria-hidden="true" /> <strong>{errorCount}</strong> işlem hata verdi</div>
+        <div className="jobs-reference-toolbar-actions">
+          <label className="jobs-reference-search"><span aria-hidden="true">⌕</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Correlation ID..." aria-label="Correlation ID ile işlem ara" /></label>
+          <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="İşlemleri yenile" onClick={refreshJobs}>↻</button>
+        </div>
+      </div>
+      {filterOpen && <div className="jobs-reference-filter-panel">
+        <label>Durum<select value={status} onChange={event => setStatus(event.target.value as '' | JobStatus)}>{statuses.map(item => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select></label>
+        <label>Sayfa başına<select aria-label="Sayfa başına işlem" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+      </div>}
+      {list.isLoading ? <p className="jobs-reference-state">İşlemler yükleniyor…</p> : list.isError ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem listesi alınamadı.</div> : <>
+        <div className="jobs-reference-table-scroll"><table className="jobs-reference-table"><thead><tr><th>İşlem Türü</th><th>Durum</th><th>Deneme</th><th>Zaman</th><th>Correlation ID</th><th>Aksiyon</th></tr></thead><tbody>
+          {pageJobs.map(job => {
+            const presentation = jobPresentation(job.jobType)
+            const time = formatJobTime(job.createdAt)
+            return <tr className="jobs-reference-row" key={job.id} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') setSelectedId(job.id) }}>
+              <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true">{presentation.icon}</span><span><strong>{presentation.title}</strong><small>{jobSource(job.jobType)}</small></span></div></td>
+              <td><span className={`jobs-reference-status ${jobStatusTone(job.status)}`}><i aria-hidden="true" />{jobStatusLabel(job.status)}</span></td>
+              <td className="jobs-reference-attempt">{job.attemptCount} / {job.maxAttempts}</td>
+              <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day}</small></div></td>
+              <td><span className="jobs-reference-correlation">{job.correlationId}</span></td>
+              <td><button type="button" className="jobs-reference-row-action" aria-label={`${presentation.title} ayrıntısını aç`} onClick={event => { event.stopPropagation(); setSelectedId(job.id) }}>›</button></td>
+            </tr>
+          })}
+          {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={6}>Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.</td></tr>}
+        </tbody></table></div>
+        {filtered.length > 0 && <div className="jobs-reference-pagination"><strong>Toplam {filtered.length.toLocaleString('tr-TR')} kayıt</strong><div className="jobs-reference-page-buttons">
+          <button type="button" aria-label="Önceki sayfa" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>‹</button>
+          {pageNumbers.map((page, index) => <Fragment key={page}>{index > 0 && page - pageNumbers[index - 1] > 1 && <span aria-hidden="true">…</span>}<button type="button" className={page === currentPage ? 'active' : ''} aria-current={page === currentPage ? 'page' : undefined} onClick={() => setPageNumber(page)}>{page}</button></Fragment>)}
+          <button type="button" aria-label="Sonraki sayfa" disabled={currentPage >= totalPages} onClick={() => setPageNumber(value => Math.min(totalPages, value + 1))}>›</button>
+        </div></div>}
+      </>}
+    </div>
+    {selectedId && <div className="job-detail-backdrop jobs-reference-drawer-backdrop" role="presentation" onMouseDown={() => setSelectedId(null)}><aside className="job-detail-drawer jobs-reference-drawer panel" role="dialog" aria-modal="true" aria-labelledby="job-detail-title" onMouseDown={event => event.stopPropagation()}>
+      <div className="jobs-reference-drawer-header"><div><span className="jobs-reference-drawer-correlation">{selected?.correlationId ?? selectedId}</span>{selected && <span className={`jobs-reference-status ${jobStatusTone(selected.status)}`}><i aria-hidden="true" />{jobStatusLabel(selected.status)}</span>}<h2 id="job-detail-title">{selected ? jobPresentation(selected.jobType).title : 'İşlem ayrıntısı'}</h2><p>{selected ? `${jobSource(selected.jobType)} · ${selected.jobType}` : 'İşlem ayrıntısı yükleniyor'}</p></div><button type="button" className="jobs-reference-drawer-close" aria-label="Detay panelini kapat" onClick={() => setSelectedId(null)}>×</button></div>
+      {detail.isLoading ? <p className="jobs-reference-state">Yükleniyor…</p> : detail.isError || !detail.data ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem ayrıntısı alınamadı.</div> : <div className="jobs-reference-drawer-body"><div className="jobs-reference-error-alert"><strong>{detail.data.job.lastErrorCode ?? 'İşlem durumu'}</strong><span>{detail.data.job.lastErrorSummary ?? 'Hata açıklaması bulunmuyor.'}</span></div><div className="job-detail-facts"><p><small>Correlation ID</small><strong>{detail.data.job.correlationId}</strong></p><p><small>Son hata</small><strong>{detail.data.job.lastErrorCode ?? 'Yok'}</strong></p></div>{elevated && <div className="job-detail-actions">{retryable && <button type="button" disabled={action.isPending} onClick={() => action.mutate({ id: detail.data.job.id, verb: 'retry' })}>Manuel Yeniden Dene</button>}{cancellable && <button type="button" className="secondary" disabled={action.isPending} onClick={() => action.mutate({ id: detail.data.job.id, verb: 'cancel' })}>İptal et</button>}</div>}{action.isError && <div role="alert" className="error">İşlem güncellenemedi.</div>}<h3>Deneme geçmişi</h3><div className="table-wrap"><table><thead><tr><th>#</th><th>Başlangıç</th><th>Sonuç</th><th>Hata</th></tr></thead><tbody>{detail.data.attempts.map(attempt => <tr key={attempt.attemptNumber}><td>{attempt.attemptNumber}</td><td>{new Date(attempt.startedAt).toLocaleString('tr-TR')}</td><td>{attempt.completedAt ? (attempt.succeeded ? 'Başarılı' : 'Başarısız') : 'Çalışıyor'}</td><td>{attempt.errorCode ?? '—'}<small>{attempt.errorSummary ?? ''}</small></td></tr>)}{detail.data.attempts.length === 0 && <tr><td colSpan={4}>Henüz deneme yok.</td></tr>}</tbody></table></div></div>}
+    </aside></div>}
   </section>
 }
