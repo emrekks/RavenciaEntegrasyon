@@ -416,6 +416,7 @@ type DashboardOrder = { orderNumber: string; derivedStatus: string; orderedAt: s
 type DashboardReturn = { status: string }
 type DashboardInvoice = { invoiceId: string | null; isDueSoon: boolean; canCreateInvoice: boolean }
 type DashboardProduct = { id: string; title: string; totalStock: number; primaryImageUrl: string | null; activePlatforms: string[] | null }
+type DashboardJob = { jobType: string; status: string; createdAt: string; completedAt: string | null }
 
 function DashboardMetricIcon({ kind }: { kind: string }) {
   const icons: Record<string, ReactNode> = {
@@ -431,13 +432,26 @@ function DashboardMetricIcon({ kind }: { kind: string }) {
   return <span className={`dashboard-metric-icon ${kind}`} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{icons[kind] ?? icons.pending}</svg></span>
 }
 
+function dashboardSyncTime(job: DashboardJob | undefined) {
+  if (!job) return 'Kayıt yok'
+  const timestamp = new Date(job.completedAt ?? job.createdAt)
+  if (Number.isNaN(timestamp.getTime())) return 'Kayıt yok'
+  const minutes = Math.max(0, Math.floor((Date.now() - timestamp.getTime()) / 60_000))
+  if (minutes < 1) return 'Az önce'
+  if (minutes < 60) return `${minutes} dk önce`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} sa önce`
+  return timestamp.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) + ` ${timestamp.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`
+}
+
 function Dashboard({ me }: { me: Me }) {
   const connections = useQuery({ queryKey: ['dashboard-connections'], queryFn: () => loadAllPages<ShellConnection>('/connections') })
   const orders = useQuery({ queryKey: ['dashboard-orders'], queryFn: () => loadAllPages<DashboardOrder>('/orders') })
   const returns = useQuery({ queryKey: ['dashboard-returns'], queryFn: () => loadAllPages<DashboardReturn>('/returns') })
   const invoices = useQuery({ queryKey: ['dashboard-invoice-workspace'], queryFn: () => hubApi<DashboardInvoice[]>('/invoice-workspace') })
   const products = useQuery({ queryKey: ['dashboard-products'], queryFn: () => loadAllPages<DashboardProduct>('/products') })
-  const loading = [connections, orders, returns, invoices, products].some(query => query.isLoading)
+  const jobs = useQuery({ queryKey: ['dashboard-jobs'], queryFn: () => hubApi<DashboardJob[]>('/jobs') })
+  const loading = [connections, orders, returns, invoices, products, jobs].some(query => query.isLoading)
   const now = new Date(); const orderItems = orders.data?.items ?? []; const productItems = products.data?.items ?? []
   const terminal = new Set(['DELIVERED', 'CANCELLED', 'CANCELED', 'RETURNED'])
   const pending = orderItems.filter(item => !terminal.has(item.derivedStatus.toUpperCase()))
@@ -455,17 +469,20 @@ function Dashboard({ me }: { me: Me }) {
   const cargoBars = byCargo.slice(0, 5)
   const maxCargo = Math.max(1, ...cargoBars.map(([, count]) => count))
   const connectionItems = connections.data?.items ?? []
-  const apiItems = connectionItems.slice(0, 3)
   const activeConnections = connectionItems.filter(item => ['ACTIVE', 'VERIFIED', 'CONNECTED'].includes(item.status.toUpperCase()))
   const syncConnection = activeConnections[0] ?? connectionItems[0]
-  const syncLabel = syncConnection?.lastSuccessAt
-    ? `Son senkronizasyon: ${new Date(syncConnection.lastSuccessAt).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
-    : 'Henüz senkronizasyon kaydı yok'
-  const errors = [connections.error, orders.error, returns.error, invoices.error, products.error].filter(Boolean)
-  return <section className="content dashboard"><div className="page-heading"><div><p className="eyebrow">Operasyon merkezi</p><h1>Genel Bakış</h1><p className="lede">Merhaba {me.displayName}. Günlük operasyonun önemli sinyalleri tek ekranda.</p></div><div className="dashboard-heading-actions"><span className="dashboard-date">{now.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span><Link className="button-link" to="/orders">Siparişleri aç</Link></div></div>
+  const latestSuccessfulJob = (terms: string[]) => (jobs.data ?? []).filter(job => job.status === 'SUCCEEDED' && terms.some(term => job.jobType.toUpperCase().includes(term))).sort((a, b) => new Date(b.completedAt ?? b.createdAt).getTime() - new Date(a.completedAt ?? a.createdAt).getTime())[0]
+  const syncRows = [
+    { label: 'Siparişler', kind: 'orders', job: latestSuccessfulJob(['ORDER', 'SHIPMENT', 'PACKAGE']) },
+    { label: 'İadeler', kind: 'returns', job: latestSuccessfulJob(['RETURN', 'CLAIM']) },
+    { label: 'Stok', kind: 'stock', job: latestSuccessfulJob(['INVENTORY', 'STOCK', 'PRICE', 'PRODUCT']) }
+  ]
+  const latestSyncJob = syncRows.map(row => row.job).filter((job): job is DashboardJob => Boolean(job)).sort((a, b) => new Date(b.completedAt ?? b.createdAt).getTime() - new Date(a.completedAt ?? a.createdAt).getTime())[0]
+  const errors = [connections.error, orders.error, returns.error, invoices.error, products.error, jobs.error].filter(Boolean)
+  return <section className="content dashboard"><div className="page-heading"><div><p className="eyebrow">Operasyon merkezi</p><h1>Genel Bakış</h1><p className="lede">Merhaba {me.displayName}. Günlük operasyonun önemli sinyalleri tek ekranda.</p></div><div className="dashboard-heading-actions"><span className="dashboard-date">{now.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div></div>
     {errors.length > 0 && <div role="alert" className="error">Bazı operasyon verileri alınamadı; görünen metrikler kısmi olabilir.</div>}
     <div className="metrics dashboard-metrics operational-metrics"><article><DashboardMetricIcon kind="pending" /><small>BEKLEYEN SİPARİŞ</small><strong>{loading ? '—' : pending.length}</strong><p>{byPlatform.map(([name, count]) => `${name}: ${count}`).join(' · ') || 'Bekleyen yok'}</p></article><article className={late.length ? 'danger-metric' : ''}><DashboardMetricIcon kind="late" /><small>GECİKEN SİPARİŞ</small><strong>{loading ? '—' : late.length}</strong><p>Termin zamanı aşılmış</p></article><article><DashboardMetricIcon kind="today" /><small>BUGÜNKÜ SİPARİŞ</small><strong>{loading ? '—' : today.length}</strong><p>{today.reduce((sum, item) => sum + item.productQuantity, 0)} ürün</p></article><article><DashboardMetricIcon kind="month" /><small>BU AYKİ SİPARİŞ</small><strong>{loading ? '—' : month.length}</strong><p>Ay içindeki siparişler</p></article><article><DashboardMetricIcon kind="return" /><small>BEKLEYEN İADE</small><strong>{loading ? '—' : pendingReturns}</strong><p>İşlem veya taşıma aşaması</p></article><article className={dueSoon ? 'warning-metric' : ''}><DashboardMetricIcon kind="invoice" /><small>SÜRESİ YAKLAŞAN FATURA</small><strong>{loading ? '—' : dueSoon}</strong><p>5. gün ve sonrası</p></article><article><DashboardMetricIcon kind="uninvoiced" /><small>FATURALANDIRILMAMIŞ</small><strong>{loading ? '—' : uninvoiced}</strong><p>Kesilebilir kayıtlar</p></article><article><DashboardMetricIcon kind="stock" /><small>DÜŞÜK / YOK STOK</small><strong>{loading ? '—' : lowStock.length}</strong><p>5 adet ve altı</p></article></div>
-    <div className="dashboard-report-grid"><article className="panel dashboard-cargo-panel"><div className="panel-title"><div><h2>Kargo bazlı operasyon</h2><p>Yüklenen siparişlerin dağılımı</p></div><Link to="/orders">Tümünü gör →</Link></div><div className="dashboard-cargo-chart">{cargoBars.map(([name, count]) => <div className="dashboard-cargo-column" key={name}><div className="dashboard-cargo-bar-wrap"><b className="dashboard-cargo-bar" style={{ height: `${Math.max(12, count / maxCargo * 100)}%` }}>{count}</b></div><span>{name.replace(/ Marketplace/gi, '')}</span></div>)}{!cargoBars.length && <p>Henüz kargo verisi yok.</p>}</div></article><article className="panel dashboard-api-panel"><div className="panel-title"><div><h2>API Durumları</h2><p>Bağlantıların anlık durumu</p></div><Link to="/integrations">Yönet →</Link></div><div className="dashboard-api-list">{apiItems.map(item => { const isActive = ['ACTIVE', 'VERIFIED', 'CONNECTED'].includes(item.status.toUpperCase()); return <Link to={`/integrations/${item.id}`} key={item.id}><span className={`dashboard-status-dot ${isActive ? 'active' : 'waiting'}`} /><strong>{item.displayName}</strong><b>{isActive ? 'Aktif' : 'Beklemede'}</b></Link> })}{!apiItems.length && <p>Bağlantı bulunamadı.</p>}</div><div className="dashboard-sync-meta"><span>↻</span>{syncLabel}</div></article></div>
+    <div className="dashboard-report-grid"><article className="panel dashboard-cargo-panel"><div className="panel-title"><div><h2>Kargo bazlı operasyon</h2><p>Yüklenen siparişlerin dağılımı</p></div><Link to="/orders">Tümünü gör →</Link></div><div className="dashboard-cargo-chart">{cargoBars.map(([name, count]) => <div className="dashboard-cargo-column" key={name}><div className="dashboard-cargo-bar-wrap"><b className="dashboard-cargo-bar" style={{ height: `${Math.max(12, count / maxCargo * 100)}%` }}>{count}</b></div><span>{name.replace(/ Marketplace/gi, '')}</span></div>)}{!cargoBars.length && <p>Henüz kargo verisi yok.</p>}</div></article><article className="panel dashboard-api-panel"><div className="panel-title"><div><h2>Son senkronizasyonlar</h2><p>Sipariş, iade ve stok kayıtlarının güncel zamanı</p></div><Link to="/jobs">İşlem takibi →</Link></div><div className="dashboard-api-list dashboard-sync-list">{syncRows.map(row => <Link to="/jobs" key={row.label}><span className={`dashboard-sync-icon ${row.kind}`} aria-hidden="true">↻</span><span><strong>{row.label}</strong><small>{row.job ? 'Başarılı senkronizasyon' : 'Henüz kayıt yok'}</small></span><b>{dashboardSyncTime(row.job)}</b></Link>)}</div><div className="dashboard-sync-meta"><span>↻</span>{latestSyncJob ? `Son güncelleme: ${dashboardSyncTime(latestSyncJob)}` : 'Senkronizasyon kaydı yok'}</div></article></div>
     <div className="dashboard-bottom-grid"><article className="panel dashboard-flow-panel"><div className="panel-title"><div><h2>Sipariş akışı</h2><p>Operasyon kayıtlarının anlık özeti</p></div><Link to="/orders">Detaylar →</Link></div><div className="dashboard-flow-list"><Link to="/orders"><span><i className="flow-dot new" /><strong>Bekleyen sipariş</strong></span><b>{loading ? '—' : pending.length}</b></Link><Link to="/orders"><span><i className="flow-dot late" /><strong>Geciken sipariş</strong></span><b>{loading ? '—' : late.length}</b></Link><Link to="/invoices"><span><i className="flow-dot invoice" /><strong>Fatura bekliyor</strong></span><b>{loading ? '—' : uninvoiced}</b></Link><Link to="/returns"><span><i className="flow-dot return" /><strong>Bekleyen iade</strong></span><b>{loading ? '—' : pendingReturns}</b></Link></div></article><article className="panel dashboard-active-platform"><div className="dashboard-platform-orbit" aria-hidden="true"><span /><span /><span /><i /></div><small>AKTİF PLATFORM</small><strong>{loading ? '—' : activeConnections.length || verified}</strong><p>{syncConnection?.displayName ?? 'Bağlantı bekleniyor'}</p><Link to="/integrations">Platformları yönet →</Link></article><article className="panel dashboard-stock-panel"><div className="panel-title"><div><h2>Stok durumu</h2><p>En düşük stoklu ürünler</p></div><Link to="/products">Ürünler →</Link></div><div className="dashboard-product-list">{lowStock.sort((a, b) => a.totalStock - b.totalStock).slice(0, 4).map(item => <Link to={`/products/${item.id}`} key={item.id}>{item.primaryImageUrl ? <img src={item.primaryImageUrl} alt="" /> : <span>▧</span>}<strong>{item.title}</strong><b>{item.totalStock}</b></Link>)}{!lowStock.length && <p>Düşük stoklu ürün yok.</p>}</div></article></div>
   </section>
 }

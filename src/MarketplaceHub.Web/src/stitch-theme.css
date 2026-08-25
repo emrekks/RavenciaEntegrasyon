@@ -5057,3 +5057,53 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   .app-shell .dashboard-cargo-chart { gap: 7px; padding-inline: 0; }
   .app-shell .dashboard-cargo-column > span { font-size: 8px; }
 }
+
+/* Dashboard follow-up refinements: keep the page scrollable and show data freshness. */
+html { overflow-y: auto !important; }
+.app-shell.stitch-shell,
+.app-shell.stitch-shell > main,
+.app-shell .content.dashboard {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+.app-shell .dashboard .dashboard-heading-actions:empty { display: none !important; }
+.app-shell .dashboard .dashboard-sync-list a {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  min-height: 46px;
+  gap: 8px;
+}
+.app-shell .dashboard .dashboard-sync-list a > span:nth-child(2) {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.app-shell .dashboard .dashboard-sync-list a > span:nth-child(2) strong {
+  color: #d8d6e2;
+  font-size: 10px;
+}
+.app-shell .dashboard .dashboard-sync-list a > span:nth-child(2) small {
+  overflow: hidden;
+  color: #858493;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell .dashboard .dashboard-sync-list a > b {
+  color: #bfc0d3 !important;
+  font-size: 9px;
+  font-weight: 700;
+}
+.app-shell .dashboard-sync-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: #8e92ff;
+  background: rgba(88, 101, 242, .12);
+  border: 1px solid rgba(88, 101, 242, .32);
+  border-radius: 50%;
+  font-size: 11px;
+}
+.app-shell .dashboard-sync-icon.returns { color: #ffb689; background: rgba(255, 182, 137, .1); border-color: rgba(255, 182, 137, .28); }
+.app-shell .dashboard-sync-icon.stock { color: #7de2cb; background: rgba(69, 230, 176, .1); border-color: rgba(69, 230, 176, .28); }
