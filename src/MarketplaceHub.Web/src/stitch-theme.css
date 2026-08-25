@@ -5229,3 +5229,40 @@ html { overflow-y: auto !important; }
   .app-shell .dashboard-revenue-controls { width: 100%; margin-left: 0; justify-content: space-between; }
   .app-shell .dashboard-revenue-controls select { min-width: 132px; }
 }
+
+/* Dashboard revenue calendar filter. */
+.app-shell .dashboard-revenue-controls > .dashboard-period-select {
+  min-width: 118px;
+}
+.app-shell .dashboard-revenue-controls > .dashboard-period-select select {
+  min-width: 118px;
+}
+.app-shell .dashboard-custom-range {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 7px 0 0;
+}
+.app-shell .dashboard-custom-range label {
+  min-width: 118px;
+}
+.app-shell .dashboard-custom-range input {
+  min-height: 27px;
+  padding: 4px 7px !important;
+  color: #d8d6e2 !important;
+  background: #12131b !important;
+  border: 1px solid #30313e !important;
+  border-radius: 4px !important;
+  font-size: 9px !important;
+  color-scheme: dark;
+}
+@media (max-width: 760px) {
+  .app-shell .dashboard-custom-range {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .app-shell .dashboard-custom-range label,
+  .app-shell .dashboard-custom-range input {
+    width: 100%;
+  }
+}
