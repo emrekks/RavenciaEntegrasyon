@@ -3451,3 +3451,37 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   .jobs-reference-drawer { width: 100% !important; }
   .jobs-reference-drawer .job-detail-facts { grid-template-columns: 1fr; }
 }
+
+.jobs-reference-range-wrap { position: relative; }
+.jobs-reference-range-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  min-width: 150px;
+  padding: 5px;
+  background: var(--st-surface-container);
+  border: 1px solid var(--st-outline);
+  border-radius: 4px;
+  box-shadow: 0 14px 28px rgba(0,0,0,.42);
+}
+.jobs-reference-range-menu button {
+  min-height: 31px;
+  padding: 0 9px;
+  color: var(--st-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.jobs-reference-range-menu button:hover,
+.jobs-reference-range-menu button.active { color: #fff; background: rgba(88,101,242,.22); }
+
+@media (max-width: 760px) {
+  .jobs-reference-range-wrap { flex: 1; }
+  .jobs-reference-range-menu { left: 0; right: auto; }
+}

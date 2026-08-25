@@ -86,6 +86,14 @@ function formatJobTime(value: string) {
   }
 }
 
+type JobTimeRange = '24h' | '7d' | 'all'
+
+function timeRangeLabel(value: JobTimeRange) {
+  if (value === '7d') return 'Son 7 Gün'
+  if (value === 'all') return 'Tüm Zamanlar'
+  return 'Son 24 Saat'
+}
+
 type JobCategory = 'ALL' | 'ORDERS' | 'PRICE_INVENTORY' | 'CATALOG' | 'INVOICES' | 'RETURNS' | 'SYSTEM'
 
 const categoryTabs: Array<{ key: JobCategory; label: string; match: (type: string) => boolean }> = [
@@ -104,6 +112,8 @@ export function JobsPage({ me }: { me: Me }) {
   const [status, setStatus] = useState<'' | JobStatus>('')
   const [search, setSearch] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
+  const [timeRange, setTimeRange] = useState<JobTimeRange>('24h')
+  const [timeRangeOpen, setTimeRangeOpen] = useState(false)
   const [pageSize, setPageSize] = useState(20)
   const [pageNumber, setPageNumber] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -127,24 +137,33 @@ export function JobsPage({ me }: { me: Me }) {
     }
   })
   const rawJobs = list.data ?? []
+  const rangeFiltered = useMemo(() => {
+    if (timeRange === 'all') return rawJobs
+    const rangeMs = timeRange === '7d' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+    const cutoff = Date.now() - rangeMs
+    return rawJobs.filter(job => {
+      const timestamp = new Date(job.createdAt).getTime()
+      return Number.isNaN(timestamp) || timestamp >= cutoff
+    })
+  }, [rawJobs, timeRange])
   const filtered = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('tr-TR')
     const categoryMatcher = categoryTabs.find(tab => tab.key === category)?.match ?? (() => true)
-    return rawJobs.filter(job => {
+    return rangeFiltered.filter(job => {
       const matchCategory = categoryMatcher(job.jobType)
       if (!matchCategory) return false
       if (!term) return true
       return [job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
     })
-  }, [rawJobs, category, search])
-  useEffect(() => { setPageNumber(1) }, [category, status, search, pageSize])
+  }, [rangeFiltered, category, search])
+  useEffect(() => { setPageNumber(1) }, [category, status, search, pageSize, timeRange])
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const currentPage = Math.min(pageNumber, totalPages)
   const pageJobs = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
   const selected = detail.data?.job
   const retryable = selected && ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(selected.status)
   const cancellable = selected && !['LEASED', 'SUCCEEDED', 'DEAD', 'CANCELLED'].includes(selected.status)
-  const errorCount = rawJobs.filter(job => ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status)).length
+  const errorCount = rangeFiltered.filter(job => ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status)).length
   const pageNumbers = useMemo(() => {
     const pages = new Set([1, totalPages, currentPage, Math.max(1, currentPage - 1), Math.min(totalPages, currentPage + 1)])
     return [...pages].sort((a, b) => a - b)
@@ -163,7 +182,12 @@ export function JobsPage({ me }: { me: Me }) {
         <p>Pazaryerleri ile sistem arasındaki senkronizasyon kuyruğunu ve hataları izleyin.</p>
       </div>
       <div className="jobs-reference-heading-actions">
-        <button type="button" className="jobs-reference-range"><span aria-hidden="true">◷</span>Son 24 Saat<span aria-hidden="true">⌄</span></button>
+        <div className="jobs-reference-range-wrap">
+          <button type="button" className="jobs-reference-range" aria-expanded={timeRangeOpen} onClick={() => setTimeRangeOpen(value => !value)}><span aria-hidden="true">◷</span>{timeRangeLabel(timeRange)}<span aria-hidden="true">⌄</span></button>
+          {timeRangeOpen && <div className="jobs-reference-range-menu" role="menu" aria-label="Zaman aralığı">
+            {([['24h', 'Son 24 Saat'], ['7d', 'Son 7 Gün'], ['all', 'Tüm Zamanlar']] as const).map(([value, label]) => <button type="button" role="menuitem" className={timeRange === value ? 'active' : ''} key={value} onClick={() => { setTimeRange(value); setTimeRangeOpen(false) }}>{label}</button>)}
+          </div>}
+        </div>
         <button type="button" className="jobs-reference-filter-toggle" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><span aria-hidden="true">☷</span>Filtrele</button>
       </div>
     </div>
