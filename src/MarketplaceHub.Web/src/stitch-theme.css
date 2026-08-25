@@ -3744,3 +3744,14 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   box-shadow: none !important;
   outline: 0 !important;
 }
+
+.mapping-category-builder .category-library-search-toggle,
+.mapping-category-builder .category-library-search-toggle:hover,
+.mapping-category-builder .category-library-search-toggle:focus,
+.mapping-category-builder .category-library-search-toggle:focus-visible,
+.mapping-category-builder .category-library-search-toggle:active {
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  margin: 0 !important;
+  transition: color .16s ease, background .16s ease !important;
+}
