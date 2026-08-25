@@ -55,15 +55,17 @@ function jobStatusTone(status: JobStatus) {
   return 'neutral'
 }
 
-function jobPresentation(jobType: string) {
+type JobTypeIconName = 'price' | 'order' | 'invoice' | 'return' | 'product' | 'connection' | 'generic'
+
+function jobPresentation(jobType: string): { title: string; icon: JobTypeIconName } {
   const type = jobType.toUpperCase()
-  if (type.includes('PRICE') || type.includes('INVENTORY') || type.includes('STOCK')) return { title: 'Fiyat Güncelleme', icon: '◈' }
-  if (type.includes('ORDER') || type.includes('SHIPMENT') || type.includes('PACKAGE') || type.includes('COURIER') || type.includes('LABEL')) return { title: 'Sipariş Aktarımı', icon: '▱' }
-  if (type.includes('INVOICE') || type.includes('EFATURAM') || type.includes('BILLING')) return { title: 'Fatura İletimi', icon: '▤' }
-  if (type.includes('RETURN') || type.includes('CLAIM')) return { title: 'İade Senkronizasyonu', icon: '↩' }
-  if (type.includes('PRODUCT') || type.includes('CATALOG') || type.includes('PUBLICATION') || type.includes('ATTRIBUTE') || type.includes('CATEGORY') || type.includes('BRAND')) return { title: 'Ürün Senkronizasyonu', icon: '□' }
-  if (type.includes('CONNECTION') || type.includes('PROBE') || type.includes('TEST')) return { title: 'Bağlantı Kontrolü', icon: '⌁' }
-  return { title: jobType.replaceAll('_', ' ').toLocaleLowerCase('tr-TR').replace(/(^|\s)\S/g, value => value.toLocaleUpperCase('tr-TR')), icon: '•' }
+  if (type.includes('PRICE') || type.includes('INVENTORY') || type.includes('STOCK')) return { title: 'Fiyat Güncelleme', icon: 'price' }
+  if (type.includes('ORDER') || type.includes('SHIPMENT') || type.includes('PACKAGE') || type.includes('COURIER') || type.includes('LABEL')) return { title: 'Sipariş Aktarımı', icon: 'order' }
+  if (type.includes('INVOICE') || type.includes('EFATURAM') || type.includes('BILLING')) return { title: 'Fatura İletimi', icon: 'invoice' }
+  if (type.includes('RETURN') || type.includes('CLAIM')) return { title: 'İade Senkronizasyonu', icon: 'return' }
+  if (type.includes('PRODUCT') || type.includes('CATALOG') || type.includes('PUBLICATION') || type.includes('ATTRIBUTE') || type.includes('CATEGORY') || type.includes('BRAND')) return { title: 'Ürün Senkronizasyonu', icon: 'product' }
+  if (type.includes('CONNECTION') || type.includes('PROBE') || type.includes('TEST')) return { title: 'Bağlantı Kontrolü', icon: 'connection' }
+  return { title: jobType.replaceAll('_', ' ').toLocaleLowerCase('tr-TR').replace(/(^|\s)\S/g, value => value.toLocaleUpperCase('tr-TR')), icon: 'generic' }
 }
 
 function jobSource(jobType: string) {
@@ -94,7 +96,7 @@ function timeRangeLabel(value: JobTimeRange) {
   return 'Son 24 Saat'
 }
 
-type JobsIconName = 'calendar' | 'chevron-down' | 'filter' | 'refresh' | 'search'
+type JobsIconName = 'calendar' | 'chevron-down' | 'filter' | 'refresh' | 'search' | JobTypeIconName
 
 function JobsIcon({ name }: { name: JobsIconName }) {
   const common = { className: `jobs-reference-icon jobs-reference-icon-${name}`, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true, focusable: false }
@@ -102,6 +104,13 @@ function JobsIcon({ name }: { name: JobsIconName }) {
   if (name === 'chevron-down') return <svg {...common}><path d="m7 9 5 5 5-5" /></svg>
   if (name === 'filter') return <svg {...common}><path d="M4 5h16M7 12h10M10 19h4" /></svg>
   if (name === 'search') return <svg {...common}><circle cx="10.5" cy="10.5" r="5.75" /><path d="m15 15 5 5" /></svg>
+  if (name === 'price') return <svg {...common}><path d="M5 7.5 12 4l7 3.5v9L12 20l-7-3.5z" /><path d="M8.5 10.5h7M8.5 13.5h5" /></svg>
+  if (name === 'order') return <svg {...common}><path d="m4 8 8-4 8 4-8 4zM4 8v8l8 4 8-4V8M12 12v8" /></svg>
+  if (name === 'invoice') return <svg {...common}><path d="M6 3.5h9l3 3V20.5H6zM15 3.5v4h3M9 12h6M9 15.5h6" /></svg>
+  if (name === 'return') return <svg {...common}><path d="M9 8 5 12l4 4M5 12h8a5 5 0 0 1 5 5v1" /></svg>
+  if (name === 'product') return <svg {...common}><path d="m4 8 8-4 8 4-8 4zM4 8v8l8 4 8-4V8M8 10v8M16 10v8" /></svg>
+  if (name === 'connection') return <svg {...common}><path d="M8 7V5a3 3 0 0 1 6 0v2M7 7h8v5a4 4 0 0 1-8 0zM12 16v3M9 20h6" /></svg>
+  if (name === 'generic') return <svg {...common}><circle cx="12" cy="12" r="6" /><path d="M12 9v6M9 12h6" /></svg>
   return <svg {...common}><path d="M20 11a8 8 0 0 0-14.8-4L4 9" /><path d="M4 5v4h4M4 13a8 8 0 0 0 14.8 4L20 15" /><path d="M20 19v-4h-4" /></svg>
 }
 
@@ -206,7 +215,13 @@ export function JobsPage({ me }: { me: Me }) {
             {([['24h', 'Son 24 Saat'], ['7d', 'Son 7 Gün'], ['all', 'Tüm Zamanlar']] as const).map(([value, label]) => <button type="button" role="menuitem" className={timeRange === value ? 'active' : ''} key={value} onClick={() => { setTimeRange(value); setTimeRangeOpen(false) }}>{label}</button>)}
           </div>}
         </div>
-        <button type="button" className="jobs-reference-filter-toggle" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><JobsIcon name="filter" />Filtrele</button>
+        <div className="jobs-reference-filter-wrap">
+          <button type="button" className="jobs-reference-filter-toggle" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><JobsIcon name="filter" />Filtrele</button>
+          {filterOpen && <div className="jobs-reference-filter-panel" role="dialog" aria-label="İşlem filtreleri">
+            <label>Durum<select value={status} onChange={event => setStatus(event.target.value as '' | JobStatus)}>{statuses.map(item => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select></label>
+            <label>Sayfa başına<select aria-label="Sayfa başına işlem" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+          </div>}
+        </div>
       </div>
     </div>
     <div className="jobs-reference-canvas">
@@ -228,17 +243,13 @@ export function JobsPage({ me }: { me: Me }) {
           <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="İşlemleri yenile" onClick={refreshJobs}><JobsIcon name="refresh" /></button>
         </div>
       </div>
-      {filterOpen && <div className="jobs-reference-filter-panel">
-        <label>Durum<select value={status} onChange={event => setStatus(event.target.value as '' | JobStatus)}>{statuses.map(item => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select></label>
-        <label>Sayfa başına<select aria-label="Sayfa başına işlem" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label>
-      </div>}
       {list.isLoading ? <p className="jobs-reference-state">İşlemler yükleniyor…</p> : list.isError ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem listesi alınamadı.</div> : <>
         <div className="jobs-reference-table-scroll"><table className="jobs-reference-table"><thead><tr><th>İşlem Türü</th><th>Durum</th><th>Deneme</th><th>Zaman</th><th>Correlation ID</th><th>Aksiyon</th></tr></thead><tbody>
           {pageJobs.map(job => {
             const presentation = jobPresentation(job.jobType)
             const time = formatJobTime(job.createdAt)
             return <tr className="jobs-reference-row" key={job.id} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') setSelectedId(job.id) }}>
-              <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true">{presentation.icon}</span><span><strong>{presentation.title}</strong><small>{jobSource(job.jobType)}</small></span></div></td>
+              <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span><strong>{presentation.title}</strong><small>{jobSource(job.jobType)}</small></span></div></td>
               <td><span className={`jobs-reference-status ${jobStatusTone(job.status)}`}><i aria-hidden="true" />{jobStatusLabel(job.status)}</span></td>
               <td className="jobs-reference-attempt">{job.attemptCount} / {job.maxAttempts}</td>
               <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day}</small></div></td>

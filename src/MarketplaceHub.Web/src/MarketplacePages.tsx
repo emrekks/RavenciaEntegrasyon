@@ -341,6 +341,7 @@ function CourierChangeModal({ item, onClose }: { item: Order; onClose: () => voi
 function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, onSuccess }: { activeConnection: Connection[]; onClose: () => void; onSuccess: (connectionCount: number, orderNumber: string) => void }) {
   const [orderNumber, setOrderNumber] = useState('')
   const [selectedConnectionIds, setSelectedConnectionIds] = useState<string[]>(() => activeConnections.map(connection => connection.id))
+  const [syncMode, setSyncMode] = useState<'changes' | 'single'>('changes')
   const [fullScan, setFullScan] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
@@ -349,6 +350,10 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
     e.preventDefault()
     const trimmed = orderNumber.trim()
     const selectedConnections = activeConnections.filter(connection => selectedConnectionIds.includes(connection.id))
+    if (syncMode === 'single' && !trimmed) {
+      setErrorMsg('Tekil sipariş çekmek için sipariş numarası girin.')
+      return
+    }
     if (!selectedConnections.length) {
       setErrorMsg('En az bir aktif bağlantı seçin.')
       return
@@ -359,7 +364,7 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
       await Promise.all(selectedConnections.map(connection => hubApi(`/connections/${connection.id}/order-sync-jobs`, {
         method: 'POST',
         headers: { 'Idempotency-Key': idempotency() },
-        body: JSON.stringify({ externalOrderId: trimmed || null, full: fullScan })
+        body: JSON.stringify({ externalOrderId: syncMode === 'single' ? trimmed : null, full: syncMode === 'changes' && fullScan })
       })))
       onSuccess(selectedConnections.length, trimmed)
       onClose()
@@ -396,24 +401,19 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
               </label>)}
             </div>
           </fieldset>
-          <label className="sync-order-number-field" style={{ display: 'grid', gap: '6px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Sipariş numarası <small>(isteğe bağlı)</small></span>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={orderNumber}
-              onChange={e => setOrderNumber(e.target.value)}
-              placeholder="Boş bırakırsanız yeni değişiklikler çekilir"
-              disabled={isSubmitting}
-              style={{ padding: '10px 14px', borderRadius: '8px', fontSize: '0.95rem' }}
-            />
-          </label>
-          <label className="sync-mode-option"><input type="checkbox" checked={fullScan} onChange={event => setFullScan(event.target.checked)} /><span><strong>Erişilebilir tüm siparişleri tara</strong><small>Kapalıyken yalnız yeni değişiklikler ve güncellemeler alınır.</small></span></label>
+          <div className="sync-mode-switch" role="group" aria-label="Senkronizasyon türü">
+            <button type="button" className={syncMode === 'changes' ? 'active' : ''} onClick={() => { setSyncMode('changes'); setErrorMsg('') }} disabled={isSubmitting}>Yeni siparişleri çek</button>
+            <button type="button" className={syncMode === 'single' ? 'active' : ''} onClick={() => { setSyncMode('single'); setErrorMsg('') }} disabled={isSubmitting}>Tekil sipariş çek</button>
+          </div>
+          {syncMode === 'single' ? <label className="sync-order-number-field" style={{ display: 'grid', gap: '6px' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Trendyol sipariş numarası</span>
+            <input type="text" inputMode="numeric" value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="Örn. 1014529381" disabled={isSubmitting} autoFocus style={{ padding: '10px 14px', borderRadius: '8px', fontSize: '0.95rem' }} />
+          </label> : <label className="sync-mode-option"><input type="checkbox" checked={fullScan} onChange={event => setFullScan(event.target.checked)} /><span><strong>Erişilebilir tüm siparişleri tara</strong><small>Kapalıyken yalnız yeni değişiklikler ve güncellemeler alınır.</small></span></label>}
           {errorMsg && <p className="error" role="alert" style={{ margin: 0 }}>{errorMsg}</p>}
           <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
             <button type="button" className="secondary" onClick={onClose} disabled={isSubmitting}>İptal</button>
             <button type="submit" disabled={isSubmitting || !selectedConnectionIds.length}>
-              {isSubmitting ? 'Senkronize ediliyor…' : 'Siparişleri çek'}
+              {isSubmitting ? 'Senkronize ediliyor…' : syncMode === 'single' ? 'Tekil siparişi çek' : 'Siparişleri çek'}
             </button>
           </footer>
         </form>
@@ -497,7 +497,6 @@ function ReferenceConnectionCard({ item, onSaved }: { item: Connection; onSaved:
   const [apiKey, setApiKey] = useState('')
   const [apiSecret, setApiSecret] = useState('')
   const connected = item.status === 'ACTIVE' || item.status === 'VERIFIED'
-  const needsAttention = Boolean(item.lastErrorCode) || !connected
   const test = useMutation({ mutationFn: () => hubApi<{ succeeded?: boolean; errorCode?: string; errorSummary?: string }>(`/connections/${item.id}/test-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: result => { setNotice(result.succeeded ? 'Bağlantı testi başarılı.' : `Bağlantı testi başarısız${result.errorCode ? `: ${result.errorCode}` : '.'}`); onSaved() }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Bağlantı testi başlatılamadı.') })
   const disconnect = useMutation({ mutationFn: () => hubApi<Connection>(`/connections/${item.id}/active`, { method: 'PUT', headers: { 'Idempotency-Key': idempotency(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ active: false }) }), onSuccess: () => { setDisconnectOpen(false); setNotice('Bağlantı iptal edildi.'); onSaved() }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Bağlantı iptal edilemedi.') })
   const deepDelete = useMutation({ mutationFn: () => hubApi(`/connections/${item.id}/deep-delete`, { method: 'POST', headers: { 'Idempotency-Key': idempotency(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation: deleteConfirmation }) }), onSuccess: () => { setDeleteOpen(false); setDeleteConfirmation(''); onSaved() }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Bağlantı ve bağlı veriler silinemedi.') })
@@ -524,7 +523,6 @@ function ReferenceConnectionCard({ item, onSaved }: { item: Connection; onSaved:
       <div className="reference-integration-menu"><button type="button" className="reference-menu-trigger" aria-label="Entegrasyon seçenekleri" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}>⋮</button>{menuOpen && <div className="reference-menu-popover" role="menu"><Link to={`/integrations/${item.id}`} role="menuitem">Bağlantı ayarlarını aç</Link><button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setDeleteOpen(true) }}>Bağlantıyı ve verileri sil</button></div>}</div>
     </header>
     <div className="reference-integration-body"><label className="reference-data-point"><span>{efaturam ? 'VKN / TCKN' : 'Mağaza Kimliği (Seller ID)'}</span><input className="reference-editable-field" value={externalStoreId} onChange={event => setExternalStoreId(event.target.value)} /></label><label className="reference-data-point"><span>{efaturam ? 'API Secret' : 'API Key'}</span><input className="reference-editable-field" type="password" value={efaturam ? '' : apiKey} onChange={event => setApiKey(event.target.value)} placeholder={item.hasCredential ? '••••••••••••' : undefined} autoComplete="off" /></label>{!efaturam && <label className="reference-data-point"><span>API Secret</span><input className="reference-editable-field" type="password" value={apiSecret} onChange={event => setApiSecret(event.target.value)} placeholder={item.hasCredential ? '••••••••••••' : undefined} autoComplete="new-password" /></label>}<label className="reference-data-point"><span>Ortam</span><select className="reference-editable-field" value={environment} onChange={event => setEnvironment(event.target.value)}><option value="STAGE">Stage</option><option value="PRODUCTION">Canlı</option></select></label></div>
-    {needsAttention && <div className="reference-integration-warning" role="status"><span className="reference-warning-icon" aria-hidden="true">!</span><div><strong>{item.lastErrorCode ? 'Erişim Yetkisi Reddedildi' : 'Bağlantı pasif'}</strong><p>{item.lastErrorCode ? 'API anahtarınızın süresi dolmuş veya geçersiz olabilir. Operasyonların durmaması için bilgileri güncelleyin.' : 'Bu bağlantıdan veri akışı yapılmıyor. Yeniden bağlanmak için bilgileri güncelleyin.'}</p></div></div>}
     {notice && <div className="reference-card-notice" role="status">{notice}</div>}
     <footer className="reference-integration-footer"><button type="button" className="reference-action secondary" onClick={() => setDisconnectOpen(true)} disabled={!connected || disconnect.isPending || test.isPending || saving}>{disconnect.isPending ? 'İptal ediliyor…' : 'İptal et'}</button><button type="button" className="reference-action link-action" onClick={() => test.mutate()} disabled={test.isPending || disconnect.isPending || saving}>{test.isPending ? 'Kontrol ediliyor…' : 'Bağlantıyı kontrol et'}</button><button type="button" className="reference-action primary-action" onClick={() => saveDetails.mutate()} disabled={saving || disconnect.isPending || test.isPending}>{saving ? 'Kaydediliyor…' : 'Bilgileri güncelle'}</button></footer>
     {disconnectOpen && <div className="reference-inline-confirm" role="alertdialog"><span>Bağlantı pasife alınacak ve canlı veri akışı duracaktır.</span><div><button type="button" onClick={() => setDisconnectOpen(false)}>Vazgeç</button><button type="button" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>Onayla</button></div></div>}
@@ -646,6 +644,34 @@ export function OrdersPage() {
     const ordered = new Date(item.orderedAt); const from = filters.dateFrom ? new Date(`${filters.dateFrom}T00:00:00`) : null; const to = filters.dateTo ? new Date(`${filters.dateTo}T23:59:59.999`) : null; const isClosed = ['DELIVERED', 'CANCELLED', 'RETURNED'].includes(item.derivedStatus.toUpperCase())
     return matchesOrderTab(item, filters.status) && (filters.platform === 'ALL' || item.platformCode === filters.platform) && (filters.listing === 'ALL' || (filters.listing === 'OPEN' ? !isClosed : isClosed)) && (filters.cargo === 'ALL' || (item.packages?.[0]?.cargoProviderName ?? item.cargoProviderName) === filters.cargo) && (filters.invoice === 'ALL' || item.invoiceStatus === filters.invoice) && (!from || ordered >= from) && (!to || ordered <= to) && (!normalized || searchValues.some(value => value.toLocaleLowerCase('tr-TR').includes(normalized)))
   })
+  function exportOrders() {
+    const escapeCsv = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`
+    const rows = [
+      ['Sipariş No', 'Platform', 'Müşteri', 'Sipariş Tarihi', 'Durum', 'Fatura Durumu', 'Kargo', 'Ürünler', 'Toplam Tutar', 'Para Birimi'],
+      ...items.map(item => [
+        item.orderNumber,
+        item.platformDisplayName || item.platformCode,
+        item.customerName,
+        new Date(item.orderedAt).toLocaleString('tr-TR'),
+        item.derivedStatus,
+        item.invoiceStatus,
+        item.packages?.[0]?.cargoProviderName ?? item.cargoProviderName ?? '',
+        (item.lines ?? []).map(line => `${line.title} x${line.orderedQuantity}`).join(' | '),
+        item.grossAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        item.currency
+      ])
+    ]
+    const csv = `\uFEFF${rows.map(row => row.map(escapeCsv).join(';')).join('\r\n')}`
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `ravencia-siparisler-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+    setBulkNotice(`${items.length.toLocaleString('tr-TR')} sipariş dışa aktarıldı.`)
+  }
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize)); const safePage = Math.min(page, totalPages); const pageItems = items.slice((safePage - 1) * pageSize, safePage * pageSize); const allPageSelected = pageItems.length > 0 && pageItems.every(item => selectedIds.includes(item.id))
   useEffect(() => { if (!requestedSearch) return; setFilterForm(current => ({ ...current, search: requestedSearch })); setFilters(current => ({ ...current, search: requestedSearch })); setPage(1) }, [requestedSearch])
   useEffect(() => { const invoiceId = searchParams.get('invoice'); if (!invoiceId || !all.length) return; const item = all.find(order => order.invoiceId === invoiceId); if (!item) return; setInvoiceViewerOrder(item); setSearchParams(current => { const next = new URLSearchParams(current); next.delete('invoice'); return next }, { replace: true }) }, [all, searchParams, setSearchParams])
@@ -710,7 +736,7 @@ export function OrdersPage() {
     }
   }
 
-  return <section className="content f3 orders-page"><div className="page-heading"><div><p className="eyebrow">Sipariş yönetimi</p><h1>Sipariş Yönetimi</h1><p className="lede">Tüm pazar yeri siparişlerinizi tek merkezden yönetin ve takip edin.</p></div><div className="page-heading-actions orders-reference-heading-actions"><button type="button" className="secondary orders-export-action" disabled><span aria-hidden="true">⇩</span> Dışa Aktar</button><button type="button" className="orders-sync-action" onClick={() => setSingleSyncOpen(true)}><span aria-hidden="true">↻</span> Sipariş Senkronizasyonu</button></div></div>
+  return <section className="content f3 orders-page"><div className="page-heading"><div><p className="eyebrow">Sipariş yönetimi</p><h1>Sipariş Yönetimi</h1><p className="lede">Tüm pazar yeri siparişlerinizi tek merkezden yönetin ve takip edin.</p></div><div className="page-heading-actions orders-reference-heading-actions"><button type="button" className="secondary orders-export-action" disabled={!items.length} onClick={exportOrders}><span className="orders-export-icon" aria-hidden="true" />Dışa Aktar</button><button type="button" className="orders-sync-action" onClick={() => setSingleSyncOpen(true)}><span aria-hidden="true">↻</span> Sipariş Senkronizasyonu</button></div></div>
     {bulkNotice && <div className="notice order-bulk-notice" role="status">{bulkNotice}<button type="button" aria-label="Bildirimi kapat" onClick={() => setBulkNotice('')}>×</button></div>}
     <div className="orders-reference-filter-shell"><div className="order-tabs" role="tablist" aria-label="Sipariş durumları">{statuses.map(([value,label]) => <button type="button" role="tab" aria-selected={filters.status === value} className={filters.status === value ? 'active' : ''} key={value} onClick={() => selectStatus(value)}><span>{label}</span><b>{summary.isLoading ? '…' : tabCount(value)}</b><small>Paket</small></button>)}</div>
     <section className="order-filter-panel" aria-label="Sipariş filtreleri"><div className="order-filter-primary"><div className="bulk-menu-shell"><button type="button" className="bulk-action" disabled={!selectedIds.length} aria-expanded={bulkOpen} onClick={() => setBulkOpen(value => !value)}>Toplu işlemler⌄</button>{bulkOpen && <div className="bulk-action-menu" role="menu"><button type="button" role="menuitem" onClick={() => void bulkAction('processing')}><b>01</b><span>İşleme Al<small>Yalnız yeni siparişler</small></span></button><button type="button" role="menuitem" onClick={() => void bulkAction('courier')}><b>02</b><span>Kargo Firmasını Değiştir<small>Seçili paketler</small></span></button><button type="button" role="menuitem" onClick={() => void bulkAction('invoice')}><b>03</b><span>Toplu Fatura Kes<small>Önce taslakları kontrol edin</small></span></button><button type="button" role="menuitem" onClick={() => void bulkAction('labels')}><b>04</b><span>Kargo Stickerlarını Yazdır<small>Takip numarası olanlar</small></span></button></div>}</div><label className="order-search"><span aria-hidden="true">⌕</span><input aria-label="Sipariş ara" value={filterForm.search} onChange={event => updateFilter('search', event.target.value)} placeholder="No girin…" onKeyDown={event => { if (event.key === 'Enter') applyFilters() }} /></label><label>Platform<select value={filterForm.platform} onChange={event => updateFilter('platform', event.target.value)}><option value="ALL">Tüm platformlar</option>{platforms.map(value => <option key={value} value={value}>{value === 'TRENDYOL' ? 'Trendyol' : value}</option>)}</select></label><label>Sipariş durumu<select value={filterForm.status} onChange={event => updateFilter('status', event.target.value)}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button type="button" className="filter-toggle" onClick={() => setAdvancedFilters(value => !value)} aria-expanded={advancedFilters}>Filtrele</button><button type="button" className="secondary filter-clear" onClick={clearFilters}>Temizle</button><button type="button" className="filter-apply" onClick={applyFilters}>Uygula</button><button type="button" className="secondary single-order-sync-btn" onClick={() => setSingleSyncOpen(true)} title="Trendyol'dan sipariş numarası ile tekil sipariş çek">⚡ Tekil Sipariş Çek</button></div>{advancedFilters && <div className="order-filter-advanced"><label>Listeleme durumu<select value={filterForm.listing} onChange={event => updateFilter('listing', event.target.value)}><option value="ALL">Tüm kayıtlar</option><option value="OPEN">Açık siparişler</option><option value="CLOSED">Kapanan siparişler</option></select></label><label>Sipariş tarihi başlangıç<input type="date" value={filterForm.dateFrom} onChange={event => updateFilter('dateFrom', event.target.value)} /></label><label>Sipariş tarihi bitiş<input type="date" value={filterForm.dateTo} onChange={event => updateFilter('dateTo', event.target.value)} /></label><label>Kargo<select value={filterForm.cargo} onChange={event => updateFilter('cargo', event.target.value)}><option value="ALL">Tüm kargolar</option>{cargos.map(value => <option key={value}>{value}</option>)}</select></label><label>Fatura<select value={filterForm.invoice} onChange={event => updateFilter('invoice', event.target.value)}><option value="ALL">Tüm durumlar</option><option value="FATURA_BEKLIYOR">Fatura bekliyor</option><option value="FATURA_KESILDI">Fatura kesildi</option><option value="FATURA_REDDEDILDI">Fatura reddedildi</option></select></label></div>}</section></div>
