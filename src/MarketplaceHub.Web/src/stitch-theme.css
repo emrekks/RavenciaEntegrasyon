@@ -4711,3 +4711,39 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   .app-shell .orders-page .single-order-sync-modal > header,
   .app-shell .orders-page .single-order-sync-modal form { padding-right: 16px !important; padding-left: 16px !important; }
 }
+
+/* Final sizing pass for order-row menus and the sync source legend. */
+.app-shell .orders-page .sync-source-fieldset legend::before {
+  display: none !important;
+}
+.app-shell .orders-page .order-reference-invoice .row-menu {
+  width: min(148px, 100%) !important;
+  max-width: 100% !important;
+  align-self: center !important;
+}
+.app-shell .orders-page .order-reference-invoice .row-menu-trigger,
+.app-shell .orders-page .order-reference-invoice .invoice-popover {
+  width: 100% !important;
+}
+.app-shell .orders-page .order-reference-actions .row-menu {
+  width: min(116px, 100%) !important;
+  max-width: 100% !important;
+  align-self: center !important;
+}
+.app-shell .orders-page .order-reference-actions .order-action-menu {
+  width: 100% !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  margin-inline: auto !important;
+  padding: 5px 7px !important;
+  box-sizing: border-box !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  border: 1px solid #3a3d55 !important;
+  border-radius: 5px !important;
+  background: #1a1b23 !important;
+}
+.app-shell .orders-page .order-reference-actions .order-action-menu span,
+.app-shell .orders-page .order-reference-actions .order-action-menu b {
+  line-height: 1 !important;
+}
