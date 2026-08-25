@@ -748,7 +748,7 @@ textarea {
 .reference-menu-popover { position: absolute; top: 35px; right: 0; z-index: 20; display: grid; min-width: 205px; padding: 6px; background: var(--st-surface-container); border: 1px solid var(--st-outline); border-radius: 6px; box-shadow: 0 15px 34px rgba(0,0,0,.45); }
 .reference-menu-popover a, .reference-menu-popover button { padding: 9px 10px; color: var(--st-text); background: transparent; border: 0; border-radius: 4px; font-size: 12px; text-align: left; text-decoration: none; cursor: pointer; }
 .reference-menu-popover a:hover, .reference-menu-popover button:hover { background: rgba(88,101,242,.2); }
-.reference-integration-warning { display: flex; gap: 14px; padding: 18px 22px; color: var(--st-orange); background: rgba(147,0,10,.19); border-bottom: 1px solid rgba(255,180,171,.25); }
+.reference-integration-warning { display: flex; gap: 14px; padding: 18px 22px; color: var(--st-orange); background: rgba(147,0,10,.19); border-top: 1px solid rgba(255,180,171,.25); }
 .reference-warning-icon { display: grid; place-items: center; width: 27px; height: 27px; flex: 0 0 27px; border: 2px solid currentColor; border-radius: 50%; font-size: 17px; font-weight: 800; }
 .reference-integration-warning strong { display: block; margin-bottom: 5px; font-size: 14px; }
 .reference-integration-warning p { max-width: 530px; margin: 0; color: rgba(255,180,171,.8); font-size: 14px; line-height: 1.5; }
