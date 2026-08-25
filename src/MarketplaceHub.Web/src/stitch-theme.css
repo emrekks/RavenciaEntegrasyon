@@ -728,7 +728,7 @@ textarea {
 .integration-filter-summary span { color: var(--st-primary-soft); }
 .integrations-reference-page .integration-grid { gap: 20px !important; }
 .reference-integration-card { display: flex !important; flex-direction: column; min-height: 455px; padding: 0 !important; background: var(--st-surface-container) !important; border: 1px solid rgba(143,143,160,.34) !important; border-radius: 8px !important; box-shadow: 0 12px 28px rgba(0,0,0,.16) !important; }
-.reference-integration-card:hover { border-color: rgba(190,194,255,.62) !important; }
+.reference-integration-card:hover { border-color: rgba(85,87,100,.72) !important; }
 .reference-integration-card-error { border-color: rgba(255,180,171,.45) !important; }
 .reference-integration-card-active { border-color: rgba(190,194,255,.35) !important; }
 .reference-integration-accent { height: 4px; flex: 0 0 4px; background: var(--st-red); box-shadow: 0 0 12px rgba(255,180,171,.72); }
@@ -2657,7 +2657,7 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   border-color: #454652 !important;
   box-shadow: 0 14px 30px rgba(0,0,0,.28) !important;
 }
-.integrations-reference-page .reference-integration-card:hover { border-color: #686a78 !important; }
+.integrations-reference-page .reference-integration-card:hover { border-color: #555764 !important; }
 .integrations-reference-page .reference-integration-card-active { border-color: rgba(117, 211, 174, .42) !important; }
 .integrations-reference-page .reference-integration-card-error { border-color: rgba(255, 172, 158, .48) !important; }
 .integrations-reference-page .reference-integration-accent { background: #e68b7d !important; box-shadow: none !important; }
