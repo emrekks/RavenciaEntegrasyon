@@ -4305,23 +4305,12 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   justify-content: space-between !important;
   min-height: 25px !important;
   box-sizing: border-box !important;
-  font-size: 0 !important;
-  line-height: 1 !important;
-}
-.app-shell .orders-page .order-reference-actions .order-action-menu::before {
-  content: 'İşlemler' !important;
-  color: #e3e1ed !important;
   font-size: .6rem !important;
-  font-weight: 750 !important;
-}
-.app-shell .orders-page .order-reference-actions .order-action-menu::after {
-  content: '⌄' !important;
-  color: #bec2ff !important;
-  font-size: .75rem !important;
-  font-weight: 800 !important;
   line-height: 1 !important;
 }
-.app-shell .orders-page .order-reference-actions .order-action-menu:hover::before { color: #fff !important; }
+.app-shell .orders-page .order-reference-actions .order-action-menu span { color: #e3e1ed !important; font-size: .6rem !important; font-weight: 750 !important; }
+.app-shell .orders-page .order-reference-actions .order-action-menu b { color: #bec2ff !important; font-size: .75rem !important; font-weight: 800 !important; line-height: 1 !important; }
+.app-shell .orders-page .order-reference-actions .order-action-menu:hover span { color: #fff !important; }
 
 /* Dark themed source picker for order synchronization. */
 .app-shell .orders-page .single-order-sync-modal {
