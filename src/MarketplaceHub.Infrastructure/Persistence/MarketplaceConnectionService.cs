@@ -94,6 +94,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (command.Environment is not null && command.Environment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Ortam STAGE veya PRODUCTION olmalıdır.");
         connection.DisplayName = command.DisplayName.Trim();
         if (command.Environment is not null) connection.Environment = command.Environment;
+        if (command.ExternalStoreId is not null) connection.ExternalStoreId = command.ExternalStoreId.Trim();
         if (connection.PlatformCode == "TRENDYOL")
         {
             var current = ReadSettings(connection);

@@ -2814,6 +2814,21 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   text-overflow: clip !important;
   line-height: 1.35 !important;
 }
+.integrations-reference-page .reference-data-point > .reference-editable-field {
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+  color: #e8e6f0;
+  background: #121319;
+  border: 1px solid #4b4d59;
+  border-radius: 3px;
+  font: 600 14px/1.2 Inter, sans-serif;
+}
+.integrations-reference-page .reference-data-point > .reference-editable-field:focus {
+  outline: 2px solid rgba(230, 161, 143, 0.45);
+  outline-offset: 1px;
+  border-color: #e6a18f;
+}
 .integrations-reference-page .reference-secret {
   flex-wrap: wrap !important;
   gap: 6px 10px !important;
