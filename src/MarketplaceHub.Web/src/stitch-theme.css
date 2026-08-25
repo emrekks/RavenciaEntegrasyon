@@ -4266,8 +4266,8 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .app-shell .orders-page .orders-reference-filter-shell .filter-toggle,
 .app-shell .orders-page .orders-reference-filter-shell .filter-clear,
 .app-shell .orders-page .orders-reference-filter-shell .filter-apply {
-  height: 34px !important;
-  min-height: 34px !important;
+  height: 43px !important;
+  min-height: 43px !important;
   align-self: end !important;
   box-sizing: border-box !important;
 }
