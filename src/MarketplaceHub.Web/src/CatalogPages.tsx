@@ -256,7 +256,7 @@ function ProductColorRows({ product, selected, onSelect, onQuickEdit, onImageCli
         <div className="product-list-stock clickable-cell" title="Stoğu hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('stock')}><strong>{product.totalStock}</strong></div>
         <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ''}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'}>TY<i /></span><small>{platformActive ? 'Eşleşti' : 'Eşleşmedi'}</small></div>
         <div className={`product-list-status ${product.status === 'ACTIVE' ? 'active' : 'inactive'}`}><Tag>{product.status === 'ACTIVE' ? 'SATIŞTA' : 'KAPALI'}</Tag><small>{product.status === 'ACTIVE' ? 'Aktif' : product.status === 'ARCHIVED' ? 'Pasif' : 'Taslak'}</small></div>
-        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`}>⋮</Link></div>
+        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`}><span className="product-edit-icon" aria-hidden="true">✎</span></Link><span className="product-more-icon" aria-hidden="true">⋮</span></div>
       </div>
     </article>
 }
