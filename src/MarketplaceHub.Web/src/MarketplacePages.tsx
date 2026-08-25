@@ -338,36 +338,33 @@ function CourierChangeModal({ item, onClose }: { item: Order; onClose: () => voi
   )
 }
 
-function SingleOrderSyncModal({ activeConnection, onClose, onSuccess }: { activeConnection: Connection | null; onClose: () => void; onSuccess: (orderNumber: string) => void }) {
+function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, onSuccess }: { activeConnection: Connection[]; onClose: () => void; onSuccess: (connectionCount: number, orderNumber: string) => void }) {
   const [orderNumber, setOrderNumber] = useState('')
+  const [selectedConnectionIds, setSelectedConnectionIds] = useState<string[]>(() => activeConnections.map(connection => connection.id))
+  const [fullScan, setFullScan] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
-  const [successMsg, setSuccessMsg] = useState('')
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     const trimmed = orderNumber.trim()
-    if (!trimmed) {
-      setErrorMsg('Lütfen sipariş numarasını girin.')
-      return
-    }
-    if (!activeConnection) {
-      setErrorMsg('Aktif Trendyol bağlantısı bulunamadı. Platformlar sayfasında Trendyol bağlantınızı kontrol edin.')
+    const selectedConnections = activeConnections.filter(connection => selectedConnectionIds.includes(connection.id))
+    if (!selectedConnections.length) {
+      setErrorMsg('En az bir aktif bağlantı seçin.')
       return
     }
     setIsSubmitting(true)
     setErrorMsg('')
-    setSuccessMsg('')
     try {
-      await hubApi(`/connections/${activeConnection.id}/order-sync-jobs`, {
+      await Promise.all(selectedConnections.map(connection => hubApi(`/connections/${connection.id}/order-sync-jobs`, {
         method: 'POST',
         headers: { 'Idempotency-Key': idempotency() },
-        body: JSON.stringify({ externalOrderId: trimmed })
-      })
-      onSuccess(trimmed)
+        body: JSON.stringify({ externalOrderId: trimmed || null, full: fullScan })
+      })))
+      onSuccess(selectedConnections.length, trimmed)
       onClose()
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Sipariş çekme işi başlatılamadı. Sipariş numarasını ve Trendyol bağlantı durumunu kontrol edin.')
+      setErrorMsg(err instanceof Error ? err.message : 'Sipariş senkronizasyonu başlatılamadı. Seçili bağlantıların durumunu kontrol edin.')
     } finally {
       setIsSubmitting(false)
     }
@@ -376,43 +373,47 @@ function SingleOrderSyncModal({ activeConnection, onClose, onSuccess }: { active
 
   return (
     <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="workspace-modal single-order-sync-modal" role="dialog" aria-modal="true" onMouseDown={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+      <section className="workspace-modal single-order-sync-modal" role="dialog" aria-modal="true" aria-labelledby="order-sync-title" onMouseDown={e => e.stopPropagation()} style={{ maxWidth: '560px' }}>
         <header>
           <div>
-            <h2>Tekil Sipariş Çek</h2>
-            <p>Trendyol sipariş numarasını girerek sipariş ve kargo bilgilerini anında içeri aktarın.</p>
+            <h2 id="order-sync-title">Sipariş Senkronizasyonu</h2>
+            <p>İşaretlediğiniz aktif bağlantılardan siparişleri panele alın.</p>
           </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Kapat">×</button>
         </header>
         <form onSubmit={handleSubmit} style={{ padding: '0 24px 20px', display: 'grid', gap: '14px' }}>
-          {!activeConnection && (
+          {!activeConnections.length && (
             <div className="notice" role="alert" style={{ margin: 0, borderRadius: '8px', fontSize: '0.84rem' }}>
               ⚠️ Aktif Trendyol bağlantısı bulunamadı. Platformlar sayfasından bağlantınızı etkinleştirin.
             </div>
           )}
-          <label style={{ display: 'grid', gap: '6px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Trendyol Sipariş Numarası</span>
+          <fieldset className="sync-source-fieldset">
+            <legend>Sipariş kaynakları</legend>
+            <div className="sync-source-list">
+              {activeConnections.map(connection => <label key={connection.id} className={selectedConnectionIds.includes(connection.id) ? 'sync-source-option is-selected' : 'sync-source-option'}>
+                <input type="checkbox" checked={selectedConnectionIds.includes(connection.id)} onChange={event => setSelectedConnectionIds(current => event.target.checked ? [...current, connection.id] : current.filter(id => id !== connection.id))} />
+                <span><strong>{connection.displayName}</strong><small>{connection.platformCode === 'TRENDYOL' ? 'Trendyol' : connection.platformCode} · {connection.environment} · Mağaza {connection.externalStoreId}</small></span>
+              </label>)}
+            </div>
+          </fieldset>
+          <label className="sync-order-number-field" style={{ display: 'grid', gap: '6px' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Sipariş numarası <small>(isteğe bağlı)</small></span>
             <input
               type="text"
               inputMode="numeric"
               value={orderNumber}
               onChange={e => setOrderNumber(e.target.value)}
-              placeholder="Örn: 1014529381"
-              autoFocus
-              disabled={isSubmitting || !!successMsg}
+              placeholder="Boş bırakırsanız yeni değişiklikler çekilir"
+              disabled={isSubmitting}
               style={{ padding: '10px 14px', borderRadius: '8px', fontSize: '0.95rem' }}
             />
           </label>
+          <label className="sync-mode-option"><input type="checkbox" checked={fullScan} onChange={event => setFullScan(event.target.checked)} /><span><strong>Erişilebilir tüm siparişleri tara</strong><small>Kapalıyken yalnız yeni değişiklikler ve güncellemeler alınır.</small></span></label>
           {errorMsg && <p className="error" role="alert" style={{ margin: 0 }}>{errorMsg}</p>}
-          {successMsg && (
-            <p role="status" style={{ margin: 0, color: '#22c55e', fontSize: '0.85rem', fontWeight: 600, display: 'flex', gap: '6px', alignItems: 'center' }}>
-              ✓ {successMsg}
-            </p>
-          )}
           <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
             <button type="button" className="secondary" onClick={onClose} disabled={isSubmitting}>İptal</button>
-            <button type="submit" disabled={isSubmitting || !orderNumber.trim() || !!successMsg}>
-              {isSubmitting ? 'Çekiliyor…' : successMsg ? '✓ Tamamlandı' : 'Siparişi Getir'}
+            <button type="submit" disabled={isSubmitting || !selectedConnectionIds.length}>
+              {isSubmitting ? 'Senkronize ediliyor…' : 'Siparişleri çek'}
             </button>
           </footer>
         </form>
@@ -596,7 +597,8 @@ export function OrdersPage() {
   const connections = useQuery({ queryKey: ['connections', 'orders-invoice'], queryFn: () => loadAllPages<Connection>('/connections') })
   const providers = connections.data?.items.filter(x => x.platformCode === 'TRENDYOL_EFATURAM' && !x.lastErrorCode && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? []
   const provider = providers.find(x => x.environment === 'PRODUCTION') ?? providers.find(x => x.environment === 'STAGE') ?? null
-  const trendyolConnection = connections.data?.items.find(x => x.platformCode === 'TRENDYOL' && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? connections.data?.items.find(x => x.platformCode === 'TRENDYOL') ?? null
+  const trendyolConnections = connections.data?.items.filter(x => x.platformCode === 'TRENDYOL' && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? []
+  const trendyolConnection = trendyolConnections
   const statuses = [
     ['ALL', 'Tümü'],
     ['NEW', 'Yeni'],
@@ -708,12 +710,12 @@ export function OrdersPage() {
     }
   }
 
-  return <section className="content f3 orders-page"><div className="page-heading"><div><p className="eyebrow">Sipariş yönetimi</p><h1>Sipariş Yönetimi</h1><p className="lede">Tüm pazar yeri siparişlerinizi tek merkezden yönetin ve takip edin.</p></div><div className="page-heading-actions orders-reference-heading-actions"><button type="button" className="secondary orders-export-action" disabled><span aria-hidden="true">⇩</span> Dışa Aktar</button><button type="button" className="orders-sync-action" onClick={() => setSingleSyncOpen(true)}><span aria-hidden="true">↻</span> Trendyol Sipariş Çek</button></div></div>
+  return <section className="content f3 orders-page"><div className="page-heading"><div><p className="eyebrow">Sipariş yönetimi</p><h1>Sipariş Yönetimi</h1><p className="lede">Tüm pazar yeri siparişlerinizi tek merkezden yönetin ve takip edin.</p></div><div className="page-heading-actions orders-reference-heading-actions"><button type="button" className="secondary orders-export-action" disabled><span aria-hidden="true">⇩</span> Dışa Aktar</button><button type="button" className="orders-sync-action" onClick={() => setSingleSyncOpen(true)}><span aria-hidden="true">↻</span> Sipariş Senkronizasyonu</button></div></div>
     {bulkNotice && <div className="notice order-bulk-notice" role="status">{bulkNotice}<button type="button" aria-label="Bildirimi kapat" onClick={() => setBulkNotice('')}>×</button></div>}
     <div className="orders-reference-filter-shell"><div className="order-tabs" role="tablist" aria-label="Sipariş durumları">{statuses.map(([value,label]) => <button type="button" role="tab" aria-selected={filters.status === value} className={filters.status === value ? 'active' : ''} key={value} onClick={() => selectStatus(value)}><span>{label}</span><b>{summary.isLoading ? '…' : tabCount(value)}</b><small>Paket</small></button>)}</div>
     <section className="order-filter-panel" aria-label="Sipariş filtreleri"><div className="order-filter-primary"><div className="bulk-menu-shell"><button type="button" className="bulk-action" disabled={!selectedIds.length} aria-expanded={bulkOpen} onClick={() => setBulkOpen(value => !value)}>Toplu işlemler⌄</button>{bulkOpen && <div className="bulk-action-menu" role="menu"><button type="button" role="menuitem" onClick={() => void bulkAction('processing')}><b>01</b><span>İşleme Al<small>Yalnız yeni siparişler</small></span></button><button type="button" role="menuitem" onClick={() => void bulkAction('courier')}><b>02</b><span>Kargo Firmasını Değiştir<small>Seçili paketler</small></span></button><button type="button" role="menuitem" onClick={() => void bulkAction('invoice')}><b>03</b><span>Toplu Fatura Kes<small>Önce taslakları kontrol edin</small></span></button><button type="button" role="menuitem" onClick={() => void bulkAction('labels')}><b>04</b><span>Kargo Stickerlarını Yazdır<small>Takip numarası olanlar</small></span></button></div>}</div><label className="order-search"><span aria-hidden="true">⌕</span><input aria-label="Sipariş ara" value={filterForm.search} onChange={event => updateFilter('search', event.target.value)} placeholder="No girin…" onKeyDown={event => { if (event.key === 'Enter') applyFilters() }} /></label><label>Platform<select value={filterForm.platform} onChange={event => updateFilter('platform', event.target.value)}><option value="ALL">Tüm platformlar</option>{platforms.map(value => <option key={value} value={value}>{value === 'TRENDYOL' ? 'Trendyol' : value}</option>)}</select></label><label>Sipariş durumu<select value={filterForm.status} onChange={event => updateFilter('status', event.target.value)}>{statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button type="button" className="filter-toggle" onClick={() => setAdvancedFilters(value => !value)} aria-expanded={advancedFilters}>Filtrele</button><button type="button" className="secondary filter-clear" onClick={clearFilters}>Temizle</button><button type="button" className="filter-apply" onClick={applyFilters}>Uygula</button><button type="button" className="secondary single-order-sync-btn" onClick={() => setSingleSyncOpen(true)} title="Trendyol'dan sipariş numarası ile tekil sipariş çek">⚡ Tekil Sipariş Çek</button></div>{advancedFilters && <div className="order-filter-advanced"><label>Listeleme durumu<select value={filterForm.listing} onChange={event => updateFilter('listing', event.target.value)}><option value="ALL">Tüm kayıtlar</option><option value="OPEN">Açık siparişler</option><option value="CLOSED">Kapanan siparişler</option></select></label><label>Sipariş tarihi başlangıç<input type="date" value={filterForm.dateFrom} onChange={event => updateFilter('dateFrom', event.target.value)} /></label><label>Sipariş tarihi bitiş<input type="date" value={filterForm.dateTo} onChange={event => updateFilter('dateTo', event.target.value)} /></label><label>Kargo<select value={filterForm.cargo} onChange={event => updateFilter('cargo', event.target.value)}><option value="ALL">Tüm kargolar</option>{cargos.map(value => <option key={value}>{value}</option>)}</select></label><label>Fatura<select value={filterForm.invoice} onChange={event => updateFilter('invoice', event.target.value)}><option value="ALL">Tüm durumlar</option><option value="FATURA_BEKLIYOR">Fatura bekliyor</option><option value="FATURA_KESILDI">Fatura kesildi</option><option value="FATURA_REDDEDILDI">Fatura reddedildi</option></select></label></div>}</section></div>
     {ordersLoading && !all.length ? <Busy text="Yerel sipariş kayıtları yükleniyor…" /> : ordersError && !all.length ? <ErrorBox error={ordersError} /> : !all.length ? <Empty>Aktif ve kanıtlanmış bağlantıdan sipariş eşitlemesi çalıştırıldığında kayıtlar burada görünür.</Empty> : !items.length ? <Empty>Seçili durum ve filtrelerle eşleşen sipariş yok.</Empty> : <><div className="order-reference-table"><div className="order-reference-head"><label className="order-select"><input type="checkbox" checked={allPageSelected} onChange={event => togglePageSelection(event.target.checked)} aria-label="Sayfadaki siparişleri seç" /></label><strong>Sipariş Bilgileri</strong><strong>Alıcı</strong><strong>Bilgiler</strong><strong>Birim Fiyat</strong><strong>Kargo</strong><strong>Fatura</strong><strong>Durum</strong></div>{pageItems.map(item => <OrderReferenceRow item={item} key={item.id} selected={selectedIds.includes(item.id)} onSelect={checked => updateSelection(item.id, checked)} openMenu={menu?.orderId === item.id ? menu.kind : null} onMenuChange={kind => setMenu(kind ? { orderId: item.id, kind } : null)} onInvoiceCreate={() => { setMenu(null); setInvoiceDraftOrder(item) }} onInvoiceDetails={() => { setMenu(null); setInvoiceInfoOrder(item) }} onInvoiceUpload={() => { setMenu(null); setInvoiceUploadOrder(item) }} onCourierChange={() => { setMenu(null); setCourierOrder(item) }} onProcessOrder={() => void processSingleOrder(item)} onPreviewImage={setPreviewImage} />)}</div><div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına sipariş" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1) }}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label><span>{items.length} siparişten {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, items.length)} arası gösteriliyor</span><div><button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>‹ Önceki</button><b>{safePage} / {totalPages}</b><button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>Sonraki ›</button></div></div></>}
-    {invoiceInfoOrder && <InvoiceInfoModal item={invoiceInfoOrder} onClose={() => setInvoiceInfoOrder(null)} />}{invoiceViewerOrder && <InvoiceViewerModal item={invoiceViewerOrder} onClose={() => setInvoiceViewerOrder(null)} />}{invoiceDraftOrder && <InvoiceDraftModal item={invoiceDraftOrder} provider={provider} onClose={() => setInvoiceDraftOrder(null)} />}{invoiceUploadOrder && <InvoiceUploadModal item={invoiceUploadOrder} provider={provider} onClose={() => setInvoiceUploadOrder(null)} />}{courierOrder && <CourierChangeModal item={courierOrder} onClose={() => setCourierOrder(null)} />}{singleSyncOpen && <SingleOrderSyncModal activeConnection={trendyolConnection} onClose={() => setSingleSyncOpen(false)} onSuccess={orderNo => { setBulkNotice(`Sipariş #${orderNo} Trendyol'dan getiriliyor…`); void client.invalidateQueries({ queryKey: ['orders'] }); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 1500); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 3500) }} />}{previewImage && <div className="workspace-modal-backdrop product-image-backdrop" role="presentation" onMouseDown={() => setPreviewImage(null)}><section className="workspace-modal product-image-modal" role="dialog" aria-modal="true" aria-label={`${previewImage.title} büyük ürün görseli`} onMouseDown={event => event.stopPropagation()}><header><h2>{previewImage.title}</h2><button type="button" className="modal-close" onClick={() => setPreviewImage(null)} aria-label="Pencereyi kapat">×</button></header><div className="product-image-modal-body"><img src={previewImage.url} alt={`${previewImage.title} büyük ürün görseli`} /></div></section></div>}
+    {invoiceInfoOrder && <InvoiceInfoModal item={invoiceInfoOrder} onClose={() => setInvoiceInfoOrder(null)} />}{invoiceViewerOrder && <InvoiceViewerModal item={invoiceViewerOrder} onClose={() => setInvoiceViewerOrder(null)} />}{invoiceDraftOrder && <InvoiceDraftModal item={invoiceDraftOrder} provider={provider} onClose={() => setInvoiceDraftOrder(null)} />}{invoiceUploadOrder && <InvoiceUploadModal item={invoiceUploadOrder} provider={provider} onClose={() => setInvoiceUploadOrder(null)} />}{courierOrder && <CourierChangeModal item={courierOrder} onClose={() => setCourierOrder(null)} />}{singleSyncOpen && <SingleOrderSyncModal activeConnection={trendyolConnection} onClose={() => setSingleSyncOpen(false)} onSuccess={(connectionCount, orderNo) => { setBulkNotice(orderNo ? `${connectionCount} bağlantıdan #${orderNo} sipariş senkronizasyonu başlatıldı.` : `${connectionCount} bağlantıdan yeni sipariş senkronizasyonu başlatıldı.`); void client.invalidateQueries({ queryKey: ['orders'] }); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 1500); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 3500) }} />}{previewImage && <div className="workspace-modal-backdrop product-image-backdrop" role="presentation" onMouseDown={() => setPreviewImage(null)}><section className="workspace-modal product-image-modal" role="dialog" aria-modal="true" aria-label={`${previewImage.title} büyük ürün görseli`} onMouseDown={event => event.stopPropagation()}><header><h2>{previewImage.title}</h2><button type="button" className="modal-close" onClick={() => setPreviewImage(null)} aria-label="Pencereyi kapat">×</button></header><div className="product-image-modal-body"><img src={previewImage.url} alt={`${previewImage.title} büyük ürün görseli`} /></div></section></div>}
   </section>
 }
 

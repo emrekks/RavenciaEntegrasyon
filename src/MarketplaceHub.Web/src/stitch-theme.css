@@ -4260,3 +4260,137 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   transform: none !important;
   z-index: 2 !important;
 }
+
+/* Align order controls and keep row menus tied to their trigger width. */
+.app-shell .orders-page .orders-reference-filter-shell .order-filter-primary > .bulk-menu-shell,
+.app-shell .orders-page .orders-reference-filter-shell .filter-toggle,
+.app-shell .orders-page .orders-reference-filter-shell .filter-clear,
+.app-shell .orders-page .orders-reference-filter-shell .filter-apply {
+  height: 34px !important;
+  min-height: 34px !important;
+  align-self: end !important;
+  box-sizing: border-box !important;
+}
+.app-shell .orders-page .orders-reference-filter-shell .bulk-menu-shell > .bulk-action {
+  height: 34px !important;
+  min-height: 34px !important;
+  box-sizing: border-box !important;
+}
+.app-shell .orders-page .order-reference-invoice .row-menu {
+  width: 100% !important;
+}
+.app-shell .orders-page .order-reference-invoice .row-menu-trigger {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  min-height: 24px !important;
+  box-sizing: border-box !important;
+  line-height: 1 !important;
+}
+.app-shell .orders-page .order-reference-invoice .row-menu-trigger b {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+}
+.app-shell .orders-page .invoice-popover {
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+.app-shell .orders-page .order-reference-actions .order-action-menu {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  min-height: 25px !important;
+  box-sizing: border-box !important;
+  font-size: 0 !important;
+  line-height: 1 !important;
+}
+.app-shell .orders-page .order-reference-actions .order-action-menu::before {
+  content: 'İşlemler' !important;
+  color: #e3e1ed !important;
+  font-size: .6rem !important;
+  font-weight: 750 !important;
+}
+.app-shell .orders-page .order-reference-actions .order-action-menu::after {
+  content: '⌄' !important;
+  color: #bec2ff !important;
+  font-size: .75rem !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+.app-shell .orders-page .order-reference-actions .order-action-menu:hover::before { color: #fff !important; }
+
+/* Dark themed source picker for order synchronization. */
+.app-shell .orders-page .single-order-sync-modal {
+  color: #e3e1ed !important;
+  background: #12131b !important;
+  border-color: #454655 !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .58) !important;
+}
+.app-shell .orders-page .single-order-sync-modal > header {
+  padding: 22px 24px 16px !important;
+  border-bottom: 1px solid #1e202f !important;
+}
+.app-shell .orders-page .single-order-sync-modal > header h2 { color: #fff !important; }
+.app-shell .orders-page .single-order-sync-modal > header p { color: #a8a8bb !important; }
+.app-shell .orders-page .single-order-sync-modal .modal-close { color: #c6c5d7 !important; }
+.app-shell .orders-page .single-order-sync-modal .modal-close:hover { color: #fff !important; background: #292932 !important; }
+.app-shell .orders-page .single-order-sync-modal form { padding: 18px 24px 20px !important; }
+.app-shell .orders-page .sync-source-fieldset {
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 12px !important;
+  border: 1px solid #1e202f !important;
+  border-radius: 6px !important;
+}
+.app-shell .orders-page .sync-source-fieldset legend {
+  padding: 0 6px !important;
+  color: #bec2ff !important;
+  font-size: .68rem !important;
+  font-weight: 800 !important;
+}
+.app-shell .orders-page .sync-source-list { display: grid !important; gap: 8px !important; }
+.app-shell .orders-page .sync-source-option {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  min-height: 48px !important;
+  padding: 8px 10px !important;
+  color: #c6c5d7 !important;
+  background: #1a1b23 !important;
+  border: 1px solid #1e202f !important;
+  border-radius: 5px !important;
+  cursor: pointer !important;
+}
+.app-shell .orders-page .sync-source-option.is-selected { border-color: #5865f2 !important; background: rgba(88, 101, 242, .12) !important; }
+.app-shell .orders-page .sync-source-option input,
+.app-shell .orders-page .sync-mode-option input { width: 16px !important; height: 16px !important; min-height: 0 !important; accent-color: #5865f2 !important; }
+.app-shell .orders-page .sync-source-option > span,
+.app-shell .orders-page .sync-mode-option > span { display: grid !important; gap: 3px !important; min-width: 0 !important; }
+.app-shell .orders-page .sync-source-option strong,
+.app-shell .orders-page .sync-mode-option strong { color: #e3e1ed !important; font-size: .7rem !important; }
+.app-shell .orders-page .sync-source-option small,
+.app-shell .orders-page .sync-mode-option small { color: #8f8fa0 !important; font-size: .6rem !important; }
+.app-shell .orders-page .sync-order-number-field { color: #c6c5d7 !important; }
+.app-shell .orders-page .sync-order-number-field input {
+  min-height: 36px !important;
+  color: #e3e1ed !important;
+  background: #1a1b23 !important;
+  border: 1px solid #1e202f !important;
+}
+.app-shell .orders-page .sync-order-number-field input::placeholder { color: #8f8fa0 !important; }
+.app-shell .orders-page .sync-mode-option {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 9px !important;
+  color: #c6c5d7 !important;
+  cursor: pointer !important;
+}
+.app-shell .orders-page .single-order-sync-modal > form > footer {
+  padding: 10px 0 0 !important;
+  border-top: 1px solid #1e202f !important;
+}
+.app-shell .orders-page .single-order-sync-modal > form > footer button { min-height: 34px !important; }
