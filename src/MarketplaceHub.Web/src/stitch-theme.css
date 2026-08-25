@@ -3021,6 +3021,7 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .mapping-category-builder .mapping-local-manager[open] > .mapping-local-manager-dialog {
   min-width: 100% !important;
   box-sizing: border-box !important;
+  width: inherit !important;
 }
 .mapping-category-builder .mapping-local-manager-dialog:has(.category-library-tools:focus-within) > .category-chip-list {
   display: grid !important;
