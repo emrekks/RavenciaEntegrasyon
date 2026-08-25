@@ -3038,6 +3038,58 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   border-width: 1px !important;
 }
 
+/* The search field stays an input; only its explicit arrow button toggles the
+   category list. */
+.mapping-category-builder .category-library-search-control {
+  position: relative !important;
+  display: block !important;
+  min-width: 0 !important;
+}
+.mapping-category-builder .category-library-search-control input {
+  width: 100% !important;
+  padding-right: 38px !important;
+  background-image: none !important;
+}
+.mapping-category-builder .category-library-search-toggle {
+  position: absolute !important;
+  top: 1px !important;
+  right: 1px !important;
+  display: grid !important;
+  place-items: center !important;
+  width: 34px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  color: #c7caff !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 3px 3px 0 !important;
+  box-shadow: none !important;
+  font-size: 17px !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+}
+.mapping-category-builder .category-library-search-toggle:hover,
+.mapping-category-builder .category-library-search-toggle:focus-visible {
+  color: #fff !important;
+  background: rgba(88, 101, 242, .2) !important;
+  outline: 0 !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog:has(.category-library-tools:focus-within):not(:has(.category-library-search-control.is-open)) > .category-chip-list {
+  display: none !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  padding-block: 0 !important;
+  border-width: 0 !important;
+}
+.mapping-category-builder .mapping-local-manager-dialog:has(.category-library-search-control.is-open) > .category-chip-list {
+  display: grid !important;
+  min-height: 300px !important;
+  max-height: 300px !important;
+  padding: 8px !important;
+  border-width: 1px !important;
+}
+
 /* İşlem Takibi — operations hub reference layout */
 .jobs-reference-page {
   max-width: none !important;
