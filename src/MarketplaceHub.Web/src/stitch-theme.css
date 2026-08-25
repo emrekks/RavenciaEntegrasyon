@@ -1837,15 +1837,15 @@ textarea {
   height: 34px !important;
   padding: 0 !important;
   color: #e8e6f0 !important;
-  background: #30313b !important;
-  border: 1px solid #555764 !important;
-  border-radius: 5px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
   font-size: 24px !important;
   line-height: 1 !important;
 }
 .integrations-reference-page .reference-menu-trigger:hover {
-  background: #3a3b47 !important;
-  border-color: #777a8c !important;
+  background: transparent !important;
+  border-color: transparent !important;
 }
 
 /* Category library behaves like a dropdown: the compact control opens the list. */
@@ -2762,7 +2762,7 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 /* Platform connection cards: keep every credential readable and let the card
    grow with its content instead of clipping labels or masked values. */
 .integrations-reference-page .integration-grid {
-  align-items: start !important;
+  align-items: stretch !important;
 }
 .integrations-reference-page .reference-integration-card {
   min-height: 540px !important;
