@@ -6094,6 +6094,9 @@ html { overflow-y: auto !important; }
 .scheduled-publish-panel summary b { color: var(--st-primary-soft); font-size: 19px; }
 .scheduled-publish-panel[open] summary > strong { transform: rotate(180deg); }
 .scheduled-publish-panel > div { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; padding: 0 15px 15px; border-top: 1px solid var(--st-surface-highest); }
+.scheduled-publish-panel .scheduled-publish-info { grid-template-columns: 1fr; gap: 5px; padding-top: 13px; }
+.scheduled-publish-info strong { color: var(--st-text); font-size: 12px; }
+.scheduled-publish-info p { margin: 0; color: var(--st-muted); font-size: 11px; line-height: 1.5; }
 .scheduled-publish-panel label { display: grid; gap: 5px; padding-top: 13px; color: var(--st-muted); font-size: 10px; font-weight: 700; }
 .scheduled-publish-panel input { min-height: 35px; color: var(--st-text); background: var(--st-surface-lowest); border: 1px solid var(--st-outline); border-radius: 4px; }
 .scheduled-publish-panel small { grid-column: 1 / -1; color: var(--st-muted); font-size: 10px; }
