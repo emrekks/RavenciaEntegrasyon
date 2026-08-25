@@ -4719,7 +4719,7 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .app-shell .orders-page .order-reference-invoice .row-menu {
   width: min(148px, 100%) !important;
   max-width: 100% !important;
-  align-self: center !important;
+  align-self: flex-start !important;
 }
 .app-shell .orders-page .order-reference-invoice .row-menu-trigger,
 .app-shell .orders-page .order-reference-invoice .invoice-popover {
