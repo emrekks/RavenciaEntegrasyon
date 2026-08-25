@@ -3511,3 +3511,170 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   .jobs-reference-range-wrap { flex: 1; }
   .jobs-reference-range-menu { left: 0; right: auto; }
 }
+
+/* Shared reference controls: status/platform filters, neutral integration frames,
+   and underline tabs use the same Obsidian visual language across the panel. */
+.integrations-reference-page .integration-filter-menu {
+  min-width: 238px;
+  gap: 2px;
+  padding: 8px;
+}
+.integrations-reference-page .integration-filter-menu strong {
+  padding: 7px 9px 5px;
+}
+.integrations-reference-page .integration-filter-menu .integration-filter-menu-group {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--st-surface-highest);
+}
+.integrations-reference-page .integration-filter-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 9px;
+}
+.integrations-reference-page .integration-filter-menu button i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border: 1px solid var(--st-muted);
+  border-radius: 50%;
+}
+.integrations-reference-page .integration-filter-menu button.active i {
+  background: var(--st-primary-soft);
+  border-color: var(--st-primary-soft);
+  box-shadow: 0 0 7px rgba(190,194,255,.45);
+}
+.integrations-reference-page .reference-integration-card,
+.integrations-reference-page .reference-integration-card-active,
+.integrations-reference-page .reference-integration-card-error {
+  border-color: var(--st-outline) !important;
+}
+.integrations-reference-page .reference-integration-card:hover {
+  border-color: var(--st-primary-soft) !important;
+}
+
+.mapping-category-builder .category-library-search-toggle {
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+}
+.mapping-category-builder .category-library-search-toggle > span {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+.mapping-category-builder .category-library-search-toggle[aria-expanded="true"] > span {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.settings-tabs,
+.mapping-popup-content .mapping-section-tabs {
+  display: flex !important;
+  align-items: flex-end !important;
+  gap: 2px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--st-surface-highest) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.settings-tabs button,
+.mapping-popup-content .mapping-section-tabs > button {
+  position: relative;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px !important;
+  padding: 0 14px !important;
+  color: var(--st-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+}
+.settings-tabs button:hover,
+.mapping-popup-content .mapping-section-tabs > button:hover {
+  color: var(--st-text) !important;
+  background: rgba(255,255,255,.035) !important;
+}
+.settings-tabs button.active,
+.settings-tabs button[aria-selected="true"],
+.mapping-popup-content .mapping-section-tabs > button.active,
+.mapping-popup-content .mapping-section-tabs > button[aria-selected="true"] {
+  color: var(--st-primary-soft) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.settings-tabs button.active::after,
+.settings-tabs button[aria-selected="true"]::after,
+.mapping-popup-content .mapping-section-tabs > button.active::after,
+.mapping-popup-content .mapping-section-tabs > button[aria-selected="true"]::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: var(--st-primary);
+  box-shadow: 0 0 9px rgba(88,101,242,.35);
+}
+.mapping-popup-content .mapping-section-tabs > button small {
+  min-width: 20px !important;
+  padding: 2px 5px !important;
+  color: var(--st-primary-soft) !important;
+  background: rgba(88,101,242,.14) !important;
+  border-radius: 999px !important;
+  font-size: 9px !important;
+}
+.mapping-popup-content .mapping-section-tabs > button.active small,
+.mapping-popup-content .mapping-section-tabs > button[aria-selected="true"] small {
+  color: #fff !important;
+  background: rgba(88,101,242,.28) !important;
+}
+
+.jobs-reference-status-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px 13px;
+  color: var(--st-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+.jobs-reference-status-summary > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.jobs-reference-status-summary i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.jobs-reference-status-summary strong { color: var(--st-text); }
+.jobs-reference-status-summary .success { color: #b7f8dc; }
+.jobs-reference-status-summary .running { color: var(--st-primary-soft); }
+.jobs-reference-status-summary .waiting { color: #d0cfdd; }
+.jobs-reference-status-summary .error { color: #ffb4ab; }
+.jobs-reference-status-summary .cancelled { color: var(--st-muted); }
+
+@media (max-width: 760px) {
+  .jobs-reference-status-summary { gap: 7px 10px; }
+  .settings-tabs button,
+  .mapping-popup-content .mapping-section-tabs > button { min-height: 38px !important; padding: 0 10px !important; }
+}

@@ -173,7 +173,13 @@ export function JobsPage({ me }: { me: Me }) {
   const selected = detail.data?.job
   const retryable = selected && ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(selected.status)
   const cancellable = selected && !['LEASED', 'SUCCEEDED', 'DEAD', 'CANCELLED'].includes(selected.status)
-  const errorCount = rangeFiltered.filter(job => ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status)).length
+  const statusSummary = useMemo(() => ({
+    success: rangeFiltered.filter(job => job.status === 'SUCCEEDED').length,
+    running: rangeFiltered.filter(job => job.status === 'LEASED').length,
+    waiting: rangeFiltered.filter(job => job.status === 'PENDING' || job.status === 'RETRY_SCHEDULED').length,
+    error: rangeFiltered.filter(job => ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status)).length,
+    cancelled: rangeFiltered.filter(job => job.status === 'CANCELLED').length
+  }), [rangeFiltered])
   const categoryCounts = useMemo(() => new Map(categoryTabs.map(tab => [tab.key, rangeFiltered.filter(job => tab.match(job.jobType)).length])), [rangeFiltered])
   const pageNumbers = useMemo(() => {
     const pages = new Set([1, totalPages, currentPage, Math.max(1, currentPage - 1), Math.min(totalPages, currentPage + 1)])
@@ -209,7 +215,13 @@ export function JobsPage({ me }: { me: Me }) {
         ))}
       </div>
       <div className="jobs-reference-toolbar">
-        <div className="jobs-reference-error-summary"><i aria-hidden="true" /> <strong>{errorCount}</strong> işlem hata verdi</div>
+        <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">
+          <span className="success"><i aria-hidden="true" />Başarılı <strong>{statusSummary.success}</strong></span>
+          <span className="running"><i aria-hidden="true" />Çalışıyor <strong>{statusSummary.running}</strong></span>
+          <span className="waiting"><i aria-hidden="true" />Bekliyor <strong>{statusSummary.waiting}</strong></span>
+          <span className="error"><i aria-hidden="true" />Hata <strong>{statusSummary.error}</strong></span>
+          {statusSummary.cancelled > 0 && <span className="cancelled"><i aria-hidden="true" />İptal <strong>{statusSummary.cancelled}</strong></span>}
+        </div>
         <div className="jobs-reference-toolbar-actions">
           <label className="jobs-reference-search"><span aria-hidden="true">⌕</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Correlation ID..." aria-label="Correlation ID ile işlem ara" /></label>
           <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="İşlemleri yenile" onClick={refreshJobs}><JobsIcon name="refresh" /></button>
