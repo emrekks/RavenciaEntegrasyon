@@ -10,9 +10,9 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class MandatorySynchronizationScenariosTests
 {
     [Fact]
-    public void Scenario01_NormalOrder_UsesThirtySecondHotCadenceAndImmediateReservation()
+    public void Scenario01_NormalOrder_UsesOneMinuteHotCadenceAndImmediateReservation()
     {
-        Assert.Equal(TimeSpan.FromSeconds(30), SynchronizationCadence.HotOrders);
+        Assert.Equal(TimeSpan.FromSeconds(60), SynchronizationCadence.HotOrders);
         Assert.Equal(2m, OrderInventoryReservationPolicy.DesiredQuantity(2m, 0m));
     }
 
@@ -69,9 +69,10 @@ public sealed class MandatorySynchronizationScenariosTests
     }
 
     [Fact]
-    public void Scenario08_NewReturnAfterFortyFiveDays_IsInsideHotReturnFlow()
+    public void Scenario08_NewReturnAfterFortyFiveDays_UsesThreeMinuteHotReturnCadence()
     {
-        Assert.Equal(TimeSpan.FromSeconds(60), SynchronizationCadence.HotReturns);
+        Assert.Equal(TimeSpan.FromMinutes(3), SynchronizationCadence.HotReturns);
+        Assert.Equal(TimeSpan.FromMinutes(15), SynchronizationCadence.ProductCatalog);
         Assert.True(OpenReturnLifecyclePolicy.ShouldPoll(ReturnClaimStatus.Requested));
     }
 

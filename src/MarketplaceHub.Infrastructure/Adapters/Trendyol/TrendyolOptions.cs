@@ -8,7 +8,8 @@ public sealed class TrendyolOptions
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
     public int MaxConcurrency { get; init; } = 8;
     public int RequestsPerInterval { get; init; } = 50;
-    public TimeSpan RequestInterval { get; init; } = TimeSpan.FromSeconds(1);
+    // Trendyol order stream limit: at most 50 requests in a rolling 10-second window.
+    public TimeSpan RequestInterval { get; init; } = TimeSpan.FromSeconds(10);
     public int CircuitFailureThreshold { get; init; } = 5;
     public TimeSpan CircuitBreakDuration { get; init; } = TimeSpan.FromSeconds(30);
 }
