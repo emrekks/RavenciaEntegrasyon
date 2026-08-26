@@ -67,6 +67,7 @@ textarea {
 .stitch-shell > aside {
   position: sticky !important;
   top: 0;
+  align-self: start;
   z-index: 40;
   display: flex !important;
   flex-direction: column;
