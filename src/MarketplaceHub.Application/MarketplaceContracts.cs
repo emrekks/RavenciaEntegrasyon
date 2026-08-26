@@ -232,7 +232,9 @@ public sealed record SyncPolicyView(
     int LastSkippedCount = 0,
     int LastFailedCount = 0,
     int LastRetryCount = 0,
-    int LastRateLimitCount = 0);
+    int LastRateLimitCount = 0,
+    string RecoveryGapStatus = "UNKNOWN",
+    double? RecoveryGapDays = null);
 public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);
 public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType, string? Username, string? Password, string? ApiKey);

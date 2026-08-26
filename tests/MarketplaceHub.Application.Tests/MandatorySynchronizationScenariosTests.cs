@@ -146,4 +146,30 @@ public sealed class MandatorySynchronizationScenariosTests
     {
         Assert.Equal(new[] { 2d, 5d, 15d, 30d, 60d }, JobRetryPolicy.DefaultSchedule.Select(x => x.TotalSeconds));
     }
+
+    [Fact]
+    public void RecoveryGap_UsesWarningAndCriticalThresholds()
+    {
+        var now = DateTimeOffset.Parse("2026-08-26T12:00:00Z");
+        Assert.Equal("OK", MarketplaceSyncHealthPolicy.RecoveryGap(now.AddDays(-10), now, TimeSpan.FromDays(70), TimeSpan.FromDays(80)).Status);
+        Assert.Equal("WARNING", MarketplaceSyncHealthPolicy.RecoveryGap(now.AddDays(-71), now, TimeSpan.FromDays(70), TimeSpan.FromDays(80)).Status);
+        Assert.Equal("CRITICAL", MarketplaceSyncHealthPolicy.RecoveryGap(now.AddDays(-81), now, TimeSpan.FromDays(70), TimeSpan.FromDays(80)).Status);
+        Assert.Equal("UNKNOWN", MarketplaceSyncHealthPolicy.RecoveryGap(null, now, TimeSpan.FromDays(70), TimeSpan.FromDays(80)).Status);
+    }
+
+    [Fact]
+    public void ProductImportMergePolicy_ProtectsDirtyFieldsEvenWhenVersionMatches()
+    {
+        Assert.True(ProductImportMergePolicy.PreserveLocalChanges(10, 10, "[\"title\"]"));
+        Assert.False(ProductImportMergePolicy.PreserveLocalChanges(10, 10, "[]"));
+        Assert.False(ProductImportMergePolicy.PreserveLocalChanges(10, 10, null));
+    }
+
+    [Fact]
+    public void DistributedSyncLock_UsesSeparateResourceGroupsPerConnection()
+    {
+        Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_ORDER_SYNC"));
+        Assert.Equal("returns", MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_RETURN_SYNC"));
+        Assert.NotEqual(MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_ORDER_SYNC"), MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_RETURN_SYNC"));
+    }
 }

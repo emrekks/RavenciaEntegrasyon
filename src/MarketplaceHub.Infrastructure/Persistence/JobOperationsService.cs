@@ -15,7 +15,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             query = query.Where(x => x.Status == parsed);
         }
         var jobs = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
-        return jobs.Select(Summary).ToList();
+        var failures = await FailureTimes(jobs, cancellationToken);
+        return jobs.Select(job => Summary(job, failures.GetValueOrDefault(job.Id))).ToList();
     }
 
     public async Task<ServiceResult<JobDetailView>> GetAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
@@ -69,13 +70,57 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             .OrderByDescending(x => x.AttemptNumber)
             .Select(x => new JobAttemptDetailView(x.AttemptNumber, x.StartedAt, x.CompletedAt, x.Succeeded, x.ErrorCode, x.ErrorSummary))
             .ToListAsync(cancellationToken);
-        return new JobDetailView(Summary(job), attempts);
+        var failure = attempts.Where(x => !x.Succeeded).ToList();
+        var failureTimes = failure.Count == 0
+            ? null
+            : new FailureTime(failure.Min(x => x.StartedAt), failure.Max(x => x.CompletedAt ?? x.StartedAt));
+        return new JobDetailView(Summary(job, failureTimes), attempts);
     }
 
-    private static JobSummaryView Summary(IntegrationJob x) => new(
+    private async Task<Dictionary<Guid, FailureTime>> FailureTimes(IReadOnlyCollection<IntegrationJob> jobs, CancellationToken cancellationToken)
+    {
+        if (jobs.Count == 0) return [];
+        var jobIds = jobs.Select(x => x.Id).ToArray();
+        return (await db.JobAttempts.AsNoTracking()
+            .Where(x => x.TenantId == jobs.First().TenantId && jobIds.Contains(x.JobId) && !x.Succeeded)
+            .GroupBy(x => x.JobId)
+            .Select(group => new
+            {
+                JobId = group.Key,
+                FirstFailedAt = group.Min(x => x.StartedAt),
+                LastFailedAt = group.Max(x => x.CompletedAt ?? x.StartedAt)
+            })
+            .ToListAsync(cancellationToken))
+            .ToDictionary(x => x.JobId, x => new FailureTime(x.FirstFailedAt, x.LastFailedAt));
+    }
+
+    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null) => new(
         x.Id, x.ConnectionId, x.JobType, Wire(x.Status), x.AttemptCount, x.MaxAttempts,
         x.AvailableAt, x.LastErrorCode, x.LastErrorSummary, x.CorrelationId,
-        x.CreatedAt, x.StartedAt, x.CompletedAt);
+        x.CreatedAt, x.StartedAt, x.CompletedAt, Marketplace(x.JobType), ExternalId(x.PayloadJson),
+        failure?.FirstFailedAt, failure?.LastFailedAt,
+        x.Status is JobStatus.Pending or JobStatus.RetryScheduled ? x.AvailableAt : null);
+
+    private static string Marketplace(string jobType) => jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
+        ? "Trendyol e-Faturam"
+        : jobType.Contains("TRENDYOL", StringComparison.OrdinalIgnoreCase)
+            ? "Trendyol"
+            : "Ravencia";
+
+    private static string? ExternalId(string payloadJson)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(payloadJson);
+            foreach (var name in new[] { "externalOrderId", "externalClaimId", "externalPackageId", "externalProductId", "externalVariantId" })
+                if (document.RootElement.TryGetProperty(name, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String)
+                    return value.GetString();
+        }
+        catch (System.Text.Json.JsonException) { }
+        return null;
+    }
+
+    private sealed record FailureTime(DateTimeOffset FirstFailedAt, DateTimeOffset LastFailedAt);
 
     private static bool TryParseStatus(string value, out JobStatus status) => Enum.TryParse(value.Replace("_", string.Empty, StringComparison.Ordinal), true, out status);
     private static string Wire(JobStatus status) => status switch

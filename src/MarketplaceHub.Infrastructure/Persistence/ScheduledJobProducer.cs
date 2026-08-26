@@ -86,7 +86,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
         var connectionIds = operationalConnections.Select(x => x.ConnectionId).ToArray();
         var existing = await db.ConnectionSyncPolicies
-            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "ORDER_RECOVERY" || x.ResourceType == "ORDER_LIFECYCLE" || x.ResourceType == "ORDER_RECONCILE_SHORT" || x.ResourceType == "ORDER_RECONCILE_MEDIUM" || x.ResourceType == "ORDER_RECONCILE_DAILY" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE" || x.ResourceType == "RETURN_RECONCILE_DAILY" || x.ResourceType == "STOCK_RECONCILE_SHORT" || x.ResourceType == "STOCK_RECONCILE_MEDIUM" || x.ResourceType == "STOCK_RECONCILE_DAILY"))
+            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "ORDER_RECOVERY" || x.ResourceType == "ORDER_LIFECYCLE" || x.ResourceType == "ORDER_RECONCILE_SHORT" || x.ResourceType == "ORDER_RECONCILE_MEDIUM" || x.ResourceType == "ORDER_RECONCILE_DAILY" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE" || x.ResourceType == "RETURN_RECONCILE_SHORT" || x.ResourceType == "RETURN_RECONCILE_MEDIUM" || x.ResourceType == "RETURN_RECONCILE_DAILY" || x.ResourceType == "STOCK_RECONCILE_SHORT" || x.ResourceType == "STOCK_RECONCILE_MEDIUM" || x.ResourceType == "STOCK_RECONCILE_DAILY"))
             .ToListAsync(cancellationToken);
         foreach (var connection in operationalConnections)
         {
@@ -128,34 +128,40 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         new("ORDERS", configuration.GetValue("MarketplaceSync:Orders:IntervalSeconds", 30), configuration.GetValue("MarketplaceSync:Orders:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:Orders:JitterSeconds", 2)),
         new("ORDER_RECOVERY", configuration.GetValue("MarketplaceSync:OrderRecovery:IntervalSeconds", 900), configuration.GetValue("MarketplaceSync:OrderRecovery:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:OrderRecovery:JitterSeconds", 30)),
         new("ORDER_LIFECYCLE", configuration.GetValue("MarketplaceSync:OrderLifecycle:IntervalSeconds", 180), 0, configuration.GetValue("MarketplaceSync:OrderLifecycle:JitterSeconds", 10)),
-        new("ORDER_RECONCILE_SHORT", 900, 0, 30),
-        new("ORDER_RECONCILE_MEDIUM", 3600, 0, 120),
-        new("ORDER_RECONCILE_DAILY", 86_400, 0, 900),
+        new("ORDER_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:OrderReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:OrderReconciliation:ShortJitterSeconds", 30)),
+        new("ORDER_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:OrderReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:OrderReconciliation:MediumJitterSeconds", 120)),
+        new("ORDER_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:OrderReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:OrderReconciliation:DailyJitterSeconds", 900)),
         new("RETURNS", configuration.GetValue("MarketplaceSync:Returns:IntervalSeconds", 60), configuration.GetValue("MarketplaceSync:Returns:SafetyWindowSeconds", 900), configuration.GetValue("MarketplaceSync:Returns:JitterSeconds", 5)),
         new("RETURN_LIFECYCLE", configuration.GetValue("MarketplaceSync:ReturnLifecycle:IntervalSeconds", 180), 0, configuration.GetValue("MarketplaceSync:ReturnLifecycle:JitterSeconds", 10)),
-        new("RETURN_RECONCILE_DAILY", 86_400, 0, 900),
-        new("STOCK_RECONCILE_SHORT", 900, 0, 30),
-        new("STOCK_RECONCILE_MEDIUM", 3600, 0, 120),
-        new("STOCK_RECONCILE_DAILY", 86_400, 0, 900)
+        new("RETURN_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:ReturnReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:ShortJitterSeconds", 30)),
+        new("RETURN_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:ReturnReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:MediumJitterSeconds", 120)),
+        new("RETURN_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyJitterSeconds", 900)),
+        new("STOCK_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:StockReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:ShortJitterSeconds", 30)),
+        new("STOCK_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:StockReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:MediumJitterSeconds", 120)),
+        new("STOCK_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:StockReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:DailyJitterSeconds", 900))
     ];
 
-    private static (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId) => resourceType switch
+    private (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId) => resourceType switch
     {
         "ORDERS" => (MarketplaceJobTypes.OrderSync, $"scheduled:orders:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null })),
         "ORDER_RECOVERY" => (MarketplaceJobTypes.OrderRecoverySync, $"scheduled:order-recovery:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null })),
         "ORDER_LIFECYCLE" => (MarketplaceJobTypes.OrderStatusSync, $"scheduled:order-lifecycle:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
-        "ORDER_RECONCILE_SHORT" => (MarketplaceJobTypes.OrderReconciliation, $"scheduled:order-reconcile-short:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = 1 })),
-        "ORDER_RECONCILE_MEDIUM" => (MarketplaceJobTypes.OrderReconciliation, $"scheduled:order-reconcile-medium:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = 3 })),
-        "ORDER_RECONCILE_DAILY" => (MarketplaceJobTypes.OrderReconciliation, $"scheduled:order-reconcile-daily:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = 90 })),
+        "ORDER_RECONCILE_SHORT" => (MarketplaceJobTypes.OrderReconciliation, $"scheduled:order-reconcile-short:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:OrderReconciliation:ShortLookbackDays", 1, 1, 14) })),
+        "ORDER_RECONCILE_MEDIUM" => (MarketplaceJobTypes.OrderReconciliation, $"scheduled:order-reconcile-medium:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:OrderReconciliation:MediumLookbackDays", 3, 1, 30) })),
+        "ORDER_RECONCILE_DAILY" => (MarketplaceJobTypes.OrderReconciliation, $"scheduled:order-reconcile-daily:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:OrderReconciliation:DailyLookbackDays", 90, 1, 90) })),
         "RETURNS" => (MarketplaceJobTypes.ReturnSync, $"scheduled:returns:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "RETURN_LIFECYCLE" => (MarketplaceJobTypes.ReturnStatusSync, $"scheduled:return-lifecycle:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
-        "RETURN_RECONCILE_DAILY" => (MarketplaceJobTypes.ReturnReconciliation, $"scheduled:return-reconcile-daily:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = 90 })),
-        "STOCK_RECONCILE_SHORT" => (MarketplaceJobTypes.StockReconciliation, $"scheduled:stock-reconcile-short:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackHours = 1 })),
-        "STOCK_RECONCILE_MEDIUM" => (MarketplaceJobTypes.StockReconciliation, $"scheduled:stock-reconcile-medium:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackHours = 6 })),
-        "STOCK_RECONCILE_DAILY" => (MarketplaceJobTypes.StockReconciliation, $"scheduled:stock-reconcile-daily:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackHours = 720 })),
+        "RETURN_RECONCILE_SHORT" => (MarketplaceJobTypes.ReturnReconciliation, $"scheduled:return-reconcile-short:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:ReturnReconciliation:ShortLookbackDays", 1, 1, 14) })),
+        "RETURN_RECONCILE_MEDIUM" => (MarketplaceJobTypes.ReturnReconciliation, $"scheduled:return-reconcile-medium:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:ReturnReconciliation:MediumLookbackDays", 3, 1, 30) })),
+        "RETURN_RECONCILE_DAILY" => (MarketplaceJobTypes.ReturnReconciliation, $"scheduled:return-reconcile-daily:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:ReturnReconciliation:DailyLookbackDays", 90, 1, 90) })),
+        "STOCK_RECONCILE_SHORT" => (MarketplaceJobTypes.StockReconciliation, $"scheduled:stock-reconcile-short:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackHours = ConfigInt("MarketplaceSync:StockReconciliation:ShortLookbackHours", 1, 1, 24 * 7) })),
+        "STOCK_RECONCILE_MEDIUM" => (MarketplaceJobTypes.StockReconciliation, $"scheduled:stock-reconcile-medium:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackHours = ConfigInt("MarketplaceSync:StockReconciliation:MediumLookbackHours", 6, 1, 24 * 30) })),
+        "STOCK_RECONCILE_DAILY" => (MarketplaceJobTypes.StockReconciliation, $"scheduled:stock-reconcile-daily:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackHours = ConfigInt("MarketplaceSync:StockReconciliation:DailyLookbackHours", 720, 1, 24 * 90) })),
         "REFERENCE_DATA" => (MarketplaceJobTypes.ReferenceSync, $"scheduled:reference:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })),
         _ => null
     };
+
+    private int ConfigInt(string key, int fallback, int minimum, int maximum) => Math.Clamp(configuration.GetValue(key, fallback), minimum, maximum);
 
     private static IntegrationJob NewJob(Guid tenantId, Guid? connectionId, string type, string dedup, string payload, DateTimeOffset availableAt, string correlationId) => new()
     {

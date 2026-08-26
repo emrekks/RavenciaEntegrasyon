@@ -62,7 +62,12 @@ public sealed record JobSummaryView(
     string CorrelationId,
     DateTimeOffset CreatedAt,
     DateTimeOffset? StartedAt,
-    DateTimeOffset? CompletedAt);
+    DateTimeOffset? CompletedAt,
+    string Marketplace = "Trendyol",
+    string? ExternalId = null,
+    DateTimeOffset? FirstFailedAt = null,
+    DateTimeOffset? LastFailedAt = null,
+    DateTimeOffset? NextRetryAt = null);
 
 public sealed record JobDetailView(JobSummaryView Job, IReadOnlyList<JobAttemptDetailView> Attempts);
 

@@ -25,7 +25,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         InvoicingCapabilities.ConnectionTest, InvoicingCapabilities.InvoiceSubmit,
         InvoicingCapabilities.InvoiceStatusRead, InvoicingCapabilities.InvoiceDocumentRead, InvoicingCapabilities.InvoiceCancel
     ];
-    private static readonly HashSet<string> ResourceTypes = new(StringComparer.Ordinal) { "ORDERS", "ORDER_RECOVERY", "ORDER_LIFECYCLE", "ORDER_RECONCILE_SHORT", "ORDER_RECONCILE_MEDIUM", "ORDER_RECONCILE_DAILY", "RETURNS", "RETURN_LIFECYCLE", "RETURN_RECONCILE_DAILY", "STOCK_RECONCILE_SHORT", "STOCK_RECONCILE_MEDIUM", "STOCK_RECONCILE_DAILY", "REFERENCE_DATA", "PRODUCTS" };
+    private static readonly HashSet<string> ResourceTypes = new(StringComparer.Ordinal) { "ORDERS", "ORDER_RECOVERY", "ORDER_LIFECYCLE", "ORDER_RECONCILE_SHORT", "ORDER_RECONCILE_MEDIUM", "ORDER_RECONCILE_DAILY", "RETURNS", "RETURN_LIFECYCLE", "RETURN_RECONCILE_SHORT", "RETURN_RECONCILE_MEDIUM", "RETURN_RECONCILE_DAILY", "STOCK_RECONCILE_SHORT", "STOCK_RECONCILE_MEDIUM", "STOCK_RECONCILE_DAILY", "REFERENCE_DATA", "PRODUCTS" };
     private readonly IDataProtector _credentialProtector = dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1");
     private readonly IDataProtector _webhookProtector = dataProtection.CreateProtector("MarketplaceHub.WebhookVerifier.v1");
 
@@ -211,14 +211,17 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var cursors = await db.SyncCursors.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         var delayedAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:DelayedAfterSeconds", 120), 30, 86_400));
-        var degradedAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:DegradedAfterSeconds", 600), (int)delayedAfter.TotalSeconds + 1, 172_800));
-        var offlineAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:OfflineAfterSeconds", 1800), (int)degradedAfter.TotalSeconds + 1, 604_800));
+        var degradedAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:DegradedAfterSeconds", 300), (int)delayedAfter.TotalSeconds + 1, 172_800));
+        var offlineAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:OfflineAfterSeconds", 900), (int)degradedAfter.TotalSeconds + 1, 604_800));
+        var recoveryGapWarning = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:RecoveryGapWarningDays", 70), 1, 90));
+        var recoveryGapCritical = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:RecoveryGapCriticalDays", 80), (int)recoveryGapWarning.TotalDays + 1, 120));
         var rows = policies.Select(x =>
         {
             var cursor = cursors.FirstOrDefault(candidate => candidate.ResourceType == x.ResourceType)
                 ?? (x.ResourceType == "ORDERS" ? cursors.FirstOrDefault(candidate => candidate.ResourceType == "ORDERS_HOT") : null);
             var health = MarketplaceSyncHealthPolicy.Classify(cursor?.LastSuccessAt, now, delayedAfter, degradedAfter, offlineAfter).ToString().ToUpperInvariant();
-            return new SyncPolicyView(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, x.Enabled, x.Version, cursor?.LastSuccessAt, cursor?.LastModifiedWatermark, health, cursor?.LastAttemptAt, cursor?.ConsecutiveFailureCount ?? 0, cursor?.LastRequestCount ?? 0, cursor?.LastReceivedCount ?? 0, cursor?.LastChangedCount ?? 0, cursor?.LastInsertedCount ?? 0, cursor?.LastUpdatedCount ?? 0, cursor?.LastSkippedCount ?? 0, cursor?.LastFailedCount ?? 0, cursor?.LastRetryCount ?? 0, cursor?.LastRateLimitCount ?? 0);
+            var gap = MarketplaceSyncHealthPolicy.RecoveryGap(cursor?.LastModifiedWatermark, now, recoveryGapWarning, recoveryGapCritical);
+            return new SyncPolicyView(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, x.Enabled, x.Version, cursor?.LastSuccessAt, cursor?.LastModifiedWatermark, health, cursor?.LastAttemptAt, cursor?.ConsecutiveFailureCount ?? 0, cursor?.LastRequestCount ?? 0, cursor?.LastReceivedCount ?? 0, cursor?.LastChangedCount ?? 0, cursor?.LastInsertedCount ?? 0, cursor?.LastUpdatedCount ?? 0, cursor?.LastSkippedCount ?? 0, cursor?.LastFailedCount ?? 0, cursor?.LastRetryCount ?? 0, cursor?.LastRateLimitCount ?? 0, gap.Status, gap.Days);
         }).ToList();
         return ServiceResult<IReadOnlyList<SyncPolicyView>>.Ok(rows);
     }

@@ -17,6 +17,11 @@ type JobSummary = {
   createdAt: string
   startedAt: string | null
   completedAt: string | null
+  marketplace: string
+  externalId: string | null
+  firstFailedAt: string | null
+  lastFailedAt: string | null
+  nextRetryAt: string | null
 }
 type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null }> }
 
@@ -72,8 +77,6 @@ function jobSource(jobType: string) {
   const type = jobType.toUpperCase()
   if (type.includes('EFATURAM') || type.includes('INVOICE')) return 'e-Faturam API'
   if (type.includes('TRENDYOL')) return 'Trendyol API'
-  if (type.includes('HEPSIBURADA')) return 'Hepsiburada API'
-  if (type.includes('AMAZON')) return 'Amazon API'
   return 'Ravencia Worker'
 }
 
@@ -86,6 +89,12 @@ function formatJobTime(value: string) {
     time: date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
     day: sameDay ? 'Bugün' : date.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
   }
+}
+
+function formatOptionalJobTime(value: string | null) {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('tr-TR')
 }
 
 type JobTimeRange = '24h' | '7d' | 'all'
@@ -249,7 +258,7 @@ export function JobsPage({ me }: { me: Me }) {
             const presentation = jobPresentation(job.jobType)
             const time = formatJobTime(job.createdAt)
             return <tr className="jobs-reference-row" key={job.id} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') setSelectedId(job.id) }}>
-              <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span><strong>{presentation.title}</strong><small>{jobSource(job.jobType)}</small></span></div></td>
+              <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span><strong>{presentation.title}</strong><small>{job.marketplace} · {job.externalId ?? jobSource(job.jobType)}</small></span></div></td>
               <td><span className={`jobs-reference-status ${jobStatusTone(job.status)}`}><i aria-hidden="true" />{jobStatusLabel(job.status)}</span></td>
               <td className="jobs-reference-attempt">{job.attemptCount} / {job.maxAttempts}</td>
               <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day}</small></div></td>
@@ -268,7 +277,7 @@ export function JobsPage({ me }: { me: Me }) {
     </div>
     {selectedId && <div className="job-detail-backdrop jobs-reference-drawer-backdrop" role="presentation" onMouseDown={() => setSelectedId(null)}><aside className="job-detail-drawer jobs-reference-drawer panel" role="dialog" aria-modal="true" aria-labelledby="job-detail-title" onMouseDown={event => event.stopPropagation()}>
       <div className="jobs-reference-drawer-header"><div><span className="jobs-reference-drawer-correlation">{selected?.correlationId ?? selectedId}</span>{selected && <span className={`jobs-reference-status ${jobStatusTone(selected.status)}`}><i aria-hidden="true" />{jobStatusLabel(selected.status)}</span>}<h2 id="job-detail-title">{selected ? jobPresentation(selected.jobType).title : 'İşlem ayrıntısı'}</h2><p>{selected ? `${jobSource(selected.jobType)} · ${selected.jobType}` : 'İşlem ayrıntısı yükleniyor'}</p></div><button type="button" className="jobs-reference-drawer-close" aria-label="Detay panelini kapat" onClick={() => setSelectedId(null)}>×</button></div>
-      {detail.isLoading ? <p className="jobs-reference-state">Yükleniyor…</p> : detail.isError || !detail.data ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem ayrıntısı alınamadı.</div> : <div className="jobs-reference-drawer-body"><div className="jobs-reference-error-alert"><strong>{detail.data.job.lastErrorCode ?? 'İşlem durumu'}</strong><span>{detail.data.job.lastErrorSummary ?? 'Hata açıklaması bulunmuyor.'}</span></div><div className="job-detail-facts"><p><small>Correlation ID</small><strong>{detail.data.job.correlationId}</strong></p><p><small>Son hata</small><strong>{detail.data.job.lastErrorCode ?? 'Yok'}</strong></p></div>{elevated && <div className="job-detail-actions">{retryable && <button type="button" disabled={action.isPending} onClick={() => action.mutate({ id: detail.data.job.id, verb: 'retry' })}>Manuel Yeniden Dene</button>}{cancellable && <button type="button" className="secondary" disabled={action.isPending} onClick={() => action.mutate({ id: detail.data.job.id, verb: 'cancel' })}>İptal et</button>}</div>}{action.isError && <div role="alert" className="error">İşlem güncellenemedi.</div>}<h3>Deneme geçmişi</h3><div className="table-wrap"><table><thead><tr><th>#</th><th>Başlangıç</th><th>Sonuç</th><th>Hata</th></tr></thead><tbody>{detail.data.attempts.map(attempt => <tr key={attempt.attemptNumber}><td>{attempt.attemptNumber}</td><td>{new Date(attempt.startedAt).toLocaleString('tr-TR')}</td><td>{attempt.completedAt ? (attempt.succeeded ? 'Başarılı' : 'Başarısız') : 'Çalışıyor'}</td><td>{attempt.errorCode ?? '—'}<small>{attempt.errorSummary ?? ''}</small></td></tr>)}{detail.data.attempts.length === 0 && <tr><td colSpan={4}>Henüz deneme yok.</td></tr>}</tbody></table></div></div>}
+      {detail.isLoading ? <p className="jobs-reference-state">Yükleniyor…</p> : detail.isError || !detail.data ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem ayrıntısı alınamadı.</div> : <div className="jobs-reference-drawer-body"><div className="jobs-reference-error-alert"><strong>{detail.data.job.lastErrorCode ?? 'İşlem durumu'}</strong><span>{detail.data.job.lastErrorSummary ?? 'Hata açıklaması bulunmuyor.'}</span></div><div className="job-detail-facts"><p><small>Pazaryeri</small><strong>{detail.data.job.marketplace}</strong></p><p><small>İşlem</small><strong>{detail.data.job.jobType}</strong></p><p><small>Dış kimlik</small><strong>{detail.data.job.externalId ?? '—'}</strong></p><p><small>Retry sayısı</small><strong>{detail.data.job.attemptCount} / {detail.data.job.maxAttempts}</strong></p><p><small>İlk hata</small><strong>{formatOptionalJobTime(detail.data.job.firstFailedAt)}</strong></p><p><small>Son hata</small><strong>{formatOptionalJobTime(detail.data.job.lastFailedAt)}</strong></p><p><small>Sonraki deneme</small><strong>{formatOptionalJobTime(detail.data.job.nextRetryAt)}</strong></p><p><small>Correlation ID</small><strong>{detail.data.job.correlationId}</strong></p></div>{elevated && <div className="job-detail-actions">{retryable && <button type="button" disabled={action.isPending} onClick={() => action.mutate({ id: detail.data.job.id, verb: 'retry' })}>Manuel Yeniden Dene</button>}{cancellable && <button type="button" className="secondary" disabled={action.isPending} onClick={() => action.mutate({ id: detail.data.job.id, verb: 'cancel' })}>İptal et</button>}</div>}{action.isError && <div role="alert" className="error">İşlem güncellenemedi.</div>}<h3>Deneme geçmişi</h3><div className="table-wrap"><table><thead><tr><th>#</th><th>Başlangıç</th><th>Sonuç</th><th>Hata</th></tr></thead><tbody>{detail.data.attempts.map(attempt => <tr key={attempt.attemptNumber}><td>{attempt.attemptNumber}</td><td>{new Date(attempt.startedAt).toLocaleString('tr-TR')}</td><td>{attempt.completedAt ? (attempt.succeeded ? 'Başarılı' : 'Başarısız') : 'Çalışıyor'}</td><td>{attempt.errorCode ?? '—'}<small>{attempt.errorSummary ?? ''}</small></td></tr>)}{detail.data.attempts.length === 0 && <tr><td colSpan={4}>Henüz deneme yok.</td></tr>}</tbody></table></div></div>}
     </aside></div>}
   </section>
 }

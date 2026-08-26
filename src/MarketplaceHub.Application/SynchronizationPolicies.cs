@@ -67,6 +67,22 @@ public static class MarketplaceSyncHealthPolicy
         if (age < degradedAfter) return MarketplaceSyncHealth.Delayed;
         return age < offlineAfter ? MarketplaceSyncHealth.Degraded : MarketplaceSyncHealth.Offline;
     }
+
+    public static (string Status, double? Days) RecoveryGap(
+        DateTimeOffset? lastModifiedWatermark,
+        DateTimeOffset now,
+        TimeSpan warningAfter,
+        TimeSpan criticalAfter)
+    {
+        if (warningAfter <= TimeSpan.Zero || criticalAfter <= warningAfter)
+            throw new ArgumentException("Recovery gap thresholds must be strictly increasing.");
+        if (lastModifiedWatermark is null) return ("UNKNOWN", null);
+        var age = now - lastModifiedWatermark.Value;
+        var days = Math.Max(0, age.TotalDays);
+        if (age > criticalAfter) return ("CRITICAL", days);
+        if (age > warningAfter) return ("WARNING", days);
+        return ("OK", days);
+    }
 }
 
 public static class OrderInventoryReservationPolicy
@@ -82,6 +98,10 @@ public static class ProductImportMergePolicy
 {
     public static bool PreserveLocalChanges(long productVersion, long lastImportedProductVersion) =>
         lastImportedProductVersion > 0 && productVersion > lastImportedProductVersion;
+
+    public static bool PreserveLocalChanges(long productVersion, long lastImportedProductVersion, string? dirtyFieldsJson) =>
+        PreserveLocalChanges(productVersion, lastImportedProductVersion)
+        || !string.IsNullOrWhiteSpace(dirtyFieldsJson) && !string.Equals(dirtyFieldsJson.Trim(), "[]", StringComparison.Ordinal);
 }
 
 public static class ProductUpdatePollingPolicy

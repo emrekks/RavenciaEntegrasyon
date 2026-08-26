@@ -32,6 +32,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (connectionId is null) return JobExecutionResult.Blocked("CONNECTION_REQUIRED", "Job requires a platform connection.");
         var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId.Value).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (!ActiveIntegrationScope.Contains(platform)) return JobExecutionResult.Blocked("CONNECTION_OUT_OF_SCOPE", "Connection is not active in the current integration scope.");
+        var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken);
+        if (syncLock is null) return JobExecutionResult.Retry("SYNC_LOCK_BUSY", "Aynı Trendyol mağazası için aynı senkronizasyon akışı zaten çalışıyor.", TimeSpan.FromSeconds(5));
+        await using (syncLock)
+        {
         var telemetryResource = TelemetryResource(jobType);
         var stopwatch = Stopwatch.StartNew();
         ResetTelemetry();
@@ -92,6 +96,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             telemetryRetryCount++;
             if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, false, exception.GetType().Name, cancellationToken);
             throw;
+        }
         }
     }
 
@@ -1192,7 +1197,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 }
                 cursor.OpaqueCursor = null;
                 cursor.LastModifiedWatermark = state.AnchorEnd;
-                cursor.LastSuccessAt = timeProvider.GetUtcNow();
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
                 break;
@@ -1220,7 +1224,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 cursor.OpaqueCursor = null;
                 cursor.LastModifiedWatermark = state.AnchorEnd;
-                cursor.LastSuccessAt = timeProvider.GetUtcNow();
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
                 break;
@@ -1260,8 +1263,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
-        cursor.LastSuccessAt = timeProvider.GetUtcNow();
-        cursor.LastModifiedWatermark = cursor.LastSuccessAt;
+        cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return true;
@@ -1347,7 +1349,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol ürün sayfası hasMore=true ancak nextPageToken boş döndü.");
                 nextCursor = result.Value.NextCursor;
                 cursor.OpaqueCursor = nextCursor;
-                cursor.LastSuccessAt = timeProvider.GetUtcNow();
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
             }
@@ -1357,7 +1358,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 // Approved-products supports a modified-date filter. Keep a short
                 // overlap so a variant changed while a page was being read is not lost.
                 cursor.LastModifiedWatermark = timeProvider.GetUtcNow().AddSeconds(-60);
-                cursor.LastSuccessAt = timeProvider.GetUtcNow();
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
                 break;
@@ -1674,7 +1674,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
         }
 
-        var preserveLocal = link is not null && ProductImportMergePolicy.PreserveLocalChanges(product.Version, link.LastImportedProductVersion);
+        if (link is not null && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase))
+        {
+            telemetrySkippedCount++;
+            return;
+        }
+
+        var preserveLocal = link is not null && ProductImportMergePolicy.PreserveLocalChanges(product.Version, link.LastImportedProductVersion, link.DirtyFieldsJson);
         if (!preserveLocal)
         {
             product.Title = ProductTitle(snapshot.Title, externalProductId);
@@ -1730,7 +1736,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (string.IsNullOrWhiteSpace(normalized)) return null;
         var brand = db.Brands.Local.FirstOrDefault(x => x.TenantId == tenantId && x.NormalizedName == normalized)
             ?? await db.Brands.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.NormalizedName == normalized, cancellationToken);
-        if (brand is not null) { brand.Name = Short(name!.Trim(), 160); brand.IsActive = true; brand.UpdatedAt = timeProvider.GetUtcNow(); brand.Version++; return brand; }
+        if (brand is not null)
+        {
+            var nextName = Short(name!.Trim(), 160);
+            if (brand.Name != nextName || !brand.IsActive)
+            {
+                brand.Name = nextName; brand.IsActive = true; brand.UpdatedAt = timeProvider.GetUtcNow(); brand.Version++;
+            }
+            return brand;
+        }
         brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(name!.Trim(), 160), NormalizedName = normalized, IsActive = true, CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
         db.Brands.Add(brand);
         return brand;
@@ -1742,7 +1756,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (string.IsNullOrWhiteSpace(normalized)) return null;
         var category = db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId == null && x.NormalizedName == normalized)
             ?? await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ParentId == null && x.NormalizedName == normalized, cancellationToken);
-        if (category is not null) { category.Name = Short(name!.Trim(), 160); category.Path = category.Name; category.IsActive = true; category.IsLeaf = true; category.UpdatedAt = timeProvider.GetUtcNow(); category.Version++; return category; }
+        if (category is not null)
+        {
+            var nextName = Short(name!.Trim(), 160);
+            if (category.Name != nextName || category.Path != nextName || !category.IsActive || !category.IsLeaf)
+            {
+                category.Name = nextName; category.Path = nextName; category.IsActive = true; category.IsLeaf = true; category.UpdatedAt = timeProvider.GetUtcNow(); category.Version++;
+            }
+            return category;
+        }
         category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(name!.Trim(), 160), NormalizedName = normalized, Path = Short(name!.Trim(), 1024), Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
         db.Categories.Add(category);
         return category;
@@ -1776,8 +1798,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         else
         {
-            variant.Sku = sku; variant.SkuNormalized = skuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = barcodeNormalized; variant.ModelCode = Short(remote.ModelCode, 160); variant.OptionSignature = optionSignature; variant.Status = remote.Archived ? ProductStatus.Archived : ProductStatus.Active; variant.UpdatedAt = now; variant.Version++;
-            telemetryUpdatedCount++;
+            var nextModelCode = Short(remote.ModelCode, 160);
+            var nextStatus = remote.Archived ? ProductStatus.Archived : ProductStatus.Active;
+            if (variant.Sku != sku || variant.SkuNormalized != skuNormalized || variant.Barcode != barcode || variant.BarcodeNormalized != barcodeNormalized || variant.ModelCode != nextModelCode || variant.OptionSignature != optionSignature || variant.Status != nextStatus)
+            {
+                variant.Sku = sku; variant.SkuNormalized = skuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = barcodeNormalized; variant.ModelCode = nextModelCode; variant.OptionSignature = optionSignature; variant.Status = nextStatus; variant.UpdatedAt = now; variant.Version++;
+                telemetryUpdatedCount++;
+            }
         }
         if (link is null)
         {
@@ -1870,10 +1897,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 asset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenantId, Classification = "PRODUCT_MEDIA_URL", RelativePath = url, OriginalNameSafe = Path.GetFileName(new Uri(url).AbsolutePath), MimeType = ImageMime(url), SizeBytes = 0, Sha256 = Hash(url), Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
                 db.FileAssets.Add(asset);
             }
-            else { asset.Status = "ACTIVE"; asset.ArchivedAt = null; }
+            else if (asset.Status != "ACTIVE" || asset.ArchivedAt is not null) { asset.Status = "ACTIVE"; asset.ArchivedAt = null; }
             var media = existing.SingleOrDefault(x => x.SortOrder == index);
             if (media is null) db.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, VariantId = null, FileAssetId = asset.Id, MediaRole = index == 0 ? "PRIMARY" : "GALLERY", SortOrder = index, AltText = Short(altText, 320), Status = "ACTIVE" });
-            else { media.FileAssetId = asset.Id; media.MediaRole = index == 0 ? "PRIMARY" : "GALLERY"; media.AltText = Short(altText, 320); media.Status = "ACTIVE"; }
+            else
+            {
+                var nextRole = index == 0 ? "PRIMARY" : "GALLERY";
+                var nextAltText = Short(altText, 320);
+                if (media.FileAssetId != asset.Id || media.MediaRole != nextRole || media.AltText != nextAltText || media.Status != "ACTIVE")
+                {
+                    media.FileAssetId = asset.Id; media.MediaRole = nextRole; media.AltText = nextAltText; media.Status = "ACTIVE";
+                }
+            }
         }
     }
 
@@ -2207,7 +2242,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 }
                 cursor.OpaqueCursor = null;
                 cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
-                cursor.LastSuccessAt = timeProvider.GetUtcNow();
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
                 break;
@@ -2228,7 +2262,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 cursor.OpaqueCursor = null;
                 cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
-                cursor.LastSuccessAt = timeProvider.GetUtcNow();
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
                 break;
