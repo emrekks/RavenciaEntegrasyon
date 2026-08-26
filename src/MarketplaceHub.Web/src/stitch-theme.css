@@ -6991,23 +6991,24 @@ body:has(.product-add-page),
   width: 100%;
   min-height: 42px;
   padding: 0 14px;
-  color: var(--st-muted);
-  background: transparent;
-  border: 1px solid transparent;
+  color: var(--st-muted) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
   border-radius: 7px;
   text-align: center;
+  box-shadow: none !important;
   transition: color .18s ease, background .18s ease, border-color .18s ease;
 }
 .app-shell .product-add-page .product-add-progress button:hover {
-  color: var(--st-text);
-  background: rgba(88, 101, 242, .1);
-  border-color: rgba(114, 124, 255, .24);
+  color: var(--st-text) !important;
+  background: rgba(88, 101, 242, .1) !important;
+  border-color: rgba(114, 124, 255, .24) !important;
 }
 .app-shell .product-add-page .product-add-progress button.active {
-  color: #fff;
-  background: var(--st-primary);
-  border-color: #727cff;
-  box-shadow: 0 6px 16px rgba(88, 101, 242, .2);
+  color: #fff !important;
+  background: var(--st-primary) !important;
+  border-color: #727cff !important;
+  box-shadow: 0 6px 16px rgba(88, 101, 242, .2) !important;
 }
 .app-shell .product-add-page .product-add-progress button strong {
   max-width: 100%;
