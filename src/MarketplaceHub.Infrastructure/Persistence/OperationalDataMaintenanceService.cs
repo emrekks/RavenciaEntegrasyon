@@ -6,7 +6,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider) : IOperationalDataMaintenanceService
 {
-    private static readonly HashSet<string> AllowedScopes = new(StringComparer.Ordinal) { "PRODUCTS", "CATEGORIES", "BRANDS", "OPTIONS", "ORDERS", "RETURNS", "INVOICES" };
+    private static readonly HashSet<string> AllowedScopes = new(StringComparer.Ordinal) { "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS", "OPTIONS", "ORDERS", "RETURNS", "INVOICES" };
     private static readonly HashSet<string> ConnectionDeleteScopes = new(StringComparer.Ordinal) { "PRODUCTS", "ORDERS", "RETURNS", "INVOICES" };
 
     public async Task<ServiceResult<OperationalDataResetView>> ResetAsync(Guid tenantId, Guid actorUserId, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken)
@@ -29,6 +29,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
             if (scopes.Contains("INVOICES")) await DeleteInvoicesAsync(tenantId, null, cancellationToken);
         }
         if (scopes.Contains("CATEGORIES")) await DeleteCategoriesAsync(tenantId, cancellationToken);
+        if (scopes.Contains("CATEGORY_ATTRIBUTES")) await DeleteCategoryAttributesAsync(tenantId, cancellationToken);
         if (scopes.Contains("BRANDS")) await DeleteBrandsAsync(tenantId, cancellationToken);
         if (scopes.Contains("OPTIONS")) await DeleteOptionsAsync(tenantId, cancellationToken);
         if (scopes.Contains("PRODUCTS")) await DeleteProductsAsync(tenantId, null, cancellationToken);
@@ -71,7 +72,8 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         var categories = scopes.Contains("CATEGORIES") ? await db.Categories.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
         var brands = scopes.Contains("BRANDS") ? await db.Brands.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
         var options = scopes.Contains("OPTIONS") ? await db.ProductOptions.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
-        return new(products, orders, returns, invoices, categories, brands, options);
+        var categoryAttributes = scopes.Contains("CATEGORY_ATTRIBUTES") ? await db.AttributeDefinitions.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
+        return new(products, orders, returns, invoices, categories, brands, options, categoryAttributes);
     }
 
     private Task DeleteReturnsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
@@ -113,6 +115,16 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM catalog.category_mappings WHERE "TenantId"={{tenantId}};
         UPDATE catalog.categories SET "ParentId"=NULL WHERE "TenantId"={{tenantId}};
         DELETE FROM catalog.categories WHERE "TenantId"={{tenantId}};
+        """, cancellationToken);
+
+    private Task DeleteCategoryAttributesAsync(Guid tenantId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        DELETE FROM catalog.channel_listing_attributes WHERE "TenantId"={{tenantId}};
+        DELETE FROM catalog.product_attribute_assignments WHERE "TenantId"={{tenantId}};
+        DELETE FROM catalog.attribute_value_mappings WHERE "TenantId"={{tenantId}};
+        DELETE FROM catalog.attribute_mappings WHERE "TenantId"={{tenantId}};
+        DELETE FROM catalog.category_attribute_requirements WHERE "TenantId"={{tenantId}};
+        DELETE FROM catalog.attribute_values WHERE "TenantId"={{tenantId}};
+        DELETE FROM catalog.attribute_definitions WHERE "TenantId"={{tenantId}};
         """, cancellationToken);
 
     private Task DeleteBrandsAsync(Guid tenantId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""

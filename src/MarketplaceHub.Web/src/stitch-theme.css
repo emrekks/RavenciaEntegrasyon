@@ -7594,3 +7594,77 @@ body:has(.product-add-page),
     border-left-color: transparent !important;
   }
 }
+
+/* Product editing shares the creation workspace while keeping every catalog field editable. */
+.product-edit-page .product-basics-grid > label:nth-child(2),
+.product-edit-page .product-basics-grid > label:nth-child(6),
+.product-edit-page .product-basics-grid > label:nth-child(7),
+.product-edit-page .product-basics-grid > label:nth-child(8) {
+  display: grid !important;
+  grid-column: auto;
+  grid-row: auto;
+}
+.product-edit-page .product-basics-grid > .product-title-field,
+.product-edit-page .product-basics-grid > .product-description-field {
+  grid-column: 1 / -1;
+}
+.product-edit-page .product-layout-grid > .publish-channel-panel {
+  display: grid !important;
+}
+
+/* Explanations stay beside the scope title and open from the info mark. */
+.database-scope-label {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+}
+.database-scope-help {
+  position: relative;
+  display: inline-grid !important;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: var(--st-orange);
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font: 800 10px/1 Manrope, sans-serif;
+  cursor: help;
+}
+.database-scope-help::after {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 9px);
+  z-index: 30;
+  width: min(280px, 48vw);
+  padding: 9px 10px;
+  color: var(--st-text);
+  background: var(--st-surface-container);
+  border: 1px solid var(--st-outline);
+  border-radius: 5px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .42);
+  content: attr(data-tooltip);
+  font: 500 10px/1.45 Inter, sans-serif;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 5px);
+  transition: opacity .15s ease, transform .15s ease;
+}
+.database-scope-help:hover::after,
+.database-scope-help:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.database-scope-list .database-scope-label + small { display: none; }
+.database-scope-group:first-child .database-scope-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 1100px) {
+  .database-scope-group:first-child .database-scope-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .database-scope-group:first-child .database-scope-list { grid-template-columns: 1fr; }
+  .database-scope-help::after { left: 0; width: min(280px, calc(100vw - 70px)); transform: translate(0, 5px); }
+  .database-scope-help:hover::after,
+  .database-scope-help:focus-visible::after { transform: translate(0, 0); }
+}

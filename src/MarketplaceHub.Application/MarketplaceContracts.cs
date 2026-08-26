@@ -249,6 +249,7 @@ public sealed record OperationalDataResetView(
     int Categories = 0,
     int Brands = 0,
     int Options = 0,
+    int CategoryAttributes = 0,
     bool ConnectionDeleted = false);
 
 public interface IOperationalDataMaintenanceService
