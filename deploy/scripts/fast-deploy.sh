@@ -36,8 +36,7 @@ compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_
 "${compose[@]}" up -d --no-build postgres migrate api worker caddy
 
 if [[ "$verify" == true ]]; then
-  site_address="$(sudo -n awk -F= '$1 == "MARKETPLACEHUB_SITE_ADDRESS" { sub(/^[^=]*=/, ""); print; exit }' "$environment_file" 2>/dev/null || true)"
-  site_address="${site_address:-https://panel.ravencia.com}"
+  site_address="${MARKETPLACEHUB_SITE_ADDRESS:-https://panel.ravencia.com}"
   curl --connect-timeout 3 --max-time 10 --silent --show-error --fail "$site_address/health/ready"
   echo
 fi
