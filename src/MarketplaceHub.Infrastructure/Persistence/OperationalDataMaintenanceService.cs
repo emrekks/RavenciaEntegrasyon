@@ -6,7 +6,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider) : IOperationalDataMaintenanceService
 {
-    private static readonly HashSet<string> AllowedScopes = new(StringComparer.Ordinal) { "PRODUCTS", "ORDERS", "RETURNS", "INVOICES" };
+    private static readonly HashSet<string> AllowedScopes = new(StringComparer.Ordinal) { "PRODUCTS", "CATEGORIES", "BRANDS", "OPTIONS", "ORDERS", "RETURNS", "INVOICES" };
+    private static readonly HashSet<string> ConnectionDeleteScopes = new(StringComparer.Ordinal) { "PRODUCTS", "ORDERS", "RETURNS", "INVOICES" };
 
     public async Task<ServiceResult<OperationalDataResetView>> ResetAsync(Guid tenantId, Guid actorUserId, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken)
     {
@@ -27,6 +28,9 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
             if (scopes.Contains("RETURNS")) await DeleteReturnsAsync(tenantId, null, cancellationToken);
             if (scopes.Contains("INVOICES")) await DeleteInvoicesAsync(tenantId, null, cancellationToken);
         }
+        if (scopes.Contains("CATEGORIES")) await DeleteCategoriesAsync(tenantId, cancellationToken);
+        if (scopes.Contains("BRANDS")) await DeleteBrandsAsync(tenantId, cancellationToken);
+        if (scopes.Contains("OPTIONS")) await DeleteOptionsAsync(tenantId, cancellationToken);
         if (scopes.Contains("PRODUCTS")) await DeleteProductsAsync(tenantId, null, cancellationToken);
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "OPERATIONAL_DATA_RESET", "Tenant", tenantId.ToString("D"), string.Join(',', scopes.Order()), correlationId));
         await db.SaveChangesAsync(cancellationToken);
@@ -41,7 +45,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         if (connection.Version != expectedVersion) return ServiceResult<OperationalDataResetView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{connection.Version}.", 412);
         if (!string.Equals(command.Confirmation?.Trim(), connection.DisplayName, StringComparison.Ordinal)) return Invalid($"Onay alanına bağlantı adını tam olarak yazın: {connection.DisplayName}");
 
-        var scopes = new HashSet<string>(AllowedScopes, StringComparer.Ordinal);
+        var scopes = new HashSet<string>(ConnectionDeleteScopes, StringComparer.Ordinal);
         var counts = await CountsAsync(tenantId, connectionId, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await DeleteReturnsAsync(tenantId, connectionId, cancellationToken);
@@ -64,7 +68,10 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         var orders = scopes.Contains("ORDERS") ? await db.Orders.CountAsync(x => x.TenantId == tenantId && (connectionId == null || x.ConnectionId == connectionId), cancellationToken) : 0;
         var returns = scopes.Contains("RETURNS") || scopes.Contains("ORDERS") ? await db.ReturnClaims.CountAsync(x => x.TenantId == tenantId && (connectionId == null || x.ConnectionId == connectionId), cancellationToken) : 0;
         var invoices = scopes.Contains("INVOICES") || scopes.Contains("ORDERS") ? await db.Invoices.CountAsync(x => x.TenantId == tenantId && (connectionId == null || x.ProviderConnectionId == connectionId || db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId && order.ConnectionId == connectionId)), cancellationToken) : 0;
-        return new(products, orders, returns, invoices);
+        var categories = scopes.Contains("CATEGORIES") ? await db.Categories.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
+        var brands = scopes.Contains("BRANDS") ? await db.Brands.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
+        var options = scopes.Contains("OPTIONS") ? await db.ProductOptions.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
+        return new(products, orders, returns, invoices, categories, brands, options);
     }
 
     private Task DeleteReturnsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
@@ -99,6 +106,25 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM sales.order_financial_allocations a USING purge_orders o WHERE a."TenantId"={{tenantId}} AND a."OrderId"=o."Id";
         DELETE FROM sales.order_lines l USING purge_orders o WHERE l."TenantId"={{tenantId}} AND l."OrderId"=o."Id";
         DELETE FROM sales.orders o USING purge_orders p WHERE o."TenantId"={{tenantId}} AND o."Id"=p."Id";
+        """, cancellationToken);
+
+    private Task DeleteCategoriesAsync(Guid tenantId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        UPDATE catalog.products SET "CategoryId"=NULL WHERE "TenantId"={{tenantId}};
+        DELETE FROM catalog.category_mappings WHERE "TenantId"={{tenantId}};
+        UPDATE catalog.categories SET "ParentId"=NULL WHERE "TenantId"={{tenantId}};
+        DELETE FROM catalog.categories WHERE "TenantId"={{tenantId}};
+        """, cancellationToken);
+
+    private Task DeleteBrandsAsync(Guid tenantId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        UPDATE catalog.products SET "BrandId"=NULL WHERE "TenantId"={{tenantId}};
+        DELETE FROM catalog.brand_mappings WHERE "TenantId"={{tenantId}};
+        DELETE FROM catalog.brands WHERE "TenantId"={{tenantId}};
+        """, cancellationToken);
+
+    private Task DeleteOptionsAsync(Guid tenantId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        DELETE FROM catalog.variant_option_values WHERE "TenantId"={{tenantId}};
+        DELETE FROM catalog.product_option_values WHERE "TenantId"={{tenantId}};
+        DELETE FROM catalog.product_options WHERE "TenantId"={{tenantId}};
         """, cancellationToken);
 
     private Task DeleteProductsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""

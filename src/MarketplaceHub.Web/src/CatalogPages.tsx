@@ -55,7 +55,7 @@ function ImageLightboxModal({ image, onClose }: { image: { url: string; title: s
 }
 const Tag = ({ children }: { children: ReactNode }) => <span className="tag">{children}</span>
 const money = (value: number | null | undefined, currency = 'TRY') => value == null ? '—' : new Intl.NumberFormat('tr-TR', { style: 'currency', currency }).format(value)
-function Page({ title, eyebrow, action, className, children }: { title: string; eyebrow: string; action?: ReactNode; className?: string; children: ReactNode }) { return <section className={`content stitch-page ${className ?? ''}`}><div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>{action}</div>{children}</section> }
+function Page({ title, eyebrow, action, className, children }: { title: string; eyebrow: string; action?: ReactNode; className?: string; children: ReactNode }) { const productBack = className?.includes('product-add-page'); return <section className={`content stitch-page ${className ?? ''}`}><div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{productBack && <Link className="product-heading-back" to="/products" aria-label="Ürünlere dön">←</Link>}{title}</h1></div>{action}</div>{children}</section> }
 
 type QuickEditMode = 'stock' | 'price' | 'both'
 
@@ -374,11 +374,67 @@ type ProductAttributePayload = { attributeId: string; valueId: string | null; te
 const MAX_VARIANTS = 1000
 const MAX_PRODUCT_ATTRIBUTES = 3
 
+function RichTextTool({ icon, label, onClick, disabled = false }: { icon: string; label: string; onClick: () => void; disabled?: boolean }) {
+  return <button type="button" className="rich-text-tool" title={label} aria-label={label} onClick={onClick} disabled={disabled}><span className="rich-text-tool-icon" aria-hidden="true">{icon}</span><span className="rich-text-tool-label">{label}</span></button>
+}
+
 function RichTextEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const editor = useRef<HTMLTextAreaElement>(null)
-  function wrap(open: string, close = open) { const field = editor.current; if (!field) return; const start = field.selectionStart; const end = field.selectionEnd; const selected = value.slice(start, end) || 'metin'; const next = `${value.slice(0, start)}${open}${selected}${close}${value.slice(end)}`; onChange(next); window.setTimeout(() => { field.focus(); field.setSelectionRange(start + open.length, start + open.length + selected.length) }) }
-  function applyFontSize(size: string, field: HTMLSelectElement) { if (!size) return; wrap(`<span style="font-size:${size}">`, '</span>'); window.setTimeout(() => { field.value = '' }) }
-  return <div className="rich-text-editor rich-text-editor-pro"><div className="rich-text-editor-head"><strong>Ürün Açıklaması</strong><span>{value.replace(/<[^>]*>/g, '').trim().length} karakter</span></div><div className="rich-text-toolbar" aria-label="Açıklama biçimlendirme araçları"><div className="rich-text-tool-group" aria-label="Metin biçimi"><button type="button" title="Kalın" aria-label="Kalın" onClick={() => wrap('<strong>', '</strong>')}><b>B</b></button><button type="button" title="İtalik" aria-label="İtalik" onClick={() => wrap('<em>', '</em>')}><i>I</i></button><button type="button" title="Altı çizili" aria-label="Altı çizili" onClick={() => wrap('<u>', '</u>')}><u>U</u></button></div><div className="rich-text-tool-group" aria-label="Paragraf hizası"><button type="button" title="Sola hizala" aria-label="Sola hizala" onClick={() => wrap('<p style="text-align:left">', '</p>')}>≡</button><button type="button" title="Ortala" aria-label="Ortala" onClick={() => wrap('<p style="text-align:center">', '</p>')}>≣</button><button type="button" title="Sağa hizala" aria-label="Sağa hizala" onClick={() => wrap('<p style="text-align:right">', '</p>')}>≡</button></div><div className="rich-text-tool-group" aria-label="İçerik ekle"><select aria-label="Yazı boyutu" defaultValue="" onChange={event => applyFontSize(event.target.value, event.currentTarget)}><option value="" disabled>Yazı Boyutu</option><option value="12px">Küçük</option><option value="15px">Normal</option><option value="19px">Büyük</option></select><button type="button" title="Madde listesi" aria-label="Madde listesi" onClick={() => wrap('<ul><li>', '</li></ul>')}>☷</button><button type="button" title="Paragraf" aria-label="Paragraf" onClick={() => wrap('<p>', '</p>')}>¶</button><button type="button" title="Metin rengi" aria-label="Metin rengi" onClick={() => wrap('<span style="color:#bec2ff">', '</span>')}>A</button><button type="button" title="Bağlantı" aria-label="Bağlantı" onClick={() => wrap('<a href="https://">', '</a>')}>🔗</button><button type="button" title="Görsel" aria-label="Görsel" onClick={() => wrap('<img src="', '" alt="Ürün görseli" />')}>▣</button></div><div className="rich-text-tool-group" aria-label="Düzenleme"><button type="button" title="Geri al" aria-label="Geri al" onClick={() => document.execCommand('undo')}>↶</button><button type="button" title="Yinele" aria-label="Yinele" onClick={() => document.execCommand('redo')}>↷</button><button type="button" title="Biçimi temizle" aria-label="Biçimi temizle" onClick={() => onChange(value.replace(/<[^>]*>/g, ''))}>⌫</button></div></div><textarea ref={editor} value={value} onChange={event => onChange(event.target.value)} required aria-label="Açıklama" placeholder="Ürünün öne çıkan özelliklerini anlatın…" /><details><summary>◉ HTML göster ve ön izle</summary><pre className="rich-text-html-source" aria-label="Açıklama HTML kaynağı">{value || '<p>HTML çıktısı burada görünür.</p>'}</pre><iframe className="rich-text-preview" sandbox="" title="Açıklama HTML ön izlemesi" srcDoc={value} /></details></div>
+  const visualEditor = useRef<HTMLDivElement>(null)
+  const lastValue = useRef(value)
+  const [htmlMode, setHtmlMode] = useState(false)
+  const plainTextLength = value.replace(/<[^>]*>/g, '').trim().length
+
+  useEffect(() => {
+    if (!htmlMode && visualEditor.current && lastValue.current !== value) visualEditor.current.innerHTML = value
+    lastValue.current = value
+  }, [htmlMode, value])
+
+  useEffect(() => {
+    if (!htmlMode && visualEditor.current) visualEditor.current.innerHTML = value
+  }, [htmlMode])
+
+  function syncVisualValue() {
+    const next = visualEditor.current?.innerHTML ?? ''
+    lastValue.current = next
+    onChange(next === '<br>' ? '' : next)
+  }
+
+  function runCommand(command: string, argument?: string) {
+    if (htmlMode || !visualEditor.current) return
+    visualEditor.current.focus()
+    document.execCommand(command, false, argument)
+    syncVisualValue()
+  }
+
+  function insertLink() {
+    const url = window.prompt('Bağlantı adresi', 'https://')
+    if (url) runCommand('createLink', url)
+  }
+
+  function insertImage() {
+    const url = window.prompt('Görsel adresi', 'https://')
+    if (url) runCommand('insertImage', url)
+  }
+
+  function clearFormatting() {
+    runCommand('removeFormat')
+    runCommand('formatBlock', 'p')
+  }
+
+  return <div className="rich-text-editor rich-text-editor-pro">
+    <div className="rich-text-editor-head">
+      <div><strong>Ürün Açıklaması</strong><span className="rich-text-mode-note">{htmlMode ? 'HTML kodu düzenleniyor' : 'Görsel düzenleyici'}</span></div>
+      <div className="rich-text-editor-meta"><span>{plainTextLength} karakter</span><div className="rich-text-mode-switch" role="group" aria-label="Açıklama görünümü"><button type="button" className={!htmlMode ? 'active' : ''} aria-pressed={!htmlMode} onClick={() => setHtmlMode(false)}><span aria-hidden="true">✦</span> Görsel</button><button type="button" className={htmlMode ? 'active' : ''} aria-pressed={htmlMode} onClick={() => setHtmlMode(true)}><span aria-hidden="true">&lt;/&gt;</span> HTML</button></div></div>
+    </div>
+    <div className="rich-text-toolbar" aria-label="Açıklama biçimlendirme araçları">
+      <div className="rich-text-tool-group" aria-label="Metin biçimi"><RichTextTool icon="B" label="Kalın" onClick={() => runCommand('bold')} disabled={htmlMode} /><RichTextTool icon="I" label="İtalik" onClick={() => runCommand('italic')} disabled={htmlMode} /><RichTextTool icon="U" label="Altı çizili" onClick={() => runCommand('underline')} disabled={htmlMode} /></div>
+      <div className="rich-text-tool-group" aria-label="Paragraf hizası"><RichTextTool icon="≡" label="Sola hizala" onClick={() => runCommand('justifyLeft')} disabled={htmlMode} /><RichTextTool icon="≣" label="Ortala" onClick={() => runCommand('justifyCenter')} disabled={htmlMode} /><RichTextTool icon="≡" label="Sağa hizala" onClick={() => runCommand('justifyRight')} disabled={htmlMode} /></div>
+      <div className="rich-text-tool-group" aria-label="İçerik ekle"><select aria-label="Yazı boyutu" defaultValue="" disabled={htmlMode} onChange={event => { const map: Record<string, string> = { '12': '2', '15': '3', '19': '5' }; runCommand('fontSize', map[event.target.value] ?? '3'); event.currentTarget.value = '' }}><option value="" disabled>Yazı boyutu</option><option value="12">Küçük</option><option value="15">Normal</option><option value="19">Büyük</option></select><RichTextTool icon="•≡" label="Madde listesi" onClick={() => runCommand('insertUnorderedList')} disabled={htmlMode} /><RichTextTool icon="¶" label="Paragraf" onClick={() => runCommand('formatBlock', 'p')} disabled={htmlMode} /><RichTextTool icon="A̲" label="Metin rengi" onClick={() => runCommand('foreColor', '#bec2ff')} disabled={htmlMode} /><RichTextTool icon="↗" label="Bağlantı ekle" onClick={insertLink} disabled={htmlMode} /><RichTextTool icon="▧" label="Görsel ekle" onClick={insertImage} disabled={htmlMode} /></div>
+      <div className="rich-text-tool-group" aria-label="Düzenleme"><RichTextTool icon="↶" label="Geri al" onClick={() => runCommand('undo')} disabled={htmlMode} /><RichTextTool icon="↷" label="Yinele" onClick={() => runCommand('redo')} disabled={htmlMode} /><RichTextTool icon="⌫" label="Biçimi temizle" onClick={clearFormatting} disabled={htmlMode} /></div>
+    </div>
+    {htmlMode ? <textarea className="rich-text-html-editor" value={value} onChange={event => { lastValue.current = event.target.value; onChange(event.target.value) }} aria-label="Açıklama HTML kodu" placeholder="<p>Ürünün öne çıkan özelliklerini anlatın…</p>" spellCheck={false} /> : <div ref={visualEditor} className="rich-text-canvas" contentEditable role="textbox" aria-multiline="true" aria-label="Açıklama" data-placeholder="Ürünün öne çıkan özelliklerini anlatın…" suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: value }} onInput={syncVisualValue} />}
+    <div className="rich-text-editor-foot"><span>{htmlMode ? 'HTML olarak düzenleyin; Görsel seçeneğine dönünce biçimlendirilmiş çıktı burada görünür.' : 'Metni biçimlendirin veya HTML seçeneğiyle kaynak kodunu düzenleyin.'}</span><b aria-hidden="true">⌘</b></div>
+  </div>
 }
 
 function buildVariantMatrix(requirements: CategoryRequirement[], variantAttributeIds: string[], selectedValueIds: Record<string, string[]>, baseSku: string, fallbackListPrice: number, fallbackSalePrice: number, initialStock: number) {
@@ -669,8 +725,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         <div className="editor-section-title">
           <span>5</span>
           <div>
-            <h2>Ürün özellikleri ve Seçenek Eşitleme</h2>
-            <p>Ürün özellikleri ayrı kalır; en fazla 3 isteğe bağlı ürün özelliği ve 2 Seçenek Eşitleme başlığı kullanılabilir.</p>
+            <h2>Ürün seçenekleri</h2>
+            <p>Kategoriye bağlı seçenekleri seçin; varyant satırları bu seçimlerden oluşturulur.</p>
           </div>
         </div>
         <div className="attribute-variant-action">
@@ -732,7 +788,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                     <input type="checkbox" checked={variantAttributeIds.includes(item.attributeId)} onChange={() => toggleVariantAttribute(item.attributeId)} disabled={item.role !== 'OPTION' || !item.attribute.values.length} />
                     <span>{item.attribute.name}{item.isRequired ? ' *' : ''}</span>
                   </label>
-                  <small>{item.attribute.values.length} değer · {item.role === 'OPTION' ? 'Seçenek Eşitleme' : 'ürün özelliği'}{variantAttributeIds.includes(item.attributeId) ? ' · varyant ekseni' : ''}</small>
+                  <small>{item.attribute.values.length} değer · seçenek{variantAttributeIds.includes(item.attributeId) ? ' · varyant ekseni' : ''}</small>
                 </div>
                 {item.attribute.values.length ? (
                   <div className="option-chip-list">

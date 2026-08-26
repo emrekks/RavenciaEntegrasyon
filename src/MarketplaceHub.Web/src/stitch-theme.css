@@ -6410,3 +6410,269 @@ body:has(.product-add-page),
   .scheduled-publish-panel > div { grid-template-columns: 1fr; }
   .scheduled-publish-panel small { grid-column: 1; }
 }
+
+/* Product creation follow-up refinements. */
+.app-shell .product-add-page .page-heading h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.app-shell .product-add-page .page-heading h1::before {
+  content: none !important;
+  display: none !important;
+}
+.product-heading-back {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  color: var(--st-primary-soft) !important;
+  background: rgba(88, 101, 242, .1);
+  border: 1px solid rgba(88, 101, 242, .35);
+  border-radius: 7px;
+  font: 400 21px/1 Inter, sans-serif;
+  text-decoration: none;
+  transition: background .18s ease, border-color .18s ease, transform .18s ease;
+}
+.product-heading-back:hover {
+  color: #fff !important;
+  background: var(--st-primary);
+  border-color: var(--st-primary-soft);
+  transform: translateX(-2px);
+}
+.app-shell .product-add-page .product-add-cancel { display: none !important; }
+.app-shell .product-add-page .product-add-wizardbar {
+  position: relative;
+  justify-content: center;
+}
+.app-shell .product-add-page .product-add-stepper {
+  flex: 0 1 auto;
+  justify-content: center;
+  margin: 0 auto;
+}
+.app-shell .product-add-page .product-add-progress { justify-content: center; }
+
+/* The catalog identifiers belong to the primary product card. */
+.app-shell .product-add-page .product-advanced-fields-card { display: none !important; }
+.app-shell .product-add-page .product-basics-grid > label:nth-child(1) { grid-column: 1 / -1; grid-row: 1; display: grid !important; }
+.app-shell .product-add-page .product-basics-grid > label:nth-child(5) { grid-column: 1; grid-row: 2; display: grid !important; }
+.app-shell .product-add-page .product-basics-grid > label:nth-child(3) { grid-column: 2; grid-row: 2; display: grid !important; }
+.app-shell .product-add-page .product-basics-grid > label:nth-child(4) { grid-column: 1 / -1; grid-row: 3; display: grid !important; }
+.app-shell .product-add-page .product-basics-grid > label:nth-child(6) { grid-column: 1; grid-row: 4; display: grid !important; }
+.app-shell .product-add-page .product-basics-grid > label:nth-child(7) { grid-column: 2; grid-row: 4; display: grid !important; }
+.app-shell .product-add-page .product-basics-grid > label:nth-child(2) { grid-column: 1; grid-row: 5; display: grid !important; }
+.app-shell .product-add-page .product-basics-grid > label:nth-child(8) { grid-column: 2; grid-row: 5; display: grid !important; }
+.app-shell .product-add-page .product-basics-grid > label:nth-child(9) { grid-column: 1 / -1; grid-row: 6; display: grid !important; }
+.app-shell .product-add-page .product-basics-grid > label {
+  gap: 6px;
+}
+.app-shell .product-add-page .product-basics-grid .desi-inline-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+.app-shell .product-add-page .product-basics-grid .desi-inline-control button {
+  min-height: 38px;
+  padding-inline: 12px;
+}
+
+/* Reading flow: media first, then category-backed product options. */
+.app-shell .product-add-page .product-main-stack > section.product-step-card:nth-child(1) { order: 1 !important; }
+.app-shell .product-add-page .product-main-stack > section.product-step-card:nth-child(2) { order: 2 !important; }
+.app-shell .product-add-page .product-main-stack > section.product-step-card:nth-child(3) { order: 3 !important; }
+
+/* Modern description editor with an explicit visual/HTML mode switch. */
+.app-shell .product-add-page .rich-text-editor-pro {
+  overflow: hidden;
+  background: var(--st-surface-lowest) !important;
+  border: 1px solid var(--st-outline) !important;
+  border-radius: 7px !important;
+}
+.app-shell .product-add-page .rich-text-editor-pro .rich-text-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 46px;
+  padding: 8px 11px;
+  background: linear-gradient(90deg, rgba(88, 101, 242, .1), rgba(88, 101, 242, .025));
+  border-bottom: 1px solid var(--st-surface-highest);
+}
+.app-shell .product-add-page .rich-text-editor-head > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.app-shell .product-add-page .rich-text-editor-head strong {
+  color: var(--st-text) !important;
+  font: 700 11px/1.2 Manrope, sans-serif;
+}
+.app-shell .product-add-page .rich-text-mode-note {
+  color: var(--st-muted) !important;
+  font-size: 9px;
+  font-weight: 500;
+}
+.app-shell .product-add-page .rich-text-editor-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  flex: 0 0 auto;
+  color: var(--st-muted) !important;
+  font-size: 9px;
+}
+.app-shell .product-add-page .rich-text-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  background: var(--st-surface-lowest);
+  border: 1px solid var(--st-outline);
+  border-radius: 6px;
+}
+.app-shell .product-add-page .rich-text-mode-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 25px;
+  padding: 0 8px;
+  color: var(--st-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 4px;
+  font: 700 9px/1 Inter, sans-serif;
+}
+.app-shell .product-add-page .rich-text-mode-switch button.active {
+  color: #fff !important;
+  background: var(--st-primary) !important;
+  box-shadow: 0 3px 9px rgba(88, 101, 242, .22);
+}
+.app-shell .product-add-page .rich-text-mode-switch button span {
+  color: currentColor;
+  font-size: 10px;
+  font-weight: 800;
+}
+.app-shell .product-add-page .rich-text-editor-pro .rich-text-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 44px;
+  padding: 6px 8px;
+  overflow: visible;
+  background: var(--st-surface-low) !important;
+  border-bottom: 1px solid var(--st-surface-highest);
+}
+.app-shell .product-add-page .rich-text-editor-pro .rich-text-tool-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding-right: 6px;
+  border-right: 1px solid var(--st-surface-highest);
+}
+.app-shell .product-add-page .rich-text-editor-pro .rich-text-tool-group:last-child { border-right: 0; }
+.app-shell .product-add-page .rich-text-tool,
+.app-shell .product-add-page .rich-text-editor-pro .rich-text-toolbar select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 29px;
+  min-height: 28px;
+  padding: 4px 7px;
+  color: var(--st-muted) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 5px;
+  font: 700 9px/1 Inter, sans-serif;
+  cursor: pointer;
+}
+.app-shell .product-add-page .rich-text-tool:hover,
+.app-shell .product-add-page .rich-text-editor-pro .rich-text-toolbar select:hover {
+  color: var(--st-text) !important;
+  background: rgba(88, 101, 242, .12) !important;
+  border-color: rgba(88, 101, 242, .3) !important;
+}
+.app-shell .product-add-page .rich-text-tool:disabled,
+.app-shell .product-add-page .rich-text-editor-pro .rich-text-toolbar select:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+}
+.app-shell .product-add-page .rich-text-tool-icon {
+  min-width: 13px;
+  color: currentColor;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+.app-shell .product-add-page .rich-text-tool-label { white-space: nowrap; }
+.app-shell .product-add-page .rich-text-editor-pro .rich-text-toolbar select {
+  width: auto;
+  padding-right: 23px;
+  color: var(--st-muted) !important;
+}
+.app-shell .product-add-page .rich-text-canvas,
+.app-shell .product-add-page .rich-text-html-editor {
+  display: block;
+  width: 100%;
+  min-height: 172px;
+  box-sizing: border-box;
+  padding: 13px 14px;
+  color: var(--st-text) !important;
+  background: var(--st-surface-lowest) !important;
+  border: 0;
+  outline: 0;
+  font: 400 12px/1.65 Inter, sans-serif;
+}
+.app-shell .product-add-page .rich-text-canvas {
+  overflow: auto;
+  cursor: text;
+}
+.app-shell .product-add-page .rich-text-canvas:focus {
+  box-shadow: inset 0 0 0 1px rgba(88, 101, 242, .42);
+}
+.app-shell .product-add-page .rich-text-canvas:empty::before {
+  content: attr(data-placeholder);
+  color: var(--st-muted);
+  pointer-events: none;
+}
+.app-shell .product-add-page .rich-text-canvas p { margin: 0 0 9px; }
+.app-shell .product-add-page .rich-text-canvas ul,
+.app-shell .product-add-page .rich-text-canvas ol { margin: 0 0 9px 20px; }
+.app-shell .product-add-page .rich-text-canvas a { color: var(--st-primary-soft); }
+.app-shell .product-add-page .rich-text-html-editor {
+  min-height: 172px;
+  resize: vertical;
+  color: #c8ccff !important;
+  font: 400 11px/1.65 "Cascadia Code", Consolas, monospace;
+  tab-size: 2;
+}
+.app-shell .product-add-page .rich-text-editor-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 11px;
+  color: var(--st-muted);
+  background: var(--st-surface-low);
+  border-top: 1px solid var(--st-surface-highest);
+  font-size: 9px;
+  line-height: 1.4;
+}
+.app-shell .product-add-page .rich-text-editor-foot b {
+  color: var(--st-primary-soft);
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .app-shell .product-add-page .product-add-stepper { flex: 0 1 auto; margin-inline: auto; }
+}
+@media (max-width: 650px) {
+  .app-shell .product-add-page .product-add-wizardbar { justify-content: center; }
+  .app-shell .product-add-page .product-add-stepper { width: 100%; }
+  .app-shell .product-add-page .product-add-progress { justify-content: center; }
+  .app-shell .product-add-page .rich-text-editor-pro .rich-text-editor-head { align-items: flex-start; flex-direction: column; }
+  .app-shell .product-add-page .rich-text-editor-meta { width: 100%; justify-content: space-between; }
+  .app-shell .product-add-page .rich-text-tool-label { display: none; }
+}

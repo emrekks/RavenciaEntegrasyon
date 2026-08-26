@@ -220,7 +220,15 @@ public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType,
 public sealed record CreatedWebhookSubscription(WebhookSubscriptionView Subscription, Guid ConnectionPublicId, string RouteToken);
 public sealed record DeleteConnectionCommand(string Confirmation);
 public sealed record ResetOperationalDataCommand(IReadOnlyList<string> Scopes, string Confirmation);
-public sealed record OperationalDataResetView(int Products, int Orders, int Returns, int Invoices, bool ConnectionDeleted = false);
+public sealed record OperationalDataResetView(
+    int Products,
+    int Orders,
+    int Returns,
+    int Invoices,
+    int Categories = 0,
+    int Brands = 0,
+    int Options = 0,
+    bool ConnectionDeleted = false);
 
 public interface IOperationalDataMaintenanceService
 {
