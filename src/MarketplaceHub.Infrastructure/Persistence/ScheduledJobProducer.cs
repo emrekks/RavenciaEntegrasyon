@@ -143,7 +143,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     ];
 
     private static bool IsKnownDefault(ConnectionSyncPolicy current) =>
-        current.IntervalSeconds == 300 && current.OverlapSeconds == 120 && current.JitterSeconds == 15
+        current.IntervalSeconds == 300 && current.OverlapSeconds is 60 or 120 && current.JitterSeconds == 15
         || current.ResourceType == "ORDERS" && current.IntervalSeconds == 30 && current.OverlapSeconds == 600 && current.JitterSeconds == 2
         || current.ResourceType == "RETURNS" && current.IntervalSeconds == 60 && current.OverlapSeconds == 900 && current.JitterSeconds == 5;
 
