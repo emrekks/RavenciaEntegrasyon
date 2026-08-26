@@ -152,13 +152,19 @@ function useOperationsRealtime(enabled: boolean) {
       .configureLogging(LogLevel.Warning)
       .build()
     connection.on('operationsChanged', ({ resources }: { resources?: string[] }) => {
+      const queryKeysByResource: Record<string, string[][]> = {
+        orders: [['orders'], ['dashboard-orders']],
+        returns: [['returns'], ['dashboard-returns']],
+        products: [['products'], ['dashboard-products']],
+        inventory: [['inventory'], ['dashboard-products']],
+        invoices: [['invoices'], ['dashboard-invoice-workspace']],
+        connections: [['connections'], ['dashboard-connections']]
+      }
       for (const resource of resources ?? []) {
-        if (resource === 'orders') void client.invalidateQueries({ queryKey: ['orders'] })
-        else if (resource === 'returns') void client.invalidateQueries({ queryKey: ['returns'] })
-        else if (resource === 'products') void client.invalidateQueries({ queryKey: ['products'] })
-        else if (resource === 'inventory') void client.invalidateQueries({ queryKey: ['inventory'] })
+        for (const queryKey of queryKeysByResource[resource.toLowerCase()] ?? []) void client.invalidateQueries({ queryKey })
       }
       void client.invalidateQueries({ queryKey: ['jobs'] })
+      void client.invalidateQueries({ queryKey: ['dashboard-jobs'] })
     })
     void connection.start()
     return () => { void connection.stop() }
@@ -479,12 +485,13 @@ function Dashboard({ me }: { me: Me }) {
   const [revenueTo, setRevenueTo] = useState(() => new Date().toISOString().slice(0, 10))
   const [revenuePlatform, setRevenuePlatform] = useState('ALL')
   const [refreshing, setRefreshing] = useState(false)
-  const connections = useQuery({ queryKey: ['dashboard-connections'], queryFn: () => loadAllPages<ShellConnection>('/connections') })
-  const orders = useQuery({ queryKey: ['dashboard-orders'], queryFn: () => loadAllPages<DashboardOrder>('/orders') })
-  const returns = useQuery({ queryKey: ['dashboard-returns'], queryFn: () => loadAllPages<DashboardReturn>('/returns') })
-  const invoices = useQuery({ queryKey: ['dashboard-invoice-workspace'], queryFn: () => hubApi<DashboardInvoice[]>('/invoice-workspace') })
-  const products = useQuery({ queryKey: ['dashboard-products'], queryFn: () => loadAllPages<DashboardProduct>('/products') })
-  const jobs = useQuery({ queryKey: ['dashboard-jobs'], queryFn: () => hubApi<DashboardJob[]>('/jobs') })
+  const dashboardRefreshOptions = { refetchInterval: 60_000, refetchOnWindowFocus: true } as const
+  const connections = useQuery({ queryKey: ['dashboard-connections'], queryFn: () => loadAllPages<ShellConnection>('/connections'), ...dashboardRefreshOptions })
+  const orders = useQuery({ queryKey: ['dashboard-orders'], queryFn: () => loadAllPages<DashboardOrder>('/orders'), ...dashboardRefreshOptions })
+  const returns = useQuery({ queryKey: ['dashboard-returns'], queryFn: () => loadAllPages<DashboardReturn>('/returns'), ...dashboardRefreshOptions })
+  const invoices = useQuery({ queryKey: ['dashboard-invoice-workspace'], queryFn: () => hubApi<DashboardInvoice[]>('/invoice-workspace'), ...dashboardRefreshOptions })
+  const products = useQuery({ queryKey: ['dashboard-products'], queryFn: () => loadAllPages<DashboardProduct>('/products'), ...dashboardRefreshOptions })
+  const jobs = useQuery({ queryKey: ['dashboard-jobs'], queryFn: () => hubApi<DashboardJob[]>('/jobs'), ...dashboardRefreshOptions })
   const refreshDashboard = async () => {
     setRefreshing(true)
     try {
