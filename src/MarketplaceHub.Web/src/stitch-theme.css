@@ -7181,3 +7181,93 @@ body:has(.product-add-page),
   .app-shell .product-add-page .product-add-progress button { justify-content: center; padding: 0 6px; }
   .app-shell .product-add-page .product-add-progress button strong { display: none; }
 }
+
+/* Keep the navigation fixed while route content scrolls in the workspace pane. */
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden !important;
+}
+
+.app-shell.stitch-shell {
+  height: 100vh;
+  min-height: 0;
+  max-height: 100vh;
+  overflow: hidden !important;
+}
+
+.app-shell.stitch-shell > aside {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  min-height: 0;
+  max-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.app-shell.stitch-shell > main {
+  min-width: 0;
+  min-height: 0;
+  height: 100vh;
+  max-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Product add has a deliberately tall form, so its shell must use the same
+   internal scroll channel instead of restoring document scrolling. */
+html:has(.product-add-page),
+body:has(.product-add-page),
+#root:has(.product-add-page) {
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden !important;
+}
+
+.app-shell.stitch-shell:has(.product-add-page),
+.app-shell.stitch-shell > main:has(.product-add-page) {
+  height: 100vh !important;
+  min-height: 0 !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+}
+
+.app-shell.stitch-shell > main:has(.product-add-page) {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+@media (max-width: 760px) {
+  html,
+  body,
+  #root,
+  .app-shell.stitch-shell,
+  .app-shell.stitch-shell > main {
+    height: auto;
+    min-height: 100%;
+    max-height: none;
+    overflow: visible !important;
+  }
+
+  html:has(.product-add-page),
+  body:has(.product-add-page),
+  #root:has(.product-add-page),
+  .app-shell.stitch-shell:has(.product-add-page),
+  .app-shell.stitch-shell > main:has(.product-add-page) {
+    height: auto !important;
+    min-height: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .app-shell.stitch-shell > aside {
+    position: static;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+}
