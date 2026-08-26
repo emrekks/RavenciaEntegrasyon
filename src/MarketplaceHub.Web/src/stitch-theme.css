@@ -6679,3 +6679,45 @@ body:has(.product-add-page),
   .app-shell .product-add-page .rich-text-editor-meta { width: 100%; justify-content: space-between; }
   .app-shell .product-add-page .rich-text-tool-label { display: none; }
 }
+
+/* Keep the local category picker visually identical to the marketplace picker. */
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) {
+  max-height: 300px !important;
+  background: #1a1b23 !important;
+  border: 1px solid #555767 !important;
+  border-radius: 5px !important;
+  box-shadow: 0 20px 46px rgba(0, 0, 0, .5) !important;
+}
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) > div:first-child {
+  padding: 9px !important;
+  background: #1a1b23 !important;
+  border-bottom: 1px solid #34343d !important;
+}
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) > div:last-child {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0 !important;
+  max-height: 300px !important;
+  padding: 0 !important;
+  background: #1a1b23 !important;
+}
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) [role="option"] {
+  display: flex !important;
+  width: 100% !important;
+  min-height: 38px !important;
+  padding: 9px 12px !important;
+  color: #d4d3df !important;
+  text-align: left !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(68, 69, 83, .45) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: 11px !important;
+}
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) [role="option"]:hover,
+.mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) [role="option"][aria-selected="true"] {
+  color: #fff !important;
+  background: rgba(88, 101, 242, .14) !important;
+  border-color: rgba(68, 69, 83, .45) !important;
+}
