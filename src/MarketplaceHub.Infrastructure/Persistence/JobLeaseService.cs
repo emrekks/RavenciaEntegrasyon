@@ -7,7 +7,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimeProvider timeProvider) : IJobLeaseService
 {
-    public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, CancellationToken cancellationToken)
+    public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
@@ -18,9 +18,13 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                 .SetProperty(x => x.CompletedAt, now)
                 .SetProperty(x => x.LastErrorCode, x => x.LastErrorCode ?? "MAX_ATTEMPTS_EXHAUSTED")
                 .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
-        var job = await db.IntegrationJobs
-            .FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" IN ('PENDING', 'RETRY_SCHEDULED') AND \"AttemptCount\" < \"MaxAttempts\" AND \"AvailableAt\" <= {now} ORDER BY \"Priority\" ASC, \"AvailableAt\" ASC, \"CreatedAt\" ASC FOR UPDATE SKIP LOCKED LIMIT 1")
-            .SingleOrDefaultAsync(cancellationToken);
+        var job = maximumPriority is null
+            ? await db.IntegrationJobs
+                .FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" IN ('PENDING', 'RETRY_SCHEDULED') AND \"AttemptCount\" < \"MaxAttempts\" AND \"AvailableAt\" <= {now} ORDER BY \"Priority\" ASC, \"AvailableAt\" ASC, \"CreatedAt\" ASC FOR UPDATE SKIP LOCKED LIMIT 1")
+                .SingleOrDefaultAsync(cancellationToken)
+            : await db.IntegrationJobs
+                .FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" IN ('PENDING', 'RETRY_SCHEDULED') AND \"AttemptCount\" < \"MaxAttempts\" AND \"AvailableAt\" <= {now} AND \"Priority\" <= {maximumPriority.Value} ORDER BY \"Priority\" ASC, \"AvailableAt\" ASC, \"CreatedAt\" ASC FOR UPDATE SKIP LOCKED LIMIT 1")
+                .SingleOrDefaultAsync(cancellationToken);
         if (job is null) { await transaction.CommitAsync(cancellationToken); return null; }
         var token = TokenHasher.NewToken();
         job.Status = JobStatus.Leased;

@@ -39,6 +39,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 MarketplaceJobTypes.OrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                 MarketplaceJobTypes.ProductSync => await SyncProducts(tenantId, connectionId.Value, correlationId, cancellationToken),
                 MarketplaceJobTypes.ReturnSync => await SyncReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
+                MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                 MarketplaceJobTypes.WebhookIngest => await IngestWebhook(tenantId, connectionId.Value, payloadJson, cancellationToken),
                 MarketplaceJobTypes.ShipmentAction => await ShipmentAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                 MarketplaceJobTypes.ReturnAction => await ReturnAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
@@ -366,7 +367,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             PayloadHash = Hash(payload),
             JobDedupKey = dedup,
             EffectIdempotencyKey = dedup,
-            Priority = 1,
+            Priority = 4,
             Status = JobStatus.Pending,
             AvailableAt = now,
             MaxAttempts = ProductApprovalReconcileMaxAttempts,
@@ -987,7 +988,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 {
                     state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, NextCursor = null };
                     cursor.OpaqueCursor = SerializeOrderSyncState(state);
-                    cursor.LastSuccessAt = timeProvider.GetUtcNow();
                     cursor.Version++;
                     await db.SaveChangesAsync(cancellationToken);
                     await Task.Delay(OrderStreamRequestInterval, cancellationToken);
@@ -997,7 +997,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 {
                     state = state with { WindowIndex = state.WindowIndex + 1, StoreFrontIndex = 0, NextCursor = null };
                     cursor.OpaqueCursor = SerializeOrderSyncState(state);
-                    cursor.LastSuccessAt = timeProvider.GetUtcNow();
                     cursor.Version++;
                     await db.SaveChangesAsync(cancellationToken);
                     await Task.Delay(OrderStreamRequestInterval, cancellationToken);
@@ -1015,9 +1014,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 await UpsertOrder(tenantId, connectionId, streamedOrder, cancellationToken);
             }
-            var pageWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max();
-            if (pageWatermark is not null && (cursor.LastModifiedWatermark is null || pageWatermark > cursor.LastModifiedWatermark))
-                cursor.LastModifiedWatermark = pageWatermark;
             if (result.Value.HasMore)
             {
                 if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol stream hasMore=true ancak nextCursor boş döndü.");
@@ -1041,7 +1037,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 break;
             }
             cursor.OpaqueCursor = SerializeOrderSyncState(state);
-            cursor.LastSuccessAt = timeProvider.GetUtcNow();
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
             await Task.Delay(OrderStreamRequestInterval, cancellationToken);
@@ -1784,13 +1779,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     // Trendyol's claims feed is date-bounded for the initial scan. Invalidating
     // the previous all-time cursor makes the next read start at three months.
-    private const string ReturnSyncStateVersion = "returns-v8";
+    private const string ReturnSyncStateVersion = "returns-v10";
     private sealed record ReturnSyncState(string Version, int StoreFrontIndex, int Page, bool Full = true, DateTimeOffset? StartAt = null, DateTimeOffset? EndAt = null);
 
     private async Task<bool> SyncReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
-        var state = ReadReturnSyncState(cursor, timeProvider.GetUtcNow());
+        var configuredOverlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "RETURNS")
+            .Select(x => (int?)x.OverlapSeconds)
+            .SingleOrDefaultAsync(cancellationToken) ?? 900;
+        var overlap = TimeSpan.FromSeconds(Math.Clamp(configuredOverlapSeconds, 60, 86_400));
+        var state = ReadReturnSyncState(cursor, timeProvider.GetUtcNow(), overlap);
         var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         do
         {
@@ -1809,12 +1809,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 {
                     state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, Page = 0 };
                     cursor.OpaqueCursor = SerializeReturnSyncState(state);
-                    cursor.LastSuccessAt = timeProvider.GetUtcNow();
                     cursor.Version++;
                     await db.SaveChangesAsync(cancellationToken);
                     continue;
                 }
-                cursor.OpaqueCursor = SerializeReturnSyncState(NextReturnWindow(timeProvider.GetUtcNow()));
+                cursor.OpaqueCursor = null;
+                cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
                 cursor.LastSuccessAt = timeProvider.GetUtcNow();
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
@@ -1822,7 +1822,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
             foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
-            cursor.LastModifiedWatermark = result.Value.Items.Select(x => (DateTimeOffset?)x.LastModifiedAt).Max() ?? cursor.LastModifiedWatermark;
             if (result.Value.HasMore)
             {
                 var nextPage = int.TryParse(result.Value.NextCursor, out var parsedPage) ? parsedPage : state.Page + 1;
@@ -1834,21 +1833,59 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             else
             {
-                cursor.OpaqueCursor = SerializeReturnSyncState(NextReturnWindow(timeProvider.GetUtcNow()));
+                cursor.OpaqueCursor = null;
+                cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
                 cursor.LastSuccessAt = timeProvider.GetUtcNow();
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
                 break;
             }
             cursor.OpaqueCursor = SerializeReturnSyncState(state);
-            cursor.LastSuccessAt = timeProvider.GetUtcNow();
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
         } while (!cancellationToken.IsCancellationRequested);
         return true;
     }
 
-    private static ReturnSyncState ReadReturnSyncState(SyncCursor cursor, DateTimeOffset now)
+    private async Task<bool> SyncOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var batchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:ReturnLifecycle:BatchSize", 25), 1, 100);
+        var openClaims = await db.ReturnClaims.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+                && x.Status != ReturnClaimStatus.Completed && x.Status != ReturnClaimStatus.Cancelled)
+            .OrderBy(x => x.UpdatedAt)
+            .ThenBy(x => x.Id)
+            .Select(x => x.ExternalClaimId)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+        if (openClaims.Count == 0) return true;
+
+        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var externalClaimId in openClaims)
+        {
+            var result = await returns.GetAsync(
+                Context(tenantId, connectionId, correlationId, $"return-lifecycle:{externalClaimId}"),
+                externalClaimId,
+                cancellationToken);
+            if (!result.IsSuccess)
+            {
+                if (result.Error?.Class == AdapterErrorClass.NotFound)
+                {
+                    await RecordIssue(tenantId, $"return-lifecycle:{connectionId}:{externalClaimId}", "REMOTE_RETURN_NOT_FOUND", "Açık iade kaydı Trendyol'da ClaimId ile bulunamadı; yerel durum korunarak incelemeye alındı.", cancellationToken);
+                    await db.SaveChangesAsync(cancellationToken);
+                    continue;
+                }
+                throw JobProcessingException.FromAdapter(result.Error!);
+            }
+
+            await UpsertReturn(tenantId, connectionId, correlationId, result.Value!, productSnapshots, cancellationToken);
+            await ResolveIssue(tenantId, $"return-lifecycle:{connectionId}:{externalClaimId}", cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        return true;
+    }
+
+    private static ReturnSyncState ReadReturnSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap)
     {
         if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
         {
@@ -1860,12 +1897,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             catch (JsonException) { }
         }
-        return InitialReturnWindow(now);
+        var watermark = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt;
+        return watermark is null
+            ? InitialReturnWindow(now)
+            : new(ReturnSyncStateVersion, 0, 0, false, watermark.Value.Subtract(overlap), now);
     }
 
     private static string SerializeReturnSyncState(ReturnSyncState state) => JsonSerializer.Serialize(state);
     private static ReturnSyncState InitialReturnWindow(DateTimeOffset now) => new(ReturnSyncStateVersion, 0, 0, false, now.AddMonths(-3), now);
-    private static ReturnSyncState NextReturnWindow(DateTimeOffset now) => new(ReturnSyncStateVersion, 0, 0, false, now.AddDays(-14), now);
 
     private async Task UpsertReturn(Guid tenantId, Guid connectionId, string correlationId, RemoteReturnClaim remote, Dictionary<string, string?> productSnapshots, CancellationToken cancellationToken)
     {

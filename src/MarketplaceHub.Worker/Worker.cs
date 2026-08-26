@@ -7,46 +7,73 @@ namespace MarketplaceHub.Worker;
 public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> logger, IConfiguration configuration) : BackgroundService
 {
     private readonly string healthFile = configuration["Worker:HealthFile"] ?? "/tmp/marketplacehub-worker-heartbeat";
-    private DateTimeOffset nextScheduleAt = DateTimeOffset.MinValue;
+    private readonly TimeSpan schedulerScanInterval = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:SchedulerScanSeconds", 5), 1, 30));
+    private readonly int hotPriorityCeiling = Math.Clamp(configuration.GetValue("Worker:HotPriorityCeiling", 2), 0, 5);
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        await Task.WhenAll(
+            RunSchedulerAsync(stoppingToken),
+            RunLeaseLaneAsync("hot", hotPriorityCeiling, stoppingToken),
+            RunLeaseLaneAsync("background", null, stoppingToken));
+    }
+
+    private async Task RunSchedulerAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 await ProduceScheduledJobsAsync(stoppingToken);
-                var job = await LeaseNextAsync(stoppingToken);
-                // Health is refreshed only after a successful scheduler/lease database cycle.
-                // A live process that cannot reach the database must not remain healthy.
                 TouchHealthFile();
-                if (job is not null) await ExecuteLeasedJobAsync(job, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-            catch (Exception exception) { logger.LogError(exception, "Worker loop failed"); }
+            catch (Exception exception) { logger.LogError(exception, "Worker scheduler loop failed"); }
 
             if (!stoppingToken.IsCancellationRequested)
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                await Task.Delay(schedulerScanInterval, stoppingToken);
+        }
+    }
+
+    private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                var job = await LeaseNextAsync(maximumPriority, stoppingToken);
+                // Health is refreshed only after a successful lease database cycle.
+                // A live process that cannot reach the database must not remain healthy.
+                TouchHealthFile();
+                if (job is not null)
+                {
+                    logger.LogInformation("Job {JobId} leased by {Lane} lane", job.Id, lane);
+                    await ExecuteLeasedJobAsync(job, stoppingToken);
+                    continue;
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            catch (Exception exception) { logger.LogError(exception, "Worker {Lane} lease loop failed", lane); }
+
+            if (!stoppingToken.IsCancellationRequested)
+                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
         }
     }
 
     private async Task ProduceScheduledJobsAsync(CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.UtcNow;
-        if (now < nextScheduleAt) return;
-        nextScheduleAt = now.AddSeconds(30);
         await using var scope = scopeFactory.CreateAsyncScope();
         var producer = scope.ServiceProvider.GetRequiredService<IScheduledJobProducer>();
         var count = await producer.EnqueueDueAsync(cancellationToken);
         if (count > 0) logger.LogInformation("Enqueued {Count} scheduled integration jobs", count);
     }
 
-    private async Task<LeasedJob?> LeaseNextAsync(CancellationToken cancellationToken)
+    private async Task<LeasedJob?> LeaseNextAsync(int? maximumPriority, CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
         var reaped = await jobs.ReapExpiredAsync(cancellationToken);
         if (reaped > 0) logger.LogWarning("Reaped {Count} expired job leases", reaped);
-        return await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, cancellationToken);
+        return await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, cancellationToken);
     }
 
     private async Task ExecuteLeasedJobAsync(LeasedJob job, CancellationToken stoppingToken)
@@ -141,7 +168,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             return succeeded ? JobExecutionResult.Success() : JobExecutionResult.Blocked("IMPORT_JOB_REJECTED", "Import operation was rejected by its current state or validation rules.");
         }
 
-        if (job.JobType is MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ProductCreate or MarketplaceJobTypes.ProductApprovalReconcile or MarketplaceJobTypes.ProductUpdate or MarketplaceJobTypes.ProductArchive or MarketplaceJobTypes.PriceInventorySync or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.CommonLabel or MarketplaceJobTypes.CapabilityProbe or MarketplaceJobTypes.StageTestOrder or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnAction or MarketplaceJobTypes.WebhookIngest)
+        if (job.JobType is MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ProductCreate or MarketplaceJobTypes.ProductApprovalReconcile or MarketplaceJobTypes.ProductUpdate or MarketplaceJobTypes.ProductArchive or MarketplaceJobTypes.PriceInventorySync or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.CommonLabel or MarketplaceJobTypes.CapabilityProbe or MarketplaceJobTypes.StageTestOrder or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnStatusSync or MarketplaceJobTypes.ReturnAction or MarketplaceJobTypes.WebhookIngest)
         {
             var processor = services.GetRequiredService<IMarketplaceJobProcessor>();
             return await processor.ProcessAsync(job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, cancellationToken);

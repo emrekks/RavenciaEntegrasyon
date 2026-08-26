@@ -13,6 +13,7 @@ public static class MarketplaceJobTypes
     public const string ProductSync = "TRENDYOL_PRODUCT_SYNC";
     public const string ShipmentAction = "TRENDYOL_SHIPMENT_ACTION";
     public const string ReturnSync = "TRENDYOL_RETURN_SYNC";
+    public const string ReturnStatusSync = "TRENDYOL_RETURN_STATUS_SYNC";
     public const string ReturnAction = "TRENDYOL_RETURN_ACTION";
     public const string WebhookIngest = "TRENDYOL_WEBHOOK_INGEST";
     public const string ProductCreate = "TRENDYOL_PRODUCT_CREATE";

@@ -4,17 +4,17 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvider) : IScheduledJobProducer
+public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvider, IConfiguration configuration) : IScheduledJobProducer
 {
     public async Task<int> EnqueueDueAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var added = 0;
         await EnsureDefaultOrderPoliciesAsync(cancellationToken);
-        await EnsureDefaultProductPoliciesAsync(cancellationToken);
         var policies = await (from policy in db.ConnectionSyncPolicies.AsNoTracking()
                               join connection in db.PlatformConnections.AsNoTracking()
                                   on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
@@ -26,7 +26,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var definition = Definition(row.Policy.ResourceType, row.Connection.Id);
             if (definition is null) continue;
 
-            var interval = Math.Clamp(row.Policy.IntervalSeconds, 60, 86_400);
+            var interval = Math.Clamp(row.Policy.IntervalSeconds, 30, 86_400);
             var active = await db.IntegrationJobs.AsNoTracking()
                 .AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType
                     && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
@@ -85,25 +85,35 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         if (operationalConnections.Count == 0) return;
 
         var connectionIds = operationalConnections.Select(x => x.ConnectionId).ToArray();
-        var existing = await db.ConnectionSyncPolicies.AsNoTracking()
-            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "RETURNS"))
-            .Select(x => new { x.TenantId, x.ConnectionId, x.ResourceType })
+        var existing = await db.ConnectionSyncPolicies
+            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE"))
             .ToListAsync(cancellationToken);
-        var existingKeys = existing.Select(x => (x.TenantId, x.ConnectionId, x.ResourceType)).ToHashSet();
         foreach (var connection in operationalConnections)
         {
-            foreach (var resourceType in new[] { "ORDERS", "RETURNS" })
+            foreach (var defaults in DefaultPolicies())
             {
-                if (existingKeys.Contains((connection.TenantId, connection.ConnectionId, resourceType))) continue;
+                var current = existing.SingleOrDefault(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.ConnectionId && x.ResourceType == defaults.ResourceType);
+                if (current is not null)
+                {
+                    // Upgrade only the exact legacy defaults. Explicit user choices remain untouched.
+                    if (current.IntervalSeconds == 300 && current.OverlapSeconds == 120 && current.JitterSeconds == 15)
+                    {
+                        current.IntervalSeconds = defaults.IntervalSeconds;
+                        current.OverlapSeconds = defaults.OverlapSeconds;
+                        current.JitterSeconds = defaults.JitterSeconds;
+                        current.Version++;
+                    }
+                    continue;
+                }
                 db.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy
                 {
                     Id = Guid.CreateVersion7(),
                     TenantId = connection.TenantId,
                     ConnectionId = connection.ConnectionId,
-                    ResourceType = resourceType,
-                    IntervalSeconds = 300,
-                    OverlapSeconds = 120,
-                    JitterSeconds = 15,
+                    ResourceType = defaults.ResourceType,
+                    IntervalSeconds = defaults.IntervalSeconds,
+                    OverlapSeconds = defaults.OverlapSeconds,
+                    JitterSeconds = defaults.JitterSeconds,
                     Enabled = true,
                     Version = 1
                 });
@@ -113,36 +123,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task EnsureDefaultProductPoliciesAsync(CancellationToken cancellationToken)
-    {
-        var operationalConnections = await db.PlatformConnections.AsNoTracking()
-            .Where(x => (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.PlatformCode == "TRENDYOL" && (x.Environment == "STAGE" || x.Environment == "PRODUCTION"))
-            .Select(x => new { x.TenantId, ConnectionId = x.Id })
-            .ToListAsync(cancellationToken);
-        if (operationalConnections.Count == 0) return;
-        var connectionIds = operationalConnections.Select(x => x.ConnectionId).ToArray();
-        var existing = await db.ConnectionSyncPolicies.AsNoTracking()
-            .Where(x => connectionIds.Contains(x.ConnectionId) && x.ResourceType == "PRODUCTS")
-            .Select(x => new { x.TenantId, x.ConnectionId })
-            .ToListAsync(cancellationToken);
-        var existingKeys = existing.Select(x => (x.TenantId, x.ConnectionId)).ToHashSet();
-        foreach (var connection in operationalConnections)
-        {
-            if (existingKeys.Contains((connection.TenantId, connection.ConnectionId))) continue;
-            db.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy
-            {
-                Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.ConnectionId, ResourceType = "PRODUCTS",
-                IntervalSeconds = 300, OverlapSeconds = 60, JitterSeconds = 15, Enabled = true, Version = 1
-            });
-        }
-        if (db.ChangeTracker.Entries<ConnectionSyncPolicy>().Any(x => x.State == EntityState.Added)) await db.SaveChangesAsync(cancellationToken);
-    }
+    private IReadOnlyList<PolicyDefaults> DefaultPolicies() =>
+    [
+        new("ORDERS", configuration.GetValue("MarketplaceSync:Orders:IntervalSeconds", 30), configuration.GetValue("MarketplaceSync:Orders:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:Orders:JitterSeconds", 2)),
+        new("RETURNS", configuration.GetValue("MarketplaceSync:Returns:IntervalSeconds", 60), configuration.GetValue("MarketplaceSync:Returns:SafetyWindowSeconds", 900), configuration.GetValue("MarketplaceSync:Returns:JitterSeconds", 5)),
+        new("RETURN_LIFECYCLE", configuration.GetValue("MarketplaceSync:ReturnLifecycle:IntervalSeconds", 180), 0, configuration.GetValue("MarketplaceSync:ReturnLifecycle:JitterSeconds", 10))
+    ];
 
     private static (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId) => resourceType switch
     {
         "ORDERS" => (MarketplaceJobTypes.OrderSync, $"scheduled:orders:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null })),
-        "PRODUCTS" => (MarketplaceJobTypes.ProductSync, $"scheduled:products:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "RETURNS" => (MarketplaceJobTypes.ReturnSync, $"scheduled:returns:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
+        "RETURN_LIFECYCLE" => (MarketplaceJobTypes.ReturnStatusSync, $"scheduled:return-lifecycle:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "REFERENCE_DATA" => (MarketplaceJobTypes.ReferenceSync, $"scheduled:reference:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })),
         _ => null
     };
@@ -158,10 +150,21 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
         JobDedupKey = dedup,
         EffectIdempotencyKey = dedup,
+        Priority = Priority(type),
         AvailableAt = availableAt,
         CorrelationId = correlationId,
         Version = 1
     };
+
+    private static int Priority(string type) => type switch
+    {
+        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.WebhookIngest => 0,
+        MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnStatusSync => 2,
+        MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ReferenceSync => 5,
+        _ => 3
+    };
+
+    private sealed record PolicyDefaults(string ResourceType, int IntervalSeconds, int OverlapSeconds, int JitterSeconds);
 
     private static int StableJitter(Guid policyId, long bucket, int maxSeconds)
     {
