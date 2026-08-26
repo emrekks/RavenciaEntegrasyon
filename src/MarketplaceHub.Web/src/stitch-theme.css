@@ -5011,6 +5011,23 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .app-shell .dashboard-sync-refresh:hover:not(:disabled) > span:first-child { transform: rotate(180deg); }
 .app-shell .dashboard-sync-refresh:disabled > span:first-child { animation: dashboard-sync-spin .8s linear infinite; }
 @keyframes dashboard-sync-spin { to { transform: rotate(360deg); } }
+.app-shell .dashboard-sync-meta-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  line-height: 1.2;
+}
+.app-shell .dashboard-sync-meta-copy strong,
+.app-shell .dashboard-sync-meta-copy small {
+  color: inherit;
+  font-size: inherit;
+  font-weight: 500;
+}
+.app-shell .dashboard-sync-meta-copy small {
+  color: #717287;
+  font-size: 8px;
+}
 
 .app-shell .dashboard-bottom-grid {
   display: grid;
