@@ -2876,8 +2876,8 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   }
 }
 
-/* Category pickers: the library opens from its search control, while the
-   panel-category field uses the same compact four-column dropdown pattern. */
+/* Category pickers: both local and marketplace fields use the same compact
+   single-column dropdown pattern. */
 .mapping-category-builder .mapping-local-manager-dialog > .category-chip-list {
   display: none !important;
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
@@ -2918,22 +2918,25 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 }
 .mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) > div:last-child {
   display: grid !important;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  gap: 6px !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0 !important;
   max-height: 267px !important;
-  padding: 8px !important;
+  padding: 0 !important;
   overflow-y: auto !important;
   background: var(--st-surface-low) !important;
 }
 .mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) [role="option"] {
+  display: flex !important;
+  width: 100% !important;
   min-width: 0 !important;
-  min-height: 38px !important;
-  padding: 8px 9px !important;
+  min-height: 39px !important;
+  padding: 9px 12px !important;
   overflow: hidden !important;
   color: var(--st-text) !important;
-  background: var(--st-surface-container) !important;
-  border: 1px solid var(--st-surface-highest) !important;
-  border-radius: calc(var(--st-radius) - 2px) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(68, 69, 83, .45) !important;
+  border-radius: 0 !important;
   text-align: left !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
@@ -2947,7 +2950,7 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 @media (max-width: 760px) {
   .mapping-category-builder .mapping-local-manager-dialog > .category-chip-list,
   .mapping-category-builder > .mapping-reference-grid > .mapping-reference-local > .panel-category-picker:not(.platform-category-picker) > div:last-child {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 }
 
