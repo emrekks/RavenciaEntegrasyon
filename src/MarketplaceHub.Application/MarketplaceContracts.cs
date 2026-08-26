@@ -10,10 +10,14 @@ public static class MarketplaceJobTypes
     public const string ConnectionTest = "TRENDYOL_CONNECTION_TEST";
     public const string ReferenceSync = "TRENDYOL_REFERENCE_SYNC";
     public const string OrderSync = "TRENDYOL_ORDER_SYNC";
+    public const string OrderRecoverySync = "TRENDYOL_ORDER_RECOVERY_SYNC";
+    public const string OrderStatusSync = "TRENDYOL_ORDER_STATUS_SYNC";
+    public const string OrderReconciliation = "TRENDYOL_ORDER_RECONCILIATION";
     public const string ProductSync = "TRENDYOL_PRODUCT_SYNC";
     public const string ShipmentAction = "TRENDYOL_SHIPMENT_ACTION";
     public const string ReturnSync = "TRENDYOL_RETURN_SYNC";
     public const string ReturnStatusSync = "TRENDYOL_RETURN_STATUS_SYNC";
+    public const string ReturnReconciliation = "TRENDYOL_RETURN_RECONCILIATION";
     public const string ReturnAction = "TRENDYOL_RETURN_ACTION";
     public const string WebhookIngest = "TRENDYOL_WEBHOOK_INGEST";
     public const string ProductCreate = "TRENDYOL_PRODUCT_CREATE";
@@ -21,6 +25,8 @@ public static class MarketplaceJobTypes
     public const string ProductUpdate = "TRENDYOL_PRODUCT_UPDATE";
     public const string ProductArchive = "TRENDYOL_PRODUCT_ARCHIVE";
     public const string PriceInventorySync = "TRENDYOL_PRICE_INVENTORY_SYNC";
+    public const string StockProjectionDispatch = "STOCK_PROJECTION_DISPATCH";
+    public const string StockReconciliation = "TRENDYOL_STOCK_RECONCILIATION";
     public const string CommonLabel = "TRENDYOL_COMMON_LABEL";
     public const string CapabilityProbe = "TRENDYOL_CAPABILITY_PROBE";
     public const string StageTestOrder = "TRENDYOL_STAGE_TEST_ORDER";
@@ -214,7 +220,19 @@ public sealed record SyncPolicyView(
     bool Enabled,
     long Version,
     DateTimeOffset? LastSuccessAt = null,
-    DateTimeOffset? LastModifiedWatermark = null);
+    DateTimeOffset? LastModifiedWatermark = null,
+    string HealthStatus = "OFFLINE",
+    DateTimeOffset? LastAttemptAt = null,
+    int ConsecutiveFailureCount = 0,
+    int LastRequestCount = 0,
+    int LastReceivedCount = 0,
+    int LastChangedCount = 0,
+    int LastInsertedCount = 0,
+    int LastUpdatedCount = 0,
+    int LastSkippedCount = 0,
+    int LastFailedCount = 0,
+    int LastRetryCount = 0,
+    int LastRateLimitCount = 0);
 public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);
 public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType, string? Username, string? Password, string? ApiKey);

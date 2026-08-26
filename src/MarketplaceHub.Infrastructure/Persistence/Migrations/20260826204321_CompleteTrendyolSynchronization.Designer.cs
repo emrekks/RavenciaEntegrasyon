@@ -3,6 +3,7 @@ using System;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260826204321_CompleteTrendyolSynchronization")]
+    partial class CompleteTrendyolSynchronization
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2229,10 +2232,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("SyncStatus")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasDefaultValue("SYNCED");
+                        .HasDefaultValue("SYNCED")
+                        .HasColumnType("character varying(32)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -4004,35 +4006,14 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LastErrorAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("LastFailedCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("LastInsertedCount")
-                        .HasColumnType("integer");
-
                     b.Property<DateTimeOffset?>("LastModifiedWatermark")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("LastRateLimitCount")
-                        .HasColumnType("integer");
 
                     b.Property<int>("LastReceivedCount")
                         .HasColumnType("integer");
 
-                    b.Property<int>("LastRequestCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("LastRetryCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("LastSkippedCount")
-                        .HasColumnType("integer");
-
                     b.Property<DateTimeOffset?>("LastSuccessAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("LastUpdatedCount")
-                        .HasColumnType("integer");
 
                     b.Property<string>("OpaqueCursor")
                         .HasMaxLength(4096)

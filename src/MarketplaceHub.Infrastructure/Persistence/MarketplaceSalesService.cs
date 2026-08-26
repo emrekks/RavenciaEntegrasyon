@@ -153,7 +153,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return ServiceResult<ShipmentDetailView>.Ok(new(Map(row.Package, row.OrderNumber), actions, formats, stage, documents));
     }
 
-      public Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, MarketplaceJobTypes.OrderSync, JsonSerializer.Serialize(new { connectionId, externalOrderId, full }), correlationId, cancellationToken);
+      public Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, full ? MarketplaceJobTypes.OrderRecoverySync : MarketplaceJobTypes.OrderSync, JsonSerializer.Serialize(new { connectionId, externalOrderId, full }), correlationId, cancellationToken);
 
       public Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, MarketplaceJobTypes.ProductSync, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken);
 
@@ -434,7 +434,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     }
     private async Task<ServiceResult<Guid>> Enqueue(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId, CancellationToken cancellationToken)
     {
-        var recurringRead = type is MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ReturnSync;
+        var recurringRead = type is MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnStatusSync;
         var active = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == type && (recurringRead ? x.JobDedupKey.StartsWith(dedup) : x.JobDedupKey == dedup) && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
         if (active is not null) return ServiceResult<Guid>.Ok(active.Id);
 
@@ -444,7 +444,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => new() { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = type, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = Priority(type), AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
     private static int Priority(string type) => type switch
     {
-        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.CommonLabel => 0,
+        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.CommonLabel => 0,
+        MarketplaceJobTypes.OrderRecoverySync => 6,
         MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnAction => 2,
         MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ReferenceSync => 5,
         _ => 3

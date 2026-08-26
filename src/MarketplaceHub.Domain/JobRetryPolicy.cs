@@ -4,11 +4,11 @@ public static class JobRetryPolicy
 {
     private static readonly TimeSpan[] DefaultRetryDelays =
     [
+        TimeSpan.FromSeconds(2),
+        TimeSpan.FromSeconds(5),
         TimeSpan.FromSeconds(15),
-        TimeSpan.FromMinutes(1),
-        TimeSpan.FromMinutes(5),
-        TimeSpan.FromMinutes(20),
-        TimeSpan.FromHours(1)
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromSeconds(60)
     ];
 
     public const int DefaultMaxAttempts = 6;
@@ -26,7 +26,7 @@ public static class JobRetryPolicy
     {
         if (attemptCount <= 0) throw new ArgumentOutOfRangeException(nameof(attemptCount));
         var baseDelay = DefaultRetryDelays[Math.Min(attemptCount - 1, DefaultRetryDelays.Length - 1)];
-        var jitterPercent = 10 + jobId.ToByteArray()[0] % 11;
+        var jitterPercent = jobId.ToByteArray()[0] % 21;
         return baseDelay + TimeSpan.FromTicks(baseDelay.Ticks * jitterPercent / 100);
     }
 }

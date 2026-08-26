@@ -59,7 +59,10 @@ public static class DependencyInjection
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<IReferenceDataService, ReferenceDataService>();
         services.Configure<TrendyolOptions>(configuration.GetSection(TrendyolOptions.SectionName));
-        services.AddHttpClient("Trendyol", client => client.Timeout = Timeout.InfiniteTimeSpan).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
+        services.AddTransient<TrendyolResilienceHandler>();
+        services.AddHttpClient("Trendyol", client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .AddHttpMessageHandler<TrendyolResilienceHandler>()
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<TrendyolAuthenticationHandler>();
         services.AddScoped<TrendyolHttpClient>();
         services.AddScoped<IConnectionPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());

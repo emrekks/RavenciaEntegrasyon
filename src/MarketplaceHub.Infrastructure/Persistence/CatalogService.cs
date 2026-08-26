@@ -337,6 +337,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             db.ProductAttributeAssignments.RemoveRange(currentAssignments);
             db.ProductAttributeAssignments.AddRange(command.Attributes.Select(x => Assignment(tenantId, id, null, x)));
         }
+        await MarkMarketplaceLinksDirtyAsync(tenantId, id, cancellationToken);
         await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, id, cancellationToken);
     }
 
@@ -344,7 +345,19 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         var product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>(); if (product.Version != expectedVersion) return Precondition<ProductView>(product.Version); product.Status = ProductStatus.Archived; product.ArchivedAt = timeProvider.GetUtcNow(); product.UpdatedAt = product.ArchivedAt.Value; product.Version++; var variants = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken); foreach (var variant in variants) { variant.Status = ProductStatus.Archived; variant.UpdatedAt = product.UpdatedAt; variant.Version++; }
         var media = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId == id && x.Status != "ARCHIVED").ToListAsync(cancellationToken); foreach (var item in media) item.Status = "ARCHIVED"; var assetIds = media.Select(x => x.FileAssetId).Distinct().ToArray(); var sharedAssetIds = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId != id && x.Status != "ARCHIVED" && assetIds.Contains(x.FileAssetId)).Select(x => x.FileAssetId).Distinct().ToListAsync(cancellationToken); var assets = await db.FileAssets.Where(x => x.TenantId == tenantId && assetIds.Contains(x.Id) && !sharedAssetIds.Contains(x.Id)).ToListAsync(cancellationToken); foreach (var asset in assets) { asset.Status = "ARCHIVED"; asset.ArchivedAt = product.ArchivedAt; }
+        await MarkMarketplaceLinksDirtyAsync(tenantId, id, cancellationToken);
         await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, id, cancellationToken);
+    }
+
+    private async Task MarkMarketplaceLinksDirtyAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken)
+    {
+        var links = await db.MarketplaceProductLinks.Where(x => x.TenantId == tenantId && x.ProductId == productId).ToListAsync(cancellationToken);
+        foreach (var link in links)
+        {
+            link.SyncStatus = "LOCAL_CHANGES_PENDING";
+            link.DirtyFieldsJson = "[\"product\"]";
+            link.Version++;
+        }
     }
 
     public async Task<ServiceResult<ListingProfileView>> GetListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)

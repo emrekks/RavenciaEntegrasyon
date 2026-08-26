@@ -1,88 +1,101 @@
-# Trendyol Senkronizasyon Mimarisi
+# Trendyol senkronizasyon mimarisi
 
-Bu belge, geniş kapsamlı entegrasyon metninin mevcut Ravencia kod tabanına uyarlanmış ve uygulanabilir sürümüdür. Hedef, çalışan Trendyol entegrasyonunu yeniden yazmadan veri kaybı, tekrar işleme ve uzun süre açık kalan kayıt risklerini azaltmaktır.
+Bu belge, Trendyol odaklı entegrasyon gereksinimlerinin Ravencia’daki uygulanmış karşılığıdır. Yerel PostgreSQL veritabanı panelin operasyonel kaynağıdır; Trendyol yalnızca tanımlı okuma ve yazma adapter’ları üzerinden erişilir.
 
-## Kesin iş kuralları
+## Kapsam ve temel sınırlar
 
-- Sipariş, paket durumu ve iade akışı Trendyol'dan panele otomatik gelir.
-- Sipariş aynı dış kimlikle tekrar geldiğinde yeni sipariş oluşturulmaz.
-- Paket ve satır değişiklikleri sipariş aggregate'i içinde işlenir; kısmi iptal bütün siparişi iptal etmez.
-- Panel stok için ana kaynaktır. Dış stok yazmaları kalıcı job ve idempotency anahtarı üzerinden yapılır.
-- Trendyol ürün importu kullanıcı aksiyonuyla başlar; periyodik katalog importu yapılmaz.
-- Yerel ürün kaydı ile pazaryeri yayını ayrı işlemlerdir. Yerel kaydetme otomatik Trendyol yazması üretmez.
-- Şu anda yalnız Trendyol ve Trendyol E-Faturam aktiftir. Gelecekteki sağlayıcılar için sahte adapter veya boş worker eklenmez.
+- Aktif gerçek sağlayıcı Trendyol’dur. Trendyol E-Faturam fatura akışında ayrı bir sağlayıcı olarak korunur; kapsam dışı pazar yerleri için sahte adapter veya boş worker eklenmez.
+- Worker sipariş, iade, ürün, referans ve stok işlerini kalıcı `IntegrationJob` kuyruğundan alır. Aynı fiziksel worker içinde öncelik ve lease ile ayrılmış hot, recovery, lifecycle ve reconciliation hatları vardır.
+- Her yazma isteği idempotency anahtarı, external effect kaydı ve read-back/reconciliation ile korunur. Ağ kopması sonrası dış etkinin kesinliği yoksa tekrar yazmak yerine `MANUAL_REVIEW` durumuna geçilir.
+- Kullanıcı arayüzündeki yerel kaydetme Trendyol’a otomatik yazma yapmaz. Ürün importu salt-okunurdur; yayınlama, güncelleme, arşivleme ve fiyat/stok gönderimi açık bir iş olarak kuyruğa alınır.
 
-## Mevcut mimariyle ilgili kararlar
+## Kalıcı kuyruk ve worker yürütümü
 
-Projede PostgreSQL tabanlı kalıcı `IntegrationJob`, lease/heartbeat, retry, dedup anahtarı, dead durum, `SyncCursor`, order/package/line modeli ve return claim modeli zaten vardır. Bu nedenle her senkronizasyon türü için ayrı process ve ayrı in-memory queue oluşturulmayacaktır.
+`IntegrationJob` PostgreSQL’de tutulur. Job sahiplenme `FOR UPDATE SKIP LOCKED`, lease süresi, heartbeat, attempt sayısı, deduplication ve dead-letter durumlarıyla yapılır. Worker yeniden başlasa veya iki worker aynı anda çalışsa iş kaybolmaz ve aynı job iki kez sahiplenilmez.
 
-Sorumluluk ayrımı fiziksel worker sayısıyla değil, kalıcı job türleri ve öncelikleriyle sağlanır:
+Öncelik sırası hot operasyonları korur:
 
-| Akış | Job | Öncelik | Varsayılan |
+| Akış | Job/resource | Varsayılan aralık | Öncelik |
 | --- | --- | ---: | ---: |
-| Sipariş hot sync | `TRENDYOL_ORDER_SYNC` | 0 | 30 saniye |
-| Yeni/değişen iade | `TRENDYOL_RETURN_SYNC` | 2 | 60 saniye |
-| Açık iade lifecycle | `TRENDYOL_RETURN_STATUS_SYNC` | 2 | 180 saniye |
-| Referans/katalog işi | ilgili job | 5 | manuel/düşük öncelik |
+| Sipariş hot akışı | `TRENDYOL_ORDER_SYNC` / `ORDERS_HOT` | 30 sn | 0 |
+| İade hot akışı | `TRENDYOL_RETURN_SYNC` / `RETURNS` | 60 sn | 2 |
+| Açık sipariş lifecycle | `TRENDYOL_ORDER_STATUS_SYNC` | 3 dk | 0 |
+| Açık iade lifecycle | `TRENDYOL_RETURN_STATUS_SYNC` | 3 dk | 2 |
+| Sipariş recovery | `TRENDYOL_ORDER_RECOVERY_SYNC` | 15 dk | 6 |
+| Günlük/kısa/orta uzlaştırma | ilgili reconciliation job’ı | 15 dk–24 sa | 4 |
 
-Bu yaklaşım process restart sırasında iş kaybetmez, birden fazla worker instance'ında `FOR UPDATE SKIP LOCKED` ve lease fencing ile aynı işin eşzamanlı sahiplenilmesini önler.
+İşletim ekranındaki sync policy kayıtları tüm bu resource türlerinin aralığını, overlap’ini, son denemesini, son başarısını, istek/kayıt/hata/retry sayaçlarını ve `HEALTHY`, `DELAYED`, `DEGRADED`, `OFFLINE` durumunu gösterir.
 
-## Sipariş senkronizasyonu
+## Siparişler
 
-- Stream/last-modified akışı kullanılır.
-- Varsayılan safety window 10 dakikadır ve bağlantı policy'sinden değiştirilebilir.
-- İlk kurulum veya uzun kesinti, Trendyol erişim sınırı içinde 14 günlük pencerelere bölünür.
-- Cursor her sayfada kalıcılaştırılabilir; ancak `LastSuccessAt` ve committed watermark yalnız tüm tur başarıyla tamamlandığında ilerletilir.
-- Sipariş, satır ve paket dış kimliklerinde veritabanı unique constraint'leri korunur.
-- Package event kimliği tekrar geldiğinde status history ve allocation tekrar oluşturulmaz.
+- Trendyol Stream/last-modified okuması kullanılır. Hot akış 10 dakikalık güvenlik örtüşmesiyle ilerler.
+- Stream’in 14 günlük erişim sınırı aşılırsa recovery ve reconciliation pencereleri en fazla 14 günlük parçalara bölünür; recovery hot akıştan bağımsız ilerler.
+- Cursor sayfa ilerlemesini saklayabilir; `LastModifiedWatermark` ve `LastSuccessAt` yalnız bütün pencere, storefront ve sayfalar başarıyla tamamlanınca ilerler.
+- Dış sipariş, satır, package ve event kimlikleri unique kayıtlarla idempotent tutulur. Aynı package event’i status history veya allocation’ı tekrar üretmez.
+- Satır bazlı iptal allocation’da tutulur; bir satırın kısmi iptali tüm siparişi iptal etmez. Açık package’ler doğrudan okumayla 3 dakikada bir tekrar kontrol edilir.
+- Sipariş satırı SKU/barcode üzerinden yerel varyanta çözülür. Rezervasyon miktarı `ordered - cancelled` olarak hesaplanır.
 
-## İade senkronizasyonu
+## İadeler
 
-- Yeni/değişen claim taraması varsayılan 15 dakikalık safety window ile 60 saniyede bir çalışır.
-- İlk çalışma erişilebilir üç aylık dönemi tarar.
-- `Completed` ve `Cancelled` olmayan claim'ler ayrı lifecycle job'ında ClaimId ile doğrudan tekrar okunur.
-- Lifecycle işi en eski güncellenen açık claim'leri öne alır ve her turda sınırlı batch işler; API kotasını kontrolsüz tüketmez.
-- Claim uzaktan geçici olarak bulunamazsa yerel kayıt silinmez veya final yapılmaz; operasyonel issue açılır.
+- `getClaims` akışı 15 dakikalık örtüşmeyle 60 saniyede bir çalışır. İlk tarama erişilebilir üç aylık geçmişi storefront ve sayfa bazında tarar.
+- `Completed` ve `Cancelled` olmayan claim’ler ayrı 3 dakikalık lifecycle işinde ClaimId ile tekrar okunur.
+- Kısa, orta ve günlük iade reconciliation işlerinde tarih aralığı sınırlıdır; hot akışın cursor’ı kullanılmaz.
+- Claim veya bağlı order bulunamazsa yerel kayıt silinmez, final durum uydurulmaz; operasyonel issue açılır ve sonraki tarama için korunur.
 
-## Ürün ve stok
+## Stok kaynağı, rezervasyon ve outbox
 
-- Ürün importu otomatik scheduler'dan çıkarılmıştır; mevcut “Ürünleri panele çek” aksiyonu kalıcı product job üretir.
-- Ürün local save ile Trendyol update birbirinden ayrı kalır.
-- Mevcut price/inventory dış yazmaları persistent job, retry ve external-effect idempotency korumalarını kullanmaya devam eder.
+Panel yerel stok projeksiyonunun otoritesidir. Sipariş importu sırasında rezervasyon, stok ledger kaydı, `Available` hesabı ve yüksek öncelikli stok projection outbox job’ı aynı EF transaction/save birimi içinde oluşturulur. Bu nedenle worker save sonrasında çökerse kalıcı outbox işi kaybolmaz.
 
-## Yapılandırma
+Projection payload’ı bağlantı, varyant ve projection version ile dedupe edilir. Dış fiyat/stok yazması tamamlanmadan ilgili projection version başarılı sayılmaz; kısa/orta/günlük stok reconciliation geride kalan projection’ları tekrar kuyruğa alır.
 
-Varsayılanlar `MarketplaceHub.Worker/appsettings.json` altındadır ve environment variable ile override edilebilir:
+## Ürün importu, katalog ve yayınlama
 
-```text
-Worker__SchedulerScanSeconds
-Worker__HotPriorityCeiling
-MarketplaceSync__Orders__IntervalSeconds
-MarketplaceSync__Orders__SafetyWindowSeconds
-MarketplaceSync__Returns__IntervalSeconds
-MarketplaceSync__Returns__SafetyWindowSeconds
-MarketplaceSync__ReturnLifecycle__IntervalSeconds
-MarketplaceSync__ReturnLifecycle__BatchSize
+- Ürün importu yalnız kullanıcı aksiyonuyla başlar; approved-products verisi sayfalı ve watermark örtüşmeli okunur.
+- Import hash ve son import edilen ürün sürümü tutulur. Yerelde değişmiş alanlar üzerine uzak katalog snapshot’ı yazılmaz; link `LOCAL_CHANGES_PENDING` durumuna geçer ve dirty alanlar korunur.
+- Kategori, marka, kategori özellikleri, özellik değerleri, seçenekler ve görsel adresleri yerel snapshot/link modellerine aktarılır. Katalog referansı boş veya sözleşme dışı gelirse mevcut snapshot korunur.
+- Yerel ürün kaydetme, Trendyol yazma işinden ayrıdır. Ürün create/update/archive ve fiyat-stok işlemleri kalıcı job, effect idempotency, retry ve read-back ile yürür.
+- Batch ürün işlemleri aşamalıdır: gönderim, adaptive status polling, satır doğrulama, onay/read-back ve gerektiğinde manuel inceleme.
+- Ürün güncelleme polling varsayılanı: ilk 10 dakikada 2 dk, 10–30 dakikada 5 dk, 30–60 dakikada 15 dk, sonra 30 dk. Dört saatlik toplam pencere aşılırsa iş otomatik sonsuz retry yapmaz.
+
+## Retry, rate limit ve dış çağrı güvenliği
+
+Retry delay’leri kaynak sözleşmesindeki birimle saniyedir: `2, 5, 15, 30, 60` saniye ve yüzde 0–20 deterministik jitter. Varsayılan maksimum deneme 6’dır. Sağlayıcının `Retry-After` başlığı güvenli sınırlar içinde bu değerin önüne geçer.
+
+Trendyol HTTP client’ı bağlantı başına sınırlı eşzamanlılık, kayan pencere rate limit ve circuit breaker kullanır. Varsayılanlar 8 eşzamanlı istek, saniyede 50 istek penceresi, 5 ardışık hata sonrası 30 saniye devre dışı bırakmadır. Açılan devre yeni çağrıyı bekletmek yerine retry bilgisiyle kuyruğa geri döndürür.
+
+## Gözlemlenebilirlik ve gerçek zamanlı panel
+
+Her senkronizasyon cursor’ı son deneme/başarı zamanı, watermark, hata, ardışık hata sayısı, süre ve son tur sayaçlarını tutar: istek, alınan, değişen, eklenen, güncellenen, atlanan, başarısız, retry ve rate-limit.
+
+Sağlık sınıflandırması eşiklerle yapılandırılabilir:
+
+- `MarketplaceSync:Health:DelayedAfterSeconds` — varsayılan 120 sn
+- `MarketplaceSync:Health:DegradedAfterSeconds` — varsayılan 600 sn
+- `MarketplaceSync:Health:OfflineAfterSeconds` — varsayılan 1800 sn
+
+API sync-policy yanıtında bu durum ve sayaçlar bulunur. SignalR `/hubs/operations` bağlantısı tamamlanan job sonrası tenant grubuna resource değişikliği gönderir; web arayüzü sipariş, iade, ürün, stok ve işlem takibi sorgularını yeniden doğrular.
+
+## Doğrulama senaryoları
+
+`tests/MarketplaceHub.Application.Tests/MandatorySynchronizationScenariosTests.cs` aşağıdaki zorunlu senaryoları kapsar: duplicate package, out-of-order status, kısmi iptal, dört saat worker kesintisi, 45 günlük recovery chunk’ı, aynı sipariş numarası, güvenlik örtüşmesi, tekrar webhook, çift worker lease, Trendyol dışı provider sınırı, ürün importunun salt-okunur olması, crash sonrası stok outbox anahtarı, local değişikliğin korunması, adaptive product polling ve saniye tabanlı retry dizisi.
+
+Bu testler policy/contract seviyesindedir. Gerçek Trendyol sandbox erişimi, provider rate limit davranışı ve dış sistemin idempotency uygulaması ayrıca canlı Stage smoke testiyle doğrulanır.
+
+## Operasyon komutları
+
+```powershell
+dotnet build MarketplaceHub.sln --no-restore
+dotnet test MarketplaceHub.sln --no-restore
+dotnet tool restore
+dotnet ef migrations has-pending-model-changes --project src/MarketplaceHub.Infrastructure --startup-project src/MarketplaceHub.Api
+npm.cmd run build --prefix src/MarketplaceHub.Web
 ```
 
-Sipariş ve iade hot-sync aralıkları bağlantı bazında panelden de değiştirilebilir. En düşük desteklenen aralık 30 saniyedir.
-
-## Uygulama sonrası kalan kontrollü geliştirmeler
-
-Aşağıdaki maddeler ayrı migration ve iş kuralı doğrulaması gerektirir; bu değişiklik paketinde varsayım yapılarak eklenmemiştir:
-
-1. Sipariş transaction'ı ile stok rezervasyonu ve outbox event'inin tek transaction içinde birleştirilmesi.
-2. Sipariş/iade/stock değişiklikleri için SignalR event sözleşmeleri.
-3. Provider bazlı rate limiter ve circuit-breaker state'inin kalıcılaştırılması.
-4. Sync cursor üzerinde attempt/error/duration sayaçlarının migration ile genişletilmesi.
-5. Hot sync'ten tamamen bağımsız düşük öncelikli deep reconciliation queue'su.
-6. Gerçek Trendyol fixture'larıyla contract ve integration test projelerinin solution'a eklenmesi.
-
-Bu işler yapılırken mevcut dış yazma güvenlik kapıları, Stage/Production ayrımı, lease fencing ve idempotency anahtarları korunmalıdır.
+Sunucu dağıtımında hedef `/home/ubuntu/RavenciaEntegrasyon` repository’si güncel commit’i pull eder, migration’ları uygular, container’ları yeniden başlatır ve `/health/ready` ile doğrulanır.
 
 ## Resmî sözleşme referansları
 
 - Stream: <https://developers.trendyol.com/docs/sipari%C5%9F-paketlerini-ak%C4%B1%C5%9F-ile-%C3%A7ekme>
 - Webhook modeli: <https://developers.trendyol.com/docs/webhook-model>
-- İade talepleri: <https://developers.trendyol.com/docs/i%CC%87adesi-olu%C5%9Fturulan-sipari%C5%9Fleri-%C3%A7ekme-getclaims>
+- İade talepleri: <https://developers.trendyol.com/docs/i%CC%87adesi-olu%C5%9Fturulan-sipari%C5%9Fleri-çekme-getclaims>
 - Onaylı ürünler: <https://developers.trendyol.com/tr/v2.0/docs/product-filtering-approved-products-v2>

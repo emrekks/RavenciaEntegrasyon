@@ -33,6 +33,12 @@ public static class ReturnClaimStateMachine
         current == next || Allowed.TryGetValue(current, out var allowed) && allowed.Contains(next);
 }
 
+public static class OpenReturnLifecyclePolicy
+{
+    public static bool ShouldPoll(ReturnClaimStatus status) =>
+        status is not ReturnClaimStatus.Completed and not ReturnClaimStatus.Cancelled;
+}
+
 public sealed class ReturnClaim
 {
     public Guid Id { get; set; }

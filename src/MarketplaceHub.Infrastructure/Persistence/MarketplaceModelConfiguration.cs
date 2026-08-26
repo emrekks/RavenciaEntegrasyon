@@ -39,7 +39,7 @@ internal static class MarketplaceModelConfiguration
         builder.Entity<SyncCursor>(entity =>
         {
             entity.ToTable("sync_cursors", "integration"); entity.HasKey(x => x.Id);
-            entity.Property(x => x.ResourceType).HasMaxLength(64); entity.Property(x => x.OpaqueCursor).HasMaxLength(4096); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.ResourceType).HasMaxLength(64); entity.Property(x => x.OpaqueCursor).HasMaxLength(4096); entity.Property(x => x.LastError).HasMaxLength(1024); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ResourceType }).IsUnique();
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });

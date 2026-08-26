@@ -36,6 +36,12 @@ public static class ShipmentPackageStateMachine
         current == next || Allowed.TryGetValue(current, out var allowed) && allowed.Contains(next);
 }
 
+public static class OpenOrderLifecyclePolicy
+{
+    public static bool ShouldPoll(ShipmentPackageStatus status) =>
+        status is not ShipmentPackageStatus.Delivered and not ShipmentPackageStatus.Cancelled and not ShipmentPackageStatus.Returned;
+}
+
 public sealed class Order
 {
     public Guid Id { get; set; }

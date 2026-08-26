@@ -6,6 +6,11 @@ public sealed class TrendyolOptions
     public Uri ProductionBaseAddress { get; init; } = new("https://apigw.trendyol.com/integration/");
     public Uri StageBaseAddress { get; init; } = new("https://stageapigw.trendyol.com/integration/");
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
+    public int MaxConcurrency { get; init; } = 8;
+    public int RequestsPerInterval { get; init; } = 50;
+    public TimeSpan RequestInterval { get; init; } = TimeSpan.FromSeconds(1);
+    public int CircuitFailureThreshold { get; init; } = 5;
+    public TimeSpan CircuitBreakDuration { get; init; } = TimeSpan.FromSeconds(30);
 }
 
 internal static class TrendyolEndpoints

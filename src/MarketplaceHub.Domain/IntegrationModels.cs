@@ -58,7 +58,21 @@ public sealed class SyncCursor
     public required string ResourceType { get; set; }
     public string? OpaqueCursor { get; set; }
     public DateTimeOffset? LastModifiedWatermark { get; set; }
+    public DateTimeOffset? LastAttemptAt { get; set; }
     public DateTimeOffset? LastSuccessAt { get; set; }
+    public string? LastError { get; set; }
+    public DateTimeOffset? LastErrorAt { get; set; }
+    public int ConsecutiveFailureCount { get; set; }
+    public long? LastDurationMs { get; set; }
+    public int LastRequestCount { get; set; }
+    public int LastReceivedCount { get; set; }
+    public int LastChangedCount { get; set; }
+    public int LastInsertedCount { get; set; }
+    public int LastUpdatedCount { get; set; }
+    public int LastSkippedCount { get; set; }
+    public int LastFailedCount { get; set; }
+    public int LastRetryCount { get; set; }
+    public int LastRateLimitCount { get; set; }
     public long Version { get; set; } = 1;
 }
 

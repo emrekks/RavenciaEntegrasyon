@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketplaceHub.Api", "src\M
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketplaceHub.Worker", "src\MarketplaceHub.Worker\MarketplaceHub.Worker.csproj", "{4825A9F7-8145-48F3-9C40-4B0845E2E594}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketplaceHub.Application.Tests", "tests\MarketplaceHub.Application.Tests\MarketplaceHub.Application.Tests.csproj", "{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -85,6 +87,18 @@ Global
 		{4825A9F7-8145-48F3-9C40-4B0845E2E594}.Release|x64.Build.0 = Release|Any CPU
 		{4825A9F7-8145-48F3-9C40-4B0845E2E594}.Release|x86.ActiveCfg = Release|Any CPU
 		{4825A9F7-8145-48F3-9C40-4B0845E2E594}.Release|x86.Build.0 = Release|Any CPU
+		{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}.Debug|x64.Build.0 = Debug|Any CPU
+		{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}.Debug|x86.Build.0 = Debug|Any CPU
+		{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}.Release|x64.ActiveCfg = Release|Any CPU
+		{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}.Release|x64.Build.0 = Release|Any CPU
+		{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}.Release|x86.ActiveCfg = Release|Any CPU
+		{D91C28D6-E860-4AA1-A376-B0C4D6FF1205}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

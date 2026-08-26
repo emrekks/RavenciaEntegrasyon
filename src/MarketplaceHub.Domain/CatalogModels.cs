@@ -250,6 +250,14 @@ public sealed class MarketplaceProductLink
     public Guid ConnectionId { get; set; }
     public Guid ProductId { get; set; }
     public required string ExternalId { get; set; }
+    public string? LastImportedPayloadHash { get; set; }
+    public long LastImportedProductVersion { get; set; }
+    public long LastPublishedProductVersion { get; set; }
+    public DateTimeOffset? LastImportedAt { get; set; }
+    public DateTimeOffset? LastPublishedAt { get; set; }
+    public string SyncStatus { get; set; } = "SYNCED";
+    public string? DirtyFieldsJson { get; set; }
+    public string? LastError { get; set; }
     public long Version { get; set; } = 1;
 }
 

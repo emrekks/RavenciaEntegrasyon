@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type MutableRefObject, type ReactNode, type RefObject } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
 import { api, ApiRequestError, hubApi, loadAllPages, type Me } from './api'
 import { AttributesPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, InventoryPage, NewProductPage, ProductDetailPage, ProductsPage } from './CatalogPages'
 import { IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage } from './MarketplacePages'
@@ -141,8 +142,32 @@ function Shell({ me }: { me: Me }) {
   </div>
 }
 
+function useOperationsRealtime(enabled: boolean) {
+  const client = useQueryClient()
+  useEffect(() => {
+    if (!enabled) return
+    const connection = new HubConnectionBuilder()
+      .withUrl('/hubs/operations')
+      .withAutomaticReconnect([0, 1000, 3000, 10_000])
+      .configureLogging(LogLevel.Warning)
+      .build()
+    connection.on('operationsChanged', ({ resources }: { resources?: string[] }) => {
+      for (const resource of resources ?? []) {
+        if (resource === 'orders') void client.invalidateQueries({ queryKey: ['orders'] })
+        else if (resource === 'returns') void client.invalidateQueries({ queryKey: ['returns'] })
+        else if (resource === 'products') void client.invalidateQueries({ queryKey: ['products'] })
+        else if (resource === 'inventory') void client.invalidateQueries({ queryKey: ['inventory'] })
+      }
+      void client.invalidateQueries({ queryKey: ['jobs'] })
+    })
+    void connection.start()
+    return () => { void connection.stop() }
+  }, [client, enabled])
+}
+
 export function App() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me'), retry: false })
+  useOperationsRealtime(me.data?.state === 'ACTIVE')
   if (me.isLoading) return null
   if (me.isError) return <Routes><Route path="*" element={<Login />} /></Routes>
   if (!me.data) return <Status title="Oturum bilgisi alınamadı" />

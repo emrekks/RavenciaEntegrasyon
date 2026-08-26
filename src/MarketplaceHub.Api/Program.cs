@@ -4,6 +4,7 @@ using MarketplaceHub.Api.Marketplace;
 using MarketplaceHub.Api.Invoicing;
 using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Api.Security;
+using MarketplaceHub.Api.Realtime;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure;
 using MarketplaceHub.Infrastructure.Bootstrap;
@@ -44,6 +45,8 @@ builder.Services.AddScoped<BreakGlassService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
 builder.Services.AddProblemDetails();
+builder.Services.AddSignalR();
+builder.Services.AddHostedService<OperationsRealtimeBroadcaster>();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -88,6 +91,7 @@ app.MapCatalogEndpoints();
 app.MapJobEndpoints();
 app.MapMarketplaceEndpoints();
 app.MapInvoicingEndpoints();
+app.MapHub<OperationsHub>("/hubs/operations");
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 app.Run();

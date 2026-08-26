@@ -134,7 +134,7 @@ internal static class CatalogModelConfiguration
         ConfigureMapping<AttributeMapping>(builder, "attribute_mappings"); ConfigureMapping<AttributeValueMapping>(builder, "attribute_value_mappings");
         builder.Entity<MarketplaceProductLink>(entity =>
         {
-            entity.ToTable("marketplace_product_links", "catalog"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ProductId }).IsUnique(); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.ToTable("marketplace_product_links", "catalog"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ProductId }).IsUnique(); entity.Property(x => x.LastImportedPayloadHash).HasMaxLength(128); entity.Property(x => x.SyncStatus).HasMaxLength(32).HasDefaultValue("SYNCED"); entity.Property(x => x.DirtyFieldsJson).HasColumnType("jsonb"); entity.Property(x => x.LastError).HasMaxLength(1024); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasOne<Product>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProductId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<MarketplaceVariantLink>(entity =>

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
@@ -16,41 +17,177 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     // applies exponential backoff, but this ceiling also keeps retry accounting from
     // becoming the earlier bound if the polling schedule is made more frequent later.
     private const int ProductApprovalReconcileMaxAttempts = (7 * 24 * 12) + 1;
+    private int telemetryRequestCount;
+    private int telemetryReceivedCount;
+    private int telemetryChangedCount;
+    private int telemetryInsertedCount;
+    private int telemetryUpdatedCount;
+    private int telemetrySkippedCount;
+    private int telemetryFailedCount;
+    private int telemetryRetryCount;
+    private int telemetryRateLimitCount;
 
     public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         if (connectionId is null) return JobExecutionResult.Blocked("CONNECTION_REQUIRED", "Job requires a platform connection.");
         var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId.Value).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (!ActiveIntegrationScope.Contains(platform)) return JobExecutionResult.Blocked("CONNECTION_OUT_OF_SCOPE", "Connection is not active in the current integration scope.");
+        var telemetryResource = TelemetryResource(jobType);
+        var stopwatch = Stopwatch.StartNew();
+        ResetTelemetry();
+        if (telemetryResource is not null) await RecordSyncAttempt(tenantId, connectionId.Value, telemetryResource, cancellationToken);
         try
         {
-            if (jobType == MarketplaceJobTypes.ProductCreate) return await CreateProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
-            if (jobType == MarketplaceJobTypes.ProductApprovalReconcile) return await ReconcileProductApproval(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
-            if (jobType == MarketplaceJobTypes.ProductUpdate) return await UpdateProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
-            if (jobType == MarketplaceJobTypes.ProductArchive) return await ArchiveProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
-            if (jobType == MarketplaceJobTypes.PriceInventorySync) return await SyncPriceInventory(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
-            if (jobType == MarketplaceJobTypes.CommonLabel) return await CommonLabel(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
-            if (jobType == MarketplaceJobTypes.CapabilityProbe) return await LabelCapabilityProbe(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
-            if (jobType == MarketplaceJobTypes.StageTestOrder) return await CreateStageTestOrder(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            JobExecutionResult? directResult = null;
+            if (jobType == MarketplaceJobTypes.ProductCreate) directResult = await CreateProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            else if (jobType == MarketplaceJobTypes.ProductApprovalReconcile) directResult = await ReconcileProductApproval(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            else if (jobType == MarketplaceJobTypes.ProductUpdate) directResult = await UpdateProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            else if (jobType == MarketplaceJobTypes.ProductArchive) directResult = await ArchiveProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            else if (jobType == MarketplaceJobTypes.PriceInventorySync) directResult = await SyncPriceInventory(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            else if (jobType == MarketplaceJobTypes.StockProjectionDispatch) directResult = await DispatchStockProjection(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            else if (jobType == MarketplaceJobTypes.CommonLabel) directResult = await CommonLabel(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            else if (jobType == MarketplaceJobTypes.CapabilityProbe) directResult = await LabelCapabilityProbe(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            else if (jobType == MarketplaceJobTypes.StageTestOrder) directResult = await CreateStageTestOrder(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+            if (directResult is not null)
+            {
+                if (!directResult.Succeeded)
+                {
+                    telemetryFailedCount++;
+                    if (directResult.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
+                }
+                if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, directResult.Succeeded, directResult.ErrorCode, cancellationToken);
+                return directResult;
+            }
             var succeeded = jobType switch
             {
                 MarketplaceJobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
                 MarketplaceJobTypes.ReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                MarketplaceJobTypes.OrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                MarketplaceJobTypes.OrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
+                MarketplaceJobTypes.OrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
+                MarketplaceJobTypes.OrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
+                MarketplaceJobTypes.OrderReconciliation => await ReconcileOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                 MarketplaceJobTypes.ProductSync => await SyncProducts(tenantId, connectionId.Value, correlationId, cancellationToken),
                 MarketplaceJobTypes.ReturnSync => await SyncReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                 MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
+                MarketplaceJobTypes.ReturnReconciliation => await ReconcileReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                MarketplaceJobTypes.StockReconciliation => await ReconcileStock(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                 MarketplaceJobTypes.WebhookIngest => await IngestWebhook(tenantId, connectionId.Value, payloadJson, cancellationToken),
                 MarketplaceJobTypes.ShipmentAction => await ShipmentAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                 MarketplaceJobTypes.ReturnAction => await ReturnAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                 _ => false
             };
+            if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, succeeded, succeeded ? null : "F3_JOB_REJECTED", cancellationToken);
             return succeeded ? JobExecutionResult.Success() : JobExecutionResult.Blocked("F3_JOB_REJECTED", "Job payload, capability or current entity state did not permit the operation.");
         }
         catch (JobProcessingException exception)
         {
+            if (exception.Result.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
+            else telemetryFailedCount++;
+            if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, false, exception.Result.ErrorCode, cancellationToken);
             return exception.Result;
         }
+        catch (Exception exception)
+        {
+            telemetryFailedCount++;
+            telemetryRetryCount++;
+            if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, false, exception.GetType().Name, cancellationToken);
+            throw;
+        }
+    }
+
+    private static string? TelemetryResource(string jobType) => jobType switch
+    {
+        MarketplaceJobTypes.ConnectionTest => "CONNECTION_TEST",
+        MarketplaceJobTypes.ReferenceSync => "REFERENCE_DATA",
+        MarketplaceJobTypes.OrderSync => "ORDERS_HOT",
+        MarketplaceJobTypes.OrderRecoverySync => "ORDERS_RECOVERY",
+        MarketplaceJobTypes.OrderStatusSync => "ORDER_LIFECYCLE",
+        MarketplaceJobTypes.OrderReconciliation => "ORDER_RECONCILIATION",
+        MarketplaceJobTypes.ReturnSync => "RETURNS",
+        MarketplaceJobTypes.ReturnStatusSync => "RETURN_LIFECYCLE",
+        MarketplaceJobTypes.ReturnReconciliation => "RETURN_RECONCILIATION",
+        MarketplaceJobTypes.ProductSync => "PRODUCTS",
+        MarketplaceJobTypes.ProductCreate => "PRODUCT_CREATE",
+        MarketplaceJobTypes.ProductApprovalReconcile => "PRODUCT_APPROVAL",
+        MarketplaceJobTypes.ProductUpdate => "PRODUCT_UPDATE",
+        MarketplaceJobTypes.ProductArchive => "PRODUCT_ARCHIVE",
+        MarketplaceJobTypes.PriceInventorySync => "PRICE_INVENTORY",
+        MarketplaceJobTypes.StockProjectionDispatch => "STOCK_PROJECTION",
+        MarketplaceJobTypes.StockReconciliation => "STOCK_RECONCILIATION",
+        MarketplaceJobTypes.WebhookIngest => "WEBHOOK_INGEST",
+        MarketplaceJobTypes.ShipmentAction => "SHIPMENT_ACTION",
+        MarketplaceJobTypes.ReturnAction => "RETURN_ACTION",
+        MarketplaceJobTypes.CommonLabel => "COMMON_LABEL",
+        MarketplaceJobTypes.CapabilityProbe => "CAPABILITY_PROBE",
+        MarketplaceJobTypes.StageTestOrder => "STAGE_TEST_ORDER",
+        _ => null
+    };
+
+    private async Task RecordSyncAttempt(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
+    {
+        var cursor = await Cursor(tenantId, connectionId, resourceType, cancellationToken);
+        cursor.LastAttemptAt = timeProvider.GetUtcNow();
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task RecordSyncCompletion(Guid tenantId, Guid connectionId, string resourceType, TimeSpan duration, bool succeeded, string? error, CancellationToken cancellationToken)
+    {
+        if (!succeeded) db.ChangeTracker.Clear();
+        var cursor = await Cursor(tenantId, connectionId, resourceType, cancellationToken);
+        cursor.LastDurationMs = Math.Max(0, (long)duration.TotalMilliseconds);
+        if (succeeded)
+        {
+            cursor.LastSuccessAt = timeProvider.GetUtcNow();
+            cursor.LastError = null;
+            cursor.LastErrorAt = null;
+            cursor.ConsecutiveFailureCount = 0;
+            cursor.LastFailedCount = telemetryFailedCount;
+        }
+        else
+        {
+            cursor.LastError = Short(error, 1024);
+            cursor.LastErrorAt = timeProvider.GetUtcNow();
+            cursor.ConsecutiveFailureCount++;
+            cursor.LastFailedCount = Math.Max(1, telemetryFailedCount);
+        }
+        cursor.LastRequestCount = telemetryRequestCount;
+        cursor.LastReceivedCount = telemetryReceivedCount;
+        cursor.LastChangedCount = telemetryChangedCount;
+        cursor.LastInsertedCount = telemetryInsertedCount;
+        cursor.LastUpdatedCount = telemetryUpdatedCount;
+        cursor.LastSkippedCount = telemetrySkippedCount;
+        cursor.LastRetryCount = telemetryRetryCount + (succeeded ? 0 : 1);
+        cursor.LastRateLimitCount = telemetryRateLimitCount;
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private void ResetTelemetry()
+    {
+        telemetryRequestCount = 0;
+        telemetryReceivedCount = 0;
+        telemetryChangedCount = 0;
+        telemetryInsertedCount = 0;
+        telemetryUpdatedCount = 0;
+        telemetrySkippedCount = 0;
+        telemetryFailedCount = 0;
+        telemetryRetryCount = 0;
+        telemetryRateLimitCount = 0;
+    }
+
+    private void TrackRequest() => telemetryRequestCount++;
+    private void TrackReceived(bool changed = true)
+    {
+        telemetryReceivedCount++;
+        if (changed) telemetryChangedCount++;
+        else telemetrySkippedCount++;
+    }
+    private void TrackResultFailure(AdapterError? error)
+    {
+        telemetryFailedCount++;
+        if (error?.Class == AdapterErrorClass.RateLimit) telemetryRateLimitCount++;
+        if (error?.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit or AdapterErrorClass.Remote5xx) telemetryRetryCount++;
     }
 
     private async Task<JobExecutionResult> CreateProduct(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -73,9 +210,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             db.ExternalEffectRecords.Add(effect);
             await db.SaveChangesAsync(cancellationToken);
 
+            TrackRequest();
             var submit = await products.CreateAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new ProductPublication(payload.ProductId, payload.PayloadHash, payload.PayloadJson), cancellationToken);
             if (!submit.IsSuccess)
             {
+                TrackResultFailure(submit.Error);
                 var error = submit.Error!;
                 if (error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug)
                     return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Create çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId), cancellationToken);
@@ -102,9 +241,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (!string.Equals(payload.Phase, "POLL", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(payload.ExternalOperationId) || payload.SubmittedAt is null) return JobExecutionResult.Blocked("PRODUCT_PUBLICATION_PHASE_INVALID", "Yayın işi bilinmeyen bir fazda.");
         if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > TimeSpan.FromHours(4)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_RESULT_EXPIRED", JobExecutionResult.ManualReview("PRODUCT_BATCH_RESULT_EXPIRED", "Batch sonucu dört saatlik sorgulama penceresinde tamamlanamadı.", payload.ExternalOperationId), cancellationToken);
 
+        TrackRequest();
         var operationResult = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:poll"), payload.ExternalOperationId, cancellationToken);
         if (!operationResult.IsSuccess)
         {
+            TrackResultFailure(operationResult.Error);
             var adapterResult = JobExecutionResult.FromAdapterError(operationResult.Error!);
             if (adapterResult.Kind == JobCompletionKind.Retry) return adapterResult;
             var status = adapterResult.Kind == JobCompletionKind.ManualReview ? "MANUAL_REVIEW" : "BLOCKED";
@@ -190,9 +331,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         foreach (var listing in candidates)
         {
             var barcode = listing.ExternalBarcode!;
+            TrackRequest();
             var result = await products.GetPublicationStatusAsync(Context(tenantId, connectionId, correlationId, $"product-approval:{profile.Id:N}:{barcode}"), barcode, cancellationToken);
             if (!result.IsSuccess)
             {
+                TrackResultFailure(result.Error);
                 var adapterResult = JobExecutionResult.FromAdapterError(result.Error!);
                 if (adapterResult.Kind == JobCompletionKind.Retry) return adapterResult;
                 return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", result.Error!.Code, JobExecutionResult.ManualReview(result.Error.Code, result.Error.SafeMessage, result.Error.RemoteRequestId), cancellationToken);
@@ -300,6 +443,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             profile.ActualStatus = "LIVE";
             profile.LastRejectionCode = null;
+            await MarkProductLinkPublished(tenantId, connectionId, payload.ProductId, cancellationToken);
         }
         else if (rejected == listings.Count)
         {
@@ -383,6 +527,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (productLink is null) db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, ExternalId = externalProductId, Version = 1 });
     }
 
+    private async Task MarkProductLinkPublished(Guid tenantId, Guid connectionId, Guid productId, CancellationToken cancellationToken)
+    {
+        var link = db.MarketplaceProductLinks.Local.SingleOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId)
+            ?? await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken);
+        if (link is null) return;
+        var productVersion = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => x.Version).SingleAsync(cancellationToken);
+        link.LastPublishedProductVersion = productVersion;
+        link.LastPublishedAt = timeProvider.GetUtcNow();
+        link.SyncStatus = "SYNCED";
+        link.DirtyFieldsJson = null;
+        link.LastError = null;
+        link.Version++;
+    }
+
     private async Task UpsertMarketplaceVariantLink(Guid tenantId, Guid connectionId, Guid variantId, string externalVariantId, CancellationToken cancellationToken)
     {
         var variantLink = await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId, cancellationToken);
@@ -454,6 +612,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
             var publication = new ProductUpdatePublication(payload.ProductId, payload.Mode, payload.PayloadHash, payload.UnapprovedPayloadJson, payload.ApprovedContentPayloadJson, payload.ApprovedVariantPayloadJson, payload.ApprovedDeliveryPayloadJson);
             var context = Context(tenantId, connectionId, correlationId, effectKey);
+            TrackRequest();
             var submit = phase switch
             {
                 "SUBMIT_UNAPPROVED" => await products.UpdateUnapprovedAsync(context, publication, cancellationToken),
@@ -464,6 +623,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             };
             if (!submit.IsSuccess)
             {
+                TrackResultFailure(submit.Error);
                 var error = submit.Error!;
                 if (IsAmbiguous(error)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Ürün güncelleme çağrısının uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId), cancellationToken);
                 db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken);
@@ -475,7 +635,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             job.PayloadJson = JsonSerializer.Serialize(poll); job.PayloadHash = Hash(job.PayloadJson);
             profile.ActualStatus = phase.Replace("SUBMIT_", "UPDATE_", StringComparison.Ordinal) + "_SUBMITTED"; profile.Version++;
             await db.SaveChangesAsync(cancellationToken);
-            return JobExecutionResult.Retry("PRODUCT_UPDATE_BATCH_PENDING", "Trendyol ürün güncelleme batch sonucu bekleniyor.", TimeSpan.FromSeconds(15), operation.ExternalOperationId);
+            return JobExecutionResult.Retry("PRODUCT_UPDATE_BATCH_PENDING", "Trendyol ürün güncelleme batch sonucu bekleniyor.", ProductUpdatePollDelay(operation.SubmittedAt), operation.ExternalOperationId);
         }
 
         if (!phase.StartsWith("POLL_", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(payload.ExternalOperationId) || payload.SubmittedAt is null)
@@ -483,14 +643,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > TimeSpan.FromHours(4))
             return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_UPDATE_BATCH_EXPIRED", JobExecutionResult.ManualReview("PRODUCT_UPDATE_BATCH_EXPIRED", "Ürün güncelleme batch sonucu dört saatlik pencerede alınamadı.", payload.ExternalOperationId), cancellationToken);
 
+        TrackRequest();
         var operationResult = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:{phase}:poll"), payload.ExternalOperationId, cancellationToken);
         if (!operationResult.IsSuccess)
         {
+            TrackResultFailure(operationResult.Error);
             var result = JobExecutionResult.FromAdapterError(operationResult.Error!);
             return result.Kind == JobCompletionKind.Retry ? result : await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", operationResult.Error!.Code, result, cancellationToken);
         }
         var status = operationResult.Value!;
-        if (string.Equals(status.Status, "IN_PROGRESS", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Retry("PRODUCT_UPDATE_BATCH_PENDING", "Trendyol ürün güncelleme batch sonucu bekleniyor.", TimeSpan.FromSeconds(20), payload.ExternalOperationId);
+        if (string.Equals(status.Status, "IN_PROGRESS", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Retry("PRODUCT_UPDATE_BATCH_PENDING", "Trendyol ürün güncelleme batch sonucu bekleniyor.", ProductUpdatePollDelay(payload.SubmittedAt.Value), payload.ExternalOperationId);
         if (!string.Equals(status.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_UPDATE_BATCH_STATUS_UNKNOWN", JobExecutionResult.ManualReview("PRODUCT_UPDATE_BATCH_STATUS_UNKNOWN", "Ürün güncelleme batch servisi tanınmayan durum döndürdü.", payload.ExternalOperationId), cancellationToken);
 
         var failed = status.Lines.Where(x => !x.Succeeded).ToList();
@@ -557,9 +719,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ProductArchive && x.IdempotencyKey == effectKey, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki arşiv çağrısının sonucu kesinleştirilemedi."), cancellationToken);
             var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ProductArchive, IdempotencyKey = effectKey, CreatedAt = timeProvider.GetUtcNow() };
             db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
+            TrackRequest();
             var submit = await products.ArchiveAsync(Context(tenantId, connectionId, correlationId, effectKey), payload.PayloadJson, cancellationToken);
             if (!submit.IsSuccess)
             {
+                TrackResultFailure(submit.Error);
                 if (IsAmbiguous(submit.Error!)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Arşiv çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", submit.Error!.RemoteRequestId), cancellationToken);
                 db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken);
                 return await MarkPublicationResult(tenantId, connectionId, profile, "ARCHIVE_BLOCKED", submit.Error!.Code, JobExecutionResult.FromAdapterError(submit.Error), cancellationToken);
@@ -573,8 +737,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (phase == "POLL")
         {
             if (string.IsNullOrWhiteSpace(payload.ExternalOperationId)) return JobExecutionResult.Blocked("PRODUCT_ARCHIVE_PHASE_INVALID", "Arşiv poll fazında batch kimliği eksik.");
+            TrackRequest();
             var result = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:poll"), payload.ExternalOperationId, cancellationToken);
-            if (!result.IsSuccess) return JobExecutionResult.FromAdapterError(result.Error!);
+            if (!result.IsSuccess) { TrackResultFailure(result.Error); return JobExecutionResult.FromAdapterError(result.Error!); }
+            TrackReceived();
             var remote = result.Value!;
             if (remote.Status.Equals("IN_PROGRESS", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Retry("PRODUCT_ARCHIVE_BATCH_PENDING", "Trendyol arşiv batch sonucu bekleniyor.", TimeSpan.FromSeconds(20), payload.ExternalOperationId);
             if (!remote.Status.Equals("COMPLETED", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_ARCHIVE_BATCH_STATUS_UNKNOWN", JobExecutionResult.ManualReview("PRODUCT_ARCHIVE_BATCH_STATUS_UNKNOWN", "Arşiv batch servisi tanınmayan durum döndürdü.", payload.ExternalOperationId), cancellationToken);
@@ -599,8 +765,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         foreach (var listing in listings.Where(x => x.ActualStatus != "ARCHIVE_REJECTED"))
         {
             if (string.IsNullOrWhiteSpace(listing.ExternalBarcode)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "REMOTE_BARCODE_REQUIRED", JobExecutionResult.ManualReview("REMOTE_BARCODE_REQUIRED", "Arşiv read-back için barkod eksik."), cancellationToken);
+            TrackRequest();
             var result = await products.GetPublicationStatusAsync(Context(tenantId, connectionId, correlationId, $"archive-readback:{profile.Id:N}:{listing.ExternalBarcode}"), listing.ExternalBarcode, cancellationToken);
-            if (!result.IsSuccess) { var mapped = JobExecutionResult.FromAdapterError(result.Error!); if (mapped.Kind == JobCompletionKind.Retry) return mapped; return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", result.Error!.Code, JobExecutionResult.ManualReview(result.Error.Code, result.Error.SafeMessage, result.Error.RemoteRequestId), cancellationToken); }
+            if (!result.IsSuccess) { TrackResultFailure(result.Error); var mapped = JobExecutionResult.FromAdapterError(result.Error!); if (mapped.Kind == JobCompletionKind.Retry) return mapped; return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", result.Error!.Code, JobExecutionResult.ManualReview(result.Error.Code, result.Error.SafeMessage, result.Error.RemoteRequestId), cancellationToken); }
+            TrackReceived();
             var desiredReached = payload.Archived ? result.Value!.Status == "ARCHIVED" : result.Value!.Status == "APPROVED";
             if (desiredReached)
             {
@@ -640,9 +808,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.PriceInventorySync && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken)) return JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki fiyat-stok çağrısının sonucu kesinleştirilemedi; tekrar gönderim engellendi.");
             var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.PriceInventorySync, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
             db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
+            TrackRequest();
             var submit = await inventoryPrice.PushPriceAndInventoryAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), payload.PayloadJson, cancellationToken);
             if (!submit.IsSuccess)
             {
+                TrackResultFailure(submit.Error);
                 if (IsAmbiguous(submit.Error!)) return JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Fiyat-stok çağrısının uygulanıp uygulanmadığı kesinleştirilemedi.", submit.Error!.RemoteRequestId);
                 db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.FromAdapterError(submit.Error!);
             }
@@ -653,8 +823,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         if (phase != "POLL" || string.IsNullOrWhiteSpace(payload.ExternalOperationId) || payload.SubmittedAt is null) return JobExecutionResult.Blocked("PRICE_INVENTORY_PHASE_INVALID", "Fiyat-stok işi bilinmeyen bir fazda.");
         if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > TimeSpan.FromHours(4)) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_EXPIRED", "Fiyat-stok batch sonucu dört saatlik pencerede alınamadı.", payload.ExternalOperationId);
+        TrackRequest();
         var operation = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:poll"), payload.ExternalOperationId, cancellationToken);
-        if (!operation.IsSuccess) return JobExecutionResult.FromAdapterError(operation.Error!);
+        if (!operation.IsSuccess) { TrackResultFailure(operation.Error); return JobExecutionResult.FromAdapterError(operation.Error!); }
+        TrackReceived();
         if (operation.Value!.Status.Equals("IN_PROGRESS", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Retry("PRICE_INVENTORY_BATCH_PENDING", "Trendyol fiyat-stok batch sonucu bekleniyor.", TimeSpan.FromSeconds(20), payload.ExternalOperationId);
         if (!operation.Value.Status.Equals("COMPLETED", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_STATUS_UNKNOWN", "Fiyat-stok batch servisi tanınmayan durum döndürdü.", payload.ExternalOperationId);
         if (payload.Lines.Count == 0 || payload.Lines.Count > 1000 || payload.Lines.Select(x => x.Barcode).Distinct(StringComparer.OrdinalIgnoreCase).Count() != payload.Lines.Count)
@@ -705,13 +877,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (order is null || !string.Equals(order.OrderNumber, latestFixture, StringComparison.Ordinal)) return JobExecutionResult.Blocked("STAGE_LABEL_FRESH_FIXTURE_REQUIRED", "LABEL_WRITE canary yalnız en son oluşturulan auditli Stage Test Order paketi üzerinde çalışır.");
             var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == package.OrderId).Select(x => new { x.ExternalLineId, x.OrderedQuantity }).ToListAsync(cancellationToken);
             if (lines.Count != 1 || !long.TryParse(lines[0].ExternalLineId, out var lineId) || lines[0].OrderedQuantity <= 0 || lines[0].OrderedQuantity != decimal.Truncate(lines[0].OrderedQuantity) || lines[0].OrderedQuantity > int.MaxValue) return JobExecutionResult.Blocked("STAGE_LABEL_PICKING_PAYLOAD_INVALID", "Taze Stage fixture için tek ve geçerli satır kimliği/miktarı gerekir.");
+            TrackRequest();
             var picking = await orders.ExecutePackageActionAsync(context, new PackageActionCommand(package.ExternalPackageId, "PICKING", JsonSerializer.Serialize(new { lines = new[] { new { lineId, quantity = (int)lines[0].OrderedQuantity } }, @params = new { }, status = "Picking" })), cancellationToken);
-            if (!picking.IsSuccess) throw JobProcessingException.FromAdapter(picking.Error!);
+            if (!picking.IsSuccess) { TrackResultFailure(picking.Error); throw JobProcessingException.FromAdapter(picking.Error!); }
+            TrackRequest();
             var created = await orders.CreateCommonLabelAsync(context, new CommonLabelRequest(package.CargoTrackingNumber, payload.BoxQuantity, payload.VolumetricHeight), cancellationToken);
-            if (!created.IsSuccess) throw JobProcessingException.FromAdapter(created.Error!);
+            if (!created.IsSuccess) { TrackResultFailure(created.Error); throw JobProcessingException.FromAdapter(created.Error!); }
         }
+        TrackRequest();
         var document = await orders.GetCommonLabelAsync(context, package.CargoTrackingNumber, cancellationToken);
-        if (!document.IsSuccess) throw JobProcessingException.FromAdapter(document.Error!);
+        if (!document.IsSuccess) { TrackResultFailure(document.Error); throw JobProcessingException.FromAdapter(document.Error!); }
+        TrackReceived();
         var hash = Convert.ToHexString(SHA256.HashData(document.Value!.Content));
         var codes = payload.CapabilityCode == MarketplaceCapabilities.LabelWrite ? new[] { MarketplaceCapabilities.LabelRead, MarketplaceCapabilities.LabelWrite, MarketplaceCapabilities.ShipmentWrite } : new[] { MarketplaceCapabilities.LabelRead };
         var now = timeProvider.GetUtcNow();
@@ -745,8 +921,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (payload is null || payload.JobId == Guid.Empty || payload.ActorUserId == Guid.Empty || string.IsNullOrWhiteSpace(payload.Barcode)) return JobExecutionResult.Blocked("STAGE_TEST_ORDER_PAYLOAD_INVALID", "Stage test siparişi zorunlu alanları eksik.");
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
         if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) || !string.Equals(connection.ExternalStoreId, "2738", StringComparison.Ordinal)) return JobExecutionResult.Blocked("STAGE_TEST_ORDER_SCOPE_REQUIRED", "Stage test siparişi yalnız Trendyol STAGE seller 2738 kapsamındadır.");
+        TrackRequest();
         var result = await orders.CreateStageTestOrderAsync(Context(tenantId, connectionId, correlationId, $"stage-test-order:{payload.JobId:N}") with { IsStageCapabilityProbe = true }, payload.Barcode, cancellationToken);
-        if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
+        if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+        TrackReceived();
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = payload.ActorUserId, Action = "STAGE_TEST_ORDER_CREATED", TargetType = "StageTestOrder", TargetId = result.Value!.OrderNumber, Reason = "fresh-label-write-fixture", CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
         await db.SaveChangesAsync(cancellationToken);
         return JobExecutionResult.Success();
@@ -771,9 +949,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.CommonLabel && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken)) return JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki ortak etiket oluşturma çağrısının sonucu kesinleştirilemedi.");
             var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.CommonLabel, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
             db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
+            TrackRequest();
             var create = await orders.CreateCommonLabelAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new(package.CargoTrackingNumber, payload.BoxQuantity, payload.VolumetricHeight), cancellationToken);
             if (!create.IsSuccess)
             {
+                TrackResultFailure(create.Error);
                 if (IsAmbiguous(create.Error!)) { attempt.Status = "MANUAL_REVIEW"; attempt.ErrorCode = "EXTERNAL_EFFECT_AMBIGUOUS"; attempt.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Ortak etiket oluşturma çağrısının sonucu kesinleştirilemedi.", create.Error!.RemoteRequestId); }
                 db.ExternalEffectRecords.Remove(effect); attempt.Status = "FAILED"; attempt.ErrorCode = create.Error!.Code; attempt.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.FromAdapterError(create.Error);
             }
@@ -782,9 +962,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             return JobExecutionResult.Retry("COMMON_LABEL_PENDING", "Trendyol ortak etiket hazırlanıyor.", TimeSpan.FromSeconds(10));
         }
         if (phase != "POLL") return JobExecutionResult.Blocked("COMMON_LABEL_PHASE_INVALID", "Ortak etiket işi bilinmeyen bir fazda.");
+        TrackRequest();
         var documentResult = await orders.GetCommonLabelAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:poll"), package.CargoTrackingNumber, cancellationToken);
         if (!documentResult.IsSuccess)
         {
+            TrackResultFailure(documentResult.Error);
             var error = documentResult.Error!;
             var mapped = JobExecutionResult.FromAdapterError(error);
             if (mapped.Kind == JobCompletionKind.Retry || error.Class == AdapterErrorClass.NotFound) return JobExecutionResult.Retry("COMMON_LABEL_PENDING", "Trendyol ortak etiket henüz hazır değil.", TimeSpan.FromSeconds(20), error.RemoteRequestId);
@@ -838,8 +1020,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         string? cursor = null;
         do
         {
+            TrackRequest();
             var result = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:{resourceType}:{parentExternalId}:{cursor}"), new(resourceType, parentExternalId), new(cursor, 1000), cancellationToken);
-            if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
+            if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+            foreach (var _ in result.Value!.Items) TrackReceived();
             items.AddRange(result.Value!.Items);
             if (items.Count > 100_000) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_RESULT_LIMIT_EXCEEDED", "Referans yanıtı güvenli işleme sınırını aştı."));
             cursor = result.Value.NextCursor;
@@ -918,8 +1102,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken); if (connection is null) return false; var now = timeProvider.GetUtcNow(); connection.LastTestedAt = now;
         IConnectionPort port = connections;
-        var context = Context(tenantId, connectionId, correlationId, "connection-test"); var result = await port.TestAsync(context, cancellationToken); if (!result.IsSuccess) { connection.LastErrorCode = result.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
-        var discovery = await port.DiscoverCapabilitiesAsync(context, cancellationToken); if (!discovery.IsSuccess) { connection.LastErrorCode = discovery.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(discovery.Error!); }
+        var context = Context(tenantId, connectionId, correlationId, "connection-test"); TrackRequest(); var result = await port.TestAsync(context, cancellationToken); if (!result.IsSuccess) { TrackResultFailure(result.Error); connection.LastErrorCode = result.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
+        TrackRequest(); var discovery = await port.DiscoverCapabilitiesAsync(context, cancellationToken); if (!discovery.IsSuccess) { TrackResultFailure(discovery.Error); connection.LastErrorCode = discovery.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(discovery.Error!); }
+        foreach (var _ in discovery.Value!) TrackReceived();
         foreach (var evidence in discovery.Value!)
         {
             var capability = await db.PlatformCapabilities.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == evidence.Code, cancellationToken); if (capability is null) continue;
@@ -929,7 +1114,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     }
 
 
-    private async Task<bool> SyncOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    private async Task<bool> SyncOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
     {
         if (!configuration.GetValue("Marketplace:PersistOrderSnapshots", true))
             return true;
@@ -945,13 +1130,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         catch (JsonException) { return false; }
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
+            TrackRequest();
             var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
-            if (!single.IsSuccess) throw JobProcessingException.FromAdapter(single.Error!);
+            if (!single.IsSuccess) { TrackResultFailure(single.Error); throw JobProcessingException.FromAdapter(single.Error!); }
+            TrackReceived();
             await UpsertOrder(tenantId, connectionId, single.Value!, cancellationToken);
             return true;
         }
 
-        var cursor = await Cursor(tenantId, connectionId, "ORDERS", cancellationToken);
+        var cursor = await Cursor(tenantId, connectionId, cursorResourceType, cancellationToken);
         var now = timeProvider.GetUtcNow();
         var configuredOverlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ORDERS")
@@ -962,12 +1149,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // an older cursor survived the reset. This keeps the first import idempotent
         // without requiring any direct database mutation.
         var hasSnapshots = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
-        var state = ReadOrderSyncState(cursor, now, overlap, forceBaseline: full || !hasSnapshots);
+        var state = ReadOrderSyncState(cursor, now, overlap, allowBaseline, forceBaseline: allowBaseline && (full || !hasSnapshots));
         var resetExpiredCursor = false;
         do
         {
             var (modifiedAfter, modifiedBefore) = OrderWindow(state);
             var storefront = TrendyolReadStorefronts.Codes[state.StoreFrontIndex];
+            TrackRequest();
             var result = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync:{storefront}:{state.NextCursor ?? state.WindowIndex.ToString()}"), new(modifiedAfter, modifiedBefore, null, storefront), new(state.NextCursor, 200), cancellationToken);
             if (!result.IsSuccess && !resetExpiredCursor && !string.IsNullOrWhiteSpace(state.NextCursor) && result.Error is { Class: AdapterErrorClass.Validation, HttpStatus: 400 })
             {
@@ -1009,7 +1197,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 await db.SaveChangesAsync(cancellationToken);
                 break;
             }
-            if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
+            if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+            foreach (var _ in result.Value!.Items) TrackReceived();
             foreach (var streamedOrder in result.Value!.Items)
             {
                 await UpsertOrder(tenantId, connectionId, streamedOrder, cancellationToken);
@@ -1044,6 +1233,66 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
+    private async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()
+                                      join order in db.Orders.AsNoTracking()
+                                          on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                                      where package.TenantId == tenantId && package.ConnectionId == connectionId && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned
+                                      group package by order.ExternalOrderId into openOrder
+                                      orderby openOrder.Min(x => x.UpdatedAt)
+                                      select openOrder.Key)
+            .Take(50)
+            .ToListAsync(cancellationToken);
+
+        foreach (var externalOrderId in externalOrderIds)
+        {
+            TrackRequest();
+            var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-lifecycle:{externalOrderId}"), externalOrderId, cancellationToken);
+            if (!result.IsSuccess)
+            {
+                if (result.Error?.Class == AdapterErrorClass.NotFound) continue;
+                TrackResultFailure(result.Error);
+                throw JobProcessingException.FromAdapter(result.Error!);
+            }
+            TrackReceived();
+            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken);
+        }
+
+        var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
+        cursor.LastSuccessAt = timeProvider.GetUtcNow();
+        cursor.LastModifiedWatermark = cursor.LastSuccessAt;
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    private async Task<bool> ReconcileOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var lookbackDays = ReadBoundedInt(payloadJson, "lookbackDays", 1, 1, 90);
+        var end = timeProvider.GetUtcNow();
+        var chunks = SynchronizationWindowPolicy.ForwardChunks(end.AddDays(-lookbackDays), end, OrderStreamWindowSpan);
+        foreach (var (start, chunkEnd) in chunks)
+        {
+            foreach (var storefront in TrendyolReadStorefronts.Codes)
+            {
+                string? next = null;
+                do
+                {
+                    TrackRequest();
+                    var result = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-reconcile:{lookbackDays}:{storefront}:{next ?? "0"}"), new(start, chunkEnd, null, storefront), new(next, 200), cancellationToken);
+                    if (!result.IsSuccess && storefront != "TR" && result.Error?.HttpStatus is 400 or 404) break;
+                    if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+                    foreach (var _ in result.Value!.Items) TrackReceived();
+                    foreach (var remote in result.Value!.Items) await UpsertOrder(tenantId, connectionId, remote, cancellationToken);
+                    next = result.Value.HasMore ? result.Value.NextCursor : null;
+                    if (result.Value.HasMore && string.IsNullOrWhiteSpace(next)) throw new InvalidOperationException("Order reconciliation cursor is missing.");
+                } while (next is not null && !cancellationToken.IsCancellationRequested);
+            }
+        }
+        return true;
+    }
+
     private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
@@ -1073,12 +1322,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var nextCursor = cursor.OpaqueCursor;
         do
         {
+            TrackRequest();
             var result = await products.ListCatalogAsync(
                 Context(tenantId, connectionId, correlationId, $"product-sync:{nextCursor ?? "0"}"),
                 new(nextCursor, 100),
                 new(modifiedAfter),
                 cancellationToken);
-            if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
+            if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+            foreach (var _ in result.Value!.Items) TrackReceived();
 
             foreach (var snapshot in result.Value!.Items
                          .Where(x => !string.IsNullOrWhiteSpace(x.ExternalProductId))
@@ -1401,6 +1652,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
+        var remoteHash = Hash(JsonSerializer.Serialize(snapshot));
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
         Product? product = link is null
             ? null
@@ -1413,29 +1665,62 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1
             };
             db.Products.Add(product);
+            telemetryInsertedCount++;
             if (link is null)
             {
-                link = new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ProductId = product.Id, ExternalId = externalProductId, Version = 1 };
+                link = new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ProductId = product.Id, ExternalId = externalProductId, LastImportedPayloadHash = remoteHash, SyncStatus = "SYNCED", Version = 1 };
                 db.MarketplaceProductLinks.Add(link);
+                telemetryInsertedCount++;
             }
         }
 
-        product.Title = ProductTitle(snapshot.Title, externalProductId);
-        product.Description = snapshot.Description ?? "";
-        product.Status = ProductStatus.Active;
-        product.ArchivedAt = null;
-        product.UpdatedAt = now;
-        product.Version++;
+        var preserveLocal = link is not null && ProductImportMergePolicy.PreserveLocalChanges(product.Version, link.LastImportedProductVersion);
+        if (!preserveLocal)
+        {
+            product.Title = ProductTitle(snapshot.Title, externalProductId);
+            product.Description = snapshot.Description ?? "";
+            product.Status = ProductStatus.Active;
+            product.ArchivedAt = null;
+            product.UpdatedAt = now;
+            product.Version++;
+            telemetryUpdatedCount++;
+        }
+        else
+        {
+            telemetrySkippedCount++;
+        }
 
         var brand = await UpsertCatalogBrand(tenantId, snapshot.BrandName, cancellationToken);
         var category = categoryContext?.LocalCategory ?? await UpsertCatalogCategory(tenantId, snapshot.CategoryName, cancellationToken);
-        product.BrandId = brand?.Id;
-        product.CategoryId = category?.Id;
+        if (!preserveLocal)
+        {
+            product.BrandId = brand?.Id;
+            product.CategoryId = category?.Id;
+        }
 
-        foreach (var remote in snapshot.Variants)
-            await UpsertCatalogVariant(tenantId, connectionId, product, remote, categoryContext, now, cancellationToken);
+        if (!preserveLocal)
+        {
+            foreach (var remote in snapshot.Variants)
+                await UpsertCatalogVariant(tenantId, connectionId, product, remote, categoryContext, now, cancellationToken);
 
-        await UpsertCatalogMedia(tenantId, product, snapshot.ImageUrls, product.Title, cancellationToken);
+            await UpsertCatalogMedia(tenantId, product, snapshot.ImageUrls, product.Title, cancellationToken);
+        }
+        link ??= await db.MarketplaceProductLinks.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
+        link.LastImportedPayloadHash = remoteHash;
+        link.LastImportedAt = now;
+        if (preserveLocal)
+        {
+            link.SyncStatus = "LOCAL_CHANGES_PENDING";
+            link.DirtyFieldsJson ??= "[\"product\"]";
+        }
+        else
+        {
+            link.LastImportedProductVersion = product.Version;
+            link.SyncStatus = "SYNCED";
+            link.DirtyFieldsJson = null;
+            link.LastError = null;
+        }
+        link.Version++;
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -1487,17 +1772,22 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, Sku = sku, SkuNormalized = skuNormalized, Barcode = barcode, BarcodeNormalized = barcodeNormalized, ModelCode = Short(remote.ModelCode, 160), OptionSignature = optionSignature, Status = remote.Archived ? ProductStatus.Archived : ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
             db.ProductVariants.Add(variant);
+            telemetryInsertedCount++;
         }
         else
         {
             variant.Sku = sku; variant.SkuNormalized = skuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = barcodeNormalized; variant.ModelCode = Short(remote.ModelCode, 160); variant.OptionSignature = optionSignature; variant.Status = remote.Archived ? ProductStatus.Archived : ProductStatus.Active; variant.UpdatedAt = now; variant.Version++;
+            telemetryUpdatedCount++;
         }
         if (link is null)
         {
             var existingVariantLink = db.MarketplaceVariantLinks.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id)
                 ?? await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id, cancellationToken);
             if (existingVariantLink is null)
+            {
                 db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ExternalId = externalVariantId, Version = 1 });
+                telemetryInsertedCount++;
+            }
             else if (!string.Equals(existingVariantLink.ExternalId, externalVariantId, StringComparison.Ordinal))
             {
                 await RecordIssue(tenantId, $"product-sync-variant-link-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_LINK_CONFLICT", "Aynı yerel varyantın başka bir Trendyol varyant linki zaten var; ikinci link güvenli biçimde atlandı.", cancellationToken);
@@ -1589,6 +1879,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private static string ProductTitle(string? title, string externalId) => Short(string.IsNullOrWhiteSpace(title) ? $"Trendyol ürün {externalId}" : title.Trim(), 320);
     private static string OptionSignature(IReadOnlyDictionary<string, string> options) => string.Join(" | ", options.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase).Select(x => $"{Short(x.Key, 80)}: {Short(x.Value, 120)}"));
+    private TimeSpan ProductUpdatePollDelay(DateTimeOffset submittedAt)
+    {
+        var now = timeProvider.GetUtcNow();
+        return ProductUpdatePollingPolicy.Delay(
+            submittedAt,
+            now,
+            TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:ProductUpdate:FirstWindowSeconds", 600), 60, 86_400)),
+            TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:ProductUpdate:SecondWindowSeconds", 1_800), 120, 172_800)),
+            TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:ProductUpdate:ThirdWindowSeconds", 3_600), 180, 259_200)),
+            TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:ProductUpdate:FirstDelaySeconds", 120), 1, 3_600)),
+            TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:ProductUpdate:SecondDelaySeconds", 300), 1, 3_600)),
+            TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:ProductUpdate:ThirdDelaySeconds", 900), 1, 7_200)),
+            TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:ProductUpdate:FinalDelaySeconds", 1_800), 1, 14_400)));
+    }
     private static string Short(string? value, int maximum) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Length <= maximum ? value.Trim() : value.Trim()[..maximum];
     private static string NormalizeCatalogKey(string? value, int maximum)
     {
@@ -1623,7 +1927,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private sealed record CategoryAttributeContext(Category LocalCategory, string ExternalCategoryId, IReadOnlyDictionary<string, LocalCategoryAttribute> Attributes);
     private sealed record LocalCategoryAttribute(AttributeDefinition Definition, ReferenceItem Remote, IReadOnlyList<ReferenceItem> Values, string Role);
 
-    private static OrderSyncState ReadOrderSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool forceBaseline = false)
+    private static OrderSyncState ReadOrderSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool allowBaseline, bool forceBaseline = false)
     {
         if (!forceBaseline && !string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
         {
@@ -1635,7 +1939,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             catch (JsonException) { }
         }
 
-        var baseline = forceBaseline || (cursor.LastSuccessAt is null && cursor.LastModifiedWatermark is null && string.IsNullOrWhiteSpace(cursor.OpaqueCursor));
+        var baseline = allowBaseline && (forceBaseline || (cursor.LastSuccessAt is null && cursor.LastModifiedWatermark is null && string.IsNullOrWhiteSpace(cursor.OpaqueCursor)));
         var anchor = now;
         var oldestAvailable = anchor.AddMonths(-3);
         var watermark = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt ?? anchor.Subtract(OrderStreamWindowSpan);
@@ -1720,17 +2024,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             foreach (var candidate in repairCandidates) { var canonical = CanonicalPackage(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; repairedProjection = true; } }
         }
         // Do not short-circuit empty-line replays: the same remote package can need a safe local canonical projection repair after a previously unknown raw status becomes recognized.
-        if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", CreatedAt = now, Version = 1 }; db.Orders.Add(order); }
+        if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", CreatedAt = now, Version = 1 }; db.Orders.Add(order); telemetryInsertedCount++; }
         else if (remote.LastModifiedAt < order.LastRemoteModifiedAt) { if (repairedProjection) await db.SaveChangesAsync(cancellationToken); return; }
-        order.OrderNumber = remote.OrderNumber; order.Currency = remote.Currency; order.GrossAmount = remote.GrossAmount; order.DiscountAmount = remote.DiscountAmount; order.NetAmount = remote.NetAmount; order.OrderedAt = remote.OrderedAt; order.LastRemoteModifiedAt = remote.LastModifiedAt; order.CustomerSnapshotJson = remote.CustomerSnapshotJson; order.ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson; order.InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson; order.UpdatedAt = now; if (db.Entry(order).State != EntityState.Added) order.Version++;
+        order.OrderNumber = remote.OrderNumber; order.Currency = remote.Currency; order.GrossAmount = remote.GrossAmount; order.DiscountAmount = remote.DiscountAmount; order.NetAmount = remote.NetAmount; order.OrderedAt = remote.OrderedAt; order.LastRemoteModifiedAt = remote.LastModifiedAt; order.CustomerSnapshotJson = remote.CustomerSnapshotJson; order.ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson; order.InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson; order.UpdatedAt = now; if (db.Entry(order).State != EntityState.Added) { order.Version++; telemetryUpdatedCount++; }
         var lines = new Dictionary<string, OrderLine>(StringComparer.Ordinal);
         foreach (var remoteLine in remote.Lines)
         {
             var line = await db.OrderLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken);
             if (line is null && !string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}")
                 line = await db.OrderLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.SourceSnapshotJson == remoteLine.SourceSnapshotJson, cancellationToken);
-            if (line is null) { line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = remoteLine.ExternalLineId, Sku = remoteLine.Sku, TitleSnapshot = remoteLine.Title, RawStatus = remoteLine.RawStatus, Version = 1 }; db.OrderLines.Add(line); }
+            if (line is null) { line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = remoteLine.ExternalLineId, Sku = remoteLine.Sku, TitleSnapshot = remoteLine.Title, RawStatus = remoteLine.RawStatus, Version = 1 }; db.OrderLines.Add(line); telemetryInsertedCount++; }
             else line.ExternalLineId = remoteLine.ExternalLineId;
+            line.VariantId ??= await ResolveOrderLineVariantId(tenantId, remoteLine.Sku, remoteLine.Barcode, cancellationToken);
             line.Sku = remoteLine.Sku; line.Barcode = remoteLine.Barcode; line.TitleSnapshot = remoteLine.Title; line.SourceSnapshotJson = remoteLine.SourceSnapshotJson; line.OrderedQuantity = remoteLine.Quantity; line.UnitPrice = remoteLine.UnitPrice; line.VatRate = remoteLine.VatRate; line.RawStatus = remoteLine.RawStatus; if (db.Entry(line).State != EntityState.Added) line.Version++; lines[remoteLine.ExternalLineId] = line;
         }
         foreach (var remotePackage in remote.Packages)
@@ -1765,16 +2070,102 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 continue;
             }
             var accept = package is null || PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt);
-            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); }
+            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); telemetryInsertedCount++; }
             else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = remotePackage.OccurredAt; package.Version++; }
             else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target) await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
             if (accept)
             {
                 package.OriginExternalPackageId = remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now });
-                foreach (var remoteAllocation in remotePackage.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocation = await db.PackageLineAllocations.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.PackageId == package.Id && x.OrderLineId == line.Id && x.SourceEventId == eventId, cancellationToken); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); line.CancelledQuantity = Math.Max(line.CancelledQuantity, allocation.CancelledQuantity); line.ShippedQuantity = Math.Max(line.ShippedQuantity, allocation.ShippedQuantity); line.DeliveredQuantity = Math.Max(line.DeliveredQuantity, allocation.DeliveredQuantity); line.ReturnedQuantity = Math.Max(line.ReturnedQuantity, allocation.ReturnedQuantity); } }
+                foreach (var remoteAllocation in remotePackage.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocation = await db.PackageLineAllocations.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.PackageId == package.Id && x.OrderLineId == line.Id && x.SourceEventId == eventId, cancellationToken); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); telemetryInsertedCount++; line.CancelledQuantity = Math.Max(line.CancelledQuantity, allocation.CancelledQuantity); line.ShippedQuantity = Math.Max(line.ShippedQuantity, allocation.ShippedQuantity); line.DeliveredQuantity = Math.Max(line.DeliveredQuantity, allocation.DeliveredQuantity); line.ReturnedQuantity = Math.Max(line.ReturnedQuantity, allocation.ReturnedQuantity); } }
             }
         }
-        var persistedStatuses = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => new { x.Id, x.Status }).ToListAsync(cancellationToken); var acceptedStatuses = persistedStatuses.ToDictionary(x => x.Id, x => x.Status); foreach (var tracked in db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id)) acceptedStatuses[tracked.Id] = tracked.Status; order.DerivedStatus = Wire(acceptedStatuses.Count == 0 ? ShipmentPackageStatus.New : acceptedStatuses.Values.OrderByDescending(StatusRank).First()); await db.SaveChangesAsync(cancellationToken);
+        var persistedStatuses = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => new { x.Id, x.Status }).ToListAsync(cancellationToken); var acceptedStatuses = persistedStatuses.ToDictionary(x => x.Id, x => x.Status); foreach (var tracked in db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id)) acceptedStatuses[tracked.Id] = tracked.Status; order.DerivedStatus = Wire(acceptedStatuses.Count == 0 ? ShipmentPackageStatus.New : acceptedStatuses.Values.OrderByDescending(StatusRank).First());
+        foreach (var line in lines.Values) await ProjectOrderReservation(tenantId, connectionId, line, remote.LastModifiedAt, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<Guid?> ResolveOrderLineVariantId(Guid tenantId, string sku, string? barcode, CancellationToken cancellationToken)
+    {
+        var normalizedSku = NormalizeCatalogKey(sku, 160);
+        var normalizedBarcode = NormalizeCatalogKey(barcode, 160);
+        return await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && (x.SkuNormalized == normalizedSku || normalizedBarcode != "" && x.BarcodeNormalized == normalizedBarcode))
+            .OrderByDescending(x => normalizedBarcode != "" && x.BarcodeNormalized == normalizedBarcode)
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task ProjectOrderReservation(Guid tenantId, Guid connectionId, OrderLine line, DateTimeOffset remoteModifiedAt, CancellationToken cancellationToken)
+    {
+        if (line.VariantId is not Guid variantId) return;
+        var item = db.InventoryItems.Local.FirstOrDefault(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN")
+            ?? await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
+        if (item is null) return;
+        var desired = OrderInventoryReservationPolicy.DesiredQuantity(line.OrderedQuantity, line.CancelledQuantity);
+        var reservation = await db.StockReservations.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InventoryItemId == item.Id && x.SourceType == "ORDER_LINE" && x.SourceId == line.Id.ToString("D"), cancellationToken);
+        var current = reservation is { Status: ReservationStatus.Active } ? reservation.Quantity : 0m;
+        if (current == desired) return;
+
+        if (reservation is null && desired > 0)
+        {
+            reservation = new StockReservation { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, SourceType = "ORDER_LINE", SourceId = line.Id.ToString("D"), Quantity = desired, Status = ReservationStatus.Active, Version = 1 };
+            db.StockReservations.Add(reservation);
+        }
+        else if (reservation is not null)
+        {
+            if (desired == 0)
+            {
+                reservation.Status = ReservationStatus.Released;
+                reservation.ReleasedAt = timeProvider.GetUtcNow();
+            }
+            else
+            {
+                reservation.Quantity = desired;
+                reservation.Status = ReservationStatus.Active;
+                reservation.ReleasedAt = null;
+            }
+            reservation.Version++;
+        }
+
+        var delta = desired - current;
+        item.Reserved = Math.Max(0, item.Reserved + delta);
+        item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
+        item.ProjectionVersion++;
+        item.Version++;
+        var now = timeProvider.GetUtcNow();
+        var eventId = $"{line.Id:N}:{remoteModifiedAt.ToUnixTimeMilliseconds()}:{desired}";
+        db.StockLedgerEntries.Add(new StockLedgerEntry
+        {
+            Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id,
+            MovementType = delta > 0 ? "ORDER_RESERVED" : "ORDER_RESERVATION_RELEASED",
+            QuantityDelta = -delta, SourceType = "ORDER_LINE", SourceId = line.Id.ToString("D"),
+            SourceEventId = eventId, IdempotencyKey = $"order-reservation:{eventId}",
+            OccurredAt = remoteModifiedAt, RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}"
+        });
+
+        var payload = JsonSerializer.Serialize(new { variantId, sourceEventId = eventId });
+        var dedup = StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion);
+        if (!db.IntegrationJobs.Local.Any(x => x.TenantId == tenantId && x.JobDedupKey == dedup)
+            && !await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobDedupKey == dedup, cancellationToken))
+            db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.StockProjectionDispatch, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = 1, Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = $"stock:{variantId:N}", CreatedAt = now, Version = 1 });
+    }
+
+    private async Task<JobExecutionResult> DispatchStockProjection(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        Guid variantId;
+        try { using var payload = JsonDocument.Parse(payloadJson); variantId = payload.RootElement.GetProperty("variantId").GetGuid(); }
+        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or FormatException) { return JobExecutionResult.Blocked("STOCK_PROJECTION_PAYLOAD_INVALID", "Stok projection işi geçersiz payload içeriyor."); }
+        if (!await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId && x.Status == "ACTIVE", cancellationToken)) return JobExecutionResult.Success();
+        var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken);
+        if (!build.Succeeded) return JobExecutionResult.Blocked(build.Error!.Code, build.Error.Message);
+        var draft = build.Value!;
+        var dedup = $"price-inventory:{connectionId:N}:{draft.PayloadHash}";
+        if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken)) return JobExecutionResult.Success();
+        var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
+        var jobPayload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null));
+        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = jobPayload, PayloadVersion = 1, PayloadHash = Hash(jobPayload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = 1, Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        await db.SaveChangesAsync(cancellationToken);
+        return JobExecutionResult.Success();
     }
 
     // Trendyol's claims feed is date-bounded for the initial scan. Invalidating
@@ -1802,6 +2193,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var window = state.Full || state.StartAt is null || state.EndAt is null
                 ? new ReturnPollWindow(null, null, storefront)
                 : new ReturnPollWindow(state.StartAt, state.EndAt, storefront);
+            TrackRequest();
             var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-sync:{storefront}:{state.Page}"), window, new(state.Page.ToString(), 50), cancellationToken);
             if (!result.IsSuccess && state.StoreFrontIndex > 0 && state.Page == 0 && result.Error?.HttpStatus is 400 or 404)
             {
@@ -1820,7 +2212,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 await db.SaveChangesAsync(cancellationToken);
                 break;
             }
-            if (!result.IsSuccess) throw JobProcessingException.FromAdapter(result.Error!);
+            if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+            foreach (var _ in result.Value!.Items) TrackReceived();
             foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
             if (result.Value.HasMore)
             {
@@ -1863,6 +2256,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var externalClaimId in openClaims)
         {
+            TrackRequest();
             var result = await returns.GetAsync(
                 Context(tenantId, connectionId, correlationId, $"return-lifecycle:{externalClaimId}"),
                 externalClaimId,
@@ -1875,14 +2269,74 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     await db.SaveChangesAsync(cancellationToken);
                     continue;
                 }
+                TrackResultFailure(result.Error);
                 throw JobProcessingException.FromAdapter(result.Error!);
             }
+            TrackReceived();
 
             await UpsertReturn(tenantId, connectionId, correlationId, result.Value!, productSnapshots, cancellationToken);
             await ResolveIssue(tenantId, $"return-lifecycle:{connectionId}:{externalClaimId}", cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
         }
         return true;
+    }
+
+    private async Task<bool> ReconcileReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var lookbackDays = ReadBoundedInt(payloadJson, "lookbackDays", 3, 1, 90);
+        var end = timeProvider.GetUtcNow();
+        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var storefront in TrendyolReadStorefronts.ReturnCodes)
+        {
+            var page = 0;
+            do
+            {
+                TrackRequest();
+                var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-reconcile:{lookbackDays}:{storefront}:{page}"), new(end.AddDays(-lookbackDays), end, storefront), new(page.ToString(), 50), cancellationToken);
+                if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+                foreach (var _ in result.Value!.Items) TrackReceived();
+                foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+                if (!result.Value.HasMore) break;
+                page = int.TryParse(result.Value.NextCursor, out var parsed) ? parsed : page + 1;
+            } while (!cancellationToken.IsCancellationRequested);
+        }
+        return true;
+    }
+
+    private async Task<bool> ReconcileStock(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var lookbackHours = ReadBoundedInt(payloadJson, "lookbackHours", 1, 1, 24 * 30);
+        var changedAfter = timeProvider.GetUtcNow().AddHours(-lookbackHours);
+        var variants = await (from offer in db.ChannelOffers.AsNoTracking()
+                              join item in db.InventoryItems.AsNoTracking()
+                                  on new { offer.TenantId, offer.VariantId } equals new { item.TenantId, item.VariantId }
+                              where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
+                                  && (offer.LastStockProjectionVersion != item.ProjectionVersion || item.ReconciledAt == null || item.ReconciledAt < changedAfter)
+                              orderby item.ReconciledAt
+                              select new { item.Id, item.VariantId })
+            .Take(500)
+            .ToListAsync(cancellationToken);
+        foreach (var candidate in variants)
+        {
+            await DispatchStockProjection(tenantId, connectionId, JsonSerializer.Serialize(new { variantId = candidate.VariantId }), correlationId, cancellationToken);
+            var item = await db.InventoryItems.SingleAsync(x => x.TenantId == tenantId && x.Id == candidate.Id, cancellationToken);
+            item.ReconciledAt = timeProvider.GetUtcNow();
+            item.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        return true;
+    }
+
+    private static int ReadBoundedInt(string payloadJson, string propertyName, int fallback, int minimum, int maximum)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return document.RootElement.TryGetProperty(propertyName, out var value) && value.TryGetInt32(out var parsed)
+                ? Math.Clamp(parsed, minimum, maximum)
+                : fallback;
+        }
+        catch (JsonException) { return fallback; }
     }
 
     private static ReturnSyncState ReadReturnSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap)
@@ -1935,8 +2389,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // diagnostic. Resolve that stale diagnostic on the next successful read.
         await ResolveIssue(tenantId, $"return-order:{connectionId}:{remote.ExternalOrderId}", cancellationToken);
         var now = timeProvider.GetUtcNow(); var target = CanonicalReturn(remote.RawStatus, remote.CargoTrackingLink); var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalClaimId == remote.ExternalClaimId, cancellationToken);
-        if (claim is null) { claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalClaimId = remote.ExternalClaimId, Status = target, RawStatus = remote.RawStatus, LastRemoteModifiedAt = remote.LastModifiedAt, CreatedAt = now, UpdatedAt = now, Version = 1 }; db.ReturnClaims.Add(claim); }
-        else if (remote.LastModifiedAt >= claim.LastRemoteModifiedAt && ReturnClaimStateMachine.CanTransition(claim.Status, target)) { claim.Status = target; claim.RawStatus = remote.RawStatus; claim.LastRemoteModifiedAt = remote.LastModifiedAt; claim.UpdatedAt = now; claim.Version++; }
+        if (claim is null) { claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalClaimId = remote.ExternalClaimId, Status = target, RawStatus = remote.RawStatus, LastRemoteModifiedAt = remote.LastModifiedAt, CreatedAt = now, UpdatedAt = now, Version = 1 }; db.ReturnClaims.Add(claim); telemetryInsertedCount++; }
+        else if (remote.LastModifiedAt >= claim.LastRemoteModifiedAt && ReturnClaimStateMachine.CanTransition(claim.Status, target)) { claim.Status = target; claim.RawStatus = remote.RawStatus; claim.LastRemoteModifiedAt = remote.LastModifiedAt; claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
         if (claim.LastRemoteModifiedAt <= remote.LastModifiedAt) { claim.ReasonCode = remote.ReasonCode; claim.ReasonText = remote.ReasonText; claim.ActionDueAt = remote.ActionDueAt; }
         var remoteLines = remote.Lines.Count > 0 ? remote.Lines : TrendyolJsonMapper.ReturnLines(remote.RawJson);
         foreach (var remoteLine in remoteLines)
@@ -1984,15 +2438,19 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (effect is not null && effect.CompletedAt is not null) return true;
         effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
         db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
+        TrackRequest();
         var result = await orders.ExecutePackageActionAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new(package.ExternalPackageId, payload.Action, payload.PayloadJson), cancellationToken);
         if (!result.IsSuccess)
         {
+            TrackResultFailure(result.Error);
             if (IsAmbiguous(result.Error!)) throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Paket aksiyonunun uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", result.Error!.RemoteRequestId));
             db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!);
         }
         effect.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken);
         var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleAsync(cancellationToken);
+        TrackRequest();
         var readback = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:readback"), orderNumber, cancellationToken);
+        if (readback.IsSuccess) TrackReceived();
         if (readback.IsSuccess) await UpsertOrder(tenantId, connectionId, readback.Value!, cancellationToken);
         else { await RecordIssue(tenantId, $"shipment-readback:{connectionId}:{package.ExternalPackageId}:{payload.Action}", "SHIPMENT_ACTION_READBACK_PENDING", "Paket aksiyonu kabul edildi ancak anlık order read-back tamamlanamadı; planlı sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
         return true;
@@ -2024,23 +2482,30 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (existingEffect is not null && existingEffect.CompletedAt is not null)
             {
                 decision.Status = "SUBMITTED"; decision.CompletedAt = null; await db.SaveChangesAsync(cancellationToken);
+                TrackRequest();
                 var readback = await returns.GetAsync(Context(tenantId, connectionId, correlationId, $"{decision.IdempotencyKey}:readback"), claim.ExternalClaimId, cancellationToken);
+                if (readback.IsSuccess) TrackReceived();
                 if (readback.IsSuccess) await UpsertReturn(tenantId, connectionId, correlationId, readback.Value!, new(StringComparer.Ordinal), cancellationToken);
                 else { await RecordIssue(tenantId, $"return-readback:{connectionId}:{claim.ExternalClaimId}:{decision.Action}", "RETURN_ACTION_READBACK_PENDING", "İade aksiyonu daha önce kabul edildi ancak read-back tamamlanamadı; planlı return sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
                 return true;
             }
             var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ReturnAction, IdempotencyKey = decision.IdempotencyKey, CreatedAt = timeProvider.GetUtcNow() }; db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
+            TrackRequest();
             var result = await returns.ExecuteAsync(Context(tenantId, connectionId, correlationId, decision.IdempotencyKey), new(claim.ExternalClaimId, lineIds, decision.Action, decision.ReasonCode, decision.Explanation, evidenceFiles), cancellationToken);
             var now = timeProvider.GetUtcNow();
             if (result.IsSuccess)
             {
+                TrackReceived();
                 effect.CompletedAt = now; decision.Status = "SUBMITTED"; decision.ExternalOperationId = result.Value!.ExternalOperationId; decision.ErrorCode = null; decision.CompletedAt = null; await db.SaveChangesAsync(cancellationToken);
+                TrackRequest();
                 var readback = await returns.GetAsync(Context(tenantId, connectionId, correlationId, $"{decision.IdempotencyKey}:readback"), claim.ExternalClaimId, cancellationToken);
+                if (readback.IsSuccess) TrackReceived();
                 if (readback.IsSuccess) await UpsertReturn(tenantId, connectionId, correlationId, readback.Value!, new(StringComparer.Ordinal), cancellationToken);
                 else { await RecordIssue(tenantId, $"return-readback:{connectionId}:{claim.ExternalClaimId}:{decision.Action}", "RETURN_ACTION_READBACK_PENDING", "İade aksiyonu kabul edildi ancak anlık read-back tamamlanamadı; planlı return sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
                 return true;
             }
             var error = result.Error!; decision.ErrorCode = error.Code; decision.ExternalOperationId ??= error.RemoteRequestId;
+            TrackResultFailure(error);
             if (IsAmbiguous(error)) { decision.Status = "MANUAL_REVIEW"; decision.CompletedAt = now; await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "İade aksiyonunun uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId)); }
             db.ExternalEffectRecords.Remove(effect); decision.Status = "FAILED"; decision.CompletedAt = now; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(error);
         }
