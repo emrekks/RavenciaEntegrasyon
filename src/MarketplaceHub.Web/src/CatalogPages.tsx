@@ -481,6 +481,83 @@ function productAttributePayload(requirement: CategoryRequirement, selectedIds: 
   return [{ attributeId: requirement.attributeId, valueId: null, textValue: typed, numberValue: null, booleanValue: null, sortOrder }]
 }
 
+function CategoryAttributeMappingPanel({
+  categoryId,
+  requirements,
+  isLoading,
+  isError,
+  attributeSelections,
+  attributeTextValues,
+  onToggleValue,
+  onTextChange
+}: {
+  categoryId: string
+  requirements: CategoryRequirement[]
+  isLoading: boolean
+  isError: boolean
+  attributeSelections: Record<string, string[]>
+  attributeTextValues: Record<string, string>
+  onToggleValue: (attributeId: string, valueId: string) => void
+  onTextChange: (attributeId: string, value: string) => void
+}) {
+  const attributes = requirements.filter(item => item.role === 'ATTRIBUTE')
+  const dataTypeLabels: Record<string, string> = {
+    SINGLE_SELECT: 'Tek seçim',
+    MULTI_SELECT: 'Çoklu seçim',
+    BOOLEAN: 'Evet / hayır',
+    NUMBER: 'Sayısal değer',
+    TEXT: 'Metin'
+  }
+
+  return <section className="panel product-step-card product-category-mapping-card">
+    <div className="editor-section-title">
+      <span>3</span>
+      <div>
+        <h2>Kategori özellikleri</h2>
+        <p>Eşleştirme ayarlarında oluşturulan başlıklara bu ürünün değerlerini atayın.</p>
+      </div>
+    </div>
+    <p className="category-mapping-note"><span aria-hidden="true">↗</span> Yayınlama sırasında seçtiğiniz değerler ilgili pazaryerinin formatına dönüştürülür.</p>
+    {!categoryId ? (
+      <div className="unknown"><strong>Önce kategori seçin</strong><p>Kategori seçildiğinde eşlenmiş özellik başlıkları burada görünür.</p></div>
+    ) : isLoading ? (
+      <p>Kategori özellikleri yükleniyor…</p>
+    ) : isError ? (
+      <div className="unknown"><strong>Kategori özellikleri alınamadı</strong><p>Özellik başlıklarını Kategori Eşleştirme ekranında hazırlayın.</p></div>
+    ) : attributes.length ? (
+      <div className="category-attribute-mapping-list">
+        {attributes.map(item => {
+          const selectedValues = attributeSelections[item.attributeId] ?? []
+          return <article className={`category-attribute-field ${item.isRequired ? 'required' : ''}`} key={item.attributeId}>
+            <div className="category-attribute-field-head">
+              <div>
+                <strong>{item.attribute.name}{item.isRequired ? ' *' : ''}</strong>
+                <small>{dataTypeLabels[item.attribute.dataType] ?? item.attribute.dataType}{item.isRequired ? ' · Zorunlu' : ' · İsteğe bağlı'}</small>
+              </div>
+              {selectedValues.length > 0 && <span className="category-attribute-count">{selectedValues.length} seçildi</span>}
+            </div>
+            {item.attribute.values.length ? (
+              <div className="category-attribute-values">
+                {item.attribute.values.map(value => <button type="button" key={value.id} className={`category-attribute-value ${selectedValues.includes(value.id) ? 'active' : ''}`} onClick={() => onToggleValue(item.attributeId, value.id)}>{value.value}</button>)}
+              </div>
+            ) : item.attribute.dataType === 'BOOLEAN' ? (
+              <select aria-label={`${item.attribute.name} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)}>
+                <option value="">Değer seçin</option>
+                <option value="evet">Evet</option>
+                <option value="hayır">Hayır</option>
+              </select>
+            ) : (
+              <input aria-label={`${item.attribute.name} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)} type={item.attribute.dataType === 'NUMBER' ? 'number' : 'text'} placeholder={item.allowsCustomValue ? 'Değer girin' : 'Özellik değerini girin'} />
+            )}
+          </article>
+        })}
+      </div>
+    ) : (
+      <div className="empty small"><strong>Bu kategori için özellik başlığı yok</strong><p>Kategori Eşleştirme ekranından önce özellik başlıklarını oluşturun.</p></div>
+    )}
+  </section>
+}
+
 export function NewProductPage({ editProductId }: { editProductId?: string } = {}) {
   const client = useQueryClient();
   const [error, setError] = useState<unknown>(); const [created, setCreated] = useState<Product>(); const [notice, setNotice] = useState(''); const [submitting, setSubmitting] = useState(false); const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
@@ -542,6 +619,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       return true
     })
   }, [allRequirements, attributeSelections, attributeTextValues, variantAttributeIds, onlySelectedAttributes, customVisibleAttrIds])
+  const visibleOptionRequirements = useMemo(() => visibleRequirements.filter(item => item.role === 'OPTION'), [visibleRequirements])
 
   useEffect(() => {
     const product = productToEdit.data
@@ -569,7 +647,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (values.includes(valueId)) return { ...current, [attributeId]: values.filter(item => item !== valueId) }
       const selectedOptionalAttributeCount = allRequirements.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && (current[item.attributeId]?.length ?? 0) > 0).length
       if (requirement?.role === 'ATTRIBUTE' && !requirement.isRequired && values.length === 0 && selectedOptionalAttributeCount >= MAX_PRODUCT_ATTRIBUTES) { setNotice(`Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`); return current }
-      return { ...current, [attributeId]: [...values, valueId] }
+      return { ...current, [attributeId]: requirement?.attribute.dataType === 'SINGLE_SELECT' ? [valueId] : [...values, valueId] }
     })
   }
   function toggleVariantAttribute(attributeId: string) {
@@ -698,12 +776,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
 
   const publishConnections = (connections.data?.items ?? []).filter(isProductPublicationConnection)
-  const platformCards = [
-    { code: 'TRENDYOL', name: 'Trendyol', initial: 'T', tone: 'trendyol' },
-    { code: 'HEPSIBURADA', name: 'Hepsiburada', initial: 'H', tone: 'hepsiburada' },
-    { code: 'N11', name: 'N11', initial: 'N', tone: 'n11' },
-    { code: 'CICEKSEPETI', name: 'Çiçeksepeti', initial: 'Ç', tone: 'ciceksepeti' }
-  ].map(card => ({ ...card, connection: publishConnections.find(item => item.platformCode.toUpperCase() === card.code || item.displayName.toLocaleUpperCase('tr-TR').includes(card.name.toLocaleUpperCase('tr-TR'))) }))
+  const platformCards = publishConnections.map(connection => ({
+    code: connection.platformCode.trim().toLocaleLowerCase('tr-TR'),
+    name: connection.displayName,
+    initial: connection.displayName.trim().charAt(0).toLocaleUpperCase('tr-TR') || 'R',
+    tone: connection.platformCode.trim().toLocaleLowerCase('tr-TR'),
+    connection
+  }))
   const selectedPublishConnections = publishConnections.filter(item => selectedChannelIds.includes(item.id))
   const hasBasicProductData = Boolean(form.title.trim() && form.description.trim() && form.brandId && form.modelCode.trim() && form.barcode.trim())
   const mediaCount = mediaUrls.length + mediaFiles.length
@@ -716,7 +795,47 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   ]
 
   return <Page className={editProductId ? 'product-edit-page' : 'product-add-page'} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog"><p className="lede page-lede">Kategori özellikleri, varyant kombinasyonları, stok, fiyat ve Trendyol yayın kuyruğu tek ürün çalışma alanında yönetilir.</p>{!editProductId && <div className="product-add-wizardbar"><Link className="product-add-cancel" to="/products"><span aria-hidden="true">←</span> İPTAL</Link><div className="product-add-stepper"><span className="product-add-brand-mark" aria-hidden="true">R</span><div className="product-add-progress" role="tablist" aria-label="Ürün ekleme adımları"><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>ÜRÜN BİLGİLERİ &amp; VARYANTLAR</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>YAYINLAMA</strong></button></div></div></div>}<form className="product-creation-workspace product-add-workspace" data-wizard-step={editProductId ? 'edit' : wizardStep} onSubmit={submit}>
-    <div className="product-top-layout"><section className="panel product-step-card product-basics-card"><div className="editor-section-title"><span>1</span><div><h2>Temel ürün bilgileri</h2><p>Ürün kartının temel başlığı ve katalog bilgileri.</p></div></div><div className="product-step-grid product-basics-grid"><label className="product-title-field">Ürün adı<input value={form.title} onChange={event => updateField('title', event.target.value)} required maxLength={320} /></label><label>Satış durumu<select value={form.status} onChange={event => updateField('status', event.target.value)}><option value="ACTIVE">Satışa Açık</option><option value="ARCHIVED">Satışa Kapalı</option><option value="DRAFT">Taslak</option></select></label><label className="product-brand-field">Marka<select value={form.brandId} onChange={event => updateField('brandId', event.target.value)}><option value="">Marka seçin</option>{activeBrands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label><label>Model kodu<input value={form.modelCode} onChange={event => updateField('modelCode', event.target.value)} /></label><label>Stok Kodu<input value={form.baseSku} onChange={event => updateField('baseSku', event.target.value)} placeholder="RAV-BLUZ" /></label><label>Barkod<input value={form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder="Varyantsız üründe kullanılır" /></label><label className="desi-input-field">Desi<span className="desi-inline-control"><input value={form.desi} onChange={event => { setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" step="0.01" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span></label><label className="wide product-description-field">Açıklama<RichTextEditor value={form.description} onChange={value => updateField('description', value)} /></label></div></section><section className="panel product-step-card product-pricing-card"><div className="editor-section-title"><span>2</span><div><h2>Fiyat, stok ve vergi</h2><p>Başlangıç değerleri varyantlara uygulanır.</p></div></div><div className="product-step-grid"><label>Liste fiyatı<input value={form.listPrice} onChange={event => updateField('listPrice', event.target.value)} type="number" min="0" step="0.01" /></label><label>Satış fiyatı<input value={form.salePrice} onChange={event => updateField('salePrice', event.target.value)} type="number" min="0" step="0.01" /></label><label>Para birimi<select value={form.currency} onChange={event => updateField('currency', event.target.value)}><option>TRY</option><option>USD</option><option>EUR</option></select></label><label>KDV oranı<select value={form.vatRate} onChange={event => updateField('vatRate', event.target.value)}><option value="1">%1</option><option value="10">%10</option><option value="20">%20</option></select></label><label>KDV dahil mi<select value={form.vatIncluded} onChange={event => updateField('vatIncluded', event.target.value)}><option value="INCLUDED">Evet</option><option value="EXCLUDED">Hayır</option></select></label><label>Stok<input value={form.initialStock} onChange={event => updateField('initialStock', event.target.value)} type="number" min="0" step="1" /></label><label>Güvenlik stoğu<input value={form.safetyStock} onChange={event => updateField('safetyStock', event.target.value)} type="number" min="0" step="1" /></label></div></section></div>{desiCalculatorOpen && <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => setDesiCalculatorOpen(false)}><section className="workspace-modal desi-calculator-modal" role="dialog" aria-modal="true" aria-labelledby="desi-calculator-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="desi-calculator-title">Desi hesapla</h2><p>En × Boy × Yükseklik / 3000 formülü kullanılır.</p></div><button type="button" className="modal-close" onClick={() => setDesiCalculatorOpen(false)} aria-label="Pencereyi kapat">×</button></header><div className="desi-calculator-body"><div className="product-step-grid"><label>Ağırlık (kg)<input value={form.weight} onChange={event => updateField('weight', event.target.value)} type="number" min="0" step="0.01" /></label><label>En (cm)<input value={form.width} onChange={event => updateField('width', event.target.value)} type="number" min="0" step="0.1" /></label><label>Boy (cm)<input value={form.length} onChange={event => updateField('length', event.target.value)} type="number" min="0" step="0.1" /></label><label>Yükseklik (cm)<input value={form.height} onChange={event => updateField('height', event.target.value)} type="number" min="0" step="0.1" /></label></div><div className="calculated-field"><small>Hesaplanan desi</small><strong>{desi ? desi.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : 'Ölçüleri girin'}</strong></div></div><footer><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(false)}>İptal</button><button type="button" disabled={!desi} onClick={() => { updateField('desi', String(Number(desi.toFixed(2)))); setCalculateDesi(true); setDesiCalculatorOpen(false) }}>Uygula</button></footer></section></div>}
+    <div className="product-top-layout">
+      <section className="panel product-step-card product-basics-card">
+        <div className="editor-section-title"><span>1</span><div><h2>Temel ürün bilgileri</h2><p>Ürün kartının temel başlığı ve katalog bilgileri.</p></div></div>
+        <div className="product-step-grid product-basics-grid">
+          <label className="product-title-field">Ürün adı<input value={form.title} onChange={event => updateField('title', event.target.value)} required maxLength={320} /></label>
+          <label>Satış durumu<select value={form.status} onChange={event => updateField('status', event.target.value)}><option value="ACTIVE">Satışa Açık</option><option value="ARCHIVED">Satışa Kapalı</option><option value="DRAFT">Taslak</option></select></label>
+          <label className="product-brand-field">Marka<select value={form.brandId} onChange={event => updateField('brandId', event.target.value)}><option value="">Marka seçin</option>{activeBrands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label>
+          <label>Model kodu<input value={form.modelCode} onChange={event => updateField('modelCode', event.target.value)} /></label>
+          <label>Stok Kodu<input value={form.baseSku} onChange={event => updateField('baseSku', event.target.value)} placeholder="RAV-BLUZ" /></label>
+          <label>Barkod<input value={form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder="Varyantsız üründe kullanılır" /></label>
+          <label className="desi-input-field">Desi<span className="desi-inline-control"><input value={form.desi} onChange={event => { setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" step="0.01" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span></label>
+          <label className="wide product-description-field">Açıklama<RichTextEditor value={form.description} onChange={value => updateField('description', value)} /></label>
+        </div>
+      </section>
+      <div className="product-top-sidebar">
+        <section className="panel product-step-card product-pricing-card">
+          <div className="editor-section-title"><span>2</span><div><h2>Fiyat, stok ve vergi</h2><p>Başlangıç değerleri varyantlara uygulanır.</p></div></div>
+          <div className="product-step-grid">
+            <label>Liste fiyatı<input value={form.listPrice} onChange={event => updateField('listPrice', event.target.value)} type="number" min="0" step="0.01" /></label>
+            <label>Satış fiyatı<input value={form.salePrice} onChange={event => updateField('salePrice', event.target.value)} type="number" min="0" step="0.01" /></label>
+            <label>Para birimi<select value={form.currency} onChange={event => updateField('currency', event.target.value)}><option>TRY</option><option>USD</option><option>EUR</option></select></label>
+            <label>KDV oranı<select value={form.vatRate} onChange={event => updateField('vatRate', event.target.value)}><option value="1">%1</option><option value="10">%10</option><option value="20">%20</option></select></label>
+            <label>KDV dahil mi<select value={form.vatIncluded} onChange={event => updateField('vatIncluded', event.target.value)}><option value="INCLUDED">Evet</option><option value="EXCLUDED">Hayır</option></select></label>
+            <label>Stok<input value={form.initialStock} onChange={event => updateField('initialStock', event.target.value)} type="number" min="0" step="1" /></label>
+            <label>Güvenlik stoğu<input value={form.safetyStock} onChange={event => updateField('safetyStock', event.target.value)} type="number" min="0" step="1" /></label>
+          </div>
+        </section>
+        <CategoryAttributeMappingPanel
+          categoryId={form.categoryId}
+          requirements={allRequirements}
+          isLoading={requirements.isLoading}
+          isError={requirements.isError}
+          attributeSelections={attributeSelections}
+          attributeTextValues={attributeTextValues}
+          onToggleValue={toggleAttributeValue}
+          onTextChange={(attributeId, value) => setAttributeTextValues(current => ({ ...current, [attributeId]: value }))}
+        />
+      </div>
+    </div>
+    {desiCalculatorOpen && <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => setDesiCalculatorOpen(false)}><section className="workspace-modal desi-calculator-modal" role="dialog" aria-modal="true" aria-labelledby="desi-calculator-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="desi-calculator-title">Desi hesapla</h2><p>En × Boy × Yükseklik / 3000 formülü kullanılır.</p></div><button type="button" className="modal-close" onClick={() => setDesiCalculatorOpen(false)} aria-label="Pencereyi kapat">×</button></header><div className="desi-calculator-body"><div className="product-step-grid"><label>Ağırlık (kg)<input value={form.weight} onChange={event => updateField('weight', event.target.value)} type="number" min="0" step="0.01" /></label><label>En (cm)<input value={form.width} onChange={event => updateField('width', event.target.value)} type="number" min="0" step="0.1" /></label><label>Boy (cm)<input value={form.length} onChange={event => updateField('length', event.target.value)} type="number" min="0" step="0.1" /></label><label>Yükseklik (cm)<input value={form.height} onChange={event => updateField('height', event.target.value)} type="number" min="0" step="0.1" /></label></div><div className="calculated-field"><small>Hesaplanan desi</small><strong>{desi ? desi.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : 'Ölçüleri girin'}</strong></div></div><footer><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(false)}>İptal</button><button type="button" disabled={!desi} onClick={() => { updateField('desi', String(Number(desi.toFixed(2)))); setCalculateDesi(true); setDesiCalculatorOpen(false) }}>Uygula</button></footer></section></div>}
 
     <div className="product-layout-grid"><div className="product-main-stack">
       <section className="panel product-step-card"><div className="editor-section-title"><span>4</span><div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilir veya internetten erişilebilen HTTPS adresleri ekleyebilirsiniz.</p></div></div><label className="upload-ghost-box product-media-upload"><input type="file" accept="image/jpeg,image/png" multiple onChange={event => setMediaFiles(current => [...current, ...Array.from(event.target.files ?? [])].slice(0, 8))} /><strong>{mediaFiles.length ? `${mediaFiles.length} dosya seçildi` : 'Ürün görsellerini dosya olarak seç'}</strong><small>En fazla 8 adet JPEG veya PNG, dosya başına 10 MB</small></label><label className="product-media-url-field">Görsel URL listesi<textarea id="product-media-urls" aria-describedby="media-url-help" value={form.mediaUrls} onChange={event => updateField('mediaUrls', event.target.value)} placeholder="Örn. https://site.com/gorsel-1.jpg&#10;https://site.com/gorsel-2.png" /><small id="media-url-help" className="field-help">Her satıra bir HTTPS görsel adresi yazın. İlk satır ana görsel olarak kullanılır.</small></label>{(mediaUrls.length > 0 || mediaFiles.length > 0) && <div className="media-preview-strip">{mediaFiles.map((file, index) => <LocalImagePreview key={`${file.name}-${file.lastModified}-${index}`} file={file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={index === 0 && !mediaUrls.length ? 'Ana görsel' : file.name} onRemove={() => setMediaFiles(files => files.filter((_, i) => i !== index))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}{mediaUrls.slice(0, 8 - mediaFiles.length).map((url, index) => <figure key={`${url}-${index}`} className="image-preview-card"><img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} title="Büyütmek için tıklayın" /><button type="button" className="image-remove-btn" title="Görseli kaldır" onClick={e => { e.stopPropagation(); const next = mediaUrls.filter((_, i) => i !== index).join('\n'); updateField('mediaUrls', next) }}>✕</button><figcaption>{index === 0 && !mediaFiles.length ? 'Ana görsel' : `${index + 1}. görsel`}</figcaption></figure>)}</div>}</section>
@@ -781,7 +900,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <div className="unknown"><strong>Kategori özellikleri alınamadı</strong><p>Önce kategori eşleme ekranında ilgili kategorinin özellik başlıklarını hazırlayın.</p></div>
         ) : (
           <div className="attribute-builder-list">
-            {visibleRequirements.map(item => (
+            {visibleOptionRequirements.map(item => (
               <article className="attribute-builder-card" key={item.attributeId}>
                 <div className="attribute-builder-head">
                   <label className="attribute-builder-toggle">
@@ -813,7 +932,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                 )}
               </article>
             ))}
-            {!visibleRequirements.length && (
+            {!visibleOptionRequirements.length && (
               <div className="empty small" style={{ gridColumn: '1 / -1' }}>
                 <p>Filtreye uygun özellik bulunamadı. “Özellikleri Filtrele” menüsünden görünürlük ayarlarını değiştirebilirsiniz.</p>
               </div>
@@ -827,7 +946,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
 
     {!editProductId && <section className="panel product-advanced-fields-card"><div className="editor-section-title"><div><h2>Katalog ayrıntıları</h2><p>Stok kodu, barkod ve kargo bilgisini ürün kaydına ekleyin.</p></div></div><div className="product-step-grid"><label>Stok kodu<input value={form.baseSku} onChange={event => updateField('baseSku', event.target.value)} placeholder="RAV-BLUZ" /></label><label>Barkod<input value={form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder="Varyantsız üründe kullanılır" /></label><label>Satış durumu<select value={form.status} onChange={event => updateField('status', event.target.value)}><option value="ACTIVE">Satışa Açık</option><option value="ARCHIVED">Satışa Kapalı</option><option value="DRAFT">Taslak</option></select></label><label>Desi<span className="desi-inline-control"><input value={form.desi} onChange={event => { setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" step="0.01" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span></label></div></section>}
 
-    {!editProductId && <section className="product-publish-step" aria-label="Ürün yayınlama"><div className="product-publish-layout"><div className="product-publish-main"><div className="publish-platform-grid">{platformCards.map(card => { const selected = Boolean(card.connection && selectedChannelIds.includes(card.connection.id)); const unavailable = !card.connection; const unsupported = card.code !== 'TRENDYOL'; return <article className={`publish-platform-card ${unavailable ? 'unavailable' : 'available'} ${selected ? 'selected' : ''}`} key={card.code}><button type="button" className="publish-platform-card-head" onClick={() => card.connection && updateChannel(card.connection.id)} aria-pressed={selected} disabled={unavailable}><span className={`publish-platform-mark ${card.tone}`}>{card.initial}</span><span><strong>{card.name}</strong><small>{unavailable ? (unsupported ? 'Hazırlanıyor' : 'Bağlantı Gerekli') : 'Bağlantı Aktif'}</small></span><i className={`publish-platform-toggle ${selected ? 'on' : ''}`} aria-hidden="true"><b /></i></button>{unavailable ? <div className="publish-platform-unavailable"><span aria-hidden="true">⌁</span><strong>{unsupported ? 'Yayın desteği yakında' : 'Aktif bağlantı bulunamadı'}</strong></div> : <dl className="publish-platform-facts"><div><dt>Kategori Eşleşmesi</dt><dd className="success">✓ Tamamlandı</dd></div><div><dt>Fiyat Şablonu</dt><dd>Standart Kar %20</dd></div><div><dt>Stok Senkronizasyonu</dt><dd>Aktif</dd></div></dl>}</article>})}</div><details className="scheduled-publish-panel" open={scheduledPublishOpen} onToggle={event => setScheduledPublishOpen((event.currentTarget as HTMLDetailsElement).open)}><summary><span><b aria-hidden="true">◷</b> Yayın kuyruğu</span><strong aria-hidden="true">⌄</strong></summary><div className="scheduled-publish-info"><strong>Otomatik sıraya alma aktif</strong><p>Ürün oluşturulduktan sonra seçtiğiniz aktif platformlarda yayın kuyruğuna alınır.</p><small>Planlı tarih ve saat seçimi platform bağlantısı desteklediğinde etkinleşecektir.</small></div></details></div><aside className="publish-checklist-panel"><div className="publish-checklist-heading"><span aria-hidden="true">☷</span><div><h2>Kontrol Listesi</h2><p>Yayınlamadan önce son kontroller</p></div></div><div className="publish-checklist-items">{productChecks.map(check => <article className={check.ok ? 'complete' : 'incomplete'} key={check.title}><span aria-hidden="true">{check.ok ? '✓' : '!'}</span><div><strong>{check.title}</strong><p>{check.detail}</p></div></article>)}{selectedPublishConnections.length === 0 && <article className="publish-check-warning"><span aria-hidden="true">!</span><div><strong>Yayın platformu seçilmedi</strong><p>Ürünü yayınlamak istediğiniz aktif platformları seçin.</p></div></article>}</div><div className="publish-checklist-footer"><span>Yayınlanacak Platform</span><strong>{selectedPublishConnections.length}</strong><button type="submit" disabled={submitting}>{submitting ? 'Ürün oluşturuluyor…' : '🚀 Ürünü Oluştur'}</button><small>ve seçili platformlarda yayınla</small></div></aside></div></section>}
+    {!editProductId && <section className="product-publish-step" aria-label="Ürün yayınlama"><div className="product-publish-layout"><div className="product-publish-main"><div className="publish-platform-grid">{platformCards.length ? platformCards.map(card => { const selected = selectedChannelIds.includes(card.connection.id); return <article className={`publish-platform-card ${selected ? 'selected' : ''}`} key={card.connection.id}><button type="button" className="publish-platform-card-head" onClick={() => updateChannel(card.connection.id)} aria-pressed={selected}><span className={`publish-platform-mark ${card.tone}`}>{card.initial}</span><span><strong>{card.name}</strong><small>{selected ? 'Yayın için seçildi' : 'Bağlantı hazır'}</small></span><i className={`publish-platform-toggle ${selected ? 'on' : ''}`} aria-hidden="true"><b /></i></button><dl className="publish-platform-facts"><div><dt>Mağaza</dt><dd>{card.connection.externalStoreId || '—'}</dd></div><div><dt>Platform</dt><dd>{card.connection.platformCode}</dd></div><div><dt>Durum</dt><dd className="success">Aktif bağlantı</dd></div></dl></article> }) : <div className="publish-connections-empty"><strong>Aktif bağlantı bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p><Link to="/integrations">Platformları yönet <span aria-hidden="true">→</span></Link></div>}</div><details className="scheduled-publish-panel" open={scheduledPublishOpen} onToggle={event => setScheduledPublishOpen((event.currentTarget as HTMLDetailsElement).open)}><summary><span><b aria-hidden="true">◷</b> Yayın kuyruğu</span><strong aria-hidden="true">⌄</strong></summary><div className="scheduled-publish-info"><strong>Otomatik sıraya alma aktif</strong><p>Ürün oluşturulduktan sonra seçtiğiniz aktif platformlarda yayın kuyruğuna alınır.</p><small>Planlı tarih ve saat seçimi platform bağlantısı desteklediğinde etkinleşecektir.</small></div></details></div><aside className="publish-checklist-panel"><div className="publish-checklist-heading"><span aria-hidden="true">☷</span><div><h2>Kontrol Listesi</h2><p>Yayınlamadan önce son kontroller</p></div></div><div className="publish-checklist-items">{productChecks.map(check => <article className={check.ok ? 'complete' : 'incomplete'} key={check.title}><span aria-hidden="true">{check.ok ? '✓' : '!'}</span><div><strong>{check.title}</strong><p>{check.detail}</p></div></article>)}{selectedPublishConnections.length === 0 && <article className="publish-check-warning"><span aria-hidden="true">!</span><div><strong>Yayın platformu seçilmedi</strong><p>Ürünü yayınlamak istediğiniz aktif platformları seçin.</p></div></article>}</div><div className="publish-checklist-footer"><span>Yayınlanacak Platform</span><strong>{selectedPublishConnections.length}</strong><button type="submit" disabled={submitting}>{submitting ? 'Ürün oluşturuluyor…' : '🚀 Ürünü Oluştur'}</button><small>ve seçili platformlarda yayınla</small></div></aside></div></section>}
 
     <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div>{editProductId ? <button disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Değişiklikleri kaydet'}</button> : <button type="button" onClick={() => setWizardStep(2)}>Yayınlamaya devam et <span aria-hidden="true">→</span></button>}</section>
     <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />{notice && <p className="notice" role="status">{notice}</p>}{created && <p className="success">Oluşturuldu: <Link to={`/products/${created.id}`}>ürünü aç</Link></p>}

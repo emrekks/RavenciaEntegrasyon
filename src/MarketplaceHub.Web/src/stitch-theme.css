@@ -6934,3 +6934,250 @@ body:has(.product-add-page),
   background: rgba(88, 101, 242, .14) !important;
   border-color: rgba(68, 69, 83, .45) !important;
 }
+
+/* Product add flow: keep the header, price card and category mapping in one visual system. */
+.app-shell .product-add-page .page-heading {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 48px;
+  margin-bottom: 18px !important;
+  padding-bottom: 14px !important;
+  border-bottom: 1px solid var(--st-surface-highest) !important;
+}
+.app-shell .product-add-page .page-heading > div:first-child {
+  min-width: 0;
+}
+.app-shell .product-add-page .page-heading h1 {
+  margin: 0 !important;
+  line-height: 1 !important;
+}
+.app-shell .product-add-page .product-add-wizardbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 0 !important;
+  margin: 0 0 20px !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+.app-shell .product-add-page .product-add-stepper {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: min(100%, 760px) !important;
+  margin: 0 auto !important;
+  padding: 8px 12px !important;
+  background: linear-gradient(180deg, #1c1d27, #171821) !important;
+  border: 1px solid #3f4150 !important;
+  border-radius: 9px !important;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, .18) !important;
+}
+.app-shell .product-add-page .product-add-brand-mark {
+  width: 30px;
+  height: 30px;
+  flex-basis: 30px;
+  color: var(--st-primary-soft);
+  background: rgba(88, 101, 242, .1);
+  border-color: #454655;
+}
+.app-shell .product-add-page .product-add-progress {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 62px minmax(130px, .72fr);
+  align-items: center;
+  flex: 1 1 auto !important;
+  gap: 8px !important;
+  min-width: 0;
+}
+.app-shell .product-add-page .product-add-progress > i {
+  width: auto !important;
+  background: #4b4d5d;
+}
+.app-shell .product-add-page .product-add-progress button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  color: var(--st-muted);
+  background: rgba(26, 27, 35, .7);
+  border: 1px solid #343641;
+  border-radius: 6px;
+}
+.app-shell .product-add-page .product-add-progress button.active {
+  color: #fff;
+  background: var(--st-primary);
+  border-color: #727cff;
+  box-shadow: 0 6px 16px rgba(88, 101, 242, .2);
+}
+.app-shell .product-add-page .product-add-progress button span,
+.app-shell .product-add-page .product-add-progress button.active:last-child span {
+  width: 23px;
+  height: 23px;
+  flex: 0 0 23px;
+  color: var(--st-muted);
+  background: transparent;
+  border-color: #555767;
+}
+.app-shell .product-add-page .product-add-progress button.active span,
+.app-shell .product-add-page .product-add-progress button.active:last-child span {
+  color: #fff;
+  background: rgba(255, 255, 255, .16);
+  border-color: rgba(255, 255, 255, .38);
+}
+.app-shell .product-add-page .product-top-sidebar {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+}
+.app-shell .product-add-page .product-top-sidebar > .product-step-card {
+  min-width: 0;
+  margin: 0;
+}
+.app-shell .product-add-page .product-top-sidebar .product-pricing-card {
+  position: static;
+}
+.app-shell .product-add-page .product-category-mapping-card {
+  padding: 18px !important;
+  background: linear-gradient(180deg, rgba(31, 32, 41, .98), rgba(24, 25, 33, .98)) !important;
+  border-color: var(--st-surface-highest) !important;
+}
+.app-shell .product-add-page .product-category-mapping-card .editor-section-title {
+  margin-bottom: 11px;
+  padding-bottom: 11px;
+}
+.app-shell .product-add-page .category-mapping-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0 0 12px;
+  padding: 8px 9px;
+  color: var(--st-muted);
+  background: rgba(88, 101, 242, .08);
+  border: 1px solid rgba(88, 101, 242, .2);
+  border-radius: 5px;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.app-shell .product-add-page .category-mapping-note span {
+  flex: 0 0 auto;
+  color: var(--st-primary-soft);
+  font-size: 13px;
+  line-height: 1;
+}
+.app-shell .product-add-page .category-attribute-mapping-list {
+  display: grid;
+  gap: 9px;
+}
+.app-shell .product-add-page .category-attribute-field {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(16, 17, 24, .48);
+  border: 1px solid var(--st-outline);
+  border-radius: 6px;
+}
+.app-shell .product-add-page .category-attribute-field.required {
+  border-color: rgba(255, 180, 143, .35);
+}
+.app-shell .product-add-page .category-attribute-field-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.app-shell .product-add-page .category-attribute-field-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.app-shell .product-add-page .category-attribute-field-head strong {
+  color: var(--st-text);
+  font-size: 11px;
+  line-height: 1.25;
+}
+.app-shell .product-add-page .category-attribute-field-head small {
+  color: var(--st-muted);
+  font-size: 9px;
+}
+.app-shell .product-add-page .category-attribute-count {
+  flex: 0 0 auto;
+  padding: 3px 5px;
+  color: var(--st-cyan);
+  background: rgba(0, 238, 252, .08);
+  border: 1px solid rgba(0, 238, 252, .22);
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 800;
+}
+.app-shell .product-add-page .category-attribute-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.app-shell .product-add-page .category-attribute-value {
+  min-height: 28px;
+  padding: 4px 8px;
+  color: var(--st-muted);
+  background: var(--st-surface-low);
+  border: 1px solid var(--st-outline);
+  border-radius: 5px;
+  font-size: 9px;
+  font-weight: 700;
+}
+.app-shell .product-add-page .category-attribute-value:hover,
+.app-shell .product-add-page .category-attribute-value.active {
+  color: #fff;
+  background: rgba(88, 101, 242, .2);
+  border-color: var(--st-primary);
+}
+.app-shell .product-add-page .category-attribute-field input,
+.app-shell .product-add-page .category-attribute-field select {
+  width: 100%;
+  min-height: 35px;
+  color: var(--st-text) !important;
+  background: var(--st-surface-lowest) !important;
+  border-color: var(--st-outline) !important;
+  border-radius: 4px !important;
+  font-size: 10px;
+}
+.app-shell .product-add-page .publish-connections-empty {
+  display: grid;
+  grid-column: 1 / -1;
+  place-items: center;
+  gap: 7px;
+  min-height: 170px;
+  padding: 24px;
+  color: var(--st-muted);
+  background: var(--st-surface-low);
+  border: 1px dashed var(--st-outline);
+  border-radius: 6px;
+  text-align: center;
+}
+.app-shell .product-add-page .publish-connections-empty strong {
+  color: var(--st-text);
+  font: 700 14px/1.2 Manrope, sans-serif;
+}
+.app-shell .product-add-page .publish-connections-empty p {
+  max-width: 360px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.app-shell .product-add-page .publish-connections-empty a {
+  color: var(--st-primary-soft);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .app-shell .product-add-page .product-top-sidebar { display: contents; }
+  .app-shell .product-add-page .product-top-sidebar > .product-step-card { margin-bottom: 16px; }
+  .app-shell .product-add-page .product-add-stepper { width: min(100%, 760px) !important; }
+}
+@media (max-width: 650px) {
+  .app-shell .product-add-page .product-add-stepper { padding: 7px !important; }
+  .app-shell .product-add-page .product-add-brand-mark { display: none; }
+  .app-shell .product-add-page .product-add-progress { grid-template-columns: minmax(0, 1fr) 24px minmax(90px, .72fr); }
+  .app-shell .product-add-page .product-add-progress button { justify-content: center; padding: 0 6px; }
+  .app-shell .product-add-page .product-add-progress button strong { display: none; }
+}
