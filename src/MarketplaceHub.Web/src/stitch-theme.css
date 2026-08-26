@@ -6955,58 +6955,66 @@ body:has(.product-add-page),
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
+  width: 100%;
   min-height: 0 !important;
   margin: 0 0 20px !important;
   padding: 0 !important;
   border: 0 !important;
 }
 .app-shell .product-add-page .product-add-stepper {
-  display: flex !important;
+  display: block !important;
   align-items: center !important;
   justify-content: center !important;
   width: min(100%, 760px) !important;
   margin: 0 auto !important;
-  padding: 8px 12px !important;
+  padding: 5px !important;
   background: linear-gradient(180deg, #1c1d27, #171821) !important;
   border: 1px solid #3f4150 !important;
-  border-radius: 9px !important;
+  border-radius: 10px !important;
   box-shadow: 0 12px 26px rgba(0, 0, 0, .18) !important;
-}
-.app-shell .product-add-page .product-add-brand-mark {
-  width: 30px;
-  height: 30px;
-  flex-basis: 30px;
-  color: var(--st-primary-soft);
-  background: rgba(88, 101, 242, .1);
-  border-color: #454655;
 }
 .app-shell .product-add-page .product-add-progress {
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) 62px minmax(130px, .72fr);
+  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr) !important;
   align-items: center;
   flex: 1 1 auto !important;
   gap: 8px !important;
   min-width: 0;
 }
 .app-shell .product-add-page .product-add-progress > i {
-  width: auto !important;
-  background: #4b4d5d;
+  width: 100% !important;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #626578, transparent);
 }
 .app-shell .product-add-page .product-add-progress button {
-  justify-content: flex-start;
+  justify-content: center;
   width: 100%;
-  min-height: 38px;
-  padding: 0 10px;
+  min-height: 42px;
+  padding: 0 14px;
   color: var(--st-muted);
-  background: rgba(26, 27, 35, .7);
-  border: 1px solid #343641;
-  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  text-align: center;
+  transition: color .18s ease, background .18s ease, border-color .18s ease;
+}
+.app-shell .product-add-page .product-add-progress button:hover {
+  color: var(--st-text);
+  background: rgba(88, 101, 242, .1);
+  border-color: rgba(114, 124, 255, .24);
 }
 .app-shell .product-add-page .product-add-progress button.active {
   color: #fff;
   background: var(--st-primary);
   border-color: #727cff;
   box-shadow: 0 6px 16px rgba(88, 101, 242, .2);
+}
+.app-shell .product-add-page .product-add-progress button strong {
+  max-width: 100%;
+  color: inherit;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: normal;
 }
 .app-shell .product-add-page .product-add-progress button span,
 .app-shell .product-add-page .product-add-progress button.active:last-child span {
@@ -7269,5 +7277,25 @@ body:has(.product-add-page),
     height: auto;
     max-height: none;
     overflow: visible;
+  }
+}
+
+@media (max-width: 650px) {
+  .app-shell .product-add-page .product-add-stepper {
+    padding: 4px !important;
+  }
+
+  .app-shell .product-add-page .product-add-progress {
+    grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr) !important;
+  }
+
+  .app-shell .product-add-page .product-add-progress button {
+    min-height: 38px;
+    padding: 0 6px;
+  }
+
+  .app-shell .product-add-page .product-add-progress button strong {
+    display: block !important;
+    font-size: 9px;
   }
 }
