@@ -834,6 +834,16 @@ html, body, #root {
 .cyber-login-input > svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .cyber-login-input input { width: 100%; min-width: 0; height: 44px; padding: 0; color: var(--rv-ink); background: transparent; border: 0; outline: 0; font: inherit; font-size: .76rem; }
 .cyber-login-input input::placeholder { color: #596579; }
+.cyber-login-input input:-webkit-autofill,
+.cyber-login-input input:-webkit-autofill:hover,
+.cyber-login-input input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--rv-ink);
+  caret-color: var(--rv-ink);
+  background: transparent !important;
+  box-shadow: inset 0 0 0 1000px #0c121c !important;
+  border-radius: 6px;
+  transition: background-color 9999s ease-in-out 0s;
+}
 .cyber-password-toggle { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; color: var(--rv-muted-2); background: transparent; border: 0; border-radius: 7px; box-shadow: none; }
 .cyber-password-toggle:hover { color: var(--rv-ink); background: var(--rv-surface-raised); box-shadow: none; transform: none; }
 .cyber-password-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
