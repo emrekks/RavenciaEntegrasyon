@@ -7300,3 +7300,230 @@ body:has(.product-add-page),
     font-size: 9px;
   }
 }
+
+/* v10.41: keep route scrolling in the workspace and remove nested settings frames. */
+@media (min-width: 761px) {
+  html,
+  body,
+  #root {
+    height: 100%;
+    min-height: 100%;
+    overflow: hidden !important;
+  }
+
+  .app-shell.stitch-shell {
+    height: 100vh !important;
+    min-height: 0 !important;
+    max-height: 100vh !important;
+    overflow: hidden !important;
+  }
+
+  .app-shell.stitch-shell > aside {
+    position: sticky !important;
+    top: 0;
+    height: 100vh !important;
+    min-height: 0 !important;
+    max-height: 100vh !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  .app-shell.stitch-shell > main {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow-x: hidden !important;
+    overflow-y: scroll !important;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+  }
+}
+
+/* The wrapper owns the field frame; the native input stays transparent so
+   autofill and focus cannot create a second box inside it. */
+.cyber-login-input input,
+.cyber-login-input input:focus,
+.cyber-login-input input:active,
+.cyber-login-input input:-webkit-autofill,
+.cyber-login-input input:-webkit-autofill:hover,
+.cyber-login-input input:-webkit-autofill:focus {
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+  -webkit-text-fill-color: var(--rv-ink) !important;
+}
+
+.database-reset-panel {
+  gap: 0 !important;
+  padding: 24px !important;
+}
+
+.database-reset-intro {
+  display: grid;
+  gap: 7px;
+  padding: 0 0 20px;
+  border-bottom: 1px solid var(--st-surface-highest);
+}
+
+.database-reset-intro h2,
+.database-reset-intro p {
+  margin: 0;
+}
+
+.database-reset-intro h2 {
+  color: var(--st-text) !important;
+  font: 700 19px/1.25 Manrope, sans-serif;
+}
+
+.database-reset-intro p {
+  max-width: 820px;
+  color: var(--st-muted) !important;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.database-scope-groups {
+  display: grid;
+  gap: 0;
+}
+
+.database-scope-group {
+  display: grid;
+  gap: 12px;
+  padding: 19px 0;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--st-surface-highest) !important;
+  border-radius: 0 !important;
+}
+
+.database-scope-group h3,
+.database-scope-group p {
+  margin: 0;
+}
+
+.database-scope-group h3 {
+  color: var(--st-text) !important;
+  font-size: 14px;
+}
+
+.database-scope-group p {
+  color: var(--st-muted) !important;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.database-scope-list,
+.database-scope-group .database-scope-list,
+.database-scope-group .database-scope-list:has(label:only-child) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+}
+
+.database-scope-group .database-scope-list:has(label:only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.database-scope-list label {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 62px;
+  padding: 10px 14px;
+  color: var(--st-text);
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 6px !important;
+}
+
+.database-scope-list label + label {
+  border-left-color: var(--st-surface-highest) !important;
+}
+
+.database-scope-list label:hover,
+.database-scope-list label:has(input:checked) {
+  background: rgba(88, 101, 242, .08) !important;
+  border-color: rgba(114, 124, 255, .28) !important;
+}
+
+.database-scope-list input {
+  width: 17px !important;
+  height: 17px !important;
+  min-height: 0 !important;
+  flex: 0 0 17px;
+  accent-color: var(--st-primary);
+}
+
+.database-scope-list span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.database-scope-list strong {
+  color: var(--st-text);
+  font-size: 11px;
+}
+
+.database-scope-list small {
+  color: var(--st-muted) !important;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.database-confirmation {
+  display: grid;
+  gap: 7px;
+  max-width: 430px;
+  padding-top: 20px;
+  color: var(--st-muted) !important;
+  font-size: 11px;
+}
+
+.database-confirmation b {
+  color: var(--st-text);
+  font-size: 12px;
+}
+
+.database-confirmation input {
+  max-width: 420px;
+  min-height: 38px !important;
+}
+
+.database-reset-panel > .destructive {
+  min-height: 40px;
+  margin-top: 18px;
+  border-radius: 5px;
+}
+
+@media (max-width: 920px) and (min-width: 761px) {
+  .database-scope-group .database-scope-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .database-scope-list label:nth-child(3) {
+    border-left: 0 !important;
+    border-top-color: var(--st-surface-highest) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .database-reset-panel {
+    padding: 18px !important;
+  }
+
+  .database-scope-group .database-scope-list,
+  .database-scope-group .database-scope-list:has(label:only-child) {
+    grid-template-columns: 1fr;
+  }
+
+  .database-scope-list label + label {
+    border-top-color: var(--st-surface-highest) !important;
+    border-left-color: transparent !important;
+  }
+}
