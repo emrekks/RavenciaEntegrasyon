@@ -103,11 +103,62 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         if (!TryAttributeType(command.DataType, out var dataType)) return Invalid<AttributeView>("dataType", "İzinli tipler TEXT, NUMBER, SINGLE_SELECT, MULTI_SELECT ve BOOLEAN'dır.");
         var code = Normalize(command.Code); if (code.Length is < 1 or > 96) return Invalid<AttributeView>("code", "Özellik kodu geçersizdir.");
-        if (await db.AttributeDefinitions.AnyAsync(x => x.TenantId == tenantId && x.Code == code, cancellationToken)) return Conflict<AttributeView>("ATTRIBUTE_DUPLICATE", "Bu özellik kodu zaten var.");
-        var now = timeProvider.GetUtcNow(); var attribute = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = tenantId, Code = code, Name = command.Name.Trim(), DataType = dataType, SelectionMode = command.SelectionMode, Unit = command.Unit, CreatedAt = now, UpdatedAt = now };
-        var values = command.Values.Select(value => new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenantId, AttributeId = attribute.Id, Value = value.Value.Trim(), NormalizedValue = Normalize(value.Value), SortOrder = value.SortOrder }).ToList();
-        if (values.GroupBy(x => x.NormalizedValue).Any(group => group.Count() > 1)) return Invalid<AttributeView>("values", "Aynı özellik değeri tekrarlanamaz.");
-        if (dataType is AttributeDataType.SingleSelect or AttributeDataType.MultiSelect && values.Count == 0) return Invalid<AttributeView>("values", "Seçimli özellik en az bir değer ister.");
+        var requestedValues = command.Values
+            .Select(value => new { Value = value.Value.Trim(), NormalizedValue = Normalize(value.Value), value.SortOrder })
+            .ToList();
+        if (requestedValues.GroupBy(value => value.NormalizedValue).Any(group => group.Count() > 1)) return Invalid<AttributeView>("values", "Aynı özellik değeri tekrarlanamaz.");
+        if (dataType is AttributeDataType.SingleSelect or AttributeDataType.MultiSelect && requestedValues.Count == 0) return Invalid<AttributeView>("values", "Seçimli özellik en az bir değer ister.");
+
+        var now = timeProvider.GetUtcNow();
+        var existingAttribute = await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Code == code, cancellationToken);
+        if (existingAttribute is not null)
+        {
+            if (existingAttribute.IsActive) return Conflict<AttributeView>("ATTRIBUTE_DUPLICATE", "Bu özellik kodu zaten var.");
+
+            existingAttribute.IsActive = true;
+            existingAttribute.Name = command.Name.Trim();
+            existingAttribute.DataType = dataType;
+            existingAttribute.SelectionMode = command.SelectionMode;
+            existingAttribute.Unit = command.Unit;
+            existingAttribute.Version++;
+            existingAttribute.UpdatedAt = now;
+
+            var existingValues = await db.AttributeValues
+                .Where(x => x.TenantId == tenantId && x.AttributeId == existingAttribute.Id)
+                .OrderBy(x => x.SortOrder)
+                .ToListAsync(cancellationToken);
+            foreach (var requestedValue in requestedValues)
+            {
+                var previousValue = existingValues.FirstOrDefault(value => value.NormalizedValue == requestedValue.NormalizedValue);
+                if (previousValue is not null)
+                {
+                    previousValue.IsActive = true;
+                    previousValue.Value = requestedValue.Value;
+                    previousValue.SortOrder = requestedValue.SortOrder;
+                }
+                else
+                {
+                    var restoredValue = new AttributeValue
+                    {
+                        Id = Guid.CreateVersion7(),
+                        TenantId = tenantId,
+                        AttributeId = existingAttribute.Id,
+                        Value = requestedValue.Value,
+                        NormalizedValue = requestedValue.NormalizedValue,
+                        SortOrder = requestedValue.SortOrder,
+                        IsActive = true
+                    };
+                    existingValues.Add(restoredValue);
+                    db.AttributeValues.Add(restoredValue);
+                }
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            return ServiceResult<AttributeView>.Ok(MapAttribute(existingAttribute, existingValues));
+        }
+
+        var attribute = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = tenantId, Code = code, Name = command.Name.Trim(), DataType = dataType, SelectionMode = command.SelectionMode, Unit = command.Unit, CreatedAt = now, UpdatedAt = now };
+        var values = requestedValues.Select(value => new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenantId, AttributeId = attribute.Id, Value = value.Value, NormalizedValue = value.NormalizedValue, SortOrder = value.SortOrder }).ToList();
         db.AttributeDefinitions.Add(attribute); db.AttributeValues.AddRange(values); await db.SaveChangesAsync(cancellationToken); return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, values));
     }
 
@@ -119,8 +170,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         attribute.IsActive = false;
         attribute.Version++;
         attribute.UpdatedAt = timeProvider.GetUtcNow();
+        var values = await db.AttributeValues
+            .Where(x => x.TenantId == tenantId && x.AttributeId == attributeId && x.IsActive)
+            .OrderBy(x => x.SortOrder)
+            .ToListAsync(cancellationToken);
+        foreach (var value in values) value.IsActive = false;
         await db.SaveChangesAsync(cancellationToken);
-        var values = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && x.AttributeId == attributeId).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken);
         return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, values));
     }
 
@@ -140,10 +195,24 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var normalized = values.Select(x => Normalize(x.Value)).ToArray();
         if (normalized.Length == 0 || normalized.Any(string.IsNullOrWhiteSpace) || normalized.Distinct().Count() != normalized.Length) return Invalid<AttributeView>("values", "En az bir benzersiz ve boş olmayan seçenek değeri girin.");
         var existing = await db.AttributeValues.Where(x => x.TenantId == tenantId && x.AttributeId == attributeId).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken);
-        if (existing.Any(x => normalized.Contains(x.NormalizedValue))) return Conflict<AttributeView>("ATTRIBUTE_VALUE_DUPLICATE", "Seçenek değerlerinden biri bu özellikte zaten var.");
+        if (existing.Any(x => x.IsActive && normalized.Contains(x.NormalizedValue))) return Conflict<AttributeView>("ATTRIBUTE_VALUE_DUPLICATE", "Seçenek değerlerinden biri bu özellikte zaten var.");
         var nextSort = existing.Count == 0 ? 0 : existing.Max(x => x.SortOrder) + 1;
         var now = timeProvider.GetUtcNow();
-        var additions = values.Select((value, index) => new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenantId, AttributeId = attributeId, Value = value.Value.Trim(), NormalizedValue = Normalize(value.Value), SortOrder = nextSort + index, IsActive = true }).ToList();
+        var additions = new List<AttributeValue>();
+        foreach (var (value, index) in values.Select((value, index) => (value, index)))
+        {
+            var normalizedValue = normalized[index];
+            var inactiveValue = existing.FirstOrDefault(item => !item.IsActive && item.NormalizedValue == normalizedValue);
+            if (inactiveValue is not null)
+            {
+                inactiveValue.IsActive = true;
+                inactiveValue.Value = value.Value.Trim();
+                inactiveValue.SortOrder = nextSort + index;
+                continue;
+            }
+
+            additions.Add(new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenantId, AttributeId = attributeId, Value = value.Value.Trim(), NormalizedValue = normalizedValue, SortOrder = nextSort + index, IsActive = true });
+        }
         db.AttributeValues.AddRange(additions); attribute.Version++; attribute.UpdatedAt = now; await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, existing.Concat(additions)));
     }
