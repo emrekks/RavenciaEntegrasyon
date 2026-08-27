@@ -72,7 +72,6 @@ public sealed class MandatorySynchronizationScenariosTests
     public void Scenario08_NewReturnAfterFortyFiveDays_UsesThreeMinuteHotReturnCadence()
     {
         Assert.Equal(TimeSpan.FromMinutes(3), SynchronizationCadence.HotReturns);
-        Assert.Equal(TimeSpan.FromMinutes(15), SynchronizationCadence.ProductCatalog);
         Assert.True(OpenReturnLifecyclePolicy.ShouldPoll(ReturnClaimStatus.Requested));
     }
 

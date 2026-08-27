@@ -6,7 +6,6 @@ public static class SynchronizationCadence
     public static readonly TimeSpan HotReturns = TimeSpan.FromMinutes(3);
     public static readonly TimeSpan OpenOrderLifecycle = TimeSpan.FromMinutes(3);
     public static readonly TimeSpan OpenReturnLifecycle = TimeSpan.FromMinutes(3);
-    public static readonly TimeSpan ProductCatalog = TimeSpan.FromMinutes(15);
 }
 
 public static class SynchronizationWindowPolicy
