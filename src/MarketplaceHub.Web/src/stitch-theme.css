@@ -2677,6 +2677,18 @@ textarea {
 .panel-attribute-value-editor > div { min-height: 0 !important; padding: 7px 9px !important; }
 .panel-attribute-value-editor button { width: 26px !important; min-width: 26px !important; height: 26px !important; min-height: 26px !important; }
 
+/* Kayıt sonucu ile hata durumunu aynı panel içinde de açıkça ayır. */
+.panel-attribute-library .attribute-feedback.is-success {
+  color: #b8f4dc !important;
+  background: rgba(32, 213, 160, .12) !important;
+  border-color: rgba(32, 213, 160, .42) !important;
+}
+.panel-attribute-library .attribute-feedback.is-error {
+  color: #ffd2d6 !important;
+  background: rgba(242, 107, 122, .12) !important;
+  border-color: rgba(242, 107, 122, .42) !important;
+}
+
 /* A value editor must trap scrolling inside its own list. */
 body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .panel-attribute-modal { touch-action: none; }
