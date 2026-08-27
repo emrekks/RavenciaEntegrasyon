@@ -8,8 +8,12 @@ public sealed class TrendyolOptions
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
     public int MaxConcurrency { get; init; } = 8;
     public int RequestsPerInterval { get; init; } = 50;
-    // Trendyol order stream limit: at most 50 requests in a rolling 10-second window.
+    // Global authorization guard: at most 50 requests in a rolling 10-second window.
     public TimeSpan RequestInterval { get; init; } = TimeSpan.FromSeconds(10);
+    // Conservative order-read guard for sellers whose service tier allows fewer
+    // requests per minute than the global authorization limit.
+    public int OrderRequestsPerInterval { get; init; } = 30;
+    public TimeSpan OrderRequestInterval { get; init; } = TimeSpan.FromMinutes(1);
     public int CircuitFailureThreshold { get; init; } = 5;
     public TimeSpan CircuitBreakDuration { get; init; } = TimeSpan.FromSeconds(30);
 }

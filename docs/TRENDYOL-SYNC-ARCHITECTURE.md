@@ -17,8 +17,8 @@ Bu belge, Trendyol odaklı entegrasyon gereksinimlerinin Ravencia’daki uygulan
 
 | Akış | Job/resource | Varsayılan aralık | Öncelik |
 | --- | --- | ---: | ---: |
-| Sipariş hot akışı | `TRENDYOL_ORDER_SYNC` / `ORDERS_HOT` | 30 sn | 0 |
-| İade hot akışı | `TRENDYOL_RETURN_SYNC` / `RETURNS` | 60 sn | 2 |
+| Sipariş hot akışı | `TRENDYOL_ORDER_SYNC` / `ORDERS_HOT` | 60 sn | 0 |
+| İade hot akışı | `TRENDYOL_RETURN_SYNC` / `RETURNS` | 3 dk | 2 |
 | Açık sipariş lifecycle | `TRENDYOL_ORDER_STATUS_SYNC` | 3 dk | 0 |
 | Açık iade lifecycle | `TRENDYOL_RETURN_STATUS_SYNC` | 3 dk | 2 |
 | Sipariş recovery | `TRENDYOL_ORDER_RECOVERY_SYNC` | 15 dk | 6 |
@@ -37,7 +37,7 @@ Bu belge, Trendyol odaklı entegrasyon gereksinimlerinin Ravencia’daki uygulan
 
 ## İadeler
 
-- `getClaims` akışı 15 dakikalık örtüşmeyle 60 saniyede bir çalışır. İlk tarama erişilebilir üç aylık geçmişi storefront ve sayfa bazında tarar.
+- `getClaims` akışı 15 dakikalık örtüşmeyle 3 dakikada bir çalışır. İlk tarama erişilebilir üç aylık geçmişi storefront ve sayfa bazında tarar.
 - `Completed` ve `Cancelled` olmayan claim’ler ayrı 3 dakikalık lifecycle işinde ClaimId ile tekrar okunur.
 - Kısa, orta ve günlük iade reconciliation işlerinde tarih aralığı sınırlıdır; hot akışın cursor’ı kullanılmaz.
 - Claim veya bağlı order bulunamazsa yerel kayıt silinmez, final durum uydurulmaz; operasyonel issue açılır ve sonraki tarama için korunur.
@@ -61,7 +61,7 @@ Projection payload’ı bağlantı, varyant ve projection version ile dedupe edi
 
 Retry delay’leri kaynak sözleşmesindeki birimle saniyedir: `2, 5, 15, 30, 60` saniye ve yüzde 0–20 deterministik jitter. Varsayılan maksimum deneme 6’dır. Sağlayıcının `Retry-After` başlığı güvenli sınırlar içinde bu değerin önüne geçer.
 
-Trendyol HTTP client’ı bağlantı başına sınırlı eşzamanlılık, kayan pencere rate limit ve circuit breaker kullanır. Varsayılanlar 8 eşzamanlı istek, saniyede 50 istek penceresi, 5 ardışık hata sonrası 30 saniye devre dışı bırakmadır. Açılan devre yeni çağrıyı bekletmek yerine retry bilgisiyle kuyruğa geri döndürür.
+Trendyol HTTP client’ı bağlantı başına sınırlı eşzamanlılık, kayan pencere rate limit ve circuit breaker kullanır. Varsayılanlar 8 eşzamanlı istek, tüm çağrılar için 10 saniyede 50 isteklik yetkilendirme koruması ve sipariş okuma çağrıları için satıcı bazında dakikada 30 istek korumasıdır. 408/429 ve 5xx yanıtları devre kesici hatası sayılır; 5 ardışık hata sonrası 30 saniye devre açılır. İstek timeout’u `Trendyol:Timeout` ayarından okunur ve varsayılanı 30 saniyedir.
 
 ## Gözlemlenebilirlik ve gerçek zamanlı panel
 

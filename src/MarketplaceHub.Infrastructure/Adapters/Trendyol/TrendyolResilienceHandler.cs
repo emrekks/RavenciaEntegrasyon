@@ -10,7 +10,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
     private readonly TimeProvider timeProvider;
     private readonly SemaphoreSlim concurrency;
     private readonly object stateLock = new();
-    private readonly Queue<DateTimeOffset> requestStarts = new();
+    private readonly Dictionary<string, Queue<DateTimeOffset>> requestStarts = new(StringComparer.Ordinal);
     private int consecutiveFailures;
     private DateTimeOffset? circuitOpenUntil;
     private bool halfOpenRequestActive;
@@ -29,11 +29,15 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         try
         {
             if (!TryEnterCircuit(out halfOpen)) return CircuitOpenResponse();
-            await WaitForRateWindowAsync(cancellationToken);
+            await WaitForRateWindowAsync("global", options.RequestsPerInterval, options.RequestInterval, cancellationToken);
+            if (RateBucketFor(request) is { } bucket)
+                await WaitForRateWindowAsync(bucket, options.OrderRequestsPerInterval, options.OrderRequestInterval, cancellationToken);
             try
             {
                 var response = await base.SendAsync(request, cancellationToken);
-                RecordResult(response.IsSuccessStatusCode || (int)response.StatusCode < 500, halfOpen);
+                var statusCode = (int)response.StatusCode;
+                var circuitSucceeded = statusCode < 500 && statusCode is not (408 or 429);
+                RecordResult(circuitSucceeded, halfOpen);
                 return response;
             }
             catch (HttpRequestException)
@@ -86,26 +90,46 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         }
     }
 
-    private async Task WaitForRateWindowAsync(CancellationToken cancellationToken)
+    private async Task WaitForRateWindowAsync(string bucket, int configuredLimit, TimeSpan configuredInterval, CancellationToken cancellationToken)
     {
-        var limit = Math.Clamp(options.RequestsPerInterval, 1, 10_000);
-        var interval = options.RequestInterval <= TimeSpan.Zero ? TimeSpan.FromSeconds(1) : options.RequestInterval;
+        var limit = Math.Clamp(configuredLimit, 1, 10_000);
+        var interval = configuredInterval <= TimeSpan.Zero ? TimeSpan.FromSeconds(1) : configuredInterval;
         while (true)
         {
             TimeSpan delay;
             lock (stateLock)
             {
                 var now = timeProvider.GetUtcNow();
-                while (requestStarts.TryPeek(out var oldest) && now - oldest >= interval) requestStarts.Dequeue();
-                if (requestStarts.Count < limit)
+                if (!requestStarts.TryGetValue(bucket, out var starts))
                 {
-                    requestStarts.Enqueue(now);
+                    starts = new Queue<DateTimeOffset>();
+                    requestStarts[bucket] = starts;
+                }
+                while (starts.TryPeek(out var oldest) && now - oldest >= interval) starts.Dequeue();
+                if (starts.Count < limit)
+                {
+                    starts.Enqueue(now);
                     return;
                 }
-                delay = interval - (now - requestStarts.Peek());
+                delay = interval - (now - starts.Peek());
             }
             await Task.Delay(delay > TimeSpan.Zero ? delay : TimeSpan.FromMilliseconds(10), timeProvider, cancellationToken);
         }
+    }
+
+    internal static string? RateBucketFor(HttpRequestMessage request)
+    {
+        if (request.Method != HttpMethod.Get || request.RequestUri is not { } uri) return null;
+        var path = uri.AbsolutePath;
+        if (!path.Contains("/orders/stream", StringComparison.OrdinalIgnoreCase) && !path.Contains("/v2/orders", StringComparison.OrdinalIgnoreCase)) return null;
+        const string marker = "/sellers/";
+        var sellerStart = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (sellerStart < 0) return null;
+        sellerStart += marker.Length;
+        var sellerEnd = path.IndexOf('/', sellerStart);
+        if (sellerEnd <= sellerStart) return null;
+        var sellerId = path[sellerStart..sellerEnd];
+        return string.IsNullOrWhiteSpace(sellerId) ? null : $"orders:{sellerId}";
     }
 
     private static HttpResponseMessage CircuitOpenResponse()
