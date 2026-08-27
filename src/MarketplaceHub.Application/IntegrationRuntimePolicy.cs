@@ -22,6 +22,12 @@ public static class IntegrationRuntimePolicy
     public static bool IsManualStage(PlatformConnection connection, AdapterContext context) =>
         IsOperationalStage(connection) && context.Operation == IntegrationOperation.Manual;
 
+    // Product publication, update, and archive endpoints are manually initiated
+    // workflows. A successful Stage verification is therefore sufficient for
+    // these writes; Production still requires ACTIVE and the existing write gate.
+    public static bool IsManualProductWriteReady(PlatformConnection connection) =>
+        IsActive(connection) || IsOperationalStage(connection);
+
     public static bool AllowsManualRead(PlatformConnection connection) =>
         IsOperationalStage(connection)
         || (IsProduction(connection)
