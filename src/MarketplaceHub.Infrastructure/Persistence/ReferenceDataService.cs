@@ -64,6 +64,50 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             mapping.Version++;
         }
         mapping.SnapshotId = command.SnapshotId; mapping.ExternalId = command.ExternalId.Trim(); mapping.Status = command.Status.Trim(); mapping.VerifiedAt = timeProvider.GetUtcNow();
+        if (mappingType == "attributes")
+        {
+            var role = NormalizeRequirementRole(command.Role);
+            if (role is not ("ATTRIBUTE" or "OPTION")) return ServiceResult<CatalogMappingView>.Fail("MAPPING_ROLE_INVALID", "Özellik eşleme rolü ATTRIBUTE veya OPTION olmalıdır.", 422);
+
+            var mappedCategoryId = await db.CategoryMappings.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && x.ExternalId == scope && x.Status == "VERIFIED")
+                .Select(x => (Guid?)x.LocalId)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (mappedCategoryId is Guid categoryId)
+            {
+                var requirement = await db.CategoryAttributeRequirements
+                    .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == categoryId && x.AttributeId == localId, cancellationToken);
+                if (role == "OPTION" && requirement?.Role != "OPTION")
+                {
+                    var optionCount = await db.CategoryAttributeRequirements.CountAsync(x => x.TenantId == tenantId && x.CategoryId == categoryId && x.Role == "OPTION" && x.AttributeId != localId, cancellationToken);
+                    if (optionCount >= 2) return ServiceResult<CatalogMappingView>.Fail("OPTION_LIMIT_EXCEEDED", "Bir kategoride en fazla 2 seçenek grubu tanımlanabilir.", 422);
+                }
+
+                if (requirement is null)
+                {
+                    db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement
+                    {
+                        Id = Guid.CreateVersion7(),
+                        TenantId = tenantId,
+                        CategoryId = categoryId,
+                        AttributeId = localId,
+                        IsRequired = external.IsRequired == true,
+                        AllowsCustomValue = external.AllowsCustomValue == true,
+                        Role = role,
+                        DisplayOrder = external.SortOrder ?? 0,
+                        Version = 1
+                    });
+                }
+                else if (requirement.Role != role || requirement.IsRequired != (external.IsRequired == true) || requirement.AllowsCustomValue != (external.AllowsCustomValue == true) || requirement.DisplayOrder != (external.SortOrder ?? requirement.DisplayOrder))
+                {
+                    requirement.Role = role;
+                    requirement.IsRequired = external.IsRequired == true;
+                    requirement.AllowsCustomValue = external.AllowsCustomValue == true;
+                    requirement.DisplayOrder = external.SortOrder ?? requirement.DisplayOrder;
+                    requirement.Version++;
+                }
+            }
+        }
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<CatalogMappingView>.Ok(Map(mapping));
     }
@@ -107,5 +151,6 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
     };
 
     private static CatalogMappingView Map(CatalogMapping value) => new(value.Id, value.ConnectionId, value.SnapshotId, value.LocalId, value.ScopeExternalId, value.ExternalId, value.Status, value.VerifiedAt, value.Version);
+    private static string NormalizeRequirementRole(string? value) => string.Equals(value?.Trim(), "OPTION", StringComparison.OrdinalIgnoreCase) ? "OPTION" : string.Equals(value?.Trim(), "ATTRIBUTE", StringComparison.OrdinalIgnoreCase) ? "ATTRIBUTE" : value?.Trim().ToUpperInvariant() ?? "";
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
 }

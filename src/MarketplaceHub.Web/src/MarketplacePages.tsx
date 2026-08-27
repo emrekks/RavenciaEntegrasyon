@@ -1184,7 +1184,7 @@ function OptionMappingCard({ connectionId, categoryScope, snapshotId, localAttri
   async function save() {
     try {
       if (!externalId) throw new Error('Trendyol seçenek karşılığını seçin.')
-      await hubApi<CatalogMapping>(`/mappings/attributes/${localAttribute.id}`, { method: 'PUT', headers: existingMapping ? { 'If-Match': `"v${existingMapping.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: categoryScope, externalId, status: 'VERIFIED' }) })
+      await hubApi<CatalogMapping>(`/mappings/attributes/${localAttribute.id}`, { method: 'PUT', headers: existingMapping ? { 'If-Match': `"v${existingMapping.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: categoryScope, externalId, status: 'VERIFIED', role: 'OPTION' }) })
       onNotice(`${localAttribute.name} seçenek eşlemesi kaydedildi.`); await client.invalidateQueries({ queryKey: ['attribute-mappings', connectionId, categoryScope] })
     } catch (reason) { onNotice(reason instanceof Error ? reason.message : 'Seçenek eşlemesi kaydedilemedi.') }
   }
@@ -1213,7 +1213,7 @@ function CategoryAttributeCard({ connectionId, categoryScope, snapshotId, localA
   async function save() {
     try {
       if (!localId) throw new Error('Entegrasyon ürün özelliğini seçin.')
-      await hubApi<CatalogMapping>(`/mappings/attributes/${localId}`, { method: 'PUT', body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: categoryScope, externalId: remoteAttribute.externalId, status: 'VERIFIED' }) })
+       await hubApi<CatalogMapping>(`/mappings/attributes/${localId}`, { method: 'PUT', body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: categoryScope, externalId: remoteAttribute.externalId, status: 'VERIFIED', role: 'ATTRIBUTE' }) })
       onNotice(`${remoteAttribute.name} eşlemesi kaydedildi.`)
       await client.invalidateQueries({ queryKey: ['attribute-mappings', connectionId, categoryScope] })
     } catch (reason) { onNotice(reason instanceof Error ? reason.message : 'Özellik eşlemesi kaydedilemedi.') }
@@ -1243,7 +1243,7 @@ export function AttributeMappingPage() {
   const sync = useMutation({ mutationFn: () => hubApi(`/connections/${connectionId}/reference-sync-jobs?resourceType=CATEGORY_ATTRIBUTES&parentExternalId=${encodeURIComponent(categoryScope)}`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: () => setNotice('Kategori özellikleri salt-okunur eşitleme kuyruğuna alındı.'), onError: reason => setNotice(reason instanceof Error ? reason.message : 'Özellik eşitleme başlatılamadı.') })
   const save = useMutation({ mutationFn: () => {
     if (!references.data || !localId || !externalId) throw new Error('Bağlantı, kategori, panel özelliği ve Trendyol özelliği zorunludur.')
-    return hubApi<CatalogMapping>(`/mappings/attributes/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, scopeExternalId: categoryScope, externalId, status: 'VERIFIED' }) })
+     return hubApi<CatalogMapping>(`/mappings/attributes/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, scopeExternalId: categoryScope, externalId, status: 'VERIFIED', role: 'ATTRIBUTE' }) })
   }, onSuccess: async value => { setNotice('Özellik eşlemesi doğrulandı ve kategori kapsamında kaydedildi.'); setExternalId(value.externalId); await client.invalidateQueries({ queryKey: ['attribute-mapping', localId, connectionId, categoryScope] }) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Özellik eşlemesi kaydedilemedi.') })
   useEffect(() => { if (mapping.data) setExternalId(mapping.data.externalId) }, [mapping.data])
   const activeConnections = connections.data?.items.filter(item => item.platformCode === 'TRENDYOL' && (item.status === 'ACTIVE' || item.status === 'VERIFIED')) ?? []; const localLeaves = categories.data?.items.filter(item => item.isActive && item.isLeaf) ?? []; const activeAttributes = localAttributes.data?.items.filter(item => item.isActive) ?? []; const remoteAttributes = references.data?.items.filter(item => item.isActive) ?? []
