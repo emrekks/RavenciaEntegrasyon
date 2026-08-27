@@ -57,7 +57,6 @@ internal sealed class ProductUpdateComposer(AppDbContext db)
                     ["stockCode"] = Text(item, "stockCode"),
                     ["origin"] = Clone(item, "origin"),
                     ["vatRate"] = Clone(item, "vatRate"),
-                    ["channels"] = new[] { "CORE" }
                 });
                 if (item.TryGetProperty("deliveryOption", out var delivery) && delivery.ValueKind == JsonValueKind.Object)
                 {

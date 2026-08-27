@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.Trendyol.Contracts;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.ErrorMapping;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using Microsoft.Extensions.Configuration;
@@ -419,7 +420,17 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         using (payload)
         {
             var response = await SendAsync(authorized, method, endpointFactory(authorized.Connection.ExternalStoreId), JsonContent.Create(payload.RootElement), cancellationToken); if (!response.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(response.Error!, response.RateLimit);
-            try { using var document = JsonDocument.Parse(response.Value!); var id = document.RootElement.GetProperty("batchRequestId").GetString(); return string.IsNullOrWhiteSpace(id) ? AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.Contract()) : AdapterResult<RemoteOperationRef>.Success(new(id, kind, timeProvider.GetUtcNow()), response.RateLimit); } catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException) { return AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.Contract()); }
+            try
+            {
+                if (!TrendyolContractGuard.HasBatchRequestId(response.Value!)) return AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.Contract());
+                using var document = JsonDocument.Parse(response.Value!);
+                var id = document.RootElement.GetProperty("batchRequestId").GetString()!;
+                return AdapterResult<RemoteOperationRef>.Success(new(id, kind, timeProvider.GetUtcNow()), response.RateLimit);
+            }
+            catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException)
+            {
+                return AdapterResult<RemoteOperationRef>.Failure(TrendyolErrorMapper.Contract());
+            }
         }
     }
 
