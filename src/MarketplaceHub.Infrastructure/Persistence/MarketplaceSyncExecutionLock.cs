@@ -9,37 +9,45 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
 {
     private static readonly ConcurrentDictionary<long, SemaphoreSlim> localGates = new();
+    private readonly AppDbContext? db;
     private readonly NpgsqlConnection? connection;
     private readonly SemaphoreSlim? localGate;
     private readonly long key;
     private readonly bool acquired;
+    private readonly bool closeConnectionOnDispose;
     private int disposed;
 
-    private MarketplaceSyncExecutionLock(NpgsqlConnection? connection, SemaphoreSlim? localGate, long key, bool acquired)
+    private MarketplaceSyncExecutionLock(AppDbContext? db, NpgsqlConnection? connection, SemaphoreSlim? localGate, long key, bool acquired, bool closeConnectionOnDispose)
     {
+        this.db = db;
         this.connection = connection;
         this.localGate = localGate;
         this.key = key;
         this.acquired = acquired;
+        this.closeConnectionOnDispose = closeConnectionOnDispose;
     }
 
     public static async Task<MarketplaceSyncExecutionLock?> TryAcquireAsync(AppDbContext db, Guid connectionId, string jobType, CancellationToken cancellationToken)
     {
         var key = LockKey(connectionId, GroupFor(jobType));
-        var connectionString = db.Database.GetDbConnection().ConnectionString;
+        var connection = db.Database.GetDbConnection() as NpgsqlConnection;
         if (!string.Equals(db.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal)
-            || string.IsNullOrWhiteSpace(connectionString))
+            || connection is null
+            || string.IsNullOrWhiteSpace(connection.ConnectionString))
         {
             // Local/test providers do not have PostgreSQL advisory locks. Keep the
             // same per-connection/per-job serialization guarantee in-process.
             var localGate = localGates.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
             if (!await localGate.WaitAsync(TimeSpan.Zero, cancellationToken)) return null;
-            return new MarketplaceSyncExecutionLock(null, localGate, key, acquired: true);
+            return new MarketplaceSyncExecutionLock(null, null, localGate, key, acquired: true, closeConnectionOnDispose: false);
         }
 
-        var connection = new NpgsqlConnection(connectionString);
+        var closeConnectionOnDispose = connection.State != System.Data.ConnectionState.Open;
         try
         {
+            // Reuse EF Core's configured connection instead of rebuilding a new
+            // NpgsqlConnection from ConnectionString. Npgsql intentionally omits
+            // the password when exposing a connection string in some states.
             await connection.OpenAsync(cancellationToken);
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT pg_try_advisory_lock(@key)";
@@ -47,15 +55,15 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
             var result = await command.ExecuteScalarAsync(cancellationToken);
             if (result is not true)
             {
-                await connection.DisposeAsync();
+                if (closeConnectionOnDispose) await connection.CloseAsync();
                 return null;
             }
 
-            return new MarketplaceSyncExecutionLock(connection, null, key, acquired: true);
+            return new MarketplaceSyncExecutionLock(db, connection, null, key, acquired: true, closeConnectionOnDispose: closeConnectionOnDispose);
         }
         catch
         {
-            await connection.DisposeAsync();
+            if (closeConnectionOnDispose) await connection.CloseAsync();
             throw;
         }
     }
@@ -103,7 +111,7 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         }
         finally
         {
-            await connection.DisposeAsync();
+            if (closeConnectionOnDispose && db is not null) await db.Database.CloseConnectionAsync();
         }
     }
 }
