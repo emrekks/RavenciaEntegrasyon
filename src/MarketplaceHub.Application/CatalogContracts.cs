@@ -12,7 +12,7 @@ public sealed record PageResult<T>(IReadOnlyList<T> Items, string? NextCursor, b
 public sealed record CategoryView(Guid Id, Guid? ParentId, string Name, string Path, int Depth, bool IsLeaf, bool IsActive, long Version);
 public sealed record BrandView(Guid Id, string Name, bool IsActive, long Version);
 public sealed record AttributeValueView(Guid Id, string Value, int SortOrder, bool IsActive);
-public sealed record AttributeView(Guid Id, string Code, string Name, string DataType, string? SelectionMode, string? Unit, bool IsActive, long Version, IReadOnlyList<AttributeValueView> Values);
+public sealed record AttributeView(Guid Id, string Code, string Name, string DataType, string? SelectionMode, string? Unit, bool IsActive, long Version, IReadOnlyList<AttributeValueView> Values, IReadOnlyList<string>? Roles = null);
 public sealed record ProductVariantView(
     Guid Id,
     string Sku,

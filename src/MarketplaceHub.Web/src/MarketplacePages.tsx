@@ -64,7 +64,7 @@ async function loadAllReturns(): Promise<Page<ReturnClaim>> {
 type ReturnLine = { id: string; externalLineId: string; orderLineId: string; sku: string; barcode: string | null; title: string; quantity: number; disposedQuantity: number; remainingQuantity: number; unitPrice: number; imageUrl: string | null; hasInventoryMapping: boolean }; type ReturnDetail = Omit<ReturnClaim, 'lines'> & { reasonCode: string | null; allowedActions: string[]; lines: ReturnLine[] | null; stockDispositionAvailable: boolean }; type ReturnIssueReason = { id: string; name: string; evidenceRequired: boolean }
 type LocalCategory = { id: string; name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean; version: number }
 type LocalBrand = { id: string; name: string; isActive: boolean; version: number }
-type LocalAttribute = { id: string; code: string; name: string; dataType: string; isActive: boolean; version: number; values: { id: string; value: string; isActive: boolean }[] }
+type LocalAttribute = { id: string; code: string; name: string; dataType: string; isActive: boolean; version: number; roles?: string[] | null; values: { id: string; value: string; isActive: boolean }[] }
 type CategoryRequirementView = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; attribute: LocalAttribute }
 type ReferenceItem = { externalId: string; parentExternalId: string | null; name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean; isRequired: boolean | null; allowsCustomValue: boolean | null; allowsMultipleValues: boolean | null }
 type ReferenceData = { snapshotId: string; resourceType: string; fetchedAt: string; items: ReferenceItem[] }
@@ -946,7 +946,7 @@ function LegacyMappingPage({ kind }: { kind: 'categories' | 'attributes' }) {
 
 function slug(value: string) { return value.toLocaleLowerCase('tr-TR').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `attr-${Date.now()}` }
 function attributeCodeForRole(title: string, role: 'ATTRIBUTE' | 'OPTION') { return `${role === 'OPTION' ? 'option-' : 'attribute-'}${slug(title)}` }
-function isOptionAttribute(attribute: Pick<LocalAttribute, 'code'>) { return attribute.code.trim().toLowerCase().startsWith('option-') }
+function isOptionAttribute(attribute: Pick<LocalAttribute, 'code' | 'roles'>) { return attribute.code.trim().toLowerCase().startsWith('option-') || attribute.roles?.some(role => role.toUpperCase() === 'OPTION') === true }
 
 function cleanTrendyolCategoryPath(value: string) {
   return value.replace(/\[TDG\]\s*/gi, '').replace(/\(\s*TDG\s*\)\s*/gi, '').replace(/\s*\/\s*/g, ' / ').trim()

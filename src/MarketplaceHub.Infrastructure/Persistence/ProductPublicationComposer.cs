@@ -102,9 +102,9 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
 
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on productMedia.FileAssetId equals asset.Id
-                           where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && asset.Classification == "PRODUCT_MEDIA_URL"
+                           where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                            orderby productMedia.SortOrder, productMedia.Id
-                           select new { productMedia.VariantId, productMedia.SortOrder, asset.RelativePath }).ToListAsync(cancellationToken);
+                           select new { productMedia.VariantId, productMedia.SortOrder, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
 
         var title = (profile.TitleOverride ?? product.Title).Trim();
         var description = (profile.DescriptionOverride ?? product.Description).Trim();
@@ -120,10 +120,13 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
             if (!string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || offer.SalePrice <= 0 || offer.ListPrice < offer.SalePrice) return Fail("CHANNEL_OFFER_INVALID", $"'{variant.Sku}' için TRY para birimi ve listPrice >= salePrice > 0 kuralı sağlanmalıdır.");
             if (offer.VatRate < 0 || offer.VatRate > 100 || decimal.Truncate(offer.VatRate) != offer.VatRate) return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı 0-100 arasında tam sayı olmalıdır.");
 
-            var relevantMedia = media.Where(x => x.VariantId is null || x.VariantId == variant.Id).Select(x => x.RelativePath.Trim()).ToList();
-            if (relevantMedia.Any(url => !IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için kayıtlı tüm PRODUCT_MEDIA_URL değerleri geçerli HTTPS adresi olmalıdır.");
-            var imageUrls = relevantMedia.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için PRODUCT_MEDIA_URL sınıfında en az bir geçerli HTTPS görseli gerekir.");
+            var relevantMedia = media.Where(x => x.VariantId is null || x.VariantId == variant.Id).ToList();
+            var localMedia = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA").ToList();
+            var relevantUrls = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Select(x => x.RelativePath.Trim()).ToList();
+            if (relevantUrls.Any(url => !IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için kayıtlı tüm PRODUCT_MEDIA_URL değerleri geçerli HTTPS adresi olmalıdır.");
+            var imageUrls = relevantUrls.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (imageUrls.Count == 0 && localMedia.Count > 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için yerel katalog görseli bulundu; Trendyol yayını için en az bir herkese açık HTTPS görsel adresi ekleyin.");
+            if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir geçerli HTTPS görsel adresi gerekir.");
             if (imageUrls.Count > 8) return Fail("PRODUCT_MEDIA_LIMIT_EXCEEDED", $"'{variant.Sku}' için en fazla 8 farklı görsel URL'si yayınlanabilir.");
 
             var effectiveAssignments = assignments.Where(x => x.VariantId is null || x.VariantId == variant.Id).GroupBy(x => x.AttributeId).ToList();
@@ -243,10 +246,19 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
 
     private static bool IsValidBarcode(string value) => value.All(character => char.IsLetterOrDigit(character) || character is '.' or '-' or '_');
 
-    private static bool IsPublicHttpsUrl(string value)
+    internal static bool IsPublicHttpsUrl(string value)
     {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo) || uri.IsLoopback) return false;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo) || uri.IsLoopback || !IsPublicHost(uri.Host)) return false;
         return !IPAddress.TryParse(uri.Host, out var address) || IsPublicAddress(address);
+    }
+
+    private static bool IsPublicHost(string host)
+    {
+        var normalized = host.TrimEnd('.');
+        return !string.Equals(normalized, "localhost", StringComparison.OrdinalIgnoreCase)
+            && !normalized.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
+            && !normalized.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)
+            && !normalized.EndsWith(".lan", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsPublicAddress(IPAddress address)

@@ -221,7 +221,7 @@ public static class CatalogEndpoints
         var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
         if (!Uri.TryCreate(command.Url?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo) || uri.AbsoluteUri.Length > 512)
             return Problem(http, new("PRODUCT_MEDIA_URL_INVALID", "Kalıcı, kullanıcı bilgisi içermeyen ve en fazla 512 karakterlik HTTPS görsel URL'si gereklidir.", 422, new Dictionary<string, string[]> { ["url"] = ["Geçerli bir HTTPS görsel URL'si girin."] }));
-        if (uri.IsLoopback || IPAddress.TryParse(uri.Host, out var address) && !IsPublicAddress(address))
+        if (uri.IsLoopback || !IsPublicHost(uri.Host) || IPAddress.TryParse(uri.Host, out var address) && !IsPublicAddress(address))
             return Problem(http, new("PRODUCT_MEDIA_URL_INVALID", "Yerel, özel ağ veya loopback görsel adresi kullanılamaz.", 422, new Dictionary<string, string[]> { ["url"] = ["Trendyol tarafından internet üzerinden erişilebilen bir adres girin."] }));
         if (command.SortOrder is < 0 or > 999) return Problem(http, new("PRODUCT_MEDIA_SORT_INVALID", "sortOrder 0-999 arasında olmalıdır.", 422));
         if (!await db.Products.AnyAsync(x => x.TenantId == tenant.TenantId && x.Id == command.ProductId, http.RequestAborted) || command.VariantId is Guid variantId && !await db.ProductVariants.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.Id == variantId, http.RequestAborted))
@@ -270,6 +270,15 @@ public static class CatalogEndpoints
             && !(bytes[0] == 172 && bytes[1] is >= 16 and <= 31)
             && !(bytes[0] == 192 && bytes[1] == 168)
             && bytes[0] < 224;
+    }
+
+    private static bool IsPublicHost(string host)
+    {
+        var normalized = host.TrimEnd('.');
+        return !string.Equals(normalized, "localhost", StringComparison.OrdinalIgnoreCase)
+            && !normalized.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
+            && !normalized.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)
+            && !normalized.EndsWith(".lan", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string MediaRole(string? value)

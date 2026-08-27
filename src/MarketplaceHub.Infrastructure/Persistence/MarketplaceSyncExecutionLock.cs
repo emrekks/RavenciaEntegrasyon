@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using Npgsql;
@@ -7,13 +8,17 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
 {
+    private static readonly ConcurrentDictionary<long, SemaphoreSlim> localGates = new();
     private readonly NpgsqlConnection? connection;
+    private readonly SemaphoreSlim? localGate;
     private readonly long key;
     private readonly bool acquired;
+    private int disposed;
 
-    private MarketplaceSyncExecutionLock(NpgsqlConnection? connection, long key, bool acquired)
+    private MarketplaceSyncExecutionLock(NpgsqlConnection? connection, SemaphoreSlim? localGate, long key, bool acquired)
     {
         this.connection = connection;
+        this.localGate = localGate;
         this.key = key;
         this.acquired = acquired;
     }
@@ -24,7 +29,13 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         var connectionString = db.Database.GetDbConnection().ConnectionString;
         if (!string.Equals(db.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal)
             || string.IsNullOrWhiteSpace(connectionString))
-            return new MarketplaceSyncExecutionLock(null, key, acquired: false);
+        {
+            // Local/test providers do not have PostgreSQL advisory locks. Keep the
+            // same per-connection/per-job serialization guarantee in-process.
+            var localGate = localGates.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
+            if (!await localGate.WaitAsync(TimeSpan.Zero, cancellationToken)) return null;
+            return new MarketplaceSyncExecutionLock(null, localGate, key, acquired: true);
+        }
 
         var connection = new NpgsqlConnection(connectionString);
         try
@@ -40,7 +51,7 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
                 return null;
             }
 
-            return new MarketplaceSyncExecutionLock(connection, key, acquired: true);
+            return new MarketplaceSyncExecutionLock(connection, null, key, acquired: true);
         }
         catch
         {
@@ -68,6 +79,15 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref disposed, 1) != 0)
+            return;
+
+        if (localGate is not null)
+        {
+            if (acquired) localGate.Release();
+            return;
+        }
+
         if (connection is null)
             return;
 
