@@ -945,6 +945,7 @@ function LegacyMappingPage({ kind }: { kind: 'categories' | 'attributes' }) {
 }
 
 function slug(value: string) { return value.toLocaleLowerCase('tr-TR').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `attr-${Date.now()}` }
+function attributeCodeForRole(title: string, role: 'ATTRIBUTE' | 'OPTION') { return `${role === 'OPTION' ? 'option-' : 'attribute-'}${slug(title)}` }
 
 function cleanTrendyolCategoryPath(value: string) {
   return value.replace(/\[TDG\]\s*/gi, '').replace(/\(\s*TDG\s*\)\s*/gi, '').replace(/\s*\/\s*/g, ' / ').trim()
@@ -967,7 +968,7 @@ function CategoryRequirementBuilder({ categoryId, categoryVersion, attributes, r
     await onSaved()
   }
   const current = requirements.map(item => ({ attributeId: item.attributeId, isRequired: item.isRequired, allowsCustomValue: item.allowsCustomValue, role: item.role }))
-  const visibleRequirements = categoryId ? requirements : attributes.map(attribute => ({ attributeId: attribute.id, isRequired: false, allowsCustomValue: !attribute.values.length, displayOrder: 0, role: 'ATTRIBUTE' as const, attribute }))
+  const visibleRequirements = categoryId ? requirements : attributes.map(attribute => ({ attributeId: attribute.id, isRequired: false, allowsCustomValue: !attribute.values.length, displayOrder: 0, role: attribute.code.startsWith('option-') ? 'OPTION' as const : 'ATTRIBUTE' as const, attribute }))
   async function changeRole(item: CategoryRequirementView, role: RequirementRole) {
     try {
       if (role === 'OPTION' && item.role !== 'OPTION' && current.filter(entry => entry.role === 'OPTION').length >= 2) return setFeedback('En fazla iki seçenek başlığı kullanabilirsiniz.')
@@ -994,7 +995,7 @@ function CategoryRequirementBuilder({ categoryId, categoryVersion, attributes, r
       let createdAttribute: LocalAttribute | null = null
       {
         const selectableValues = values.split(',').map(item => item.trim()).filter(Boolean)
-        const payload = { code: slug(title), name: title.trim(), dataType: selectableValues.length ? 'SINGLE_SELECT' : 'TEXT', selectionMode: selectableValues.length ? 'SINGLE' : null, unit: null, values: selectableValues.map((value, index) => ({ value, sortOrder: index })) }
+        const payload = { code: attributeCodeForRole(title, role), name: title.trim(), dataType: selectableValues.length ? 'SINGLE_SELECT' : 'TEXT', selectionMode: selectableValues.length ? 'SINGLE' : null, unit: null, values: selectableValues.map((value, index) => ({ value, sortOrder: index })) }
         createdAttribute = await hubApi<LocalAttribute>('/catalog/attributes', { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify(payload) })
       }
       updateAttributeCache(createdAttribute)
@@ -1035,7 +1036,6 @@ function PanelAttributeLibraryBuilder({ role, attributes, onNotice }: { role: 'A
   const client = useQueryClient()
   const [title, setTitle] = useState(''); const [values, setValues] = useState<string[]>([]); const [valueDraft, setValueDraft] = useState(''); const [editingId, setEditingId] = useState(''); const [newValues, setNewValues] = useState(''); const [editingValue, setEditingValue] = useState<{ id: string; value: string } | null>(null); const [feedback, setFeedback] = useState(''); const [feedbackTone, setFeedbackTone] = useState<'success' | 'error'>('success')
   const isOption = role === 'OPTION'
-  const prefix = isOption ? 'option-' : 'attribute-'
   const records = attributes.filter(attribute => isOption ? attribute.code.startsWith('option-') : !attribute.code.startsWith('option-'))
   const editingAttribute = records.find(attribute => attribute.id === editingId) ?? null
   function showFeedback(message: string, tone: 'success' | 'error' = 'success') { setFeedback(message); setFeedbackTone(tone) }
@@ -1056,7 +1056,7 @@ function PanelAttributeLibraryBuilder({ role, attributes, onNotice }: { role: 'A
     try {
       if (!title.trim()) return showFeedback(isOption ? 'Seçenek başlığı girin.' : 'Özellik başlığı girin.', 'error')
       const parsedValues = values
-      const attribute = await hubApi<LocalAttribute>('/catalog/attributes', { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ code: `${prefix}${slug(title)}`, name: title.trim(), dataType: parsedValues.length ? 'SINGLE_SELECT' : 'TEXT', selectionMode: parsedValues.length ? 'SINGLE' : null, unit: null, values: parsedValues.map((value, index) => ({ value, sortOrder: index })) }) })
+      const attribute = await hubApi<LocalAttribute>('/catalog/attributes', { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ code: attributeCodeForRole(title, role), name: title.trim(), dataType: parsedValues.length ? 'SINGLE_SELECT' : 'TEXT', selectionMode: parsedValues.length ? 'SINGLE' : null, unit: null, values: parsedValues.map((value, index) => ({ value, sortOrder: index })) }) })
       updateCache(attribute); setEditingId(attribute.id); setTitle(''); setValues([]); setValueDraft(''); showFeedback(`${attribute.name} panele kaydedildi.`); onNotice(`${attribute.name} panele kaydedildi.`)
     } catch (reason) { showFeedback(reason instanceof Error ? reason.message : 'Kayıt oluşturulamadı.', 'error') }
   }
