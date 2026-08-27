@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, loadAllPages } from './api'
+import { ApiRequestError, hubApi, loadAllPages } from './api'
 
 type PageData<T> = { items: T[]; nextCursor: string | null; hasMore: boolean }
 type Versioned = { id: string; version: number }
@@ -762,7 +762,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (rows.some(row => row.stock > 0)) completed.push('stok'); if (selectedChannelIds.length) completed.push('kanal fiyatları')
       for (const connectionId of selectedChannelIds) {
         try {
-          await hubApi(`/products/${product.id}/listing-profiles/${connectionId}`, { method: 'PUT', body: JSON.stringify({ titleOverride: null, descriptionOverride: null, externalCategoryId: null, externalBrandId: null, deliveryTimeDays: null, enabled: true }) })
+          let listingProfileVersion: number | undefined
+          try {
+            const listingProfile = await hubApi<{ version: number }>(`/products/${product.id}/listing-profiles/${connectionId}`)
+            listingProfileVersion = listingProfile.version
+          } catch (reason) {
+            if (!(reason instanceof ApiRequestError) || reason.status !== 404) throw reason
+          }
+          await hubApi(`/products/${product.id}/listing-profiles/${connectionId}`, { method: 'PUT', headers: listingProfileVersion == null ? {} : { 'If-Match': `"v${listingProfileVersion}"` }, body: JSON.stringify({ titleOverride: null, descriptionOverride: null, externalCategoryId: null, externalBrandId: null, deliveryTimeDays: null, enabled: true }) })
           const accepted = await hubApi<AcceptedJob>(`/products/${product.id}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId }) })
           completed.push(`yayın işi ${accepted.jobId}`)
         } catch (reason) { warnings.push(reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.') }
