@@ -1142,10 +1142,17 @@ function CategoryAttributeWorkspace({ connectionId, localCategoryId, localCatego
   const sync = useMutation({ mutationFn: () => hubApi(`/connections/${connectionId}/reference-sync-jobs?resourceType=CATEGORY_ATTRIBUTES&parentExternalId=${encodeURIComponent(categoryScope)}`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: async () => { onNotice('Kategori özellikleri eşitleme kuyruğuna alındı.'); for (const delay of [500, 1000, 2000, 4000]) { await new Promise(resolve => window.setTimeout(resolve, delay)); await client.invalidateQueries({ queryKey: ['reference-attributes', connectionId, categoryScope, 'embedded'] }) } }, onError: reason => onNotice(reason instanceof Error ? reason.message : 'Kategori özellikleri eşitlenemedi.') })
   const mappings = useQuery({ queryKey: ['attribute-mappings', connectionId, categoryScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attributes?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}`), enabled: !!connectionId && !!categoryScope, retry: false })
   const requirements = categoryRequirements.data ?? []
-  const eligibleAttributes = localAttributes.filter(attribute => requirements.some(req => req.attributeId === attribute.id))
-  const optionAttributes = requirements.filter(item => item.role === 'OPTION').map(item => item.attribute).filter((item, index, items) => items.findIndex(candidate => candidate.id === item.id) === index)
+  const requirementOptionIds = new Set(requirements.filter(item => item.role === 'OPTION').map(item => item.attributeId))
+  // Section 3 creates global panel attributes. They are not required to have a
+  // row in category_requirements before they can be mapped to a marketplace
+  // field; the mapping workspace is where that category-specific relationship
+  // is established. Keep explicit OPTION requirements as a fallback for
+  // existing records whose code predates the role prefix convention.
+  const optionAttributes = localAttributes
+    .filter(attribute => requirementOptionIds.has(attribute.id) || isOptionAttribute(attribute))
+    .filter((item, index, items) => items.findIndex(candidate => candidate.id === item.id) === index)
   const optionAttributeIds = new Set(optionAttributes.map(item => item.id))
-  const productAttributes = eligibleAttributes.filter(attribute => !optionAttributeIds.has(attribute.id))
+  const productAttributes = localAttributes.filter(attribute => attribute.isActive !== false && !optionAttributeIds.has(attribute.id))
   const mappingByLocal = new Map((mappings.data ?? []).map(item => [item.localId, item]))
   const optionMappings = (mappings.data ?? []).filter(item => optionAttributeIds.has(item.localId))
   const optionExternalIds = new Set(optionMappings.map(item => item.externalId))
