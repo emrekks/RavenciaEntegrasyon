@@ -946,6 +946,7 @@ function LegacyMappingPage({ kind }: { kind: 'categories' | 'attributes' }) {
 
 function slug(value: string) { return value.toLocaleLowerCase('tr-TR').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `attr-${Date.now()}` }
 function attributeCodeForRole(title: string, role: 'ATTRIBUTE' | 'OPTION') { return `${role === 'OPTION' ? 'option-' : 'attribute-'}${slug(title)}` }
+function isOptionAttribute(attribute: Pick<LocalAttribute, 'code'>) { return attribute.code.trim().toLowerCase().startsWith('option-') }
 
 function cleanTrendyolCategoryPath(value: string) {
   return value.replace(/\[TDG\]\s*/gi, '').replace(/\(\s*TDG\s*\)\s*/gi, '').replace(/\s*\/\s*/g, ' / ').trim()
@@ -968,7 +969,7 @@ function CategoryRequirementBuilder({ categoryId, categoryVersion, attributes, r
     await onSaved()
   }
   const current = requirements.map(item => ({ attributeId: item.attributeId, isRequired: item.isRequired, allowsCustomValue: item.allowsCustomValue, role: item.role }))
-  const visibleRequirements = categoryId ? requirements : attributes.map(attribute => ({ attributeId: attribute.id, isRequired: false, allowsCustomValue: !attribute.values.length, displayOrder: 0, role: attribute.code.startsWith('option-') ? 'OPTION' as const : 'ATTRIBUTE' as const, attribute }))
+  const visibleRequirements = categoryId ? requirements : attributes.map(attribute => ({ attributeId: attribute.id, isRequired: false, allowsCustomValue: !attribute.values.length, displayOrder: 0, role: isOptionAttribute(attribute) ? 'OPTION' as const : 'ATTRIBUTE' as const, attribute }))
   async function changeRole(item: CategoryRequirementView, role: RequirementRole) {
     try {
       if (role === 'OPTION' && item.role !== 'OPTION' && current.filter(entry => entry.role === 'OPTION').length >= 2) return setFeedback('En fazla iki seçenek başlığı kullanabilirsiniz.')
@@ -1036,7 +1037,7 @@ function PanelAttributeLibraryBuilder({ role, attributes, onNotice }: { role: 'A
   const client = useQueryClient()
   const [title, setTitle] = useState(''); const [values, setValues] = useState<string[]>([]); const [valueDraft, setValueDraft] = useState(''); const [editingId, setEditingId] = useState(''); const [newValues, setNewValues] = useState(''); const [editingValue, setEditingValue] = useState<{ id: string; value: string } | null>(null); const [feedback, setFeedback] = useState(''); const [feedbackTone, setFeedbackTone] = useState<'success' | 'error'>('success')
   const isOption = role === 'OPTION'
-  const records = attributes.filter(attribute => isOption ? attribute.code.startsWith('option-') : !attribute.code.startsWith('option-'))
+  const records = attributes.filter(attribute => isOption ? isOptionAttribute(attribute) : !isOptionAttribute(attribute))
   const editingAttribute = records.find(attribute => attribute.id === editingId) ?? null
   function showFeedback(message: string, tone: 'success' | 'error' = 'success') { setFeedback(message); setFeedbackTone(tone) }
   useEffect(() => {
