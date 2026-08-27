@@ -2655,6 +2655,28 @@ textarea {
 .brand-mapping-inline-editor .searchable-select-menu { z-index: 80 !important; min-width: 270px; }
 .brand-mapping-saved-card tr.is-editing { background: rgba(104, 114, 232, .08) !important; }
 
+/* Değer düzenleyicisini kompakt tut; liste alanı satırları boş yüksekliğe yayılmasın. */
+.panel-attribute-modal-card {
+  width: min(520px, 100%) !important;
+  height: auto !important;
+  max-height: min(560px, calc(100vh - 32px)) !important;
+  grid-template-rows: auto auto auto !important;
+  gap: 10px !important;
+  padding: 14px !important;
+}
+.panel-attribute-modal-card > header { padding-bottom: 10px !important; }
+.panel-attribute-modal-card > header strong { font-size: 14px !important; }
+.panel-attribute-modal-card > header > button { width: 28px !important; min-width: 28px !important; height: 28px !important; min-height: 28px !important; }
+.panel-attribute-add-value input,
+.panel-attribute-add-value button { min-height: 34px !important; }
+.panel-attribute-value-editor {
+  align-content: start !important;
+  gap: 5px !important;
+  max-height: 280px !important;
+}
+.panel-attribute-value-editor > div { min-height: 0 !important; padding: 7px 9px !important; }
+.panel-attribute-value-editor button { width: 26px !important; min-width: 26px !important; height: 26px !important; min-height: 26px !important; }
+
 /* A value editor must trap scrolling inside its own list. */
 body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .panel-attribute-modal { touch-action: none; }
