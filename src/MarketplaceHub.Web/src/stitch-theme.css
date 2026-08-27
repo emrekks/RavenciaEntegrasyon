@@ -1234,6 +1234,7 @@ textarea {
 .mapping-saved-table th:nth-child(4) { width: 108px; }
 .mapping-saved-table th:last-child { width: 92px; text-align: right; }
 .mapping-saved-table td:last-child { text-align: right; }
+.mapping-saved-table td.mapping-empty-table-cell { padding: 34px 16px !important; color: #a5a4b5 !important; text-align: center !important; }
 .trendyol-badge { display: inline-block; padding: 3px 7px; color: #f27a1a; font-size: 10px; font-weight: 700; background: rgba(242, 122, 26, .08); border: 1px solid rgba(242, 122, 26, .25); border-radius: 2px; }
 .mapping-table-status { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; }
 .mapping-table-status i { width: 7px; height: 7px; background: #ff9e9e; border-radius: 50%; box-shadow: 0 0 8px rgba(255, 158, 158, .5); }
@@ -1523,6 +1524,14 @@ textarea {
 .panel-attribute-record-actions button:last-child { color: #ffb8b0 !important; font-size: 18px !important; font-weight: 500; line-height: 1 !important; }
 .panel-attribute-records strong { font-size: 11px; }
 .panel-attribute-records small { color: #9293a3; font-size: 9px; }
+.panel-value-token-input { display: grid; gap: 7px; }
+.panel-value-token-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.panel-value-token-entry button { min-width: 52px !important; }
+.panel-value-token-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.panel-value-token { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 5px 8px; color: #dcdcff; background: rgba(88, 101, 242, .12); border: 1px solid rgba(109, 119, 255, .55); border-radius: 999px; font-size: 10px; }
+.panel-value-token > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel-value-token button { display: grid !important; place-items: center; width: 18px !important; min-width: 18px !important; height: 18px !important; min-height: 18px !important; padding: 0 !important; color: #c6c5ff !important; background: transparent !important; border: 0 !important; border-radius: 50% !important; font-size: 14px !important; line-height: 1 !important; }
+.panel-value-token button:hover { color: #fff !important; background: rgba(109, 119, 255, .3) !important; }
 
 /* Mapping library refinements: list-oriented, quiet, and consistent with the panel. */
 .mapping-local-manager-dialog .platform-category-create {
