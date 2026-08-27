@@ -8634,3 +8634,480 @@ body:has(.product-add-page),
   .invoice-reference-metrics { grid-template-columns: 1fr !important; }
   .invoices-reference-heading-actions { align-items: flex-start !important; flex-direction: column !important; }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Unified workspace surface                                                  */
+/* -------------------------------------------------------------------------- */
+
+:root {
+  --rv-page-gutter: clamp(18px, 2.6vw, 42px);
+  --rv-section-gap: 18px;
+  --rv-control-height: 40px;
+  --rv-radius: 10px;
+  --rv-border: rgba(137, 145, 205, .22);
+  --rv-border-strong: rgba(111, 122, 255, .42);
+  --rv-surface-quiet: #10121c;
+  --rv-surface-raised: #171a26;
+  --rv-surface-soft: #1b1e2b;
+}
+
+/* A single, predictable frame for every authenticated route. */
+.app-shell.stitch-shell > main {
+  min-width: 0;
+  background:
+    radial-gradient(circle at 90% -10%, rgba(88, 101, 242, .08), transparent 28rem),
+    var(--st-surface-lowest, #0d0e16);
+}
+
+.app-shell.stitch-shell .topbar {
+  min-height: 68px;
+  gap: 18px;
+  padding: 12px var(--rv-page-gutter);
+  background: rgba(13, 14, 22, .92);
+  border-bottom: 1px solid rgba(139, 147, 201, .16);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .12);
+}
+
+.app-shell.stitch-shell .topbar-workspace {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.app-shell.stitch-shell .breadcrumb {
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-shell.stitch-shell .breadcrumb strong {
+  color: #cfd3ff;
+  font-size: .69rem;
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell .breadcrumb span {
+  min-width: 0;
+  overflow: hidden;
+  color: #f0f0fb;
+  font-size: .72rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell .top-actions {
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.app-shell.stitch-shell .content {
+  min-width: 0;
+  padding: 30px var(--rv-page-gutter) 48px;
+}
+
+.app-shell.stitch-shell .content > .page-heading {
+  min-width: 0;
+  align-items: flex-end;
+  gap: 18px;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(139, 147, 201, .16);
+}
+
+.app-shell.stitch-shell .content > .page-heading > :first-child {
+  min-width: 0;
+}
+
+.app-shell.stitch-shell .content > .page-heading h1,
+.app-shell.stitch-shell .content > .page-heading h2 {
+  margin: 3px 0 0;
+  color: #f1f1fb;
+  letter-spacing: -.025em;
+}
+
+.app-shell.stitch-shell .content > .page-heading .lede,
+.app-shell.stitch-shell .content > .page-heading > p {
+  max-width: 760px;
+  margin-top: 7px;
+  color: #9297b5;
+}
+
+.app-shell.stitch-shell .page-heading-actions {
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+/* Shared container rhythm. Specific feature classes still own their internal grids. */
+.app-shell.stitch-shell .content > .panel,
+.app-shell.stitch-shell .content > article.panel,
+.app-shell.stitch-shell .content > .card-list > .panel,
+.app-shell.stitch-shell .content > .grid > .panel,
+.app-shell.stitch-shell .content > .split > .panel {
+  border-color: var(--rv-border);
+  border-radius: var(--rv-radius);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, .10);
+}
+
+.app-shell.stitch-shell .content > .grid,
+.app-shell.stitch-shell .content > .split,
+.app-shell.stitch-shell .content > .cards,
+.app-shell.stitch-shell .content > .card-list {
+  gap: var(--rv-section-gap);
+}
+
+.app-shell.stitch-shell .content > .grid > article,
+.app-shell.stitch-shell .content > .split > article {
+  min-width: 0;
+}
+
+.app-shell.stitch-shell .panel > header,
+.app-shell.stitch-shell .panel > .panel-heading,
+.app-shell.stitch-shell .panel > .panel-title,
+.app-shell.stitch-shell .panel > .mapping-section-heading {
+  min-width: 0;
+}
+
+.app-shell.stitch-shell .panel h2,
+.app-shell.stitch-shell .panel h3,
+.app-shell.stitch-shell .panel h4 {
+  color: #f0f0fb;
+  letter-spacing: -.012em;
+}
+
+.app-shell.stitch-shell .panel p,
+.app-shell.stitch-shell .panel small,
+.app-shell.stitch-shell .field-help,
+.app-shell.stitch-shell .lede {
+  color: #9096b2;
+}
+
+/* Controls use one height, one focus treatment and one corner language. */
+.app-shell.stitch-shell input:not([type='checkbox']):not([type='radio']),
+.app-shell.stitch-shell select,
+.app-shell.stitch-shell textarea {
+  min-height: var(--rv-control-height);
+  color: #ececfa;
+  background: var(--rv-surface-quiet);
+  border-color: var(--rv-border);
+  border-radius: 7px;
+}
+
+.app-shell.stitch-shell textarea {
+  min-height: 112px;
+  line-height: 1.55;
+}
+
+.app-shell.stitch-shell input:not([type='checkbox']):not([type='radio']):hover,
+.app-shell.stitch-shell select:hover,
+.app-shell.stitch-shell textarea:hover {
+  border-color: rgba(137, 145, 205, .42);
+}
+
+.app-shell.stitch-shell input:not([type='checkbox']):not([type='radio']):focus,
+.app-shell.stitch-shell select:focus,
+.app-shell.stitch-shell textarea:focus {
+  border-color: #6874ff;
+  box-shadow: 0 0 0 3px rgba(88, 101, 242, .16);
+  outline: none;
+}
+
+.app-shell.stitch-shell :where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid rgba(0, 238, 252, .72);
+  outline-offset: 2px;
+}
+
+.app-shell.stitch-shell button,
+.app-shell.stitch-shell .button-link,
+.app-shell.stitch-shell a.button-link {
+  min-height: 38px;
+  border-radius: 7px;
+  font-weight: 700;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
+}
+
+.app-shell.stitch-shell button:hover:not(:disabled),
+.app-shell.stitch-shell .button-link:hover {
+  transform: translateY(-1px);
+}
+
+.app-shell.stitch-shell button.secondary,
+.app-shell.stitch-shell .button-link.secondary,
+.app-shell.stitch-shell button.ghost,
+.app-shell.stitch-shell .button-link.ghost,
+.app-shell.stitch-shell .secondary {
+  color: #c5c9e7;
+  background: #191c29;
+  border-color: var(--rv-border);
+}
+
+.app-shell.stitch-shell button.secondary:hover:not(:disabled),
+.app-shell.stitch-shell .button-link.secondary:hover,
+.app-shell.stitch-shell button.ghost:hover:not(:disabled),
+.app-shell.stitch-shell .button-link.ghost:hover {
+  color: #f0f0ff;
+  background: #22263a;
+  border-color: var(--rv-border-strong);
+}
+
+.app-shell.stitch-shell .button-row,
+.app-shell.stitch-shell .actions,
+.app-shell.stitch-shell .page-heading-actions,
+.app-shell.stitch-shell .integration-heading-actions,
+.app-shell.stitch-shell .jobs-reference-heading-actions,
+.app-shell.stitch-shell .orders-reference-heading-actions,
+.app-shell.stitch-shell .returns-reference-heading-actions,
+.app-shell.stitch-shell .invoices-reference-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+/* Tabs, toolbars and filters share a quiet inset surface instead of competing borders. */
+.app-shell.stitch-shell .order-tabs,
+.app-shell.stitch-shell .jobs-reference-tabs,
+.app-shell.stitch-shell .invoice-reference-tabs,
+.app-shell.stitch-shell .mapping-section-tabs,
+.app-shell.stitch-shell .mapping-view-tabs,
+.app-shell.stitch-shell .settings-tabs {
+  gap: 3px;
+  padding: 4px;
+  background: var(--rv-surface-quiet);
+  border: 1px solid var(--rv-border);
+  border-radius: 8px;
+}
+
+.app-shell.stitch-shell .order-tabs > button,
+.app-shell.stitch-shell .jobs-reference-tabs > button,
+.app-shell.stitch-shell .invoice-reference-tabs > button,
+.app-shell.stitch-shell .mapping-section-tabs > button,
+.app-shell.stitch-shell .mapping-view-tabs > button,
+.app-shell.stitch-shell .settings-tabs > button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 6px;
+}
+
+.app-shell.stitch-shell .order-tabs > button.active,
+.app-shell.stitch-shell .jobs-reference-tabs > button.active,
+.app-shell.stitch-shell .invoice-reference-tabs > button.active,
+.app-shell.stitch-shell .mapping-section-tabs > button.active,
+.app-shell.stitch-shell .mapping-view-tabs > button.active,
+.app-shell.stitch-shell .settings-tabs > button.active {
+  color: #fff;
+  background: rgba(88, 101, 242, .20);
+  box-shadow: inset 0 -2px 0 #6470ff;
+}
+
+.app-shell.stitch-shell .product-toolbar,
+.app-shell.stitch-shell .orders-reference-filter-shell,
+.app-shell.stitch-shell .returns-reference-filter-shell,
+.app-shell.stitch-shell .invoice-reference-filter-shell,
+.app-shell.stitch-shell .jobs-reference-toolbar,
+.app-shell.stitch-shell .jobs-reference-filter-panel,
+.app-shell.stitch-shell .integration-filter-wrap,
+.app-shell.stitch-shell .mapping-section-toolbar,
+.app-shell.stitch-shell .mapping-target-controls {
+  min-width: 0;
+  padding: 12px;
+  background: rgba(16, 18, 28, .84);
+  border: 1px solid var(--rv-border);
+  border-radius: 9px;
+}
+
+.app-shell.stitch-shell .product-toolbar,
+.app-shell.stitch-shell .jobs-reference-toolbar,
+.app-shell.stitch-shell .mapping-section-toolbar {
+  align-items: center;
+  gap: 10px;
+}
+
+/* Data surfaces remain readable when content, identifiers or localized text is long. */
+.app-shell.stitch-shell .data-table,
+.app-shell.stitch-shell .table-wrap,
+.app-shell.stitch-shell .product-catalog-table,
+.app-shell.stitch-shell .jobs-reference-table,
+.app-shell.stitch-shell .invoice-reference-table,
+.app-shell.stitch-shell .mapping-saved-table {
+  min-width: 0;
+  border: 1px solid var(--rv-border);
+  border-radius: 9px;
+  overflow: auto;
+}
+
+.app-shell.stitch-shell .data-table th,
+.app-shell.stitch-shell .data-table td,
+.app-shell.stitch-shell .jobs-reference-row > *,
+.app-shell.stitch-shell .invoice-reference-row > *,
+.app-shell.stitch-shell .product-catalog-row > * {
+  overflow-wrap: anywhere;
+}
+
+.app-shell.stitch-shell .product-catalog-head,
+.app-shell.stitch-shell .jobs-reference-table > header,
+.app-shell.stitch-shell .invoice-reference-head {
+  color: #aeb4d5;
+  background: #191c29;
+  border-bottom-color: var(--rv-border);
+}
+
+.app-shell.stitch-shell .product-catalog-row,
+.app-shell.stitch-shell .jobs-reference-row,
+.app-shell.stitch-shell .invoice-reference-row {
+  border-bottom-color: rgba(137, 145, 205, .14);
+}
+
+.app-shell.stitch-shell .product-catalog-row:hover,
+.app-shell.stitch-shell .jobs-reference-row:hover,
+.app-shell.stitch-shell .invoice-reference-row:hover {
+  background: rgba(88, 101, 242, .055);
+}
+
+.app-shell.stitch-shell .empty,
+.app-shell.stitch-shell .jobs-reference-empty,
+.app-shell.stitch-shell .jobs-reference-state,
+.app-shell.stitch-shell .invoice-reference-state,
+.app-shell.stitch-shell .panel-value-empty {
+  color: #9197b4;
+  background: rgba(16, 18, 28, .72);
+  border-color: var(--rv-border);
+  border-radius: 8px;
+}
+
+.app-shell.stitch-shell .status,
+.app-shell.stitch-shell .badge,
+.app-shell.stitch-shell .tag,
+.app-shell.stitch-shell .attr-tag {
+  border-radius: 999px;
+}
+
+.app-shell.stitch-shell .notice,
+.app-shell.stitch-shell .error,
+.app-shell.stitch-shell .success,
+.app-shell.stitch-shell .reference-card-notice {
+  border-radius: 8px;
+}
+
+/* All menus/popovers use the same elevated surface and do not leak horizontally. */
+.app-shell.stitch-shell .topbar-popover,
+.app-shell.stitch-shell .bulk-action-menu,
+.app-shell.stitch-shell .integration-filter-menu,
+.app-shell.stitch-shell .attr-filter-popover,
+.app-shell.stitch-shell .panel-category-picker,
+.app-shell.stitch-shell .panel-attribute-modal-card,
+.app-shell.stitch-shell .jobs-reference-range-menu,
+.app-shell.stitch-shell .row-menu > div,
+.app-shell.stitch-shell .operation-details > div,
+.app-shell.stitch-shell .quick-edit-selection {
+  background: #191c29;
+  border: 1px solid var(--rv-border-strong);
+  border-radius: 8px;
+  box-shadow: 0 20px 46px rgba(0, 0, 0, .38);
+}
+
+.app-shell.stitch-shell .topbar-popover a:hover,
+.app-shell.stitch-shell .bulk-action-menu button:hover,
+.app-shell.stitch-shell .integration-filter-menu label:hover,
+.app-shell.stitch-shell .panel-category-picker button:hover,
+.app-shell.stitch-shell .jobs-reference-range-menu button:hover {
+  background: rgba(88, 101, 242, .14);
+}
+
+/* Keep the left rail fixed while only the workspace scrolls. */
+.app-shell.stitch-shell > aside {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  align-self: flex-start;
+  z-index: 20;
+}
+
+.app-shell.stitch-shell > main {
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+@media (max-width: 1120px) {
+  .app-shell.stitch-shell .workspace-connection-select > span,
+  .app-shell.stitch-shell .live-state {
+    display: none;
+  }
+
+  .app-shell.stitch-shell .workspace-connection-select select {
+    max-width: 150px;
+  }
+}
+
+@media (max-width: 860px) {
+  .app-shell.stitch-shell .topbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .app-shell.stitch-shell .topbar-workspace {
+    flex-basis: 100%;
+  }
+
+  .app-shell.stitch-shell .top-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .app-shell.stitch-shell .content > .page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-shell.stitch-shell .page-heading-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell.stitch-shell .content {
+    padding: 22px 14px 34px;
+  }
+
+  .app-shell.stitch-shell .topbar {
+    padding-inline: 14px;
+  }
+
+  .app-shell.stitch-shell .top-actions {
+    justify-content: flex-start;
+  }
+
+  .app-shell.stitch-shell .top-actions > * {
+    max-width: 100%;
+  }
+
+  .app-shell.stitch-shell .topbar .user-menu-button i,
+  .app-shell.stitch-shell .topbar .environment-badge {
+    display: none;
+  }
+
+  .app-shell.stitch-shell .order-tabs,
+  .app-shell.stitch-shell .jobs-reference-tabs,
+  .app-shell.stitch-shell .invoice-reference-tabs,
+  .app-shell.stitch-shell .mapping-section-tabs,
+  .app-shell.stitch-shell .mapping-view-tabs,
+  .app-shell.stitch-shell .settings-tabs {
+    overflow-x: auto;
+  }
+
+  .app-shell.stitch-shell .order-tabs > button,
+  .app-shell.stitch-shell .jobs-reference-tabs > button,
+  .app-shell.stitch-shell .invoice-reference-tabs > button,
+  .app-shell.stitch-shell .mapping-section-tabs > button,
+  .app-shell.stitch-shell .mapping-view-tabs > button,
+  .app-shell.stitch-shell .settings-tabs > button {
+    flex: 0 0 auto;
+  }
+}
