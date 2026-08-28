@@ -130,8 +130,16 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         catch (JsonException) { return AdapterResult<RemoteProduct?>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
-    public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) =>
-        await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.ProductCreate, publication.PayloadJson, "PRODUCT_CREATE_V2", cancellationToken);
+    public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Trendyol PRODUCT_CREATE request started for connection {ConnectionId} and product {ProductId}.", context.ConnectionId, publication.ProductId);
+        var result = await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.ProductCreate, publication.PayloadJson, "PRODUCT_CREATE_V2", cancellationToken);
+        if (result.IsSuccess)
+            logger.LogInformation("Trendyol PRODUCT_CREATE accepted for product {ProductId}; external operation {ExternalOperationId}.", publication.ProductId, result.Value!.ExternalOperationId);
+        else
+            logger.LogWarning("Trendyol PRODUCT_CREATE failed for product {ProductId}: {ErrorCode}.", publication.ProductId, result.Error?.Code);
+        return result;
+    }
 
     public async Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
         await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.ProductUpdateUnapproved, publication.UnapprovedPayloadJson, "PRODUCT_UPDATE_UNAPPROVED_V2", cancellationToken);
@@ -147,8 +155,15 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
 
     public async Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken)
     {
+        logger.LogInformation("Trendyol PRODUCT_CREATE batch poll started for operation {ExternalOperationId}.", externalOperationId);
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemoteOperationStatus>.Failure(TrendyolErrorMapper.Configuration()); var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.BatchResult(authorized.Connection.ExternalStoreId, externalOperationId), null, cancellationToken); if (!response.IsSuccess) return AdapterResult<RemoteOperationStatus>.Failure(response.Error!, response.RateLimit);
-        try { return AdapterResult<RemoteOperationStatus>.Success(TrendyolJsonMapper.Batch(response.Value!, externalOperationId), response.RateLimit); } catch (JsonException) { return AdapterResult<RemoteOperationStatus>.Failure(TrendyolErrorMapper.Contract()); }
+        try
+        {
+            var result = TrendyolJsonMapper.Batch(response.Value!, externalOperationId);
+            logger.LogInformation("Trendyol PRODUCT_CREATE batch poll completed for operation {ExternalOperationId}: status {Status}, lines {LineCount}, accepted {AcceptedCount}, rejected {RejectedCount}.", externalOperationId, result.Status, result.Lines.Count, result.Lines.Count(x => x.Succeeded), result.Lines.Count(x => !x.Succeeded));
+            return AdapterResult<RemoteOperationStatus>.Success(result, response.RateLimit);
+        }
+        catch (JsonException) { return AdapterResult<RemoteOperationStatus>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
     public async Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken)

@@ -121,6 +121,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var completed = await jobs.CompleteAsync(job.Id, job.LeaseToken, result, stoppingToken);
         if (!completed)
             logger.LogError("Job {JobId} completion was fenced because the lease owner or expiry no longer matched", job.Id);
+        else
+            logger.LogInformation("Job {JobId} ({JobType}) completed with {CompletionKind}; error {ErrorCode}", job.Id, job.JobType, result.Kind, result.ErrorCode ?? "none");
     }
 
     private async Task<bool> MaintainLeaseAsync(LeasedJob job, CancellationTokenSource execution, CancellationToken cancellationToken)
