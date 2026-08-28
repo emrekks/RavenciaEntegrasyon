@@ -9161,6 +9161,69 @@ body:has(.product-add-page),
   }
 }
 
+/* Product actions report their result in one consistent top-right status surface. */
+.app-shell.stitch-shell .operation-feedback-toast {
+  position: fixed !important;
+  top: 76px;
+  right: 24px;
+  z-index: 2400;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: min(390px, calc(100vw - 32px));
+  min-height: 64px;
+  margin: 0 !important;
+  padding: 13px 13px 13px 14px !important;
+  color: #e7e8f4 !important;
+  background: #1a1c2a !important;
+  border: 1px solid rgba(124, 134, 255, .62) !important;
+  border-left: 3px solid #7c86ff !important;
+  border-radius: 10px !important;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, .46), 0 0 24px rgba(88, 101, 242, .14) !important;
+  animation: ravencia-operation-toast-in .2s ease-out;
+  pointer-events: auto;
+}
+.app-shell.stitch-shell .operation-feedback-toast.success { border-color: rgba(67, 211, 158, .56) !important; border-left-color: #43d39e !important; }
+.app-shell.stitch-shell .operation-feedback-toast.error { border-color: rgba(255, 142, 160, .62) !important; border-left-color: #ff8ea0 !important; }
+.app-shell.stitch-shell .operation-feedback-toast.info { border-color: rgba(124, 134, 255, .62) !important; border-left-color: #7c86ff !important; }
+.operation-feedback-toast .operation-feedback-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  margin-top: 1px;
+  color: #7c86ff;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 800;
+}
+.operation-feedback-toast.success .operation-feedback-icon { color: #43d39e; }
+.operation-feedback-toast.error .operation-feedback-icon { color: #ff8ea0; }
+.operation-feedback-toast.info .operation-feedback-icon { color: #7c86ff; }
+.operation-feedback-toast > div { min-width: 0; flex: 1; }
+.operation-feedback-toast strong { display: block; color: #f2f1fa; font-size: 12px; line-height: 1.25; }
+.operation-feedback-toast p { margin: 4px 0 0; color: #b7bad0; font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.operation-feedback-toast > button {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #aeb2ca;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.operation-feedback-toast > button:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+@keyframes ravencia-operation-toast-in { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: none; } }
+@media (max-width: 720px) {
+  .app-shell.stitch-shell .operation-feedback-toast { top: 66px; right: 12px; width: calc(100vw - 24px); }
+}
+
 /* Category attribute mapping is a focused two-page workspace. */
 .app-shell.stitch-shell .mapping-page-stepper {
   display: grid;

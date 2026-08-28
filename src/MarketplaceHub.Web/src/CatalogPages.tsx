@@ -31,6 +31,12 @@ type PublicationStatus = { productId: string; connectionId: string; profileId: s
 const key = () => crypto.randomUUID()
 const isProductPublicationConnection = (item: TrendyolConnection) => item.platformCode.trim().toUpperCase() === 'TRENDYOL' && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
 const ErrorBox = ({ error }: { error: unknown }) => error ? <div className="error" role="alert">{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</div> : null
+type OperationFeedback = { message: string; kind: 'success' | 'error' | 'info' }
+function OperationFeedbackToast({ feedback, onClose }: { feedback: OperationFeedback | null; onClose: () => void }) {
+  if (!feedback) return null
+  const title = feedback.kind === 'success' ? 'İşlem başarılı' : feedback.kind === 'error' ? 'İşlem başarısız' : 'İşlem sürüyor'
+  return <div className={`operation-feedback-toast ${feedback.kind}`} role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live="polite"><span className="operation-feedback-icon" aria-hidden="true">{feedback.kind === 'success' ? '✓' : feedback.kind === 'error' ? '!' : '…'}</span><div><strong>{title}</strong><p>{feedback.message}</p></div><button type="button" onClick={onClose} aria-label="Durum raporunu kapat">×</button></div>
+}
 
 function LocalImagePreview({ file, alt, caption, onRemove, onZoom }: { file: File, alt: string, caption: string, onRemove?: () => void, onZoom?: (url: string) => void }) {
   const [url, setUrl] = useState('');
@@ -60,29 +66,30 @@ function Page({ title, eyebrow, action, className, children }: { title: string; 
 
 type QuickEditMode = 'stock' | 'price' | 'both'
 
-function VariantQuickEditor({ variant, connections, mode = 'both', onChanged }: { variant: Variant; connections: TrendyolConnection[]; mode?: QuickEditMode; onChanged: () => Promise<unknown> }) {
+function VariantQuickEditor({ variant, connections, mode = 'both', onChanged, onResult }: { variant: Variant; connections: TrendyolConnection[]; mode?: QuickEditMode; onChanged: () => Promise<unknown>; onResult?: (message: string, kind: OperationFeedback['kind']) => void }) {
   const [notice, setNotice] = useState('')
+  function report(message: string, kind: OperationFeedback['kind'] = 'info') { setNotice(message); onResult?.(message, kind) }
   async function stock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const data = new FormData(event.currentTarget); const target = Number(data.get('stock')); const delta = target - variant.onHand
-    if (!Number.isFinite(target) || target < 0) return setNotice('Stok sıfır veya daha büyük olmalıdır.')
-    if (delta === 0) return setNotice('Stok zaten bu değerde.')
-    try { await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Ürün kartı hızlı stok düzenleme', sourceEventId: key() }) }); setNotice('Stok güncellendi.'); await onChanged() } catch (error) { setNotice(error instanceof Error ? error.message : 'Stok güncellenemedi.') }
+    if (!Number.isFinite(target) || target < 0) return report('Stok sıfır veya daha büyük olmalıdır.', 'error')
+    if (delta === 0) return report('Stok zaten bu değerde.')
+    try { await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Ürün kartı hızlı stok düzenleme', sourceEventId: key() }) }); report('Stok güncellendi.', 'success'); await onChanged() } catch (error) { report(error instanceof Error ? error.message : 'Stok güncellenemedi.', 'error') }
   }
   async function price(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const data = new FormData(event.currentTarget); const salePrice = Number(data.get('salePrice')); const listPrice = Number(data.get('listPrice')); const connectionId = variant.offerId ? '' : connections[0]?.id ?? ''
-    if (!Number.isFinite(salePrice) || !Number.isFinite(listPrice) || salePrice < 0 || listPrice < salePrice) return setNotice('Liste fiyatı satış fiyatından küçük olamaz.')
+    if (!Number.isFinite(salePrice) || !Number.isFinite(listPrice) || salePrice < 0 || listPrice < salePrice) return report('Liste fiyatı satış fiyatından küçük olamaz.', 'error')
     const body = { connectionId, variantId: variant.id, listPrice, salePrice, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Ürün kartı hızlı fiyat düzenleme' }
     try {
       if (variant.offerId) {
-        if (variant.offerVersion == null) return setNotice('Fiyat sürümü eksik; sayfayı yenileyip tekrar deneyin.')
+        if (variant.offerVersion == null) return report('Fiyat sürümü eksik; sayfayı yenileyip tekrar deneyin.', 'error')
         await hubApi(`/channel-offers/${variant.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${variant.offerVersion}"` }, body: JSON.stringify(body) })
       }
       else {
-        if (!connectionId) return setNotice('İlk fiyat için aktif platform bağlantısı seçin.')
+        if (!connectionId) return report('İlk fiyat için aktif platform bağlantısı seçin.', 'error')
         await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify(body) })
       }
-      setNotice('Fiyat güncellendi.'); await onChanged()
-    } catch (error) { setNotice(error instanceof Error ? error.message : 'Fiyat güncellenemedi.') }
+      report('Fiyat güncellendi.', 'success'); await onChanged()
+    } catch (error) { report(error instanceof Error ? error.message : 'Fiyat güncellenemedi.', 'error') }
   }
   return <div className={`variant-quick-grid ${mode}`}>
     {mode !== 'price' && <form onSubmit={stock}><label>Stok<input name="stock" type="number" min="0" step="1" defaultValue={variant.onHand} /></label><button>Kaydet</button></form>}
@@ -561,7 +568,7 @@ function CategoryAttributeMappingPanel({
 
 export function NewProductPage({ editProductId }: { editProductId?: string } = {}) {
   const client = useQueryClient();
-  const [error, setError] = useState<unknown>(); const [created, setCreated] = useState<Product>(); const [notice, setNotice] = useState(''); const [submitting, setSubmitting] = useState(false); const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
+  const [error, setError] = useState<unknown>(); const [created, setCreated] = useState<Product>(); const [notice, setNotice] = useState(''); const [feedback, setFeedback] = useState<OperationFeedback | null>(null); const [submitting, setSubmitting] = useState(false); const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '2', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([])
   const initializedEditProductKey = useRef<string | null>(null)
@@ -596,6 +603,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
+  const feedbackTimer = useRef<number | null>(null)
+  const initialEditMediaUrl = useRef('')
+  function showFeedback(message: string, kind: OperationFeedback['kind']) {
+    if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current)
+    setFeedback({ message, kind })
+    feedbackTimer.current = window.setTimeout(() => setFeedback(null), kind === 'info' ? 7000 : 5500)
+  }
+  useEffect(() => () => { if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current) }, [])
   const productToEdit = useQuery({ queryKey: ['product', editProductId], queryFn: () => hubApi<Product>(`/products/${editProductId}`), enabled: !!editProductId })
   const categories = useQuery({ queryKey: ['categories', 'new-product'], queryFn: () => loadAllPages<Category>('/catalog/categories') })
   const brands = useQuery({ queryKey: ['brands', 'new-product'], queryFn: () => loadAllPages<Brand>('/catalog/brands') })
@@ -630,6 +645,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     initializedEditProductKey.current = productKey
     const primary = product.variants[0]
     setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: primary?.sku ?? '', barcode: primary?.barcode ?? '', modelCode: primary?.modelCode ?? product.modelCode ?? '', weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(primary?.listPrice ?? primary?.salePrice ?? 0), salePrice: String(primary?.salePrice ?? 0), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: product.primaryImageUrl ?? '', status: product.status || 'ACTIVE' })
+    initialEditMediaUrl.current = product.primaryImageUrl ?? ''
+    setMediaFiles([])
     setVariantRows(product.variants.map(variant => ({ key: variant.id, optionSignature: variant.optionSignature || 'Tek Ürün', options: {}, attributeValueIds: {}, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.salePrice ?? 0, listPrice: variant.listPrice ?? variant.salePrice ?? 0 })))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
@@ -663,16 +680,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const values = current[attributeId] ?? []
       if (values.includes(valueId)) return { ...current, [attributeId]: values.filter(item => item !== valueId) }
       const selectedOptionalAttributeCount = allRequirements.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && (current[item.attributeId]?.length ?? 0) > 0).length
-      if (requirement?.role === 'ATTRIBUTE' && !requirement.isRequired && values.length === 0 && selectedOptionalAttributeCount >= MAX_PRODUCT_ATTRIBUTES) { setNotice(`Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`); return current }
+      if (requirement?.role === 'ATTRIBUTE' && !requirement.isRequired && values.length === 0 && selectedOptionalAttributeCount >= MAX_PRODUCT_ATTRIBUTES) { const message = `Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`; setNotice(message); showFeedback(message, 'error'); return current }
       return { ...current, [attributeId]: requirement?.attribute.dataType === 'SINGLE_SELECT' ? [valueId] : [...values, valueId] }
     })
   }
   function toggleVariantAttribute(attributeId: string) {
     const requirement = allRequirements.find(item => item.attributeId === attributeId)
-    if (requirement?.role !== 'OPTION') { setNotice('Varyant ekseni yalnız Seçenek Eşitleme olarak işaretlenmiş başlıklardan seçilebilir.'); return }
+    if (requirement?.role !== 'OPTION') { const message = 'Varyant ekseni yalnız Seçenek Eşitleme olarak işaretlenmiş başlıklardan seçilebilir.'; setNotice(message); showFeedback(message, 'error'); return }
     setVariantAttributeIds(current => {
       if (current.includes(attributeId)) return current.filter(item => item !== attributeId)
-      if (current.length >= 2) { setNotice('Bir ürün en fazla 2 seçenek grubuyla varyantlanabilir.'); return current }
+      if (current.length >= 2) { const message = 'Bir ürün en fazla 2 seçenek grubuyla varyantlanabilir.'; setNotice(message); showFeedback(message, 'error'); return current }
       return [...current, attributeId]
     })
   }
@@ -680,7 +697,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     try {
       const generated = buildVariantMatrix(requirements.data ?? [], variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, initialStock)
       if (!generated.length) {
-        setNotice('Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.')
+        const message = 'Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.'; setNotice(message); showFeedback(message, 'error')
         return
       }
       setVariantRows(current => {
@@ -695,10 +712,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         })
         return [...merged, ...Array.from(existingMap.values())]
       })
-      setNotice(`${generated.length} varyant satırı hazırlandı.`)
-    } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Varyantlar oluşturulamadı.') }
+      const message = `${generated.length} varyant satırı hazırlandı.`; setNotice(message); showFeedback(message, 'success')
+    } catch (reason) { const message = reason instanceof Error ? reason.message : 'Varyantlar oluşturulamadı.'; setNotice(message); showFeedback(message, 'error') }
   }
-  function clearVariants() { setVariantRows([]); setNotice('Oluşan varyant satırları temizlendi.') }
+  function clearVariants() { setVariantRows([]); const message = 'Oluşan varyant satırları temizlendi.'; setNotice(message); showFeedback(message, 'success') }
   function updateVariantRow(keyValue: string, field: keyof VariantDraft, value: string) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, [field]: field === 'stock' || field === 'salePrice' || field === 'listPrice' ? Number(value || 0) : value })) }
   function swapVariants(sourceKey: string, targetKey: string) {
     if (sourceKey === targetKey) return
@@ -709,11 +726,15 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       return next
     })
   }
-  function updateChannel(id: string) { setSelectedChannelIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]) }
+  function updateChannel(id: string) {
+    const selected = selectedChannelIds.includes(id)
+    setSelectedChannelIds(current => selected ? current.filter(item => item !== id) : [...current, id])
+    showFeedback(selected ? 'Yayın kanalı seçimden çıkarıldı.' : 'Yayın kanalı seçildi.', 'info')
+  }
   function applyBulk() {
     const stock = bulkStock === '' ? null : Number(bulkStock); const sale = bulkSalePrice === '' ? null : Number(bulkSalePrice); const list = bulkListPrice === '' ? null : Number(bulkListPrice)
     setVariantRows(rows => rows.map(row => ({ ...row, stock: stock == null || !Number.isFinite(stock) ? row.stock : stock, salePrice: sale == null || !Number.isFinite(sale) ? row.salePrice : sale, listPrice: list == null || !Number.isFinite(list) ? row.listPrice : list })))
-    setNotice('Toplu stok ve fiyat değerleri varyantlara uygulandı.')
+    const message = 'Toplu stok ve fiyat değerleri varyantlara uygulandı.'; setNotice(message); showFeedback(message, 'success')
   }
 
   function rowsForSubmit() {
@@ -750,13 +771,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const submitter = (event.nativeEvent as SubmitEvent).submitter
-    const saveAndStay = submitter?.getAttribute('data-submit-intent') === 'save'
+    const submitData = new FormData(event.currentTarget)
+    const saveAndStay = submitter?.getAttribute('data-submit-intent') === 'save' || submitData.get('intent') === 'save'
     if (wizardStep !== 2 && !saveAndStay) {
       setWizardStep(2)
       return
     }
-    setError(undefined); setNotice(''); setSubmitting(true); let productCreated: Product | undefined
+    setError(undefined); setNotice(''); showFeedback(editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info'); setSubmitting(true); let productCreated: Product | undefined
     try {
+      if (form.categoryId && requirements.isLoading) throw new Error('Kategori özellikleri yükleniyor. Kaydetmeden önce kısa süre bekleyin.')
+      if (form.categoryId && requirements.isError) throw new Error('Kategori özellikleri alınamadı. Önce kategori eşleştirmesini kontrol edin.')
       const requirementList = requirements.data ?? []; const rows = rowsForSubmit(); validate(rows)
       const globalAttributes = requirementList.filter(item => !variantAttributeIds.includes(item.attributeId)).flatMap((item, index) => productAttributePayload(item, attributeSelections[item.attributeId] ?? [], attributeTextValues[item.attributeId] ?? '', index))
       const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : Number(form.desi) || 1, options: row.options, attributes: Object.entries(row.attributeValueIds).map(([attributeId, valueId], attributeIndex) => ({ attributeId, valueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: index * 100 + attributeIndex })) })
@@ -765,7 +789,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         ? await hubApi<Product>(`/products/${productToEdit.data.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${productToEdit.data.version}"` }, body: JSON.stringify({ title: form.title, status: form.status, description: form.description, brandId: form.brandId || null, categoryId: form.categoryId || null, attributes: globalAttributes, variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload), variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({ id: row.key, sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null })) }) })
         : await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ title: form.title, status: form.status, description: form.description, brandId: form.brandId || null, categoryId: form.categoryId || null, attributes: globalAttributes, variants: rows.map(variantPayload) }) })
       productCreated = product; setCreated(product); const completed = ['ürün']; const warnings: string[] = []
-      for (const [index, url] of mediaUrls.entries()) await hubApi('/files/product-media-url', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: null, url, mediaRole: index === 0 ? 'PRIMARY' : 'GALLERY', sortOrder: index, altText: form.title }) })
+      const mediaUrlsToPersist = editProductId && form.mediaUrls.trim() === initialEditMediaUrl.current.trim() ? [] : mediaUrls
+      for (const [index, url] of mediaUrlsToPersist.entries()) await hubApi('/files/product-media-url', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: null, url, mediaRole: index === 0 ? 'PRIMARY' : 'GALLERY', sortOrder: index, altText: form.title }) })
       for (const [fileIndex, file] of mediaFiles.entries()) { const data = new FormData(); data.set('file', file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: data }) }
       if (mediaUrls.length || mediaFiles.length) completed.push('görseller')
       const rowsBySku = new Map(rows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
@@ -792,13 +817,18 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           completed.push(`yayın işi ${accepted.jobId}`)
         } catch (reason) { warnings.push(reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.') }
       }
-      setNotice(`${completed.join(', ')} kaydedildi.${warnings.length ? ` Yayın uyarısı: ${warnings.join(' ')}` : ''}`)
+      const message = `${completed.join(', ')} kaydedildi.${warnings.length ? ` Yayın uyarısı: ${warnings.join(' ')}` : ''}`
+      setNotice(message); showFeedback(message, warnings.length ? 'info' : 'success')
       await client.invalidateQueries({ queryKey: ['products'] })
       if (editProductId) {
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
         await productToEdit.refetch()
       }
-    } catch (reason) { setError(reason); if (productCreated) setNotice('Ürün oluşturuldu; sonraki stok, fiyat, görsel veya yayın adımlarından biri tamamlanamadı. Ürün detayından devam edin.') } finally { setSubmitting(false) }
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
+      const feedbackMessage = productCreated ? `Ürün kaydedildi ancak sonraki işlem tamamlanamadı: ${message}` : message
+      setError(reason); setNotice(feedbackMessage); showFeedback(feedbackMessage, 'error')
+    } finally { setSubmitting(false) }
   }
 
   const publishConnections = (connections.data?.items ?? []).filter(isProductPublicationConnection)
@@ -975,7 +1005,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     <section className="product-publish-step" aria-label={editProductId ? 'Ürün yayınlama ve güncelleme' : 'Ürün yayınlama'}><div className="product-publish-layout"><div className="product-publish-main"><div className="publish-platform-grid">{platformCards.length ? platformCards.map(card => { const selected = selectedChannelIds.includes(card.connection.id); return <article className={`publish-platform-card ${selected ? 'selected' : ''}`} key={card.connection.id}><button type="button" className="publish-platform-card-head" onClick={() => updateChannel(card.connection.id)} aria-pressed={selected}><span className={`publish-platform-mark ${card.tone}`}>{card.initial}</span><span><strong>{card.name}</strong><small>{selected ? 'Yayın için seçildi' : 'Bağlantı hazır'}</small></span><i className={`publish-platform-toggle ${selected ? 'on' : ''}`} aria-hidden="true"><b /></i></button><dl className="publish-platform-facts"><div><dt>Mağaza</dt><dd>{card.connection.externalStoreId || '—'}</dd></div><div><dt>Platform</dt><dd>{card.connection.platformCode}</dd></div><div><dt>Durum</dt><dd className="success">Aktif bağlantı</dd></div></dl></article> }) : <div className="publish-connections-empty"><strong>Aktif bağlantı bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p><Link to="/integrations">Platformları yönet <span aria-hidden="true">→</span></Link></div>}</div><details className="scheduled-publish-panel" open={scheduledPublishOpen} onToggle={event => setScheduledPublishOpen((event.currentTarget as HTMLDetailsElement).open)}><summary><span><b aria-hidden="true">◷</b> Yayın kuyruğu</span><strong aria-hidden="true">⌄</strong></summary><div className="scheduled-publish-info"><strong>{editProductId ? 'Güncelleme ve yayın kuyruğu hazır' : 'Otomatik sıraya alma aktif'}</strong><p>{editProductId ? 'Değişiklikler kaydedildikten sonra seçtiğiniz aktif platformlarda yayın veya güncelleme işi oluşturulur.' : 'Ürün oluşturulduktan sonra seçtiğiniz aktif platformlarda yayın kuyruğuna alınır.'}</p><small>Planlı tarih ve saat seçimi platform bağlantısı desteklediğinde etkinleşecektir.</small></div></details></div><aside className="publish-checklist-panel"><div className="publish-checklist-heading"><span aria-hidden="true">☷</span><div><h2>Kontrol Listesi</h2><p>Yayınlamadan önce son kontroller</p></div></div><div className="publish-checklist-items">{productChecks.map(check => <article className={check.ok ? 'complete' : 'incomplete'} key={check.title}><span aria-hidden="true">{check.ok ? '✓' : '!'}</span><div><strong>{check.title}</strong><p>{check.detail}</p></div></article>)}{selectedPublishConnections.length === 0 && <article className="publish-check-warning"><span aria-hidden="true">!</span><div><strong>Yayın platformu seçilmedi</strong><p>Ürünü yayınlamak istediğiniz aktif platformları seçin.</p></div></article>}</div><div className="publish-checklist-footer"><span>Yayınlanacak Platform</span><strong>{selectedPublishConnections.length}</strong><button type="submit" disabled={submitting}>{submitting ? (editProductId ? 'Kaydediliyor…' : 'Ürün oluşturuluyor…') : (editProductId ? 'Değişiklikleri kaydet' : '🚀 Ürünü Oluştur')}</button><small>{editProductId ? 've seçili platformları güncelle' : 've seçili platformlarda yayınla'}</small></div></aside></div></section>
 
     <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId && <button type="submit" className="secondary" data-submit-intent="save" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button>}<button type="button" onClick={() => setWizardStep(2)}>Yayınlamaya devam et <span aria-hidden="true">→</span></button></div></section>
-    <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />{notice && <p className="notice" role="status">{notice}</p>}{created && <p className="success">Oluşturuldu: <Link to={`/products/${created.id}`}>ürünü aç</Link></p>}
+    <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />{created && <p className="success">Oluşturuldu: <Link to={`/products/${created.id}`}>ürünü aç</Link></p>}
+    <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
   </form></Page>
 }
