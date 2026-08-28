@@ -743,10 +743,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
   function validate(rows: VariantDraft[]) {
     const issues: string[] = []; const requirementList = requirements.data ?? []
+    const requiresCompleteCatalog = !editProductId || selectedChannelIds.length > 0
     if (variantAttributeIds.length > 2 || variantAttributeIds.some(id => requirementList.find(item => item.attributeId === id)?.role !== 'OPTION')) issues.push('Varyant için en fazla 2 Seçenek Eşitleme başlığı kullanılabilir.')
     const selectedOptionalProductAttributes = requirementList.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && ((attributeSelections[item.attributeId]?.length ?? 0) > 0 || Boolean((attributeTextValues[item.attributeId] ?? '').trim()))).length
     if (selectedOptionalProductAttributes > MAX_PRODUCT_ATTRIBUTES) issues.push(`Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`)
-    if (!form.title.trim()) issues.push('Ürün adı zorunludur.'); if (!form.description.trim()) issues.push('Açıklama zorunludur.'); if (!form.categoryId) issues.push('Panel kategorisi zorunludur.')
+    if (!form.title.trim()) issues.push('Ürün adı zorunludur.')
+    if (requiresCompleteCatalog && !form.description.trim()) issues.push('Açıklama zorunludur.')
+    if (requiresCompleteCatalog && !form.categoryId) issues.push('Panel kategorisi zorunludur.')
     for (const requirement of requirementList) {
       const selectedCount = attributeSelections[requirement.attributeId]?.length ?? 0
       if (!variantAttributeIds.includes(requirement.attributeId) && requirement.attribute.dataType === 'SINGLE_SELECT' && selectedCount > 1) issues.push(`${requirement.attribute.name} yalnız bir ürün değeri kabul eder.`)
@@ -768,11 +771,21 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (issues.length) throw new Error(issues.join(' '))
   }
 
+  function handleInvalid(event: FormEvent<HTMLFormElement>) {
+    const target = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    const message = target.validationMessage || 'Lütfen zorunlu alanları doldurun.'
+    setError(new Error(message))
+    setNotice(message)
+    showFeedback(message, 'error')
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const submitter = (event.nativeEvent as SubmitEvent).submitter
     const submitData = new FormData(event.currentTarget)
-    const saveAndStay = submitter?.getAttribute('data-submit-intent') === 'save' || submitData.get('intent') === 'save'
+    const saveAndStay = submitter?.getAttribute('data-submit-intent') === 'save'
+      || (submitter?.getAttribute('name') === 'intent' && submitter?.getAttribute('value') === 'save')
+      || submitData.get('intent') === 'save'
     if (wizardStep !== 2 && !saveAndStay) {
       setWizardStep(2)
       return
@@ -850,7 +863,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     { title: 'Varyant Bilgileri', detail: hasVariantData ? 'Varyant yapısı yayınlanmaya hazır.' : 'Seçilen seçenekler için varyant satırlarını oluşturun.', ok: hasVariantData }
   ]
 
-  return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog"><p className="lede page-lede">Kategori özellikleri, varyant kombinasyonları, stok, fiyat ve Trendyol yayın kuyruğu tek ürün çalışma alanında yönetilir.</p><div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>ÜRÜN BİLGİLERİ &amp; VARYANTLAR</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>YAYINLAMA</strong></button></div></div></div><form className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit}>
+  return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog"><p className="lede page-lede">Kategori özellikleri, varyant kombinasyonları, stok, fiyat ve Trendyol yayın kuyruğu tek ürün çalışma alanında yönetilir.</p><div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>ÜRÜN BİLGİLERİ &amp; VARYANTLAR</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>YAYINLAMA</strong></button></div></div></div><form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid}>
     <div className="product-top-layout">
       <section className="panel product-step-card product-basics-card">
         <div className="editor-section-title"><span>1</span><div><h2>Temel ürün bilgileri</h2><p>Ürün kartının temel başlığı ve katalog bilgileri.</p></div></div>
@@ -1004,7 +1017,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
 
     <section className="product-publish-step" aria-label={editProductId ? 'Ürün yayınlama ve güncelleme' : 'Ürün yayınlama'}><div className="product-publish-layout"><div className="product-publish-main"><div className="publish-platform-grid">{platformCards.length ? platformCards.map(card => { const selected = selectedChannelIds.includes(card.connection.id); return <article className={`publish-platform-card ${selected ? 'selected' : ''}`} key={card.connection.id}><button type="button" className="publish-platform-card-head" onClick={() => updateChannel(card.connection.id)} aria-pressed={selected}><span className={`publish-platform-mark ${card.tone}`}>{card.initial}</span><span><strong>{card.name}</strong><small>{selected ? 'Yayın için seçildi' : 'Bağlantı hazır'}</small></span><i className={`publish-platform-toggle ${selected ? 'on' : ''}`} aria-hidden="true"><b /></i></button><dl className="publish-platform-facts"><div><dt>Mağaza</dt><dd>{card.connection.externalStoreId || '—'}</dd></div><div><dt>Platform</dt><dd>{card.connection.platformCode}</dd></div><div><dt>Durum</dt><dd className="success">Aktif bağlantı</dd></div></dl></article> }) : <div className="publish-connections-empty"><strong>Aktif bağlantı bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p><Link to="/integrations">Platformları yönet <span aria-hidden="true">→</span></Link></div>}</div><details className="scheduled-publish-panel" open={scheduledPublishOpen} onToggle={event => setScheduledPublishOpen((event.currentTarget as HTMLDetailsElement).open)}><summary><span><b aria-hidden="true">◷</b> Yayın kuyruğu</span><strong aria-hidden="true">⌄</strong></summary><div className="scheduled-publish-info"><strong>{editProductId ? 'Güncelleme ve yayın kuyruğu hazır' : 'Otomatik sıraya alma aktif'}</strong><p>{editProductId ? 'Değişiklikler kaydedildikten sonra seçtiğiniz aktif platformlarda yayın veya güncelleme işi oluşturulur.' : 'Ürün oluşturulduktan sonra seçtiğiniz aktif platformlarda yayın kuyruğuna alınır.'}</p><small>Planlı tarih ve saat seçimi platform bağlantısı desteklediğinde etkinleşecektir.</small></div></details></div><aside className="publish-checklist-panel"><div className="publish-checklist-heading"><span aria-hidden="true">☷</span><div><h2>Kontrol Listesi</h2><p>Yayınlamadan önce son kontroller</p></div></div><div className="publish-checklist-items">{productChecks.map(check => <article className={check.ok ? 'complete' : 'incomplete'} key={check.title}><span aria-hidden="true">{check.ok ? '✓' : '!'}</span><div><strong>{check.title}</strong><p>{check.detail}</p></div></article>)}{selectedPublishConnections.length === 0 && <article className="publish-check-warning"><span aria-hidden="true">!</span><div><strong>Yayın platformu seçilmedi</strong><p>Ürünü yayınlamak istediğiniz aktif platformları seçin.</p></div></article>}</div><div className="publish-checklist-footer"><span>Yayınlanacak Platform</span><strong>{selectedPublishConnections.length}</strong><button type="submit" disabled={submitting}>{submitting ? (editProductId ? 'Kaydediliyor…' : 'Ürün oluşturuluyor…') : (editProductId ? 'Değişiklikleri kaydet' : '🚀 Ürünü Oluştur')}</button><small>{editProductId ? 've seçili platformları güncelle' : 've seçili platformlarda yayınla'}</small></div></aside></div></section>
 
-    <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId && <button type="submit" className="secondary" data-submit-intent="save" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button>}<button type="button" onClick={() => setWizardStep(2)}>Yayınlamaya devam et <span aria-hidden="true">→</span></button></div></section>
+    <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId && <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button>}<button type="button" onClick={() => setWizardStep(2)}>Yayınlamaya devam et <span aria-hidden="true">→</span></button></div></section>
     <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />{created && <p className="success">Oluşturuldu: <Link to={`/products/${created.id}`}>ürünü aç</Link></p>}
     <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
