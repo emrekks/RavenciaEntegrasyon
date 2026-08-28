@@ -9137,3 +9137,26 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .product-edit-page .product-add-workspace[data-wizard-step="2"] > .product-publish-step {
   display: block !important;
 }
+
+.app-shell.stitch-shell .product-submit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.app-shell.stitch-shell .product-submit-actions button {
+  min-width: 160px;
+}
+
+@media (max-width: 640px) {
+  .app-shell.stitch-shell .product-submit-actions {
+    width: 100%;
+    flex-direction: column-reverse;
+  }
+
+  .app-shell.stitch-shell .product-submit-actions button {
+    width: 100%;
+  }
+}
