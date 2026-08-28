@@ -564,6 +564,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [error, setError] = useState<unknown>(); const [created, setCreated] = useState<Product>(); const [notice, setNotice] = useState(''); const [submitting, setSubmitting] = useState(false); const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '2', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([])
+  const initializedEditProductKey = useRef<string | null>(null)
+  const importedEditOptionsKey = useRef<string | null>(null)
   const [wizardStep, setWizardStep] = useState<1 | 2>(1)
   const [scheduledPublishOpen, setScheduledPublishOpen] = useState(false)
   const [onlySelectedAttributes, setOnlySelectedAttributes] = useState<boolean>(() => {
@@ -623,11 +625,23 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   useEffect(() => {
     const product = productToEdit.data
     if (!product) return
+    const productKey = `${product.id}:${product.version}`
+    if (initializedEditProductKey.current === productKey) return
+    initializedEditProductKey.current = productKey
     const primary = product.variants[0]
     setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: primary?.sku ?? '', barcode: primary?.barcode ?? '', modelCode: primary?.modelCode ?? product.modelCode ?? '', weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(primary?.listPrice ?? primary?.salePrice ?? 0), salePrice: String(primary?.salePrice ?? 0), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: product.primaryImageUrl ?? '', status: product.status || 'ACTIVE' })
     setVariantRows(product.variants.map(variant => ({ key: variant.id, optionSignature: variant.optionSignature || 'Tek Ürün', options: {}, attributeValueIds: {}, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.salePrice ?? 0, listPrice: variant.listPrice ?? variant.salePrice ?? 0 })))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
+    setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
+  }, [productToEdit.data?.id, productToEdit.data?.version])
+
+  useEffect(() => {
+    const product = productToEdit.data
+    if (!product || !form.categoryId || form.categoryId !== product.categoryId || !allRequirements.length) return
+    const productKey = `${product.id}:${product.version}`
+    if (importedEditOptionsKey.current === productKey) return
+    const selected: Record<string, string[]> = {}
     const importedOptionIds: string[] = []
     for (const option of product.options ?? []) {
       const requirement = allRequirements.find(item => item.role === 'OPTION' && item.attribute.name.trim().toLocaleUpperCase('tr-TR') === option.label.trim().toLocaleUpperCase('tr-TR'))
@@ -635,8 +649,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       importedOptionIds.push(requirement.attributeId)
       selected[requirement.attributeId] = option.values.map(value => requirement.attribute.values.find(candidate => candidate.value.trim().toLocaleUpperCase('tr-TR') === value.label.trim().toLocaleUpperCase('tr-TR'))?.id).filter((id): id is string => Boolean(id))
     }
-    setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds(importedOptionIds.slice(0, 2))
-  }, [productToEdit.data?.id, productToEdit.data?.version, allRequirements])
+    importedEditOptionsKey.current = productKey
+    if (importedOptionIds.length) {
+      setAttributeSelections(current => ({ ...current, ...selected }))
+      setVariantAttributeIds(importedOptionIds.slice(0, 2))
+    }
+  }, [productToEdit.data?.id, productToEdit.data?.version, form.categoryId, allRequirements])
 
   function updateField(name: keyof typeof form, value: string) { setForm(current => ({ ...current, [name]: value })) }
   function toggleAttributeValue(attributeId: string, valueId: string) {
@@ -810,7 +828,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <label className="product-title-field">Ürün adı<input value={form.title} onChange={event => updateField('title', event.target.value)} required maxLength={320} /></label>
           <label>Satış durumu<select value={form.status} onChange={event => updateField('status', event.target.value)}><option value="ACTIVE">Satışa Açık</option><option value="ARCHIVED">Satışa Kapalı</option><option value="DRAFT">Taslak</option></select></label>
           <label className="product-brand-field">Marka<select value={form.brandId} onChange={event => updateField('brandId', event.target.value)}><option value="">Marka seçin</option>{activeBrands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label>
+          <label>Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { importedEditOptionsKey.current = null; updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label>
           <label>Model kodu<input value={form.modelCode} onChange={event => updateField('modelCode', event.target.value)} /></label>
           <label>Stok Kodu<input value={form.baseSku} onChange={event => updateField('baseSku', event.target.value)} placeholder="RAV-BLUZ" /></label>
           <label>Barkod<input value={form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder="Varyantsız üründe kullanılır" /></label>
