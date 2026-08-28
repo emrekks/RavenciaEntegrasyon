@@ -343,7 +343,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         }
         var variantsToCreate = command.VariantsToCreate ?? [];
         var variantUpdates = command.VariantUpdates ?? [];
-        var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0
+        // Status updates apply to every existing sale row as well. Load the rows
+        // whenever status is present; otherwise a save that only changes the
+        // product status leaves its variants on their previous status.
+        var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0 || command.Status is not null
             ? await db.ProductVariants.Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken)
             : [];
         if (variantUpdates.Count > 0)
@@ -364,7 +367,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         }
         if (variantsToCreate.Count > 0)
         {
-            if (existingVariants.Count + variantsToCreate.Count > 1000) return Invalid<ProductView>("variantsToCreate", "Tek Ã¼rÃ¼n kaydÄ±nda en fazla 1000 varyant oluÅŸturulabilir.");
+            if (existingVariants.Count + variantsToCreate.Count > 1000) return Invalid<ProductView>("variantsToCreate", "Tek ürün kaydında en fazla 1000 varyant oluşturulabilir.");
             foreach (var variant in variantsToCreate)
             {
                 var variantAttributeValidation = await ValidateAttributeValuesAsync(tenantId, variant.Attributes ?? [], cancellationToken);
@@ -373,10 +376,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var optionValidation = await ValidateVariantOptionsAsync(tenantId, command.CategoryId, variantsToCreate, cancellationToken);
             if (optionValidation is not null) return ServiceResult<ProductView>.Fail(optionValidation.Code, optionValidation.Message, optionValidation.Status, optionValidation.FieldErrors);
             var normalizedSkus = variantsToCreate.Select(x => Normalize(x.Sku)).ToArray();
-            if (normalizedSkus.Any(string.IsNullOrWhiteSpace) || normalizedSkus.Distinct().Count() != normalizedSkus.Length) return Invalid<ProductView>("variantsToCreate", "SKU boÅŸ veya tekrarlÄ± olamaz.");
-            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && normalizedSkus.Contains(x.SkuNormalized), cancellationToken)) return Conflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "SKU baÅŸka bir varyantla Ã§akÄ±ÅŸÄ±yor; otomatik birleÅŸtirme yapÄ±lmadÄ±.");
+            if (normalizedSkus.Any(string.IsNullOrWhiteSpace) || normalizedSkus.Distinct().Count() != normalizedSkus.Length) return Invalid<ProductView>("variantsToCreate", "SKU boş veya tekrarlı olamaz.");
+            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && normalizedSkus.Contains(x.SkuNormalized), cancellationToken)) return Conflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "SKU başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
             var normalizedBarcodes = variantsToCreate.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).Select(x => Normalize(x.Barcode!)).ToArray();
-            if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && normalizedBarcodes.Contains(x.BarcodeNormalized), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod baÅŸka bir varyantla Ã§akÄ±ÅŸÄ±yor; otomatik birleÅŸtirme yapÄ±lmadÄ±.");
+            if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && normalizedBarcodes.Contains(x.BarcodeNormalized), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
 
             var globalAssignments = command.Attributes ?? await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && x.VariantId == null).Select(x => new ProductAttributeCommand(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder)).ToListAsync(cancellationToken);
             if (command.CategoryId is Guid categoryId)
@@ -386,11 +389,18 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 for (var index = 0; index < variantsToCreate.Count; index++)
                 {
                     var supplied = globalIds.Concat((variantsToCreate[index].Attributes ?? []).Select(x => x.AttributeId)).ToHashSet();
-                    if (requiredAttributeIds.Any(requiredId => !supplied.Contains(requiredId))) return ServiceResult<ProductView>.Fail("REQUIRED_ATTRIBUTE_MISSING", $"{index + 1}. varyant iÃ§in kategori zorunlu Ã¶zellikleri eksik.", 422, new Dictionary<string, string[]> { ["variantsToCreate"] = [$"{index + 1}. varyant iÃ§in tÃ¼m zorunlu Ã¶zellikleri seÃ§in."] });
+                    if (requiredAttributeIds.Any(requiredId => !supplied.Contains(requiredId))) return ServiceResult<ProductView>.Fail("REQUIRED_ATTRIBUTE_MISSING", $"{index + 1}. varyant için kategori zorunlu özellikleri eksik.", 422, new Dictionary<string, string[]> { ["variantsToCreate"] = [$"{index + 1}. varyant için tüm zorunlu özellikleri seçin."] });
                 }
             }
             var now = timeProvider.GetUtcNow();
-            var newVariants = variantsToCreate.Select(variant => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = id, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = string.IsNullOrWhiteSpace(variant.Barcode) ? null : Normalize(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = command.Status != null ? (command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft)) : ProductStatus.Draft, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CreatedAt = now, UpdatedAt = now }).ToList();
+            var newVariantStatus = command.Status switch
+            {
+                "ACTIVE" => ProductStatus.Active,
+                "ARCHIVED" => ProductStatus.Archived,
+                "DRAFT" => ProductStatus.Draft,
+                _ => product.Status
+            };
+            var newVariants = variantsToCreate.Select(variant => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = id, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = string.IsNullOrWhiteSpace(variant.Barcode) ? null : Normalize(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = newVariantStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CreatedAt = now, UpdatedAt = now }).ToList();
             db.ProductVariants.AddRange(newVariants);
             for (var index = 0; index < newVariants.Count; index++) db.ProductAttributeAssignments.AddRange((variantsToCreate[index].Attributes ?? []).Select(x => Assignment(tenantId, id, newVariants[index].Id, x)));
             await PersistVariantOptionsAsync(tenantId, id, newVariants, variantsToCreate, cancellationToken);

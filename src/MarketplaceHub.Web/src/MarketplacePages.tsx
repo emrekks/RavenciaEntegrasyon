@@ -16,19 +16,18 @@ const orderStatusRank: Record<string, number> = { MANUAL_REVIEW: 90, RETURNED: 8
 function mergeOrderRows(existing: Order, incoming: Order): Order {
   const existingPackages = existing.packages ?? []
   const incomingPackages = incoming.packages ?? []
-  const knownPackageIds = new Set(existingPackages.map(item => item.id))
-  const freshPackages = incomingPackages.filter(item => !knownPackageIds.has(item.id))
-  if (!freshPackages.length) return existing
-  const lines = [...(existing.lines ?? [])]
-  for (const line of incoming.lines ?? []) {
-    const index = lines.findIndex(item => item.id === line.id)
-    if (index < 0) { lines.push(line); continue }
-    const previous = lines[index]
-    lines[index] = { ...previous, orderedQuantity: previous.orderedQuantity + line.orderedQuantity, quantity: (previous.quantity ?? previous.orderedQuantity) + (line.quantity ?? line.orderedQuantity), cancelledQuantity: previous.cancelledQuantity + line.cancelledQuantity, shippedQuantity: previous.shippedQuantity + line.shippedQuantity, deliveredQuantity: previous.deliveredQuantity + line.deliveredQuantity, returnedQuantity: previous.returnedQuantity + line.returnedQuantity, imageUrl: previous.imageUrl ?? line.imageUrl, modelCode: previous.modelCode ?? line.modelCode, optionSignature: previous.optionSignature ?? line.optionSignature }
-  }
-  const packages = [...existingPackages, ...freshPackages].sort((a, b) => new Date(b.statusOccurredAt).getTime() - new Date(a.statusOccurredAt).getTime())
-  const derivedStatus = packages.reduce((current, item) => (orderStatusRank[item.status.toUpperCase()] ?? 0) > (orderStatusRank[current] ?? 0) ? item.status.toUpperCase() : current, 'NEW')
-  return { ...existing, derivedStatus, orderedAt: new Date(existing.orderedAt).getTime() <= new Date(incoming.orderedAt).getTime() ? existing.orderedAt : incoming.orderedAt, grossAmount: existing.grossAmount + incoming.grossAmount, discountAmount: existing.discountAmount + incoming.discountAmount, netAmount: existing.netAmount + incoming.netAmount, lineCount: lines.length, packageCount: packages.length, productQuantity: existing.productQuantity + incoming.productQuantity, customerName: existing.customerName !== '—' ? existing.customerName : incoming.customerName, customerEmail: existing.customerEmail ?? incoming.customerEmail, customerTaxOrIdentityNumber: existing.customerTaxOrIdentityNumber ?? incoming.customerTaxOrIdentityNumber, primaryImageUrl: existing.primaryImageUrl ?? incoming.primaryImageUrl, cargoProviderName: existing.cargoProviderName ?? incoming.cargoProviderName, cargoTrackingNumber: existing.cargoTrackingNumber ?? incoming.cargoTrackingNumber, lines, packages }
+  // Each status endpoint returns a complete order snapshot. A duplicate order
+  // must therefore be merged by identity, not by adding totals again.
+  const packagesById = new Map(existingPackages.map(item => [item.id, item]))
+  for (const packageItem of incomingPackages) packagesById.set(packageItem.id, packageItem)
+  const packages = Array.from(packagesById.values()).sort((a, b) => new Date(b.statusOccurredAt).getTime() - new Date(a.statusOccurredAt).getTime())
+  const linesById = new Map((existing.lines ?? []).map(item => [item.id, item]))
+  for (const line of incoming.lines ?? []) linesById.set(line.id, line)
+  const lines = Array.from(linesById.values())
+  const derivedStatus = packages.length
+    ? packages.reduce((current, item) => (orderStatusRank[item.status.toUpperCase()] ?? 0) > (orderStatusRank[current] ?? 0) ? item.status.toUpperCase() : current, 'NEW')
+    : ((orderStatusRank[incoming.derivedStatus] ?? 0) >= (orderStatusRank[existing.derivedStatus] ?? 0) ? incoming.derivedStatus : existing.derivedStatus)
+  return { ...existing, ...incoming, derivedStatus, orderedAt: new Date(existing.orderedAt).getTime() <= new Date(incoming.orderedAt).getTime() ? existing.orderedAt : incoming.orderedAt, lineCount: lines.length, packageCount: packages.length, productQuantity: lines.reduce((total, line) => total + line.orderedQuantity, 0), customerName: incoming.customerName !== '—' ? incoming.customerName : existing.customerName, customerEmail: incoming.customerEmail ?? existing.customerEmail, customerTaxOrIdentityNumber: incoming.customerTaxOrIdentityNumber ?? existing.customerTaxOrIdentityNumber, primaryImageUrl: incoming.primaryImageUrl ?? existing.primaryImageUrl, cargoProviderName: incoming.cargoProviderName ?? existing.cargoProviderName, cargoTrackingNumber: incoming.cargoTrackingNumber ?? existing.cargoTrackingNumber, lines, packages }
 }
 async function loadOrdersByStatus(status: string): Promise<Order[]> {
   const itemsById = new Map<string, Order>()
@@ -1014,11 +1013,13 @@ function CategoryRequirementBuilder({ categoryId, categoryVersion, attributes, r
   async function removeAttribute(item: CategoryRequirementView) {
     try {
       setRemovingRequirementId(item.attributeId)
-      await hubApi<LocalAttribute>(`/catalog/attributes/${item.attributeId}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.attribute.version}"` } })
-      client.setQueryData<Page<LocalAttribute>>(['attributes', 'mapping-builder'], current => current ? { ...current, items: current.items.filter(attribute => attribute.id !== item.attributeId) } : current)
+      if (!categoryId || categoryVersion == null) return onNotice('Önce panel kategorisini seçin.')
+      // This action removes the attribute from the selected category only.
+      // Deactivating the global definition would also remove it from every
+      // other category and from the shared attribute library.
+      await persist(current.filter(currentItem => currentItem.attributeId !== item.attributeId))
       setSelectedAttributeIds(value => ({ ATTRIBUTE: value.ATTRIBUTE === item.attributeId ? '' : value.ATTRIBUTE, OPTION: value.OPTION === item.attributeId ? '' : value.OPTION }))
-      setFeedback(`${item.attribute.name} kaldırıldı.`)
-      await onSaved()
+      setFeedback(`${item.attribute.name} kategoriden kaldırıldı.`)
     } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Özellik başlığı kaldırılamadı.') }
     finally { setRemovingRequirementId('') }
   }

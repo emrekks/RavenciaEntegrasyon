@@ -799,7 +799,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (requireCompleteCatalog && form.categoryId && requirements.isError) throw new Error('Kategori özellikleri alınamadı. Önce kategori eşleştirmesini kontrol edin.')
       const requirementList = requirements.data ?? []; const rows = rowsForSubmit(requireCompleteCatalog); validate(rows, requireCompleteCatalog)
       const globalAttributes = requirementList.filter(item => !variantAttributeIds.includes(item.attributeId)).flatMap((item, index) => productAttributePayload(item, attributeSelections[item.attributeId] ?? [], attributeTextValues[item.attributeId] ?? '', index))
-      const shouldPersistAttributes = !editProductId || Boolean(form.categoryId && requirements.data)
+      // Do not overwrite existing assignments while a newly selected category's
+      // requirements are still loading (or failed). The edit form may be saved
+      // without optional mapping data.
+      const shouldPersistAttributes = !editProductId || Boolean(form.categoryId && requirements.isSuccess)
       const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : Number(form.desi) || 1, options: row.options, attributes: Object.entries(row.attributeValueIds).map(([attributeId, valueId], attributeIndex) => ({ attributeId, valueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: index * 100 + attributeIndex })) })
       const existingVariantIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
       const product = productToEdit.data
