@@ -9111,3 +9111,29 @@ body:has(.product-add-page),
     flex: 0 0 auto;
   }
 }
+
+/* Product editing follows the same two-step flow as product creation. */
+.app-shell.stitch-shell .product-edit-page .product-add-wizardbar {
+  display: flex !important;
+  justify-content: center !important;
+}
+.app-shell.stitch-shell .product-edit-page .product-layout-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+.app-shell.stitch-shell .product-edit-page .product-layout-grid > .publish-channel-panel {
+  display: none !important;
+}
+.app-shell.stitch-shell .product-edit-page .product-publish-step {
+  display: none !important;
+}
+.app-shell.stitch-shell .product-edit-page .product-add-workspace[data-wizard-step="1"] > .product-publish-step {
+  display: none !important;
+}
+.app-shell.stitch-shell .product-edit-page .product-add-workspace[data-wizard-step="2"] > .product-top-layout,
+.app-shell.stitch-shell .product-edit-page .product-add-workspace[data-wizard-step="2"] > .product-layout-grid,
+.app-shell.stitch-shell .product-edit-page .product-add-workspace[data-wizard-step="2"] > .product-submit-sticky {
+  display: none !important;
+}
+.app-shell.stitch-shell .product-edit-page .product-add-workspace[data-wizard-step="2"] > .product-publish-step {
+  display: block !important;
+}
