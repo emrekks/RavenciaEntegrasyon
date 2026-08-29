@@ -9450,3 +9450,42 @@ body:has(.product-add-page),
   .app-shell.stitch-shell .product-add-progress > button { padding-inline: 8px !important; }
   .app-shell.stitch-shell .product-add-progress > button > strong { font-size: 10px !important; }
 }
+
+/* Shell geometry guard: keep the grid track aligned with the rendered sidebar.
+   Older breakpoint overrides changed one side of this pair independently,
+   which made the topbar and page content slide underneath the menu. */
+.app-shell.stitch-shell {
+  grid-template-columns: 272px minmax(0, 1fr) !important;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed {
+  grid-template-columns: 74px minmax(0, 1fr) !important;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed > aside {
+  width: 74px !important;
+  padding-inline: 10px !important;
+}
+
+@media (max-width: 900px) and (min-width: 761px) {
+  .app-shell.stitch-shell {
+    grid-template-columns: 84px minmax(0, 1fr) !important;
+  }
+
+  .app-shell.stitch-shell > aside,
+  .app-shell.stitch-shell.sidebar-collapsed > aside {
+    width: 84px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell.stitch-shell > aside,
+  .app-shell.stitch-shell.sidebar-collapsed > aside {
+    width: 62px !important;
+    padding: 10px 7px !important;
+  }
+
+  .app-shell.stitch-shell > main {
+    margin-left: 62px !important;
+  }
+}
