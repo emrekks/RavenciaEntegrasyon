@@ -9570,7 +9570,7 @@ body:has(.product-add-page),
 
 .app-shell.stitch-shell > aside {
   will-change: width;
-  transition: width .28s cubic-bezier(.22, 1, .36, 1), padding .28s cubic-bezier(.22, 1, .36, 1), box-shadow .28s ease !important;
+  transition: width .28s cubic-bezier(.22, 1, .36, 1), box-shadow .28s ease !important;
 }
 
 /* The expanded menu overlays the page. Keeping the grid track compact means
@@ -9837,7 +9837,9 @@ body:has(.product-add-page),
    control. The rail is fixed, so its expanded state must win the stacking
    order without reintroducing any layout shift in the main column. */
 @media (min-width: 761px) {
-  .app-shell.stitch-shell > aside {
+  .app-shell.stitch-shell > aside,
+  .app-shell.stitch-shell.sidebar-collapsed > aside,
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside {
     z-index: 5000 !important;
     padding-inline: 14px !important;
   }
