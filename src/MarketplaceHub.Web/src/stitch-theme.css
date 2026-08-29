@@ -9523,3 +9523,20 @@ body:has(.product-add-page),
   flex-basis: 24px !important;
   stroke-width: 2.05 !important;
 }
+
+/* Keep the collapse control centered in the narrow rail and prevent the
+   legacy hover nudge from pulling it away from its anchor point. */
+.app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-collapse-toggle {
+  top: 82px !important;
+  right: auto !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+.app-shell.stitch-shell > aside .sidebar-collapse-toggle:hover {
+  transform: translateY(-50%) scale(1.05) !important;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-collapse-toggle:hover {
+  transform: translate(-50%, -50%) scale(1.05) !important;
+}
