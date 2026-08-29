@@ -7464,7 +7464,7 @@ body:has(.product-add-page),
   background: transparent !important;
   box-shadow: none !important;
   -webkit-box-shadow: none !important;
-  -webkit-text-fill-color: var(--rv-ink) !important;
+  -webkit-text-fill-color: var(--st-text) !important;
 }
 
 .database-reset-panel {
@@ -9585,4 +9585,170 @@ body:has(.product-add-page),
   .app-shell.stitch-shell > aside {
     transition: none !important;
   }
+}
+
+/* --------------------------------------------------------------------------
+   Canonical compatibility layer
+
+   The application now loads this file only. These small, token-based rules
+   keep the still-active auth, loading and catalog utility markup usable while
+   the old stylesheet files are removed from the bundle.
+   -------------------------------------------------------------------------- */
+
+/* Authentication and transient loading screens are outside .stitch-shell. */
+.cyber-login-page {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(380px, .85fr);
+  min-height: 100vh;
+  overflow: hidden;
+  color: var(--st-text);
+  background: var(--st-obsidian);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.cyber-login-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .52;
+  background-image: linear-gradient(rgba(88, 101, 242, .045) 1px, transparent 1px), linear-gradient(90deg, rgba(88, 101, 242, .045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(90deg, #000, transparent 78%);
+}
+
+.cyber-login-story {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 32px;
+  min-width: 0;
+  padding: clamp(40px, 7vw, 96px);
+  background: radial-gradient(circle at 42% 52%, rgba(88, 101, 242, .14), transparent 42%);
+}
+
+.cyber-login-brand { position: absolute; top: 36px; left: clamp(40px, 7vw, 96px); display: flex; align-items: center; gap: 12px; }
+.cyber-login-brand > span { display: grid; place-items: center; width: 42px; height: 42px; color: #fff; background: var(--st-primary); border: 1px solid rgba(190, 194, 255, .36); border-radius: 10px; font: 800 21px/1 Manrope, sans-serif; box-shadow: 0 10px 26px rgba(88, 101, 242, .22); }
+.cyber-login-brand > div { display: grid; gap: 3px; }
+.cyber-login-brand strong { color: var(--st-text); font: 800 15px/1 Manrope, sans-serif; letter-spacing: .13em; }
+.cyber-login-brand small { color: var(--st-muted); font-size: 9px; font-weight: 700; letter-spacing: .16em; }
+.cyber-login-copy { display: grid; gap: 14px; max-width: 700px; }
+.cyber-login-copy p { margin: 0; color: var(--st-cyan); font-size: 10px; font-weight: 800; letter-spacing: .18em; }
+.cyber-login-copy h1 { max-width: 650px; margin: 0; color: var(--st-text); font: 700 clamp(36px, 4.5vw, 68px)/1.04 Manrope, sans-serif; letter-spacing: -.045em; }
+.cyber-login-copy > span { max-width: 600px; color: var(--st-muted); font-size: 15px; line-height: 1.7; }
+.cyber-login-signals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 760px; }
+.cyber-login-signals article { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 10px; min-width: 0; padding: 13px; background: rgba(18, 19, 27, .82); border: 1px solid var(--st-surface-highest); border-radius: 8px; }
+.cyber-login-signals article > i { width: 7px; height: 7px; margin-top: 4px; background: var(--st-cyan); border-radius: 50%; box-shadow: 0 0 0 3px rgba(0, 238, 252, .08); }
+.cyber-login-signals article > i.good { background: var(--st-green); box-shadow: 0 0 0 3px rgba(69, 230, 176, .08); }
+.cyber-login-signals article > i.violet { background: var(--st-violet); box-shadow: 0 0 0 3px rgba(157, 89, 255, .1); }
+.cyber-login-signals article > div { display: grid; gap: 4px; min-width: 0; }
+.cyber-login-signals strong { color: var(--st-text); font-size: 11px; }
+.cyber-login-signals small { color: var(--st-muted); font-size: 9px; line-height: 1.45; }
+.cyber-login-route { display: grid; grid-template-columns: auto minmax(40px, 150px) 36px minmax(40px, 150px) auto; align-items: center; gap: 10px; max-width: 560px; color: var(--st-muted); font-size: 9px; font-weight: 800; letter-spacing: .12em; }
+.cyber-login-route b { height: 1px; background: linear-gradient(90deg, transparent, rgba(0, 238, 252, .5), transparent); }
+.cyber-login-route i { display: grid; place-items: center; width: 36px; height: 36px; color: #fff; background: rgba(88, 101, 242, .18); border: 1px solid rgba(190, 194, 255, .36); border-radius: 50%; font: 800 16px/1 Manrope, sans-serif; font-style: normal; }
+.cyber-login-panel { display: grid; place-items: center; min-width: 0; padding: clamp(28px, 5vw, 72px); background: rgba(13, 14, 22, .74); border-left: 1px solid var(--st-surface-highest); backdrop-filter: blur(14px); }
+.cyber-login-card { width: min(100%, 460px); overflow: hidden; background: var(--st-surface); border: 1px solid var(--st-outline); border-radius: 12px; box-shadow: 0 28px 70px rgba(0, 0, 0, .38); }
+.cyber-login-card > header { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 14px; padding: 26px 26px 22px; border-bottom: 1px solid var(--st-surface-highest); }
+.cyber-login-shield { display: grid; place-items: center; width: 46px; height: 46px; color: var(--st-primary-soft); background: rgba(88, 101, 242, .1); border: 1px solid rgba(190, 194, 255, .28); border-radius: 10px; }
+.cyber-login-shield svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.cyber-login-card > header > div { display: grid; gap: 5px; }
+.cyber-login-card > header p { margin: 0; color: var(--st-primary-soft); font-size: 9px; font-weight: 800; letter-spacing: .14em; }
+.cyber-login-card > header h2 { margin: 0; color: var(--st-text); font: 700 20px/1.2 Manrope, sans-serif; }
+.cyber-login-card > header div > span { color: var(--st-muted); font-size: 11px; }
+.cyber-login-form { display: grid; gap: 10px; padding: 22px 26px 25px; }
+.cyber-login-form > label, .cyber-login-label-row label { color: var(--st-muted); font-size: 10px; font-weight: 700; }
+.cyber-login-label-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 5px; }
+.cyber-login-label-row button { width: auto; min-height: 0; padding: 0; color: var(--st-cyan); background: transparent; border: 0; font-size: 10px; font-weight: 700; }
+.cyber-login-label-row button:hover { color: var(--st-primary-soft); background: transparent; text-decoration: underline; }
+.cyber-login-input { display: grid; grid-template-columns: 19px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 46px; padding: 0 11px; color: var(--st-muted); background: var(--st-surface-lowest); border: 1px solid var(--st-outline); border-radius: 6px; transition: border-color .15s ease, box-shadow .15s ease; }
+.cyber-login-input:focus-within { color: var(--st-primary-soft); border-color: var(--st-primary); box-shadow: 0 0 0 3px rgba(88, 101, 242, .14); }
+.cyber-login-input > svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.cyber-login-input input { width: 100%; min-width: 0; height: 42px; padding: 0; color: var(--st-text); background: transparent; border: 0; outline: 0; font-size: 12px; }
+.cyber-login-input input::placeholder { color: #6f7487; }
+.cyber-login-input input:-webkit-autofill, .cyber-login-input input:-webkit-autofill:hover, .cyber-login-input input:-webkit-autofill:focus { -webkit-text-fill-color: var(--st-text); box-shadow: 0 0 0 100px var(--st-surface-lowest) inset; }
+.cyber-password-toggle { display: grid; place-items: center; width: 30px; height: 30px; min-height: 30px; padding: 0; color: var(--st-muted); background: transparent; border: 0; }
+.cyber-password-toggle:hover { color: var(--st-primary-soft); background: transparent; }
+.cyber-password-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.cyber-remember { display: flex; grid-template-columns: none; align-items: center; gap: 8px; margin: 3px 0 3px; color: var(--st-muted); font-size: 10px !important; font-weight: 600 !important; }
+.cyber-remember input { width: 15px; height: 15px; min-height: 15px; accent-color: var(--st-primary); }
+.cyber-login-error { display: grid; grid-template-columns: 7px minmax(0, 1fr); align-items: start; gap: 8px; padding: 10px 11px; color: #ffb0bd; background: rgba(255, 100, 124, .08); border: 1px solid rgba(255, 100, 124, .3); border-radius: 6px; font-size: 10px; line-height: 1.45; }
+.cyber-login-error i { width: 6px; height: 6px; margin-top: 4px; background: var(--st-red); border-radius: 50%; }
+.cyber-login-submit { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; margin-top: 4px; color: #fff; background: var(--st-primary); border: 1px solid #727cff; border-radius: 6px; font-size: 11px; font-weight: 800; }
+.cyber-login-submit:hover { background: #6873ff; }
+.cyber-login-submit:disabled { opacity: .6; cursor: wait; }
+.cyber-login-submit > i { width: 12px; height: 12px; border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff; border-radius: 50%; animation: cyber-login-spin .75s linear infinite; }
+.cyber-login-submit > span { font-size: 16px; line-height: 1; }
+.cyber-login-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 26px; color: var(--st-muted); background: var(--st-surface-lowest); border-top: 1px solid var(--st-surface-highest); font-size: 9px; }
+.cyber-login-card > footer span { display: flex; align-items: center; gap: 6px; }
+.cyber-login-card > footer span i { width: 6px; height: 6px; background: var(--st-green); border-radius: 50%; box-shadow: 0 0 0 3px rgba(69, 230, 176, .08); }
+.cyber-login-card > footer small { color: var(--st-muted); font-size: 9px; }
+@keyframes cyber-login-spin { to { transform: rotate(360deg); } }
+
+.auth-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; color: var(--st-text); background: var(--st-obsidian); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+.auth-card { width: min(100%, 430px); padding: 28px; background: var(--st-surface); border: 1px solid var(--st-outline); border-radius: 12px; box-shadow: 0 24px 60px rgba(0, 0, 0, .35); }
+.auth-card h1 { margin: 0 0 10px; color: var(--st-text); font: 700 25px/1.15 Manrope, sans-serif; }
+.auth-card p { color: var(--st-muted); line-height: 1.55; }
+.auth-card form { display: grid; gap: 14px; margin-top: 20px; }
+.auth-card label { display: grid; gap: 6px; color: var(--st-muted); font-size: 11px; font-weight: 700; }
+.auth-card input { width: 100%; min-height: 42px; padding: 0 11px; color: var(--st-text); background: var(--st-surface-lowest); border: 1px solid var(--st-outline); border-radius: 6px; }
+.auth-card button { min-height: 42px; color: #fff; background: var(--st-primary); border: 1px solid #727cff; border-radius: 6px; font-weight: 700; }
+.auth-card .error { margin: 0; padding: 10px 12px; color: #ffb0bd; background: rgba(255, 100, 124, .08); border: 1px solid rgba(255, 100, 124, .3); border-radius: 6px; }
+
+.rv-splash-screen { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--st-text); background: var(--st-obsidian); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+.rv-splash-logo-container { width: 72px; height: 72px; margin-bottom: 5px; animation: rv-pulse 2s ease-in-out infinite; }
+.rv-splash-symbol { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 10px 22px rgba(88, 101, 242, .25)); }
+.rv-splash-wordmark-container { height: 22px; margin-bottom: 22px; }
+.rv-splash-wordmark { height: 100%; object-fit: contain; }
+.rv-splash-loading-bar { position: relative; width: 240px; height: 4px; margin-bottom: 10px; overflow: hidden; background: var(--st-surface-high); border-radius: 999px; }
+.rv-splash-loading-progress { position: absolute; inset: 0 auto 0 -40%; width: 40%; background: linear-gradient(90deg, var(--st-primary), var(--st-cyan)); border-radius: 999px; animation: rv-progress 1.5s ease-in-out infinite; }
+.rv-splash-text { color: var(--st-muted); font-size: 13px; font-weight: 600; }
+.rv-splash-detail { margin: 0; color: var(--st-muted); font-size: 11px; }
+@keyframes rv-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .72; } }
+@keyframes rv-progress { 0% { left: -40%; width: 40%; } 50% { left: 30%; width: 60%; } 100% { left: 100%; width: 40%; } }
+
+/* Catalog utility surfaces that are used by the older list/edit routes. */
+.stitch-shell .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.stitch-shell .spaced { margin: 18px 0; }
+.stitch-shell .inline-form { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); align-items: end; gap: 12px; }
+.stitch-shell .inline-form > button, .stitch-shell .inline-form > .error, .stitch-shell .inline-form > .notice { grid-column: 1 / -1; }
+.stitch-shell .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.stitch-shell .form-grid > button, .stitch-shell .form-grid > .error, .stitch-shell .form-grid > .notice { grid-column: 1 / -1; }
+.stitch-shell .detail-grid, .stitch-shell .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.stitch-shell .cards { margin-top: 16px; }
+.stitch-shell .cards article { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.stitch-shell .candidate { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 10px; padding: 14px; color: var(--st-text); background: var(--st-surface-low); border: 1px solid var(--st-surface-highest); border-radius: var(--st-radius); }
+.stitch-shell .candidate code { display: block; margin-top: 6px; color: var(--st-muted); font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.stitch-shell .capability-list > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 0; border-top: 1px solid var(--st-surface-highest); }
+.stitch-shell .capability-list > div > span { display: grid; gap: 3px; }
+.stitch-shell .data-table { display: grid; overflow: hidden; background: var(--st-surface-low); border: 1px solid var(--st-surface-highest); border-radius: var(--st-radius); }
+.stitch-shell .data-table > * { display: grid; grid-template-columns: minmax(210px, 1.6fr) minmax(110px, .7fr) minmax(130px, .8fr) minmax(90px, .5fr); align-items: center; gap: 12px; min-height: 58px; padding: 11px 14px; color: var(--st-text); border-top: 1px solid var(--st-surface-highest); background: transparent; text-decoration: none; }
+.stitch-shell .data-table > *:first-child { border-top: 0; }
+.stitch-shell .data-table > a:hover { background: rgba(88, 101, 242, .08); }
+.stitch-shell .data-table span { min-width: 0; }
+.stitch-shell .data-table span:first-child { display: grid; gap: 3px; }
+.stitch-shell .data-table small { overflow: hidden; color: var(--st-muted); text-overflow: ellipsis; }
+.stitch-shell .connection-button { display: flex; align-items: center; justify-content: center; min-height: 42px; margin-top: auto; color: #fff; background: var(--st-primary); border: 1px solid #727cff; border-radius: 6px; font-weight: 700; }
+.stitch-shell .integration-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: rgba(5, 6, 11, .76); }
+.stitch-shell .integration-modal { width: min(520px, 100%); display: grid; gap: 14px; padding: 22px; color: var(--st-text); background: var(--st-surface); border: 1px solid var(--st-outline); border-radius: 12px; box-shadow: 0 24px 70px rgba(0, 0, 0, .52); }
+.stitch-shell .integration-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+@media (max-width: 900px) {
+  .cyber-login-page { grid-template-columns: 1fr; }
+  .cyber-login-story { min-height: 320px; padding: 112px 28px 34px; }
+  .cyber-login-brand { top: 28px; left: 28px; }
+  .cyber-login-copy h1 { font-size: clamp(32px, 8vw, 48px); }
+  .cyber-login-signals { max-width: none; }
+  .cyber-login-panel { padding: 28px; border-top: 1px solid var(--st-surface-highest); border-left: 0; }
+}
+@media (max-width: 600px) {
+  .cyber-login-story { min-height: 0; padding: 100px 18px 26px; }
+  .cyber-login-signals, .stitch-shell .detail-grid, .stitch-shell .cards, .stitch-shell .form-grid, .stitch-shell .inline-form { grid-template-columns: 1fr; }
+  .cyber-login-route { display: none; }
+  .cyber-login-panel { padding: 18px; }
+  .cyber-login-card > header, .cyber-login-form { padding-inline: 18px; }
+  .cyber-login-card > footer { padding-inline: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cyber-login-submit > i, .rv-splash-logo-container, .rv-splash-loading-progress { animation: none !important; }
 }
