@@ -115,26 +115,26 @@ function Shell({ me }: { me: Me }) {
   function collapseSidebarOnLeave() { setSidebarHoverExpanded(false) }
   function submitGlobalSearch(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const value = globalSearch.trim(); if (!value) return; navigate(`/orders?search=${encodeURIComponent(value)}`) }
   const icons: Record<string, ReactNode> = {
-    dashboard: <><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></>,
-    products: <><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></>,
-    orders: <><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></>,
-    returns: <><path d="M3 7v6h6"/><path d="M21 17v-6h-6"/><path d="M21 3v6h-6"/><path d="M3 21v-6h6"/><path d="M16.89 16.89A7 7 0 1 1 16.89 7.11"/></>,
-    invoices: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></>,
-    jobs: <><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></>,
+    dashboard: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
+    products: <><path d="M6 8h12l1 13H5L6 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></>,
+    orders: <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3.5h6v3H9z"/><path d="M9 11h6M9 15h6M9 18h3"/></>,
+    returns: <><path d="M9 10H4V5"/><path d="M4 10a8 8 0 1 1 2.3 5.7"/><path d="m15 14 3 3-3 3"/><path d="M18 17h-5"/></>,
+    invoices: <><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M9 11h6M9 15h6M9 18h4"/></>,
+    jobs: <><path d="M4 5h16M4 12h10M4 19h7"/><path d="m17 14 2 2 3-4"/></>,
     settings: <><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></>,
-    platforms: <><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></>,
-    mappings: <><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><path d="M6.5 14v-2.5a3.5 3.5 0 0 1 3.5-3.5h7.5"/><path d="m14 5 3.5 3.5L14 12"/></>,
+    platforms: <><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="13" width="7" height="7" rx="1.5"/><path d="M10 7.5h3a4 4 0 0 1 4 4V13"/><path d="m14 10 3 3 3-3"/></>,
+    mappings: <><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.5 8.5 15.5 15.5"/><path d="M18 9V6h-3"/></>,
     security: <><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>,
     logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>
 
   }
   const icon = (name: string) => <svg className="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{icons[name]}</svg>
-  const item = (to: string, iconName: string, label: string) => <NavLink to={to}>{icon(iconName)}{label}</NavLink>
+  const item = (to: string, iconName: string, label: string) => <NavLink to={to}>{icon(iconName)}<span className="nav-label">{label}</span></NavLink>
   return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHoverExpanded ? 'sidebar-hover-expanded' : ''}`}>
     <aside onMouseEnter={expandSidebarOnHover} onMouseLeave={collapseSidebarOnLeave} onFocus={expandSidebarOnHover} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) collapseSidebarOnLeave() }}>
       <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong><small>MarketplaceHub</small></div></div>
       <nav aria-label="Ana menü"><span className="nav-section">Operasyon</span>{item('/dashboard', 'dashboard', 'Dashboard')}{item('/products', 'products', 'Ürünler')}{item('/orders', 'orders', 'Siparişler')}{item('/returns', 'returns', 'İadeler')}{item('/invoices', 'invoices', 'Faturalar')}{item('/jobs', 'jobs', 'İşlem Takibi')}{item('/integrations', 'platforms', 'Platformlar')}{item('/mappings/categories', 'mappings', 'Eşleştirme Ayarları')}</nav>
-      <div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları')}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}Çıkış Yap</button></div>
+      <div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları')}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Çıkış Yap</span></button></div>
     </aside>
     <main>
       <header className="topbar"><div className="topbar-workspace"><div className="breadcrumb"><strong>Operasyon Merkezi</strong><span>{current}</span></div></div></header>
