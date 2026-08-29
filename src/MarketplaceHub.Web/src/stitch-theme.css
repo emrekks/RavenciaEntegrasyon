@@ -8956,6 +8956,71 @@ body:has(.product-add-page),
   align-items: center !important;
 }
 
+/* Security sessions use a fixed three-column row: device, session details,
+   and the action. Without the grid declaration the browser falls back to
+   inline flow and each session field drifts into the next one. */
+.app-shell.stitch-shell .security-page .sessions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.app-shell.stitch-shell .security-page .sessions li {
+  display: grid !important;
+  grid-template-columns: 32px minmax(0, 1fr) auto !important;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--rv-border);
+}
+
+.app-shell.stitch-shell .security-page .sessions li:first-child {
+  border-top: 0;
+}
+
+.app-shell.stitch-shell .security-page .sessions li > span:nth-child(2) {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.app-shell.stitch-shell .security-page .sessions li > span:nth-child(2) strong,
+.app-shell.stitch-shell .security-page .sessions li > span:nth-child(2) small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell .security-page .sessions li > button,
+.app-shell.stitch-shell .security-page .sessions li > b {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell .security-page .session-device-icon {
+  display: grid !important;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--rv-primary);
+  background: rgba(113, 104, 245, .1);
+  border-radius: 8px;
+}
+
+@media (max-width: 620px) {
+  .app-shell.stitch-shell .security-page .sessions li {
+    grid-template-columns: 32px minmax(0, 1fr) !important;
+  }
+
+  .app-shell.stitch-shell .security-page .sessions li > button,
+  .app-shell.stitch-shell .security-page .sessions li > b {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
 .app-shell.stitch-shell .empty,
 .app-shell.stitch-shell .jobs-reference-empty,
 .app-shell.stitch-shell .jobs-reference-state,
