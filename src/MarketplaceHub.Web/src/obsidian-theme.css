@@ -230,8 +230,9 @@ textarea:focus-visible { outline: 2px solid var(--rv-obsidian-cyan); outline-off
   .stitch-shell .breadcrumb strong { display: none; }
   .stitch-shell .breadcrumb span { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .stitch-shell .content { min-height: calc(100svh - 60px); padding: 20px 14px 32px !important; }
-  .stitch-shell .app-sidebar.mobile-open .brand.wordmark, .stitch-shell .app-sidebar.mobile-open .nav-section, .stitch-shell .app-sidebar.mobile-open aside nav a > span, .stitch-shell .app-sidebar.mobile-open .settings-nav > a > span, .stitch-shell .app-sidebar.mobile-open .logout-link { display: revert !important; }
-  .stitch-shell .app-sidebar.mobile-open aside nav a, .stitch-shell .app-sidebar.mobile-open .settings-nav > a, .stitch-shell .app-sidebar.mobile-open .logout-link { justify-content: flex-start; padding-inline: 11px !important; font-size: 13px !important; }
+  .stitch-shell .app-sidebar.mobile-open .brand.wordmark { display: grid !important; }
+  .stitch-shell .app-sidebar.mobile-open .nav-section, .stitch-shell .app-sidebar.mobile-open nav a > span, .stitch-shell .app-sidebar.mobile-open .settings-nav > a > span, .stitch-shell .app-sidebar.mobile-open .logout-link > span { display: revert !important; font-size: 13px !important; }
+  .stitch-shell .app-sidebar.mobile-open nav a, .stitch-shell .app-sidebar.mobile-open .settings-nav > a, .stitch-shell .app-sidebar.mobile-open .logout-link { justify-content: flex-start; padding-inline: 11px !important; font-size: 13px !important; }
 }
 
 /* Dashboard hierarchy */
