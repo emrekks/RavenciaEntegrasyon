@@ -9556,3 +9556,17 @@ body:has(.product-add-page),
   background: rgba(124, 134, 255, .11) !important;
   border-color: rgba(124, 134, 255, .42) !important;
 }
+
+/* Attach the collapse control to the rail's middle-right edge. */
+.app-shell.stitch-shell > aside .sidebar-collapse-toggle,
+.app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-collapse-toggle {
+  top: 50% !important;
+  right: 0 !important;
+  left: auto !important;
+  transform: translateY(-50%) !important;
+}
+
+.app-shell.stitch-shell > aside .sidebar-collapse-toggle:hover,
+.app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-collapse-toggle:hover {
+  transform: translateY(-50%) scale(1.05) !important;
+}
