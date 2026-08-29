@@ -9832,3 +9832,12 @@ body:has(.product-add-page),
     width: 272px !important;
   }
 }
+
+/* Keep the hover-open navigation above every workspace surface and sticky
+   control. The rail is fixed, so its expanded state must win the stacking
+   order without reintroducing any layout shift in the main column. */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell > aside {
+    z-index: 5000 !important;
+  }
+}
