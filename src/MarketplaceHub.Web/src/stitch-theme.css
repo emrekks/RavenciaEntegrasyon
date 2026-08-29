@@ -9839,5 +9839,21 @@ body:has(.product-add-page),
 @media (min-width: 761px) {
   .app-shell.stitch-shell > aside {
     z-index: 5000 !important;
+    padding-inline: 14px !important;
+  }
+
+  .app-shell.stitch-shell > aside nav a,
+  .app-shell.stitch-shell > aside .settings-nav > a,
+  .app-shell.stitch-shell > aside .logout-link {
+    position: relative;
+    padding-left: 44px !important;
+  }
+
+  .app-shell.stitch-shell > aside nav a .nav-icon,
+  .app-shell.stitch-shell > aside .settings-nav > a .nav-icon,
+  .app-shell.stitch-shell > aside .logout-link .nav-icon {
+    position: absolute;
+    left: 11px;
+    margin: 0 !important;
   }
 }

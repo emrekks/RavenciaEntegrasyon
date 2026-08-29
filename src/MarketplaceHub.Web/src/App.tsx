@@ -108,27 +108,15 @@ function Shell({ me }: { me: Me }) {
   const titles: Record<string, string> = { dashboard: 'Dashboard', products: 'Ürünler', catalog: 'Katalog', imports: 'İçe Aktarım', inventory: 'Stok', integrations: 'Platformlar · Trendyol · E-Faturam', mappings: 'Kategori Eşitleme', orders: 'Siparişler', shipments: 'Gönderiler', returns: 'İadeler', invoices: 'Faturalar', jobs: 'İşlem Takibi', settings: 'Ayarlar' }
   const current = titles[location.pathname.split('/')[1]] ?? 'Operasyon Merkezi'
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
-  const sidebarCloseTimer = useRef<number | null>(null)
   const [globalSearch, setGlobalSearch] = useState('')
   async function logout() { await api('/logout', { method: 'POST' }); window.location.replace(`/?signedOut=${Date.now()}`) }
   const menuCollapsed = !sidebarHoverExpanded
-  function cancelSidebarClose() {
-    if (sidebarCloseTimer.current === null) return
-    window.clearTimeout(sidebarCloseTimer.current)
-    sidebarCloseTimer.current = null
-  }
   function expandSidebarOnHover() {
-    cancelSidebarClose()
     setSidebarHoverExpanded(true)
   }
   function collapseSidebarOnLeave() {
-    cancelSidebarClose()
-    sidebarCloseTimer.current = window.setTimeout(() => {
-      sidebarCloseTimer.current = null
-      setSidebarHoverExpanded(false)
-    }, 240)
+    setSidebarHoverExpanded(false)
   }
-  useEffect(() => () => cancelSidebarClose(), [])
   function submitGlobalSearch(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const value = globalSearch.trim(); if (!value) return; navigate(`/orders?search=${encodeURIComponent(value)}`) }
   const icons: Record<string, ReactNode> = {
     dashboard: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
