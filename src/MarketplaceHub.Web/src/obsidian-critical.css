@@ -1,0 +1,135 @@
+/*
+ * Obsidian's non-negotiable shell contract.
+ *
+ * A few historical selectors in stitch-theme.css use !important. This small
+ * first layer owns only the shell geometry and responsive navigation rules so
+ * those declarations cannot bring back the old rail or hide the mobile menu.
+ * Page surfaces remain owned by obsidian-theme.css.
+ */
+@layer obsidian-critical {
+  .app-shell.stitch-shell {
+    display: grid !important;
+    grid-template-columns: 264px minmax(0, 1fr) !important;
+    min-height: 100svh;
+    background: #0B0D12 !important;
+  }
+
+  .app-shell.stitch-shell > aside.app-sidebar {
+    width: 264px !important;
+    min-width: 264px !important;
+    padding: 20px 16px 18px !important;
+    background: #11161F !important;
+    border-right: 1px solid #283443 !important;
+  }
+
+  .app-shell.stitch-shell > main {
+    min-width: 0 !important;
+    min-height: 100svh;
+    background: #0B0D12 !important;
+  }
+
+  .app-shell.stitch-shell .topbar {
+    min-height: 64px !important;
+    height: 64px !important;
+    padding: 0 28px !important;
+    background: #11161F !important;
+    border-bottom: 1px solid #283443 !important;
+    box-shadow: none !important;
+  }
+
+  .sidebar-collapsed.app-shell.stitch-shell {
+    grid-template-columns: 76px minmax(0, 1fr) !important;
+  }
+
+  .sidebar-collapsed.app-shell.stitch-shell > aside.app-sidebar {
+    width: 76px !important;
+    min-width: 76px !important;
+    padding-inline: 10px !important;
+  }
+
+  .app-shell.stitch-shell aside nav {
+    display: grid !important;
+    gap: 4px !important;
+  }
+
+  .app-shell.stitch-shell aside nav a,
+  .app-shell.stitch-shell .settings-nav > a,
+  .app-shell.stitch-shell .logout-link {
+    min-height: 42px !important;
+    width: 100% !important;
+  }
+
+  @media (max-width: 900px) and (min-width: 761px) {
+    .app-shell.stitch-shell {
+      grid-template-columns: 76px minmax(0, 1fr) !important;
+    }
+
+    .app-shell.stitch-shell > aside.app-sidebar {
+      width: 76px !important;
+      min-width: 76px !important;
+      padding-inline: 10px !important;
+    }
+
+    .app-shell.stitch-shell > aside.app-sidebar .brand.wordmark,
+    .app-shell.stitch-shell > aside.app-sidebar .nav-section,
+    .app-shell.stitch-shell > aside.app-sidebar nav a > span,
+    .app-shell.stitch-shell > aside.app-sidebar .settings-nav > a > span,
+    .app-shell.stitch-shell > aside.app-sidebar .logout-link > span {
+      display: none !important;
+    }
+
+    .app-shell.stitch-shell > aside.app-sidebar nav a,
+    .app-shell.stitch-shell > aside.app-sidebar .settings-nav > a,
+    .app-shell.stitch-shell > aside.app-sidebar .logout-link {
+      justify-content: center !important;
+      padding-inline: 0 !important;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .app-shell.stitch-shell {
+      display: block !important;
+    }
+
+    .app-shell.stitch-shell > aside.app-sidebar,
+    .sidebar-collapsed.app-shell.stitch-shell > aside.app-sidebar {
+      position: fixed !important;
+      inset: 0 auto 0 0 !important;
+      z-index: 100 !important;
+      display: flex !important;
+      width: min(286px, 86vw) !important;
+      min-width: 0 !important;
+      height: 100svh !important;
+      min-height: 100svh !important;
+      padding: 20px 16px 18px !important;
+      transform: translateX(-105%);
+    }
+
+    .app-shell.stitch-shell > aside.app-sidebar.mobile-open {
+      transform: translateX(0) !important;
+    }
+
+    .app-shell.stitch-shell > aside.app-sidebar.mobile-open .brand.wordmark,
+    .app-shell.stitch-shell > aside.app-sidebar.mobile-open .nav-section,
+    .app-shell.stitch-shell > aside.app-sidebar.mobile-open nav a > span,
+    .app-shell.stitch-shell > aside.app-sidebar.mobile-open .settings-nav > a > span,
+    .app-shell.stitch-shell > aside.app-sidebar.mobile-open .logout-link > span {
+      display: block !important;
+    }
+
+    .app-shell.stitch-shell > aside.app-sidebar.mobile-open nav a,
+    .app-shell.stitch-shell > aside.app-sidebar.mobile-open .settings-nav > a,
+    .app-shell.stitch-shell > aside.app-sidebar.mobile-open .logout-link {
+      justify-content: flex-start !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      padding-inline: 11px !important;
+    }
+
+    .app-shell.stitch-shell .topbar {
+      height: 60px !important;
+      min-height: 60px !important;
+      padding: 0 14px !important;
+    }
+  }
+}
