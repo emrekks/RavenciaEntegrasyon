@@ -9570,3 +9570,19 @@ body:has(.product-add-page),
 .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-collapse-toggle:hover {
   transform: translateY(-50%) scale(1.05) !important;
 }
+
+/* Collapsed rails open on hover/focus, then return to icon-only mode on leave. */
+.app-shell.stitch-shell {
+  transition: grid-template-columns .16s ease !important;
+}
+
+.app-shell.stitch-shell > aside {
+  transition: width .16s ease, padding .16s ease, box-shadow .16s ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell,
+  .app-shell.stitch-shell > aside {
+    transition: none !important;
+  }
+}
