@@ -9236,3 +9236,217 @@ body:has(.product-add-page),
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Ravencia workspace refresh: final interaction and visual hierarchy overrides. */
+.app-shell.stitch-shell > aside {
+  width: 272px !important;
+  padding: 22px 16px 18px !important;
+  background: linear-gradient(180deg, #0c0e18 0%, #101321 100%) !important;
+  border-right: 1px solid rgba(147, 156, 255, .14) !important;
+}
+.app-shell.stitch-shell > aside .sidebar-brand-row { min-height: 58px; padding: 0 10px 18px !important; margin: 0 0 18px !important; border-bottom-color: rgba(173, 180, 255, .16) !important; }
+.app-shell.stitch-shell > aside .stitch-brand-mark { width: 42px !important; height: 42px !important; border-radius: 13px !important; font-size: 20px !important; box-shadow: 0 8px 22px rgba(92, 105, 255, .32); }
+.app-shell.stitch-shell > aside .brand.wordmark strong { font-size: 16px !important; letter-spacing: .01em !important; }
+.app-shell.stitch-shell > aside .brand.wordmark small { font-size: 9px !important; letter-spacing: .13em !important; }
+.app-shell.stitch-shell > aside nav { gap: 6px !important; }
+.app-shell.stitch-shell > aside .nav-section { margin: 0 12px 8px !important; color: #8d94b5 !important; font-size: 10px !important; letter-spacing: .18em !important; }
+.app-shell.stitch-shell > aside nav a,
+.app-shell.stitch-shell > aside .settings-nav > a,
+.app-shell.stitch-shell > aside .logout-link {
+  min-height: 50px !important;
+  padding: 0 14px !important;
+  gap: 13px !important;
+  border: 1px solid transparent !important;
+  border-radius: 13px !important;
+  color: #aeb4d2 !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  letter-spacing: .005em !important;
+  transition: background .18s ease, color .18s ease, transform .18s ease, border-color .18s ease !important;
+}
+.app-shell.stitch-shell > aside nav a:hover,
+.app-shell.stitch-shell > aside .settings-nav > a:hover,
+.app-shell.stitch-shell > aside .logout-link:hover { color: #f5f5ff !important; background: rgba(124, 134, 255, .11) !important; border-color: rgba(124, 134, 255, .18) !important; transform: translateX(2px); }
+.app-shell.stitch-shell > aside nav a.active { color: #fff !important; background: linear-gradient(100deg, rgba(100, 112, 255, .96), rgba(121, 106, 235, .84)) !important; border-color: rgba(174, 181, 255, .34) !important; box-shadow: 0 10px 24px rgba(77, 83, 224, .26), inset 3px 0 0 #62e3ee !important; }
+.app-shell.stitch-shell > aside .nav-icon { width: 21px !important; height: 21px !important; flex: 0 0 21px !important; stroke-width: 1.9 !important; color: #9ea7d5 !important; }
+.app-shell.stitch-shell > aside nav a.active .nav-icon { color: #fff !important; }
+.app-shell.stitch-shell > aside .settings-nav { gap: 6px !important; padding-top: 18px !important; border-top-color: rgba(173, 180, 255, .14) !important; }
+.app-shell.stitch-shell > aside .logout-link { background: transparent !important; }
+.app-shell.stitch-shell > aside .sidebar-collapse-toggle { width: 28px !important; height: 28px !important; top: 82px !important; right: -14px !important; border-color: rgba(124, 134, 255, .4) !important; background: #171a2d !important; }
+.app-shell.stitch-shell.sidebar-collapsed > aside { width: 84px !important; padding-inline: 10px !important; }
+.app-shell.stitch-shell.sidebar-collapsed > aside nav a,
+.app-shell.stitch-shell.sidebar-collapsed > aside .settings-nav > a,
+.app-shell.stitch-shell.sidebar-collapsed > aside .logout-link { justify-content: center; padding-inline: 0 !important; }
+
+.app-shell.stitch-shell .product-add-page .page-heading { align-items: flex-end; margin-bottom: 10px; }
+.app-shell.stitch-shell .product-add-page .page-heading h1 { display: flex; align-items: center; gap: 13px; font-size: clamp(28px, 3vw, 38px); letter-spacing: -.045em; }
+.app-shell.stitch-shell .product-add-page .page-heading h1::after { content: ''; width: 46px; height: 4px; margin-top: 16px; border-radius: 99px; background: linear-gradient(90deg, #7d87ff, #5ed9e7); }
+.app-shell.stitch-shell .product-heading-back { display: inline-grid !important; place-items: center; width: 40px; height: 40px; color: #cdd1ff !important; background: #1a1e34 !important; border: 1px solid rgba(124, 134, 255, .34) !important; border-radius: 12px !important; font-size: 22px; text-decoration: none !important; box-shadow: 0 8px 18px rgba(0, 0, 0, .14); }
+.app-shell.stitch-shell .product-heading-back:hover { color: #fff !important; background: #30375f !important; transform: translateX(-2px); }
+.app-shell.stitch-shell .product-add-page .page-lede { max-width: 760px; color: #979fbe !important; }
+
+/* The product wizard is a classic tab bar, not a segmented progress meter. */
+.app-shell.stitch-shell .product-add-wizardbar { margin: 18px 0 24px !important; padding: 0 6px !important; background: transparent !important; border: 0 !important; }
+.app-shell.stitch-shell .product-add-stepper { width: 100% !important; padding: 0 !important; background: transparent !important; border: 0 !important; }
+.app-shell.stitch-shell .product-add-progress { display: flex !important; align-items: stretch !important; gap: 4px !important; padding: 0 4px !important; border-bottom: 1px solid rgba(148, 156, 197, .2) !important; }
+.app-shell.stitch-shell .product-add-progress > i { display: none !important; }
+.app-shell.stitch-shell .product-add-progress > button { min-height: 49px !important; padding: 0 18px !important; gap: 10px !important; color: #8d95b5 !important; background: transparent !important; border: 0 !important; border-bottom: 3px solid transparent !important; border-radius: 0 !important; box-shadow: none !important; font-size: 12px !important; letter-spacing: .045em !important; text-transform: none !important; }
+.app-shell.stitch-shell .product-add-progress > button:hover { color: #e7e9ff !important; background: rgba(124, 134, 255, .06) !important; }
+.app-shell.stitch-shell .product-add-progress > button.active { color: #f5f5ff !important; border-bottom-color: #7d87ff !important; background: transparent !important; box-shadow: none !important; }
+.app-shell.stitch-shell .product-add-progress > button > span { display: grid; place-items: center; width: 24px; height: 24px; color: #abb2d2; border: 1px solid currentColor; border-radius: 50%; font-size: 11px; }
+.app-shell.stitch-shell .product-add-progress > button.active > span { color: #fff; background: #6975ff; border-color: #6975ff; }
+.app-shell.stitch-shell .product-add-progress > button > strong { font-size: 12px !important; font-weight: 800 !important; }
+
+/* Product description gets a clear editor chrome and a comfortable writing canvas. */
+.app-shell.stitch-shell .product-description-field > .rich-text-editor { overflow: hidden; border: 1px solid rgba(151, 160, 207, .28) !important; border-radius: 15px !important; background: #15192a !important; box-shadow: 0 12px 28px rgba(0, 0, 0, .14) !important; }
+.app-shell.stitch-shell .rich-text-editor-head { min-height: 58px; padding: 11px 15px !important; background: linear-gradient(100deg, rgba(32, 37, 63, .96), rgba(24, 28, 46, .96)) !important; border-bottom: 1px solid rgba(151, 160, 207, .18) !important; }
+.app-shell.stitch-shell .rich-text-editor-head strong { color: #f0f1ff !important; font-size: 13px !important; }
+.app-shell.stitch-shell .rich-text-mode-note { margin-top: 4px; color: #8f98bb !important; font-size: 10px !important; }
+.app-shell.stitch-shell .rich-text-editor-meta { gap: 12px !important; color: #aeb4d1 !important; }
+.app-shell.stitch-shell .rich-text-mode-switch { padding: 3px !important; background: #0e1120 !important; border: 1px solid rgba(151, 160, 207, .2) !important; border-radius: 9px !important; }
+.app-shell.stitch-shell .rich-text-mode-switch button { min-height: 28px; padding: 0 9px !important; border-radius: 6px !important; color: #8e96b4 !important; }
+.app-shell.stitch-shell .rich-text-mode-switch button.active { color: #fff !important; background: #626eff !important; }
+.app-shell.stitch-shell .rich-text-toolbar { display: flex; flex-wrap: wrap; gap: 8px !important; padding: 10px 13px !important; background: #111525 !important; border-bottom: 1px solid rgba(151, 160, 207, .14) !important; }
+.app-shell.stitch-shell .rich-text-tool-group { gap: 4px !important; padding-right: 8px; border-right: 1px solid rgba(151, 160, 207, .18); }
+.app-shell.stitch-shell .rich-text-tool { min-height: 30px !important; padding: 0 8px !important; color: #b9c0e2 !important; border-radius: 7px !important; }
+.app-shell.stitch-shell .rich-text-tool:hover:not(:disabled) { color: #fff !important; background: rgba(124, 134, 255, .16) !important; }
+.app-shell.stitch-shell .rich-text-tool-icon { color: #7f8aff !important; }
+.app-shell.stitch-shell .rich-text-canvas,
+.app-shell.stitch-shell .rich-text-html-editor { min-height: 240px !important; padding: 18px 19px !important; color: #edf0ff !important; background: #0d111e !important; font-size: 14px !important; line-height: 1.7 !important; }
+.app-shell.stitch-shell .rich-text-canvas:focus,
+.app-shell.stitch-shell .rich-text-html-editor:focus { outline: 2px solid rgba(124, 134, 255, .55) !important; outline-offset: -2px; }
+.app-shell.stitch-shell .rich-text-editor-foot { padding: 9px 15px !important; color: #7f88a9 !important; background: #111525 !important; }
+
+.app-shell.stitch-shell .product-media-upload { min-height: 118px !important; border-radius: 14px !important; border-color: rgba(124, 134, 255, .35) !important; background: linear-gradient(135deg, rgba(41, 47, 87, .38), rgba(19, 23, 39, .9)) !important; }
+.app-shell.stitch-shell .product-media-upload:hover { border-color: #7d87ff !important; background: linear-gradient(135deg, rgba(58, 66, 126, .5), rgba(19, 23, 39, .94)) !important; }
+.app-shell.stitch-shell .product-media-url-settings { margin-top: 12px; border: 1px solid rgba(151, 160, 207, .2); border-radius: 12px; background: rgba(15, 18, 31, .62); }
+.app-shell.stitch-shell .product-media-url-settings > summary { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 14px; color: #c9ceeb; cursor: pointer; list-style: none; }
+.app-shell.stitch-shell .product-media-url-settings > summary::-webkit-details-marker { display: none; }
+.app-shell.stitch-shell .product-media-url-settings > summary span { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; }
+.app-shell.stitch-shell .product-media-url-settings > summary b { color: #8792ff; font-size: 16px; }
+.app-shell.stitch-shell .product-media-url-settings > summary small { margin-left: auto; color: #7f88a8; }
+.app-shell.stitch-shell .product-media-url-settings > summary i { color: #9098bb; transition: transform .18s ease; }
+.app-shell.stitch-shell .product-media-url-settings[open] > summary i { transform: rotate(180deg); }
+.app-shell.stitch-shell .product-media-url-settings > div { padding: 0 14px 14px; }
+.app-shell.stitch-shell .product-media-url-settings .product-media-url-field { margin: 0; }
+
+.app-shell.stitch-shell .attribute-variant-action { align-items: center !important; padding: 15px !important; border-color: rgba(124, 134, 255, .22) !important; background: linear-gradient(100deg, rgba(28, 34, 57, .96), rgba(18, 23, 39, .96)) !important; border-radius: 14px !important; }
+.app-shell.stitch-shell .attribute-variant-action > div:first-child strong { color: #f1f2ff !important; font-size: 14px !important; }
+.app-shell.stitch-shell .attribute-variant-action > div:first-child small { color: #9ba4ca !important; line-height: 1.45 !important; }
+.app-shell.stitch-shell .attribute-builder-list { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 12px !important; }
+.app-shell.stitch-shell .attribute-builder-card { border-color: rgba(151, 160, 207, .2) !important; border-radius: 13px !important; background: #171b2b !important; }
+.app-shell.stitch-shell .attribute-builder-card:has(.attribute-builder-toggle input:checked) { border-color: rgba(124, 134, 255, .65) !important; box-shadow: 0 0 0 2px rgba(124, 134, 255, .12) !important; }
+.app-shell.stitch-shell .option-chip-list { gap: 7px !important; }
+.app-shell.stitch-shell .option-chip { min-height: 33px !important; padding-inline: 12px !important; border-radius: 8px !important; }
+.app-shell.stitch-shell .option-chip.active { color: #fff !important; background: #626eff !important; border-color: #8991ff !important; box-shadow: 0 6px 14px rgba(98, 110, 255, .22); }
+
+.app-shell.stitch-shell .orders-bulk-toolbar { position: relative; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 12px 0 8px; padding: 10px 13px; border: 1px solid rgba(124, 134, 255, .26); border-radius: 12px; background: linear-gradient(100deg, #1b2037, #15192b); box-shadow: 0 12px 24px rgba(0, 0, 0, .16); }
+.app-shell.stitch-shell .orders-bulk-toolbar > div:first-child { display: grid; gap: 3px; }
+.app-shell.stitch-shell .orders-bulk-toolbar strong { color: #f0f1ff; font-size: 12px; }
+.app-shell.stitch-shell .orders-bulk-toolbar span { color: #9ba4c6; font-size: 11px; }
+.app-shell.stitch-shell .orders-bulk-toolbar .bulk-menu-shell { position: relative; }
+.app-shell.stitch-shell .orders-bulk-toolbar .bulk-action { min-height: 38px !important; padding: 0 14px !important; color: #fff !important; background: #626eff !important; border-color: #7f88ff !important; border-radius: 8px !important; font-weight: 800; }
+.app-shell.stitch-shell .orders-bulk-toolbar .bulk-action:disabled { color: #888fa9 !important; background: #292e46 !important; border-color: #3d4463 !important; }
+.app-shell.stitch-shell .orders-bulk-toolbar .bulk-action-menu { right: 0; left: auto; z-index: 50; min-width: 250px; }
+.app-shell.stitch-shell .order-filter-primary > .bulk-menu-shell { display: none !important; }
+.app-shell.stitch-shell .cargo-track-pending { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 0 9px; color: #9ca5ff !important; border: 1px solid rgba(124, 134, 255, .34); border-radius: 7px; font-size: 10px; font-weight: 800; text-decoration: none; }
+.app-shell.stitch-shell .cargo-track-pending:hover { color: #fff !important; background: rgba(124, 134, 255, .16); }
+.app-shell.stitch-shell .order-reference-actions > small { color: #8189a8; font-size: 10px; }
+
+/* Light, information-dense return detail sheet, matching the supplied reference. */
+.app-shell.stitch-shell .return-detail-backdrop { align-items: center !important; justify-content: center !important; padding: 24px !important; background: rgba(8, 11, 22, .72) !important; backdrop-filter: blur(7px); }
+.app-shell.stitch-shell .return-detail-modal { width: min(900px, 100%) !important; max-height: min(90vh, 820px) !important; overflow: hidden !important; color: #273044 !important; background: #fff !important; border: 1px solid #d9dfeb !important; border-radius: 14px !important; box-shadow: 0 24px 70px rgba(4, 8, 19, .4) !important; }
+.app-shell.stitch-shell .return-detail-modal > header { display: flex; align-items: flex-start; justify-content: space-between; padding: 22px 24px 17px !important; color: #273044 !important; background: #fff !important; border-bottom: 1px solid #e6eaf2 !important; }
+.app-shell.stitch-shell .return-detail-modal > header .eyebrow { margin: 0 0 5px; color: #7e879b !important; font-size: 10px !important; letter-spacing: .18em; }
+.app-shell.stitch-shell .return-detail-modal > header h2 { margin: 0; color: #222a3d !important; font-size: 19px !important; }
+.app-shell.stitch-shell .return-detail-modal > header p:not(.eyebrow) { margin: 5px 0 0; color: #69738a !important; font-size: 12px; }
+.app-shell.stitch-shell .return-detail-modal > header .modal-close { width: 34px; height: 34px; color: #556078 !important; background: #f1f3f8 !important; border: 0 !important; border-radius: 7px; font-size: 20px; }
+.app-shell.stitch-shell .return-detail-modal > header .modal-close:hover { color: #1d263a !important; background: #e2e7f0 !important; }
+.app-shell.stitch-shell .return-detail-summary { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 24px 18px; padding: 14px; color: #2b3448 !important; background: #f7f9fc !important; border: 1px solid #e2e7f0 !important; border-radius: 10px !important; }
+.app-shell.stitch-shell .return-detail-summary > div { min-width: 0; display: grid; align-content: start; gap: 6px; }
+.app-shell.stitch-shell .return-detail-summary small { color: #8790a3 !important; font-size: 10px; }
+.app-shell.stitch-shell .return-detail-summary strong { overflow: hidden; color: #2a3449 !important; font-size: 12px; text-overflow: ellipsis; }
+.app-shell.stitch-shell .return-detail-summary .badge { justify-self: start; padding: 0 !important; color: #0ca06d !important; background: transparent !important; border: 0 !important; font-size: 12px; }
+.app-shell.stitch-shell .return-detail-modal > h3 { margin: 0; padding: 0 24px 10px; color: #293349 !important; font-size: 14px; }
+.app-shell.stitch-shell .return-detail-products { max-height: 52vh; overflow: auto; display: grid; gap: 11px; padding: 0 24px 18px; }
+.app-shell.stitch-shell .return-detail-product { padding: 13px; color: #344057 !important; background: #f8faff !important; border: 1px solid #dce3ee !important; border-radius: 10px; }
+.app-shell.stitch-shell .return-detail-product-head { display: flex; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5eaf2; }
+.app-shell.stitch-shell .return-detail-product-head img,
+.app-shell.stitch-shell .return-detail-product-head > .reference-product-placeholder { width: 76px; height: 76px; flex: 0 0 76px; object-fit: cover; display: grid; place-items: center; color: #8c98ae; background: #edf1f7; border: 1px solid #d8dfeb; border-radius: 6px; }
+.app-shell.stitch-shell .return-detail-product-head strong { display: block; color: #283248 !important; font-size: 13px; line-height: 1.35; }
+.app-shell.stitch-shell .return-detail-product-head small { display: block; margin-top: 5px; color: #748097 !important; font-size: 11px; }
+.app-shell.stitch-shell .return-detail-product-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 15px; margin: 13px 0 0; }
+.app-shell.stitch-shell .return-detail-product-facts > div { min-width: 0; }
+.app-shell.stitch-shell .return-detail-product-facts dt { color: #8792a8 !important; font-size: 10px; }
+.app-shell.stitch-shell .return-detail-product-facts dd { overflow-wrap: anywhere; margin: 3px 0 0; color: #2e394f !important; font-size: 11px; font-weight: 700; line-height: 1.4; }
+.app-shell.stitch-shell .return-detail-modal > footer { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 24px !important; background: #fff !important; border-top: 1px solid #e6eaf2 !important; }
+.app-shell.stitch-shell .return-detail-modal > footer .secondary { color: #47536b !important; background: #f0f3f8 !important; border-color: #d7deea !important; }
+.app-shell.stitch-shell .return-detail-modal > footer .button-link { color: #fff !important; background: #626eff !important; border-color: #626eff !important; }
+.app-shell.stitch-shell .reference-returns-page .return-reference-row > span:nth-child(8) { display: flex; align-items: center; justify-content: center; text-align: center; }
+.app-shell.stitch-shell .reference-returns-page .return-reference-row > span:nth-child(8) .badge { padding: 0 !important; color: #19b681 !important; background: transparent !important; border: 0 !important; border-radius: 0 !important; font-weight: 800; }
+
+.app-shell.stitch-shell .mapping-category-builder .mapping-target-controls { display: grid !important; grid-template-columns: minmax(145px, .36fr) minmax(0, 1fr) !important; gap: 8px !important; padding: 8px !important; background: #14192a !important; border: 1px solid rgba(124, 134, 255, .24) !important; border-radius: 12px !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025); }
+.app-shell.stitch-shell .mapping-category-builder .mapping-target-controls > select,
+.app-shell.stitch-shell .mapping-category-builder .mapping-target-controls .panel-category-picker-trigger { min-height: 42px !important; color: #dce0f5 !important; background: #1d2337 !important; border-color: rgba(151, 160, 207, .25) !important; border-radius: 8px !important; }
+.app-shell.stitch-shell .mapping-category-builder .mapping-target-controls .panel-category-picker-trigger:hover:not(:disabled) { border-color: #7d87ff !important; background: #252c48 !important; }
+.app-shell.stitch-shell .mapping-category-builder .mapping-section-toolbar { padding: 9px 0 !important; border-top-color: rgba(151, 160, 207, .18) !important; border-bottom-color: rgba(151, 160, 207, .18) !important; }
+.app-shell.stitch-shell .mapping-category-builder .mapping-section-tabs { gap: 6px !important; }
+.app-shell.stitch-shell .mapping-category-builder .mapping-section-tabs button { min-height: 36px; padding: 0 12px; color: #929bb9; background: transparent; border: 1px solid transparent; border-radius: 8px; }
+.app-shell.stitch-shell .mapping-category-builder .mapping-section-tabs button.active { color: #fff; background: rgba(98, 110, 255, .18); border-color: rgba(124, 134, 255, .34); }
+
+.app-shell.stitch-shell .integration-platform-settings { overflow: hidden; border-color: rgba(124, 134, 255, .25) !important; background: linear-gradient(135deg, rgba(27, 32, 55, .96), rgba(18, 22, 38, .96)) !important; }
+.app-shell.stitch-shell .integration-platform-settings > h2 { color: #f2f3ff !important; }
+.app-shell.stitch-shell .integration-platform-settings .form-help { max-width: 760px; color: #a4accb !important; line-height: 1.55; }
+.app-shell.stitch-shell .integration-write-toggle { display: flex !important; align-items: flex-start; gap: 11px; margin-top: 7px; padding: 13px; background: rgba(98, 110, 255, .09); border: 1px solid rgba(124, 134, 255, .22); border-radius: 10px; }
+.app-shell.stitch-shell .integration-write-toggle input { width: 18px; height: 18px; flex: 0 0 auto; accent-color: #6f7aff; }
+.app-shell.stitch-shell .integration-write-toggle span { display: grid; gap: 4px; }
+.app-shell.stitch-shell .integration-write-toggle strong { color: #eef0ff; font-size: 12px; }
+.app-shell.stitch-shell .integration-write-toggle small { color: #9ca5c7; line-height: 1.45; }
+.app-shell.stitch-shell .integration-write-warning { display: grid; gap: 3px; margin: 10px 0; padding: 10px 12px; background: rgba(13, 16, 29, .72); border-left: 3px solid #43d39e; border-radius: 5px; }
+.app-shell.stitch-shell .integration-write-warning strong { color: #75e4b6; font-size: 11px; }
+.app-shell.stitch-shell .integration-write-warning span { color: #9da6c5; font-size: 11px; line-height: 1.4; }
+
+.app-shell.stitch-shell .database-reset-panel { max-width: 1100px; border-color: rgba(255, 154, 106, .24) !important; }
+.app-shell.stitch-shell .database-reset-intro p { max-width: 820px; color: #a2aac4 !important; line-height: 1.6; }
+.app-shell.stitch-shell .database-scope-group { padding: 18px 0 !important; }
+.app-shell.stitch-shell .database-scope-group h3 { color: #eef0ff !important; font-size: 14px !important; }
+.app-shell.stitch-shell .database-scope-group > div:first-child p { color: #8e97b5 !important; line-height: 1.45; }
+.app-shell.stitch-shell .database-scope-list { gap: 10px !important; }
+.app-shell.stitch-shell .database-scope-list > label { min-height: 67px !important; align-items: flex-start !important; padding: 12px 13px !important; background: rgba(23, 27, 44, .8); border: 1px solid rgba(151, 160, 207, .18); border-radius: 10px; }
+.app-shell.stitch-shell .database-scope-list > label:has(input:checked) { border-color: rgba(124, 134, 255, .58); background: rgba(77, 86, 168, .14); }
+.app-shell.stitch-shell .database-scope-label { color: #e9ebff !important; }
+.app-shell.stitch-shell .database-scope-label strong { font-size: 12px !important; }
+.app-shell.stitch-shell .database-scope-label::after { content: attr(data-description); display: block; max-width: 360px; margin-top: 4px; color: #9099b7; font-size: 10px; line-height: 1.35; }
+.app-shell.stitch-shell .database-scope-help { display: inline-grid !important; place-items: center; width: 17px; height: 17px; margin-left: 6px; color: #ffb58d !important; background: rgba(255, 181, 141, .08); border-color: rgba(255, 181, 141, .5) !important; border-radius: 50%; font-size: 10px !important; }
+
+.app-shell.stitch-shell .jobs-reference-row { min-height: 72px; }
+.app-shell.stitch-shell .jobs-reference-time { gap: 3px !important; }
+.app-shell.stitch-shell .jobs-reference-time small:last-child { color: #8e97b8 !important; font-size: 9px !important; }
+.app-shell.stitch-shell .job-detail-facts { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 9px !important; }
+.app-shell.stitch-shell .job-detail-facts p { min-height: 58px; padding: 10px !important; background: rgba(124, 134, 255, .06); border: 1px solid rgba(151, 160, 207, .15); border-radius: 8px; }
+.app-shell.stitch-shell .job-detail-facts p strong { overflow-wrap: anywhere; }
+
+@media (max-width: 900px) {
+  .app-shell.stitch-shell > aside { width: 84px !important; padding-inline: 10px !important; }
+  .app-shell.stitch-shell > aside .brand.wordmark, .app-shell.stitch-shell > aside .nav-section, .app-shell.stitch-shell > aside nav a:not(.active)::after, .app-shell.stitch-shell > aside nav a, .app-shell.stitch-shell > aside .settings-nav > a, .app-shell.stitch-shell > aside .logout-link { font-size: 0 !important; }
+  .app-shell.stitch-shell > aside nav a, .app-shell.stitch-shell > aside .settings-nav > a, .app-shell.stitch-shell > aside .logout-link { justify-content: center; padding-inline: 0 !important; }
+  .app-shell.stitch-shell > aside .sidebar-brand-row { justify-content: center; padding-inline: 0 !important; }
+  .app-shell.stitch-shell .attribute-builder-list { grid-template-columns: 1fr !important; }
+  .app-shell.stitch-shell .return-detail-product-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell.stitch-shell .return-detail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell.stitch-shell .mapping-category-builder .mapping-target-controls { grid-template-columns: 1fr !important; }
+  .app-shell.stitch-shell .job-detail-facts { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+@media (max-width: 600px) {
+  .app-shell.stitch-shell .orders-bulk-toolbar { align-items: stretch; flex-direction: column; }
+  .app-shell.stitch-shell .orders-bulk-toolbar .bulk-action { width: 100%; }
+  .app-shell.stitch-shell .return-detail-backdrop { padding: 10px !important; }
+  .app-shell.stitch-shell .return-detail-modal { max-height: 94vh !important; }
+  .app-shell.stitch-shell .return-detail-summary { margin-inline: 14px; }
+  .app-shell.stitch-shell .return-detail-modal > header { padding-inline: 16px !important; }
+  .app-shell.stitch-shell .return-detail-products { padding-inline: 14px; }
+  .app-shell.stitch-shell .return-detail-product-facts { grid-template-columns: 1fr 1fr; }
+  .app-shell.stitch-shell .return-detail-modal > footer { padding-inline: 14px !important; }
+  .app-shell.stitch-shell .product-add-progress > button { padding-inline: 8px !important; }
+  .app-shell.stitch-shell .product-add-progress > button > strong { font-size: 10px !important; }
+}

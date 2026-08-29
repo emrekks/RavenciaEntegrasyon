@@ -99,7 +99,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (connection.PlatformCode == "TRENDYOL")
         {
             var current = ReadSettings(connection);
-            connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? current.UserAgentIdentity : command.UserAgentIdentity.Trim(), current.ExternalWritesEnabled));
+            connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? current.UserAgentIdentity : command.UserAgentIdentity.Trim(), command.ExternalWritesEnabled ?? current.ExternalWritesEnabled));
         }
         else
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
@@ -281,7 +281,11 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private async Task<HashSet<Guid>> ActiveCredentialConnectionIds(Guid tenantId, IEnumerable<Guid> connectionIds, CancellationToken cancellationToken) => (await db.PlatformCredentials.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.ConnectionId) && x.RevokedAt == null).Select(x => x.ConnectionId).ToListAsync(cancellationToken)).ToHashSet();
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private PageResult<TView> Page<TEntity, TView>(List<TEntity> rows, int limit, Func<TEntity, TView> map) where TEntity : class { var hasMore = rows.Count > limit; var items = rows.Take(limit).Select(map).ToList(); var next = hasMore ? cursors.Encode((Guid)typeof(TEntity).GetProperty("Id")!.GetValue(rows[limit - 1])!) : null; return new(items, next, hasMore); }
-    private static ConnectionView Map(PlatformConnection x, bool hasCredential) => new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, x.Version);
+    private static ConnectionView Map(PlatformConnection x, bool hasCredential)
+    {
+        var externalWritesEnabled = x.PlatformCode == "TRENDYOL" ? ReadSettings(x).ExternalWritesEnabled : ReadEfaturamSettings(x).ExternalWritesEnabled;
+        return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version);
+    }
     private static SyncPolicyView Map(ConnectionSyncPolicy x) => new(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, x.Enabled, x.Version);
     private static WebhookSubscriptionView Map(WebhookSubscription x) => new(x.Id, x.AuthenticationType, x.Status, x.ExternalSubscriptionId, x.VerifiedAt, x.LastReceivedAt, x.Version);
     private static ConnectionSettings ReadSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<ConnectionSettings>(value.SettingsJson) ?? new("", false); } catch (JsonException) { return new("", false); } }

@@ -12,7 +12,7 @@ namespace MarketplaceHub.Api.Catalog;
 
 public static class CatalogEndpoints
 {
-    private const long MaxUploadBytes = 10 * 1024 * 1024;
+    private const long MaxUploadBytes = 6 * 1024 * 1024;
 
     public static IEndpointRouteBuilder MapCatalogEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -205,7 +205,7 @@ public static class CatalogEndpoints
         if (file is null || !Guid.TryParse(form["productId"], out var productId)) return Problem(http, new("VALIDATION_FAILED", "file ve productId zorunludur.", 422));
         var variantId = Guid.TryParse(form["variantId"], out var parsedVariant) ? parsedVariant : (Guid?)null;
         if (!await db.Products.AnyAsync(x => x.TenantId == tenant.TenantId && x.Id == productId, http.RequestAborted) || variantId is Guid variant && !await db.ProductVariants.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.Id == variant, http.RequestAborted)) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün veya varyant bulunamadı.", 404));
-        if (file.Length is <= 0 or > MaxUploadBytes || file.ContentType is not ("image/jpeg" or "image/png")) return Problem(http, new("VALIDATION_FAILED", "Yalnız en fazla 10 MiB JPEG veya PNG kabul edilir.", 422));
+        if (file.Length is <= 0 or > MaxUploadBytes || file.ContentType is not ("image/jpeg" or "image/png")) return Problem(http, new("VALIDATION_FAILED", "Yalnız en fazla 6 MiB JPEG veya PNG kabul edilir.", 422));
         await using var input = file.OpenReadStream(); await using var buffer = new MemoryStream(); await input.CopyToAsync(buffer, http.RequestAborted); var bytes = buffer.ToArray();
         var validMagic = file.ContentType == "image/jpeg" ? bytes.Length >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff : bytes.Length >= 8 && bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
         if (!validMagic) return Problem(http, new("VALIDATION_FAILED", "Dosya imzası MIME türüyle eşleşmiyor.", 422));

@@ -381,6 +381,7 @@ type ProductAttributePayload = { attributeId: string; valueId: string | null; te
 // The product workspace intentionally does not display an arbitrary UI quota.
 const MAX_VARIANTS = 1000
 const MAX_PRODUCT_ATTRIBUTES = 3
+const MAX_PRODUCT_MEDIA_BYTES = 6 * 1024 * 1024
 
 function RichTextTool({ icon, label, onClick, disabled = false }: { icon: string; label: string; onClick: () => void; disabled?: boolean }) {
   return <button type="button" className="rich-text-tool" title={label} aria-label={label} onClick={onClick} disabled={disabled}><span className="rich-text-tool-icon" aria-hidden="true">{icon}</span><span className="rich-text-tool-label">{label}</span></button>
@@ -603,12 +604,30 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
+  const [mediaUrlSettingsOpen, setMediaUrlSettingsOpen] = useState(false)
   const feedbackTimer = useRef<number | null>(null)
   const initialEditMediaUrl = useRef('')
   function showFeedback(message: string, kind: OperationFeedback['kind']) {
     if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current)
     setFeedback({ message, kind })
     feedbackTimer.current = window.setTimeout(() => setFeedback(null), kind === 'info' ? 7000 : 5500)
+  }
+  function handleMediaFiles(files: File[]) {
+    const accepted: File[] = []
+    const rejected: string[] = []
+    for (const file of files) {
+      const isImage = file.type === 'image/jpeg' || file.type === 'image/png'
+      if (!isImage) { rejected.push(`${file.name}: yalnız JPEG veya PNG kabul edilir.`); continue }
+      if (file.size <= 0 || file.size > MAX_PRODUCT_MEDIA_BYTES) { rejected.push(`${file.name}: dosya başına en fazla 6 MB olabilir.`); continue }
+      accepted.push(file)
+    }
+    if (accepted.length) setMediaFiles(current => [...current, ...accepted])
+    if (rejected.length) {
+      const message = rejected.length === 1 ? rejected[0] : `${rejected.length} görsel eklenemedi. Dosya türü ve 6 MB sınırını kontrol edin.`
+      setNotice(message); showFeedback(message, 'error')
+    } else if (accepted.length) {
+      const message = `${accepted.length} görsel seçildi.`; setNotice(message); showFeedback(message, 'info')
+    }
   }
   useEffect(() => () => { if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current) }, [])
   const productToEdit = useQuery({ queryKey: ['product', editProductId], queryFn: () => hubApi<Product>(`/products/${editProductId}`), enabled: !!editProductId })
@@ -765,7 +784,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const signatures = rows.map(row => row.optionSignature); if (new Set(signatures).size !== signatures.length) issues.push('Aynı varyant kombinasyonu iki kez oluşturulamaz.')
     const barcodes = rows.map(row => row.barcode.trim()).filter(Boolean); if (new Set(barcodes.map(value => value.toLocaleUpperCase('tr-TR'))).size !== barcodes.length) issues.push('Barkodlar benzersiz olmalıdır.')
     if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')
-    if (requireCompleteCatalog && selectedChannelIds.length) {
+     if (!form.desi.trim() || !Number.isFinite(Number(form.desi)) || Number(form.desi) <= 0) issues.push('Desi sıfırdan büyük olmalıdır.')
+     if (requireCompleteCatalog && selectedChannelIds.length) {
       if (!form.brandId) issues.push('Trendyol yayını için marka zorunludur.'); if (!form.modelCode.trim() || form.modelCode.trim().length > 40) issues.push('Trendyol yayını için en fazla 40 karakterlik model kodu zorunludur.'); if (form.title.trim().length > 100) issues.push('Trendyol ürün başlığı en fazla 100 karakter olabilir.')
       if (!mediaUrls.length && !mediaFiles.length) issues.push('Trendyol yayını için en az bir HTTPS görsel adresi zorunludur.'); if (!mediaUrls.length && mediaFiles.length) issues.push('Yerel dosya katalogda önizleme içindir; Trendyol yayını için en az bir herkese açık HTTPS görsel adresi ekleyin.'); if (mediaUrls.length + mediaFiles.length > 8) issues.push('Trendyol yayını için en fazla 8 görsel kullanılabilir.'); if (mediaUrls.some(url => !url.startsWith('https://'))) issues.push('Tüm görsel adresleri HTTPS olmalıdır.')
       if (rows.some(row => !row.barcode.trim() || !/^[a-zA-Z0-9._-]+$/.test(row.barcode.trim()))) issues.push('Trendyol yayını için her varyantta geçerli ve benzersiz barkod zorunludur.'); if (rows.some(row => row.salePrice <= 0)) issues.push('Trendyol yayını için satış fiyatı sıfırdan büyük olmalıdır.')
@@ -870,7 +890,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     { title: 'Varyant Bilgileri', detail: hasVariantData ? 'Varyant yapısı yayınlanmaya hazır.' : 'Seçilen seçenekler için varyant satırlarını oluşturun.', ok: hasVariantData }
   ]
 
-  return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog"><p className="lede page-lede">Kategori özellikleri, varyant kombinasyonları, stok, fiyat ve Trendyol yayın kuyruğu tek ürün çalışma alanında yönetilir.</p><div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>ÜRÜN BİLGİLERİ &amp; VARYANTLAR</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>YAYINLAMA</strong></button></div></div></div><form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid}>
+  return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog"><p className="lede page-lede">Ürün bilgilerini ve varyantları hazırlayın; yayınlama adımında kanalları seçip gönderim kuyruğunu başlatın.</p><div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün bilgileri ve varyantlar</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div><form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid} noValidate>
     <div className="product-top-layout">
       <section className="panel product-step-card product-basics-card">
         <div className="editor-section-title"><span>1</span><div><h2>Temel ürün bilgileri</h2><p>Ürün kartının temel başlığı ve katalog bilgileri.</p></div></div>
@@ -914,20 +934,20 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     {desiCalculatorOpen && <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => setDesiCalculatorOpen(false)}><section className="workspace-modal desi-calculator-modal" role="dialog" aria-modal="true" aria-labelledby="desi-calculator-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="desi-calculator-title">Desi hesapla</h2><p>En × Boy × Yükseklik / 3000 formülü kullanılır.</p></div><button type="button" className="modal-close" onClick={() => setDesiCalculatorOpen(false)} aria-label="Pencereyi kapat">×</button></header><div className="desi-calculator-body"><div className="product-step-grid"><label>Ağırlık (kg)<input value={form.weight} onChange={event => updateField('weight', event.target.value)} type="number" min="0" step="0.01" /></label><label>En (cm)<input value={form.width} onChange={event => updateField('width', event.target.value)} type="number" min="0" step="0.1" /></label><label>Boy (cm)<input value={form.length} onChange={event => updateField('length', event.target.value)} type="number" min="0" step="0.1" /></label><label>Yükseklik (cm)<input value={form.height} onChange={event => updateField('height', event.target.value)} type="number" min="0" step="0.1" /></label></div><div className="calculated-field"><small>Hesaplanan desi</small><strong>{desi ? desi.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : 'Ölçüleri girin'}</strong></div></div><footer><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(false)}>İptal</button><button type="button" disabled={!desi} onClick={() => { updateField('desi', String(Number(desi.toFixed(2)))); setCalculateDesi(true); setDesiCalculatorOpen(false) }}>Uygula</button></footer></section></div>}
 
     <div className="product-layout-grid"><div className="product-main-stack">
-      <section className="panel product-step-card"><div className="editor-section-title"><span>4</span><div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilir veya internetten erişilebilen HTTPS adresleri ekleyebilirsiniz.</p></div></div><label className="upload-ghost-box product-media-upload"><input type="file" accept="image/jpeg,image/png" multiple onChange={event => setMediaFiles(current => [...current, ...Array.from(event.target.files ?? [])].slice(0, 8))} /><strong>{mediaFiles.length ? `${mediaFiles.length} dosya seçildi` : 'Ürün görsellerini dosya olarak seç'}</strong><small>En fazla 8 adet JPEG veya PNG, dosya başına 10 MB</small></label><label className="product-media-url-field">Görsel URL listesi<textarea id="product-media-urls" aria-describedby="media-url-help" value={form.mediaUrls} onChange={event => updateField('mediaUrls', event.target.value)} placeholder="Örn. https://site.com/gorsel-1.jpg&#10;https://site.com/gorsel-2.png" /><small id="media-url-help" className="field-help">Her satıra bir HTTPS görsel adresi yazın. İlk satır ana görsel olarak kullanılır.</small></label>{(mediaUrls.length > 0 || mediaFiles.length > 0) && <div className="media-preview-strip">{mediaFiles.map((file, index) => <LocalImagePreview key={`${file.name}-${file.lastModified}-${index}`} file={file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={index === 0 && !mediaUrls.length ? 'Ana görsel' : file.name} onRemove={() => setMediaFiles(files => files.filter((_, i) => i !== index))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}{mediaUrls.slice(0, 8 - mediaFiles.length).map((url, index) => <figure key={`${url}-${index}`} className="image-preview-card"><img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} title="Büyütmek için tıklayın" /><button type="button" className="image-remove-btn" title="Görseli kaldır" onClick={e => { e.stopPropagation(); const next = mediaUrls.filter((_, i) => i !== index).join('\n'); updateField('mediaUrls', next) }}>✕</button><figcaption>{index === 0 && !mediaFiles.length ? 'Ana görsel' : `${index + 1}. görsel`}</figcaption></figure>)}</div>}</section>
+      <section className="panel product-step-card"><div className="editor-section-title"><span>4</span><div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilir veya internetten erişilebilen HTTPS adresleri ekleyebilirsiniz.</p></div></div><label className="upload-ghost-box product-media-upload"><input type="file" accept="image/jpeg,image/png" multiple onChange={event => { handleMediaFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} /><strong>{mediaFiles.length ? `${mediaFiles.length} dosya seçildi` : 'Ürün görsellerini dosya olarak seç'}</strong><small>Adet sınırı yok · JPEG veya PNG · dosya başına en fazla 6 MB</small></label><details className="product-media-url-settings" open={mediaUrlSettingsOpen} onToggle={event => setMediaUrlSettingsOpen(event.currentTarget.open)}><summary><span><b aria-hidden="true">↗</b> Link ile görsel ekle</span><small>{mediaUrls.length ? `${mediaUrls.length} adres kayıtlı` : 'İsteğe bağlı'}</small><i aria-hidden="true">⌄</i></summary><div><label className="product-media-url-field">Görsel URL listesi<textarea id="product-media-urls" aria-describedby="media-url-help" value={form.mediaUrls} onChange={event => updateField('mediaUrls', event.target.value)} placeholder="Örn. https://site.com/gorsel-1.jpg&#10;https://site.com/gorsel-2.png" /><small id="media-url-help" className="field-help">Her satıra bir HTTPS görsel adresi yazın. İlk satır ana görsel olarak kullanılır.</small></label></div></details>{(mediaUrls.length > 0 || mediaFiles.length > 0) && <div className="media-preview-strip">{mediaFiles.map((file, index) => <LocalImagePreview key={`${file.name}-${file.lastModified}-${index}`} file={file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={index === 0 && !mediaUrls.length ? 'Ana görsel' : file.name} onRemove={() => setMediaFiles(files => files.filter((_, i) => i !== index))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}{mediaUrls.map((url, index) => <figure key={`${url}-${index}`} className="image-preview-card"><img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} title="Büyütmek için tıklayın" /><button type="button" className="image-remove-btn" title="Görseli kaldır" onClick={e => { e.stopPropagation(); const next = mediaUrls.filter((_, i) => i !== index).join('\n'); updateField('mediaUrls', next) }}>✕</button><figcaption>{index === 0 && !mediaFiles.length ? 'Ana görsel' : `${index + 1}. görsel`}</figcaption></figure>)}</div>}</section>
 
       <section className="panel product-step-card">
         <div className="editor-section-title">
           <span>5</span>
           <div>
             <h2>Ürün seçenekleri</h2>
-            <p>Kategoriye bağlı seçenekleri seçin; varyant satırları bu seçimlerden oluşturulur.</p>
+            <p>Bu alan yalnızca seçenek gruplarını tanımlar. Beden ve renk değerlerini işaretleyin; aşağıdaki “Ürün seçenek grupları” tablosu tüm kombinasyonları oluşturur.</p>
           </div>
         </div>
         <div className="attribute-variant-action">
           <div>
             <strong>Varyantları oluştur</strong>
-            <small>Varyant olacak özellikleri ve değerleri seçtikten sonra kombinasyonları oluşturun.</small>
+             <small>{variantAttributeIds.length ? `${variantAttributeIds.map(id => allRequirements.find(item => item.attributeId === id)?.attribute.name).filter(Boolean).join(' × ')} · ${variantAttributeIds.reduce((total, id) => total * Math.max(1, attributeSelections[id]?.length ?? 0), 1)} kombinasyon` : 'Önce seçenek grubunu ve değerlerini işaretleyin.'}</small>
           </div>
           <div className="attribute-variant-actions">
             <div className="attr-filter-menu-shell">
@@ -978,12 +998,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <div className="attribute-builder-list">
             {visibleOptionRequirements.map(item => (
               <article className="attribute-builder-card" key={item.attributeId}>
-                <div className="attribute-builder-head">
+                 <div className="attribute-builder-head">
                   <label className="attribute-builder-toggle">
                     <input type="checkbox" checked={variantAttributeIds.includes(item.attributeId)} onChange={() => toggleVariantAttribute(item.attributeId)} disabled={item.role !== 'OPTION' || !item.attribute.values.length} />
                     <span>{item.attribute.name}{item.isRequired ? ' *' : ''}</span>
                   </label>
-                  <small>{item.attribute.values.length} değer · seçenek{variantAttributeIds.includes(item.attributeId) ? ' · varyant ekseni' : ''}</small>
+                   <small>{item.attribute.values.length} değer · seçenek{variantAttributeIds.includes(item.attributeId) ? ' · kombinasyon ekseni' : ' · yalnızca seçim grubu'}</small>
                 </div>
                 {item.attribute.values.length ? (
                   <div className="option-chip-list">
