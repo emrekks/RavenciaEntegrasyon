@@ -9520,18 +9520,31 @@ body:has(.product-add-page),
 
 /* Collapsed rails open on hover/focus, then return to icon-only mode on leave. */
 .app-shell.stitch-shell {
-  transition: grid-template-columns .16s ease !important;
+  transition: none !important;
 }
 
 .app-shell.stitch-shell > aside {
   transition: width .16s ease, padding .16s ease, box-shadow .16s ease !important;
 }
 
-/* On medium desktop widths the compact rail also expands while the pointer
-   or keyboard focus is inside it. Mobile keeps its fixed icon drawer. */
+/* The expanded menu overlays the page. Keeping the grid track compact means
+   the content column never shifts when the pointer enters the rail. */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell.sidebar-hover-expanded {
+    grid-template-columns: 74px minmax(0, 1fr) !important;
+  }
+
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside {
+    width: 272px !important;
+    box-shadow: 22px 0 38px rgba(2, 5, 14, .3) !important;
+  }
+}
+
+/* On medium desktop widths the compact rail also expands as an overlay.
+   Mobile keeps its fixed icon drawer. */
 @media (min-width: 761px) and (max-width: 900px) {
   .app-shell.stitch-shell.sidebar-hover-expanded {
-    grid-template-columns: 272px minmax(0, 1fr) !important;
+    grid-template-columns: 84px minmax(0, 1fr) !important;
   }
 
   .app-shell.stitch-shell.sidebar-hover-expanded > aside {
