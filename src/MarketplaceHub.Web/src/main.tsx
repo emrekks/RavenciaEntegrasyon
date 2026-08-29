@@ -7,6 +7,7 @@ import './styles.css'
 import './splash.css'
 import './ravencia-theme.css'
 import './stitch-theme.css'
+import './obsidian-theme.css'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 60_000, refetchOnWindowFocus: false } } })
 createRoot(document.getElementById('root')!).render(<StrictMode><QueryClientProvider client={queryClient}><BrowserRouter><App /></BrowserRouter></QueryClientProvider></StrictMode>)
