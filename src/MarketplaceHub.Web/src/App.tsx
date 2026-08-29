@@ -107,17 +107,12 @@ function Shell({ me }: { me: Me }) {
   const navigate = useNavigate()
   const titles: Record<string, string> = { dashboard: 'Dashboard', products: 'Ürünler', catalog: 'Katalog', imports: 'İçe Aktarım', inventory: 'Stok', integrations: 'Platformlar · Trendyol · E-Faturam', mappings: 'Kategori Eşitleme', orders: 'Siparişler', shipments: 'Gönderiler', returns: 'İadeler', invoices: 'Faturalar', jobs: 'İşlem Takibi', settings: 'Ayarlar' }
   const current = titles[location.pathname.split('/')[1]] ?? 'Operasyon Merkezi'
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('ravencia.sidebarCollapsed') === '1')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [globalSearch, setGlobalSearch] = useState('')
   async function logout() { await api('/logout', { method: 'POST' }); window.location.replace(`/?signedOut=${Date.now()}`) }
-  function toggleSidebar() {
-    setSidebarHoverExpanded(false)
-    setSidebarCollapsed(value => { const next = !value; localStorage.setItem('ravencia.sidebarCollapsed', next ? '1' : '0'); return next })
-  }
-  const menuCollapsed = sidebarCollapsed && !sidebarHoverExpanded
-  function expandSidebarOnHover() { if (sidebarCollapsed) setSidebarHoverExpanded(true) }
-  function collapseSidebarOnLeave() { if (sidebarCollapsed) setSidebarHoverExpanded(false) }
+  const menuCollapsed = !sidebarHoverExpanded
+  function expandSidebarOnHover() { setSidebarHoverExpanded(true) }
+  function collapseSidebarOnLeave() { setSidebarHoverExpanded(false) }
   function submitGlobalSearch(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const value = globalSearch.trim(); if (!value) return; navigate(`/orders?search=${encodeURIComponent(value)}`) }
   const icons: Record<string, ReactNode> = {
     dashboard: <><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></>,
@@ -138,7 +133,6 @@ function Shell({ me }: { me: Me }) {
   return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHoverExpanded ? 'sidebar-hover-expanded' : ''}`}>
     <aside onMouseEnter={expandSidebarOnHover} onMouseLeave={collapseSidebarOnLeave} onFocus={expandSidebarOnHover} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) collapseSidebarOnLeave() }}>
       <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong><small>MarketplaceHub</small></div></div>
-      <button type="button" className="sidebar-collapse-toggle" onClick={toggleSidebar} aria-label={menuCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'} title={menuCollapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}><svg viewBox="0 0 20 20" aria-hidden="true"><path d={menuCollapsed ? 'm8 5 5 5-5 5' : 'm12 5-5 5 5 5'} /></svg></button>
       <nav aria-label="Ana menü"><span className="nav-section">Operasyon</span>{item('/dashboard', 'dashboard', 'Dashboard')}{item('/products', 'products', 'Ürünler')}{item('/orders', 'orders', 'Siparişler')}{item('/returns', 'returns', 'İadeler')}{item('/invoices', 'invoices', 'Faturalar')}{item('/jobs', 'jobs', 'İşlem Takibi')}{item('/integrations', 'platforms', 'Platformlar')}{item('/mappings/categories', 'mappings', 'Eşleştirme Ayarları')}</nav>
       <div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları')}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}Çıkış Yap</button></div>
     </aside>

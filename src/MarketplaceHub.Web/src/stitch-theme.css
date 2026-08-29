@@ -152,26 +152,6 @@ textarea {
 
 .sidebar-primary-action span { font-size: 17px; font-weight: 400; }
 
-.sidebar-collapse-toggle {
-  position: absolute !important;
-  z-index: 2;
-  top: 74px !important;
-  right: -13px !important;
-  display: grid !important;
-  place-items: center;
-  width: 26px !important;
-  height: 26px !important;
-  min-width: 26px !important;
-  padding: 0 !important;
-  color: var(--st-primary-soft) !important;
-  background: var(--st-surface-container) !important;
-  border: 1px solid var(--st-outline) !important;
-  border-radius: 50% !important;
-  box-shadow: none !important;
-}
-
-.sidebar-collapse-toggle svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; }
-
 .stitch-shell aside nav {
   display: grid !important;
   gap: 4px !important;
@@ -483,7 +463,7 @@ textarea {
   box-shadow: none !important;
 }
 
-.stitch-shell button:not(.secondary):not(.ghost):not(.danger):not(.link-button):not(.topbar-icon-button):not(.user-menu-button):not(.sidebar-collapse-toggle):not(.logout-link),
+.stitch-shell button:not(.secondary):not(.ghost):not(.danger):not(.link-button):not(.topbar-icon-button):not(.user-menu-button):not(.logout-link),
 .stitch-shell a.button.primary {
   background-color: var(--st-primary);
   border-color: #727cff;
@@ -895,7 +875,6 @@ textarea {
     padding: 10px 7px !important;
   }
   .stitch-brand-mark { width: 32px; height: 32px; flex-basis: 32px; }
-  .sidebar-collapse-toggle,
   .stitch-shell .brand.wordmark,
   .sidebar-utility-links { display: none !important; }
   .sidebar-primary-action { min-width: 40px; min-height: 38px; margin-block: 12px; padding: 0 !important; font-size: 0 !important; }
@@ -9272,7 +9251,6 @@ body:has(.product-add-page),
 .app-shell.stitch-shell > aside nav a.active .nav-icon { color: #fff !important; }
 .app-shell.stitch-shell > aside .settings-nav { gap: 6px !important; padding-top: 18px !important; border-top-color: rgba(173, 180, 255, .14) !important; }
 .app-shell.stitch-shell > aside .logout-link { background: transparent !important; }
-.app-shell.stitch-shell > aside .sidebar-collapse-toggle { width: 28px !important; height: 28px !important; top: 82px !important; right: -14px !important; border-color: rgba(124, 134, 255, .4) !important; background: #171a2d !important; }
 .app-shell.stitch-shell.sidebar-collapsed > aside { width: 84px !important; padding-inline: 10px !important; }
 .app-shell.stitch-shell.sidebar-collapsed > aside nav a,
 .app-shell.stitch-shell.sidebar-collapsed > aside .settings-nav > a,
@@ -9524,23 +9502,6 @@ body:has(.product-add-page),
   stroke-width: 2.05 !important;
 }
 
-/* Keep the collapse control centered in the narrow rail and prevent the
-   legacy hover nudge from pulling it away from its anchor point. */
-.app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-collapse-toggle {
-  top: 82px !important;
-  right: auto !important;
-  left: 50% !important;
-  transform: translate(-50%, -50%) !important;
-}
-
-.app-shell.stitch-shell > aside .sidebar-collapse-toggle:hover {
-  transform: translateY(-50%) scale(1.05) !important;
-}
-
-.app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-collapse-toggle:hover {
-  transform: translate(-50%, -50%) scale(1.05) !important;
-}
-
 /* Navigation icons stay frameless at rest; the link receives the hover frame. */
 .app-shell.stitch-shell > aside nav a .nav-icon,
 .app-shell.stitch-shell > aside .settings-nav > a .nav-icon,
@@ -9557,20 +9518,6 @@ body:has(.product-add-page),
   border-color: rgba(124, 134, 255, .42) !important;
 }
 
-/* Attach the collapse control to the rail's middle-right edge. */
-.app-shell.stitch-shell > aside .sidebar-collapse-toggle,
-.app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-collapse-toggle {
-  top: 50% !important;
-  right: 0 !important;
-  left: auto !important;
-  transform: translateY(-50%) !important;
-}
-
-.app-shell.stitch-shell > aside .sidebar-collapse-toggle:hover,
-.app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-collapse-toggle:hover {
-  transform: translateY(-50%) scale(1.05) !important;
-}
-
 /* Collapsed rails open on hover/focus, then return to icon-only mode on leave. */
 .app-shell.stitch-shell {
   transition: grid-template-columns .16s ease !important;
@@ -9578,6 +9525,40 @@ body:has(.product-add-page),
 
 .app-shell.stitch-shell > aside {
   transition: width .16s ease, padding .16s ease, box-shadow .16s ease !important;
+}
+
+/* On medium desktop widths the compact rail also expands while the pointer
+   or keyboard focus is inside it. Mobile keeps its fixed icon drawer. */
+@media (min-width: 761px) and (max-width: 900px) {
+  .app-shell.stitch-shell.sidebar-hover-expanded {
+    grid-template-columns: 272px minmax(0, 1fr) !important;
+  }
+
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside {
+    width: 272px !important;
+    padding-inline: 16px !important;
+  }
+
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside .sidebar-brand-row {
+    justify-content: flex-start !important;
+    padding-inline: 10px !important;
+  }
+
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside .brand.wordmark,
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside .nav-section,
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside nav a,
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside .settings-nav > a,
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside .logout-link {
+    font-size: 13px !important;
+  }
+
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside .brand.wordmark {
+    display: grid !important;
+  }
+
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside .nav-section {
+    font-size: 10px !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
