@@ -9489,3 +9489,27 @@ body:has(.product-add-page),
     margin-left: 62px !important;
   }
 }
+
+/* Collapsed navigation: text nodes are direct children of the links, so the
+   label must be hidden on the link itself and the link must fit the rail. */
+.app-shell.stitch-shell.sidebar-collapsed > aside nav,
+.app-shell.stitch-shell.sidebar-collapsed > aside .settings-nav {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed > aside nav a,
+.app-shell.stitch-shell.sidebar-collapsed > aside .settings-nav > a,
+.app-shell.stitch-shell.sidebar-collapsed > aside .logout-link {
+  width: 100% !important;
+  min-width: 0 !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  font-size: 0 !important;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed > aside nav a .nav-icon,
+.app-shell.stitch-shell.sidebar-collapsed > aside .settings-nav > a .nav-icon,
+.app-shell.stitch-shell.sidebar-collapsed > aside .logout-link .nav-icon {
+  margin-inline: auto !important;
+}
