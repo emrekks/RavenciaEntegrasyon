@@ -9513,3 +9513,13 @@ body:has(.product-add-page),
 .app-shell.stitch-shell.sidebar-collapsed > aside .logout-link .nav-icon {
   margin-inline: auto !important;
 }
+
+/* Keep navigation icons legible in both expanded and collapsed rails. */
+.app-shell.stitch-shell > aside nav a .nav-icon,
+.app-shell.stitch-shell > aside .settings-nav > a .nav-icon,
+.app-shell.stitch-shell > aside .logout-link .nav-icon {
+  width: 24px !important;
+  height: 24px !important;
+  flex-basis: 24px !important;
+  stroke-width: 2.05 !important;
+}
