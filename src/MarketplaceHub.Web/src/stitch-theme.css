@@ -9220,6 +9220,7 @@ body:has(.product-add-page),
 .app-shell.stitch-shell > aside {
   width: 272px !important;
   padding: 22px 16px 18px !important;
+  z-index: 60 !important;
   background: linear-gradient(180deg, #0c0e18 0%, #101321 100%) !important;
   border-right: 1px solid rgba(147, 156, 255, .14) !important;
 }
