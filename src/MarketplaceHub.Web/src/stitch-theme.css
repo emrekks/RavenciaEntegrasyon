@@ -8948,6 +8948,14 @@ body:has(.product-add-page),
   background: rgba(88, 101, 242, .055);
 }
 
+/* The catalog header and rows are grid layouts. Keep this declaration in the
+   canonical layer so older table skins cannot collapse every cell vertically. */
+.app-shell.stitch-shell .products-page .product-catalog-head,
+.app-shell.stitch-shell .products-page .product-catalog-row {
+  display: grid !important;
+  align-items: center !important;
+}
+
 .app-shell.stitch-shell .empty,
 .app-shell.stitch-shell .jobs-reference-empty,
 .app-shell.stitch-shell .jobs-reference-state,
