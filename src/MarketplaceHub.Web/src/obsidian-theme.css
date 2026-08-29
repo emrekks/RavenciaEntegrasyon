@@ -1094,6 +1094,10 @@ textarea:focus-visible { outline: 2px solid var(--rv-obsidian-cyan); outline-off
 .rv-topbar { min-height: 64px; padding: 0 28px; background: var(--rv-obsidian-surface); border-bottom: 1px solid var(--rv-obsidian-border); }
 
 @media (max-width: 760px) {
+  .stitch-shell > main { width: 100% !important; margin-left: 0 !important; }
+  .stitch-shell .topbar { flex-wrap: nowrap !important; }
+  .stitch-shell .topbar-workspace { min-width: 0 !important; flex: 1 1 auto !important; }
+  .stitch-shell .top-actions { width: auto !important; min-width: 0 !important; flex: 0 0 auto !important; }
   .rv-toast-region { top: 68px; right: 12px; left: 12px; width: auto; }
   .rv-modal-backdrop { padding: 12px; }
   .rv-modal { max-height: calc(100svh - 24px); }
