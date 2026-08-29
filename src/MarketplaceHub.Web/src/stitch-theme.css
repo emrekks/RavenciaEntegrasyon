@@ -9792,3 +9792,43 @@ body:has(.product-add-page),
 @media (prefers-reduced-motion: reduce) {
   .cyber-login-submit > i, .rv-splash-logo-container, .rv-splash-loading-progress { animation: none !important; }
 }
+
+/* Keep the desktop rail out of document flow so opening it can never move
+   the workspace. The main column remains anchored while the fixed sidebar
+   grows above it as an overlay. */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell {
+    grid-template-columns: 74px minmax(0, 1fr) !important;
+  }
+
+  .app-shell.stitch-shell > aside {
+    position: fixed !important;
+    inset: 0 auto 0 0;
+    width: 74px !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+  }
+
+  .app-shell.stitch-shell > main {
+    grid-column: 2;
+    min-width: 0;
+  }
+
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside {
+    width: 272px !important;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 900px) {
+  .app-shell.stitch-shell {
+    grid-template-columns: 84px minmax(0, 1fr) !important;
+  }
+
+  .app-shell.stitch-shell > aside {
+    width: 84px !important;
+  }
+
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside {
+    width: 272px !important;
+  }
+}
