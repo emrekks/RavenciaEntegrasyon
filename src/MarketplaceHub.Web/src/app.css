@@ -13047,3 +13047,61 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .orders-page .order-reference-actions > .order-status-column { align-items:center !important; text-align:center; }
 .app-shell.stitch-shell .orders-page .order-reference-actions > .order-label-actions,
 .app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu { align-self:center !important; }
+
+/* Product option/media polish. */
+.app-shell.stitch-shell .variant-media-option {
+  display:grid; place-items:center; padding:0; aspect-ratio:1; overflow:hidden;
+  background:transparent!important; border:0!important; border-radius:0!important; box-shadow:none!important;
+}
+.app-shell.stitch-shell .variant-media-option:hover,
+.app-shell.stitch-shell .variant-media-option.selected {
+  background:transparent!important; border:0!important; box-shadow:none!important; transform:none;
+}
+.app-shell.stitch-shell .variant-media-option-image {
+  width:auto; height:calc(100% - 12px); aspect-ratio:2 / 3;
+  background:transparent; border-radius:0;
+}
+.app-shell.stitch-shell .variant-media-option-image img { object-fit:cover; }
+.app-shell.stitch-shell .variant-media-option > i { top:7px; right:7px; width:18px; height:18px; border:0; }
+.app-shell.stitch-shell .variant-table-toolbar { align-items:center; }
+.app-shell.stitch-shell .variant-table-toolbar-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-left:auto; }
+.app-shell.stitch-shell .variant-clear-button { color:#ff9ca4!important; background:transparent!important; border-color:rgba(241,112,124,.48)!important; }
+.app-shell.stitch-shell .variant-clear-button:hover { color:#fff!important; background:rgba(241,112,124,.14)!important; border-color:#f1707c!important; }
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle {
+  display:grid; place-items:center; flex:0 0 24px; width:24px; height:28px;
+  background:transparent!important; border:0!important; font-size:0;
+}
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle::after {
+  content:''; width:16px; height:24px;
+  background:repeating-linear-gradient(90deg, #8f99c5 0 1px, transparent 1px 4px); opacity:.82;
+}
+.app-shell.stitch-shell .product-add-page .product-top-sidebar > .product-category-mapping-card { height:auto!important; align-self:start; }
+.app-shell.stitch-shell .product-description-field > .rich-text-editor { background:#171b2b!important; }
+.app-shell.stitch-shell .rich-text-editor-head { background:linear-gradient(100deg,#20253f,#1b2035)!important; }
+.app-shell.stitch-shell .rich-text-mode-switch { background:#171b2b!important; }
+.app-shell.stitch-shell .rich-text-toolbar { flex-wrap:nowrap!important; gap:3px!important; overflow-x:auto; scrollbar-width:thin; background:#171b2b!important; }
+.app-shell.stitch-shell .rich-text-tool-group { flex:0 0 auto; gap:2px!important; padding-right:5px; }
+.app-shell.stitch-shell .rich-text-editor-pro .rich-text-toolbar button,
+.app-shell.stitch-shell .rich-text-editor-pro .rich-text-toolbar select { min-height:28px!important; padding-inline:5px!important; font-size:8px!important; }
+.app-shell.stitch-shell .rich-text-canvas,
+.app-shell.stitch-shell .rich-text-html-editor { background:#15192a!important; }
+.app-shell.stitch-shell .rich-text-editor-foot { background:#171b2b!important; }
+
+/* Orders: keep bulk menus above the table and action controls centered. */
+.app-shell.stitch-shell .orders-page .order-reference-actions { align-items:center!important; justify-content:center!important; gap:7px!important; }
+.app-shell.stitch-shell .orders-page .order-reference-actions > .order-status-column,
+.app-shell.stitch-shell .orders-page .order-reference-actions > .order-label-actions,
+.app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu { align-self:center!important; }
+.app-shell.stitch-shell .orders-page .order-action-menu { display:inline-flex!important; align-items:center!important; justify-content:center!important; gap:7px!important; height:30px!important; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-menu-shell { z-index:2200; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu { z-index:2300!important; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu.opens-up { top:auto!important; bottom:calc(100% + 6px)!important; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu.opens-down { top:calc(100% + 6px)!important; bottom:auto!important; }
+.app-shell.stitch-shell .bulk-operation-summary { display:grid; gap:4px; margin:12px 24px 0; padding:10px 12px; color:#e8eaff; background:rgba(113,104,245,.1); border:1px solid rgba(124,134,255,.25); border-radius:8px; }
+.app-shell.stitch-shell .bulk-operation-summary small { color:#aeb4d1; line-height:1.4; }
+.app-shell.stitch-shell .shipping-label-batch-preview { display:grid; gap:16px; max-height:min(620px,65vh); overflow:auto; padding:12px; background:#0d111e; }
+.app-shell.stitch-shell .shipping-label-batch-preview > .shipping-label-print-surface { margin:0 auto; }
+@media print {
+  .app-shell.stitch-shell .shipping-label-batch-preview { display:block!important; max-height:none!important; overflow:visible!important; padding:0!important; background:#fff!important; }
+  .app-shell.stitch-shell .shipping-label-batch-preview > .shipping-label-print-surface { margin:0!important; break-inside:avoid; page-break-inside:avoid; }
+}

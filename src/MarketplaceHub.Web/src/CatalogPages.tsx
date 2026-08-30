@@ -75,9 +75,8 @@ function MediaOptionThumb({ option, selected, onClick }: { option: ProductMediaO
     setSrc(objectUrl)
     return () => URL.revokeObjectURL(objectUrl)
   }, [option.file])
-  return <button type="button" className={`variant-media-option ${selected ? 'selected' : ''}`} aria-pressed={selected} onClick={onClick}>
+  return <button type="button" className={`variant-media-option ${selected ? 'selected' : ''}`} aria-label={option.label} aria-pressed={selected} onClick={onClick}>
     <span className="variant-media-option-image">{src ? <img src={src} alt="" /> : <VariantImageIcon />}</span>
-    <span className="variant-media-option-label">{option.label}</span>
     <i aria-hidden="true">{selected ? '✓' : ''}</i>
   </button>
 }
@@ -741,15 +740,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setVariantMediaModal({ mode: 'variant', rowKey, draftRef: row?.mediaRef ?? '', groupId: '', valueId: '' })
   }
   function openBulkVariantMediaPicker() {
-    const groups = optionRequirements.filter(item => variantAttributeIds.includes(item.attributeId) && (attributeSelections[item.attributeId]?.length ?? 0) > 0)
+    const groups = bulkMediaGroups
     if (!groups.length) {
       const message = 'Önce seçenek grubu ve en az bir seçenek değeri seçin.'
       setNotice(message); showFeedback(message, 'error')
       return
     }
     const group = groups[0]
-    const values = group ? group.attribute.values.filter(value => (attributeSelections[group.attributeId] ?? []).includes(value.id)) : []
-    setVariantMediaModal({ mode: 'bulk', draftRef: '', groupId: group?.attributeId ?? '', valueId: values[0]?.id ?? '' })
+    setVariantMediaModal({ mode: 'bulk', draftRef: '', groupId: group.id, valueId: group.values[0]?.id ?? '' })
   }
   function rowOptionValue(row: VariantDraft, group: CategoryRequirement) {
     const direct = row.options[group.attribute.name]
@@ -910,7 +908,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const selectedPublishConnections = publishConnections.filter(item => selectedChannelIds.includes(item.id))
   const assignedMediaUrls = [...new Set(variantRows.flatMap(row => row.mediaRef.startsWith('url|') ? [row.mediaRef.slice(4)] : []))]
   const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `${index + 1}. ${url}`, url })) as ProductMediaOption[]).concat(mediaFiles.map((file, index) => ({ value: `file|${index}`, label: `Dosya · ${file.name}`, file })))
-  const bulkMediaGroups = optionRequirements.filter(item => variantAttributeIds.includes(item.attributeId) && (attributeSelections[item.attributeId]?.length ?? 0) > 0).map(item => ({ id: item.attributeId, name: item.attribute.name, values: item.attribute.values.filter(value => (attributeSelections[item.attributeId] ?? []).includes(value.id)) }))
+  const bulkMediaGroups = optionRequirements.map(item => {
+    const selectedIds = attributeSelections[item.attributeId] ?? []
+    const values = item.attribute.values.filter(value => selectedIds.includes(value.id) || variantRows.some(row => row.attributeValueIds[item.attributeId] === value.id || rowOptionValue(row, item).toLocaleLowerCase('tr-TR') === value.value.toLocaleLowerCase('tr-TR')))
+    return values.length ? { id: item.attributeId, name: item.attribute.name, values } : null
+  }).filter((item): item is { id: string; name: string; values: Array<{ id: string; value: string }> } => item !== null)
   const hasBasicProductData = Boolean(form.title.trim() && form.description.trim() && form.brandId && form.modelCode.trim() && form.barcode.trim())
   const mediaCount = mediaUrls.length + mediaFiles.length
   const hasProductMedia = mediaCount > 0
@@ -984,7 +986,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           </div>
           <div className="attribute-variant-actions">
             <button type="button" onClick={generateVariants}>Ürünleri ekle</button>
-            <button type="button" className="secondary" onClick={clearVariants}>Oluşan varyantları temizle</button>
           </div>
         </div>
         {!form.categoryId ? (
@@ -1037,7 +1038,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         <div className="editor-section-title"><span>6</span><div><h2>Ürün seçenek grupları</h2><p>İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</p></div></div>
         {variantRows.length > 0 && <>
           <div className="variant-bulk-editor"><input value={bulkStock} onChange={event => setBulkStock(event.target.value)} type="number" min="0" placeholder="Tüm stoklar" /><input value={bulkSalePrice} onChange={event => setBulkSalePrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm satış fiyatları" /><input value={bulkListPrice} onChange={event => setBulkListPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm liste fiyatları" /><button type="button" className="secondary" onClick={applyBulk}>Tümüne uygula</button></div>
-           <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere görsel ata</button></div>
+            <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary variant-clear-button" onClick={clearVariants}>Oluşan varyantları temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere görsel ata</button></div></div>
         </>}
            <div className="variant-table-editor"><div className="variant-table-head"><span>#</span><span>Seçenek</span><span>Barkod</span><span>Stok kodu</span><span>Stok</span><span>Fiyat</span><span>Liste fiyatı</span><span>Varyant görseli</span><span>İşlem</span></div>{variantRows.length ? variantRows.map((row, index) => <div className={`variant-table-row ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key} onDragOver={event => event.preventDefault()} onDragEnter={() => { if (!draggedVariantKey || draggedVariantKey === row.key || dragOverVariantKey === row.key) return; swapVariants(draggedVariantKey, row.key); setDragOverVariantKey(row.key) }}><div className="variant-row-lead"><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle" draggable title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; setDraggedVariantKey(row.key); setDragOverVariantKey(null) }} onDragEnd={() => { setDraggedVariantKey(null); setDragOverVariantKey(null) }}>☰</span></div><input value={row.optionSignature} readOnly /><input className="technical-field barcode-value" value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" /><input className="technical-field sku-value" value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" /><input value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" /><input value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /><input value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /><div className="variant-media-cell"><button type="button" className={`variant-media-button ${row.mediaRef ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görseli seç`} title="Varyant görselini seç"><VariantImageIcon />{row.mediaRef && <i aria-hidden="true">✓</i>}</button></div><button type="button" className="secondary" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))}>Sil</button></div>) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}</div>
       </section>
