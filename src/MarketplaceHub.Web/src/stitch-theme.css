@@ -9489,6 +9489,12 @@ body:has(.product-add-page),
     box-shadow: 22px 0 38px rgba(2, 5, 14, .34) !important;
   }
 
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside nav a .nav-icon,
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside .settings-nav > a .nav-icon,
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside .logout-link .nav-icon {
+    left: 8px;
+  }
+
   .app-shell.stitch-shell > aside nav a,
   .app-shell.stitch-shell > aside .settings-nav > a,
   .app-shell.stitch-shell > aside .logout-link {
