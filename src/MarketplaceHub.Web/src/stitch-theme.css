@@ -2008,6 +2008,16 @@ textarea {
   font: inherit;
 }
 
+.app-shell.stitch-shell .shipping-settings-grid > label:nth-child(1) input,
+.app-shell.stitch-shell .shipping-settings-grid > label:nth-child(2) textarea {
+  min-height: 76px;
+  height: 76px;
+}
+
+.app-shell.stitch-shell .shipping-settings-grid > label:nth-child(2) textarea {
+  resize: vertical;
+}
+
 .app-shell.stitch-shell .shipping-settings-check {
   display: flex !important;
   align-items: center;
