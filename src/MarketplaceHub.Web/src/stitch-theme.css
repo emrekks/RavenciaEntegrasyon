@@ -9457,6 +9457,11 @@ body:has(.product-add-page),
     grid-template-columns: 74px minmax(0, 1fr) !important;
   }
 
+  .app-shell.stitch-shell.sidebar-collapsed > aside {
+    width: 74px !important;
+    padding-inline: 10px !important;
+  }
+
   .app-shell.stitch-shell > aside {
     position: fixed !important;
     inset: 0 auto 0 0;
@@ -9587,6 +9592,7 @@ body:has(.product-add-page),
   .app-shell.stitch-shell > aside .logout-link:hover {
     border-color: rgba(124, 134, 255, .42) !important;
     background: rgba(124, 134, 255, .11) !important;
+    transform: none !important;
   }
 }
 
