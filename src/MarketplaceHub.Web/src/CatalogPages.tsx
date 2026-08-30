@@ -519,7 +519,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '2', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([])
   const initializedEditProductKey = useRef<string | null>(null)
-  const importedEditOptionsKey = useRef<string | null>(null)
   const [wizardStep, setWizardStep] = useState<1 | 2>(1)
   const [scheduledPublishOpen, setScheduledPublishOpen] = useState(false)
   const [onlySelectedAttributes, setOnlySelectedAttributes] = useState<boolean>(() => {
@@ -619,24 +618,24 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }, [productToEdit.data?.id, productToEdit.data?.version])
 
   useEffect(() => {
-    const product = productToEdit.data
-    if (!product || !form.categoryId || form.categoryId !== product.categoryId || !allRequirements.length) return
-    const productKey = `${product.id}:${product.version}`
-    if (importedEditOptionsKey.current === productKey) return
-    const selected: Record<string, string[]> = {}
-    const importedOptionIds: string[] = []
-    for (const option of product.options ?? []) {
-      const requirement = allRequirements.find(item => item.role === 'OPTION' && item.attribute.name.trim().toLocaleUpperCase('tr-TR') === option.label.trim().toLocaleUpperCase('tr-TR'))
-      if (!requirement) continue
-      importedOptionIds.push(requirement.attributeId)
-      selected[requirement.attributeId] = option.values.map(value => requirement.attribute.values.find(candidate => candidate.value.trim().toLocaleUpperCase('tr-TR') === value.label.trim().toLocaleUpperCase('tr-TR'))?.id).filter((id): id is string => Boolean(id))
-    }
-    importedEditOptionsKey.current = productKey
-    if (importedOptionIds.length) {
-      setAttributeSelections(current => ({ ...current, ...selected }))
-      setVariantAttributeIds(importedOptionIds.slice(0, 2))
-    }
-  }, [productToEdit.data?.id, productToEdit.data?.version, form.categoryId, allRequirements])
+    // Saved option groups describe the product's existing variants; they are
+    // not an active selection for the next variant-generation action. Keep
+    // option values available, but make the user opt in explicitly.
+    if (!allRequirements.length) return
+    const optionIds = new Set(allRequirements.filter(item => item.role === 'OPTION').map(item => item.attributeId))
+    setAttributeSelections(current => {
+      const next = { ...current }
+      let changed = false
+      for (const attributeId of optionIds) {
+        if (next[attributeId]?.length) {
+          delete next[attributeId]
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+    setVariantAttributeIds(current => current.filter(id => !optionIds.has(id)))
+  }, [allRequirements])
 
   function updateField(name: keyof typeof form, value: string) { setForm(current => ({ ...current, [name]: value })) }
   function toggleAttributeValue(attributeId: string, valueId: string) {
@@ -844,7 +843,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <label className="product-title-field">Ürün adı<input value={form.title} onChange={event => updateField('title', event.target.value)} required maxLength={320} /></label>
           <label>Satış durumu<select value={form.status} onChange={event => updateField('status', event.target.value)}><option value="ACTIVE">Satışa Açık</option><option value="ARCHIVED">Satışa Kapalı</option><option value="DRAFT">Taslak</option></select></label>
           <label className="product-brand-field">Marka<select value={form.brandId} onChange={event => updateField('brandId', event.target.value)}><option value="">Marka seçin</option>{activeBrands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { importedEditOptionsKey.current = null; updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); if (!editProductId) setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label>
+          <label>Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); if (!editProductId) setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label>
           <label>Model kodu<input className="technical-field model-code-value" value={form.modelCode} onChange={event => updateField('modelCode', event.target.value)} /></label>
           <label>Stok Kodu<input className="technical-field sku-value" value={form.baseSku} onChange={event => updateField('baseSku', event.target.value)} placeholder="RAV-BLUZ" /></label>
           <label>Barkod<input className="technical-field barcode-value" value={form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder="Varyantsız üründe kullanılır" /></label>
