@@ -9308,6 +9308,29 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .orders-page .order-reference-row.cancelled:hover {
   background: rgba(241, 112, 124, .07) !important;
 }
+.app-shell.stitch-shell .orders-page .order-select-disabled {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #697286 !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  cursor: not-allowed !important;
+  user-select: none !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-row.cancelled .invoice-status-readonly {
+  display: inline-flex !important;
+  width: fit-content !important;
+  margin-top: 2px !important;
+  padding: 3px 7px !important;
+  color: #ff9ca4 !important;
+  background: rgba(241, 112, 124, .1) !important;
+  border: 1px solid rgba(241, 112, 124, .3) !important;
+  border-radius: 999px !important;
+  font-size: .58rem !important;
+  font-weight: 800 !important;
+  line-height: 1.2 !important;
+}
 .app-shell.stitch-shell .orders-page .order-status-feedback {
   display: inline-flex;
   align-items: center;
