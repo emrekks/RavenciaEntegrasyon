@@ -13105,3 +13105,27 @@ body:has(.product-add-page),
   .app-shell.stitch-shell .shipping-label-batch-preview { display:block!important; max-height:none!important; overflow:visible!important; padding:0!important; background:#fff!important; }
   .app-shell.stitch-shell .shipping-label-batch-preview > .shipping-label-print-surface { margin:0!important; break-inside:avoid; page-break-inside:avoid; }
 }
+
+/* Shipping designer: dense snap grid, non-colliding selection outline and true drag feedback. */
+.app-shell.stitch-shell .shipping-settings-check { display:flex!important; align-items:center; gap:9px!important; }
+.app-shell.stitch-shell .shipping-settings-check input { width:16px; min-width:16px; min-height:16px; margin:0; cursor:pointer; }
+.app-shell.stitch-shell .shipping-settings-check span { cursor:default; user-select:none; }
+.app-shell.stitch-shell .shipping-designer-template-actions { display:flex; align-items:center; gap:6px; margin-left:auto; min-width:0; }
+.app-shell.stitch-shell .shipping-designer-template-actions select { min-width:140px; min-height:34px; padding:7px 25px 7px 8px; color:#e9ebff; background:#101527; border:1px solid #394364; border-radius:5px; font-size:10px; }
+.app-shell.stitch-shell .shipping-designer-template-actions button { min-height:34px; padding:7px 9px; white-space:nowrap; }
+.app-shell.stitch-shell .shipping-designer-paper {
+  background-image: linear-gradient(rgba(181,193,213,.42) 1px, transparent 1px), linear-gradient(90deg, rgba(181,193,213,.42) 1px, transparent 1px)!important;
+  background-size:2.5% 2.5%!important;
+}
+.app-shell.stitch-shell .shipping-designer-block { touch-action:none; color:#000!important; }
+.app-shell.stitch-shell .shipping-designer-block.is-selected { border:1px solid #5865f2!important; outline:2px solid rgba(88,101,242,.82); box-shadow:none!important; }
+.app-shell.stitch-shell .shipping-designer-block-preview,
+.app-shell.stitch-shell .shipping-designer-block-preview * { color:#000!important; }
+.app-shell.stitch-shell .shipping-designer-block-label { color:#000!important; }
+.app-shell.stitch-shell .shipping-designer-block-handle { cursor:grab; }
+.app-shell.stitch-shell .shipping-designer-block:active,
+.app-shell.stitch-shell .shipping-designer-block:active .shipping-designer-block-handle { cursor:grabbing; }
+@media (max-width:900px) {
+  .app-shell.stitch-shell .shipping-designer-template-actions { width:100%; margin-left:0; flex-wrap:wrap; }
+  .app-shell.stitch-shell .shipping-designer-template-actions select { flex:1 1 180px; }
+}

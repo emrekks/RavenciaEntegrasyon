@@ -400,7 +400,7 @@ function ShippingLabelModal({ item, format, onClose, inline = false }: { item: O
     return <div className="shipping-label-custom-content" style={{ textAlign: block.align }}>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
   }
   const labelSurface = <article className={`shipping-label-print-surface shipping-label-${format} a4-count-${settings.a4LabelsPerPage}`} style={style}>
-    {settings.layout[format].map(block => <div key={block.id} className="shipping-label-positioned-block" style={block.position ? { left: `${block.position.x}%`, top: `${block.position.y}%`, width: `${block.position.width}%`, height: `${block.position.height}%` } : undefined}><Fragment>{renderLabelBlock(block)}</Fragment></div>)}
+    {settings.layout[format].map(block => <div key={block.id} className="shipping-label-positioned-block" style={block.position ? { left: `${block.position.x}%`, top: `${block.position.y}%`, width: `${block.position.width}%`, height: `${block.position.height}%`, fontSize: `${block.fontSize ?? 14}px`, color: '#000' } : { fontSize: `${block.fontSize ?? 14}px`, color: '#000' }}><Fragment>{renderLabelBlock(block)}</Fragment></div>)}
   </article>
   if (inline) return labelSurface
   return <div className="workspace-modal-backdrop shipping-label-backdrop" role="presentation" onMouseDown={onClose}>

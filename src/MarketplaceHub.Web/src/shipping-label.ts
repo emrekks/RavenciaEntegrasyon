@@ -10,6 +10,7 @@ export type ShippingLabelBlock = {
   fields: ShippingLabelField[]
   align: ShippingLabelAlignment
   text: string
+  fontSize?: number
   position?: ShippingLabelBlockPosition
 }
 
@@ -158,7 +159,7 @@ function safeBlock(raw: unknown, index: number): ShippingLabelBlock | null {
   } : fallbackPosition
   position.width = Math.min(position.width, 100 - position.x)
   position.height = Math.min(position.height, 100 - position.y)
-  return { id, kind, title: typeof value.title === 'string' && value.title.trim() ? value.title.trim().slice(0, 120) : catalog.label, fields, align, text: typeof value.text === 'string' ? value.text.slice(0, 500) : '', position }
+  return { id, kind, title: typeof value.title === 'string' && value.title.trim() ? value.title.trim().slice(0, 120) : catalog.label, fields, align, text: typeof value.text === 'string' ? value.text.slice(0, 500) : '', fontSize: boundedNumber(value.fontSize, 14, 8, 72), position }
 }
 
 function normalizeLayout(value: unknown, fallback: ShippingLabelBlock[]) {
