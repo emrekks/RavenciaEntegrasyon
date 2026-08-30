@@ -9852,17 +9852,23 @@ body:has(.product-add-page),
   .app-shell.stitch-shell > aside .settings-nav > a,
   .app-shell.stitch-shell > aside .logout-link {
     position: relative;
+    display: grid !important;
+    grid-template-columns: 24px minmax(0, 1fr);
+    align-items: center;
+    justify-content: start !important;
+    gap: 16px !important;
     width: 100% !important;
     min-width: 0;
-    padding-left: 44px !important;
+    padding: 0 12px 0 14px !important;
     overflow: hidden;
+    text-align: left !important;
   }
 
   .app-shell.stitch-shell > aside nav a .nav-icon,
   .app-shell.stitch-shell > aside .settings-nav > a .nav-icon,
   .app-shell.stitch-shell > aside .logout-link .nav-icon {
-    position: absolute;
-    left: 14px;
+    position: static;
+    grid-column: 1;
     width: 24px !important;
     height: 24px !important;
     flex: 0 0 24px !important;
@@ -9878,11 +9884,14 @@ body:has(.product-add-page),
   .app-shell.stitch-shell > aside .settings-nav > a .nav-label,
   .app-shell.stitch-shell > aside .logout-link .nav-label {
     display: block !important;
+    grid-column: 2;
     min-width: 0;
     max-width: 190px;
     overflow: hidden;
+    margin: 0 !important;
     color: inherit;
     font-size: 13px !important;
+    text-align: left !important;
     white-space: nowrap;
     opacity: 1;
     transform: translate3d(0, 0, 0);
@@ -9892,9 +9901,10 @@ body:has(.product-add-page),
   .app-shell.stitch-shell.sidebar-collapsed > aside nav a,
   .app-shell.stitch-shell.sidebar-collapsed > aside .settings-nav > a,
   .app-shell.stitch-shell.sidebar-collapsed > aside .logout-link {
-    justify-content: flex-start !important;
+    grid-template-columns: 24px 0 !important;
+    justify-content: start !important;
     width: 100% !important;
-    padding: 0 0 0 44px !important;
+    padding: 0 12px 0 14px !important;
     gap: 0 !important;
   }
 
@@ -9910,7 +9920,6 @@ body:has(.product-add-page),
   .app-shell.stitch-shell.sidebar-collapsed > aside nav a .nav-icon,
   .app-shell.stitch-shell.sidebar-collapsed > aside .settings-nav > a .nav-icon,
   .app-shell.stitch-shell.sidebar-collapsed > aside .logout-link .nav-icon {
-    left: 14px;
     transform: none;
   }
 
