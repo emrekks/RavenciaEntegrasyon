@@ -410,10 +410,25 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
   const [customTitle, setCustomTitle] = useState('')
   const [customText, setCustomText] = useState('')
   const [selectedBlocks, setSelectedBlocks] = useState<Record<'a4' | 'sticker', string | null>>({ a4: settings.layout.a4[0]?.id ?? null, sticker: settings.layout.sticker[0]?.id ?? null })
+  const [stickerWidthDraft, setStickerWidthDraft] = useState(() => String(settings.stickerWidthMm))
+  const [stickerHeightDraft, setStickerHeightDraft] = useState(() => String(settings.stickerHeightMm))
   const formatLabels = { a4: 'A4 etiketi', sticker: 'Sticker etiketi' } as const
+
+  useEffect(() => { setStickerWidthDraft(String(settings.stickerWidthMm)) }, [settings.stickerWidthMm])
+  useEffect(() => { setStickerHeightDraft(String(settings.stickerHeightMm)) }, [settings.stickerHeightMm])
 
   function update<K extends keyof ShippingLabelSettings>(key: K, value: ShippingLabelSettings[K]) {
     onChange({ ...settings, [key]: value })
+  }
+  function commitStickerDimension(key: 'stickerWidthMm' | 'stickerHeightMm', draft: string, fallback: number) {
+    const parsed = Number(draft)
+    if (!draft.trim() || !Number.isFinite(parsed)) {
+      if (key === 'stickerWidthMm') setStickerWidthDraft(String(fallback)); else setStickerHeightDraft(String(fallback))
+      return
+    }
+    const value = Math.min(300, Math.max(40, parsed))
+    if (key === 'stickerWidthMm') setStickerWidthDraft(String(value)); else setStickerHeightDraft(String(value))
+    update(key, value)
   }
   function updateBlock(format: 'a4' | 'sticker', blockId: string, patch: Partial<ShippingLabelBlock>) {
     onChange({ ...settings, layout: { ...settings.layout, [format]: settings.layout[format].map(block => block.id === blockId ? { ...block, ...patch } : block) } })
@@ -488,8 +503,8 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
       <label>Gönderici adı<input value={settings.senderName} maxLength={120} onChange={event => update('senderName', event.target.value)} /></label>
       <label>Gönderici adresi<textarea value={settings.senderAddress} maxLength={500} rows={3} onChange={event => update('senderAddress', event.target.value)} placeholder="İsteğe bağlı" /></label>
       <label>A4 sayfa düzeni<select value={settings.a4LabelsPerPage} onChange={event => update('a4LabelsPerPage', Number(event.target.value) as ShippingLabelSettings['a4LabelsPerPage'])}><option value={1}>Sayfada 1 etiket</option><option value={2}>Sayfada 2 etiket</option><option value={4}>Sayfada 4 etiket</option></select></label>
-      <label>Sticker genişliği (mm)<input type="number" min={40} max={300} value={settings.stickerWidthMm} onChange={event => update('stickerWidthMm', Math.min(300, Math.max(40, Number(event.target.value) || 40)))} /></label>
-      <label>Sticker yüksekliği (mm)<input type="number" min={40} max={300} value={settings.stickerHeightMm} onChange={event => update('stickerHeightMm', Math.min(300, Math.max(40, Number(event.target.value) || 40)))} /></label>
+      <label>Sticker genişliği (mm)<input type="number" min={40} max={300} value={stickerWidthDraft} onChange={event => setStickerWidthDraft(event.target.value)} onBlur={() => commitStickerDimension('stickerWidthMm', stickerWidthDraft, settings.stickerWidthMm)} /></label>
+      <label>Sticker yüksekliği (mm)<input type="number" min={40} max={300} value={stickerHeightDraft} onChange={event => setStickerHeightDraft(event.target.value)} onBlur={() => commitStickerDimension('stickerHeightMm', stickerHeightDraft, settings.stickerHeightMm)} /></label>
       <label>Bloklar arası boşluk (mm)<input type="number" min={0} max={20} value={settings.sectionGapMm} onChange={event => update('sectionGapMm', Math.min(20, Math.max(0, Number(event.target.value) || 0)))} /></label>
       <label className="shipping-settings-check"><input type="checkbox" checked={settings.showCustomerPhone} onChange={event => update('showCustomerPhone', event.target.checked)} /><span>Müşteri iletişim alanını göster</span></label>
     </div>
