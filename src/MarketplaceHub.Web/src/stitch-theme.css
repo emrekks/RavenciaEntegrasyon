@@ -880,6 +880,114 @@ textarea {
   .reference-action { width: 100%; }
 }
 
+/* Eşleştirme sekmeleri iki kısa sekmeden oluşur; gereksiz yatay kaydırma alanı bırakma. */
+.app-shell.stitch-shell .mapping-view-tabs {
+  overflow: visible !important;
+  scrollbar-width: none !important;
+  flex-wrap: nowrap !important;
+}
+.app-shell.stitch-shell .mapping-view-tabs::-webkit-scrollbar { display: none !important; }
+
+/* Zorunlu alanlar ve bölüm başlığı modal içinde açıkça ayrışır. */
+.app-shell.stitch-shell .mapping-advanced-tools .attribute-mapping-card.required {
+  border: 1px solid rgba(124, 134, 255, .78) !important;
+  box-shadow: inset 3px 0 0 #7068f5, 0 0 0 1px rgba(124, 134, 255, .14) !important;
+}
+.app-shell.stitch-shell .mapping-advanced-tools .attribute-mapping-card.required.unmapped {
+  border-color: rgba(230, 183, 95, .82) !important;
+  box-shadow: inset 3px 0 0 #e6b75f, 0 0 0 1px rgba(230, 183, 95, .14) !important;
+}
+.app-shell.stitch-shell .mapping-popup-content .editor-section-title {
+  display: block !important;
+  position: relative !important;
+  padding: 0 0 13px !important;
+  margin: 0 0 14px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--mapping-modal-line-soft) !important;
+  text-align: left !important;
+}
+.app-shell.stitch-shell .mapping-popup-content .editor-section-title > div {
+  display: grid !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+}
+
+/* Mapping yedeği seçimli ve geri alınabilir bir araç olarak aynı yüzeyde görünür. */
+.app-shell.stitch-shell .mapping-transfer-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 14px 0;
+  padding: 14px 16px;
+  background: rgba(16, 18, 28, .84);
+  border: 1px solid var(--rv-border);
+  border-radius: 8px;
+}
+.app-shell.stitch-shell .mapping-transfer-panel > div:first-child { display: grid; gap: 4px; }
+.app-shell.stitch-shell .mapping-transfer-panel strong { color: #f1eff8; }
+.app-shell.stitch-shell .mapping-transfer-panel small { color: #a9adbd; }
+.app-shell.stitch-shell .mapping-transfer-upload {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 13px;
+  color: #fff;
+  background: #6872e8;
+  border: 1px solid #858aff;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.app-shell.stitch-shell .mapping-transfer-upload input { display: none; }
+.app-shell.stitch-shell .mapping-transfer-modal { max-width: 620px; }
+.app-shell.stitch-shell .mapping-transfer-options { display: grid; gap: 9px; margin: 18px 0; }
+.app-shell.stitch-shell .mapping-transfer-options label {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  padding: 12px;
+  background: #1d1f28;
+  border: 1px solid #444654;
+  border-radius: 7px;
+}
+.app-shell.stitch-shell .mapping-transfer-options label:has(input:checked) { border-color: rgba(124, 134, 255, .72); background: rgba(104, 114, 232, .1); }
+.app-shell.stitch-shell .mapping-transfer-options span { display: grid; gap: 3px; }
+.app-shell.stitch-shell .mapping-transfer-options small,
+.app-shell.stitch-shell .mapping-transfer-warning { color: #a9adbd; }
+.app-shell.stitch-shell .mapping-transfer-warning { margin: 0; line-height: 1.5; }
+
+/* Entegrasyon ayrıntıları karttan ayrılmadan modal içinde açılır. */
+.app-shell.stitch-shell .integration-settings-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 7, 13, .78);
+  backdrop-filter: blur(4px);
+}
+.app-shell.stitch-shell .integration-settings-modal {
+  width: min(1040px, 100%);
+  max-height: min(880px, calc(100vh - 48px));
+  overflow: auto;
+  padding: 18px;
+  background: #12141b;
+  border: 1px solid #4a4c5b;
+  border-radius: 10px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .5);
+}
+.app-shell.stitch-shell .integration-settings-modal > header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+.app-shell.stitch-shell .integration-settings-modal .integration-inline-workspace { padding: 0 !important; }
+.app-shell.stitch-shell .integration-settings-modal .integration-inline-workspace > .page-heading { display: none; }
+
+@media (max-width: 760px) {
+  .app-shell.stitch-shell .mapping-transfer-panel { align-items: stretch; flex-direction: column; }
+  .app-shell.stitch-shell .mapping-transfer-panel .button-row { justify-content: flex-start; }
+  .app-shell.stitch-shell .integration-settings-modal-backdrop { padding: 10px; }
+  .app-shell.stitch-shell .integration-settings-modal { max-height: calc(100vh - 20px); padding: 12px; }
+}
+
 @media (max-width: 760px) {
   .app-shell.stitch-shell,
   .sidebar-collapsed.app-shell.stitch-shell { display: block !important; }
@@ -10633,4 +10741,22 @@ body:has(.product-add-page),
 /* Kullanıcıya görünen etiketler kaynak metindeki başlık biçimini korur. */
 .app-shell.stitch-shell * {
   text-transform: none !important;
+}
+
+/* Final mapping refinements: these rules intentionally follow the legacy theme overrides. */
+.app-shell.stitch-shell .mapping-view-tabs { overflow: visible !important; scrollbar-width: none !important; flex-wrap: nowrap !important; }
+.app-shell.stitch-shell .mapping-view-tabs::-webkit-scrollbar { display: none !important; }
+.app-shell.stitch-shell .mapping-advanced-tools .attribute-mapping-card.required { border: 1px solid rgba(124, 134, 255, .78) !important; box-shadow: inset 3px 0 0 #7068f5, 0 0 0 1px rgba(124, 134, 255, .14) !important; }
+.app-shell.stitch-shell .mapping-advanced-tools .attribute-mapping-card.required.unmapped { border-color: rgba(230, 183, 95, .82) !important; box-shadow: inset 3px 0 0 #e6b75f, 0 0 0 1px rgba(230, 183, 95, .14) !important; }
+.app-shell.stitch-shell .mapping-popup-content .editor-section-title { display: block !important; padding: 0 0 13px !important; margin: 0 0 14px !important; border: 0 !important; border-bottom: 1px solid var(--mapping-modal-line-soft) !important; text-align: left !important; }
+.app-shell.stitch-shell .mapping-popup-content .editor-section-title > div { display: grid !important; gap: 4px !important; min-width: 0 !important; }
+.app-shell.stitch-shell .integration-settings-modal-backdrop { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 24px; background: rgba(5, 7, 13, .78); backdrop-filter: blur(4px); }
+.app-shell.stitch-shell .integration-settings-modal { width: min(1040px, 100%); max-height: min(880px, calc(100vh - 48px)); overflow: auto; padding: 18px; background: #12141b; border: 1px solid #4a4c5b; border-radius: 10px; box-shadow: 0 24px 80px rgba(0, 0, 0, .5); }
+.app-shell.stitch-shell .integration-settings-modal > header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+.app-shell.stitch-shell .integration-settings-modal .integration-inline-workspace { padding: 0 !important; }
+.app-shell.stitch-shell .integration-settings-modal .integration-inline-workspace > .page-heading { display: none; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell .mapping-view-tabs { overflow: visible !important; }
+  .app-shell.stitch-shell .integration-settings-modal-backdrop { padding: 10px; }
+  .app-shell.stitch-shell .integration-settings-modal { max-height: calc(100vh - 20px); padding: 12px; }
 }
