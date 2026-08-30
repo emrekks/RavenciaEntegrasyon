@@ -9715,3 +9715,11 @@ body:has(.product-add-page),
     transition: none !important;
   }
 }
+
+/* The filter button carries its own affordance; remove the redundant wrapper frame. */
+.app-shell.stitch-shell .integrations-reference-page .integration-filter-wrap {
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
