@@ -170,11 +170,21 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         try
         {
             using var document = System.Text.Json.JsonDocument.Parse(snapshot);
+            var first = TextValue(document.RootElement, "customerFirstName", "firstName");
+            var last = TextValue(document.RootElement, "customerLastName", "lastName");
+            if (!string.IsNullOrWhiteSpace(first) || !string.IsNullOrWhiteSpace(last)) return string.Join(' ', new[] { first, last }.Where(value => !string.IsNullOrWhiteSpace(value)));
             foreach (var name in new[] { "name", "fullName", "customerName", "firstName" })
                 if (Property(document.RootElement, name) is { } value && value.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()))
                     return value.GetString();
         }
         catch (System.Text.Json.JsonException) { }
+        return null;
+    }
+
+    private static string? TextValue(System.Text.Json.JsonElement root, params string[] names)
+    {
+        foreach (var name in names)
+            if (Property(root, name) is { } value && value.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())) return value.GetString();
         return null;
     }
 
