@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react'
+import { useEffect, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from './api'
+import { loadShippingLabelSettings } from './shipping-label'
 type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean }
 type Connection = { id: string; publicId: string; platformCode: string; environment: string; displayName: string; externalStoreId: string; status: string; apiVersion: string; lastTestedAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null; hasCredential: boolean; externalWritesEnabled: boolean; version: number }
 type Capability = { code: string; supportLevel: string; sourceUrl: string | null; verifiedAt: string | null; constraintsJson: string | null; evidenceNote: string | null; version: number }
@@ -235,38 +236,47 @@ function customerDisplayName(item: Order) {
   return '—'
 }
 
+const cargoCarriers = [
+  { label: 'Yurtiçi Kargo', code: 'YKMP' },
+  { label: 'Sürat Kargo', code: 'SURATMP' },
+  { label: 'DHL eCommerce', code: 'DHLECOMMP' },
+  { label: 'PTT Kargo', code: 'PTTMP' },
+  { label: 'Kolay Gelsin', code: 'KOLAYGELSINMP' },
+  { label: 'Aras Kargo', code: 'ARASMP' },
+  { label: 'Horoz Kargo', code: 'HOROZMP' },
+  { label: 'CEVA Logistics', code: 'CEVAMP' },
+  { label: 'UPS', code: 'UPSMP' },
+  { label: 'Trendyol Express', code: 'TEXMP' }
+]
+function normalizedCargo(value: string | null | undefined) { return (value ?? '').toLocaleUpperCase('tr-TR').replace(/[^\p{L}\p{N}]/gu, '') }
+function cargoLabel(value: string | null | undefined) {
+  const normalized = normalizedCargo(value)
+  return cargoCarriers.find(carrier => normalized === normalizedCargo(carrier.code) || normalized === normalizedCargo(carrier.label))?.label ?? value ?? 'Kargo bekleniyor'
+}
+function cargoMatches(value: string | null | undefined, carrier: { label: string; code: string }) {
+  const normalized = normalizedCargo(value)
+  return normalized === normalizedCargo(carrier.code) || normalized === normalizedCargo(carrier.label) || normalized.includes(normalizedCargo(carrier.label.replace(' Kargo', '')))
+}
+
 function CourierChangeModal({ item, onClose }: { item: Order; onClose: () => void }) {
-  const [selectedCarrier, setSelectedCarrier] = useState<string>('Yurtiçi Kargo')
+  const shipment = item.packages?.[0]
+  const currentCarrier = cargoCarriers.find(carrier => cargoMatches(shipment?.cargoProviderName ?? item.cargoProviderName, carrier))?.label ?? cargoCarriers[0].label
+  const [selectedCarrier, setSelectedCarrier] = useState<string>(currentCarrier)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const client = useQueryClient()
-
-  const carriers = [
-    { label: 'Yurtiçi Kargo', code: 'YKMP' },
-    { label: 'Sürat Kargo', code: 'SURATMP' },
-    { label: 'DHL eCommerce', code: 'DHLECOMMP' },
-    { label: 'PTT Kargo', code: 'PTTMP' },
-    { label: 'Kolay Gelsin', code: 'KOLAYGELSINMP' },
-    { label: 'Aras Kargo', code: 'ARASMP' },
-    { label: 'Horoz Kargo', code: 'HOROZMP' },
-    { label: 'CEVA Logistics', code: 'CEVAMP' },
-    { label: 'UPS', code: 'UPSMP' },
-    { label: 'Trendyol Express', code: 'TEXMP' }
-  ]
-
-  const shipment = item.packages?.[0]
 
   async function handleCarrierChange() {
     if (!shipment) {
       setErrorMsg('Paket kaydı bulunamadı.')
       return
     }
-    const chosen = carriers.find(c => c.label === selectedCarrier)
+    const chosen = cargoCarriers.find(c => c.label === selectedCarrier)
     if (!chosen) return
     setIsSubmitting(true)
     setErrorMsg('')
     try {
-      await hubApi(`/shipments/${shipment.id}/actions`, {
+      const accepted = await hubApi<{ jobId: string }>(`/shipments/${shipment.id}/actions`, {
         method: 'POST',
         headers: {
           'Idempotency-Key': idempotency(),
@@ -277,9 +287,30 @@ function CourierChangeModal({ item, onClose }: { item: Order; onClose: () => voi
           payloadJson: JSON.stringify({ cargoProvider: chosen.code })
         })
       })
-      await client.invalidateQueries({ queryKey: ['orders'] })
-      window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 2500)
-      onClose()
+      for (let attempt = 0; attempt < 8; attempt++) {
+        await wait(attempt === 0 ? 1000 : 1500)
+        try {
+          const latest = await hubApi<OrderDetail>(`/orders/${item.id}`)
+          const latestShipment = latest.packages.find(packageItem => packageItem.id === shipment.id) ?? latest.packages[0]
+          if (latestShipment && cargoMatches(latestShipment.cargoProviderName, chosen)) {
+            await client.invalidateQueries({ queryKey: ['orders'] })
+            onClose()
+            return
+          }
+        } catch {
+          // The job status below is authoritative when the order read is briefly unavailable.
+        }
+        try {
+          const job = await hubApi<{ job: { status: string; lastErrorCode: string | null; lastErrorSummary: string | null } }>(`/jobs/${accepted.jobId}`)
+          const status = job.job.status.toUpperCase()
+          if (['BLOCKED', 'DEAD', 'MANUAL_REVIEW', 'CANCELLED'].includes(status)) {
+            throw new Error(`Kargo firması Trendyol'da güncellenemedi${job.job.lastErrorSummary ? `: ${job.job.lastErrorSummary}` : '.'} Paneldeki mevcut bilgi korundu.`)
+          }
+        } catch (jobError) {
+          if (jobError instanceof Error && jobError.message.includes('Paneldeki mevcut bilgi korundu')) throw jobError
+        }
+      }
+      throw new Error('Kargo firması doğrulanamadı. Paneldeki mevcut bilgi korundu; sonucu İşlem Takibi’nden kontrol edin.')
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Kargo firması güncellenemedi.')
     } finally {
@@ -293,7 +324,7 @@ function CourierChangeModal({ item, onClose }: { item: Order; onClose: () => voi
         <header>
           <div>
             <h2 id="courier-change-title">Paketi hangi firma ile göndermek istiyorsunuz?</h2>
-            <p>Seçilen kargo firması Trendyol sistemine bildirilerek güncellenir.</p>
+            <p>Değişiklik önce Trendyol’a gönderilir; panel yalnızca uzak sistemden doğrulandıktan sonra güncellenir.</p>
           </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat">×</button>
         </header>
@@ -302,7 +333,7 @@ function CourierChangeModal({ item, onClose }: { item: Order; onClose: () => voi
         </p>
         <h3>Standart Kargo Firmaları <span>(0–30 desi)</span></h3>
         <div className="courier-options">
-          {carriers.map(carrier => (
+          {cargoCarriers.map(carrier => (
             <label
               key={carrier.code}
               className={selectedCarrier === carrier.label ? 'carrier-card selected' : 'carrier-card'}
@@ -330,6 +361,39 @@ function CourierChangeModal({ item, onClose }: { item: Order; onClose: () => voi
       </section>
     </div>
   )
+}
+
+function LabelBarcode({ value, compact = false }: { value: string; compact?: boolean }) {
+  const source = value || 'NO-TRACKING'
+  const bars = Array.from(source).flatMap((character, index) => {
+    const bits = character.charCodeAt(0) + index * 29
+    return Array.from({ length: 7 }, (_, bit) => ({ wide: ((bits >> bit) & 1) === 1, key: `${index}-${bit}` }))
+  })
+  return <div className={`shipping-label-barcode${compact ? ' compact' : ''}`} aria-label={`Barkod: ${value || 'Takip numarası bekleniyor'}`}><div className="shipping-label-barcode-bars">{bars.map(bar => <i key={bar.key} style={{ width: `${bar.wide ? 3 : 1}px` }} />)}</div><strong>{value || 'Takip numarası bekleniyor'}</strong></div>
+}
+
+function ShippingLabelModal({ item, format, onClose }: { item: Order; format: 'a4' | 'sticker'; onClose: () => void }) {
+  const settings = loadShippingLabelSettings()
+  const shipment = item.packages?.[0]
+  const trackingNumber = shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? ''
+  const packageNumber = shipment?.externalPackageId ?? '—'
+  const address = addressText(item.shipmentAddressJson)
+  const addressLines = address.split(' · ').filter(Boolean)
+  const senderLines = settings.senderAddress.split(/\r?\n| · /).map(value => value.trim()).filter(Boolean)
+  const style = { '--shipping-label-width': `${settings.stickerWidthMm}mm`, '--shipping-label-height': `${settings.stickerHeightMm}mm` } as CSSProperties
+  return <div className="workspace-modal-backdrop shipping-label-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className={`workspace-modal shipping-label-modal format-${format}`} role="dialog" aria-modal="true" aria-labelledby="shipping-label-title" onMouseDown={event => event.stopPropagation()}>
+      <header><div><h2 id="shipping-label-title">{format === 'a4' ? 'A4 kargo etiketi' : 'Sticker kargo etiketi'}</h2><p>#{item.orderNumber} · {cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)}</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat">×</button></header>
+      <div className="shipping-label-preview-wrap"><article className={`shipping-label-print-surface shipping-label-${format} a4-count-${settings.a4LabelsPerPage}`} style={style}>
+        <LabelBarcode value={trackingNumber} compact={format === 'sticker'} />
+        <div className="shipping-label-address-box"><strong>{customerDisplayName(item)}</strong>{addressLines.map((line, index) => <span key={`${line}-${index}`}>{line}</span>)}</div>
+        <div className="shipping-label-meta"><span><small>Paket</small><b>{packageNumber}</b></span><span><small>Sipariş</small><b>#{item.orderNumber}</b></span>{settings.showCustomerPhone && item.customerEmail && <span><small>E-posta</small><b>{item.customerEmail}</b></span>}</div>
+        <LabelBarcode value={packageNumber === '—' ? item.orderNumber : packageNumber} compact />
+        <div className="shipping-label-footer"><strong>{cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)}</strong>{settings.senderName && <span>{settings.senderName}</span>}{senderLines.map((line, index) => <span key={`${line}-${index}`}>{line}</span>)}</div>
+      </article></div>
+      <footer className="shipping-label-modal-actions"><span>Etiket bilgileri sipariş ve paket kaydından dolduruldu.</span><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" onClick={() => window.print()}>Yazdır</button></footer>
+    </section>
+  </div>
 }
 
 function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, onSuccess }: { activeConnection: Connection[]; onClose: () => void; onSuccess: (connectionCount: number, orderNumber: string) => void }) {
@@ -417,7 +481,7 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
 }
 
 
-function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, onInvoiceCreate, onInvoiceDetails, onInvoiceUpload, onCourierChange, onProcessOrder, onPreviewImage }: { item: Order; selected: boolean; onSelect: (checked: boolean) => void; openMenu: 'invoice' | 'actions' | null; onMenuChange: (value: 'invoice' | 'actions' | null) => void; onInvoiceCreate: () => void; onInvoiceDetails: () => void; onInvoiceUpload: () => void; onCourierChange: () => void; onProcessOrder: () => void; onPreviewImage: (preview: { url: string; title: string }) => void }) {
+function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, onInvoiceCreate, onInvoiceDetails, onInvoiceUpload, onCourierChange, onProcessOrder, onPrintLabel, onPreviewImage }: { item: Order; selected: boolean; onSelect: (checked: boolean) => void; openMenu: 'invoice' | 'actions' | null; onMenuChange: (value: 'invoice' | 'actions' | null) => void; onInvoiceCreate: () => void; onInvoiceDetails: () => void; onInvoiceUpload: () => void; onCourierChange: () => void; onProcessOrder: () => void; onPrintLabel: (format: 'a4' | 'sticker') => void; onPreviewImage: (preview: { url: string; title: string }) => void }) {
 
   const lines = item.lines ?? []
   const shipment = item.packages?.[0]
@@ -432,6 +496,7 @@ function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, o
   const invoiceStatusLabel = item.invoiceStatus === 'FATURA_BEKLIYOR' ? 'Fatura bekleniyor' : item.invoiceStatus === 'FATURA_ISLENIYOR' || item.invoiceStatus === 'FATURA_KONTROLDE' ? 'Fatura kontrol ediliyor' : item.invoiceStatus === 'FATURA_REDDEDILDI' ? 'Fatura reddedildi' : item.invoiceStatus === 'FATURA_IPTAL' ? 'Fatura iptal edildi' : item.invoiceStatus === 'FATURA_KESILDI' ? 'Fatura kesildi' : 'Fatura durumu bilinmiyor'
   const isCargoTrackingStage = ['SHIPPED', 'UNDELIVERED'].includes(normalizedOrderStatus)
   const isCargoLabelStage = ['NEW', 'PROCESSING', 'READY_TO_SHIP'].includes(normalizedOrderStatus)
+  const canChangeCargo = !['SHIPPED', 'UNDELIVERED', 'DELIVERED', 'RETURNED'].includes(normalizedOrderStatus)
   async function copyOrderNumber() { try { await navigator.clipboard.writeText(item.orderNumber); setCopied(true); window.setTimeout(() => setCopied(false), 1400) } catch { setCopied(false) } }
   function toggleMenu(kind: 'invoice' | 'actions', event: MouseEvent<HTMLButtonElement>) {
     if (openMenu === kind) { onMenuChange(null); return }
@@ -450,7 +515,7 @@ function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, o
       <div className="order-reference-prices">{lines.length ? lines.map(line => <strong key={line.id}>{money(line.unitPrice)}</strong>) : <strong>{money(item.netAmount)}</strong>}</div>
       <div className="order-reference-cargo"><strong>{shipment?.cargoProviderName ?? item.cargoProviderName ?? 'Kargo bekleniyor'}</strong><b>{shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? 'Takip no bekleniyor'}</b></div>
       <div className={`order-reference-invoice ${item.invoiceStatus === 'FATURA_BEKLIYOR' ? 'invoice-pending' : 'invoice-created'}`}><small>Satış Tutarı:</small><strong>{money(item.grossAmount || item.netAmount)}</strong>{item.discountAmount > 0 && <small>Satıcı İndirim Tutarı: {money(item.discountAmount)}</small>}{item.isMicroExport && <span className="micro-invoice-chip">Mikro İhracat Faturası</span>}{isCancelledOrder ? <span className="invoice-status-readonly" role="status">{invoiceStatusLabel}</span> : <>{invoiceNeedsAction && <span>{invoiceStatusLabel}</span>}{!invoiceNeedsAction && (item.invoiceId ? <a className="invoice-document-link" href={`/api/v1/invoices/${item.invoiceId}/documents/latest/content`} download>Faturayı Gör</a> : item.invoiceDocumentUrl ? <a className="invoice-document-link" href={item.invoiceDocumentUrl} download>Faturayı Gör</a> : null)}<div className="row-menu"><button type="button" className="row-menu-trigger" onClick={event => toggleMenu('invoice', event)} aria-expanded={openMenu === 'invoice'}><span>Fatura işlemleri</span><b aria-hidden="true">⌄</b></button>{openMenu === 'invoice' && <div className={`row-popover invoice-popover opens-${menuPlacement}`} role="menu">{invoiceNeedsAction ? <><button type="button" role="menuitem" className="create-invoice" onClick={onInvoiceCreate}>Fatura Oluştur</button><button type="button" role="menuitem" onClick={onInvoiceDetails}>Fatura Bilgileri</button><button type="button" role="menuitem" onClick={onInvoiceUpload}>Fatura Yükle</button></> : <>{item.invoiceId ? <a role="menuitem" className="invoice-menu-view" href={`/api/v1/invoices/${item.invoiceId}/documents/latest/content`} download>Fatura Görüntüle</a> : item.invoiceDocumentUrl ? <a role="menuitem" className="invoice-menu-view" href={item.invoiceDocumentUrl} download>Fatura Görüntüle</a> : null}<button type="button" role="menuitem" onClick={onInvoiceDetails}>Fatura Bilgileri</button><button type="button" role="menuitem" className="destructive" disabled>Fatura İptal Et</button></>}</div>}</div></>}</div>
-      <div className="order-reference-actions">{isCancelledOrder && <span className="order-status-feedback cancelled" role="status"><i aria-hidden="true" />İptal edildi</span>}{isCargoTrackingStage ? shipment?.cargoTrackingNumber ? <Link className="cargo-track-action" to={`/shipments/${shipment.id}`}>Kargo takip linki</Link> : <small className="cargo-action-unavailable">Takip numarası bekleniyor</small> : isCargoLabelStage && shipment ? <><Link to={`/shipments/${shipment.id}`}>Kargo Etiketini A4 Yazdır</Link><Link to={`/shipments/${shipment.id}`} title="Trendyol ortak etiket çıktısı ZPL olarak desteklendiğinde açılır">Kargo Etiketini Sticker Yazdır</Link></> : null}{!isCancelledOrder && <><div className="row-menu"><button type="button" className="order-action-menu row-menu-trigger" onClick={event => toggleMenu('actions', event)} aria-expanded={openMenu === 'actions'}><span>İşlemler</span><b aria-hidden="true">⌄</b></button>{openMenu === 'actions' && <div className={`row-popover action-popover opens-${menuPlacement}`} role="menu">{item.derivedStatus.toUpperCase() === 'NEW' ? <button type="button" role="menuitem" onClick={onProcessOrder}>İşleme Al</button> : <button type="button" role="menuitem" disabled>İşleme Al</button>}<button type="button" role="menuitem" onClick={onCourierChange}>Başka Kargo Firması İle Gönder</button><button type="button" role="menuitem" disabled>İptal Et</button></div>}</div></>}</div>
+      <div className="order-reference-actions">{isCancelledOrder ? <div className="order-status-column"><span className="order-status-feedback cancelled" role="status"><i aria-hidden="true" />İptal edildi</span><small>İşlem yapılamaz</small></div> : <>{isCargoTrackingStage ? shipment?.cargoTrackingNumber ? <Link className="cargo-track-action" to={`/shipments/${shipment.id}`}>Kargo takip linki</Link> : <small className="cargo-action-unavailable">Takip numarası bekleniyor</small> : isCargoLabelStage && shipment ? <><button type="button" className="order-label-action" onClick={() => onPrintLabel('a4')}>Kargo Etiketini A4 Yazdır</button><button type="button" className="order-label-action" onClick={() => onPrintLabel('sticker')}>Kargo Etiketini Sticker Yazdır</button></> : null}<div className="row-menu"><button type="button" className="order-action-menu row-menu-trigger" onClick={event => toggleMenu('actions', event)} aria-expanded={openMenu === 'actions'}><span>İşlemler</span><b aria-hidden="true">⌄</b></button>{openMenu === 'actions' && <div className={`row-popover action-popover opens-${menuPlacement}`} role="menu">{normalizedOrderStatus === 'NEW' ? <button type="button" role="menuitem" onClick={onProcessOrder}>İşleme Al</button> : <button type="button" role="menuitem" disabled>{normalizedOrderStatus === 'DELIVERED' ? 'Teslim edildi' : 'İşleme Al'}</button>}{canChangeCargo ? <button type="button" role="menuitem" onClick={onCourierChange}>Başka Kargo Firması İle Gönder</button> : <button type="button" role="menuitem" disabled title="Kargoya teslim edilen veya teslim edilen paketlerde değişiklik yapılamaz">Kargo firması değiştirilemez</button>}<button type="button" role="menuitem" disabled>İptal Et</button></div>}</div></>}</div>
     </div>
   </article>
 
@@ -591,7 +656,7 @@ export function IntegrationDetailPage() {
 
 export function OrdersPage() {
   const client = useQueryClient()
-  const [searchParams, setSearchParams] = useSearchParams(); const requestedSearch = searchParams.get('search') ?? ''; const initialFilters = { ...initialOrderFilters, search: requestedSearch }; const [filterForm, setFilterForm] = useState<OrderFilters>(initialFilters); const [filters, setFilters] = useState<OrderFilters>(initialFilters); const [advancedFilters, setAdvancedFilters] = useState(false); const [pageSize, setPageSize] = useState(50); const [page, setPage] = useState(1); const [selectedIds, setSelectedIds] = useState<string[]>([]); const [menu, setMenu] = useState<{ orderId: string; kind: 'invoice' | 'actions' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [bulkNotice, setBulkNotice] = useState(''); const [invoiceInfoOrder, setInvoiceInfoOrder] = useState<Order | null>(null); const [invoiceViewerOrder, setInvoiceViewerOrder] = useState<Order | null>(null); const [invoiceDraftOrder, setInvoiceDraftOrder] = useState<Order | null>(null); const [invoiceUploadOrder, setInvoiceUploadOrder] = useState<Order | null>(null); const [courierOrder, setCourierOrder] = useState<Order | null>(null); const [singleSyncOpen, setSingleSyncOpen] = useState(false); const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null); const [columnFilterOpen, setColumnFilterOpen] = useState<'cargo' | 'invoice' | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams(); const requestedSearch = searchParams.get('search') ?? ''; const initialFilters = { ...initialOrderFilters, search: requestedSearch }; const [filterForm, setFilterForm] = useState<OrderFilters>(initialFilters); const [filters, setFilters] = useState<OrderFilters>(initialFilters); const [advancedFilters, setAdvancedFilters] = useState(false); const [pageSize, setPageSize] = useState(50); const [page, setPage] = useState(1); const [selectedIds, setSelectedIds] = useState<string[]>([]); const [menu, setMenu] = useState<{ orderId: string; kind: 'invoice' | 'actions' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [bulkNotice, setBulkNotice] = useState(''); const [invoiceInfoOrder, setInvoiceInfoOrder] = useState<Order | null>(null); const [invoiceViewerOrder, setInvoiceViewerOrder] = useState<Order | null>(null); const [invoiceDraftOrder, setInvoiceDraftOrder] = useState<Order | null>(null); const [invoiceUploadOrder, setInvoiceUploadOrder] = useState<Order | null>(null); const [courierOrder, setCourierOrder] = useState<Order | null>(null); const [shippingLabel, setShippingLabel] = useState<{ item: Order; format: 'a4' | 'sticker' } | null>(null); const [singleSyncOpen, setSingleSyncOpen] = useState(false); const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null); const [columnFilterOpen, setColumnFilterOpen] = useState<'cargo' | 'invoice' | null>(null)
 
 
   const orderQueries = useQueries({ queries: orderSyncStatuses.map(status => ({ queryKey: ['orders', status], queryFn: () => loadOrdersByStatus(status) })) })
@@ -777,8 +842,8 @@ export function OrdersPage() {
     {bulkNotice && <div className="notice order-bulk-notice" role="status">{bulkNotice}<button type="button" aria-label="Bildirimi kapat" onClick={() => setBulkNotice('')}>×</button></div>}
     <div className="orders-reference-filter-shell"><div className="order-tabs" role="tablist" aria-label="Sipariş durumları">{statuses.map(([value,label]) => <button type="button" role="tab" aria-selected={filters.status === value} className={filters.status === value ? 'active' : ''} key={value} onClick={() => selectStatus(value)}><span>{label}</span><b>{summary.isLoading ? '…' : tabCount(value)}</b><small>Paket</small></button>)}</div>
     <section className="order-filter-panel" aria-label="Sipariş filtreleri"><div className="order-filter-primary"><label className="order-search"><span aria-hidden="true">⌕</span><input aria-label="Sipariş ara" value={filterForm.search} onChange={event => updateFilter('search', event.target.value)} placeholder="No girin…" onKeyDown={event => { if (event.key === 'Enter') applyFilters() }} /></label><label>Platform<select value={filterForm.platform} onChange={event => updateFilter('platform', event.target.value)}><option value="ALL">Tüm platformlar</option>{platforms.map(value => <option key={value} value={value}>{value === 'TRENDYOL' ? 'Trendyol' : value}</option>)}</select></label><button type="button" className="filter-toggle" onClick={() => setAdvancedFilters(value => !value)} aria-expanded={advancedFilters}>Filtrele</button><button type="button" className="secondary filter-clear" onClick={clearFilters}>Temizle</button><button type="button" className="filter-apply" onClick={applyFilters}>Uygula</button><button type="button" className="secondary single-order-sync-btn" onClick={() => setSingleSyncOpen(true)} title="Trendyol'dan sipariş numarası ile tekil sipariş çek">⚡ Tekil Sipariş Çek</button></div>{advancedFilters && <div className="order-filter-advanced"><label>Listeleme durumu<select value={filterForm.listing} onChange={event => updateFilter('listing', event.target.value)}><option value="ALL">Tüm kayıtlar</option><option value="OPEN">Açık siparişler</option><option value="CLOSED">Kapanan siparişler</option></select></label><label>Sipariş tarihi başlangıç<input type="date" value={filterForm.dateFrom} onChange={event => updateFilter('dateFrom', event.target.value)} /></label><label>Sipariş tarihi bitiş<input type="date" value={filterForm.dateTo} onChange={event => updateFilter('dateTo', event.target.value)} /></label></div>}</section><div className="orders-reference-bottom-toolbar" aria-label="Sipariş görünüm araçları"><div className="orders-bottom-filter-group"><div className="bulk-menu-shell"><button type="button" className="bulk-action" disabled={!selectedOrders.length} aria-expanded={bulkOpen} onClick={() => setBulkOpen(value => !value)}>Toplu İşlemler ⌄</button>{bulkOpen && <div className="bulk-action-menu" role="menu"><button type="button" role="menuitem" onClick={() => void bulkAction('processing')}><b>01</b><span>İşleme Al<small>Yalnız yeni siparişler</small></span></button><button type="button" role="menuitem" onClick={() => void bulkAction('courier')}><b>02</b><span>Kargo firmasını değiştir<small>Seçili paketler</small></span></button><button type="button" role="menuitem" onClick={() => void bulkAction('invoice')}><b>03</b><span>Toplu fatura kes<small>Önce taslakları kontrol edin</small></span></button><button type="button" role="menuitem" onClick={() => void bulkAction('labels')}><b>04</b><span>Kargo stickerlarını yazdır<small>Takip numarası olanlar</small></span></button></div>}</div><label className="orders-bottom-select orders-sort-filter"><select aria-label="Sıralama" value={filterForm.sort} onChange={event => applyFilterValue('sort', event.target.value as OrderSort)}>{sortOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div><div className="orders-bottom-pagination"><label><span>Her Sayfada</span><select aria-label="Her sayfada sipariş" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1) }}><option value={20}>20 Ürün</option><option value={50}>50 Ürün</option><option value={100}>100 Ürün</option><option value={200}>200 Ürün</option></select></label><button type="button" aria-label="Önceki sayfa" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>‹</button><b aria-label="Geçerli sayfa">{safePage}</b><button type="button" aria-label="Sonraki sayfa" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>›</button></div></div></div>
-    {ordersLoading && !all.length ? <Busy text="Yerel sipariş kayıtları yükleniyor…" /> : ordersError && !all.length ? <ErrorBox error={ordersError} /> : !all.length ? <Empty>Aktif ve kanıtlanmış bağlantıdan sipariş eşitlemesi çalıştırıldığında kayıtlar burada görünür.</Empty> : !items.length ? <Empty>Seçili durum ve filtrelerle eşleşen sipariş yok.</Empty> : <><div className="order-reference-table"><div className="order-reference-head"><label className="order-select"><input type="checkbox" checked={allPageSelected} disabled={!selectablePageItems.length} onChange={event => togglePageSelection(event.target.checked)} aria-label="Sayfadaki siparişleri seç" /></label><strong>Sipariş Bilgileri</strong><strong>Alıcı</strong><strong>Bilgiler</strong><strong>Birim Fiyat</strong><div className={filters.cargo !== 'ALL' ? 'order-column-filter has-filter' : 'order-column-filter'}><button type="button" className="order-column-filter-trigger" aria-label="Kargo filtresini aç" aria-expanded={columnFilterOpen === 'cargo'} aria-controls="orders-cargo-filter" onClick={() => setColumnFilterOpen(current => current === 'cargo' ? null : 'cargo')}><span>Kargo</span><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>{columnFilterOpen === 'cargo' && <div id="orders-cargo-filter" className="order-column-filter-popover" role="dialog" aria-label="Kargo filtreleri"><label>Kargo firması<select aria-label="Kargo firmasına göre filtrele" value={filterForm.cargo} onChange={event => applyFilterValue('cargo', event.target.value)}><option value="ALL">Tüm kargolar</option>{cargos.map(value => <option key={value} value={value}>{value}</option>)}</select></label>{filterForm.cargo !== 'ALL' && <button type="button" className="order-column-filter-reset" onClick={() => { applyFilterValue('cargo', 'ALL'); setColumnFilterOpen(null) }}>Filtreyi temizle</button>}</div>}</div><div className={filters.invoice !== 'ALL' || filters.invoiceType !== 'ALL' || filters.invoiceRegion !== 'ALL' ? 'order-column-filter order-invoice-column-filter has-filter' : 'order-column-filter order-invoice-column-filter'}><button type="button" className="order-column-filter-trigger" aria-label="Fatura filtresini aç" aria-expanded={columnFilterOpen === 'invoice'} aria-controls="orders-invoice-filter" onClick={() => setColumnFilterOpen(current => current === 'invoice' ? null : 'invoice')}><span>Fatura</span><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>{columnFilterOpen === 'invoice' && <div id="orders-invoice-filter" className="order-column-filter-popover invoice-filter-popover" role="dialog" aria-label="Fatura filtreleri"><label>Fatura durumu<select aria-label="Fatura durumuna göre filtrele" value={filterForm.invoice} onChange={event => applyFilterValue('invoice', event.target.value)}><option value="ALL">Durum: Tümü</option>{invoiceStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Fatura türü<select aria-label="Fatura türüne göre filtrele" value={filterForm.invoiceType} onChange={event => applyFilterValue('invoiceType', event.target.value)}><option value="ALL">Tür: Tümü</option><option value="BIREYSEL">Bireysel</option><option value="KURUMSAL">Kurumsal</option></select></label><label>Fatura bölgesi<select aria-label="Fatura bölgesine göre filtrele" value={filterForm.invoiceRegion} onChange={event => applyFilterValue('invoiceRegion', event.target.value)}><option value="ALL">Bölge: Tümü</option><option value="TR">Türkiye</option><option value="MICRO_EXPORT">Mikro ihracat</option></select></label>{(filterForm.invoice !== 'ALL' || filterForm.invoiceType !== 'ALL' || filterForm.invoiceRegion !== 'ALL') && <button type="button" className="order-column-filter-reset" onClick={() => { clearInvoiceFilters(); setColumnFilterOpen(null) }}>Filtreleri temizle</button>}</div>}</div><strong>Durum</strong></div>{pageItems.map(item => <OrderReferenceRow item={item} key={item.id} selected={selectedIds.includes(item.id)} onSelect={checked => updateSelection(item.id, checked)} openMenu={menu?.orderId === item.id ? menu.kind : null} onMenuChange={kind => setMenu(kind ? { orderId: item.id, kind } : null)} onInvoiceCreate={() => { setMenu(null); setInvoiceDraftOrder(item) }} onInvoiceDetails={() => { setMenu(null); setInvoiceInfoOrder(item) }} onInvoiceUpload={() => { setMenu(null); setInvoiceUploadOrder(item) }} onCourierChange={() => { setMenu(null); setCourierOrder(item) }} onProcessOrder={() => void processSingleOrder(item)} onPreviewImage={setPreviewImage} />)}</div></>}
-    {invoiceInfoOrder && <InvoiceInfoModal item={invoiceInfoOrder} onClose={() => setInvoiceInfoOrder(null)} />}{invoiceViewerOrder && <InvoiceViewerModal item={invoiceViewerOrder} onClose={() => setInvoiceViewerOrder(null)} />}{invoiceDraftOrder && <InvoiceDraftModal item={invoiceDraftOrder} provider={provider} onClose={() => setInvoiceDraftOrder(null)} />}{invoiceUploadOrder && <InvoiceUploadModal item={invoiceUploadOrder} provider={provider} onClose={() => setInvoiceUploadOrder(null)} />}{courierOrder && <CourierChangeModal item={courierOrder} onClose={() => setCourierOrder(null)} />}{singleSyncOpen && <SingleOrderSyncModal activeConnection={trendyolConnection} onClose={() => setSingleSyncOpen(false)} onSuccess={(connectionCount, orderNo) => { setBulkNotice(orderNo ? `${connectionCount} bağlantıdan #${orderNo} sipariş senkronizasyonu başlatıldı.` : `${connectionCount} bağlantıdan yeni sipariş senkronizasyonu başlatıldı.`); void client.invalidateQueries({ queryKey: ['orders'] }); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 1500); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 3500) }} />}{previewImage && <div className="workspace-modal-backdrop product-image-backdrop" role="presentation" onMouseDown={() => setPreviewImage(null)}><section className="workspace-modal product-image-modal" role="dialog" aria-modal="true" aria-label={`${previewImage.title} büyük ürün görseli`} onMouseDown={event => event.stopPropagation()}><header><h2>{previewImage.title}</h2><button type="button" className="modal-close" onClick={() => setPreviewImage(null)} aria-label="Pencereyi kapat">×</button></header><div className="product-image-modal-body"><img src={previewImage.url} alt={`${previewImage.title} büyük ürün görseli`} /></div></section></div>}
+    {ordersLoading && !all.length ? <Busy text="Yerel sipariş kayıtları yükleniyor…" /> : ordersError && !all.length ? <ErrorBox error={ordersError} /> : !all.length ? <Empty>Aktif ve kanıtlanmış bağlantıdan sipariş eşitlemesi çalıştırıldığında kayıtlar burada görünür.</Empty> : !items.length ? <Empty>Seçili durum ve filtrelerle eşleşen sipariş yok.</Empty> : <><div className="order-reference-table"><div className="order-reference-head"><label className="order-select"><input type="checkbox" checked={allPageSelected} disabled={!selectablePageItems.length} onChange={event => togglePageSelection(event.target.checked)} aria-label="Sayfadaki siparişleri seç" /></label><strong>Sipariş Bilgileri</strong><strong>Alıcı</strong><strong>Bilgiler</strong><strong>Birim Fiyat</strong><div className={filters.cargo !== 'ALL' ? 'order-column-filter has-filter' : 'order-column-filter'}><button type="button" className="order-column-filter-trigger" aria-label="Kargo filtresini aç" aria-expanded={columnFilterOpen === 'cargo'} aria-controls="orders-cargo-filter" onClick={() => setColumnFilterOpen(current => current === 'cargo' ? null : 'cargo')}><span>Kargo</span><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>{columnFilterOpen === 'cargo' && <div id="orders-cargo-filter" className="order-column-filter-popover" role="dialog" aria-label="Kargo filtreleri"><label>Kargo firması<select aria-label="Kargo firmasına göre filtrele" value={filterForm.cargo} onChange={event => applyFilterValue('cargo', event.target.value)}><option value="ALL">Tüm kargolar</option>{cargos.map(value => <option key={value} value={value}>{value}</option>)}</select></label>{filterForm.cargo !== 'ALL' && <button type="button" className="order-column-filter-reset" onClick={() => { applyFilterValue('cargo', 'ALL'); setColumnFilterOpen(null) }}>Filtreyi temizle</button>}</div>}</div><div className={filters.invoice !== 'ALL' || filters.invoiceType !== 'ALL' || filters.invoiceRegion !== 'ALL' ? 'order-column-filter order-invoice-column-filter has-filter' : 'order-column-filter order-invoice-column-filter'}><button type="button" className="order-column-filter-trigger" aria-label="Fatura filtresini aç" aria-expanded={columnFilterOpen === 'invoice'} aria-controls="orders-invoice-filter" onClick={() => setColumnFilterOpen(current => current === 'invoice' ? null : 'invoice')}><span>Fatura</span><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>{columnFilterOpen === 'invoice' && <div id="orders-invoice-filter" className="order-column-filter-popover invoice-filter-popover" role="dialog" aria-label="Fatura filtreleri"><label>Fatura durumu<select aria-label="Fatura durumuna göre filtrele" value={filterForm.invoice} onChange={event => applyFilterValue('invoice', event.target.value)}><option value="ALL">Durum: Tümü</option>{invoiceStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Fatura türü<select aria-label="Fatura türüne göre filtrele" value={filterForm.invoiceType} onChange={event => applyFilterValue('invoiceType', event.target.value)}><option value="ALL">Tür: Tümü</option><option value="BIREYSEL">Bireysel</option><option value="KURUMSAL">Kurumsal</option></select></label><label>Fatura bölgesi<select aria-label="Fatura bölgesine göre filtrele" value={filterForm.invoiceRegion} onChange={event => applyFilterValue('invoiceRegion', event.target.value)}><option value="ALL">Bölge: Tümü</option><option value="TR">Türkiye</option><option value="MICRO_EXPORT">Mikro ihracat</option></select></label>{(filterForm.invoice !== 'ALL' || filterForm.invoiceType !== 'ALL' || filterForm.invoiceRegion !== 'ALL') && <button type="button" className="order-column-filter-reset" onClick={() => { clearInvoiceFilters(); setColumnFilterOpen(null) }}>Filtreleri temizle</button>}</div>}</div><strong>Durum</strong></div>{pageItems.map(item => <OrderReferenceRow item={item} key={item.id} selected={selectedIds.includes(item.id)} onSelect={checked => updateSelection(item.id, checked)} openMenu={menu?.orderId === item.id ? menu.kind : null} onMenuChange={kind => setMenu(kind ? { orderId: item.id, kind } : null)} onInvoiceCreate={() => { setMenu(null); setInvoiceDraftOrder(item) }} onInvoiceDetails={() => { setMenu(null); setInvoiceInfoOrder(item) }} onInvoiceUpload={() => { setMenu(null); setInvoiceUploadOrder(item) }} onCourierChange={() => { setMenu(null); setCourierOrder(item) }} onProcessOrder={() => void processSingleOrder(item)} onPrintLabel={format => { setMenu(null); setShippingLabel({ item, format }) }} onPreviewImage={setPreviewImage} />)}</div></>}
+    {invoiceInfoOrder && <InvoiceInfoModal item={invoiceInfoOrder} onClose={() => setInvoiceInfoOrder(null)} />}{invoiceViewerOrder && <InvoiceViewerModal item={invoiceViewerOrder} onClose={() => setInvoiceViewerOrder(null)} />}{invoiceDraftOrder && <InvoiceDraftModal item={invoiceDraftOrder} provider={provider} onClose={() => setInvoiceDraftOrder(null)} />}{invoiceUploadOrder && <InvoiceUploadModal item={invoiceUploadOrder} provider={provider} onClose={() => setInvoiceUploadOrder(null)} />}{courierOrder && <CourierChangeModal item={courierOrder} onClose={() => setCourierOrder(null)} />}{shippingLabel && <ShippingLabelModal item={shippingLabel.item} format={shippingLabel.format} onClose={() => setShippingLabel(null)} />}{singleSyncOpen && <SingleOrderSyncModal activeConnection={trendyolConnection} onClose={() => setSingleSyncOpen(false)} onSuccess={(connectionCount, orderNo) => { setBulkNotice(orderNo ? `${connectionCount} bağlantıdan #${orderNo} sipariş senkronizasyonu başlatıldı.` : `${connectionCount} bağlantıdan yeni sipariş senkronizasyonu başlatıldı.`); void client.invalidateQueries({ queryKey: ['orders'] }); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 1500); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 3500) }} />}{previewImage && <div className="workspace-modal-backdrop product-image-backdrop" role="presentation" onMouseDown={() => setPreviewImage(null)}><section className="workspace-modal product-image-modal" role="dialog" aria-modal="true" aria-label={`${previewImage.title} büyük ürün görseli`} onMouseDown={event => event.stopPropagation()}><header><h2>{previewImage.title}</h2><button type="button" className="modal-close" onClick={() => setPreviewImage(null)} aria-label="Pencereyi kapat">×</button></header><div className="product-image-modal-body"><img src={previewImage.url} alt={`${previewImage.title} büyük ürün görseli`} /></div></section></div>}
   </section>
 }
 
