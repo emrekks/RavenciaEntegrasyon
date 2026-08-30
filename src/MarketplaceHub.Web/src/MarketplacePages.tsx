@@ -512,7 +512,7 @@ function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, o
   const isCargoLabelStage = ['NEW', 'PROCESSING', 'READY_TO_SHIP'].includes(normalizedOrderStatus)
   const canChangeCargo = !['SHIPPED', 'UNDELIVERED', 'DELIVERED', 'RETURNED'].includes(normalizedOrderStatus)
   const labelFormat = loadShippingLabelSettings().defaultFormat
-  showCancelledActions = showCancelledActions ?? new URLSearchParams(window.location.search).get('status') === 'CANCELLED'
+  showCancelledActions = showCancelledActions ?? true
   onHideCancelled = onHideCancelled ?? (() => { try { localStorage.setItem('ravencia.hiddenCancelledOrders', JSON.stringify(Array.from(new Set([...JSON.parse(localStorage.getItem('ravencia.hiddenCancelledOrders') ?? '[]').filter((id: unknown): id is string => typeof id === 'string'), item.id])))) } catch { /* Private browsing may disallow local storage. */ } window.dispatchEvent(new CustomEvent('ravencia:cancelled-order-hidden', { detail: item.id })) })
   async function copyOrderNumber() { try { await navigator.clipboard.writeText(item.orderNumber); setCopied(true); window.setTimeout(() => setCopied(false), 1400) } catch { setCopied(false) } }
   function toggleMenu(kind: 'invoice' | 'actions', event: MouseEvent<HTMLButtonElement>) {
