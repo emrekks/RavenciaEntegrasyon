@@ -8314,6 +8314,36 @@ body:has(.product-add-page),
   aspect-ratio: 2 / 3 !important;
   object-fit: cover !important;
 }
+.app-shell .reference-returns-page .reference-product-media {
+  position: relative !important;
+  display: block !important;
+  width: 54px !important;
+  height: 81px !important;
+  min-width: 54px !important;
+}
+.app-shell .reference-returns-page .reference-product-media .product-image-button {
+  display: block !important;
+  width: 54px !important;
+  height: 81px !important;
+  min-height: 81px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.app-shell .reference-returns-page .reference-product-media .product-image-button img,
+.app-shell .reference-returns-page .reference-product-media > .reference-product-placeholder {
+  display: block !important;
+  width: 54px !important;
+  height: 81px !important;
+}
+.app-shell .reference-returns-page .reference-product-media .quantity-bubble {
+  top: -10px !important;
+  right: -10px !important;
+  left: auto !important;
+  transform: none !important;
+  z-index: 2 !important;
+}
 .app-shell .reference-returns-page .order-reference-prices,
 .app-shell .reference-returns-page .order-reference-cargo,
 .app-shell .reference-returns-page .order-reference-invoice { text-align: left !important; }
