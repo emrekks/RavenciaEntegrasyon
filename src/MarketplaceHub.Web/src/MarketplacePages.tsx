@@ -355,7 +355,7 @@ function CourierChangeModal({ item, onClose, onConfirmed }: { item: Order; onClo
 
 function LabelBarcode({ value, compact = false }: { value: string; compact?: boolean }) {
   const bars = code128Bars(value)
-  return <div className={`shipping-label-barcode${compact ? ' compact' : ''}`} aria-label={`Barkod: ${value || 'Takip numarası bekleniyor'}`}><div className="shipping-label-barcode-bars">{bars.map((isBar, index) => <i className={isBar ? 'is-bar' : undefined} key={index} />)}</div><strong>{value || 'Takip numarası bekleniyor'}</strong></div>
+  return <div className={`shipping-label-barcode${compact ? ' compact' : ''}`} aria-label={`Barkod: ${value || 'Takip numarası bekleniyor'}`}><div className="shipping-label-barcode-bars" style={{ '--barcode-module-count': bars.length } as CSSProperties}>{bars.map((isBar, index) => <i className={isBar ? 'is-bar' : undefined} key={index} />)}</div><strong>{value || 'Takip numarası bekleniyor'}</strong></div>
 }
 
 function ShippingLabelModal({ item, format, onClose }: { item: Order; format: 'a4' | 'sticker'; onClose: () => void }) {

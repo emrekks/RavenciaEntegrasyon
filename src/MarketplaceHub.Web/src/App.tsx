@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
@@ -510,7 +510,8 @@ function ShippingLayoutPreview({ format, layout }: { format: 'a4' | 'sticker'; l
 function ShippingPreviewBlock({ block }: { block: ShippingLabelBlock }) {
   if (block.kind === 'trackingBarcode' || block.kind === 'packageBarcode') {
     const value = block.kind === 'trackingBarcode' ? '73300036563130080' : '9236253'
-    return <div className="shipping-preview-barcode" aria-label={`Barkod önizlemesi: ${value}`}><span className="shipping-preview-bars" aria-hidden="true">{code128Bars(value).map((isBar, index) => <i className={isBar ? 'is-bar' : undefined} key={index} />)}</span><strong>{value}</strong></div>
+    const bars = code128Bars(value)
+    return <div className="shipping-preview-barcode" aria-label={`Barkod önizlemesi: ${value}`}><span className="shipping-preview-bars" style={{ '--barcode-module-count': bars.length } as CSSProperties} aria-hidden="true">{bars.map((isBar, index) => <i className={isBar ? 'is-bar' : undefined} key={index} />)}</span><strong>{value}</strong></div>
   }
   const values: Record<ShippingLabelField, string> = { trackingNumber: '73300036563130080', packageNumber: '9236253', orderNumber: '#1972215187', customerName: 'FEHİME MAT', address: 'KARAKÖPRÜ / ŞANLIURFA', cargoProvider: 'Trendyol Express', senderName: 'RAVENCIA', senderAddress: '403.CAD.NO:24/2', customerEmail: 'musteri@example.com' }
   return <div className={`shipping-preview-content preview-content-${block.kind}`}>{block.text && <strong>{block.text}</strong>}{block.fields.map(field => <span key={field}><b>{shippingLabelFields.find(option => option.id === field)?.label}</b>{values[field]}</span>)}</div>

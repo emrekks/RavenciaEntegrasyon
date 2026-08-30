@@ -2266,6 +2266,49 @@ textarea {
 .app-shell.stitch-shell .shipping-preview-bars i { flex: 0 0 1px; width: 1px; height: 100%; background: transparent; }
 .app-shell.stitch-shell .shipping-preview-bars i.is-bar { background: #17223a; }
 
+/* Keep the settings preview proportional to the printed Code 128 symbol. */
+.app-shell.stitch-shell .shipping-label-barcode-bars i {
+  flex: 0 0 calc(100% / var(--barcode-module-count));
+  width: calc(100% / var(--barcode-module-count)) !important;
+  margin-right: 0 !important;
+}
+.app-shell.stitch-shell .shipping-preview-bars {
+  width: 82%;
+  max-width: 100%;
+  padding-inline: 5px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.app-shell.stitch-shell .shipping-preview-bars i {
+  flex: 0 0 calc(100% / var(--barcode-module-count));
+  width: calc(100% / var(--barcode-module-count));
+}
+
+/* Keep settings surfaces aligned with the dark workspace; print output stays white. */
+.app-shell.stitch-shell .shipping-layout-paper,
+.app-shell.stitch-shell .shipping-paper-canvas .shipping-layout-paper,
+.app-shell.stitch-shell .shipping-preview-paper {
+  color: #e8ebff;
+  background: #0d1220;
+  border-color: #313a5c;
+  box-shadow: inset 0 0 0 4px #11192b, 0 8px 20px rgba(0, 0, 0, .24);
+}
+.app-shell.stitch-shell .shipping-paper-block,
+.app-shell.stitch-shell .shipping-preview-block {
+  color: #e8ebff;
+  background: #171d30;
+  border-color: #313a5c;
+}
+.app-shell.stitch-shell .shipping-paper-block-copy small,
+.app-shell.stitch-shell .shipping-preview-info b,
+.app-shell.stitch-shell .shipping-preview-content span b { color: #8f9ab5; }
+.app-shell.stitch-shell .shipping-preview-barcode strong,
+.app-shell.stitch-shell .shipping-preview-info strong,
+.app-shell.stitch-shell .shipping-preview-sender,
+.app-shell.stitch-shell .shipping-preview-content { color: #e8ebff; }
+.app-shell.stitch-shell .shipping-preview-bars i.is-bar { background: #f3f5ff; }
+.app-shell.stitch-shell .shipping-preview-address i { background: repeating-linear-gradient(180deg, #f3f5ff 0 2px, transparent 2px 4px); }
+
 @media (max-width: 1080px) {
   .app-shell.stitch-shell .shipping-layout-workbench { grid-template-columns: minmax(235px, 1fr) minmax(250px, 1fr); }
   .app-shell.stitch-shell .shipping-layout-workbench > .shipping-layout-preview { grid-column: 1 / -1; max-width: 280px; }
