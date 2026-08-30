@@ -9648,3 +9648,70 @@ body:has(.product-add-page),
     transition: none !important;
   }
 }
+
+/* Sidebar pin: keep the expanded rail open until the user unpins it. */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell > aside .sidebar-brand-row {
+    position: relative;
+  }
+
+  .app-shell.stitch-shell > aside .brand.wordmark {
+    flex: 1 1 auto;
+  }
+
+  .app-shell.stitch-shell > aside .sidebar-pin-toggle {
+    display: grid !important;
+    place-items: center;
+    flex: 0 0 30px;
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    min-height: 30px !important;
+    margin-left: auto;
+    padding: 0 !important;
+    color: #8f9bd1 !important;
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    border-radius: 9px !important;
+    box-shadow: none !important;
+    opacity: 0;
+    pointer-events: none;
+    transform: none !important;
+    transition: color .16s ease, background .16s ease, border-color .16s ease, opacity .16s ease !important;
+  }
+
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside .sidebar-pin-toggle,
+  .app-shell.stitch-shell.sidebar-pinned > aside .sidebar-pin-toggle {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .app-shell.stitch-shell > aside .sidebar-pin-toggle:hover,
+  .app-shell.stitch-shell > aside .sidebar-pin-toggle:focus-visible {
+    color: #fff !important;
+    background: rgba(124, 134, 255, .14) !important;
+    border-color: rgba(124, 134, 255, .36) !important;
+    outline: none;
+  }
+
+  .app-shell.stitch-shell > aside .sidebar-pin-toggle.is-pinned {
+    color: #fff !important;
+    background: rgba(124, 134, 255, .2) !important;
+    border-color: rgba(124, 134, 255, .48) !important;
+  }
+
+  .app-shell.stitch-shell > aside .sidebar-pin-toggle svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-pin-toggle {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell > aside .sidebar-pin-toggle {
+    transition: none !important;
+  }
+}

@@ -105,14 +105,22 @@ function WorkspaceTopActions({ me, onLogout }: { me: Me; onLogout: () => Promise
 function Shell({ me }: { me: Me }) {
   const navigate = useNavigate()
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
+  const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') === 'true')
   const [globalSearch, setGlobalSearch] = useState('')
   async function logout() { await api('/logout', { method: 'POST' }); window.location.replace(`/?signedOut=${Date.now()}`) }
-  const menuCollapsed = !sidebarHoverExpanded
+  const sidebarExpanded = sidebarPinned || sidebarHoverExpanded
+  const menuCollapsed = !sidebarExpanded
   function expandSidebarOnHover() {
     setSidebarHoverExpanded(true)
   }
   function collapseSidebarOnLeave() {
-    setSidebarHoverExpanded(false)
+    if (!sidebarPinned) setSidebarHoverExpanded(false)
+  }
+  function toggleSidebarPinned() {
+    const nextPinned = !sidebarPinned
+    setSidebarPinned(nextPinned)
+    localStorage.setItem('ravencia.sidebarPinned', String(nextPinned))
+    if (nextPinned) setSidebarHoverExpanded(true)
   }
   function submitGlobalSearch(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const value = globalSearch.trim(); if (!value) return; navigate(`/orders?search=${encodeURIComponent(value)}`) }
   const icons: Record<string, ReactNode> = {
@@ -131,9 +139,9 @@ function Shell({ me }: { me: Me }) {
   }
   const icon = (name: string) => <svg className="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{icons[name]}</svg>
   const item = (to: string, iconName: string, label: string) => <NavLink to={to}>{icon(iconName)}<span className="nav-label">{label}</span></NavLink>
-  return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHoverExpanded ? 'sidebar-hover-expanded' : ''}`}>
+  return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarExpanded ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
     <aside onMouseEnter={expandSidebarOnHover} onMouseLeave={collapseSidebarOnLeave} onFocus={expandSidebarOnHover} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) collapseSidebarOnLeave() }}>
-      <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong><small>MarketplaceHub</small></div></div>
+      <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong><small>MarketplaceHub</small></div><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menü sabitlemesini kaldır' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menü sabitlendi' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3h8M9 3v5l-3 3v2h12v-2l-3-3V3M12 13v8" /></svg></button></div>
       <nav aria-label="Ana menü">{item('/dashboard', 'dashboard', 'Dashboard')}{item('/products', 'products', 'Ürünler')}{item('/orders', 'orders', 'Siparişler')}{item('/returns', 'returns', 'İadeler')}{item('/invoices', 'invoices', 'Faturalar')}{item('/jobs', 'jobs', 'İşlem Takibi')}{item('/integrations', 'platforms', 'Platformlar')}{item('/mappings/categories', 'mappings', 'Eşleştirme Ayarları')}</nav>
       <div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları')}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Çıkış Yap</span></button></div>
     </aside>
