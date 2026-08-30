@@ -13109,7 +13109,43 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu { align-self:center!important; }
 .app-shell.stitch-shell .orders-page .order-action-menu { display:inline-flex!important; align-items:center!important; justify-content:center!important; gap:7px!important; height:30px!important; }
 .app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-menu-shell { z-index:2200; }
-.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu { z-index:2300!important; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu {
+  z-index:2300!important;
+  min-width:248px!important;
+  padding:6px!important;
+  color:#dfe2ff!important;
+  background:#15192a!important;
+  border:1px solid #3a405a!important;
+  border-radius:8px!important;
+  box-shadow:0 20px 46px rgba(0,0,0,.5)!important;
+}
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button {
+  display:grid!important;
+  grid-template-columns:30px minmax(0,1fr)!important;
+  gap:8px!important;
+  align-items:center!important;
+  min-height:48px!important;
+  padding:8px 9px!important;
+  color:#dfe2ff!important;
+  background:transparent!important;
+  border:0!important;
+  border-bottom:1px solid #292f49!important;
+  border-radius:6px!important;
+}
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button:hover { color:#fff!important; background:#242a4a!important; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button>b {
+  display:grid!important;
+  place-items:center!important;
+  width:26px!important;
+  height:26px!important;
+  color:#c7cbff!important;
+  background:#303866!important;
+  border:1px solid #4b5594!important;
+  border-radius:6px!important;
+  font-size:.62rem!important;
+}
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button>span { display:grid!important; gap:2px!important; font-size:.72rem!important; font-weight:750!important; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button small { color:#9198b6!important; font-size:.61rem!important; font-weight:550!important; }
 .app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu.opens-up { top:auto!important; bottom:calc(100% + 6px)!important; }
 .app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu.opens-down { top:calc(100% + 6px)!important; bottom:auto!important; }
 .app-shell.stitch-shell .bulk-operation-summary { display:grid; gap:4px; margin:12px 24px 0; padding:10px 12px; color:#e8eaff; background:rgba(113,104,245,.1); border:1px solid rgba(124,134,255,.25); border-radius:8px; }
