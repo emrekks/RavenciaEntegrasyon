@@ -11626,3 +11626,36 @@ body:has(.product-add-page),
   .app-shell.stitch-shell .integration-settings-modal-backdrop { padding: 10px; }
   .app-shell.stitch-shell .integration-settings-modal { max-height: calc(100vh - 20px); padding: 12px; }
 }
+
+/* Job details explain the effect first, then show the technical trace. */
+.jobs-reference-change-summary,
+.jobs-reference-batch-context {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: linear-gradient(135deg, rgba(88,101,242,.15), rgba(88,101,242,.045));
+  border: 1px solid rgba(151,160,255,.32);
+  border-radius: 8px;
+}
+.jobs-reference-change-summary > div:first-child,
+.jobs-reference-batch-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.jobs-reference-change-summary h3,
+.jobs-reference-batch-context h3 { margin: 2px 0 0 !important; color: var(--st-text); font-size: 15px !important; }
+.jobs-reference-change-summary > div:last-child { display: grid; gap: 5px; padding-top: 10px; border-top: 1px solid rgba(151,160,255,.2); }
+.jobs-reference-change-summary strong { color: var(--st-primary-soft); font-size: 10px; }
+.jobs-reference-change-summary p { margin: 0; color: var(--st-muted); font-size: 11px; line-height: 1.45; }
+.jobs-reference-batch-note { padding: 5px 7px; color: #b7f8dc; background: rgba(35,174,123,.12); border: 1px solid rgba(113,235,190,.22); border-radius: 999px; font-size: 9px; font-weight: 800; white-space: nowrap; }
+.jobs-reference-batch-list { display: grid; gap: 6px; max-height: 250px; overflow: auto; padding-right: 2px; }
+.jobs-reference-batch-list article { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(100px,.8fr) auto; align-items: center; gap: 10px; padding: 9px 10px; background: rgba(8,10,19,.32); border: 1px solid rgba(151,160,207,.14); border-radius: 5px; }
+.jobs-reference-batch-list article > div { display: grid; gap: 3px; min-width: 0; }
+.jobs-reference-batch-list article strong { color: var(--st-text); font-size: 10px; }
+.jobs-reference-batch-list article small,
+.jobs-reference-batch-list article span { color: var(--st-muted); font-size: 9px; overflow-wrap: anywhere; }
+.jobs-reference-batch-list article b { color: var(--st-primary-soft); font-size: 9px; text-align: right; }
+.jobs-reference-batch-list > p { margin: 0; color: var(--st-muted); font-size: 10px; }
+
+@media (max-width: 600px) {
+  .jobs-reference-batch-list article { grid-template-columns: 1fr; gap: 5px; }
+  .jobs-reference-batch-list article b { text-align: left; }
+  .jobs-reference-batch-note { white-space: normal; }
+}

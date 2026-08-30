@@ -16,7 +16,9 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }
         var jobs = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
         var failures = await FailureTimes(jobs, cancellationToken);
-        return jobs.Select(job => Summary(job, failures.GetValueOrDefault(job.Id))).ToList();
+        var batchCounts = jobs.GroupBy(job => job.CorrelationId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+        return jobs.Select(job => Summary(job, failures.GetValueOrDefault(job.Id), batchCounts.GetValueOrDefault(job.CorrelationId, 1))).ToList();
     }
 
     public async Task<ServiceResult<JobDetailView>> GetAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
@@ -74,7 +76,19 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var failureTimes = failure.Count == 0
             ? null
             : new FailureTime(failure.Min(x => x.StartedAt), failure.Max(x => x.CompletedAt ?? x.StartedAt));
-        return new JobDetailView(Summary(job, failureTimes), attempts, await OrderContext(job, cancellationToken));
+        var currentOrder = await OrderContext(job, cancellationToken);
+        var relatedJobs = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == job.TenantId && x.CorrelationId == job.CorrelationId)
+            .OrderByDescending(x => x.CreatedAt)
+            .ThenByDescending(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var relatedOrders = new List<JobOrderContextView>();
+        foreach (var relatedJob in relatedJobs)
+        {
+            var relatedOrder = await OrderContext(relatedJob, cancellationToken);
+            if (relatedOrder is not null && relatedOrders.All(order => order.OrderId != relatedOrder.OrderId)) relatedOrders.Add(relatedOrder);
+        }
+        return new JobDetailView(Summary(job, failureTimes, relatedJobs.Count), attempts, currentOrder, Change(job), relatedOrders);
     }
 
     private async Task<JobOrderContextView?> OrderContext(IntegrationJob job, CancellationToken cancellationToken)
@@ -205,12 +219,39 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             .ToDictionary(x => x.JobId, x => new FailureTime(x.FirstFailedAt, x.LastFailedAt));
     }
 
-    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null) => new(
+    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1) => new(
         x.Id, x.ConnectionId, x.JobType, Wire(x.Status), x.AttemptCount, x.MaxAttempts,
         x.AvailableAt, x.LastErrorCode, x.LastErrorSummary, x.CorrelationId,
         x.CreatedAt, x.StartedAt, x.CompletedAt, Marketplace(x.JobType), ExternalId(x.PayloadJson),
         failure?.FirstFailedAt, failure?.LastFailedAt,
-        x.Status is JobStatus.Pending or JobStatus.RetryScheduled ? x.AvailableAt : null);
+        x.Status is JobStatus.Pending or JobStatus.RetryScheduled ? x.AvailableAt : null,
+        Math.Max(1, batchCount));
+
+    private static JobChangeView? Change(IntegrationJob job)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(job.PayloadJson);
+            var root = document.RootElement;
+            var type = job.JobType.ToUpperInvariant();
+            if (type.Contains("SHIPMENT_ACTION", StringComparison.Ordinal))
+            {
+                var action = StringValue(root, "action")?.ToUpperInvariant();
+                var payload = StringValue(root, "payloadJson");
+                using var nested = string.IsNullOrWhiteSpace(payload) ? null : System.Text.Json.JsonDocument.Parse(payload);
+                var provider = nested is null ? null : StringValue(nested.RootElement, "cargoProvider");
+                if (action == "CHANGE_CARGO_PROVIDER") return new("Yapılan değişiklik", "Kargo firması değişikliği", provider is null ? "Yeni firma bilgisi gönderilmedi." : $"Yeni firma: {provider}");
+                if (action == "PICKING") return new("Yapılan değişiklik", "Sipariş işleme alındı", "Paket Trendyol’a işleme alma isteğiyle gönderildi.");
+                if (!string.IsNullOrWhiteSpace(action)) return new("Yapılan değişiklik", action.Replace('_', ' '), "Paket işlemi Trendyol’a gönderildi.");
+            }
+            if (type.Contains("ORDER_SYNC", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Sipariş senkronizasyonu", "Sipariş bilgileri pazaryerinden eşitlendi.");
+            if (type.Contains("REFERENCE_SYNC", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Referans verisi senkronizasyonu", "Kategori, marka veya özellik verileri güncellendi.");
+            if (type.Contains("PRODUCT", StringComparison.Ordinal) || type.Contains("CATALOG", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Ürün senkronizasyonu", "Ürün bilgileri pazaryerine gönderildi.");
+            if (type.Contains("INVOICE", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Fatura işlemi", "Fatura isteği pazaryerine gönderildi.");
+        }
+        catch (System.Text.Json.JsonException) { }
+        return null;
+    }
 
     private static string Marketplace(string jobType) => jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
         ? "Trendyol e-Faturam"

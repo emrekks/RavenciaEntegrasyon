@@ -67,7 +67,8 @@ public sealed record JobSummaryView(
     string? ExternalId = null,
     DateTimeOffset? FirstFailedAt = null,
     DateTimeOffset? LastFailedAt = null,
-    DateTimeOffset? NextRetryAt = null);
+    DateTimeOffset? NextRetryAt = null,
+    int BatchCount = 1);
 
 public sealed record JobOrderContextView(
     Guid OrderId,
@@ -83,7 +84,14 @@ public sealed record JobOrderContextView(
     string? CustomerName = null,
     int LineCount = 0);
 
-public sealed record JobDetailView(JobSummaryView Job, IReadOnlyList<JobAttemptDetailView> Attempts, JobOrderContextView? Order = null);
+public sealed record JobChangeView(string Label, string Value, string? Detail = null);
+
+public sealed record JobDetailView(
+    JobSummaryView Job,
+    IReadOnlyList<JobAttemptDetailView> Attempts,
+    JobOrderContextView? Order = null,
+    JobChangeView? Change = null,
+    IReadOnlyList<JobOrderContextView>? RelatedOrders = null);
 
 public interface IJobOperationsService
 {

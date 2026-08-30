@@ -811,8 +811,9 @@ export function OrdersPage() {
       if (!eligible.length) { setBulkNotice('Seçimde işleme alınabilecek yeni sipariş bulunmuyor.'); return }
       if (!window.confirm(`${eligible.length} yeni sipariş Trendyol’da “İşleme Al” durumuna geçirilecek. Devam edilsin mi?`)) return
       try {
-        for (const item of eligible) { const pack = item.packages![0]; await hubApi(`/shipments/${pack.id}/actions`, { method: 'POST', headers: { 'Idempotency-Key': `bulk-picking:${pack.id}:${pack.version}`, 'If-Match': `"v${pack.version}"` }, body: JSON.stringify({ action: 'PICKING', payloadJson: '{}' }) }) }
-        setBulkNotice(`${eligible.length} sipariş için “İşleme Al” işleri güvenli kuyruğa alındı; sonuçlar eşitleme sonrasında doğrulanacak.`)
+        const operationId = crypto.randomUUID()
+        for (const item of eligible) { const pack = item.packages![0]; await hubApi(`/shipments/${pack.id}/actions`, { method: 'POST', headers: { 'Idempotency-Key': `bulk-picking:${pack.id}:${pack.version}`, 'If-Match': `"v${pack.version}"`, 'X-Operation-ID': operationId }, body: JSON.stringify({ action: 'PICKING', payloadJson: '{}' }) }) }
+        setBulkNotice(`${eligible.length} sipariş için “İşleme Al” işleri toplu işlem olarak kuyruğa alındı; sonuçlar Arka Plan İşlemleri’nde sipariş bazında gösterilecek.`)
         setSelectedIds([])
         await client.invalidateQueries({ queryKey: ['orders'] })
       } catch (error) { setBulkNotice(error instanceof Error ? error.message : 'Toplu işleme alma tamamlanamadı.') }
