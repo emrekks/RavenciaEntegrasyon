@@ -2198,7 +2198,83 @@ textarea {
   .app-shell.stitch-shell .shipping-label-preview-wrap { padding: 10px; }
   .app-shell.stitch-shell .shipping-label-a4 { width: 170mm; }
   .app-shell.stitch-shell .shipping-label-modal-actions { flex-wrap: wrap; }
-  .app-shell.stitch-shell .shipping-label-modal-actions > span { flex-basis: 100%; }
+.app-shell.stitch-shell .shipping-label-modal-actions > span { flex-basis: 100%; }
+}
+
+/* Compact paper-first label editor: the paper is the navigation surface and
+   one inspector owns the settings of the selected block. */
+.app-shell.stitch-shell .shipping-layout-editor-grid { grid-template-columns: 1fr; }
+.app-shell.stitch-shell .shipping-layout-format { padding: 18px; background: #171a2a; }
+.app-shell.stitch-shell .shipping-layout-format-head { justify-content: space-between; }
+.app-shell.stitch-shell .shipping-layout-format-head > div { display: grid; gap: 3px; }
+.app-shell.stitch-shell .shipping-layout-format-head strong { color: #eef0ff; font-size: .78rem; }
+.app-shell.stitch-shell .shipping-layout-format-head small { color: #9298af; font-size: .64rem; font-weight: 600; }
+.app-shell.stitch-shell .shipping-layout-format-head > button { margin-left: auto; }
+.app-shell.stitch-shell .shipping-layout-add { grid-template-columns: minmax(0, 1fr) minmax(170px, .65fr) auto; gap: 10px; align-items: end; padding: 11px; }
+.app-shell.stitch-shell .shipping-layout-add::before { display: none; }
+.app-shell.stitch-shell .shipping-layout-add > div { display: grid; gap: 3px; }
+.app-shell.stitch-shell .shipping-layout-add > div span { color: #d8dcff; font-size: .7rem; font-weight: 800; }
+.app-shell.stitch-shell .shipping-layout-add > div small { color: #9298af; font-size: .61rem; }
+.app-shell.stitch-shell .shipping-layout-add select { min-height: 34px; }
+.app-shell.stitch-shell .shipping-layout-add button { min-height: 34px; padding: 7px 12px; white-space: nowrap; }
+.app-shell.stitch-shell .shipping-custom-block-form { margin-top: 10px; padding: 10px; }
+.app-shell.stitch-shell .shipping-layout-workbench { display: grid; grid-template-columns: minmax(235px, .82fr) minmax(250px, 1fr) minmax(210px, .72fr); align-items: start; gap: 14px; margin-top: 14px; }
+.app-shell.stitch-shell .shipping-paper-canvas,
+.app-shell.stitch-shell .shipping-block-inspector { min-width: 0; padding: 11px; border: 1px solid #3b4260; border-radius: 8px; background: #111525; }
+.app-shell.stitch-shell .shipping-paper-canvas-heading,
+.app-shell.stitch-shell .shipping-block-inspector-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.app-shell.stitch-shell .shipping-paper-canvas-heading > div,
+.app-shell.stitch-shell .shipping-block-inspector-heading > div { display: grid; gap: 3px; min-width: 0; }
+.app-shell.stitch-shell .shipping-paper-canvas-heading strong,
+.app-shell.stitch-shell .shipping-block-inspector-heading strong { overflow: hidden; color: #eef0ff; font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .shipping-paper-canvas-heading small,
+.app-shell.stitch-shell .shipping-block-inspector-heading span { color: #9298af; font-size: .59rem; }
+.app-shell.stitch-shell .shipping-paper-canvas-heading > span { padding: 4px 6px; color: #5865f2; background: #e7eaff; border-radius: 4px; font: 800 .54rem/1 monospace; }
+.app-shell.stitch-shell .shipping-paper-canvas .shipping-layout-paper { display: grid; gap: 7px; min-height: 344px; margin: 0; padding: 12px; background: #f7f9fc; border: 1px solid #cbd3e2; border-radius: 6px; box-shadow: inset 0 0 0 4px #edf1f7, 0 6px 16px rgba(0, 0, 0, .15); }
+.app-shell.stitch-shell .shipping-paper-block { display: grid; grid-template-columns: 22px 25px minmax(0, 1fr) auto; align-items: center; gap: 7px; min-width: 0; min-height: 48px; padding: 7px; color: #17223a; background: #fff; border: 1px solid #d0d8e5; border-radius: 5px; cursor: pointer; text-align: left; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.app-shell.stitch-shell .shipping-paper-block:hover,
+.app-shell.stitch-shell .shipping-paper-block:focus-visible { border-color: #7c86ff; outline: none; box-shadow: 0 0 0 2px rgba(88, 101, 242, .16); }
+.app-shell.stitch-shell .shipping-paper-block.is-selected { border-color: #5865f2; box-shadow: 0 0 0 2px rgba(88, 101, 242, .22); transform: translateX(2px); }
+.app-shell.stitch-shell .shipping-paper-block-index { display: grid; place-items: center; width: 22px; height: 22px; color: #fff; background: #5865f2; border-radius: 50%; font: 800 .62rem/1 monospace; }
+.app-shell.stitch-shell .shipping-paper-block-icon { display: grid; place-items: center; width: 25px; height: 25px; color: #5865f2; background: #eef0ff; border-radius: 5px; font-size: .95rem; }
+.app-shell.stitch-shell .shipping-paper-block-icon.trackingBarcode,
+.app-shell.stitch-shell .shipping-paper-block-icon.packageBarcode { color: #17223a; background: #e7eaf0; }
+.app-shell.stitch-shell .shipping-paper-block-copy { display: grid; gap: 3px; min-width: 0; }
+.app-shell.stitch-shell .shipping-paper-block-copy strong { overflow: hidden; font-size: .68rem; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .shipping-paper-block-copy small { overflow: hidden; color: #7d879b; font-size: .55rem; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .shipping-paper-block-action { color: #5865f2; font-size: .55rem; font-weight: 800; }
+.app-shell.stitch-shell .shipping-paper-empty { align-self: center; justify-self: center; max-width: 190px; color: #7a879c; font-size: .68rem; line-height: 1.4; text-align: center; }
+.app-shell.stitch-shell .shipping-block-inspector { display: grid; gap: 10px; }
+.app-shell.stitch-shell .shipping-block-inspector-heading { padding-bottom: 9px; border-bottom: 1px solid #30354a; }
+.app-shell.stitch-shell .shipping-block-inspector-heading .shipping-layout-delete { flex: 0 0 auto; }
+.app-shell.stitch-shell .shipping-block-inspector-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(85px, .55fr); gap: 8px; }
+.app-shell.stitch-shell .shipping-block-inspector label { display: grid !important; grid-template-columns: 1fr !important; gap: 4px !important; color: #9298af; font-size: .59rem; font-weight: 800; }
+.app-shell.stitch-shell .shipping-block-inspector input,
+.app-shell.stitch-shell .shipping-block-inspector select,
+.app-shell.stitch-shell .shipping-block-inspector textarea { width: 100%; box-sizing: border-box; min-height: 32px; padding: 6px 8px; color: #eef0ff; background: #1b2033; border: 1px solid #3b4260; border-radius: 5px; font: inherit; font-size: .65rem; }
+.app-shell.stitch-shell .shipping-block-inspector textarea { resize: vertical; }
+.app-shell.stitch-shell .shipping-block-inspector .shipping-layout-field-chips { min-height: 24px; padding: 4px 0; border-top: 1px solid #252b40; }
+.app-shell.stitch-shell .shipping-block-inspector .shipping-layout-item-actions { justify-content: flex-end; padding-top: 9px; border-top: 1px solid #30354a; }
+.app-shell.stitch-shell .shipping-block-inspector.is-empty { align-content: center; min-height: 180px; color: #9298af; }
+.app-shell.stitch-shell .shipping-block-inspector.is-empty strong { color: #eef0ff; font-size: .72rem; }
+.app-shell.stitch-shell .shipping-block-inspector.is-empty span { font-size: .62rem; }
+.app-shell.stitch-shell .shipping-layout-workbench > .shipping-layout-preview { min-width: 0; align-self: stretch; }
+.app-shell.stitch-shell .shipping-label-barcode-bars { gap: 0; }
+.app-shell.stitch-shell .shipping-label-barcode-bars i { flex: 0 0 1.1px; width: 1.1px !important; margin-right: 0 !important; background: transparent; }
+.app-shell.stitch-shell .shipping-label-barcode-bars i.is-bar { background: #10131c; }
+.app-shell.stitch-shell .shipping-preview-bars { display: flex; justify-content: center; gap: 0; width: 70%; height: 22px; background: none; }
+.app-shell.stitch-shell .shipping-preview-bars i { flex: 0 0 1px; width: 1px; height: 100%; background: transparent; }
+.app-shell.stitch-shell .shipping-preview-bars i.is-bar { background: #17223a; }
+
+@media (max-width: 1080px) {
+  .app-shell.stitch-shell .shipping-layout-workbench { grid-template-columns: minmax(235px, 1fr) minmax(250px, 1fr); }
+  .app-shell.stitch-shell .shipping-layout-workbench > .shipping-layout-preview { grid-column: 1 / -1; max-width: 280px; }
+}
+
+@media (max-width: 680px) {
+  .app-shell.stitch-shell .shipping-layout-add { grid-template-columns: 1fr; align-items: stretch; }
+  .app-shell.stitch-shell .shipping-layout-workbench { grid-template-columns: 1fr; }
+  .app-shell.stitch-shell .shipping-layout-workbench > .shipping-layout-preview { grid-column: auto; max-width: none; }
 }
 
 @media print {

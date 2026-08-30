@@ -7,7 +7,7 @@ import { AttributesPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPa
 import { IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage } from './MarketplacePages'
 import { InvoicesPage } from './InvoicingPages'
 import { JobsPage } from './OperationsPages'
-import { defaultShippingLabelSettings, loadShippingLabelSettings, saveShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from './shipping-label'
+import { code128Bars, defaultShippingLabelSettings, loadShippingLabelSettings, saveShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from './shipping-label'
 
 type ShellConnection = {
   id: string
@@ -409,6 +409,7 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
   const [addKind, setAddKind] = useState<ShippingLabelBlockKind>('custom')
   const [customTitle, setCustomTitle] = useState('')
   const [customText, setCustomText] = useState('')
+  const [selectedBlocks, setSelectedBlocks] = useState<Record<'a4' | 'sticker', string | null>>({ a4: settings.layout.a4[0]?.id ?? null, sticker: settings.layout.sticker[0]?.id ?? null })
   const formatLabels = { a4: 'A4 etiketi', sticker: 'Sticker etiketi' } as const
 
   function update<K extends keyof ShippingLabelSettings>(key: K, value: ShippingLabelSettings[K]) {
@@ -425,14 +426,18 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
     onChange({ ...settings, layout: { ...settings.layout, [format]: next } })
   }
   function resetLayout(format: 'a4' | 'sticker') {
-    onChange({ ...settings, layout: { ...settings.layout, [format]: defaultShippingLabelSettings.layout[format].map(block => ({ ...block, fields: [...block.fields] })) } })
+    const next = defaultShippingLabelSettings.layout[format].map(block => ({ ...block, fields: [...block.fields] }))
+    onChange({ ...settings, layout: { ...settings.layout, [format]: next } })
+    setSelectedBlocks(current => ({ ...current, [format]: next[0]?.id ?? null }))
   }
   function toggleField(format: 'a4' | 'sticker', block: ShippingLabelBlock, field: ShippingLabelField) {
     const fields = block.fields.includes(field) ? block.fields.filter(value => value !== field) : [...block.fields, field]
     updateBlock(format, block.id, { fields })
   }
   function removeBlock(format: 'a4' | 'sticker', blockId: string) {
-    onChange({ ...settings, layout: { ...settings.layout, [format]: settings.layout[format].filter(block => block.id !== blockId) } })
+    const next = settings.layout[format].filter(block => block.id !== blockId)
+    onChange({ ...settings, layout: { ...settings.layout, [format]: next } })
+    setSelectedBlocks(current => ({ ...current, [format]: next[0]?.id ?? null }))
   }
   function changeBlockKind(format: 'a4' | 'sticker', block: ShippingLabelBlock, kind: ShippingLabelBlockKind) {
     const catalog = shippingLabelBlockCatalog.find(option => option.kind === kind)
@@ -453,10 +458,28 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
       text: addKind === 'custom' ? customText : ''
     }
     onChange({ ...settings, layout: { ...settings.layout, [format]: [...current, block] } })
+    setSelectedBlocks(current => ({ ...current, [format]: block.id }))
     if (addKind === 'custom') { setCustomTitle(''); setCustomText('') }
   }
   function availableFields(block: ShippingLabelBlock) {
     return shippingLabelFields.filter(field => !block.fields.includes(field.id))
+  }
+
+  function renderFormatEditor(format: 'a4' | 'sticker') {
+    const layout = settings.layout[format]
+    const selectedId = selectedBlocks[format] && layout.some(block => block.id === selectedBlocks[format]) ? selectedBlocks[format] : layout[0]?.id ?? null
+    const activeBlock = layout.find(block => block.id === selectedId)
+    return <fieldset key={format} className="shipping-layout-format">
+      <legend>{formatLabels[format]}</legend>
+      <div className="shipping-layout-format-head"><div><strong>{layout.length} içerik bloğu</strong><small>Kağıt sırasını seçerek düzenleyin</small></div><button type="button" className="secondary" onClick={() => resetLayout(format)}>Varsayılana dön</button></div>
+      <div className="shipping-layout-add"><div><span>Kağıda yeni blok ekle</span><small>Eklediğiniz blok kağıt sırasının sonuna gelir.</small></div><select aria-label={`${formatLabels[format]} kâğıda blok ekle`} value={addKind} onChange={event => setAddKind(event.target.value as ShippingLabelBlockKind)}>{shippingLabelBlockCatalog.map(block => <option key={block.kind} value={block.kind} disabled={block.kind !== 'custom' && layout.some(current => current.kind === block.kind)}>{block.kind === 'custom' ? 'Özel içerik bloğu' : `${block.label}${layout.some(current => current.kind === block.kind) ? ' (ekli)' : ''}`}</option>)}</select><button type="button" className="secondary" onClick={() => addBlock(format)}>Kağıda ekle</button></div>
+      {addKind === 'custom' && <div className="shipping-custom-block-form"><label>Yeni blok başlığı<input value={customTitle} maxLength={120} onChange={event => setCustomTitle(event.target.value)} placeholder="Örn. Mağaza notu" /></label><label>Elle yazılacak içerik<textarea value={customText} maxLength={500} rows={2} onChange={event => setCustomText(event.target.value)} placeholder="Bu blokta görünecek metin" /></label></div>}
+      <div className="shipping-layout-workbench">
+        <div className="shipping-paper-canvas"><div className="shipping-paper-canvas-heading"><div><strong>Kağıt yerleşimi</strong><small>Bir bloğa tıklayarak ayarlarını açın.</small></div><span>{format === 'a4' ? 'A4' : 'STICKER'}</span></div><div className="shipping-layout-paper" role="list" aria-label={`${formatLabels[format]} kâğıt yerleşimi`}>{layout.length ? layout.map((block, index) => <article key={block.id} className={`shipping-paper-block${block.id === selectedId ? ' is-selected' : ''}`} role="listitem" tabIndex={0} onClick={() => setSelectedBlocks(current => ({ ...current, [format]: block.id }))} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedBlocks(current => ({ ...current, [format]: block.id })) } }}><span className="shipping-paper-block-index">{index + 1}</span><span className={`shipping-paper-block-icon ${block.kind}`}>{block.kind === 'trackingBarcode' || block.kind === 'packageBarcode' ? '▥' : block.kind === 'custom' ? '✦' : '▤'}</span><span className="shipping-paper-block-copy"><strong>{block.title}</strong><small>{shippingLabelBlockCatalog.find(option => option.kind === block.kind)?.label} · {block.fields.length ? `${block.fields.length} alan` : 'Özel metin'} · {block.align === 'left' ? 'Sol' : block.align === 'center' ? 'Orta' : 'Sağ'}</small></span><span className="shipping-paper-block-action">Düzenle</span></article>) : <div className="shipping-paper-empty">Kağıt boş. Yukarıdaki menüden bir blok ekleyin.</div>}</div></div>
+        {activeBlock ? <div className="shipping-block-inspector"><div className="shipping-block-inspector-heading"><div><span>Seçili blok</span><strong>{layout.findIndex(block => block.id === activeBlock.id) + 1}. sıra · {activeBlock.title}</strong></div><button type="button" className="icon-button shipping-layout-delete" aria-label={`${activeBlock.title} bloğunu kaldır`} onClick={() => removeBlock(format, activeBlock.id)}>×</button></div><div className="shipping-block-inspector-grid"><label>Blok türü<select aria-label={`${formatLabels[format]} seçili blok türü`} value={activeBlock.kind} onChange={event => changeBlockKind(format, activeBlock, event.target.value as ShippingLabelBlockKind)}>{shippingLabelBlockCatalog.map(option => <option key={option.kind} value={option.kind}>{option.label}</option>)}</select></label><label>Hizalama<select aria-label={`${activeBlock.title} hizalama`} value={activeBlock.align} onChange={event => updateBlock(format, activeBlock.id, { align: event.target.value as ShippingLabelAlignment })}><option value="left">Sol</option><option value="center">Orta</option><option value="right">Sağ</option></select></label></div><label>Blok başlığı<input value={activeBlock.title} maxLength={120} onChange={event => updateBlock(format, activeBlock.id, { title: event.target.value })} /></label><label>Alan ekle<select aria-label={`${activeBlock.title} alan ekle`} value="" onChange={event => { if (event.target.value) toggleField(format, activeBlock, event.target.value as ShippingLabelField) }}><option value="">Bir alan seçin…</option>{availableFields(activeBlock).map(field => <option value={field.id} key={field.id}>{field.label}</option>)}</select></label><div className="shipping-layout-field-chips">{activeBlock.fields.length ? activeBlock.fields.map(field => <button type="button" className="shipping-layout-field-chip" key={field} onClick={() => toggleField(format, activeBlock, field)} title="Bu alanı kaldır">{shippingLabelFields.find(option => option.id === field)?.label} ×</button>) : <span>Alan eklenmedi</span>}</div>{activeBlock.kind === 'custom' && <label className="shipping-layout-custom-text">Blok metni<textarea value={activeBlock.text} maxLength={500} rows={4} onChange={event => updateBlock(format, activeBlock.id, { text: event.target.value })} /></label>}<div className="shipping-layout-item-actions"><button type="button" className="icon-button" aria-label={`${formatLabels[format]} ${layout.findIndex(block => block.id === activeBlock.id) + 1}. sırayı yukarı taşı`} disabled={layout.findIndex(block => block.id === activeBlock.id) === 0} onClick={() => shiftLayoutItem(format, layout.findIndex(block => block.id === activeBlock.id), -1)}>↑</button><button type="button" className="icon-button" aria-label={`${formatLabels[format]} ${layout.findIndex(block => block.id === activeBlock.id) + 1}. sırayı aşağı taşı`} disabled={layout.findIndex(block => block.id === activeBlock.id) === layout.length - 1} onClick={() => shiftLayoutItem(format, layout.findIndex(block => block.id === activeBlock.id), 1)}>↓</button></div></div> : <div className="shipping-block-inspector is-empty"><strong>Kağıt boş</strong><span>Yerleşime bir blok ekleyin.</span></div>}
+        <ShippingLayoutPreview format={format} layout={layout} />
+      </div>
+    </fieldset>
   }
 
   return <div className="panel shipping-settings-panel">
@@ -471,9 +494,9 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
       <label className="shipping-settings-check"><input type="checkbox" checked={settings.showCustomerPhone} onChange={event => update('showCustomerPhone', event.target.checked)} /><span>Müşteri iletişim alanını göster</span></label>
     </div>
     <section className="shipping-layout-editor" aria-labelledby="shipping-layout-editor-title">
-      <div className="shipping-layout-editor-heading"><div><h3 id="shipping-layout-editor-title">Etiket içerik sırası</h3><p>Her satır kâğıt üzerindeki bir içerik bloğudur. Blok türünü dropdown’dan seçin, içeriğini düzenleyin ve oklarla yerini değiştirin.</p></div><span>Değişiklikler “Ayarları kaydet” ile uygulanır.</span></div>
+      <div className="shipping-layout-editor-heading"><div><h3 id="shipping-layout-editor-title">Etiket içerik sırası</h3><p>Kağıt üzerindeki bloğu seçin; tür, başlık, alanlar ve hizalamayı tek ayar panelinden düzenleyin.</p></div><span>Değişiklikler “Ayarları kaydet” ile uygulanır.</span></div>
       <div className="shipping-layout-editor-grid">
-        {(['a4', 'sticker'] as const).map(format => <fieldset key={format} className="shipping-layout-format"><legend>{formatLabels[format]}</legend><div className="shipping-layout-format-head"><span>{settings.layout[format].length} içerik bloğu</span><small>Kâğıt üzerinde yerleşim</small><button type="button" className="secondary" onClick={() => resetLayout(format)}>Varsayılana dön</button></div><div className="shipping-layout-add"><select aria-label={`${formatLabels[format]} kâğıda blok ekle`} value={addKind} onChange={event => setAddKind(event.target.value as ShippingLabelBlockKind)}>{shippingLabelBlockCatalog.map(block => <option key={block.kind} value={block.kind} disabled={block.kind !== 'custom' && settings.layout[format].some(current => current.kind === block.kind)}>{block.kind === 'custom' ? 'Özel içerik bloğu' : `${block.label}${settings.layout[format].some(current => current.kind === block.kind) ? ' (ekli)' : ''}`}</option>)}</select><button type="button" className="secondary" onClick={() => addBlock(format)}>Kâğıda ekle</button></div>{addKind === 'custom' && <div className="shipping-custom-block-form"><label>Yeni blok başlığı<input value={customTitle} maxLength={120} onChange={event => setCustomTitle(event.target.value)} placeholder="Örn. Mağaza notu" /></label><label>Elle yazılacak içerik<textarea value={customText} maxLength={500} rows={2} onChange={event => setCustomText(event.target.value)} placeholder="Bu blokta görünecek metin" /></label></div>}<div className="shipping-layout-builder"><div className="shipping-layout-paper" role="list" aria-label={`${formatLabels[format]} kâğıt yerleşimi`}>{settings.layout[format].map((block, index) => <article key={block.id} className="shipping-layout-paper-slot" role="listitem"><div className="shipping-layout-paper-slot-head"><span className="shipping-layout-order">{index + 1}</span><label>Blok türü<select aria-label={`${formatLabels[format]} ${index + 1}. blok türü`} value={block.kind} onChange={event => changeBlockKind(format, block, event.target.value as ShippingLabelBlockKind)}>{shippingLabelBlockCatalog.map(option => <option key={option.kind} value={option.kind}>{option.label}</option>)}</select></label><label className="shipping-layout-align">Hizalama<select aria-label={`${block.title} hizalama`} value={block.align} onChange={event => updateBlock(format, block.id, { align: event.target.value as ShippingLabelAlignment })}><option value="left">Sol</option><option value="center">Orta</option><option value="right">Sağ</option></select></label><button type="button" className="icon-button shipping-layout-delete" aria-label={`${block.title} bloğunu kaldır`} onClick={() => removeBlock(format, block.id)}>×</button></div><div className="shipping-layout-paper-slot-body"><label className="shipping-layout-block-title">Blok adı<input value={block.title} maxLength={120} onChange={event => updateBlock(format, block.id, { title: event.target.value })} /></label><label className="shipping-layout-inline-field">Alan ekle<select aria-label={`${block.title} alan ekle`} value="" onChange={event => { if (event.target.value) toggleField(format, block, event.target.value as ShippingLabelField) }}><option value="">Bir alan seçin…</option>{availableFields(block).map(field => <option value={field.id} key={field.id}>{field.label}</option>)}</select></label></div><div className="shipping-layout-field-chips">{block.fields.length ? block.fields.map(field => <button type="button" className="shipping-layout-field-chip" key={field} onClick={() => toggleField(format, block, field)} title="Bu alanı kaldır">{shippingLabelFields.find(option => option.id === field)?.label} ×</button>) : <span>Alan yok · özel metin kullanılabilir</span>}</div>{block.kind === 'custom' && <label className="shipping-layout-custom-text">Blok metni<textarea value={block.text} maxLength={500} rows={2} onChange={event => updateBlock(format, block.id, { text: event.target.value })} /></label>}<div className="shipping-layout-item-actions"><button type="button" className="icon-button" aria-label={`${formatLabels[format]} ${index + 1}. sırayı yukarı taşı`} disabled={index === 0} onClick={() => shiftLayoutItem(format, index, -1)}>↑</button><button type="button" className="icon-button" aria-label={`${formatLabels[format]} ${index + 1}. sırayı aşağı taşı`} disabled={index === settings.layout[format].length - 1} onClick={() => shiftLayoutItem(format, index, 1)}>↓</button></div></article>)}</div><ShippingLayoutPreview format={format} layout={settings.layout[format]} /></div></fieldset>)}
+        {(['a4', 'sticker'] as const).map(renderFormatEditor)}
       </div>
     </section>
     <div className="shipping-settings-actions"><button type="button" onClick={onSave}>Ayarları kaydet</button></div>
@@ -485,7 +508,10 @@ function ShippingLayoutPreview({ format, layout }: { format: 'a4' | 'sticker'; l
 }
 
 function ShippingPreviewBlock({ block }: { block: ShippingLabelBlock }) {
-  if (block.kind === 'trackingBarcode' || block.kind === 'packageBarcode') return <div className="shipping-preview-barcode"><span className="shipping-preview-bars" aria-hidden="true" /><strong>{block.kind === 'trackingBarcode' ? '73300036563130080' : '9236253'}</strong></div>
+  if (block.kind === 'trackingBarcode' || block.kind === 'packageBarcode') {
+    const value = block.kind === 'trackingBarcode' ? '73300036563130080' : '9236253'
+    return <div className="shipping-preview-barcode" aria-label={`Barkod önizlemesi: ${value}`}><span className="shipping-preview-bars" aria-hidden="true">{code128Bars(value).map((isBar, index) => <i className={isBar ? 'is-bar' : undefined} key={index} />)}</span><strong>{value}</strong></div>
+  }
   const values: Record<ShippingLabelField, string> = { trackingNumber: '73300036563130080', packageNumber: '9236253', orderNumber: '#1972215187', customerName: 'FEHİME MAT', address: 'KARAKÖPRÜ / ŞANLIURFA', cargoProvider: 'Trendyol Express', senderName: 'RAVENCIA', senderAddress: '403.CAD.NO:24/2', customerEmail: 'musteri@example.com' }
   return <div className={`shipping-preview-content preview-content-${block.kind}`}>{block.text && <strong>{block.text}</strong>}{block.fields.map(field => <span key={field}><b>{shippingLabelFields.find(option => option.id === field)?.label}</b>{values[field]}</span>)}</div>
 }

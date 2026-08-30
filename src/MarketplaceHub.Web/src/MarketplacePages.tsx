@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, type ChangeEvent, type CSSProperties, ty
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from './api'
-import { loadShippingLabelSettings, shippingLabelFields, type ShippingLabelBlock, type ShippingLabelField } from './shipping-label'
+import { code128Bars, loadShippingLabelSettings, shippingLabelFields, type ShippingLabelBlock, type ShippingLabelField } from './shipping-label'
 type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean }
 type Connection = { id: string; publicId: string; platformCode: string; environment: string; displayName: string; externalStoreId: string; status: string; apiVersion: string; lastTestedAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null; hasCredential: boolean; externalWritesEnabled: boolean; version: number }
 type Capability = { code: string; supportLevel: string; sourceUrl: string | null; verifiedAt: string | null; constraintsJson: string | null; evidenceNote: string | null; version: number }
@@ -354,12 +354,8 @@ function CourierChangeModal({ item, onClose, onConfirmed }: { item: Order; onClo
 }
 
 function LabelBarcode({ value, compact = false }: { value: string; compact?: boolean }) {
-  const source = value || 'NO-TRACKING'
-  const bars = Array.from(source).flatMap((character, index) => {
-    const bits = character.charCodeAt(0) + index * 29
-    return Array.from({ length: 7 }, (_, bit) => ({ wide: ((bits >> bit) & 1) === 1, key: `${index}-${bit}` }))
-  })
-  return <div className={`shipping-label-barcode${compact ? ' compact' : ''}`} aria-label={`Barkod: ${value || 'Takip numarası bekleniyor'}`}><div className="shipping-label-barcode-bars">{bars.map(bar => <i key={bar.key} style={{ width: `${bar.wide ? 3 : 1}px` }} />)}</div><strong>{value || 'Takip numarası bekleniyor'}</strong></div>
+  const bars = code128Bars(value)
+  return <div className={`shipping-label-barcode${compact ? ' compact' : ''}`} aria-label={`Barkod: ${value || 'Takip numarası bekleniyor'}`}><div className="shipping-label-barcode-bars">{bars.map((isBar, index) => <i className={isBar ? 'is-bar' : undefined} key={index} />)}</div><strong>{value || 'Takip numarası bekleniyor'}</strong></div>
 }
 
 function ShippingLabelModal({ item, format, onClose }: { item: Order; format: 'a4' | 'sticker'; onClose: () => void }) {
