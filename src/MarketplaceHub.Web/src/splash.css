@@ -165,11 +165,11 @@
   --rv-surface-raised: #1f2638 !important;
   --rv-line: #272e40 !important;
   --rv-line-strong: #333c52 !important;
-  
+
   /* Text */
   --rv-ink: #f8fafc !important;
   --rv-muted: #8b96a8 !important;
-  
+
   /* Accent & Action Colors */
   --rv-primary: #6366f1 !important;
   --rv-primary-strong: #4f46e5 !important;
@@ -177,13 +177,13 @@
   --rv-warning: #f59e0b !important;
   --rv-danger: #ef4444 !important;
   --rv-info: #3b82f6 !important;
-  
+
   /* Structure & Layout */
   --rv-radius: 8px !important;
   --rv-radius-sm: 6px !important;
   --rv-shadow: none !important;
   --rv-shadow-hover: none !important;
-  
+
   /* Calm variables overridden */
   --calm-bg: #10141f !important;
   --calm-sidebar: #10141f !important;
@@ -283,10 +283,10 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
 
 /* --- 6. CARDS, PANELS, AND TABLES --- */
 .dashboard-metrics article, .dashboard-report-grid > .panel, .dashboard-panels > .panel,
-.app-shell .panel, .app-shell .grid article, .app-shell .metrics article, .app-shell .record-card, 
-.app-shell .integration-card, .app-shell .product-operation-card, .app-shell .order-card, 
-.app-shell .invoice-card, .app-shell .return-card, .app-shell .table-wrap, .app-shell .data-table, 
-.app-shell .product-catalog-table, .orders-page .order-filter-panel, .order-filter-primary, 
+.app-shell .panel, .app-shell .grid article, .app-shell .metrics article, .app-shell .record-card,
+.app-shell .integration-card, .app-shell .product-operation-card, .app-shell .order-card,
+.app-shell .invoice-card, .app-shell .return-card, .app-shell .table-wrap, .app-shell .data-table,
+.app-shell .product-catalog-table, .orders-page .order-filter-panel, .order-filter-primary,
 .order-filter-advanced, .bulk-action-menu {
   background: var(--rv-surface) !important;
   background-image: none !important;
@@ -302,7 +302,7 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
 }
 
 .dashboard-metrics article:hover, .dashboard-report-grid > .panel:hover, .dashboard-panels > .panel:hover,
-.app-shell .record-card:hover, .app-shell .order-card:hover, .app-shell .invoice-card:hover, 
+.app-shell .record-card:hover, .app-shell .order-card:hover, .app-shell .invoice-card:hover,
 .app-shell .return-card:hover, .app-shell .product-operation-card:hover, .orders-page .order-reference-row:hover {
   background: var(--rv-surface-raised) !important;
   border-color: var(--rv-line-strong) !important;
@@ -416,13 +416,13 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
 }
 
 /* Sidebar Collapsed State Fixes */
-.sidebar-collapsed aside nav a span, 
-.sidebar-collapsed aside .settings-toggle span, 
+.sidebar-collapsed aside nav a span,
+.sidebar-collapsed aside .settings-toggle span,
 .sidebar-collapsed aside .logout-link span {
   display: none !important;
 }
-.sidebar-collapsed aside nav a, 
-.sidebar-collapsed aside .settings-toggle, 
+.sidebar-collapsed aside nav a,
+.sidebar-collapsed aside .settings-toggle,
 .sidebar-collapsed aside .logout-link {
   justify-content: center !important;
   padding: 10px !important;
@@ -438,13 +438,13 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
 /* --- BRUTAL TEXT & COMPONENT CONSISTENCY --- */
 /* Force all dashboard and metric cards to use proper colors */
 .dashboard-metrics article small, .dashboard-metrics article p,
-.product-metrics span, .flow-grid a small, .order-reference-row small, 
+.product-metrics span, .flow-grid a small, .order-reference-row small,
 .data-table small, .product-list-platforms small, .product-list-status small {
   color: var(--rv-muted) !important;
 }
-.dashboard-metrics article strong, .product-metrics strong, 
+.dashboard-metrics article strong, .product-metrics strong,
 .flow-grid a span, .flow-grid a strong, .order-reference-row strong,
-.order-reference-row b, .data-table strong, .product-list-identity strong, 
+.order-reference-row b, .data-table strong, .product-list-identity strong,
 .product-list-price, .order-reference-row {
   color: var(--rv-ink) !important;
 }
@@ -461,7 +461,7 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
   font-weight: 600 !important;
   box-shadow: none !important;
 }
-.order-reference-actions a:hover, .product-list-actions a:hover, 
+.order-reference-actions a:hover, .product-list-actions a:hover,
 .product-list-actions button:hover, .table-wrap a:not(.text-link):hover {
   background: var(--rv-line) !important;
   border-color: var(--rv-primary) !important;
@@ -578,10 +578,10 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
   border: 1px solid var(--rv-line) !important;
 }
 .attribute-variant-action small { color: var(--rv-muted) !important; }
-.attribute-variant-actions .secondary { 
-  background: transparent !important; 
-  color: var(--rv-ink) !important; 
-  border: 1px solid var(--rv-line) !important; 
+.attribute-variant-actions .secondary {
+  background: transparent !important;
+  color: var(--rv-ink) !important;
+  border: 1px solid var(--rv-line) !important;
 }
 .attribute-variant-actions .secondary:hover {
   background: var(--rv-line) !important;
