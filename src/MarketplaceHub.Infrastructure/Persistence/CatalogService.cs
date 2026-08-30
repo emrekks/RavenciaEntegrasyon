@@ -658,6 +658,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                            where item.TenantId == tenantId && productIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                            orderby item.SortOrder
                            select new { item.ProductId, item.VariantId, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+        var mediaUrlsByVariant = media.Where(x => x.VariantId is not null)
+            .GroupBy(x => x.VariantId!.Value)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(MediaUrl).ToList());
+        var globalMediaUrlsByProduct = media.Where(x => x.VariantId is null)
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(MediaUrl).ToList());
         var inventoryByVariant = inventories.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
         var offerByVariant = offers.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
         return products.Select(product =>
@@ -666,7 +672,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var variantViews = productVariants.Select(variant =>
             {
                 inventoryByVariant.TryGetValue(variant.Id, out var inventory); offerByVariant.TryGetValue(variant.Id, out var offer);
-                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock);
+                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id));
             }).ToList();
             var activePlatforms = profiles.Where(x => x.ProductId == product.Id).Select(x => connections.GetValueOrDefault(x.ConnectionId, "Platform")).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
             var image = media.Where(x => x.ProductId == product.Id && x.VariantId == null).Select(MediaUrl).FirstOrDefault() ?? media.Where(x => x.ProductId == product.Id).Select(MediaUrl).FirstOrDefault();
@@ -679,7 +685,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var options = productOptions.Where(x => x.ProductId == product.Id)
                 .Select(option => new ProductOptionView(option.Id, option.Label, optionValues.Where(value => value.OptionId == option.Id).Select(value => new ProductOptionValueView(value.Id, value.Label)).ToList()))
                 .ToList();
-            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), prices.Count > 0 ? prices.Min() : null, currency, modelCode, activePlatforms, attributes, options);
+            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), prices.Count > 0 ? prices.Min() : null, currency, modelCode, activePlatforms, attributes, options, globalMediaUrlsByProduct.GetValueOrDefault(product.Id));
         }).ToList();
 
         static string MediaUrl(dynamic item) => item.Classification == "PRODUCT_MEDIA_URL" ? item.Url : $"/api/v1/files/product-media/{item.Id:D}/content";

@@ -80,6 +80,7 @@ const defaultLayout: ShippingLabelBlock[] = [
 export type ShippingLabelSettings = {
   senderName: string
   senderAddress: string
+  defaultFormat: 'a4' | 'sticker'
   a4LabelsPerPage: 1 | 2 | 4
   stickerWidthMm: number
   stickerHeightMm: number
@@ -110,6 +111,7 @@ export function defaultShippingLabelBlockPosition(kind: ShippingLabelBlockKind, 
 export const defaultShippingLabelSettings: ShippingLabelSettings = {
   senderName: 'Ravencia MarketplaceHub',
   senderAddress: '',
+  defaultFormat: 'a4',
   a4LabelsPerPage: 1,
   stickerWidthMm: 100,
   stickerHeightMm: 150,
@@ -174,6 +176,7 @@ export function loadShippingLabelSettings(): ShippingLabelSettings {
     return {
       senderName: typeof value.senderName === 'string' ? value.senderName.slice(0, 120) : defaultShippingLabelSettings.senderName,
       senderAddress: typeof value.senderAddress === 'string' ? value.senderAddress.slice(0, 500) : defaultShippingLabelSettings.senderAddress,
+      defaultFormat: value.defaultFormat === 'sticker' ? 'sticker' : 'a4',
       a4LabelsPerPage,
       stickerWidthMm: boundedNumber(value.stickerWidthMm, defaultShippingLabelSettings.stickerWidthMm, 40, 300),
       stickerHeightMm: boundedNumber(value.stickerHeightMm, defaultShippingLabelSettings.stickerHeightMm, 40, 300),

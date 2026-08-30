@@ -108,6 +108,8 @@ public static class CatalogEndpoints
         });
         api.MapPost("/files/product-media", UploadProductMediaAsync).DisableAntiforgery();
         api.MapPost("/files/product-media-url", RegisterProductMediaUrlAsync);
+        api.MapDelete("/files/product-media", ClearProductMediaAsync);
+        api.MapDelete("/files/product-media-variant", ClearProductVariantMediaAsync);
 
         api.MapGet("/imports", async (HttpContext http, IImportService service, int? limit, string? after) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
@@ -258,6 +260,37 @@ public static class CatalogEndpoints
         }
         await db.SaveChangesAsync(http.RequestAborted);
         return Results.Created($"/api/v1/products/{command.ProductId:D}", new { media.Id, media.ProductId, media.VariantId, media.FileAssetId, url, media.MediaRole, media.SortOrder, media.AltText, media.Status });
+    }
+
+    private static async Task<IResult> ClearProductVariantMediaAsync(Guid productId, Guid variantId, HttpContext http, AppDbContext db)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+        if (!await db.Products.AnyAsync(x => x.TenantId == tenant.TenantId && x.Id == productId)
+            || !await db.ProductVariants.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.Id == variantId))
+            return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün veya varyant bulunamadı.", 404));
+
+        var media = await db.ProductMedia
+            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == variantId && x.Status == "ACTIVE")
+            .ToListAsync(http.RequestAborted);
+        foreach (var item in media) item.Status = "ARCHIVED";
+        await db.SaveChangesAsync(http.RequestAborted);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> ClearProductMediaAsync(Guid productId, HttpContext http, AppDbContext db)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+        if (!await db.Products.AnyAsync(x => x.TenantId == tenant.TenantId && x.Id == productId))
+            return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
+
+        var media = await db.ProductMedia
+            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE")
+            .ToListAsync(http.RequestAborted);
+        foreach (var item in media) item.Status = "ARCHIVED";
+        await db.SaveChangesAsync(http.RequestAborted);
+        return Results.NoContent();
     }
 
     private static bool IsPublicAddress(IPAddress address)
