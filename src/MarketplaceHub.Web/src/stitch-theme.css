@@ -11835,3 +11835,25 @@ body:has(.product-add-page),
   .app-shell.stitch-shell .shipping-designer-inspector { grid-column: auto; }
   .app-shell.stitch-shell .shipping-designer-paper.is-sticker { width: min(86%, 320px); }
 }
+
+/* Rich-text alignment controls: keep the left/center/right order visible. */
+.app-shell .product-add-page .rich-text-editor-pro .rich-text-alignment-group {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.app-shell .product-add-page .rich-text-editor-pro .rich-text-tool { white-space: nowrap; }
+.app-shell .product-add-page .rich-text-editor-pro .alignment-icon {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  min-width: 14px;
+  height: 12px;
+  font-size: 0;
+  background-repeat: no-repeat;
+  background-image: linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor);
+  background-size: 14px 2px, 10px 2px, 12px 2px;
+}
+.app-shell .product-add-page .rich-text-editor-pro .alignment-left { background-position: left top, left 5px, left 10px; }
+.app-shell .product-add-page .rich-text-editor-pro .alignment-center { background-position: center top, center 5px, center 10px; }
+.app-shell .product-add-page .rich-text-editor-pro .alignment-right { background-position: right top, right 5px, right 10px; }
