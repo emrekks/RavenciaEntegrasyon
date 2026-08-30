@@ -1,3 +1,15 @@
+export type ShippingLabelBlock = 'trackingBarcode' | 'address' | 'orderInfo' | 'packageBarcode' | 'sender'
+
+export const shippingLabelBlocks: Array<{ id: ShippingLabelBlock; label: string }> = [
+  { id: 'trackingBarcode', label: 'Takip barkodu' },
+  { id: 'address', label: 'Teslimat adresi' },
+  { id: 'orderInfo', label: 'Paket / sipariş bilgileri' },
+  { id: 'packageBarcode', label: 'Paket barkodu' },
+  { id: 'sender', label: 'Gönderici ve kargo bilgileri' }
+]
+
+const defaultLayout: ShippingLabelBlock[] = ['trackingBarcode', 'address', 'orderInfo', 'packageBarcode', 'sender']
+
 export type ShippingLabelSettings = {
   senderName: string
   senderAddress: string
@@ -5,6 +17,11 @@ export type ShippingLabelSettings = {
   stickerWidthMm: number
   stickerHeightMm: number
   showCustomerPhone: boolean
+  sectionGapMm: number
+  layout: {
+    a4: ShippingLabelBlock[]
+    sticker: ShippingLabelBlock[]
+  }
 }
 
 export const defaultShippingLabelSettings: ShippingLabelSettings = {
@@ -13,7 +30,12 @@ export const defaultShippingLabelSettings: ShippingLabelSettings = {
   a4LabelsPerPage: 1,
   stickerWidthMm: 100,
   stickerHeightMm: 150,
-  showCustomerPhone: true
+  showCustomerPhone: true,
+  sectionGapMm: 4,
+  layout: {
+    a4: [...defaultLayout],
+    sticker: [...defaultLayout]
+  }
 }
 
 const storageKey = 'ravencia.shippingLabelSettings'
@@ -21,6 +43,12 @@ const storageKey = 'ravencia.shippingLabelSettings'
 function boundedNumber(value: unknown, fallback: number, min: number, max: number) {
   const number = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback
+}
+
+function normalizeLayout(value: unknown, fallback: ShippingLabelBlock[]) {
+  const valid = new Set<ShippingLabelBlock>(shippingLabelBlocks.map(block => block.id))
+  const selected = Array.isArray(value) ? value.filter((block, index): block is ShippingLabelBlock => valid.has(block) && value.indexOf(block) === index) : []
+  return [...selected, ...fallback.filter(block => !selected.includes(block))]
 }
 
 export function loadShippingLabelSettings(): ShippingLabelSettings {
@@ -34,7 +62,12 @@ export function loadShippingLabelSettings(): ShippingLabelSettings {
       a4LabelsPerPage,
       stickerWidthMm: boundedNumber(value.stickerWidthMm, defaultShippingLabelSettings.stickerWidthMm, 40, 300),
       stickerHeightMm: boundedNumber(value.stickerHeightMm, defaultShippingLabelSettings.stickerHeightMm, 40, 300),
-      showCustomerPhone: value.showCustomerPhone !== false
+      showCustomerPhone: value.showCustomerPhone !== false,
+      sectionGapMm: boundedNumber(value.sectionGapMm, defaultShippingLabelSettings.sectionGapMm, 0, 20),
+      layout: {
+        a4: normalizeLayout(value.layout?.a4, defaultShippingLabelSettings.layout.a4),
+        sticker: normalizeLayout(value.layout?.sticker, defaultShippingLabelSettings.layout.sticker)
+      }
     }
   } catch {
     return { ...defaultShippingLabelSettings }

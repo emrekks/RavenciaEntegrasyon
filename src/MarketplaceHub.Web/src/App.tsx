@@ -7,7 +7,7 @@ import { AttributesPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPa
 import { IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage } from './MarketplacePages'
 import { InvoicesPage } from './InvoicingPages'
 import { JobsPage } from './OperationsPages'
-import { loadShippingLabelSettings, saveShippingLabelSettings, type ShippingLabelSettings } from './shipping-label'
+import { defaultShippingLabelSettings, loadShippingLabelSettings, saveShippingLabelSettings, shippingLabelBlocks, type ShippingLabelBlock, type ShippingLabelSettings } from './shipping-label'
 
 type ShellConnection = {
   id: string
@@ -409,6 +409,16 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
   function update<K extends keyof ShippingLabelSettings>(key: K, value: ShippingLabelSettings[K]) {
     onChange({ ...settings, [key]: value })
   }
+  function updateLayout(format: 'a4' | 'sticker', index: number, block: ShippingLabelBlock) {
+    const next = [...settings.layout[format]]
+    const currentIndex = next.indexOf(block)
+    if (currentIndex !== index) [next[index], next[currentIndex]] = [next[currentIndex], next[index]]
+    onChange({ ...settings, layout: { ...settings.layout, [format]: next } })
+  }
+  function resetLayout(format: 'a4' | 'sticker') {
+    onChange({ ...settings, layout: { ...settings.layout, [format]: [...defaultShippingLabelSettings.layout[format]] } })
+  }
+  const formatLabels = { a4: 'A4 etiketi', sticker: 'Sticker etiketi' } as const
   return <div className="panel shipping-settings-panel">
     <div className="shipping-settings-intro"><span className="security-state enabled">Yazdırma Düzeni</span><h2>Kargo etiketi ayarları</h2><p>A4 ve sticker etiketleri sipariş ekranından ayrılmadan hazırlayın. Bu ayarlar yalnızca bu tarayıcıda saklanır.</p></div>
     <div className="shipping-settings-grid">
@@ -417,8 +427,15 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
       <label>A4 sayfa düzeni<select value={settings.a4LabelsPerPage} onChange={event => update('a4LabelsPerPage', Number(event.target.value) as ShippingLabelSettings['a4LabelsPerPage'])}><option value={1}>Sayfada 1 etiket</option><option value={2}>Sayfada 2 etiket</option><option value={4}>Sayfada 4 etiket</option></select></label>
       <label>Sticker genişliği (mm)<input type="number" min={40} max={300} value={settings.stickerWidthMm} onChange={event => update('stickerWidthMm', Math.min(300, Math.max(40, Number(event.target.value) || 40)))} /></label>
       <label>Sticker yüksekliği (mm)<input type="number" min={40} max={300} value={settings.stickerHeightMm} onChange={event => update('stickerHeightMm', Math.min(300, Math.max(40, Number(event.target.value) || 40)))} /></label>
+      <label>Bloklar arası boşluk (mm)<input type="number" min={0} max={20} value={settings.sectionGapMm} onChange={event => update('sectionGapMm', Math.min(20, Math.max(0, Number(event.target.value) || 0)))} /></label>
       <label className="shipping-settings-check"><input type="checkbox" checked={settings.showCustomerPhone} onChange={event => update('showCustomerPhone', event.target.checked)} /><span>Müşteri iletişim alanını göster</span></label>
     </div>
+    <section className="shipping-layout-editor" aria-labelledby="shipping-layout-editor-title">
+      <div className="shipping-layout-editor-heading"><div><h3 id="shipping-layout-editor-title">Etiket içerik sırası</h3><p>Her etiket türünde bilgilerin hangi sırayla ve hangi blokta görüneceğini belirleyin.</p></div><span>Değişiklikler “Ayarları kaydet” ile uygulanır.</span></div>
+      <div className="shipping-layout-editor-grid">
+        {(['a4', 'sticker'] as const).map(format => <fieldset key={format} className="shipping-layout-format"><legend>{formatLabels[format]}</legend>{settings.layout[format].map((block, index) => <label key={`${format}-${index}`}><span>{index + 1}. sıra</span><select aria-label={`${formatLabels[format]} ${index + 1}. sıra`} value={block} onChange={event => updateLayout(format, index, event.target.value as ShippingLabelBlock)}>{shippingLabelBlocks.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>)}<button type="button" className="secondary" onClick={() => resetLayout(format)}>Varsayılan sıraya dön</button></fieldset>)}
+      </div>
+    </section>
     <div className="shipping-settings-actions"><button type="button" onClick={onSave}>Ayarları kaydet</button></div>
   </div>
 }
