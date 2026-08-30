@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
 import { api, ApiRequestError, hubApi, loadAllPages, type Me } from './api'
 import { AttributesPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, InventoryPage, NewProductPage, ProductDetailPage, ProductsPage } from './CatalogPages'
@@ -17,96 +17,9 @@ type ShellConnection = {
   lastSuccessAt: string | null
 }
 
-type ShellJob = {
-  id: string
-  jobType: string
-  status: string
-  lastErrorSummary: string | null
-  createdAt: string
-}
-
-function WorkspaceTopActions({ me, onLogout }: { me: Me; onLogout: () => Promise<void> }) {
-  const navigate = useNavigate()
-  const [openPanel, setOpenPanel] = useState<'notifications' | 'user' | null>(null)
-  const [selectedConnectionId, setSelectedConnectionId] = useState(() => localStorage.getItem('ravencia.activeConnectionId') ?? '')
-  const connections = useQuery({
-    queryKey: ['connections', 'shell'],
-    queryFn: async () => (await loadAllPages<ShellConnection>('/connections')).items,
-    staleTime: 30_000
-  })
-  const jobs = useQuery({
-    queryKey: ['jobs', 'shell'],
-    queryFn: () => hubApi<ShellJob[]>('/jobs'),
-    refetchInterval: 15_000,
-    retry: 1
-  })
-  const connectionItems = connections.data ?? []
-  const selectedConnection = connectionItems.find(item => item.id === selectedConnectionId)
-    ?? connectionItems.find(item => ['ACTIVE', 'VERIFIED', 'CONNECTED'].includes(item.status.toUpperCase()))
-    ?? connectionItems[0]
-  const attentionJobs = (jobs.data ?? []).filter(job => ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status))
-  const activeJobs = (jobs.data ?? []).filter(job => ['PENDING', 'LEASED', 'RETRY_SCHEDULED'].includes(job.status))
-  const initials = (me.displayName || me.email).split(/\s+/).slice(0, 2).map(part => part[0]?.toLocaleUpperCase('tr-TR')).join('')
-  const syncLabel = activeJobs.length > 0
-    ? `${activeJobs.length} işlem`
-    : selectedConnection?.lastSuccessAt
-      ? `Son ${new Date(selectedConnection.lastSuccessAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`
-      : 'Senkron'
-
-  useEffect(() => {
-    if (!selectedConnection || selectedConnectionId) return
-    setSelectedConnectionId(selectedConnection.id)
-    localStorage.setItem('ravencia.activeConnectionId', selectedConnection.id)
-  }, [selectedConnection, selectedConnectionId])
-
-  function selectConnection(id: string) {
-    setSelectedConnectionId(id)
-    localStorage.setItem('ravencia.activeConnectionId', id)
-    if (id) navigate(`/integrations/${id}`)
-  }
-
-  return <div className="top-actions">
-    <label className="workspace-connection-select">
-      <span>Bağlantı</span>
-      <select aria-label="Bağlantıya git" value={selectedConnection?.id ?? ''} disabled={connections.isLoading || connectionItems.length === 0} onChange={event => selectConnection(event.target.value)}>
-        {connectionItems.length === 0 && <option value="">Bağlantı yok</option>}
-        {connectionItems.map(connection => <option key={connection.id} value={connection.id}>{connection.displayName} · {connection.environment}</option>)}
-      </select>
-    </label>
-    {selectedConnection?.environment.toUpperCase() === 'STAGE' && <span className="environment-badge">STAGE</span>}
-    <Link className={`sync-center-link ${activeJobs.length > 0 ? 'syncing' : ''}`} to="/jobs" title="Senkronizasyon merkezini aç">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7h-5V2"/><path d="M4 17h5v5"/><path d="M5.1 9a7 7 0 0 1 11.8-3L20 9"/><path d="M18.9 15A7 7 0 0 1 7.1 18L4 15"/></svg>
-      <span>{syncLabel}</span>
-    </Link>
-    <span className="live-state"><i /> Sistem aktif</span>
-    <div className="topbar-popover-shell">
-      <button type="button" className="topbar-icon-button" aria-label="Bildirimler" aria-expanded={openPanel === 'notifications'} onClick={() => setOpenPanel(openPanel === 'notifications' ? null : 'notifications')}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>
-        {attentionJobs.length > 0 && <b>{Math.min(attentionJobs.length, 99)}</b>}
-      </button>
-      {openPanel === 'notifications' && <div className="topbar-popover notification-popover">
-        <header><strong>İşlem bildirimleri</strong><Link to="/jobs" onClick={() => setOpenPanel(null)}>Tümünü gör</Link></header>
-        {attentionJobs.length === 0 ? <p className="topbar-empty">İncelenmesi gereken işlem yok.</p> : attentionJobs.slice(0, 5).map(job => <Link key={job.id} to="/jobs" onClick={() => setOpenPanel(null)}><i /> <span><strong>{job.jobType}</strong><small>{job.lastErrorSummary ?? job.status}</small></span></Link>)}
-      </div>}
-    </div>
-    <div className="topbar-popover-shell">
-      <button type="button" className="user-menu-button" aria-label="Kullanıcı menüsü" aria-expanded={openPanel === 'user'} onClick={() => setOpenPanel(openPanel === 'user' ? null : 'user')}>
-        <span>{initials || 'RV'}</span><i><strong>{me.displayName || me.email}</strong><small>{me.role ?? 'Kullanıcı'}</small></i>
-      </button>
-      {openPanel === 'user' && <div className="topbar-popover user-popover">
-        <div><span>{initials || 'RV'}</span><p><strong>{me.displayName || 'Ravencia kullanıcısı'}</strong><small>{me.email}</small></p></div>
-        <Link to="/settings" onClick={() => setOpenPanel(null)}>Hesap ve sistem ayarları</Link>
-        <button type="button" onClick={() => void onLogout()}>Güvenli çıkış yap</button>
-      </div>}
-    </div>
-  </div>
-}
-
 function Shell({ me }: { me: Me }) {
-  const navigate = useNavigate()
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') === 'true')
-  const [globalSearch, setGlobalSearch] = useState('')
   async function logout() { await api('/logout', { method: 'POST' }); window.location.replace(`/?signedOut=${Date.now()}`) }
   const sidebarExpanded = sidebarPinned || sidebarHoverExpanded
   const menuCollapsed = !sidebarExpanded
@@ -122,7 +35,6 @@ function Shell({ me }: { me: Me }) {
     localStorage.setItem('ravencia.sidebarPinned', String(nextPinned))
     if (nextPinned) setSidebarHoverExpanded(true)
   }
-  function submitGlobalSearch(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const value = globalSearch.trim(); if (!value) return; navigate(`/orders?search=${encodeURIComponent(value)}`) }
   const icons: Record<string, ReactNode> = {
     dashboard: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
     products: <><path d="M6 8h12l1 13H5L6 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></>,

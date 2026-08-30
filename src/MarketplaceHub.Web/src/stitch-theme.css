@@ -9697,3 +9697,18 @@ body:has(.product-add-page),
   border: 0 !important;
   border-radius: 0 !important;
 }
+
+/* Mobile keeps a fixed icon rail; the desktop pin control has no mobile role. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell > aside {
+    width: 62px !important;
+  }
+
+  .app-shell.stitch-shell > aside .sidebar-pin-toggle {
+    display: none !important;
+  }
+
+  .app-shell.stitch-shell > main {
+    margin-left: 62px !important;
+  }
+}

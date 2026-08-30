@@ -3,7 +3,6 @@ import { Link, useParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from './api'
 
-type PageData<T> = { items: T[]; nextCursor: string | null; hasMore: boolean }
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
 type Brand = Versioned & { name: string; isActive: boolean }
@@ -26,7 +25,6 @@ type Candidate = Versioned & { matchRule: string; safeSummary: string; productId
 type Inventory = Versioned & { variantId: string; sku: string; locationCode: string; onHand: number; reserved: number; available: number }
 type TrendyolConnection = { id: string; platformCode: string; displayName: string; externalStoreId: string; status: string }
 type AcceptedJob = { jobId: string }
-type PublicationStatus = { productId: string; connectionId: string; profileId: string | null; desiredStatus: string | null; actualStatus: string | null; lastRejectionCode: string | null; lastJobId: string | null; lastJobStatus: string | null; lines: Array<{ variantId: string; sku: string; barcode: string | null; desiredStatus: string; actualStatus: string; rejectionCode: string | null }> }
 
 const key = () => crypto.randomUUID()
 const isProductPublicationConnection = (item: TrendyolConnection) => item.platformCode.trim().toUpperCase() === 'TRENDYOL' && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
@@ -65,38 +63,6 @@ const money = (value: number | null | undefined, currency = 'TRY') => value == n
 function Page({ title, eyebrow, action, className, children }: { title: string; eyebrow: string; action?: ReactNode; className?: string; children: ReactNode }) { const productBack = className?.includes('product-add-page'); return <section className={`content stitch-page ${className ?? ''}`}><div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{productBack && <Link className="product-heading-back" to="/products" aria-label="Ürünlere dön">←</Link>}{title}</h1></div>{action}</div>{children}</section> }
 
 type QuickEditMode = 'stock' | 'price' | 'both'
-
-function VariantQuickEditor({ variant, connections, mode = 'both', onChanged, onResult }: { variant: Variant; connections: TrendyolConnection[]; mode?: QuickEditMode; onChanged: () => Promise<unknown>; onResult?: (message: string, kind: OperationFeedback['kind']) => void }) {
-  const [notice, setNotice] = useState('')
-  function report(message: string, kind: OperationFeedback['kind'] = 'info') { setNotice(message); onResult?.(message, kind) }
-  async function stock(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const data = new FormData(event.currentTarget); const target = Number(data.get('stock')); const delta = target - variant.onHand
-    if (!Number.isFinite(target) || target < 0) return report('Stok sıfır veya daha büyük olmalıdır.', 'error')
-    if (delta === 0) return report('Stok zaten bu değerde.')
-    try { await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Ürün kartı hızlı stok düzenleme', sourceEventId: key() }) }); report('Stok güncellendi.', 'success'); await onChanged() } catch (error) { report(error instanceof Error ? error.message : 'Stok güncellenemedi.', 'error') }
-  }
-  async function price(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const data = new FormData(event.currentTarget); const salePrice = Number(data.get('salePrice')); const listPrice = Number(data.get('listPrice')); const connectionId = variant.offerId ? '' : connections[0]?.id ?? ''
-    if (!Number.isFinite(salePrice) || !Number.isFinite(listPrice) || salePrice < 0 || listPrice < salePrice) return report('Liste fiyatı satış fiyatından küçük olamaz.', 'error')
-    const body = { connectionId, variantId: variant.id, listPrice, salePrice, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Ürün kartı hızlı fiyat düzenleme' }
-    try {
-      if (variant.offerId) {
-        if (variant.offerVersion == null) return report('Fiyat sürümü eksik; sayfayı yenileyip tekrar deneyin.', 'error')
-        await hubApi(`/channel-offers/${variant.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${variant.offerVersion}"` }, body: JSON.stringify(body) })
-      }
-      else {
-        if (!connectionId) return report('İlk fiyat için aktif platform bağlantısı seçin.', 'error')
-        await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify(body) })
-      }
-      report('Fiyat güncellendi.', 'success'); await onChanged()
-    } catch (error) { report(error instanceof Error ? error.message : 'Fiyat güncellenemedi.', 'error') }
-  }
-  return <div className={`variant-quick-grid ${mode}`}>
-    {mode !== 'price' && <form onSubmit={stock}><label>Stok<input name="stock" type="number" min="0" step="1" defaultValue={variant.onHand} /></label><button>Kaydet</button></form>}
-    {mode !== 'stock' && <form onSubmit={price}><div className="inline-fields"><label>Liste fiyatı<input name="listPrice" type="number" min="0" step="0.01" defaultValue={variant.listPrice ?? 0} /></label><label>Satış fiyatı<input name="salePrice" type="number" min="0" step="0.01" defaultValue={variant.salePrice ?? 0} /></label></div><button>Kaydet</button></form>}
-    {notice && <p className="notice" role="status">{notice}</p>}
-  </div>
-}
 
 function ProductQuickEditModal({ products, connections, mode = 'both', onChanged, onClose, onResult }: { products: Product[]; connections: TrendyolConnection[]; mode?: QuickEditMode; onChanged: () => Promise<unknown>; onClose: () => void; onResult?: (message: string, kind: 'success' | 'error') => void }) {
   const title = mode === 'price' ? 'Hızlı fiyat güncelleme' : mode === 'stock' ? 'Hızlı stok güncelleme' : 'Hızlı fiyat ve stok düzenleme'
@@ -233,26 +199,6 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect }:
   return <div className="quick-edit-variant-controls" onClick={event => event.stopPropagation()}><label><small>Stok</small><input aria-label={`${variant.sku} stok`} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStock(Number(event.target.value || 0)) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label><label><small>Fiyat</small><input aria-label={`${variant.sku} fiyat`} value={price} onFocus={onSelect} onChange={event => { onSelect(); setPrice(event.target.value === '' ? '' : Number(event.target.value)) }} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /></label></div>
 }
 
-function InlineVariantInputs({ variant, connections, onChanged }: { variant: Variant; connections: TrendyolConnection[]; onChanged: () => Promise<unknown> }) {
-  const [price, setPrice] = useState(variant.salePrice ?? variant.listPrice ?? '')
-  const [stock, setStock] = useState(variant.onHand)
-  const [savingPrice, setSavingPrice] = useState(false); const [savingStock, setSavingStock] = useState(false)
-  async function savePrice() {
-    const salePrice = Number(price); if (savingPrice || price === '' || !Number.isFinite(salePrice) || salePrice < 0 || salePrice === (variant.salePrice ?? variant.listPrice ?? 0)) return
-    const connectionId = variant.offerId ? '' : connections[0]?.id ?? ''
-    if (!variant.offerId && !connectionId) return
-    const body = { connectionId, variantId: variant.id, listPrice: Math.max(variant.listPrice ?? salePrice, salePrice), salePrice, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Varyant satırı fiyat düzenleme' }
-    setSavingPrice(true)
-    try { if (variant.offerId) { if (variant.offerVersion == null) return; await hubApi(`/channel-offers/${variant.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${variant.offerVersion}"` }, body: JSON.stringify(body) }) } else await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify(body) }); await onChanged() } finally { setSavingPrice(false) }
-  }
-  async function saveStock() {
-    const target = Number(stock); const delta = target - variant.onHand; if (savingStock || !Number.isFinite(target) || target < 0 || delta === 0) return
-    setSavingStock(true)
-    try { await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Varyant satırı stok düzenleme', sourceEventId: key() }) }); await onChanged() } finally { setSavingStock(false) }
-  }
-  return <><input className="variant-inline-input" aria-label={`${variant.sku} fiyat`} value={price} onChange={event => setPrice(event.target.value === '' ? '' : Number(event.target.value))} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /><input className="variant-inline-input" aria-label={`${variant.sku} stok`} value={stock} onChange={event => setStock(Number(event.target.value || 0))} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></>
-}
-
 function ProductColorRows({ product, selected, onSelect, onQuickEdit, onImageClick }: { product: Product; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void }) {
   const platformActive = Boolean(product.activePlatforms?.length)
   return <article className="product-catalog-item color-variant-item">
@@ -271,7 +217,7 @@ function ProductColorRows({ product, selected, onSelect, onQuickEdit, onImageCli
 }
 
 export function ProductsPage() {
-  const client = useQueryClient(); const [search, setSearch] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [expandedProductId, setExpandedProductId] = useState<string | null>(null); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1)
+  const client = useQueryClient(); const [search, setSearch] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1)
   const query = useQuery({ queryKey: ['products'], queryFn: () => loadAllPages<Product>('/products') })
   const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<TrendyolConnection>('/connections') })
   const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(item => item.status === 'ACTIVE')
@@ -569,7 +515,7 @@ function CategoryAttributeMappingPanel({
 
 export function NewProductPage({ editProductId }: { editProductId?: string } = {}) {
   const client = useQueryClient();
-  const [error, setError] = useState<unknown>(); const [created, setCreated] = useState<Product>(); const [notice, setNotice] = useState(''); const [feedback, setFeedback] = useState<OperationFeedback | null>(null); const [submitting, setSubmitting] = useState(false); const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
+  const [error, setError] = useState<unknown>(); const [created, setCreated] = useState<Product>(); const [, setNotice] = useState(''); const [feedback, setFeedback] = useState<OperationFeedback | null>(null); const [submitting, setSubmitting] = useState(false); const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '2', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([])
   const initializedEditProductKey = useRef<string | null>(null)
@@ -1052,8 +998,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
 }
 
 export function ProductDetailPage() {
-  const { id = '' } = useParams(); const client = useQueryClient(); const [connectionId, setConnectionId] = useState(''); const [notice, setNotice] = useState(''); const [description, setDescription] = useState('')
-  if (id) return <NewProductPage editProductId={id} />
+  const { id } = useParams()
+  if (!id) return <p className="unknown">Ürün kimliği bulunamadı.</p>
+  return <NewProductPage editProductId={id} />
+}
+
+/*
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', status: 'ACTIVE' }); const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({})
   const query = useQuery({ queryKey: ['product', id], queryFn: () => hubApi<Product>(`/products/${id}`), enabled: !!id })
   useEffect(() => {
@@ -1108,7 +1058,6 @@ export function ProductDetailPage() {
     <article className="panel"><h2>Varyantlar, stok ve fiyat</h2>{query.data.variants.map(variant => <section className="variant-editor" key={variant.id}><div><strong>{variant.sku}</strong><span>Barkod: {variant.barcode ?? '—'} · Model: {variant.modelCode ?? '—'} · Ölçü: {variant.width ?? '—'} × {variant.length ?? '—'} × {variant.height ?? '—'} cm · Ağırlık: {variant.weight ?? '—'} kg</span></div><VariantQuickEditor variant={variant} connections={activeConnections} onChanged={refresh} /></section>)}</article>
     <article className="panel"><h2>Trendyol yayın yönetimi</h2><p className="notice">Stage bağlantısında manuel yayın ve güncelleme doğrudan sağlayıcıya gönderilir. Production’da aktif bağlantı ve dış-yazma anahtarları gerekir.</p><label>Aktif Trendyol bağlantısı<select aria-label="Ürün Trendyol bağlantısı" value={connectionId} onChange={event => { setConnectionId(event.target.value); setNotice('') }}><option value="">Bağlantı seçin</option>{activeConnections.map(item => <option value={item.id} key={item.id}>{item.displayName} · {item.externalStoreId}</option>)}</select></label>{connectionId && <><div className="actions spaced"><button onClick={() => run(`/products/${id}/publication-jobs`, { connectionId })}>Yeni ürün olarak yayınla</button><button className="secondary" onClick={() => run(`/products/${id}/update-jobs`, { connectionId })}>Trendyol ürününü güncelle</button><button className="secondary" onClick={() => run(`/products/${id}/archive-jobs`, { connectionId, archived: true })}>Trendyol'da arşivle</button><button className="secondary" onClick={() => run(`/products/${id}/archive-jobs`, { connectionId, archived: false })}>Arşivden çıkar</button></div>{status.isLoading ? <p>Yayın durumu yükleniyor…</p> : status.isError ? <p className="notice">Henüz listing profili veya yayın durumu yok.</p> : status.data && <dl className="details"><dt>Gerçek durum</dt><dd>{status.data.actualStatus ?? '—'}</dd><dt>Son job</dt><dd>{status.data.lastJobStatus ?? '—'}</dd><dt>Ret kodu</dt><dd>{status.data.lastRejectionCode ?? '—'}</dd></dl>}</>}</article>
   </>}</Page> */
-}
 
 export function CategoriesPage() {
   const client = useQueryClient(); const [error, setError] = useState<unknown>(); const query = useQuery({ queryKey: ['categories'], queryFn: () => loadAllPages<Category>('/catalog/categories') })

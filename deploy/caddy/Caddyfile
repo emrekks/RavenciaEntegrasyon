@@ -20,7 +20,8 @@
   }
   log_skip @webhook
 
-  @backend path /api/* /health/*
+  # SignalR negotiation and WebSocket traffic must reach the API, not the SPA fallback.
+  @backend path /api/* /health/* /hubs/*
   handle @backend {
     reverse_proxy api:8080 {
       @unauthenticated status 401

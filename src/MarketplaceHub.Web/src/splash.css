@@ -294,7 +294,7 @@ button.secondary:hover, .button-link.secondary:hover, .bulk-action:hover, .filte
 .bulk-action-menu button:hover {
   background: var(--rv-surface-raised) !important;
   color: var(--rv-primary) !important;
-  transform: translateX(4px) !important; /* Slide in menu item effect */
+  transform: none !important;
 }
 
 /* Fix Tab Containers (Tümü, Yeni vs) */
@@ -333,7 +333,7 @@ aside .settings-toggle, aside .logout-link, aside .sidebar-collapse-toggle, asid
 aside .settings-toggle:hover, aside .logout-link:hover, aside .sidebar-collapse-toggle:hover, aside nav a:hover {
   background: var(--rv-surface) !important;
   color: var(--rv-ink) !important;
-  transform: translateX(2px) !important;
+  transform: none !important;
 }
 aside nav a.active, .app-shell aside nav a.active {
   background: var(--rv-primary) !important;
