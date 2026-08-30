@@ -1323,11 +1323,23 @@ textarea {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: var(--shipping-label-gap, 4mm);
+  gap: max(var(--shipping-label-gap, 4mm), 4mm);
   color: #17223a;
   background: #fff;
   box-shadow: 0 10px 34px rgba(0, 0, 0, .34);
   font-family: Arial, "Segoe UI", sans-serif;
+}
+
+.app-shell.stitch-shell .shipping-label-print-surface :where(small, span, b, strong) {
+  opacity: 1;
+}
+
+.app-shell.stitch-shell .shipping-label-print-surface :where(small) {
+  color: #365d91;
+}
+
+.app-shell.stitch-shell .shipping-label-print-surface :where(b, strong) {
+  color: #17223a;
 }
 
 .app-shell.stitch-shell .shipping-label-a4 {
@@ -1388,7 +1400,7 @@ textarea {
   gap: 6px;
   margin: 12px 0;
   padding: 12px;
-  border: 2px solid #17223a;
+  border: 2px solid #29466f;
   font-size: .95rem;
   line-height: 1.25;
 }
@@ -1409,7 +1421,7 @@ textarea {
   display: grid;
   gap: 3px;
   padding: 8px;
-  border: 1px solid #17223a;
+  border: 1px solid #29466f;
 }
 
 .app-shell.stitch-shell .shipping-label-meta small {
@@ -1429,7 +1441,7 @@ textarea {
   gap: 3px;
   margin-top: 16px;
   padding-top: 10px;
-  border-top: 2px solid #17223a;
+  border-top: 2px solid #29466f;
   font-size: .78rem;
 }
 
@@ -1465,7 +1477,7 @@ textarea {
 .app-shell.stitch-shell .shipping-label-custom-content {
   min-height: 28px;
   padding: 10px;
-  border: 1px solid #17223a;
+  border: 1px solid #29466f;
 }
 
 .app-shell.stitch-shell .shipping-label-modal-actions {
