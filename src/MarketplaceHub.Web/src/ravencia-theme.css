@@ -34,7 +34,7 @@ html, body, #root {
 .app-shell {
   color: var(--rv-ink);
   background: radial-gradient(circle at 82% -16%, rgba(113, 104, 245, .08), transparent 34%), var(--rv-bg);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--rv-font-ui);
 }
 .app-shell > aside {
   color: var(--rv-ink);
@@ -46,7 +46,7 @@ html, body, #root {
   background: radial-gradient(circle at 78% -12%, rgba(113, 104, 245, .07), transparent 30%), var(--rv-bg);
 }
 .brand.wordmark { border-bottom-color: var(--rv-line); }
-.brand.wordmark strong { color: #f8fbff; font-family: Georgia, 'Times New Roman', serif; text-shadow: 0 0 14px rgba(114, 207, 255, .28); }
+.brand.wordmark strong { color: #f8fbff; font-family: var(--rv-font-ui); text-shadow: 0 0 14px rgba(114, 207, 255, .28); }
 .brand.wordmark small, .nav-section { color: #6f87ad; }
 .app-shell aside nav a, .settings-links a, .settings-toggle, .logout-link { color: #9fb2cf; border-color: transparent; }
 .app-shell aside nav a:hover, .settings-links a:hover, .settings-toggle:hover, .logout-link:hover { color: var(--rv-ink); background: rgba(35, 121, 206, .13); border-color: rgba(73, 164, 239, .2); }
@@ -66,7 +66,7 @@ html, body, #root {
 .live-state i { background: var(--rv-success); box-shadow: 0 0 0 4px rgba(86, 217, 139, .1), 0 0 12px rgba(86, 217, 139, .65); }
 
 .app-shell .content { color: var(--rv-ink); }
-.app-shell .content h1, .app-shell .content h2, .app-shell .content h3 { color: var(--rv-ink); font-family: Manrope, Inter, ui-sans-serif, sans-serif; }
+.app-shell .content h1, .app-shell .content h2, .app-shell .content h3 { color: var(--rv-ink); font-family: var(--rv-font-ui); }
 .app-shell .content p, .app-shell .content small { color: var(--rv-muted); }
 .app-shell .page-heading { background: linear-gradient(110deg, rgba(10, 29, 59, .96), rgba(7, 22, 46, .82)); border-color: var(--rv-line); box-shadow: var(--rv-shadow); }
 .app-shell .dashboard .page-heading { background: transparent; border: 0; box-shadow: none; }
@@ -759,7 +759,7 @@ html, body, #root {
     radial-gradient(circle at 18% 24%, rgba(57, 191, 209, .08), transparent 30%),
     radial-gradient(circle at 78% 74%, rgba(113, 104, 245, .08), transparent 32%),
     var(--rv-bg);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--rv-font-ui);
 }
 .cyber-login-grid {
   position: absolute;
@@ -782,13 +782,13 @@ html, body, #root {
   border-right: 1px solid var(--rv-line);
 }
 .cyber-login-brand { position: absolute; top: 38px; left: clamp(40px, 6vw, 92px); display: flex; align-items: center; gap: 13px; }
-.cyber-login-brand > span { display: grid; place-items: center; width: 42px; height: 42px; color: #fff; background: var(--rv-primary); border: 1px solid rgba(255, 255, 255, .14); border-radius: 11px; font-family: Georgia, serif; font-size: 1.45rem; font-style: italic; box-shadow: 0 12px 30px rgba(113, 104, 245, .16); }
+.cyber-login-brand > span { display: grid; place-items: center; width: 42px; height: 42px; color: #fff; background: var(--rv-primary); border: 1px solid rgba(255, 255, 255, .14); border-radius: 11px; font-family: var(--rv-font-ui); font-size: 1.45rem; font-style: italic; box-shadow: 0 12px 30px rgba(113, 104, 245, .16); }
 .cyber-login-brand > div { display: grid; gap: 4px; }
-.cyber-login-brand strong { color: var(--rv-ink); font-family: Georgia, 'Times New Roman', serif; font-size: .98rem; letter-spacing: .25em; }
+.cyber-login-brand strong { color: var(--rv-ink); font-family: var(--rv-font-ui); font-size: .98rem; letter-spacing: .25em; }
 .cyber-login-brand small { color: var(--rv-muted-2); font-size: .56rem; font-weight: 850; letter-spacing: .2em; }
 .cyber-login-copy { display: grid; gap: 15px; max-width: 690px; }
 .cyber-login-copy p { margin: 0; color: var(--rv-cyan); font-size: .67rem; font-weight: 900; letter-spacing: .18em; }
-.cyber-login-copy h1 { max-width: 650px; margin: 0; color: var(--rv-ink); font-family: Manrope, Inter, ui-sans-serif, sans-serif; font-size: clamp(2.2rem, 4.4vw, 4.7rem); font-weight: 760; letter-spacing: -.045em; line-height: 1.03; text-wrap: balance; }
+.cyber-login-copy h1 { max-width: 650px; margin: 0; color: var(--rv-ink); font-family: var(--rv-font-ui); font-size: clamp(2.2rem, 4.4vw, 4.7rem); font-weight: 760; letter-spacing: -.045em; line-height: 1.03; text-wrap: balance; }
 .cyber-login-copy > span { max-width: 600px; color: var(--rv-muted); font-size: clamp(.86rem, 1.15vw, 1rem); line-height: 1.72; }
 .cyber-login-signals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 760px; }
 .cyber-login-signals article { display: grid; grid-template-columns: 9px minmax(0, 1fr); gap: 11px; min-width: 0; padding: 14px; background: rgba(14, 20, 32, .72); border: 1px solid var(--rv-line); border-radius: 10px; }
@@ -800,7 +800,7 @@ html, body, #root {
 .cyber-login-signals small { color: var(--rv-muted-2); font-size: .61rem; line-height: 1.45; }
 .cyber-login-route { display: grid; grid-template-columns: auto minmax(50px, 150px) 38px minmax(50px, 150px) auto; align-items: center; gap: 10px; max-width: 560px; color: var(--rv-muted-2); font-size: .57rem; font-weight: 900; letter-spacing: .12em; }
 .cyber-login-route b { height: 1px; background: linear-gradient(90deg, transparent, rgba(57, 191, 209, .5), transparent); }
-.cyber-login-route i { display: grid; place-items: center; width: 38px; height: 38px; color: #fff; background: rgba(113, 104, 245, .16); border: 1px solid rgba(113, 104, 245, .32); border-radius: 50%; font-family: Georgia, serif; font-style: italic; }
+.cyber-login-route i { display: grid; place-items: center; width: 38px; height: 38px; color: #fff; background: rgba(113, 104, 245, .16); border: 1px solid rgba(113, 104, 245, .32); border-radius: 50%; font-family: var(--rv-font-ui); font-style: italic; }
 
 .cyber-login-panel { display: grid; place-items: center; min-width: 0; padding: clamp(28px, 5vw, 72px); background: rgba(9, 12, 18, .72); backdrop-filter: blur(18px); }
 .cyber-login-card { width: min(100%, 460px); overflow: hidden; background: rgba(17, 23, 34, .96); border: 1px solid var(--rv-line-strong); border-radius: 16px; box-shadow: 0 32px 80px rgba(0, 0, 0, .42); }
@@ -809,7 +809,7 @@ html, body, #root {
 .cyber-login-shield svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .cyber-login-card > header > div { display: grid; gap: 5px; }
 .cyber-login-card > header p { margin: 0; color: var(--rv-primary-hover); font-size: .59rem; font-weight: 900; letter-spacing: .15em; }
-.cyber-login-card > header h2 { margin: 0; color: var(--rv-ink); font-family: Manrope, Inter, sans-serif; font-size: 1.28rem; letter-spacing: -.025em; }
+.cyber-login-card > header h2 { margin: 0; color: var(--rv-ink); font-family: var(--rv-font-ui); font-size: 1.28rem; letter-spacing: -.025em; }
 .cyber-login-card > header div > span { color: var(--rv-muted); font-size: .7rem; }
 .cyber-login-form { display: grid; gap: 10px; padding: 24px 28px 27px; }
 .cyber-login-form > label,

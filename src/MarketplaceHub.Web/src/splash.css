@@ -7,7 +7,7 @@
   justify-content: center;
   background-color: #f8fafc;
   z-index: 9999;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--rv-font-ui);
   color: #334155;
 }
 

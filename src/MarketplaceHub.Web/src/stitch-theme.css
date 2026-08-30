@@ -27,7 +27,7 @@ body,
   min-height: 100%;
   background: var(--st-obsidian) !important;
   color: var(--st-text) !important;
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-family: var(--rv-font-ui) !important;
 }
 
 body {
@@ -42,7 +42,7 @@ button,
 input,
 select,
 textarea {
-  font-family: Inter, system-ui, sans-serif !important;
+  font-family: var(--rv-font-ui) !important;
 }
 
 * {
@@ -96,7 +96,7 @@ textarea {
   height: 34px;
   flex: 0 0 34px;
   color: #fff;
-  font: 800 16px/1 Manrope, sans-serif;
+  font: 800 16px/1 var(--rv-font-ui);
   background: linear-gradient(145deg, var(--st-primary), #3744d8);
   border: 1px solid rgba(190, 194, 255, .4);
   border-radius: 6px;
@@ -114,14 +114,14 @@ textarea {
 
 .stitch-shell .brand.wordmark strong {
   color: var(--st-text) !important;
-  font: 800 15px/1.15 Manrope, sans-serif !important;
+  font: 800 15px/1.15 var(--rv-font-ui) !important;
   letter-spacing: .02em;
   text-transform: uppercase;
 }
 
 .stitch-shell .brand.wordmark small {
   color: var(--st-muted) !important;
-  font: 600 9px/1.3 Inter, sans-serif !important;
+  font: 600 9px/1.3 var(--rv-font-ui) !important;
   letter-spacing: .14em;
   text-transform: uppercase;
 }
@@ -325,7 +325,7 @@ textarea {
 .global-search:focus-within { border-color: var(--st-primary); box-shadow: 0 0 0 2px rgba(88, 101, 242, .16); }
 .global-search svg { width: 15px; height: 15px; flex: 0 0 15px; fill: none; stroke: var(--st-muted); stroke-width: 1.8; }
 .global-search input { width: 100%; height: 32px !important; padding: 0 9px !important; color: var(--st-text) !important; font-size: 11px !important; background: transparent !important; border: 0 !important; outline: 0 !important; box-shadow: none !important; }
-.global-search kbd { padding: 3px 5px; color: #77778a; font: 600 9px/1 Inter, sans-serif; background: var(--st-surface-high); border: 1px solid var(--st-outline); border-radius: 3px; }
+.global-search kbd { padding: 3px 5px; color: #77778a; font: 600 9px/1 var(--rv-font-ui); background: var(--st-surface-high); border: 1px solid var(--st-outline); border-radius: 3px; }
 
 .stitch-shell .top-actions {
   display: flex !important;
@@ -423,7 +423,7 @@ textarea {
 .stitch-shell h4 {
   margin-top: 0;
   color: var(--st-text) !important;
-  font-family: Manrope, Inter, sans-serif !important;
+  font-family: var(--rv-font-ui) !important;
   letter-spacing: -.025em !important;
 }
 
@@ -566,7 +566,7 @@ textarea {
 }
 
 .metrics article small { color: #9594a6 !important; font-size: 9px !important; font-weight: 800 !important; letter-spacing: .08em !important; }
-.metrics article strong { display: block; margin: 8px 0 4px !important; color: var(--st-text) !important; font: 800 24px/1 Manrope, sans-serif !important; }
+.metrics article strong { display: block; margin: 8px 0 4px !important; color: var(--st-text) !important; font: 800 24px/1 var(--rv-font-ui) !important; }
 .metrics article p { margin: 0 !important; color: #858496 !important; font-size: 10px !important; }
 .metrics .danger-metric::before { background: var(--st-red); }
 .metrics .warning-metric::before { background: var(--st-orange); }
@@ -714,7 +714,7 @@ textarea {
 /* Platformlar — reference layout */
 .integrations-reference-page { max-width: 1260px !important; }
 .integration-reference-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 32px; padding-bottom: 21px; border-bottom: 1px solid var(--st-surface-highest); }
-.integration-reference-heading h1 { margin: 0 0 5px; color: var(--st-text); font: 700 32px/1.2 Manrope, sans-serif; letter-spacing: -.025em; }
+.integration-reference-heading h1 { margin: 0 0 5px; color: var(--st-text); font: 700 32px/1.2 var(--rv-font-ui); letter-spacing: -.025em; }
 .integration-reference-heading p { margin: 0; color: var(--st-muted); font-size: 15px; }
 .integration-filter-wrap { position: relative; }
 .integration-filter-button { display: inline-flex !important; align-items: center; gap: 9px; min-height: 42px; padding: 0 16px !important; color: var(--st-text) !important; background: transparent !important; border: 1px solid var(--st-outline) !important; border-radius: 6px !important; font-weight: 700; cursor: pointer; }
@@ -735,10 +735,10 @@ textarea {
 .reference-integration-card-active .reference-integration-accent { background: var(--st-primary); box-shadow: 0 0 12px rgba(88,101,242,.72); }
 .reference-integration-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 26px 25px 20px; border-bottom: 1px solid rgba(143,143,160,.3); }
 .reference-integration-brand { display: flex; align-items: center; gap: 16px; min-width: 0; }
-.reference-provider-logo { display: grid; place-items: center; width: 54px; height: 54px; flex: 0 0 54px; color: var(--st-muted); background: var(--st-surface-high); border: 1px solid var(--st-outline); border-radius: 6px; font: 700 12px/1 Inter, sans-serif; text-transform: lowercase; }
+.reference-provider-logo { display: grid; place-items: center; width: 54px; height: 54px; flex: 0 0 54px; color: var(--st-muted); background: var(--st-surface-high); border: 1px solid var(--st-outline); border-radius: 6px; font: 700 12px/1 var(--rv-font-ui); text-transform: lowercase; }
 .reference-provider-logo.trendyol { color: #ffad95; }
 .reference-provider-logo.efaturam { color: var(--st-orange); font-size: 10px; }
-.reference-integration-header h2 { margin: 0 0 7px; overflow: hidden; color: var(--st-text); font: 600 24px/1.15 Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.reference-integration-header h2 { margin: 0 0 7px; overflow: hidden; color: var(--st-text); font: 600 24px/1.15 var(--rv-font-ui); text-overflow: ellipsis; white-space: nowrap; }
 .reference-connection-state { display: inline-flex; align-items: center; gap: 7px; color: var(--st-primary-soft); font-size: 14px; font-weight: 700; }
 .reference-connection-state i { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
 .reference-connection-state.inactive { color: var(--st-orange); }
@@ -756,7 +756,7 @@ textarea {
 .reference-data-point { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .reference-data-point-wide { grid-column: 1 / -1; }
 .reference-data-point > span { color: var(--st-muted); font-size: 13px; font-weight: 700; }
-.reference-data-point > strong { width: fit-content; max-width: 100%; padding: 7px 9px; overflow: hidden; color: var(--st-primary-soft); background: var(--st-surface-lowest); border: 1px solid var(--st-outline); border-radius: 3px; font: 600 15px/1.15 Inter, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.reference-data-point > strong { width: fit-content; max-width: 100%; padding: 7px 9px; overflow: hidden; color: var(--st-primary-soft); background: var(--st-surface-lowest); border: 1px solid var(--st-outline); border-radius: 3px; font: 600 15px/1.15 var(--rv-font-ui); text-overflow: ellipsis; white-space: nowrap; }
 .reference-data-point-wide > strong { display: inline-flex; align-items: center; gap: 9px; padding: 0; color: var(--st-text); background: transparent; border: 0; font-weight: 500; }
 .reference-data-point-wide > strong i { color: var(--st-muted); font-style: normal; }
 .reference-data-point-wide > strong.reference-last-success i { color: var(--st-primary-soft); }
@@ -991,7 +991,7 @@ textarea {
 .stitch-reference-mapping .mapping-reference-heading h1 {
   margin: 0 0 4px !important;
   color: #e3e1ed !important;
-  font: 700 32px/40px Manrope, sans-serif !important;
+  font: 700 32px/40px var(--rv-font-ui) !important;
   letter-spacing: -.02em !important;
 }
 
@@ -1026,7 +1026,7 @@ textarea {
   margin: 0 !important;
   padding: 0 23px !important;
   color: #c6c5d7 !important;
-  font: 600 12px/16px Inter, sans-serif !important;
+  font: 600 12px/16px var(--rv-font-ui) !important;
   letter-spacing: .03em;
   text-decoration: none;
   background: transparent !important;
@@ -1058,13 +1058,13 @@ textarea {
   gap: 10px;
   margin: 0 0 24px !important;
   color: #e3e1ed !important;
-  font: 600 20px/28px Manrope, sans-serif !important;
+  font: 600 20px/28px var(--rv-font-ui) !important;
   letter-spacing: -.01em !important;
 }
 
 .stitch-reference-mapping .mapping-reference-card > h2 > span {
   color: #bec2ff;
-  font: 600 21px/1 Inter, sans-serif;
+  font: 600 21px/1 var(--rv-font-ui);
 }
 
 .mapping-reference-grid {
@@ -2105,10 +2105,10 @@ textarea {
   gap: 10px;
   margin: 0 0 0 !important;
   color: #e3e1ed !important;
-  font: 600 20px/28px Manrope, sans-serif !important;
+  font: 600 20px/28px var(--rv-font-ui) !important;
   letter-spacing: -.01em !important;
 }
-.brand-mapping-console > h2 > span { color: #bec2ff; font: 600 21px/1 Inter, sans-serif; }
+.brand-mapping-console > h2 > span { color: #bec2ff; font: 600 21px/1 var(--rv-font-ui); }
 .brand-mapping-intro { margin: -8px 0 4px !important; color: #c6c5d7 !important; font-size: 12px !important; line-height: 18px !important; }
 .brand-mapping-console > .editor-section-title {
   display: grid;
@@ -2824,7 +2824,7 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   background: #121319;
   border: 1px solid #4b4d59;
   border-radius: 3px;
-  font: 600 14px/1.2 Inter, sans-serif;
+  font: 600 14px/1.2 var(--rv-font-ui);
 }
 .integrations-reference-page .reference-data-point > .reference-editable-field:focus {
   outline: 2px solid rgba(230, 161, 143, 0.45);
@@ -3113,7 +3113,7 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .jobs-reference-heading h1 {
   margin: 0 0 6px !important;
   color: var(--st-text) !important;
-  font: 700 clamp(24px, 2.1vw, 31px)/1.15 Manrope, sans-serif !important;
+  font: 700 clamp(24px, 2.1vw, 31px)/1.15 var(--rv-font-ui) !important;
   letter-spacing: -.035em !important;
 }
 .jobs-reference-heading p {
@@ -3381,7 +3381,7 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   background: var(--st-surface-container);
   border: 1px solid var(--st-outline);
   border-radius: 2px;
-  font: 600 9px/1.1 Inter, sans-serif;
+  font: 600 9px/1.1 var(--rv-font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3449,7 +3449,7 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .jobs-reference-drawer-header > div { display: grid; gap: 8px; min-width: 0; }
 .jobs-reference-drawer-header h2 { margin: 2px 0 0 !important; font-size: 21px !important; }
 .jobs-reference-drawer-header p { margin: 0; color: var(--st-muted); font-size: 11px; overflow-wrap: anywhere; }
-.jobs-reference-drawer-correlation { width: fit-content; padding: 5px 7px; color: var(--st-primary-soft); background: rgba(88,101,242,.14); border: 1px solid rgba(190,194,255,.28); border-radius: 3px; font: 600 9px/1 Inter, sans-serif; }
+.jobs-reference-drawer-correlation { width: fit-content; padding: 5px 7px; color: var(--st-primary-soft); background: rgba(88,101,242,.14); border: 1px solid rgba(190,194,255,.28); border-radius: 3px; font: 600 9px/1 var(--rv-font-mono); }
 .jobs-reference-drawer-close { width: 30px; height: 30px; padding: 0; color: var(--st-muted); background: transparent; border: 1px solid var(--st-outline); border-radius: 4px; font-size: 23px; line-height: 1; cursor: pointer; }
 .jobs-reference-drawer-close:hover { color: var(--st-text); background: var(--st-surface-high); border-color: var(--st-primary-soft); }
 .jobs-reference-drawer-body { display: grid; gap: 18px; padding: 22px 24px 28px; }
@@ -3791,7 +3791,7 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .app-shell .orders-page > .page-heading h1 {
   margin: 0 !important;
   color: #e3e1ed !important;
-  font-family: Manrope, Inter, sans-serif !important;
+  font-family: var(--rv-font-ui) !important;
   font-size: clamp(1.7rem, 2.4vw, 2rem) !important;
   font-weight: 700 !important;
   letter-spacing: -.035em !important;
@@ -5244,7 +5244,7 @@ html { overflow-y: auto !important; }
 }
 .app-shell .dashboard-revenue-summary strong {
   color: #e3e1ed;
-  font: 800 19px/1 Manrope, sans-serif;
+  font: 800 19px/1 var(--rv-font-ui);
   letter-spacing: -.03em;
 }
 .app-shell .dashboard-revenue-summary span {
@@ -5846,7 +5846,7 @@ body:has(.product-add-page),
 .app-shell .product-add-page .page-heading h1 {
   margin: 0;
   color: var(--st-text) !important;
-  font: 700 30px/1.2 Manrope, sans-serif !important;
+  font: 700 30px/1.2 var(--rv-font-ui) !important;
   letter-spacing: -.035em;
 }
 .app-shell .product-add-page .page-heading h1::before {
@@ -5854,7 +5854,7 @@ body:has(.product-add-page),
   display: inline-block;
   margin-right: 11px;
   color: var(--st-muted);
-  font: 400 25px/1 Inter, sans-serif;
+  font: 400 25px/1 var(--rv-font-ui);
   vertical-align: 2px;
 }
 .product-add-wizardbar {
@@ -5897,7 +5897,7 @@ body:has(.product-add-page),
   color: var(--st-primary-soft);
   border: 1px solid var(--st-outline);
   border-radius: 50%;
-  font: 800 11px/1 Manrope, sans-serif;
+  font: 800 11px/1 var(--rv-font-ui);
 }
 .product-add-progress {
   display: flex;
@@ -5969,7 +5969,7 @@ body:has(.product-add-page),
 .product-add-page .editor-section-title h2 {
   margin: 0 0 4px;
   color: var(--st-text) !important;
-  font: 700 17px/1.2 Manrope, sans-serif !important;
+  font: 700 17px/1.2 var(--rv-font-ui) !important;
 }
 .product-add-page .editor-section-title p {
   margin: 0;
@@ -6158,7 +6158,7 @@ body:has(.product-add-page),
   background: var(--st-surface-container);
   border: 1px solid var(--st-outline);
   border-radius: 4px;
-  font: 700 10px/1 Inter, sans-serif;
+  font: 700 10px/1 var(--rv-font-ui);
   cursor: pointer;
 }
 .product-add-page .product-media-upload strong,
@@ -6268,7 +6268,7 @@ body:has(.product-add-page),
   background: var(--st-surface-lowest);
   border: 1px solid var(--st-surface-highest);
   border-radius: 4px;
-  font: 10px/1.5 "Cascadia Code", Consolas, monospace;
+  font: 10px/1.5 var(--rv-font-mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -6293,7 +6293,7 @@ body:has(.product-add-page),
   backdrop-filter: blur(12px);
 }
 .product-add-page .product-submit-sticky > div { display: grid; gap: 4px; min-width: 0; }
-.product-add-page .product-submit-sticky strong { color: var(--st-text) !important; font: 700 14px/1.2 Manrope, sans-serif; }
+.product-add-page .product-submit-sticky strong { color: var(--st-text) !important; font: 700 14px/1.2 var(--rv-font-ui); }
 .product-add-page .product-submit-sticky p { margin: 0; color: var(--st-muted) !important; font-size: 10px; }
 .product-add-page .product-submit-sticky button {
   flex: 0 0 auto;
@@ -6303,7 +6303,7 @@ body:has(.product-add-page),
   background: var(--st-primary) !important;
   border: 1px solid #727cff !important;
   border-radius: 4px;
-  font: 700 11px/1 Inter, sans-serif;
+  font: 700 11px/1 var(--rv-font-ui);
 }
 .product-add-page .product-submit-sticky button:hover { background: #6974ff !important; }
 
@@ -6362,7 +6362,7 @@ body:has(.product-add-page),
 .publish-platform-card-head:hover:not(:disabled) { background: rgba(88,101,242,.08); transform: none; }
 .publish-platform-card-head:disabled { cursor: not-allowed; }
 .publish-platform-card-head > span:nth-child(2) { display: grid; gap: 4px; min-width: 0; }
-.publish-platform-card-head strong { overflow: hidden; font: 700 16px/1.15 Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.publish-platform-card-head strong { overflow: hidden; font: 700 16px/1.15 var(--rv-font-ui); text-overflow: ellipsis; white-space: nowrap; }
 .publish-platform-card-head small { color: var(--st-primary-soft); font-size: 11px; font-weight: 700; }
 .publish-platform-card.unavailable small { color: var(--st-muted); }
 .publish-platform-mark {
@@ -6374,7 +6374,7 @@ body:has(.product-add-page),
   background: var(--st-surface-lowest);
   border: 1px solid var(--st-surface-highest);
   border-radius: 4px;
-  font: 700 19px/1 Manrope, sans-serif;
+  font: 700 19px/1 var(--rv-font-ui);
 }
 .publish-platform-mark.trendyol { color: #ff7a16; }
 .publish-platform-mark.hepsiburada { color: #ff8700; }
@@ -6419,7 +6419,7 @@ body:has(.product-add-page),
   justify-content: space-between;
   padding: 13px 15px;
   color: var(--st-text);
-  font: 700 16px/1.2 Manrope, sans-serif;
+  font: 700 16px/1.2 var(--rv-font-ui);
   cursor: pointer;
   list-style: none;
 }
@@ -6444,7 +6444,7 @@ body:has(.product-add-page),
 }
 .publish-checklist-heading { display: flex; align-items: flex-start; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--st-surface-highest); }
 .publish-checklist-heading > span { color: var(--st-primary-soft); font-size: 21px; line-height: 1; }
-.publish-checklist-heading h2 { margin: 0 0 4px; font: 700 18px/1.2 Manrope, sans-serif; }
+.publish-checklist-heading h2 { margin: 0 0 4px; font: 700 18px/1.2 var(--rv-font-ui); }
 .publish-checklist-heading p { margin: 0; color: var(--st-muted); font-size: 10px; }
 .publish-checklist-items { display: grid; gap: 9px; padding: 14px 0; }
 .publish-checklist-items article { display: grid; grid-template-columns: 23px 1fr; gap: 9px; padding: 11px; background: rgba(41,41,50,.7); border: 1px solid transparent; border-radius: 4px; }
@@ -6457,8 +6457,8 @@ body:has(.product-add-page),
 .publish-checklist-items article.publish-check-warning p { color: rgba(255,182,137,.85); }
 .publish-checklist-footer { display: grid; grid-template-columns: 1fr auto; gap: 8px 10px; padding-top: 14px; border-top: 1px solid var(--st-surface-highest); }
 .publish-checklist-footer > span { align-self: center; color: var(--st-muted); font-size: 11px; font-weight: 700; }
-.publish-checklist-footer > strong { color: var(--st-text); font: 700 20px/1 Manrope, sans-serif; text-align: right; }
-.publish-checklist-footer button { grid-column: 1 / -1; min-height: 48px; color: #fff; background: var(--st-primary); border-color: #727cff; border-radius: 4px; font: 700 15px/1 Manrope, sans-serif; }
+.publish-checklist-footer > strong { color: var(--st-text); font: 700 20px/1 var(--rv-font-ui); text-align: right; }
+.publish-checklist-footer button { grid-column: 1 / -1; min-height: 48px; color: #fff; background: var(--st-primary); border-color: #727cff; border-radius: 4px; font: 700 15px/1 var(--rv-font-ui); }
 .publish-checklist-footer button:hover { background: #6974ff; }
 .publish-checklist-footer small { grid-column: 1 / -1; color: var(--st-muted); font-size: 10px; text-align: center; }
 
@@ -6503,7 +6503,7 @@ body:has(.product-add-page),
   background: rgba(88, 101, 242, .1);
   border: 1px solid rgba(88, 101, 242, .35);
   border-radius: 7px;
-  font: 400 21px/1 Inter, sans-serif;
+  font: 400 21px/1 var(--rv-font-ui);
   text-decoration: none;
   transition: background .18s ease, border-color .18s ease, transform .18s ease;
 }
@@ -6578,7 +6578,7 @@ body:has(.product-add-page),
 }
 .app-shell .product-add-page .rich-text-editor-head strong {
   color: var(--st-text) !important;
-  font: 700 11px/1.2 Manrope, sans-serif;
+  font: 700 11px/1.2 var(--rv-font-ui);
 }
 .app-shell .product-add-page .rich-text-mode-note {
   color: var(--st-muted) !important;
@@ -6612,7 +6612,7 @@ body:has(.product-add-page),
   background: transparent !important;
   border: 0 !important;
   border-radius: 4px;
-  font: 700 9px/1 Inter, sans-serif;
+  font: 700 9px/1 var(--rv-font-ui);
 }
 .app-shell .product-add-page .rich-text-mode-switch button.active {
   color: #fff !important;
@@ -6656,7 +6656,7 @@ body:has(.product-add-page),
   background: transparent !important;
   border: 1px solid transparent !important;
   border-radius: 5px;
-  font: 700 9px/1 Inter, sans-serif;
+  font: 700 9px/1 var(--rv-font-ui);
   cursor: pointer;
 }
 .app-shell .product-add-page .rich-text-tool:hover,
@@ -6694,7 +6694,7 @@ body:has(.product-add-page),
   background: var(--st-surface-lowest) !important;
   border: 0;
   outline: 0;
-  font: 400 12px/1.65 Inter, sans-serif;
+  font: 400 12px/1.65 var(--rv-font-ui);
 }
 .app-shell .product-add-page .rich-text-canvas {
   overflow: auto;
@@ -6716,7 +6716,7 @@ body:has(.product-add-page),
   min-height: 172px;
   resize: vertical;
   color: #c8ccff !important;
-  font: 400 11px/1.65 "Cascadia Code", Consolas, monospace;
+  font: 400 11px/1.65 var(--rv-font-mono);
   tab-size: 2;
 }
 .app-shell .product-add-page .rich-text-editor-foot {
@@ -7232,7 +7232,7 @@ body:has(.product-add-page),
 }
 .app-shell .product-add-page .publish-connections-empty strong {
   color: var(--st-text);
-  font: 700 14px/1.2 Manrope, sans-serif;
+  font: 700 14px/1.2 var(--rv-font-ui);
 }
 .app-shell .product-add-page .publish-connections-empty p {
   max-width: 360px;
@@ -7444,7 +7444,7 @@ body:has(.product-add-page),
 
 .database-reset-intro h2 {
   color: var(--st-text) !important;
-  font: 700 19px/1.25 Manrope, sans-serif;
+  font: 700 19px/1.25 var(--rv-font-ui);
 }
 
 .database-reset-intro p {
@@ -7629,7 +7629,7 @@ body:has(.product-add-page),
   color: var(--st-orange);
   border: 1px solid currentColor;
   border-radius: 50%;
-  font: 800 10px/1 Manrope, sans-serif;
+  font: 800 10px/1 var(--rv-font-ui);
   cursor: help;
 }
 .database-scope-help::after {
@@ -7645,7 +7645,7 @@ body:has(.product-add-page),
   border-radius: 5px;
   box-shadow: 0 12px 30px rgba(0, 0, 0, .42);
   content: attr(data-tooltip);
-  font: 500 10px/1.45 Inter, sans-serif;
+  font: 500 10px/1.45 var(--rv-font-ui);
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, 5px);
@@ -7693,7 +7693,7 @@ body:has(.product-add-page),
 .app-shell .reference-returns-page > .returns-reference-heading h1 {
   margin: 0 !important;
   color: #e3e1ed !important;
-  font-family: Manrope, Inter, sans-serif !important;
+  font-family: var(--rv-font-ui) !important;
   font-size: clamp(1.7rem, 2.4vw, 2rem) !important;
   font-weight: 700 !important;
   letter-spacing: -.035em !important;
@@ -9991,6 +9991,33 @@ body:has(.product-add-page),
   .app-shell.stitch-shell > main {
     margin-left: 62px !important;
   }
+}
+
+/* Canonical font roles: interface text stays in the UI stack; technical values never reflow into a proportional font. */
+.app-shell.stitch-shell code,
+.app-shell.stitch-shell kbd,
+.app-shell.stitch-shell .technical-text,
+.app-shell.stitch-shell .sku-value,
+.app-shell.stitch-shell .barcode-value,
+.app-shell.stitch-shell .model-code-value,
+.app-shell.stitch-shell .correlation-id,
+.app-shell.stitch-shell .jobs-reference-correlation,
+.app-shell.stitch-shell .jobs-reference-drawer-correlation,
+.app-shell.stitch-shell .log-output {
+  font-family: var(--rv-font-mono) !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: normal;
+}
+
+.app-shell.stitch-shell input.technical-field,
+.app-shell.stitch-shell textarea.technical-field,
+.app-shell.stitch-shell select.technical-field {
+  font-family: var(--rv-font-mono) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.email-template {
+  font-family: var(--rv-font-email) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
