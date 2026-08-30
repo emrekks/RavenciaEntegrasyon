@@ -69,7 +69,21 @@ public sealed record JobSummaryView(
     DateTimeOffset? LastFailedAt = null,
     DateTimeOffset? NextRetryAt = null);
 
-public sealed record JobDetailView(JobSummaryView Job, IReadOnlyList<JobAttemptDetailView> Attempts);
+public sealed record JobOrderContextView(
+    Guid OrderId,
+    string OrderNumber,
+    string ExternalOrderId,
+    string Status,
+    string Currency,
+    decimal NetAmount,
+    DateTimeOffset OrderedAt,
+    string? ExternalPackageId = null,
+    string? CargoProvider = null,
+    string? CargoTrackingNumber = null,
+    string? CustomerName = null,
+    int LineCount = 0);
+
+public sealed record JobDetailView(JobSummaryView Job, IReadOnlyList<JobAttemptDetailView> Attempts, JobOrderContextView? Order = null);
 
 public interface IJobOperationsService
 {

@@ -4719,6 +4719,23 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .jobs-reference-error-alert { display: grid; gap: 6px; padding: 14px; color: #ffb4ab; background: rgba(147,0,10,.2); border: 1px solid rgba(255,180,171,.32); border-left: 3px solid #ffb4ab; border-radius: 4px; }
 .jobs-reference-error-alert strong { font-size: 11px; }
 .jobs-reference-error-alert span { color: rgba(255,180,171,.84); font-size: 11px; line-height: 1.45; }
+.jobs-reference-order-context {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  background: rgba(88,101,242,.1);
+  border: 1px solid rgba(190,194,255,.24);
+  border-radius: 8px;
+}
+.jobs-reference-order-context > div:first-child { display: grid; gap: 4px; }
+.jobs-reference-section-kicker { color: var(--st-primary-soft); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.jobs-reference-order-context h3 { margin: 0 !important; padding: 0 !important; color: var(--st-text); font-size: 15px !important; }
+.jobs-reference-order-context > div:first-child p { margin: 0; color: var(--st-muted); font-size: 10px; }
+.jobs-reference-order-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.jobs-reference-order-facts p { display: grid; gap: 4px; min-width: 0; margin: 0; padding: 8px; background: rgba(8,10,19,.24); border: 1px solid rgba(151,160,207,.14); border-radius: 5px; }
+.jobs-reference-order-facts small { color: var(--st-muted); font-size: 8px; font-weight: 700; }
+.jobs-reference-order-facts strong { color: var(--st-text); font-size: 10px; overflow-wrap: anywhere; }
 .jobs-reference-drawer .job-detail-facts { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin: 0; }
 .jobs-reference-drawer .job-detail-facts p { display: grid; gap: 6px; margin: 0; padding: 12px; background: var(--st-surface-low); border: 1px solid var(--st-surface-highest); border-radius: 4px; }
 .jobs-reference-drawer .job-detail-facts small { color: var(--st-muted); font-size: 9px; font-weight: 700; }

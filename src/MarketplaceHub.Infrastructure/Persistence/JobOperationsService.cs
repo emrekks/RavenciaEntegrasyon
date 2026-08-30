@@ -74,7 +74,108 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var failureTimes = failure.Count == 0
             ? null
             : new FailureTime(failure.Min(x => x.StartedAt), failure.Max(x => x.CompletedAt ?? x.StartedAt));
-        return new JobDetailView(Summary(job, failureTimes), attempts);
+        return new JobDetailView(Summary(job, failureTimes), attempts, await OrderContext(job, cancellationToken));
+    }
+
+    private async Task<JobOrderContextView?> OrderContext(IntegrationJob job, CancellationToken cancellationToken)
+    {
+        Guid? orderId = null;
+        Guid? packageId = null;
+        Guid? claimId = null;
+        string? externalOrderId = null;
+        string? externalPackageId = null;
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(job.PayloadJson);
+            var root = document.RootElement;
+            orderId = GuidValue(root, "orderId");
+            packageId = GuidValue(root, "packageId");
+            claimId = GuidValue(root, "claimId");
+            externalOrderId = StringValue(root, "externalOrderId");
+            externalPackageId = StringValue(root, "externalPackageId");
+        }
+        catch (System.Text.Json.JsonException) { }
+
+        string? cargoProvider = null;
+        string? cargoTrackingNumber = null;
+        if (packageId is { } packageGuid)
+        {
+            var package = await db.ShipmentPackages.AsNoTracking()
+                .Where(x => x.TenantId == job.TenantId && x.Id == packageGuid)
+                .Select(x => new { x.OrderId, x.ExternalPackageId, x.CargoProviderExternalId, x.CargoTrackingNumber })
+                .SingleOrDefaultAsync(cancellationToken);
+            if (package is not null)
+            {
+                orderId ??= package.OrderId;
+                externalPackageId ??= package.ExternalPackageId;
+                cargoProvider = package.CargoProviderExternalId;
+                cargoTrackingNumber = package.CargoTrackingNumber;
+            }
+        }
+
+        if (claimId is { } claimGuid)
+        {
+            var claimOrderId = await db.ReturnClaims.AsNoTracking()
+                .Where(x => x.TenantId == job.TenantId && x.Id == claimGuid)
+                .Select(x => x.OrderId)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (claimOrderId != Guid.Empty) orderId ??= claimOrderId;
+        }
+
+        if (orderId is null && !string.IsNullOrWhiteSpace(externalPackageId))
+        {
+            var package = await db.ShipmentPackages.AsNoTracking()
+                .Where(x => x.TenantId == job.TenantId && x.ExternalPackageId == externalPackageId)
+                .Select(x => new { x.OrderId, x.CargoProviderExternalId, x.CargoTrackingNumber })
+                .SingleOrDefaultAsync(cancellationToken);
+            if (package is not null)
+            {
+                orderId = package.OrderId;
+                cargoProvider ??= package.CargoProviderExternalId;
+                cargoTrackingNumber ??= package.CargoTrackingNumber;
+            }
+        }
+
+        var order = orderId is { } localOrderId
+            ? await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == job.TenantId && x.Id == localOrderId, cancellationToken)
+            : !string.IsNullOrWhiteSpace(externalOrderId)
+                ? await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == job.TenantId && (job.ConnectionId == null || x.ConnectionId == job.ConnectionId) && x.ExternalOrderId == externalOrderId, cancellationToken)
+                : null;
+        if (order is null) return null;
+
+        var lineCount = await db.OrderLines.AsNoTracking().CountAsync(x => x.TenantId == job.TenantId && x.OrderId == order.Id, cancellationToken);
+        return new JobOrderContextView(order.Id, order.OrderNumber, order.ExternalOrderId, order.DerivedStatus, order.Currency, order.NetAmount, order.OrderedAt, externalPackageId, cargoProvider, cargoTrackingNumber, CustomerName(order.CustomerSnapshotJson), lineCount);
+    }
+
+    private static Guid? GuidValue(System.Text.Json.JsonElement root, string name) =>
+        Property(root, name) is { } value && value.ValueKind == System.Text.Json.JsonValueKind.String && Guid.TryParse(value.GetString(), out var result)
+            ? result
+            : null;
+
+    private static string? StringValue(System.Text.Json.JsonElement root, string name) =>
+        Property(root, name) is { } value && value.ValueKind == System.Text.Json.JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static System.Text.Json.JsonElement? Property(System.Text.Json.JsonElement root, string name)
+    {
+        foreach (var property in root.EnumerateObject())
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) return property.Value;
+        return null;
+    }
+
+    private static string? CustomerName(string snapshot)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(snapshot);
+            foreach (var name in new[] { "name", "fullName", "customerName", "firstName" })
+                if (Property(document.RootElement, name) is { } value && value.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()))
+                    return value.GetString();
+        }
+        catch (System.Text.Json.JsonException) { }
+        return null;
     }
 
     private async Task<Dictionary<Guid, FailureTime>> FailureTimes(IReadOnlyCollection<IntegrationJob> jobs, CancellationToken cancellationToken)
