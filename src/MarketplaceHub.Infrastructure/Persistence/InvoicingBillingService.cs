@@ -104,6 +104,7 @@ public sealed partial class InvoicingBillingService(
             if (!orders.TryGetValue(package.OrderId, out var order)) return null;
             var orderLines = linesByOrder.GetValueOrDefault(order.Id) ?? [];
             var invoice = invoices.FirstOrDefault(x => x.PackageId == package.Id) ?? invoices.FirstOrDefault(x => x.PackageId == null && x.OrderId == order.Id);
+            if (invoice is null && package.Status is (ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Returned)) return null;
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
             var dueAt = deliveredAt?.AddDays(7);
             var dueSoon = invoice is null && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);

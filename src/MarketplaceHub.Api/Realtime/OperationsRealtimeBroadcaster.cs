@@ -43,9 +43,12 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
     private static string Resource(string jobType) => jobType switch
     {
         var value when value.Contains("ORDER", StringComparison.Ordinal) => "orders",
+        var value when value.Contains("WEBHOOK", StringComparison.Ordinal) => "orders",
         var value when value.Contains("RETURN", StringComparison.Ordinal) => "returns",
         var value when value.Contains("INVENTORY", StringComparison.Ordinal) || value.Contains("STOCK", StringComparison.Ordinal) => "inventory",
         var value when value.Contains("PRODUCT", StringComparison.Ordinal) => "products",
+        var value when value.Contains("INVOICE", StringComparison.Ordinal) || value.Contains("EFATURAM", StringComparison.Ordinal) || value.Contains("BILLING", StringComparison.Ordinal) => "invoices",
+        var value when value.Contains("CONNECTION", StringComparison.Ordinal) || value.Contains("PROBE", StringComparison.Ordinal) => "connections",
         _ => "jobs"
     };
 }

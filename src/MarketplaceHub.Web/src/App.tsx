@@ -74,12 +74,13 @@ function useOperationsRealtime(enabled: boolean) {
       .build()
     connection.on('operationsChanged', ({ resources }: { resources?: string[] }) => {
       const queryKeysByResource: Record<string, string[][]> = {
-        orders: [['orders'], ['dashboard-orders']],
+        orders: [['orders'], ['dashboard-orders'], ['dashboard-invoice-workspace']],
         returns: [['returns'], ['dashboard-returns']],
         products: [['products'], ['dashboard-products']],
         inventory: [['inventory'], ['dashboard-products']],
         invoices: [['invoices'], ['dashboard-invoice-workspace']],
-        connections: [['connections'], ['dashboard-connections']]
+        connections: [['connections'], ['dashboard-connections']],
+        jobs: [['jobs'], ['dashboard-jobs']]
       }
       for (const resource of resources ?? []) {
         for (const queryKey of queryKeysByResource[resource.toLowerCase()] ?? []) void client.invalidateQueries({ queryKey })
@@ -190,6 +191,18 @@ type DashboardProduct = { id: string; title: string; totalStock: number; primary
 type DashboardJob = { jobType: string; status: string; createdAt: string; completedAt: string | null }
 type DashboardRevenueRange = '1' | '3' | '7' | '14' | '30' | 'month' | 'custom'
 
+function dashboardDateKey(value: Date) {
+  if (Number.isNaN(value.getTime())) return ''
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
+}
+
+function dashboardDateInputValue(value = new Date()) { return dashboardDateKey(value) }
+function dashboardRevenueAmount(item: DashboardOrder) {
+  const status = item.derivedStatus.toUpperCase()
+  return status === 'CANCELLED' || status === 'CANCELED' || status === 'RETURNED' ? 0 : item.netAmount || item.grossAmount || 0
+}
+
 function DashboardMetricIcon({ kind }: { kind: string }) {
   const icons: Record<string, ReactNode> = {
     pending: <><path d="M4 6h16v12H4z"/><path d="M8 4v4M16 4v4M7 11h4M7 15h7"/></>,
@@ -217,13 +230,13 @@ function dashboardSyncTime(job: DashboardJob | undefined) {
 }
 
 function dashboardMoney(amount: number, currency = 'TRY') {
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: currency || 'TRY', maximumFractionDigits: 0 }).format(amount)
+  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: currency || 'TRY', maximumFractionDigits: 2 }).format(amount)
 }
 
 function Dashboard({ me }: { me: Me }) {
   const [revenueRange, setRevenueRange] = useState<DashboardRevenueRange>('1')
-  const [revenueFrom, setRevenueFrom] = useState(() => new Date().toISOString().slice(0, 10))
-  const [revenueTo, setRevenueTo] = useState(() => new Date().toISOString().slice(0, 10))
+  const [revenueFrom, setRevenueFrom] = useState(() => dashboardDateInputValue())
+  const [revenueTo, setRevenueTo] = useState(() => dashboardDateInputValue())
   const [revenuePlatform, setRevenuePlatform] = useState('ALL')
   const dashboardRefreshOptions = { refetchInterval: 60_000, refetchOnWindowFocus: true } as const
   const connections = useQuery({ queryKey: ['dashboard-connections'], queryFn: () => loadAllPages<ShellConnection>('/connections'), ...dashboardRefreshOptions })
@@ -239,7 +252,7 @@ function Dashboard({ me }: { me: Me }) {
   const late = pending.filter(item => item.shipmentDueAt && new Date(item.shipmentDueAt) < now)
   const today = orderItems.filter(item => { const value = new Date(item.orderedAt); return value.getFullYear() === now.getFullYear() && value.getMonth() === now.getMonth() && value.getDate() === now.getDate() })
   const month = orderItems.filter(item => { const value = new Date(item.orderedAt); return value.getFullYear() === now.getFullYear() && value.getMonth() === now.getMonth() })
-  const pendingReturns = (returns.data?.items ?? []).filter(item => ['REQUESTED', 'AWAITING_SHIPMENT', 'IN_TRANSIT', 'ACTION_REQUIRED', 'DISPUTED'].includes(item.status)).length
+  const pendingReturns = (returns.data?.items ?? []).filter(item => ['REQUESTED', 'AWAITING_SHIPMENT', 'IN_TRANSIT', 'ACTION_REQUIRED', 'DISPUTED'].includes(item.status.toUpperCase())).length
   const uninvoiced = (invoices.data ?? []).filter(item => !item.invoiceId && item.canCreateInvoice).length
   const dueSoon = (invoices.data ?? []).filter(item => !item.invoiceId && item.isDueSoon).length
   const lowStock = productItems.filter(item => item.totalStock <= 5)
@@ -258,13 +271,13 @@ function Dashboard({ me }: { me: Me }) {
       : (() => { const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - (Number(revenueRange) - 1)); return date })()
   const revenueEnd = revenueRange === 'custom' ? customEnd : now
   const revenueDays = Math.max(1, Math.floor((revenueEnd.getTime() - revenueStart.getTime()) / 86_400_000) + 1)
-  const revenueOrders = orderItems.filter(item => { const orderedAt = new Date(item.orderedAt); return orderedAt >= revenueStart && orderedAt <= revenueEnd && (revenuePlatform === 'ALL' || (item.platformDisplayName || 'Belirtilmemiş') === revenuePlatform) })
+  const revenueOrders = orderItems.filter(item => { const orderedAt = new Date(item.orderedAt); return dashboardRevenueAmount(item) > 0 && orderedAt >= revenueStart && orderedAt <= revenueEnd && (revenuePlatform === 'ALL' || (item.platformDisplayName || 'Belirtilmemiş') === revenuePlatform) })
   const revenueSeries = Array.from({ length: revenueDays }, (_, index) => {
     const date = new Date(revenueStart)
     date.setDate(revenueStart.getDate() + index)
-    const key = date.toISOString().slice(0, 10)
-    const amount = revenueOrders.filter(item => new Date(item.orderedAt).toISOString().slice(0, 10) === key).reduce((sum, item) => sum + (item.grossAmount || item.netAmount || 0), 0)
-    return { key, amount, label: date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }), currency: revenueOrders.find(item => new Date(item.orderedAt).toISOString().slice(0, 10) === key)?.currency || 'TRY' }
+    const key = dashboardDateKey(date)
+    const amount = revenueOrders.filter(item => dashboardDateKey(new Date(item.orderedAt)) === key).reduce((sum, item) => sum + dashboardRevenueAmount(item), 0)
+    return { key, amount, label: date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }), currency: revenueOrders.find(item => dashboardDateKey(new Date(item.orderedAt)) === key)?.currency || 'TRY' }
   })
   const maxRevenue = Math.max(1, ...revenueSeries.map(item => item.amount))
   const revenueTotal = revenueSeries.reduce((sum, item) => sum + item.amount, 0)
@@ -273,7 +286,7 @@ function Dashboard({ me }: { me: Me }) {
   const syncConnection = activeConnections[0] ?? connectionItems[0]
   const latestSuccessfulJob = (terms: string[]) => (jobs.data ?? []).filter(job => job.status === 'SUCCEEDED' && terms.some(term => job.jobType.toUpperCase().includes(term))).sort((a, b) => new Date(b.completedAt ?? b.createdAt).getTime() - new Date(a.completedAt ?? a.createdAt).getTime())[0]
   const syncDefinitions = [
-    { label: 'Siparişler', kind: 'orders', terms: ['ORDER', 'SHIPMENT', 'PACKAGE'], required: true },
+    { label: 'Siparişler', kind: 'orders', terms: ['ORDER', 'SHIPMENT', 'PACKAGE', 'WEBHOOK'], required: true },
     { label: 'İadeler', kind: 'returns', terms: ['RETURN', 'CLAIM'], required: true },
     { label: 'Stok', kind: 'stock', terms: ['INVENTORY', 'STOCK', 'PRICE'], required: true },
     { label: 'Ürünler', kind: 'products', terms: ['PRODUCT', 'CATALOG', 'PUBLICATION'], required: false },
