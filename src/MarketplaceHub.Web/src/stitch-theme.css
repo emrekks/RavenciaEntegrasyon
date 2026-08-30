@@ -9469,9 +9469,9 @@ body:has(.product-add-page),
     width: 74px !important;
     height: 100vh !important;
     min-height: 100vh !important;
-    padding: 22px 14px 18px !important;
+    padding: 22px 10px 18px !important;
     overflow: hidden auto !important;
-    transition: width .18s ease, padding .18s ease, box-shadow .18s ease !important;
+    transition: width .18s ease, box-shadow .18s ease !important;
   }
 
   .app-shell.stitch-shell > main {
@@ -9485,14 +9485,15 @@ body:has(.product-add-page),
 
   .app-shell.stitch-shell.sidebar-hover-expanded > aside {
     width: 272px !important;
-    padding-inline: 16px !important;
+    padding-inline: 10px !important;
     box-shadow: 22px 0 38px rgba(2, 5, 14, .34) !important;
   }
 
   .app-shell.stitch-shell.sidebar-hover-expanded > aside nav a .nav-icon,
   .app-shell.stitch-shell.sidebar-hover-expanded > aside .settings-nav > a .nav-icon,
   .app-shell.stitch-shell.sidebar-hover-expanded > aside .logout-link .nav-icon {
-    left: 8px;
+    left: 14px;
+    transform: none;
   }
 
   .app-shell.stitch-shell > aside nav a,
@@ -9509,7 +9510,7 @@ body:has(.product-add-page),
   .app-shell.stitch-shell > aside .settings-nav > a .nav-icon,
   .app-shell.stitch-shell > aside .logout-link .nav-icon {
     position: absolute;
-    left: 10px;
+    left: 14px;
     width: 24px !important;
     height: 24px !important;
     flex: 0 0 24px !important;
@@ -9557,8 +9558,8 @@ body:has(.product-add-page),
   .app-shell.stitch-shell.sidebar-collapsed > aside nav a .nav-icon,
   .app-shell.stitch-shell.sidebar-collapsed > aside .settings-nav > a .nav-icon,
   .app-shell.stitch-shell.sidebar-collapsed > aside .logout-link .nav-icon {
-    left: 50%;
-    transform: translateX(-50%);
+    left: 14px;
+    transform: none;
   }
 
   .app-shell.stitch-shell > aside .sidebar-brand-row {
@@ -9613,6 +9614,18 @@ body:has(.product-add-page),
 
   .app-shell.stitch-shell.sidebar-hover-expanded {
     grid-template-columns: 84px minmax(0, 1fr) !important;
+  }
+
+  .app-shell.stitch-shell > aside nav a .nav-icon,
+  .app-shell.stitch-shell > aside .settings-nav > a .nav-icon,
+  .app-shell.stitch-shell > aside .logout-link .nav-icon,
+  .app-shell.stitch-shell.sidebar-collapsed > aside nav a .nav-icon,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .settings-nav > a .nav-icon,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .logout-link .nav-icon,
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside nav a .nav-icon,
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside .settings-nav > a .nav-icon,
+  .app-shell.stitch-shell.sidebar-hover-expanded > aside .logout-link .nav-icon {
+    left: 20px;
   }
 }
 
