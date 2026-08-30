@@ -9391,7 +9391,7 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .orders-page .order-reference-head > .order-column-filter .order-column-filter-trigger {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
   width: 100%;
   min-height: 27px;
