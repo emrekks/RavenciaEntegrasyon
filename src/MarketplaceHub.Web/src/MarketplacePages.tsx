@@ -841,8 +841,7 @@ export function ReturnDetailPage() {
   </section>
 }
 
-export function MappingPage({ kind }: { kind: 'categories' | 'attributes' }) {
-  if (kind === 'attributes') return <LegacyMappingPage kind="attributes" />
+export function MappingPage() {
   return new URLSearchParams(window.location.search).get('view') === 'brands' ? <BrandMappingPage /> : <CategoryMappingWorkspace />
 }
 
@@ -915,127 +914,12 @@ function CategoryMappingWorkspace() {
   </section>
 }
 
-function LegacyMappingPage({ kind }: { kind: 'categories' | 'attributes' }) {
-  const client = useQueryClient(); const [platform, setPlatform] = useState('TRENDYOL'); const [connectionId, setConnectionId] = useState(''); const [localId, setLocalId] = useState(''); const [externalId, setExternalId] = useState(''); const [notice, setNotice] = useState(''); const [localSearch, setLocalSearch] = useState(''); const [externalSearch, setExternalSearch] = useState('')
-  const connections = useQuery({ queryKey: ['connections', 'mapping'], queryFn: () => loadAllPages<Connection>('/connections') })
-  const localCategories = useQuery({ queryKey: ['categories', 'mapping'], queryFn: () => loadAllPages<LocalCategory>('/catalog/categories'), enabled: kind === 'categories' })
-  const currentCategory = useQuery({ queryKey: ['category', localId, 'mapping'], queryFn: () => hubApi<LocalCategory>(`/catalog/categories/${localId}`), enabled: !!localId })
-  const localAttributes = useQuery({ queryKey: ['attributes', 'mapping-builder'], queryFn: () => loadAllPages<LocalAttribute>('/catalog/attributes') })
-  const requirements = useQuery({ queryKey: ['category-requirements', localId, 'mapping'], queryFn: () => hubApi<CategoryRequirementView[]>(`/catalog/categories/${localId}/attribute-requirements`), enabled: !!localId, retry: false })
-  const references = useQuery({ queryKey: ['reference-categories', connectionId], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories?connectionId=${encodeURIComponent(connectionId)}`), enabled: kind === 'categories' && !!connectionId && platform === 'TRENDYOL', retry: false })
-  const mapping = useQuery({ queryKey: ['category-mapping', localId, connectionId], queryFn: () => hubApi<CatalogMapping | null>(`/mappings/categories/${localId}?connectionId=${encodeURIComponent(connectionId)}`), enabled: kind === 'categories' && !!localId && !!connectionId && platform === 'TRENDYOL', retry: false })
-  const save = useMutation({ mutationFn: () => {
-    if (!references.data || !localId || !externalId) throw new Error('Bağlantı, panel kategorisi ve Trendyol kategorisi zorunludur.')
-    return hubApi<CatalogMapping>(`/mappings/categories/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, externalId, status: 'VERIFIED' }) })
-  }, onSuccess: async value => { setNotice('Kategori eşlemesi doğrulandı ve kaydedildi.'); setExternalId(value.externalId); await client.invalidateQueries({ queryKey: ['category-mapping', localId, connectionId] }) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Eşleme kaydedilemedi.') })
-  useEffect(() => { if (mapping.data) setExternalId(mapping.data.externalId) }, [mapping.data])
-  const trendyolConnections = connections.data?.items.filter(item => item.platformCode === 'TRENDYOL' && (item.status === 'ACTIVE' || item.status === 'VERIFIED')) ?? []
-  const localLeaves = localCategories.data?.items.filter(item => item.isActive && item.isLeaf) ?? []
-  const externalLeaves = references.data?.items.filter(item => item.isActive && item.isLeaf) ?? []
-  const filteredLocalLeaves = localLeaves.filter(item => !localSearch.trim() || item.path.toLocaleLowerCase('tr-TR').includes(localSearch.trim().toLocaleLowerCase('tr-TR')))
-  const filteredExternalLeaves = externalLeaves.filter(item => !externalSearch.trim() || cleanTrendyolCategoryPath(item.path).toLocaleLowerCase('tr-TR').includes(externalSearch.trim().toLocaleLowerCase('tr-TR')))
-
-  if (kind === 'categories' && new URLSearchParams(window.location.search).get('view') === 'brands') return <BrandMappingPage />
-  if (kind === 'attributes') return <AttributeMappingPage />
-
-  return <section className="content f3 mapping-page"><div className="page-heading"><div><p className="eyebrow">Merkezi katalog sistemi</p><h1>Kategori &amp; özellik eşlemeleri</h1><p className="lede">Panel kategorisini seçili pazaryerinin kategorisiyle eşleştirin; ardından kategori özellik başlıkları ve değer eşleştirmelerini aynı akışta tamamlayın.</p></div><Badge value="SAFE READ" /></div>{notice && <div role="status" className="notice">{notice}</div>}
-    <article className="panel mapping-step"><div className="editor-section-title"><span>1</span><div><h2>Panel kategorisini pazaryeri ile eşle</h2><p>Her pazaryeri için ayrı kategori eşleşmesi yapabilirsiniz.</p></div></div><div className="platform-choice"><strong>Pazaryeri:</strong>{['TRENDYOL', 'HEPSIBURADA', 'PAZARAMA', 'N11', 'SHOPIFY'].map(code => <button type="button" key={code} className={platform === code ? 'active' : ''} onClick={() => { setPlatform(code); setNotice('') }}>{code === 'TRENDYOL' ? 'Trendyol' : code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'PAZARAMA' ? 'Pazarama' : code}</button>)}</div>{platform !== 'TRENDYOL' ? <div className="unknown"><strong>Bu tasarım hazır</strong><p>Aktif fonksiyonel eşleme bu sürümde Trendyol için çalışır; diğer platform sekmeleri arayüz uyumunu korumak için gösterilir.</p></div> : <><div className="mapping-fields"><label>Aktif Trendyol bağlantısı<select aria-label="Aktif Trendyol bağlantısı" value={connectionId} onChange={event => { setConnectionId(event.target.value); setLocalId(''); setExternalId(''); setNotice('') }}><option value="">Bağlantı seçin</option>{trendyolConnections.map(item => <option value={item.id} key={item.id}>{item.displayName} · {item.externalStoreId}</option>)}</select></label><label>Panel yaprak kategorisi<input aria-label="Panel kategorilerinde ara" value={localSearch} onChange={event => setLocalSearch(event.target.value)} placeholder="Panel kategorilerinde ara" disabled={!connectionId} /><select aria-label="Panel yaprak kategorisi" value={localId} onChange={event => { setLocalId(event.target.value); setExternalId(''); setNotice('') }} disabled={!connectionId}><option value="">Kategori seçin</option>{filteredLocalLeaves.map(item => <option value={item.id} key={item.id}>{item.path}</option>)}</select></label><label>Trendyol yaprak kategorisi<input aria-label="Trendyol kategorilerinde ara" value={externalSearch} onChange={event => setExternalSearch(event.target.value)} placeholder="Trendyol kategorilerinde ara" disabled={!localId} /><select aria-label="Trendyol yaprak kategorisi" value={externalId} onChange={event => setExternalId(event.target.value)} disabled={!localId || references.isLoading || references.isError}><option value="">Kategori seçin</option>{filteredExternalLeaves.map(item => <option value={item.externalId} key={item.externalId}>{cleanTrendyolCategoryPath(item.path)}</option>)}</select></label></div>{connections.isError || localCategories.isError ? <ErrorBox error={connections.error ?? localCategories.error} /> : !trendyolConnections.length && !connections.isLoading ? <div className="mapping-action"><span>REFERENCE_READ kanıtlı ACTIVE Trendyol bağlantısı gerekir.</span><Link className="button-link" to="/integrations">Platformlara git</Link></div> : references.isError ? <div className="unknown"><strong>Güncel kategori snapshot’ı yok</strong><p>Bağlantı ekranından “Kategorileri eşitle” işlemini çalıştırın.</p><Link className="button-link" to={`/integrations/${connectionId}`}>Bağlantıya git</Link></div> : references.isLoading ? <Busy text="Kategori snapshot’ı yükleniyor…" /> : connectionId && references.data ? <div className="mapping-action"><span>{externalLeaves.length.toLocaleString('tr-TR')} yaprak kategori · snapshot {new Date(references.data.fetchedAt).toLocaleString('tr-TR')}{mapping.data ? ` · mevcut eşleme v${mapping.data.version}` : ''}</span><button type="button" disabled={!localId || !externalId || save.isPending || mapping.isLoading} onClick={() => save.mutate()}>{save.isPending ? 'Kaydediliyor…' : mapping.data ? 'Eşlemeyi güncelle' : 'Eşlemeyi doğrula ve kaydet'}</button></div> : null}</>}</article>
-
-    <CategoryRequirementBuilder categoryId={localId} categoryVersion={currentCategory.data?.version ?? null} attributes={localAttributes.data?.items.filter(item => item.isActive) ?? []} requirements={requirements.data ?? []} onNotice={setNotice} onSaved={async () => { await client.invalidateQueries({ queryKey: ['category-requirements', localId, 'mapping'] }); await client.invalidateQueries({ queryKey: ['category', localId, 'mapping'] }); await client.invalidateQueries({ queryKey: ['attributes', 'mapping-builder'] }) }} />
-
-    <CategoryAttributeWorkspace connectionId={connectionId} localCategoryId={localId} localCategories={localLeaves} localAttributes={localAttributes.data?.items.filter(item => item.isActive) ?? []} onNotice={setNotice} />
-  </section>
-}
-
 function slug(value: string) { return value.toLocaleLowerCase('tr-TR').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `attr-${Date.now()}` }
 function attributeCodeForRole(title: string, role: 'ATTRIBUTE' | 'OPTION') { return `${role === 'OPTION' ? 'option-' : 'attribute-'}${slug(title)}` }
 function isOptionAttribute(attribute: Pick<LocalAttribute, 'code' | 'roles'>) { return attribute.code.trim().toLowerCase().startsWith('option-') || attribute.roles?.some(role => role.toUpperCase() === 'OPTION') === true }
 
 function cleanTrendyolCategoryPath(value: string) {
   return value.replace(/\[TDG\]\s*/gi, '').replace(/\(\s*TDG\s*\)\s*/gi, '').replace(/\s*\/\s*/g, ' / ').trim()
-}
-
-function CategoryRequirementBuilder({ categoryId, categoryVersion, attributes, requirements, onNotice, onSaved }: { categoryId: string; categoryVersion: number | null; attributes: LocalAttribute[]; requirements: CategoryRequirementView[]; onNotice: (value: string) => void; onSaved: () => Promise<void> }) {
-  const client = useQueryClient()
-  type RequirementRole = 'ATTRIBUTE' | 'OPTION'
-  const [activeRole, setActiveRole] = useState<RequirementRole>('ATTRIBUTE')
-  const [selectedAttributeIds, setSelectedAttributeIds] = useState<Record<RequirementRole, string>>({ ATTRIBUTE: '', OPTION: '' })
-  const [titles, setTitles] = useState<Record<RequirementRole, string>>({ ATTRIBUTE: '', OPTION: '' })
-  const [valueInputs, setValueInputs] = useState<Record<RequirementRole, string>>({ ATTRIBUTE: '', OPTION: '' })
-  const [feedback, setFeedback] = useState(''); const [removingRequirementId, setRemovingRequirementId] = useState('')
-  function updateAttributeCache(attribute: LocalAttribute) {
-    client.setQueryData<Page<LocalAttribute>>(['attributes', 'mapping-builder'], current => current ? { ...current, items: [...current.items.filter(item => item.id !== attribute.id), attribute] } : current)
-  }
-  async function persist(next: Array<{ attributeId: string; isRequired: boolean; allowsCustomValue: boolean; role: 'ATTRIBUTE' | 'OPTION' }>) {
-    if (!categoryId || categoryVersion == null) return onNotice('Önce panel kategorisini seçin.')
-    await hubApi(`/catalog/categories/${categoryId}/attribute-requirements`, { method: 'PUT', headers: { 'If-Match': `"v${categoryVersion}"` }, body: JSON.stringify(next.map((item, index) => ({ ...item, displayOrder: index }))) })
-    await onSaved()
-  }
-  const current = requirements.map(item => ({ attributeId: item.attributeId, isRequired: item.isRequired, allowsCustomValue: item.allowsCustomValue, role: item.role }))
-  const visibleRequirements = categoryId ? requirements : attributes.map(attribute => ({ attributeId: attribute.id, isRequired: false, allowsCustomValue: !attribute.values.length, displayOrder: 0, role: isOptionAttribute(attribute) ? 'OPTION' as const : 'ATTRIBUTE' as const, attribute }))
-  async function changeRole(item: CategoryRequirementView, role: RequirementRole) {
-    try {
-      if (role === 'OPTION' && item.role !== 'OPTION' && current.filter(entry => entry.role === 'OPTION').length >= 2) return setFeedback('En fazla iki seçenek başlığı kullanabilirsiniz.')
-      await persist(current.map(currentItem => currentItem.attributeId === item.attributeId ? { ...currentItem, role } : currentItem))
-      setSelectedAttributeIds(value => ({ ...value, [item.role]: '', [role]: item.attributeId }))
-      setFeedback(`${item.attribute.name} ${role === 'OPTION' ? 'Seçenekler' : 'Ürün özellikleri'} adımına taşındı.`)
-    } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Rol kaydedilemedi.') }
-  }
-  async function addAttribute(mode: 'create' | 'values', role: RequirementRole) {
-    try {
-      const selectedAttributeId = selectedAttributeIds[role]
-      const values = valueInputs[role]
-      const title = titles[role]
-      if (mode === 'values') {
-        if (!selectedAttributeId) return setFeedback('Önce değer eklemek istediğiniz özellik kartını seçin.')
-        const requestedValues = values.split(',').map(item => item.trim()).filter(Boolean)
-        if (!requestedValues.length) return setFeedback('Eklenecek seçenek değerlerini virgülle girin.')
-        const updatedAttribute = await hubApi<LocalAttribute>(`/catalog/attributes/${selectedAttributeId}/values`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify(requestedValues.map((value, sortOrder) => ({ value, sortOrder }))) })
-        updateAttributeCache(updatedAttribute)
-        setValueInputs(currentValue => ({ ...currentValue, [role]: '' })); setFeedback('Yeni değerler eklendi.'); await onSaved(); return
-      }
-      if (!title.trim()) return onNotice('Yeni özellik başlığı girin.')
-      if (role === 'OPTION' && current.filter(item => item.role === 'OPTION').length >= 2) return setFeedback('En fazla iki seçenek başlığı kullanabilirsiniz.')
-      let createdAttribute: LocalAttribute | null = null
-      {
-        const selectableValues = values.split(',').map(item => item.trim()).filter(Boolean)
-        const payload = { code: attributeCodeForRole(title, role), name: title.trim(), dataType: selectableValues.length ? 'SINGLE_SELECT' : 'TEXT', selectionMode: selectableValues.length ? 'SINGLE' : null, unit: null, values: selectableValues.map((value, index) => ({ value, sortOrder: index })) }
-        createdAttribute = await hubApi<LocalAttribute>('/catalog/attributes', { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify(payload) })
-      }
-      updateAttributeCache(createdAttribute)
-      if (categoryId) await persist([...current, { attributeId: createdAttribute.id, isRequired: true, allowsCustomValue: !createdAttribute.values.length, role }])
-      setSelectedAttributeIds(currentValue => ({ ...currentValue, [role]: createdAttribute.id })); setTitles(currentValue => ({ ...currentValue, [role]: '' })); setValueInputs(currentValue => ({ ...currentValue, [role]: '' })); setFeedback(role === 'OPTION' ? 'Seçenek başlığı kaydedildi.' : 'Ürün özelliği başlığı kaydedildi.')
-    } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Özellik kaydedilemedi.') }
-  }
-  async function removeValue(attributeId: string, valueId: string) {
-    try {
-      const updatedAttribute = await hubApi<LocalAttribute>(`/catalog/attributes/${attributeId}/values/${valueId}`, { method: 'DELETE' })
-      updateAttributeCache(updatedAttribute)
-      setFeedback('Seçenek değeri kaldırıldı.'); await onSaved()
-    } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Seçenek değeri kaldırılamadı.') }
-  }
-  async function removeAttribute(item: CategoryRequirementView) {
-    try {
-      setRemovingRequirementId(item.attributeId)
-      if (!categoryId || categoryVersion == null) return onNotice('Önce panel kategorisini seçin.')
-      // This action removes the attribute from the selected category only.
-      // Deactivating the global definition would also remove it from every
-      // other category and from the shared attribute library.
-      await persist(current.filter(currentItem => currentItem.attributeId !== item.attributeId))
-      setSelectedAttributeIds(value => ({ ATTRIBUTE: value.ATTRIBUTE === item.attributeId ? '' : value.ATTRIBUTE, OPTION: value.OPTION === item.attributeId ? '' : value.OPTION }))
-      setFeedback(`${item.attribute.name} kategoriden kaldırıldı.`)
-    } catch (reason) { setFeedback(reason instanceof Error ? reason.message : 'Özellik başlığı kaldırılamadı.') }
-    finally { setRemovingRequirementId('') }
-  }
-  function renderStep(role: RequirementRole, step: number) {
-    const isOption = role === 'OPTION'
-    const items = visibleRequirements.filter(item => item.role === role)
-    const selectedAttributeId = selectedAttributeIds[role]
-    const title = titles[role]
-    const values = valueInputs[role]
-    return <article className="panel mapping-step requirement-role-step"><div className="editor-section-title"><span>{step}</span><div><h2>{isOption ? 'Seçenekler' : 'Kategori Özellikleri'}</h2><p>{isOption ? 'Eşleşen platform seçeneğini panel seçeneğiyle bağlayın; ardından değerlerini eşleyin.' : 'Eşleşen platform alanını paneldeki kategori özelliğiyle bağlayın; ardından değerlerini eşleyin.'}</p></div></div><div className="mapping-fields attribute-entry-fields"><label>{isOption ? 'Yeni seçenek başlığı' : 'Yeni kategori özelliği başlığı'}<input value={title} onChange={event => setTitles(currentValue => ({ ...currentValue, [role]: event.target.value }))} placeholder={isOption ? 'Örn. Beden, Renk' : 'Örn. Kol Boyu, Materyal'} /></label><button type="button" disabled={isOption && items.length >= 2} onClick={() => void addAttribute('create', role)}>+ {isOption ? 'Seçenek' : 'Özellik'} ekle</button><label>Yeni değerler<input value={values} onChange={event => setValueInputs(currentValue => ({ ...currentValue, [role]: event.target.value }))} placeholder="Virgülle: Uzun kol, Kısa kol" /></label><button type="button" disabled={!selectedAttributeId || !values.trim()} onClick={() => void addAttribute('values', role)}>+ Seçili başlığa değer ekle</button></div><div className="attribute-builder-list">{items.length ? items.map(item => <article className={`attribute-summary-card selectable ${selectedAttributeId === item.attributeId ? 'selected' : ''}`} key={item.attributeId} role="button" tabIndex={0} aria-pressed={selectedAttributeId === item.attributeId} onClick={() => { setSelectedAttributeIds(value => ({ ...value, [role]: item.attributeId })); setTitles(value => ({ ...value, [role]: '' })); setFeedback('') }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedAttributeIds(value => ({ ...value, [role]: item.attributeId })); setTitles(value => ({ ...value, [role]: '' })); setFeedback('') } }}><div className="attribute-summary-title"><strong>{item.attribute.name}</strong><p>{item.attribute.values.length ? `${item.attribute.values.length} değer` : 'Serbest değer'} · {isOption ? 'Seçenek' : 'Ürün özelliği'}</p><button type="button" className="secondary role-transfer-button" onClick={event => { event.stopPropagation(); void changeRole(item, isOption ? 'ATTRIBUTE' : 'OPTION') }} disabled={!isOption && visibleRequirements.filter(entry => entry.role === 'OPTION').length >= 2}>{isOption ? 'Ürün özelliklerine taşı' : 'Seçeneklere taşı'}</button><button type="button" className="secondary" aria-label={`${item.attribute.name} başlığını kaldır`} disabled={removingRequirementId === item.attributeId} onClick={event => { event.stopPropagation(); void removeAttribute(item) }}>{removingRequirementId === item.attributeId ? 'Kaldırılıyor…' : 'Başlığı kaldır'}</button></div>{item.attribute.values.length > 0 && <CompactAttributeValues attributeId={item.attributeId} values={item.attribute.values} onRemove={removeValue} />}</article>) : <Empty>{isOption ? 'Henüz seçenek başlığı eklenmedi.' : 'Kategoriye ait ürün özelliği henüz eklenmedi.'}</Empty>}</div></article>
-  }
-  return <div className="compact-requirement-builder"><div className="compact-popup-tabs" role="tablist" aria-label="Başlık türü"><button type="button" role="tab" aria-selected={activeRole === 'ATTRIBUTE'} className={activeRole === 'ATTRIBUTE' ? 'active' : ''} onClick={() => setActiveRole('ATTRIBUTE')}>Kategori Özellikleri <small>{visibleRequirements.filter(item => item.role === 'ATTRIBUTE').length}</small></button><button type="button" role="tab" aria-selected={activeRole === 'OPTION'} className={activeRole === 'OPTION' ? 'active' : ''} onClick={() => setActiveRole('OPTION')}>Seçenekler <small>{visibleRequirements.filter(item => item.role === 'OPTION').length}/2</small></button></div>{feedback && <p className="attribute-feedback requirement-builder-feedback" role="status">{feedback}</p>}{renderStep(activeRole, activeRole === 'ATTRIBUTE' ? 1 : 2)}</div>
 }
 
 function PanelAttributeLibraryBuilder({ role, attributes, onNotice }: { role: 'ATTRIBUTE' | 'OPTION'; attributes: LocalAttribute[]; onNotice: (value: string) => void }) {
@@ -1327,31 +1211,6 @@ export function BrandMappingPage() {
     {connectionId && <article className="mapping-reference-card mapping-saved-card brand-mapping-saved-card"><header><h2>2. Kayıtlı Marka Eşleştirmeleri</h2><div><span className="mapping-record-count">{savedBrandMappings.length.toLocaleString('tr-TR')} kayıt</span></div></header><div className="mapping-saved-table"><table><thead><tr><th>Panel Markası</th><th>Platform</th><th>Trendyol Markası</th><th>Durum</th><th>İşlemler</th></tr></thead><tbody>{brandMappings.isLoading ? <tr><td colSpan={5}>Kayıtlı marka eşleştirmeleri yükleniyor…</td></tr> : brandMappings.isError ? <tr><td colSpan={5}>Kayıtlı marka eşleştirmeleri alınamadı.</td></tr> : savedBrandMappings.length ? savedBrandMappings.map(item => <tr key={item.id} className={editingBrandMappingId === item.id ? 'is-editing' : ''}><td>{localBrandById.get(item.localId)?.name ?? item.localId}</td><td><span className="trendyol-badge">Trendyol</span></td><td className="brand-mapping-inline-editor">{editingBrandMappingId === item.id ? <SearchableSelect label="" value={externalId} options={externalBrands.map(brand => ({ value: brand.externalId, label: brand.name, description: `Trendyol marka no: ${brand.externalId}` }))} placeholder="Trendyol markası ara" disabled={references.isLoading || references.isError} onChange={setExternalId} /> : externalBrandById.get(item.externalId)?.name ?? item.externalId}</td><td><span className={`mapping-table-status ${item.status === 'VERIFIED' || item.status === 'ACTIVE' ? 'active' : 'error'}`}><i />{item.status === 'VERIFIED' || item.status === 'ACTIVE' ? 'Aktif' : item.status}</span></td><td><div className="mapping-row-actions">{editingBrandMappingId === item.id ? <><button type="button" className="mapping-icon-button" aria-label="Marka eşleştirmesini kaydet" disabled={!externalId || save.isPending} onClick={() => save.mutate()}><span aria-hidden="true">✓</span></button><button type="button" className="mapping-icon-button" aria-label="Marka düzenlemeyi iptal et" onClick={() => { setEditingBrandMappingId(''); setExternalId(item.externalId) }}>×</button></> : <><button type="button" className="mapping-icon-button" aria-label="Marka eşleştirmesini düzenle" onClick={() => { setLocalId(item.localId); setExternalId(item.externalId); setEditingBrandMappingId(item.id); setBrandEditOpen(false); setNotice('') }}><span aria-hidden="true">✎</span></button><button type="button" aria-label="Eşleştirmeyi sil" disabled={removeMapping.isPending} onClick={() => { if (window.confirm('Bu marka eşleştirmesi kaldırılsın mı?')) removeMapping.mutate(item) }}>♜</button></>}</div></td></tr>) : <tr><td colSpan={5}>Henüz kaydedilmiş marka eşleştirmesi bulunmuyor.</td></tr>}</tbody></table></div><footer><span>Toplam {savedBrandMappings.length.toLocaleString('tr-TR')} eşleştirme</span></footer></article>}
     {brandEditOpen && <div className="brand-mapping-modal-backdrop" role="presentation" onMouseDown={() => setBrandEditOpen(false)}><section className="brand-mapping-modal" role="dialog" aria-modal="true" aria-labelledby="brand-mapping-edit-title" onMouseDown={event => event.stopPropagation()}><header><div><small>Marka eşleme</small><h2 id="brand-mapping-edit-title">Marka eşleştirmesini düzenle</h2><p>Panel markası için Trendyol karşılığını güncelleyin.</p></div><button type="button" className="modal-close" aria-label="Marka eşleme penceresini kapat" onClick={() => setBrandEditOpen(false)}>×</button></header><div className="brand-mapping-modal-body"><div className="brand-mapping-selected-local"><small>Panel markası</small><strong>{localBrandById.get(localId)?.name ?? localId}</strong></div><SearchableSelect label="Trendyol markası" value={externalId} options={externalBrands.map(item => ({ value: item.externalId, label: item.name, description: `Trendyol marka no: ${item.externalId}` }))} placeholder={references.isLoading ? 'Markalar yükleniyor…' : 'Marka adı veya marka no ara'} disabled={references.isLoading || references.isError} onChange={setExternalId} /></div><footer><button type="button" className="secondary" onClick={() => setBrandEditOpen(false)}>Vazgeç</button><button type="button" disabled={!localId || !externalId || save.isPending || mapping.isLoading} onClick={() => save.mutate()}>{save.isPending ? 'Kaydediliyor…' : 'Değişikliği kaydet'}</button></footer></section></div>}
   </section>
-}
-
-function LegacyBrandMappingPage() {
-  const client = useQueryClient(); const [connectionId, setConnectionId] = useState(''); const [localId, setLocalId] = useState(''); const [externalId, setExternalId] = useState(''); const [notice, setNotice] = useState('')
-  const connections = useQuery({ queryKey: ['connections', 'brand-mapping'], queryFn: () => loadAllPages<Connection>('/connections') })
-  const localBrands = useQuery({ queryKey: ['brands', 'mapping'], queryFn: () => loadAllPages<LocalBrand>('/catalog/brands') })
-  const references = useQuery({ queryKey: ['reference-brands', connectionId], queryFn: () => hubApi<ReferenceData>(`/reference-data/brands?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!connectionId, retry: false })
-  const mapping = useQuery({ queryKey: ['brand-mapping', localId, connectionId], queryFn: () => hubApi<CatalogMapping | null>(`/mappings/brands/${localId}?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!localId && !!connectionId, retry: false })
-  const save = useMutation({ mutationFn: () => {
-    if (!references.data || !localId || !externalId) throw new Error('Bağlantı, panel markası ve Trendyol markası zorunludur.')
-    return hubApi<CatalogMapping>(`/mappings/brands/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, externalId, status: 'VERIFIED' }) })
-  }, onSuccess: async value => { setNotice('Marka eşlemesi doğrulandı ve kaydedildi.'); setExternalId(value.externalId); await client.invalidateQueries({ queryKey: ['brand-mapping', localId, connectionId] }) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Eşleme kaydedilemedi.') })
-  useEffect(() => { setExternalId(mapping.data?.externalId ?? '') }, [mapping.data])
-  const trendyolConnections = connections.data?.items.filter(item => item.platformCode === 'TRENDYOL' && (item.status === 'ACTIVE' || item.status === 'VERIFIED')) ?? []
-  const activeLocalBrands = localBrands.data?.items.filter(item => item.isActive) ?? []
-  const externalBrands = references.data?.items.filter(item => item.isActive) ?? []
-
-  return <section className="content f3 mapping-page"><div className="page-heading"><div><p className="eyebrow">Eşleştirme ayarları</p><h1>Marka eşlemeleri</h1><p className="lede">Yerel markayı doğrulanmış Trendyol marka snapshot’ındaki kimlikle eşleştirin.</p></div><Badge value="SAFE READ" /></div>{notice && <div role="status" className="notice">{notice}</div>}
-    <div className="button-row"><Link className="button-link secondary" to="/mappings/categories">Kategoriler</Link><Link className="button-link" to="/mappings/categories?view=brands">Markalar</Link><Link className="button-link secondary" to="/mappings/attributes">Özellikler</Link></div>
-    <article className="panel mapping-step"><div className="editor-section-title"><span>1</span><div><h2>Trendyol marka eşlemesi</h2><p>Bu işlem yalnız yerel mapping kaydı oluşturur; Trendyol’a veri göndermez.</p></div></div>
-      <div className="mapping-fields"><label>Aktif Trendyol bağlantısı<select aria-label="Marka için aktif Trendyol bağlantısı" value={connectionId} onChange={event => { setConnectionId(event.target.value); setLocalId(''); setExternalId(''); setNotice('') }}><option value="">Bağlantı seçin</option>{trendyolConnections.map(item => <option value={item.id} key={item.id}>{item.displayName} · {item.externalStoreId}</option>)}</select></label>
-        <label>Panel markası<select aria-label="Panel markası" value={localId} onChange={event => { setLocalId(event.target.value); setExternalId(''); setNotice('') }} disabled={!connectionId}><option value="">Marka seçin</option>{activeLocalBrands.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
-        <label>Trendyol markası<select aria-label="Trendyol markası" value={externalId} onChange={event => setExternalId(event.target.value)} disabled={!localId || references.isLoading || references.isError}><option value="">Marka seçin</option>{externalBrands.map(item => <option value={item.externalId} key={item.externalId}>{item.name}</option>)}</select></label></div>
-      {connections.isError || localBrands.isError ? <ErrorBox error={connections.error ?? localBrands.error} /> : references.isError ? <div className="unknown"><strong>Güncel marka snapshot’ı yok</strong><p>Bağlantı ekranından “Markaları eşitle” işlemini çalıştırın.</p><Link className="button-link" to={`/integrations/${connectionId}`}>Bağlantıya git</Link></div> : references.isLoading ? <Busy text="Marka snapshot’ı yükleniyor…" /> : connectionId && references.data ? <div className="mapping-action"><span>{externalBrands.length.toLocaleString('tr-TR')} marka · snapshot {new Date(references.data.fetchedAt).toLocaleString('tr-TR')}{mapping.data ? ` · mevcut eşleme v${mapping.data.version}` : ''}</span><button type="button" disabled={!localId || !externalId || save.isPending || mapping.isLoading} onClick={() => save.mutate()}>{save.isPending ? 'Kaydediliyor…' : mapping.data ? 'Eşlemeyi güncelle' : 'Eşlemeyi doğrula ve kaydet'}</button></div> : null}
-    </article></section>
 }
 
 function ListPage({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children: React.ReactNode }) { return <section className="content f3"><div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p className="lede">{description}</p></div><Badge value="LIVE READ" /></div><div className="panel">{children}</div></section> }

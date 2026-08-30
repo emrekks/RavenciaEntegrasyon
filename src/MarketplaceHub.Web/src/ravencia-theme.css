@@ -705,18 +705,6 @@ html, body, #root {
 *::-webkit-scrollbar-track { background: #0b1018; }
 *::-webkit-scrollbar-thumb { background: #2d3749; border: 2px solid #0b1018; border-radius: 999px; }
 
-/* Authentication belongs to the same product, without the dense workspace chrome. */
-.rv-page { background: radial-gradient(circle at 50% 38%, rgba(113, 104, 245, .1), transparent 33%), #080b11; }
-.rv-login-card { background: rgba(17, 23, 34, .96); border-color: rgba(113, 104, 245, .38); box-shadow: 0 30px 80px rgba(0, 0, 0, .48); }
-.rv-lines path { stroke: rgba(57, 191, 209, .56); }
-.rv-lines circle { fill: var(--rv-primary); }
-.rv-brand-mark { background: linear-gradient(145deg, var(--rv-primary), var(--rv-primary-strong)); box-shadow: 0 10px 28px rgba(113, 104, 245, .2); }
-.rv-input-wrap { background: #0c121c; border-color: var(--rv-line-strong); }
-.rv-input-wrap:focus-within { border-color: var(--rv-primary); box-shadow: 0 0 0 3px rgba(113, 104, 245, .1); }
-.rv-page button.rv-submit { color: #fff; background: var(--rv-primary); box-shadow: 0 12px 24px rgba(113, 104, 245, .18); }
-.rv-page button.rv-submit:hover { background: var(--rv-primary-hover); box-shadow: 0 14px 30px rgba(113, 104, 245, .24); }
-.rv-page button.rv-eye:hover,
-.rv-page button.rv-forgot:hover { color: var(--rv-cyan); }
 .rv-splash-screen { color: var(--rv-ink); background: #080b11; }
 .rv-splash-loading-bar { background: #1b2230; }
 .rv-splash-loading-progress { background: linear-gradient(90deg, var(--rv-primary), var(--rv-cyan)); }

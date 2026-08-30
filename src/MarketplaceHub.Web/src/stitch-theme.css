@@ -1373,42 +1373,7 @@ textarea {
 .mapping-popup-content .mapping-section-tabs { padding: 4px; background: #161725; border: 1px solid #34366a; border-radius: 6px; }
 .mapping-popup-content .mapping-section-tabs > button { min-height: 36px !important; color: #aaaec9 !important; background: transparent !important; border: 1px solid transparent !important; border-radius: 4px !important; box-shadow: none !important; }
 .mapping-popup-content .mapping-section-tabs > button.active { color: #f1f1ff !important; background: #5b5ef0 !important; border-color: #777bff !important; box-shadow: 0 0 14px rgba(88, 101, 242, .22) !important; }
-.compact-requirement-builder { display: grid; gap: 12px; }
-.mapping-popup-content > .mapping-step,
-.compact-requirement-builder > .mapping-step { margin: 0 !important; padding: 16px !important; }
-.compact-requirement-builder .editor-section-title { gap: 10px; padding-bottom: 10px; }
-.compact-requirement-builder .editor-section-title > span { width: 25px; height: 25px; font-size: 11px; }
-.compact-requirement-builder .editor-section-title h2 { font-size: 15px !important; }
-.compact-requirement-builder .editor-section-title p { color: #9293a3; font-size: 10px; }
-.compact-requirement-builder .attribute-entry-fields { grid-template-columns: minmax(0, 1fr) auto; gap: 9px; }
-.compact-requirement-builder .attribute-entry-fields label { font-size: 10px; }
-.compact-requirement-builder .attribute-entry-fields input,
-.compact-requirement-builder .attribute-entry-fields button { min-height: 36px !important; }
-.compact-requirement-builder .attribute-builder-list {
-  grid-template-columns: 1fr !important;
-  gap: 6px !important;
-  max-height: 360px;
-  overflow-y: auto;
-  padding-right: 3px;
-}
-.mapping-advanced-tools .attribute-summary-card.selectable {
-  display: grid !important;
-  grid-template-columns: 1fr !important;
-  gap: 6px !important;
-  padding: 9px 11px !important;
-  border-radius: 4px !important;
-}
-.mapping-advanced-tools .attribute-summary-title {
-  display: grid !important;
-  grid-template-columns: minmax(140px, 1fr) auto auto !important;
-  align-items: center;
-  gap: 4px 7px !important;
-}
-.mapping-advanced-tools .attribute-summary-title > strong { grid-column: 1; font-size: 12px; }
-.mapping-advanced-tools .attribute-summary-title > p { grid-column: 1 !important; font-size: 9px; }
-.mapping-advanced-tools .attribute-summary-title > .role-transfer-button { grid-column: 2 !important; grid-row: 1 / 3; }
-.mapping-advanced-tools .attribute-summary-title > button:last-child { grid-column: 3 !important; grid-row: 1 / 3; }
-.mapping-advanced-tools .attribute-summary-title button { min-height: 30px !important; padding: 5px 9px !important; font-size: 9px !important; }
+.mapping-popup-content > .mapping-step { margin: 0 !important; padding: 16px !important; }
 .mapping-advanced-tools .embedded-attribute-grid { grid-template-columns: 1fr !important; gap: 7px; }
 .mapping-advanced-tools .attribute-mapping-card { padding: 11px !important; border-radius: 5px !important; }
 .mapping-advanced-tools .matched-category-select { margin-bottom: 10px; }
@@ -1801,12 +1766,6 @@ textarea {
   .mapping-advanced-tools[open] { inset: 12px auto; width: calc(100vw - 24px); }
   .mapping-popup-nav { grid-template-columns: 1fr; }
   .mapping-popup-nav > button + button { border-left: 0 !important; border-top: 1px solid #2d2e38 !important; }
-  .compact-requirement-builder .attribute-entry-fields { grid-template-columns: 1fr; }
-  .mapping-advanced-tools .attribute-summary-title { grid-template-columns: 1fr 1fr !important; }
-  .mapping-advanced-tools .attribute-summary-title > strong,
-  .mapping-advanced-tools .attribute-summary-title > p { grid-column: 1 / -1 !important; }
-  .mapping-advanced-tools .attribute-summary-title > .role-transfer-button { grid-column: 1 !important; grid-row: auto; }
-  .mapping-advanced-tools .attribute-summary-title > button:last-child { grid-column: 2 !important; grid-row: auto; }
   .mapping-section-heading { align-items: stretch; flex-direction: column; }
   .mapping-section-heading > button { width: 100%; }
   .mapping-attribute-preview-list > button { grid-template-columns: 1fr 16px; }
