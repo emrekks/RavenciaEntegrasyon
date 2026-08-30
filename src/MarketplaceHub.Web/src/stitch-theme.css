@@ -10425,3 +10425,7 @@ body:has(.product-add-page),
     margin-left: 62px !important;
   }
 }
+/* Kullanıcıya görünen etiketler kaynak metindeki başlık biçimini korur. */
+.app-shell.stitch-shell * {
+  text-transform: none !important;
+}
