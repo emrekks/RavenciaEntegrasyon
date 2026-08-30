@@ -9311,6 +9311,70 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .cargo-track-pending:hover { color: #fff !important; background: rgba(124, 134, 255, .16); }
 .app-shell.stitch-shell .order-reference-actions > small { color: #8189a8; font-size: 10px; }
 
+/* Order filters live next to the data they refine; keep the toolbar single-source and stable. */
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary {
+  grid-template-columns: minmax(220px, 1.6fr) minmax(110px, .55fr) minmax(120px, .6fr) minmax(180px, .95fr) auto auto auto !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-sort-filter {
+  min-width: 0;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-sort-filter select {
+  min-width: 0 !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-head {
+  min-height: 142px !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-head > .order-column-filter {
+  display: grid !important;
+  align-content: center;
+  align-items: stretch;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px 10px !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-head > .order-column-filter > strong {
+  min-width: 0;
+  color: #8f8fa0 !important;
+  font-size: .58rem !important;
+  font-weight: 750 !important;
+  line-height: 1.2;
+}
+.app-shell.stitch-shell .orders-page .order-reference-head > .order-column-filter > select {
+  width: 100%;
+  min-width: 0;
+  min-height: 27px;
+  padding: 0 22px 0 8px;
+  color: #e3e1ed !important;
+  background: #1a1b23 !important;
+  border: 1px solid #34364a !important;
+  border-radius: 5px;
+  box-shadow: none !important;
+  font-size: .58rem;
+  font-weight: 650;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.app-shell.stitch-shell .orders-page .order-reference-head > .order-column-filter > select:focus {
+  border-color: #7f88ff !important;
+  box-shadow: 0 0 0 2px rgba(98, 110, 255, .2) !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-head > .order-invoice-column-filter {
+  gap: 4px;
+}
+@media (max-width: 900px) {
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .app-shell.stitch-shell .orders-page .order-reference-head {
+    min-height: 142px !important;
+  }
+}
+@media (max-width: 560px) {
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 /* Light, information-dense return detail sheet, matching the supplied reference. */
 .app-shell.stitch-shell .return-detail-backdrop { align-items: center !important; justify-content: center !important; padding: 24px !important; background: rgba(8, 11, 22, .72) !important; backdrop-filter: blur(7px); }
 .app-shell.stitch-shell .return-detail-modal { width: min(900px, 100%) !important; max-height: min(90vh, 820px) !important; overflow: hidden !important; color: #273044 !important; background: #fff !important; border: 1px solid #d9dfeb !important; border-radius: 14px !important; box-shadow: 0 24px 70px rgba(4, 8, 19, .4) !important; }
