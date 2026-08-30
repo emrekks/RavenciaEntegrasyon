@@ -9375,6 +9375,122 @@ body:has(.product-add-page),
   }
 }
 
+/* Compact column filters: the funnel stays beside the heading and the controls open on demand. */
+.app-shell.stitch-shell .orders-page .order-reference-head {
+  min-height: 43px !important;
+  overflow: visible !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-head > .order-column-filter {
+  position: relative;
+  display: flex !important;
+  align-items: center;
+  min-height: 43px;
+  padding: 0 10px !important;
+  overflow: visible !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-head > .order-column-filter .order-column-filter-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 27px;
+  margin: 0;
+  padding: 0;
+  color: #8f8fa0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 5px;
+  box-shadow: none !important;
+  font-size: .58rem;
+  font-weight: 750;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  transform: none !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-head > .order-column-filter .order-column-filter-trigger:hover,
+.app-shell.stitch-shell .orders-page .order-reference-head > .order-column-filter .order-column-filter-trigger:focus-visible {
+  color: #fff !important;
+  background: rgba(98, 110, 255, .13) !important;
+  outline: 0;
+}
+.app-shell.stitch-shell .orders-page .order-reference-head > .order-column-filter.has-filter .order-column-filter-trigger {
+  color: #c6caff !important;
+}
+.app-shell.stitch-shell .orders-page .order-filter-funnel {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: #8f8fa0;
+  fill: currentColor;
+}
+.app-shell.stitch-shell .orders-page .order-column-filter.has-filter .order-filter-funnel,
+.app-shell.stitch-shell .orders-page .order-column-filter .order-column-filter-trigger:hover .order-filter-funnel,
+.app-shell.stitch-shell .orders-page .order-column-filter .order-column-filter-trigger:focus-visible .order-filter-funnel {
+  color: #8991ff;
+}
+.app-shell.stitch-shell .orders-page .order-column-filter-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 8px;
+  z-index: 90;
+  display: grid;
+  gap: 10px;
+  width: min(250px, calc(100vw - 32px));
+  padding: 12px;
+  color: #e3e1ed;
+  background: #171a24;
+  border: 1px solid #34364a;
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, .48);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.app-shell.stitch-shell .orders-page .order-column-filter-popover label {
+  display: grid;
+  gap: 5px;
+  color: #aeb4cb;
+  font-size: .61rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.app-shell.stitch-shell .orders-page .order-column-filter-popover select {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 26px 0 9px;
+  color: #e3e1ed !important;
+  background: #1f2230 !important;
+  border: 1px solid #3a3d54 !important;
+  border-radius: 6px;
+  box-shadow: none !important;
+  font-size: .66rem;
+  text-transform: none;
+}
+.app-shell.stitch-shell .orders-page .order-column-filter-popover select:focus {
+  border-color: #7f88ff !important;
+  box-shadow: 0 0 0 2px rgba(98, 110, 255, .2) !important;
+  outline: 0;
+}
+.app-shell.stitch-shell .orders-page .order-column-filter-reset {
+  justify-self: start;
+  min-height: 26px;
+  padding: 0;
+  color: #9ba4ff !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-size: .62rem;
+  font-weight: 750;
+  transform: none !important;
+}
+.app-shell.stitch-shell .orders-page .order-column-filter-reset:hover {
+  color: #fff !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
 /* Light, information-dense return detail sheet, matching the supplied reference. */
 .app-shell.stitch-shell .return-detail-backdrop { align-items: center !important; justify-content: center !important; padding: 24px !important; background: rgba(8, 11, 22, .72) !important; backdrop-filter: blur(7px); }
 .app-shell.stitch-shell .return-detail-modal { width: min(900px, 100%) !important; max-height: min(90vh, 820px) !important; overflow: hidden !important; color: #273044 !important; background: #fff !important; border: 1px solid #d9dfeb !important; border-radius: 14px !important; box-shadow: 0 24px 70px rgba(4, 8, 19, .4) !important; }
