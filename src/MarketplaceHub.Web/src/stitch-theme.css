@@ -1380,6 +1380,244 @@ textarea {
   font-size: .68rem;
 }
 
+/* Shipping label layout editor: visual, drag-and-drop ordering with a live schematic. */
+.app-shell.stitch-shell .shipping-layout-format-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #eef0ff;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.app-shell.stitch-shell .shipping-layout-format-head small {
+  color: #9298af;
+  font-size: .65rem;
+  font-weight: 600;
+}
+
+.app-shell.stitch-shell .shipping-layout-format-head > button {
+  margin-left: auto;
+  min-height: 28px;
+  padding: 5px 8px;
+  font-size: .63rem;
+}
+
+.app-shell.stitch-shell .shipping-layout-builder {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(150px, .85fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.app-shell.stitch-shell .shipping-layout-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.app-shell.stitch-shell .shipping-layout-item {
+  display: grid;
+  grid-template-columns: 12px 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 7px;
+  color: #eef0ff;
+  background: #11131d;
+  border: 1px solid #30354a;
+  border-radius: 7px;
+  cursor: grab;
+  transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+
+.app-shell.stitch-shell .shipping-layout-item:hover,
+.app-shell.stitch-shell .shipping-layout-item:focus-within {
+  border-color: #7c86ff;
+  background: #171b2e;
+}
+
+.app-shell.stitch-shell .shipping-layout-item.is-dragging {
+  opacity: .55;
+  border-style: dashed;
+  transform: scale(.98);
+}
+
+.app-shell.stitch-shell .shipping-layout-drag {
+  color: #777fa7;
+  font-size: 1rem;
+  line-height: 1;
+  letter-spacing: -3px;
+  user-select: none;
+}
+
+.app-shell.stitch-shell .shipping-layout-order {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: #11131d;
+  background: #bec2ff;
+  border-radius: 50%;
+  font-size: .67rem;
+  font-weight: 900;
+}
+
+.app-shell.stitch-shell .shipping-layout-item > div:not(.shipping-layout-item-actions) {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-shell.stitch-shell .shipping-layout-item strong,
+.app-shell.stitch-shell .shipping-layout-item small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell .shipping-layout-item strong { font-size: .68rem; }
+.app-shell.stitch-shell .shipping-layout-item small { color: #9298af; font-size: .59rem; }
+
+.app-shell.stitch-shell .shipping-layout-item-actions {
+  display: flex;
+  gap: 3px;
+}
+
+.app-shell.stitch-shell .shipping-layout-item-actions .icon-button {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  padding: 0;
+  color: #bec2ff;
+  background: #1a1e31;
+  border: 1px solid #3b4055;
+  border-radius: 4px;
+  font-size: .74rem;
+  line-height: 1;
+}
+
+.app-shell.stitch-shell .shipping-layout-item-actions .icon-button:hover:not(:disabled),
+.app-shell.stitch-shell .shipping-layout-item-actions .icon-button:focus-visible {
+  color: #fff;
+  background: #5865f2;
+  border-color: #7c86ff;
+  outline: none;
+}
+
+.app-shell.stitch-shell .shipping-layout-item-actions .icon-button:disabled {
+  opacity: .3;
+  cursor: not-allowed;
+}
+
+.app-shell.stitch-shell .shipping-layout-preview {
+  min-width: 0;
+  padding: 7px;
+  background: #0c0e17;
+  border: 1px solid #30354a;
+  border-radius: 7px;
+}
+
+.app-shell.stitch-shell .shipping-preview-toolbar {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  color: #9298af;
+  font-size: .58rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.app-shell.stitch-shell .shipping-preview-toolbar b { color: #bec2ff; font-size: .55rem; }
+
+.app-shell.stitch-shell .shipping-preview-paper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 254px;
+  padding: 7px;
+  overflow: hidden;
+  color: #17223a;
+  background: #fff;
+  border-radius: 2px;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, .22);
+  font-family: Arial, "Segoe UI", sans-serif;
+}
+
+.app-shell.stitch-shell .shipping-preview-block {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 4px 5px 4px 20px;
+  overflow: hidden;
+  border: 1px solid #cbd3e2;
+  border-radius: 2px;
+}
+
+.app-shell.stitch-shell .shipping-preview-index {
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  color: #7d879b;
+  font: 700 .5rem/1 monospace;
+}
+
+.app-shell.stitch-shell .shipping-preview-barcode {
+  display: grid;
+  justify-items: center;
+  width: 100%;
+  gap: 2px;
+}
+
+.app-shell.stitch-shell .shipping-preview-bars {
+  display: block;
+  width: 82%;
+  height: 18px;
+  background: repeating-linear-gradient(90deg, #17223a 0 2px, transparent 2px 4px, #17223a 4px 5px, transparent 5px 8px);
+}
+
+.app-shell.stitch-shell .shipping-preview-barcode strong,
+.app-shell.stitch-shell .shipping-preview-info strong {
+  color: #17223a;
+  font: 700 .48rem/1 monospace;
+}
+
+.app-shell.stitch-shell .shipping-preview-address {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px;
+  gap: 2px 5px;
+  width: 100%;
+  font-size: .49rem;
+  line-height: 1.1;
+}
+
+.app-shell.stitch-shell .shipping-preview-address strong { grid-column: 1 / -1; font-size: .58rem; }
+.app-shell.stitch-shell .shipping-preview-address i { grid-column: 2; grid-row: 2 / span 2; height: 25px; background: repeating-linear-gradient(180deg, #17223a 0 2px, transparent 2px 4px); }
+
+.app-shell.stitch-shell .shipping-preview-info {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  gap: 4px;
+}
+
+.app-shell.stitch-shell .shipping-preview-info span { display: grid; gap: 2px; }
+.app-shell.stitch-shell .shipping-preview-info b { color: #7d879b; font-size: .45rem; }
+
+.app-shell.stitch-shell .shipping-preview-sender {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  color: #17223a;
+  font-size: .48rem;
+}
+
+.app-shell.stitch-shell .shipping-preview-sender strong { font-size: .6rem; }
+.app-shell.stitch-shell .shipping-preview-sender span { text-transform: uppercase; }
+
 .app-shell.stitch-shell .shipping-settings-grid label {
   display: grid;
   gap: 7px;
@@ -1422,6 +1660,10 @@ textarea {
   .app-shell.stitch-shell .shipping-layout-editor-heading { flex-direction: column; }
   .app-shell.stitch-shell .shipping-layout-editor-heading > span { align-self: flex-start; }
   .app-shell.stitch-shell .shipping-layout-editor-grid { grid-template-columns: 1fr; }
+  .app-shell.stitch-shell .shipping-layout-builder { grid-template-columns: 1fr; }
+  .app-shell.stitch-shell .shipping-layout-preview { max-width: 240px; }
+  .app-shell.stitch-shell .shipping-layout-format-head { flex-wrap: wrap; }
+  .app-shell.stitch-shell .shipping-layout-format-head > button { margin-left: 0; }
   .app-shell.stitch-shell .shipping-label-preview-wrap { padding: 10px; }
   .app-shell.stitch-shell .shipping-label-a4 { width: 170mm; }
   .app-shell.stitch-shell .shipping-label-modal-actions { flex-wrap: wrap; }
