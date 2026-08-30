@@ -9850,6 +9850,59 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > span:nth-child(8) { display: flex; align-items: center; justify-content: center; text-align: center; }
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > span:nth-child(8) .badge { padding: 0 !important; color: #19b681 !important; background: transparent !important; border: 0 !important; border-radius: 0 !important; font-weight: 800; }
 
+/* İade durum hücresinde durum etiketi ve detay aksiyonu aynı eksende tutulur. */
+.app-shell.stitch-shell .reference-returns-page .return-reference-status {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+  min-height: 194px !important;
+  padding: 14px 10px !important;
+  text-align: left !important;
+}
+.app-shell.stitch-shell .reference-returns-page .return-reference-status .badge {
+  align-self: flex-start !important;
+  display: inline-flex !important;
+  width: fit-content !important;
+  padding: 4px 7px !important;
+  color: #8ef0b4 !important;
+  background: rgba(35, 142, 91, .18) !important;
+  border: 1px solid rgba(35, 142, 91, .42) !important;
+  border-radius: 5px !important;
+  font-size: .58rem !important;
+  line-height: 1.2 !important;
+  font-weight: 800 !important;
+}
+.app-shell.stitch-shell .reference-returns-page .return-reference-status > small {
+  align-self: flex-start !important;
+  margin: 0 !important;
+}
+.app-shell.stitch-shell .reference-returns-page .return-reference-status .return-detail-trigger {
+  align-self: stretch !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  width: 100% !important;
+  min-height: 30px !important;
+  margin: 0 !important;
+  padding: 5px 7px !important;
+  color: #bec2ff !important;
+  background: rgba(88, 101, 242, .12) !important;
+  border: 1px solid rgba(88, 101, 242, .42) !important;
+  border-radius: 5px !important;
+  font-size: .58rem !important;
+  font-weight: 750 !important;
+  white-space: nowrap !important;
+}
+.app-shell.stitch-shell .reference-returns-page .return-reference-status .return-detail-trigger:hover {
+  color: #fff !important;
+  background: rgba(88, 101, 242, .26) !important;
+  border-color: #5865f2 !important;
+}
+
 .app-shell.stitch-shell .mapping-category-builder .mapping-target-controls { display: grid !important; grid-template-columns: minmax(145px, .36fr) minmax(0, 1fr) !important; gap: 8px !important; padding: 8px !important; background: #14192a !important; border: 1px solid rgba(124, 134, 255, .24) !important; border-radius: 12px !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025); }
 .app-shell.stitch-shell .mapping-category-builder .mapping-target-controls > select,
 .app-shell.stitch-shell .mapping-category-builder .mapping-target-controls .panel-category-picker-trigger { min-height: 42px !important; color: #dce0f5 !important; background: #1d2337 !important; border-color: rgba(151, 160, 207, .25) !important; border-radius: 8px !important; }
