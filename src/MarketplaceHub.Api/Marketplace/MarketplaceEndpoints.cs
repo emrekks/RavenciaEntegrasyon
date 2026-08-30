@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -54,6 +55,54 @@ public static class MarketplaceEndpoints
         api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Results.Ok(await service.OrderSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
         api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted), value => Results.Redirect(value)) : Unauthorized(http));
         api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+        api.MapPost("/orders/{id:guid}/instant-process", async (Guid id, HttpContext http, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            if (RequireIdempotency(http) is { } missingContext) return missingContext;
+
+            var detail = await service.OrderAsync(tenant.TenantId, id, http.RequestAborted);
+            if (!detail.Succeeded) return Problem(http, detail.Error!);
+            var package = detail.Value!.Packages.FirstOrDefault();
+            if (package is null)
+            {
+                if (detail.Value.ConnectionId is not { } connectionId)
+                    return Problem(http, new("ORDER_CONNECTION_REQUIRED", "Siparişin aktif platform bağlantısı bulunamadı.", 422));
+
+                // Refresh an order without creating a worker job, then continue the
+                // picking action in the same request.
+                var sync = await marketplaceProcessor.ProcessAsync(
+                    tenant.TenantId,
+                    connectionId,
+                    MarketplaceJobTypes.OrderSync,
+                    JsonSerializer.Serialize(new { connectionId, externalOrderId = detail.Value.OrderNumber, full = false }),
+                    OperationCorrelation(http),
+                    http.RequestAborted);
+                if (!sync.Succeeded)
+                {
+                    var status = sync.Kind == JobCompletionKind.Retry ? 503 : 422;
+                    return Problem(http, new(sync.ErrorCode ?? "ORDER_REFRESH_FAILED", sync.ErrorSummary ?? "Sipariş Trendyol’dan anlık olarak yenilenemedi.", status));
+                }
+
+                detail = await service.OrderAsync(tenant.TenantId, id, http.RequestAborted);
+                if (!detail.Succeeded) return Problem(http, detail.Error!);
+                package = detail.Value!.Packages.FirstOrDefault();
+            }
+
+            if (package is null)
+                return Problem(http, new("PICKING_PACKAGE_NOT_FOUND", "Sipariş yenilendi ancak işleme alınabilir kargo paketi bulunamadı.", 422));
+
+            return Result(await service.ProcessShipmentInstantAsync(
+                tenant.TenantId,
+                package.Id,
+                package.Version,
+                http.Request.Headers["Idempotency-Key"].ToString(),
+                OperationCorrelation(http),
+                http.RequestAborted), value =>
+            {
+                http.Response.Headers.ETag = $"\"v{value.Version}\"";
+                return Results.Ok(value);
+            });
+        });
         api.MapPost("/connections/{connectionId:guid}/order-sync-jobs", async (Guid connectionId, OrderSyncCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueOrderSyncAsync(tenant.TenantId, connectionId, command.ExternalOrderId, command.Full, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
         api.MapPost("/connections/{connectionId:guid}/product-sync-jobs", async (Guid connectionId, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueProductSyncAsync(tenant.TenantId, connectionId, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
         api.MapPost("/connections/{connectionId:guid}/stage-test-order-jobs", async (Guid connectionId, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueStageTestOrderAsync(tenant.TenantId, tenant.UserId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
