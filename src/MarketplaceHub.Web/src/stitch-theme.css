@@ -2024,6 +2024,168 @@ textarea {
   margin-top: 22px;
 }
 
+/* Paper-first editor: the editable blocks live on a clear sheet, with a compact output preview beside it. */
+.app-shell.stitch-shell .shipping-layout-editor-grid {
+  grid-template-columns: 1fr;
+  gap: 18px;
+}
+
+.app-shell.stitch-shell .shipping-layout-format {
+  padding: 16px;
+  border-color: #3b4260;
+  background: #171a2a;
+}
+
+.app-shell.stitch-shell .shipping-layout-builder {
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 292px);
+  gap: 18px;
+}
+
+.app-shell.stitch-shell .shipping-layout-add {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 10px;
+  border-color: #59628c;
+  background: #1d2237;
+}
+
+.app-shell.stitch-shell .shipping-layout-add::before {
+  content: 'Kâğıda yeni blok yerleştir';
+  grid-column: 1 / -1;
+  color: #d8dcff;
+  font-size: .7rem;
+  font-weight: 800;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper {
+  display: grid;
+  gap: 10px;
+  min-height: 420px;
+  padding: 18px;
+  color: #17223a;
+  background: #fff;
+  border: 1px solid #cbd3e2;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 5px #f1f3f8, 0 7px 18px rgba(0, 0, 0, .16);
+}
+
+.app-shell.stitch-shell .shipping-layout-paper:empty::before {
+  content: 'Kâğıt boş. Yukarıdaki dropdown’dan bir blok seçip Kâğıda ekle’ye basın.';
+  align-self: center;
+  justify-self: center;
+  max-width: 270px;
+  color: #7a879c;
+  font-size: .75rem;
+  text-align: center;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px;
+  background: #f2f5fa;
+  border: 1px solid #b9c4d6;
+  border-radius: 7px;
+  box-shadow: 0 2px 5px rgba(40, 52, 77, .08);
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot:focus-within {
+  border-color: #5865f2;
+  box-shadow: 0 0 0 2px rgba(88, 101, 242, .2);
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot-head {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 96px auto;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot label,
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-block-title,
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-inline-field,
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-align,
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-custom-text {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 4px !important;
+  min-width: 0;
+  color: #52617a;
+  font-size: .62rem;
+  font-weight: 800;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot select,
+.app-shell.stitch-shell .shipping-layout-paper-slot input,
+.app-shell.stitch-shell .shipping-layout-paper-slot textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 6px 8px;
+  color: #17223a;
+  background: #fff;
+  border: 1px solid #b7c2d4;
+  border-radius: 5px;
+  font: inherit;
+  font-size: .68rem;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot textarea {
+  resize: vertical;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(145px, .62fr);
+  gap: 8px;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-order {
+  margin-bottom: 3px;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-delete {
+  align-self: end;
+  margin-bottom: 1px;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-field-chips {
+  min-height: 22px;
+  padding-top: 1px;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-field-chips > span {
+  color: #7a879c;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-item-actions {
+  justify-content: flex-end;
+  padding-top: 2px;
+  border-top: 1px solid #d7deea;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-item-actions .icon-button {
+  color: #46547a;
+  background: #fff;
+  border-color: #b7c2d4;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-item-actions .icon-button:hover:not(:disabled),
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-item-actions .icon-button:focus-visible {
+  color: #fff;
+}
+
+.app-shell.stitch-shell .shipping-layout-paper-slot .shipping-layout-field-chip {
+  color: #4652a4;
+  background: #e2e6ff;
+  border-color: #aeb7f4;
+}
+
+.app-shell.stitch-shell .shipping-layout-preview {
+  align-self: stretch;
+}
+
 @media (max-width: 760px) {
   .app-shell.stitch-shell .shipping-settings-grid { grid-template-columns: 1fr; }
   .app-shell.stitch-shell .shipping-layout-editor-heading { flex-direction: column; }
