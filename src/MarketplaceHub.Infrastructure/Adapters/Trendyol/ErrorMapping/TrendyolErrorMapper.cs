@@ -18,7 +18,7 @@ internal static class TrendyolErrorMapper
             HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "REMOTE_RATE_LIMITED", "Platform hız sınırı yanıtı verdi.", 429, retryAfter, remoteRequestId),
             HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "REMOTE_RESOURCE_NOT_FOUND", "Platform kaynağı bulunamadı.", 404, null, remoteRequestId),
             >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "REMOTE_SERVER_ERROR", "Platform geçici sunucu hatası verdi.", (int)status, retryAfter, remoteRequestId),
-            _ => new(AdapterErrorClass.Validation, "REMOTE_REQUEST_REJECTED", string.IsNullOrWhiteSpace(vendorCode) ? "Platform isteği reddetti." : $"Platform isteği reddetti (sağlayıcı kodu: {vendorCode}).", (int)status, null, remoteRequestId)
+            _ => new(AdapterErrorClass.Validation, "REMOTE_REQUEST_REJECTED", "Trendyol isteği reddetti. Paket veya seçilen kargo firması değişikliğe uygun olmayabilir; paneldeki mevcut bilgi korundu.", (int)status, null, remoteRequestId)
         };
     }
 

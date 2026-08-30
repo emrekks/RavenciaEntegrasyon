@@ -45,7 +45,6 @@ function ProductImage({ url, alt, onClick }: { url: string; alt: string; onClick
   return <button type="button" className="product-image-button" onClick={onClick} aria-label={`${alt} görselini büyüt`}><img src={url} alt={alt} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /></button>
 }
 type OrderDetail = { id: string; orderNumber: string; derivedStatus: string; currency: string; grossAmount: number; discountAmount: number; netAmount: number; orderedAt: string; connectionId: string | null; platformCode: string; platformDisplayName: string; customerName: string; customerEmail: string | null; customerPhone: string | null; customerTaxOrIdentityNumber: string | null; orderType: string; isMicroExport: boolean; isEInvoiceAvailable: boolean | null; shipmentAddressJson: string; invoiceAddressJson: string; shipmentDueAt: string | null; invoiceStatus: string; invoiceDocumentUrl: string | null; lines: OrderLine[]; packages: Shipment[]; version: number }
-type JobDetail = { job: { status: string; lastErrorCode: string | null; lastErrorSummary: string | null } }
 type CreatedInvoice = { id: string; version: number }
 type InvoiceOperation = CreatedInvoice & { status: string; invoiceNumber: string | null; externalReference: string | null; lastErrorCode: string | null }
 type Shipment = { id: string; orderId: string; orderNumber: string; externalPackageId: string; status: string; rawStatus: string; cargoTrackingNumber: string | null; cargoProviderName: string | null; statusOccurredAt: string; version: number; isResend: boolean }
@@ -284,9 +283,9 @@ function CourierChangeModal({ item, onClose, onConfirmed }: { item: Order; onClo
     if (!chosen) return
     setIsSubmitting(true)
     setErrorMsg('')
-    setProgressMsg('Kargo firması Trendyol’a gönderiliyor…')
+    setProgressMsg('Kargo firması Trendyol’a anlık olarak gönderiliyor…')
     try {
-      const accepted = await hubApi<{ jobId: string }>(`/shipments/${shipment.id}/actions`, {
+      const updatedShipment = await hubApi<Shipment>(`/shipments/${shipment.id}/instant-cargo-provider`, {
         method: 'POST',
         headers: {
           'Idempotency-Key': idempotency(),
@@ -297,33 +296,12 @@ function CourierChangeModal({ item, onClose, onConfirmed }: { item: Order; onClo
           payloadJson: JSON.stringify({ cargoProvider: chosen.code })
         })
       })
-      for (let attempt = 0; attempt < 12; attempt++) {
-        await wait(attempt === 0 ? 150 : 450)
-        setProgressMsg(attempt < 2 ? 'Uzak sistem sonucu bekleniyor…' : 'Uzak sistem yanıtı panelde doğrulanıyor…')
-        const [orderResult, jobResult] = await Promise.allSettled([
-          hubApi<OrderDetail>(`/orders/${item.id}`),
-          hubApi<JobDetail>(`/jobs/${accepted.jobId}`)
-        ])
-        if (orderResult.status === 'fulfilled') {
-          const latestShipment = orderResult.value.packages.find(packageItem => packageItem.id === shipment.id) ?? orderResult.value.packages[0]
-          if (latestShipment && cargoMatches(latestShipment.cargoProviderName, chosen)) {
-            onConfirmed(latestShipment)
-            void client.invalidateQueries({ queryKey: ['orders'] })
-            onClose()
-            return
-          }
-        }
-        if (jobResult.status === 'fulfilled') {
-          const status = jobResult.value.job.status.toUpperCase()
-          if (['BLOCKED', 'DEAD', 'MANUAL_REVIEW', 'CANCELLED'].includes(status)) {
-            throw new Error(`Kargo firması Trendyol'da güncellenemedi${jobResult.value.job.lastErrorSummary ? `: ${jobResult.value.job.lastErrorSummary}` : '.'} Paneldeki mevcut bilgi korundu.`)
-          }
-          if (status === 'SUCCEEDED') setProgressMsg('Trendyol başarılı döndü; paneldeki kargo bilgisi eşleştiriliyor…')
-        }
-      }
-      throw new Error('Kargo firması doğrulanamadı. Paneldeki mevcut bilgi korundu; sonucu İşlem Takibi’nden kontrol edin.')
+      setProgressMsg('Trendyol onayladı; paneldeki kargo bilgisi güncelleniyor…')
+      onConfirmed(updatedShipment)
+      void client.invalidateQueries({ queryKey: ['orders'] })
+      onClose()
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Kargo firması güncellenemedi.')
+      setErrorMsg(err instanceof Error ? `Kargo firması güncellenemedi: ${err.message}` : 'Kargo firması güncellenemedi. Paneldeki mevcut bilgi korundu.')
     } finally {
       setIsSubmitting(false)
     }
@@ -335,7 +313,7 @@ function CourierChangeModal({ item, onClose, onConfirmed }: { item: Order; onClo
         <header>
           <div>
             <h2 id="courier-change-title">Paketi hangi firma ile göndermek istiyorsunuz?</h2>
-            <p>Değişiklik önce Trendyol’a gönderilir; panel yalnızca uzak sistemden doğrulandıktan sonra güncellenir.</p>
+            <p>İstek doğrudan Trendyol’a gönderilir; onay gelirse panel anında güncellenir.</p>
           </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat">×</button>
         </header>

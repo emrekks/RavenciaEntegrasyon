@@ -8,7 +8,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IReturnPort returns, TimeProvider timeProvider) : IMarketplaceSalesService
+public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IOrderPort orders, IReturnPort returns, TimeProvider timeProvider) : IMarketplaceSalesService
 {
     public async Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
@@ -197,6 +197,83 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var dedup = $"shipment-action:{package.Id}:v{package.Version}:{action}:{commandHash}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedKey)))}";
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ShipmentAction && x.EffectIdempotencyKey == normalizedKey, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new ShipmentActionJobPayload(jobId, package.Id, action, commandPayload)); var job = NewJob(tenantId, package.ConnectionId, MarketplaceJobTypes.ShipmentAction, dedup, payload, correlationId); job.Id = jobId; job.EffectIdempotencyKey = normalizedKey; db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
+    }
+
+    public async Task<ServiceResult<ShipmentView>> ChangeCargoProviderInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        const string effectType = "TRENDYOL_INSTANT_CARGO_PROVIDER_CHANGE";
+        var action = command.Action.Trim().ToUpperInvariant();
+        if (action != "CHANGE_CARGO_PROVIDER") return ServiceResult<ShipmentView>.Fail("SHIPMENT_ACTION_UNSUPPORTED", "Bu anlık endpoint yalnız kargo firması değişikliği için kullanılabilir.", 422);
+
+        var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+        if (package is null) return NotFound<ShipmentView>();
+        if (package.Version != expectedVersion) return Precondition<ShipmentView>(package.Version);
+
+        var validation = ValidateShipmentAction(package, action, command.PayloadJson);
+        if (validation is not null) return ServiceResult<ShipmentView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
+
+        string cargoProvider;
+        try
+        {
+            using var document = JsonDocument.Parse(command.PayloadJson);
+            cargoProvider = document.RootElement.GetProperty("cargoProvider").GetString()?.Trim() ?? string.Empty;
+        }
+        catch (JsonException)
+        {
+            return ServiceResult<ShipmentView>.Fail("SHIPMENT_ACTION_PAYLOAD_INVALID", "Kargo firması bilgisi geçerli JSON olmalıdır.", 422);
+        }
+
+        var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
+        if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+
+        var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
+        if (orderNumber is null) return NotFound<ShipmentView>();
+
+        var normalizedKey = idempotencyKey.Trim();
+        var existing = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.CompletedAt is null)
+                return ServiceResult<ShipmentView>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki kargo firması değişikliğinin sonucu kesinleştirilemedi; paneldeki mevcut bilgi korundu.", 409);
+
+            if (!string.Equals(package.CargoProviderExternalId, cargoProvider, StringComparison.OrdinalIgnoreCase))
+            {
+                package.CargoProviderExternalId = cargoProvider;
+                package.UpdatedAt = timeProvider.GetUtcNow();
+                package.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+        }
+
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = timeProvider.GetUtcNow() };
+        db.ExternalEffectRecords.Add(effect);
+        await db.SaveChangesAsync(cancellationToken);
+
+        var result = await orders.ExecutePackageActionAsync(
+            new AdapterContext(tenantId, package.ConnectionId, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)),
+            new(package.ExternalPackageId, action, command.PayloadJson),
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            var error = result.Error;
+            if (error is null) return ServiceResult<ShipmentView>.Fail("CARGO_PROVIDER_CHANGE_FAILED", "Trendyol kargo firması değişikliğine yanıt vermedi; paneldeki mevcut bilgi korundu.", 502);
+            if (IsAmbiguous(error))
+                return ServiceResult<ShipmentView>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", "Trendyol’a gönderilen kargo firması değişikliğinin sonucu kesinleştirilemedi; paneldeki mevcut bilgi korundu.", 409);
+
+            db.ExternalEffectRecords.Remove(effect);
+            await db.SaveChangesAsync(cancellationToken);
+            var status = error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502;
+            return ServiceResult<ShipmentView>.Fail("CARGO_PROVIDER_CHANGE_FAILED", error.SafeMessage, status);
+        }
+
+        package.CargoProviderExternalId = cargoProvider;
+        package.UpdatedAt = timeProvider.GetUtcNow();
+        package.Version++;
+        effect.CompletedAt = timeProvider.GetUtcNow();
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
     }
 
     public async Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -705,6 +782,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
     private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId);
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
+    private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
