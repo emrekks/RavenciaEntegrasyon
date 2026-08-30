@@ -10425,6 +10425,29 @@ body:has(.product-add-page),
     margin-left: 62px !important;
   }
 }
+/* Kategori eşleştirmesinde sağ seçim alanı sol seçim alanıyla aynı düzende akar. */
+.app-shell.stitch-shell .mapping-category-builder .mapping-target-controls {
+  gap: 12px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.app-shell.stitch-shell .mapping-category-builder .mapping-target-controls > select,
+.app-shell.stitch-shell .mapping-category-builder .mapping-target-controls .panel-category-picker-trigger {
+  min-height: 44px !important;
+  color: #e3e1ed !important;
+  background: #1f1f27 !important;
+  border: 1px solid #454655 !important;
+  border-radius: 4px !important;
+}
+.app-shell.stitch-shell .mapping-category-builder .mapping-target-controls > select:focus,
+.app-shell.stitch-shell .mapping-category-builder .mapping-target-controls .panel-category-picker-trigger:focus-visible {
+  border-color: #5865f2 !important;
+  box-shadow: 0 0 0 2px rgba(88, 101, 242, .2), 0 0 10px rgba(88, 101, 242, .1) !important;
+}
+
 /* Kullanıcıya görünen etiketler kaynak metindeki başlık biçimini korur. */
 .app-shell.stitch-shell * {
   text-transform: none !important;
