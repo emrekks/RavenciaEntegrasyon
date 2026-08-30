@@ -110,6 +110,15 @@ public sealed class MandatorySynchronizationScenariosTests
     }
 
     [Fact]
+    public void Scenario11c_TrendyolCargoRejection_IsShownAsAReasonWithoutVendorCode()
+    {
+        var error = TrendyolErrorMapper.FromStatus(HttpStatusCode.Conflict, null, "request-4", "CPE006");
+        Assert.Equal("CARGO_PROVIDER_CHANGE_REJECTED", error.Code);
+        Assert.Contains("izin vermedi", error.SafeMessage);
+        Assert.DoesNotContain("CPE006", error.SafeMessage);
+    }
+
+    [Fact]
     public void Scenario12_CrashAfterCommit_UsesDeterministicPersistentStockOutboxKey()
     {
         var connection = Guid.Parse("10000000-0000-0000-0000-000000000001");
