@@ -985,7 +985,17 @@ textarea {
   .app-shell.stitch-shell .mapping-transfer-panel { align-items: stretch; flex-direction: column; }
   .app-shell.stitch-shell .mapping-transfer-panel .button-row { justify-content: flex-start; }
   .app-shell.stitch-shell .integration-settings-modal-backdrop { padding: 10px; }
-  .app-shell.stitch-shell .integration-settings-modal { max-height: calc(100vh - 20px); padding: 12px; }
+.app-shell.stitch-shell .integration-settings-modal { max-height: calc(100vh - 20px); padding: 12px; }
+}
+
+.app-shell.stitch-shell .courier-progress {
+  margin: 12px 24px 0;
+  padding: 10px 12px;
+  color: #bec2ff;
+  background: rgba(88, 101, 242, .12);
+  border: 1px solid rgba(124, 134, 255, .38);
+  border-radius: 6px;
+  font-size: .76rem;
 }
 
 @media (max-width: 760px) {
