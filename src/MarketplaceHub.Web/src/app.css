@@ -8617,8 +8617,9 @@ html { overflow-y: auto !important; }
 
 /* Product creation flow — two-step reference workspace. */
 .app-shell .product-add-page {
-  max-width: 1320px !important;
-  padding: 0 26px 42px !important;
+  width: 100% !important;
+  max-width: none !important;
+  padding: 0 clamp(26px, 3.25vw, 60px) 42px !important;
   min-height: calc(100vh - 64px);
 }
 html:has(.product-add-page),
