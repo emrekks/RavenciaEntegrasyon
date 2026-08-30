@@ -81,6 +81,8 @@ export type ShippingLabelSettings = {
   senderName: string
   senderAddress: string
   defaultFormat: 'a4' | 'sticker'
+  showA4Button: boolean
+  showStickerButton: boolean
   a4LabelsPerPage: 1 | 2 | 4
   stickerWidthMm: number
   stickerHeightMm: number
@@ -112,6 +114,8 @@ export const defaultShippingLabelSettings: ShippingLabelSettings = {
   senderName: 'Ravencia MarketplaceHub',
   senderAddress: '',
   defaultFormat: 'a4',
+  showA4Button: true,
+  showStickerButton: true,
   a4LabelsPerPage: 1,
   stickerWidthMm: 100,
   stickerHeightMm: 150,
@@ -177,6 +181,8 @@ export function loadShippingLabelSettings(): ShippingLabelSettings {
       senderName: typeof value.senderName === 'string' ? value.senderName.slice(0, 120) : defaultShippingLabelSettings.senderName,
       senderAddress: typeof value.senderAddress === 'string' ? value.senderAddress.slice(0, 500) : defaultShippingLabelSettings.senderAddress,
       defaultFormat: value.defaultFormat === 'sticker' ? 'sticker' : 'a4',
+      showA4Button: value.showA4Button !== false,
+      showStickerButton: value.showStickerButton !== false,
       a4LabelsPerPage,
       stickerWidthMm: boundedNumber(value.stickerWidthMm, defaultShippingLabelSettings.stickerWidthMm, 40, 300),
       stickerHeightMm: boundedNumber(value.stickerHeightMm, defaultShippingLabelSettings.stickerHeightMm, 40, 300),
@@ -194,4 +200,32 @@ export function loadShippingLabelSettings(): ShippingLabelSettings {
 
 export function saveShippingLabelSettings(settings: ShippingLabelSettings) {
   try { localStorage.setItem(storageKey, JSON.stringify(settings)) } catch { /* Private browsing may disallow local storage. */ }
+}
+
+const printedLabelsStorageKey = 'ravencia.printedShippingLabels'
+
+export type ShippingLabelFormat = 'a4' | 'sticker'
+
+export function printedShippingLabelKey(orderId: string, format: ShippingLabelFormat) {
+  return `${orderId}:${format}`
+}
+
+export function loadPrintedShippingLabels(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(printedLabelsStorageKey) ?? '[]')
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function markShippingLabelPrinted(orderId: string, format: ShippingLabelFormat) {
+  try {
+    const key = printedShippingLabelKey(orderId, format)
+    const next = Array.from(new Set([...loadPrintedShippingLabels(), key]))
+    localStorage.setItem(printedLabelsStorageKey, JSON.stringify(next))
+    return key
+  } catch {
+    return printedShippingLabelKey(orderId, format)
+  }
 }

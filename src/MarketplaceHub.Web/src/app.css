@@ -13011,3 +13011,28 @@ body:has(.product-add-page),
   .app-shell.stitch-shell .variant-media-picker-modal > footer { align-items:stretch; flex-wrap:wrap; }
   .app-shell.stitch-shell .variant-media-picker-modal > footer button { flex:1 1 130px; }
 }
+
+/* Orders and settings polish: keep action cells aligned, readable and theme-consistent. */
+.app-shell.stitch-shell .order-reference-actions{align-items:flex-start;justify-content:flex-end;min-width:0;gap:8px;padding:12px 10px}
+.app-shell.stitch-shell .order-status-column{min-width:0;width:100%;align-items:flex-start;gap:6px}
+.app-shell.stitch-shell .order-status-column small{white-space:normal;line-height:1.35}
+.app-shell.stitch-shell .order-reference-actions>.row-menu{width:100%;max-width:150px}
+.app-shell.stitch-shell .order-reference-actions>.row-menu .row-menu-trigger{width:100%;justify-content:space-between}
+.app-shell.stitch-shell .order-label-actions{display:grid;gap:6px;width:100%;max-width:170px}
+.app-shell.stitch-shell .order-label-action{display:flex;align-items:center;justify-content:space-between;gap:5px;width:100%;min-width:0;white-space:nowrap}
+.app-shell.stitch-shell .order-label-action span{overflow:hidden;text-overflow:ellipsis}
+.app-shell.stitch-shell .order-label-action small{flex:0 0 auto}
+.app-shell.stitch-shell .order-label-action.is-printed{opacity:.48;filter:saturate(.45)}
+.app-shell.stitch-shell .order-label-action.is-printed i{font-style:normal;color:#96efbd}
+.app-shell.stitch-shell .invoice-info-modal .invoice-address-sheet>p{margin:18px 0 0;padding:12px 14px;color:var(--rv-muted);background:rgba(113,104,245,.09);border:1px solid rgba(113,104,245,.25);border-radius:9px;line-height:1.5}
+.app-shell.stitch-shell .invoice-info-modal .invoice-address-sheet>p strong{color:#e9e7ff}
+.app-shell.stitch-shell .security-page .sessions li{grid-template-columns:32px minmax(0,1fr) auto;min-width:0;gap:14px}
+.app-shell.stitch-shell .security-page .sessions li>span:nth-child(2){min-width:0;overflow:hidden}
+.app-shell.stitch-shell .security-page .sessions li>span:nth-child(2) small{display:block;overflow-wrap:anywhere;line-height:1.45}
+.app-shell.stitch-shell .security-page .sessions li>b{white-space:nowrap;text-align:right}
+.app-shell.stitch-shell aside nav a.active{border-left-color:transparent!important}
+.app-shell.stitch-shell aside nav a.active:hover{border-left-color:transparent!important}
+.app-shell.stitch-shell .order-label-filter-quick{display:flex;justify-content:flex-end;margin:0 0 10px}
+.app-shell.stitch-shell .order-label-filter-quick label{display:grid;grid-template-columns:auto 210px;align-items:center;gap:10px;color:var(--rv-muted);font-size:.76rem;font-weight:700}
+.app-shell.stitch-shell .order-label-filter-quick select{min-height:36px}
+@media(max-width:700px){.app-shell.stitch-shell .security-page .sessions li{grid-template-columns:32px minmax(0,1fr)}.app-shell.stitch-shell .security-page .sessions li>b{grid-column:2;text-align:left}.app-shell.stitch-shell .order-label-filter-quick{justify-content:stretch}.app-shell.stitch-shell .order-label-filter-quick label{grid-template-columns:1fr}.app-shell.stitch-shell .order-label-filter-quick select{width:100%}}

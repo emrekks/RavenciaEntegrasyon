@@ -199,6 +199,60 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new ShipmentActionJobPayload(jobId, package.Id, action, commandPayload)); var job = NewJob(tenantId, package.ConnectionId, MarketplaceJobTypes.ShipmentAction, dedup, payload, correlationId); job.Id = jobId; job.EffectIdempotencyKey = normalizedKey; db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
     }
 
+    public async Task<ServiceResult<ShipmentView>> ProcessShipmentInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        const string action = "PICKING";
+        const string effectType = "TRENDYOL_INSTANT_PICKING";
+        var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
+        if (package is null) return NotFound<ShipmentView>();
+        if (package.Version != expectedVersion) return Precondition<ShipmentView>(package.Version);
+        if (package.Status != ShipmentPackageStatus.New) return ServiceResult<ShipmentView>.Fail("SHIPMENT_ACTION_NOT_ALLOWED", "Yalnız yeni durumdaki paketler işleme alınabilir.", 409);
+
+        var packageLines = await (from allocation in db.PackageLineAllocations.AsNoTracking()
+                                  where allocation.TenantId == tenantId && allocation.PackageId == package.Id && allocation.AllocatedQuantity > 0
+                                  join line in db.OrderLines.AsNoTracking() on new { allocation.TenantId, Id = allocation.OrderLineId } equals new { line.TenantId, line.Id }
+                                  select new { line.ExternalLineId, allocation.AllocatedQuantity }).ToListAsync(cancellationToken);
+        if (packageLines.Count == 0 || packageLines.Any(line => !long.TryParse(line.ExternalLineId, out _) || line.AllocatedQuantity != decimal.Truncate(line.AllocatedQuantity) || line.AllocatedQuantity > int.MaxValue))
+            return ServiceResult<ShipmentView>.Fail("PICKING_LINES_REQUIRED", "Paket satırları Trendyol Picking isteği için hazırlanamadı.", 422);
+        var payload = JsonSerializer.Serialize(new { lines = packageLines.Select(line => new { lineId = long.Parse(line.ExternalLineId), quantity = (int)line.AllocatedQuantity }), @params = new { }, status = "Picking" });
+        var validation = ValidateShipmentAction(package, action, payload);
+        if (validation is not null) return ServiceResult<ShipmentView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
+        var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
+        if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
+        if (orderNumber is null) return NotFound<ShipmentView>();
+
+        var normalizedKey = idempotencyKey.Trim();
+        var existing = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.CompletedAt is null) return ServiceResult<ShipmentView>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki işleme alma sonucunun kesinleşmesi bekleniyor.", 409);
+            return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+        }
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = timeProvider.GetUtcNow() };
+        db.ExternalEffectRecords.Add(effect);
+        await db.SaveChangesAsync(cancellationToken);
+        var result = await orders.ExecutePackageActionAsync(new AdapterContext(tenantId, package.ConnectionId, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)), new(package.ExternalPackageId, action, payload), cancellationToken);
+        if (!result.IsSuccess)
+        {
+            var error = result.Error;
+            if (error is null || IsAmbiguous(error)) return ServiceResult<ShipmentView>.Fail(error is null ? "PICKING_FAILED" : "EXTERNAL_EFFECT_AMBIGUOUS", error?.SafeMessage ?? "Trendyol işleme alma isteğine yanıt vermedi; paneldeki mevcut bilgi korundu.", error is null ? 502 : 409);
+            db.ExternalEffectRecords.Remove(effect);
+            await db.SaveChangesAsync(cancellationToken);
+            return ServiceResult<ShipmentView>.Fail("PICKING_FAILED", error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
+        }
+
+        package.Status = ShipmentPackageStatus.Processing;
+        package.RawStatus = "Processing";
+        package.StatusOccurredAt = timeProvider.GetUtcNow();
+        package.UpdatedAt = package.StatusOccurredAt;
+        package.Version++;
+        effect.CompletedAt = package.StatusOccurredAt;
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
+    }
+
     public async Task<ServiceResult<ShipmentView>> ChangeCargoProviderInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
         const string effectType = "TRENDYOL_INSTANT_CARGO_PROVIDER_CHANGE";
