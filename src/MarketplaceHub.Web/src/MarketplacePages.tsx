@@ -402,7 +402,7 @@ function ShippingLabelModal({ item, format, onClose }: { item: Order; format: 'a
     <section className={`workspace-modal shipping-label-modal format-${format}`} role="dialog" aria-modal="true" aria-labelledby="shipping-label-title" onMouseDown={event => event.stopPropagation()}>
       <header><div><h2 id="shipping-label-title">{format === 'a4' ? 'A4 kargo etiketi' : 'Sticker kargo etiketi'}</h2><p>#{item.orderNumber} · {cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)}</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat">×</button></header>
       <div className="shipping-label-preview-wrap"><article className={`shipping-label-print-surface shipping-label-${format} a4-count-${settings.a4LabelsPerPage}`} style={style}>
-        {settings.layout[format].map(block => <Fragment key={block.id}>{renderLabelBlock(block)}</Fragment>)}
+        {settings.layout[format].map(block => <div key={block.id} className="shipping-label-positioned-block" style={block.position ? { left: `${block.position.x}%`, top: `${block.position.y}%`, width: `${block.position.width}%`, height: `${block.position.height}%` } : undefined}><Fragment>{renderLabelBlock(block)}</Fragment></div>)}
       </article></div>
       <footer className="shipping-label-modal-actions"><span>Etiket bilgileri sipariş ve paket kaydından dolduruldu.</span><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" onClick={() => window.print()}>Yazdır</button></footer>
     </section>

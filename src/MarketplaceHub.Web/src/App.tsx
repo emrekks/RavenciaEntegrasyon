@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
@@ -7,7 +7,7 @@ import { AttributesPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPa
 import { IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage } from './MarketplacePages'
 import { InvoicesPage } from './InvoicingPages'
 import { JobsPage } from './OperationsPages'
-import { code128Bars, defaultShippingLabelSettings, loadShippingLabelSettings, saveShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from './shipping-label'
+import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, loadShippingLabelSettings, saveShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from './shipping-label'
 
 type ShellConnection = {
   id: string
@@ -405,7 +405,7 @@ function Security() {
     {legacySettingsTab === 'database' && <div className="panel database-reset-panel"><div className="database-reset-intro"><span className="security-state">Yetkili İşlemi</span><h2>Yerel veritabanı listelerini sıfırla</h2><p>Seçilen kayıtlar yalnız bu hesabın yerel veritabanından silinir. Bağlı alt kayıtlar güvenli sırayla temizlenir.</p></div><div className="database-scope-groups"><section className="database-scope-group"><div><h3>Katalog</h3><p>Ürün kataloğunda kullanılan temel listeleri temizleyin.</p></div><div className="database-scope-list">{[['PRODUCTS','Ürünler listesi'],['CATEGORIES','Kategori listesi'],['BRANDS','Marka listesi']].map(([scope,label]) => <label key={scope}><input type="checkbox" checked={resetScopes.includes(scope)} onChange={event => toggleResetScope(scope, event.target.checked)} /><span><strong>{label}</strong><small>Yerel kayıtları ve bağlı alt kayıtları temizle</small></span></label>)}</div></section><section className="database-scope-group"><div><h3>Ürün seçenekleri</h3><p>Ürün seçeneklerini ve seçenek değerlerini temizleyin.</p></div><div className="database-scope-list">{[['OPTIONS','Seçenekler listesi']].map(([scope,label]) => <label key={scope}><input type="checkbox" checked={resetScopes.includes(scope)} onChange={event => toggleResetScope(scope, event.target.checked)} /><span><strong>{label}</strong><small>Ürün seçeneklerini ve bağlı değerleri temizle</small></span></label>)}</div></section><section className="database-scope-group"><div><h3>Operasyon</h3><p>İşlem ve satış kayıtlarını temizleyin.</p></div><div className="database-scope-list">{[['ORDERS','Siparişler listesi'],['RETURNS','İadeler listesi'],['INVOICES','Faturalar listesi']].map(([scope,label]) => <label key={scope}><input type="checkbox" checked={resetScopes.includes(scope)} onChange={event => toggleResetScope(scope, event.target.checked)} /><span><strong>{label}</strong><small>Yerel kayıtları ve bağlı alt kayıtları temizle</small></span></label>)}</div></section></div><label className="database-confirmation">Onay için <b>Verileri sil</b> yazın<input value={resetConfirmation} onChange={event => setResetConfirmation(event.target.value)} /></label><button type="button" className="destructive" disabled={!resetScopes.length || resetConfirmation !== 'Verileri sil' || resetBusy} onClick={() => void resetOperationalData()}>{resetBusy ? 'Temizleniyor…' : 'Seçili listeleri kalıcı sil'}</button></div>}
   </section>
 }
-function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: ShippingLabelSettings; onChange: (value: ShippingLabelSettings) => void; onSave: () => void }) {
+function LegacyShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: ShippingLabelSettings; onChange: (value: ShippingLabelSettings) => void; onSave: () => void }) {
   const [addKind, setAddKind] = useState<ShippingLabelBlockKind>('custom')
   const [customTitle, setCustomTitle] = useState('')
   const [customText, setCustomText] = useState('')
@@ -512,6 +512,127 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
       <div className="shipping-layout-editor-heading"><div><h3 id="shipping-layout-editor-title">Etiket içerik sırası</h3><p>Kağıt üzerindeki bloğu seçin; tür, başlık, alanlar ve hizalamayı tek ayar panelinden düzenleyin.</p></div><span>Değişiklikler “Ayarları kaydet” ile uygulanır.</span></div>
       <div className="shipping-layout-editor-grid">
         {(['a4', 'sticker'] as const).map(renderFormatEditor)}
+      </div>
+    </section>
+    <div className="shipping-settings-actions"><button type="button" onClick={onSave}>Ayarları kaydet</button></div>
+  </div>
+}
+
+type ShippingDesignerTab = 'general' | 'text' | 'barcode'
+
+function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: ShippingLabelSettings; onChange: (value: ShippingLabelSettings) => void; onSave: () => void }) {
+  const [format, setFormat] = useState<'a4' | 'sticker'>('a4')
+  const [selectedId, setSelectedId] = useState<string | null>(settings.layout.a4[0]?.id ?? null)
+  const [designerTab, setDesignerTab] = useState<ShippingDesignerTab>('general')
+  const [customTitle, setCustomTitle] = useState('')
+  const [customText, setCustomText] = useState('')
+  const [stickerWidthDraft, setStickerWidthDraft] = useState(() => String(settings.stickerWidthMm))
+  const [stickerHeightDraft, setStickerHeightDraft] = useState(() => String(settings.stickerHeightMm))
+  const layout = settings.layout[format]
+  const activeBlock = layout.find(block => block.id === selectedId) ?? layout[0] ?? null
+
+  useEffect(() => { setSelectedId(settings.layout[format][0]?.id ?? null) }, [format])
+  useEffect(() => { setStickerWidthDraft(String(settings.stickerWidthMm)) }, [settings.stickerWidthMm])
+  useEffect(() => { setStickerHeightDraft(String(settings.stickerHeightMm)) }, [settings.stickerHeightMm])
+
+  function update<K extends keyof ShippingLabelSettings>(key: K, value: ShippingLabelSettings[K]) {
+    onChange({ ...settings, [key]: value })
+  }
+  function updateBlock(blockId: string, patch: Partial<ShippingLabelBlock>) {
+    onChange({ ...settings, layout: { ...settings.layout, [format]: layout.map(block => block.id === blockId ? { ...block, ...patch } : block) } })
+  }
+  function positionFor(block: ShippingLabelBlock, index: number) {
+    return block.position ?? defaultShippingLabelBlockPosition(block.kind, index)
+  }
+  function commitDimension(key: 'stickerWidthMm' | 'stickerHeightMm', value: string, fallback: number) {
+    const parsed = Number(value)
+    const next = Number.isFinite(parsed) && value.trim() ? Math.min(300, Math.max(40, parsed)) : fallback
+    if (key === 'stickerWidthMm') setStickerWidthDraft(String(next)); else setStickerHeightDraft(String(next))
+    update(key, next)
+  }
+  function resetLayout() {
+    const next = defaultShippingLabelSettings.layout[format].map(block => ({ ...block, fields: [...block.fields], position: block.position ? { ...block.position } : undefined }))
+    onChange({ ...settings, layout: { ...settings.layout, [format]: next } })
+    setSelectedId(next[0]?.id ?? null)
+  }
+  function toggleField(block: ShippingLabelBlock, field: ShippingLabelField) {
+    updateBlock(block.id, { fields: block.fields.includes(field) ? block.fields.filter(value => value !== field) : [...block.fields, field] })
+  }
+  function removeBlock(blockId: string) {
+    const next = layout.filter(block => block.id !== blockId)
+    onChange({ ...settings, layout: { ...settings.layout, [format]: next } })
+    setSelectedId(next[0]?.id ?? null)
+  }
+  function addBlock(kind: ShippingLabelBlockKind, x = 10, y = 10) {
+    const catalog = shippingLabelBlockCatalog.find(block => block.kind === kind)
+    if (!catalog || (kind !== 'custom' && layout.some(block => block.kind === kind))) return null
+    const id = kind === 'custom' ? `custom-${Date.now()}` : kind
+    const block: ShippingLabelBlock = {
+      id,
+      kind,
+      title: kind === 'custom' ? customTitle.trim() || 'Özel içerik' : catalog.label,
+      fields: [...catalog.fields],
+      align: kind === 'trackingBarcode' || kind === 'packageBarcode' ? 'center' : 'left',
+      text: kind === 'custom' ? customText : '',
+      position: { x: Math.min(92, Math.max(0, x)), y: Math.min(92, Math.max(0, y)), width: kind === 'trackingBarcode' || kind === 'packageBarcode' ? 84 : 80, height: kind === 'address' ? 25 : kind === 'custom' ? 14 : 13 }
+    }
+    onChange({ ...settings, layout: { ...settings.layout, [format]: [...layout, block] } })
+    setSelectedId(block.id)
+    if (kind === 'custom') { setCustomTitle(''); setCustomText('') }
+    return block
+  }
+  function dragStart(event: DragEvent<HTMLElement>, value: string) {
+    event.dataTransfer.setData('application/x-ravencia-label', value)
+    event.dataTransfer.effectAllowed = value.startsWith('block:') ? 'move' : 'copy'
+  }
+  function dropOnCanvas(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    const value = event.dataTransfer.getData('application/x-ravencia-label')
+    if (!value) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const pointX = ((event.clientX - rect.left) / rect.width) * 100
+    const pointY = ((event.clientY - rect.top) / rect.height) * 100
+    if (value.startsWith('block:')) {
+      const blockId = value.slice(6)
+      const block = layout.find(item => item.id === blockId)
+      if (!block) return
+      const position = positionFor(block, layout.indexOf(block))
+      updateBlock(block.id, { position: { ...position, x: Math.min(100 - position.width, Math.max(0, pointX - position.width / 2)), y: Math.min(100 - position.height, Math.max(0, pointY - position.height / 2)) } })
+      setSelectedId(block.id)
+      return
+    }
+    const kind = value.replace('catalog:', '') as ShippingLabelBlockKind
+    const existing = layout.find(block => block.kind === kind)
+    if (existing && kind !== 'custom') {
+      const position = positionFor(existing, layout.indexOf(existing))
+      updateBlock(existing.id, { position: { ...position, x: Math.min(100 - position.width, Math.max(0, pointX - position.width / 2)), y: Math.min(100 - position.height, Math.max(0, pointY - position.height / 2)) } })
+      setSelectedId(existing.id)
+      return
+    }
+    addBlock(kind, pointX - 40, pointY - 7)
+  }
+  function numberPositionField(label: string, key: 'x' | 'y' | 'width' | 'height', value: number) {
+    if (!activeBlock) return null
+    const position = positionFor(activeBlock, layout.indexOf(activeBlock))
+    return <label className="shipping-designer-number-field">{label}<input type="number" min={0} max={100} value={value} onChange={event => { const next = Math.min(100, Math.max(0, Number(event.target.value) || 0)); const nextPosition = { ...position, [key]: next }; if (key === 'x') nextPosition.x = Math.min(next, 100 - nextPosition.width); if (key === 'y') nextPosition.y = Math.min(next, 100 - nextPosition.height); if (key === 'width') nextPosition.width = Math.min(next, 100 - nextPosition.x); if (key === 'height') nextPosition.height = Math.min(next, 100 - nextPosition.y); updateBlock(activeBlock.id, { position: nextPosition }) }} /></label>
+  }
+  return <div className="panel shipping-settings-panel shipping-designer-panel">
+    <div className="shipping-settings-intro"><span className="security-state enabled">Etiket Tasarımcısı</span><h2>Kargo etiketi düzeni</h2><p>Alanları sağdaki kütüphaneden kâğıda sürükleyin. Seçili alanı taşıyın, boyutlandırın ve özelliklerini anında düzenleyin.</p></div>
+    <div className="shipping-settings-grid shipping-designer-page-settings">
+      <label>Gönderici adı<input value={settings.senderName} maxLength={120} onChange={event => update('senderName', event.target.value)} /></label>
+      <label>Gönderici adresi<textarea value={settings.senderAddress} maxLength={500} rows={3} onChange={event => update('senderAddress', event.target.value)} placeholder="İsteğe bağlı" /></label>
+      <label>A4 sayfa düzeni<select value={settings.a4LabelsPerPage} onChange={event => update('a4LabelsPerPage', Number(event.target.value) as ShippingLabelSettings['a4LabelsPerPage'])}><option value={1}>Sayfada 1 etiket</option><option value={2}>Sayfada 2 etiket</option><option value={4}>Sayfada 4 etiket</option></select></label>
+      <label>Sticker genişliği (mm)<input type="number" min={40} max={300} value={stickerWidthDraft} onChange={event => setStickerWidthDraft(event.target.value)} onBlur={() => commitDimension('stickerWidthMm', stickerWidthDraft, settings.stickerWidthMm)} /></label>
+      <label>Sticker yüksekliği (mm)<input type="number" min={40} max={300} value={stickerHeightDraft} onChange={event => setStickerHeightDraft(event.target.value)} onBlur={() => commitDimension('stickerHeightMm', stickerHeightDraft, settings.stickerHeightMm)} /></label>
+      <label>Bloklar arası boşluk (mm)<input type="number" min={0} max={20} value={settings.sectionGapMm} onChange={event => update('sectionGapMm', Math.min(20, Math.max(0, Number(event.target.value) || 0)))} /></label>
+      <label className="shipping-settings-check"><input type="checkbox" checked={settings.showCustomerPhone} onChange={event => update('showCustomerPhone', event.target.checked)} /><span>Müşteri iletişim alanını göster</span></label>
+    </div>
+    <section className="shipping-layout-editor shipping-designer" aria-labelledby="shipping-designer-title">
+      <header className="shipping-designer-toolbar"><div><span className="shipping-designer-kicker">Kâğıt çalışma alanı</span><h3 id="shipping-designer-title">Etiket tasarımını oluştur</h3></div><div className="shipping-designer-format-tabs" role="tablist"><button type="button" className={format === 'a4' ? 'is-active' : ''} role="tab" aria-selected={format === 'a4'} onClick={() => setFormat('a4')}>A4 <small>{settings.a4LabelsPerPage} etiket</small></button><button type="button" className={format === 'sticker' ? 'is-active' : ''} role="tab" aria-selected={format === 'sticker'} onClick={() => setFormat('sticker')}>Sticker <small>{settings.stickerWidthMm} × {settings.stickerHeightMm} mm</small></button></div><button type="button" className="secondary" onClick={resetLayout}>Varsayılanı yükle</button></header>
+      <div className="shipping-designer-workspace">
+        <aside className="shipping-designer-palette"><div className="shipping-designer-panel-heading"><span>İçerik kütüphanesi</span><small>Sürükleyip kâğıda bırakın</small></div><div className="shipping-designer-palette-list">{shippingLabelBlockCatalog.map(item => <button type="button" key={item.kind} draggable onDragStart={event => dragStart(event, `catalog:${item.kind}`)} onClick={() => addBlock(item.kind)} disabled={item.kind !== 'custom' && layout.some(block => block.kind === item.kind)}><span className={`shipping-designer-palette-icon ${item.kind}`}>{item.kind === 'trackingBarcode' || item.kind === 'packageBarcode' ? '▥' : item.kind === 'custom' ? '✦' : '▤'}</span><span><strong>{item.label}</strong><small>{item.description}</small></span><i>+</i></button>)}</div><div className="shipping-designer-custom-fields"><label>Özel blok başlığı<input value={customTitle} onChange={event => setCustomTitle(event.target.value)} placeholder="Örn. mağaza notu" /></label><label>Özel blok içeriği<textarea value={customText} onChange={event => setCustomText(event.target.value)} rows={3} placeholder="Bu blokta görünecek metin" /></label></div></aside>
+        <main className="shipping-designer-stage"><div className="shipping-designer-stage-bar"><span>{format === 'a4' ? 'A4 çalışma yüzeyi' : 'Sticker çalışma yüzeyi'}</span><small>Izgara görünümü · %{layout.length ? layout.length : 0} blok yerleşti</small></div><div className={`shipping-designer-paper is-${format}`} onDragOver={event => event.preventDefault()} onDrop={dropOnCanvas} style={{ aspectRatio: format === 'a4' ? '210 / 297' : `${settings.stickerWidthMm} / ${settings.stickerHeightMm}` }} role="application" aria-label={`${format === 'a4' ? 'A4' : 'Sticker'} etiket tasarım alanı`}>{layout.map((block, index) => { const position = positionFor(block, index); return <article key={block.id} className={`shipping-designer-block${activeBlock?.id === block.id ? ' is-selected' : ''}`} draggable onDragStart={event => dragStart(event, `block:${block.id}`)} onClick={() => setSelectedId(block.id)} style={{ left: `${position.x}%`, top: `${position.y}%`, width: `${position.width}%`, height: `${position.height}%`, textAlign: block.align }}><span className="shipping-designer-block-handle">⋮⋮</span><span className="shipping-designer-block-index">{index + 1}</span><div className="shipping-designer-block-preview"><ShippingPreviewBlock block={block} /></div><span className="shipping-designer-block-label">{block.title}</span></article>})}{layout.length === 0 && <div className="shipping-designer-drop-empty"><strong>İçerik bırakın</strong><span>Sağ panelden bir alanı buraya sürükleyin.</span></div>}</div><div className="shipping-designer-stage-help">Tutamak noktasından sürükleyerek taşıyın · Bir alana tıklayarak sağ özelliklerini açın</div></main>
+        <aside className="shipping-designer-inspector"><div className="shipping-designer-panel-heading"><span>Özellikler</span><small>{activeBlock ? `Seçili: ${activeBlock.title}` : 'Bir alan seçin'}</small></div><nav className="shipping-designer-inspector-tabs" role="tablist"><button type="button" className={designerTab === 'general' ? 'is-active' : ''} onClick={() => setDesignerTab('general')}>Genel</button><button type="button" className={designerTab === 'text' ? 'is-active' : ''} onClick={() => setDesignerTab('text')}>Yazı</button><button type="button" className={designerTab === 'barcode' ? 'is-active' : ''} onClick={() => setDesignerTab('barcode')}>Barkod</button></nav>{!activeBlock ? <div className="shipping-designer-empty">Düzenlemek için kâğıt üzerindeki bir bloğa tıklayın.</div> : <div className="shipping-designer-inspector-body">{designerTab === 'general' && <><label>Blok türü<select value={activeBlock.kind} onChange={event => { const kind = event.target.value as ShippingLabelBlockKind; const catalog = shippingLabelBlockCatalog.find(item => item.kind === kind); if (catalog) updateBlock(activeBlock.id, { kind, title: kind === 'custom' ? activeBlock.title : catalog.label, fields: [...catalog.fields], text: kind === 'custom' ? activeBlock.text : '' }) }}>{shippingLabelBlockCatalog.map(item => <option key={item.kind} value={item.kind}>{item.label}</option>)}</select></label><label>Blok başlığı<input value={activeBlock.title} maxLength={120} onChange={event => updateBlock(activeBlock.id, { title: event.target.value })} /></label><label>Hizalama<select value={activeBlock.align} onChange={event => updateBlock(activeBlock.id, { align: event.target.value as ShippingLabelAlignment })}><option value="left">Sol</option><option value="center">Orta</option><option value="right">Sağ</option></select></label><div className="shipping-designer-position-grid">{numberPositionField('Sol %', 'x', positionFor(activeBlock, layout.indexOf(activeBlock)).x)}{numberPositionField('Üst %', 'y', positionFor(activeBlock, layout.indexOf(activeBlock)).y)}{numberPositionField('Genişlik %', 'width', positionFor(activeBlock, layout.indexOf(activeBlock)).width)}{numberPositionField('Yükseklik %', 'height', positionFor(activeBlock, layout.indexOf(activeBlock)).height)}</div><label>Alana ekle<select value="" onChange={event => { if (event.target.value) toggleField(activeBlock, event.target.value as ShippingLabelField) }}><option value="">Bir alan seçin…</option>{shippingLabelFields.filter(item => !activeBlock.fields.includes(item.id)).map(item => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label><div className="shipping-designer-field-chips">{activeBlock.fields.length ? activeBlock.fields.map(field => <button type="button" key={field} onClick={() => toggleField(activeBlock, field)}>{shippingLabelFields.find(item => item.id === field)?.label} ×</button>) : <span>Alan eklenmedi</span>}</div></>}{designerTab === 'text' && <><label>Blok başlığı<input value={activeBlock.title} onChange={event => updateBlock(activeBlock.id, { title: event.target.value })} /></label><label>Yazı hizası<select value={activeBlock.align} onChange={event => updateBlock(activeBlock.id, { align: event.target.value as ShippingLabelAlignment })}><option value="left">Sol</option><option value="center">Orta</option><option value="right">Sağ</option></select></label>{activeBlock.kind === 'custom' && <label>Metin<textarea value={activeBlock.text} maxLength={500} rows={8} onChange={event => updateBlock(activeBlock.id, { text: event.target.value })} /></label>}<p className="shipping-designer-help">Alanların gerçek değerleri sipariş yazdırılırken otomatik doldurulur.</p></>}{designerTab === 'barcode' && <div className="shipping-designer-barcode-settings"><strong>{activeBlock.kind === 'packageBarcode' ? 'Paket barkodu' : activeBlock.kind === 'trackingBarcode' ? 'Takip barkodu' : 'Barkod ayarı'}</strong><p>Barkod genişliği tuvaldeki blok genişliğine göre otomatik ölçeklenir. Modül aralıkları tarayıcı okunabilirliğini korur.</p><label>Alan<select value={activeBlock.fields[0] ?? ''} onChange={event => { if (event.target.value) updateBlock(activeBlock.id, { fields: [event.target.value as ShippingLabelField] }) }}><option value="">Alan seçin…</option>{shippingLabelFields.filter(field => field.id === 'trackingNumber' || field.id === 'packageNumber').map(field => <option value={field.id} key={field.id}>{field.label}</option>)}</select></label></div>}<button type="button" className="shipping-designer-delete" onClick={() => removeBlock(activeBlock.id)}>Bloğu kaldır</button></div>}</aside>
       </div>
     </section>
     <div className="shipping-settings-actions"><button type="button" onClick={onSave}>Ayarları kaydet</button></div>

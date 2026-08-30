@@ -1,6 +1,7 @@
 export type ShippingLabelBlockKind = 'trackingBarcode' | 'address' | 'orderInfo' | 'packageBarcode' | 'sender' | 'custom'
 export type ShippingLabelField = 'trackingNumber' | 'packageNumber' | 'orderNumber' | 'customerName' | 'address' | 'cargoProvider' | 'senderName' | 'senderAddress' | 'customerEmail'
 export type ShippingLabelAlignment = 'left' | 'center' | 'right'
+export type ShippingLabelBlockPosition = { x: number; y: number; width: number; height: number }
 
 export type ShippingLabelBlock = {
   id: string
@@ -9,6 +10,7 @@ export type ShippingLabelBlock = {
   fields: ShippingLabelField[]
   align: ShippingLabelAlignment
   text: string
+  position?: ShippingLabelBlockPosition
 }
 
 export const shippingLabelBlockCatalog: Array<{ kind: ShippingLabelBlockKind; label: string; description: string; fields: ShippingLabelField[] }> = [
@@ -68,11 +70,11 @@ export function code128Bars(value: string): boolean[] {
 }
 
 const defaultLayout: ShippingLabelBlock[] = [
-  { id: 'trackingBarcode', kind: 'trackingBarcode', title: 'Takip barkodu', fields: ['trackingNumber'], align: 'center', text: '' },
-  { id: 'address', kind: 'address', title: 'Teslimat adresi', fields: ['customerName', 'address'], align: 'left', text: '' },
-  { id: 'orderInfo', kind: 'orderInfo', title: 'Paket / sipariş bilgileri', fields: ['packageNumber', 'orderNumber', 'customerEmail'], align: 'left', text: '' },
-  { id: 'packageBarcode', kind: 'packageBarcode', title: 'Paket barkodu', fields: ['packageNumber'], align: 'center', text: '' },
-  { id: 'sender', kind: 'sender', title: 'Gönderici ve kargo bilgileri', fields: ['cargoProvider', 'senderName', 'senderAddress'], align: 'left', text: '' }
+  { id: 'trackingBarcode', kind: 'trackingBarcode', title: 'Takip barkodu', fields: ['trackingNumber'], align: 'center', text: '', position: { x: 8, y: 5, width: 84, height: 18 } },
+  { id: 'address', kind: 'address', title: 'Teslimat adresi', fields: ['customerName', 'address'], align: 'left', text: '', position: { x: 8, y: 26, width: 84, height: 27 } },
+  { id: 'orderInfo', kind: 'orderInfo', title: 'Paket / sipariş bilgileri', fields: ['packageNumber', 'orderNumber', 'customerEmail'], align: 'left', text: '', position: { x: 8, y: 57, width: 84, height: 14 } },
+  { id: 'packageBarcode', kind: 'packageBarcode', title: 'Paket barkodu', fields: ['packageNumber'], align: 'center', text: '', position: { x: 8, y: 74, width: 84, height: 13 } },
+  { id: 'sender', kind: 'sender', title: 'Gönderici ve kargo bilgileri', fields: ['cargoProvider', 'senderName', 'senderAddress'], align: 'left', text: '', position: { x: 8, y: 90, width: 84, height: 8 } }
 ]
 
 export type ShippingLabelSettings = {
@@ -90,7 +92,19 @@ export type ShippingLabelSettings = {
 }
 
 function cloneLayout(layout: ShippingLabelBlock[]) {
-  return layout.map(block => ({ ...block, fields: [...block.fields] }))
+  return layout.map(block => ({ ...block, fields: [...block.fields], position: block.position ? { ...block.position } : undefined }))
+}
+
+export function defaultShippingLabelBlockPosition(kind: ShippingLabelBlockKind, index: number): ShippingLabelBlockPosition {
+  const positions: Partial<Record<ShippingLabelBlockKind, ShippingLabelBlockPosition>> = {
+    trackingBarcode: { x: 8, y: 5, width: 84, height: 18 },
+    address: { x: 8, y: 26, width: 84, height: 27 },
+    orderInfo: { x: 8, y: 57, width: 84, height: 14 },
+    packageBarcode: { x: 8, y: 74, width: 84, height: 13 },
+    sender: { x: 8, y: 90, width: 84, height: 8 },
+    custom: { x: 10, y: Math.min(84, 8 + index * 16), width: 80, height: 12 }
+  }
+  return { ...(positions[kind] ?? positions.custom)! }
 }
 
 export const defaultShippingLabelSettings: ShippingLabelSettings = {
@@ -119,7 +133,7 @@ function boundedNumber(value: unknown, fallback: number, min: number, max: numbe
 function safeBlock(raw: unknown, index: number): ShippingLabelBlock | null {
   if (typeof raw === 'string') {
     const catalog = catalogByKind.get(raw as ShippingLabelBlockKind)
-    return catalog && catalog.kind !== 'custom' ? { id: catalog.kind, kind: catalog.kind, title: catalog.label, fields: [...catalog.fields], align: catalog.kind === 'trackingBarcode' || catalog.kind === 'packageBarcode' ? 'center' : 'left', text: '' } : null
+    return catalog && catalog.kind !== 'custom' ? { id: catalog.kind, kind: catalog.kind, title: catalog.label, fields: [...catalog.fields], align: catalog.kind === 'trackingBarcode' || catalog.kind === 'packageBarcode' ? 'center' : 'left', text: '', position: defaultShippingLabelBlockPosition(catalog.kind, index) } : null
   }
   if (!raw || typeof raw !== 'object') return null
   const value = raw as Partial<ShippingLabelBlock>
@@ -128,7 +142,17 @@ function safeBlock(raw: unknown, index: number): ShippingLabelBlock | null {
   const fields = Array.isArray(value.fields) ? value.fields.filter((field, fieldIndex): field is ShippingLabelField => validFields.has(field as ShippingLabelField) && value.fields!.indexOf(field) === fieldIndex) : [...catalog.fields]
   const align = value.align === 'center' || value.align === 'right' ? value.align : 'left'
   const id = typeof value.id === 'string' && value.id.trim() ? value.id.trim().slice(0, 80) : `${kind}-${index + 1}`
-  return { id, kind, title: typeof value.title === 'string' && value.title.trim() ? value.title.trim().slice(0, 120) : catalog.label, fields, align, text: typeof value.text === 'string' ? value.text.slice(0, 500) : '' }
+  const rawPosition = value.position as Partial<ShippingLabelBlockPosition> | undefined
+  const fallbackPosition = defaultShippingLabelBlockPosition(kind, index)
+  const position = rawPosition && typeof rawPosition === 'object' ? {
+    x: boundedNumber(rawPosition.x, fallbackPosition.x, 0, 92),
+    y: boundedNumber(rawPosition.y, fallbackPosition.y, 0, 92),
+    width: boundedNumber(rawPosition.width, fallbackPosition.width, 8, 100),
+    height: boundedNumber(rawPosition.height, fallbackPosition.height, 5, 100)
+  } : fallbackPosition
+  position.width = Math.min(position.width, 100 - position.x)
+  position.height = Math.min(position.height, 100 - position.y)
+  return { id, kind, title: typeof value.title === 'string' && value.title.trim() ? value.title.trim().slice(0, 120) : catalog.label, fields, align, text: typeof value.text === 'string' ? value.text.slice(0, 500) : '', position }
 }
 
 function normalizeLayout(value: unknown, fallback: ShippingLabelBlock[]) {
