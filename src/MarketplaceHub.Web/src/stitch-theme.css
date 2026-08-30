@@ -7523,7 +7523,7 @@ body:has(.product-add-page),
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(280px, .82fr);
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 .product-add-page .product-top-layout > .product-step-card { min-width: 0; margin: 0; }
 .product-add-page .product-basics-card { padding: 20px 18px !important; }
@@ -8537,14 +8537,17 @@ body:has(.product-add-page),
 }
 .app-shell .product-add-page .product-top-sidebar {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   align-content: start;
   gap: 16px;
   min-width: 0;
+  height: 100%;
 }
 .app-shell .product-add-page .product-top-sidebar > .product-step-card {
   min-width: 0;
   margin: 0;
 }
+.app-shell .product-add-page .product-top-sidebar > .product-category-mapping-card { height: 100%; }
 .app-shell .product-add-page .product-top-sidebar .product-pricing-card {
   position: static;
 }
