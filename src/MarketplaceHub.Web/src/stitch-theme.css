@@ -9346,6 +9346,10 @@ body:has(.product-add-page),
   font-weight: 850 !important;
   line-height: 1.2 !important;
 }
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-status-feedback {
+  align-self: center !important;
+  margin-top: 0 !important;
+}
 .app-shell.stitch-shell .orders-page .order-status-feedback i {
   width: 5px;
   height: 5px;
