@@ -9540,9 +9540,9 @@ body:has(.product-add-page),
   .app-shell.stitch-shell.sidebar-collapsed > aside nav a,
   .app-shell.stitch-shell.sidebar-collapsed > aside .settings-nav > a,
   .app-shell.stitch-shell.sidebar-collapsed > aside .logout-link {
-    justify-content: center !important;
+    justify-content: flex-start !important;
     width: 100% !important;
-    padding-inline: 0 !important;
+    padding: 0 0 0 44px !important;
     gap: 0 !important;
   }
 
