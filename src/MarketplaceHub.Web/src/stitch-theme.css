@@ -9298,28 +9298,13 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .option-chip { min-height: 33px !important; padding-inline: 12px !important; border-radius: 8px !important; }
 .app-shell.stitch-shell .option-chip.active { color: #fff !important; background: #626eff !important; border-color: #8991ff !important; box-shadow: 0 6px 14px rgba(98, 110, 255, .22); }
 
-.app-shell.stitch-shell .orders-bulk-toolbar { position: relative; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 12px 0 8px; padding: 10px 13px; border: 1px solid rgba(124, 134, 255, .26); border-radius: 12px; background: linear-gradient(100deg, #1b2037, #15192b); box-shadow: 0 12px 24px rgba(0, 0, 0, .16); }
-.app-shell.stitch-shell .orders-bulk-toolbar > div:first-child { display: grid; gap: 3px; }
-.app-shell.stitch-shell .orders-bulk-toolbar strong { color: #f0f1ff; font-size: 12px; }
-.app-shell.stitch-shell .orders-bulk-toolbar span { color: #9ba4c6; font-size: 11px; }
-.app-shell.stitch-shell .orders-bulk-toolbar .bulk-menu-shell { position: relative; }
-.app-shell.stitch-shell .orders-bulk-toolbar .bulk-action { min-height: 38px !important; padding: 0 14px !important; color: #fff !important; background: #626eff !important; border-color: #7f88ff !important; border-radius: 8px !important; font-weight: 800; }
-.app-shell.stitch-shell .orders-bulk-toolbar .bulk-action:disabled { color: #888fa9 !important; background: #292e46 !important; border-color: #3d4463 !important; }
-.app-shell.stitch-shell .orders-bulk-toolbar .bulk-action-menu { right: 0; left: auto; z-index: 50; min-width: 250px; }
-.app-shell.stitch-shell .order-filter-primary > .bulk-menu-shell { display: none !important; }
 .app-shell.stitch-shell .cargo-track-pending { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 0 9px; color: #9ca5ff !important; border: 1px solid rgba(124, 134, 255, .34); border-radius: 7px; font-size: 10px; font-weight: 800; text-decoration: none; }
 .app-shell.stitch-shell .cargo-track-pending:hover { color: #fff !important; background: rgba(124, 134, 255, .16); }
 .app-shell.stitch-shell .order-reference-actions > small { color: #8189a8; font-size: 10px; }
 
 /* Order filters live next to the data they refine; keep the toolbar single-source and stable. */
 .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary {
-  grid-template-columns: minmax(220px, 1.6fr) minmax(110px, .55fr) minmax(120px, .6fr) minmax(180px, .95fr) auto auto auto !important;
-}
-.app-shell.stitch-shell .orders-reference-filter-shell .order-sort-filter {
-  min-width: 0;
-}
-.app-shell.stitch-shell .orders-reference-filter-shell .order-sort-filter select {
-  min-width: 0 !important;
+  grid-template-columns: minmax(220px, 1.6fr) minmax(110px, .55fr) minmax(120px, .6fr) auto auto auto !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-head {
   min-height: 142px !important;
@@ -9576,8 +9561,6 @@ body:has(.product-add-page),
   .app-shell.stitch-shell .job-detail-facts { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
 @media (max-width: 600px) {
-  .app-shell.stitch-shell .orders-bulk-toolbar { align-items: stretch; flex-direction: column; }
-  .app-shell.stitch-shell .orders-bulk-toolbar .bulk-action { width: 100%; }
   .app-shell.stitch-shell .return-detail-backdrop { padding: 10px !important; }
   .app-shell.stitch-shell .return-detail-modal { max-height: 94vh !important; }
   .app-shell.stitch-shell .return-detail-summary { margin-inline: 14px; }
@@ -9587,6 +9570,183 @@ body:has(.product-add-page),
   .app-shell.stitch-shell .return-detail-modal > footer { padding-inline: 14px !important; }
   .app-shell.stitch-shell .product-add-progress > button { padding-inline: 8px !important; }
   .app-shell.stitch-shell .product-add-progress > button > strong { font-size: 10px !important; }
+}
+
+/* Compact order controls stay together below the primary filters. */
+.app-shell.stitch-shell .orders-reference-bottom-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 10px 13px;
+  background: #171a24;
+  border-top: 1px solid #282b3b;
+}
+.app-shell.stitch-shell .orders-bottom-filter-group,
+.app-shell.stitch-shell .orders-bottom-pagination,
+.app-shell.stitch-shell .orders-bottom-pagination label,
+.app-shell.stitch-shell .orders-bottom-select {
+  display: flex;
+  align-items: center;
+}
+.app-shell.stitch-shell .orders-bottom-filter-group {
+  gap: 8px;
+  min-width: 0;
+}
+.app-shell.stitch-shell .orders-reference-bottom-toolbar .bulk-menu-shell {
+  position: relative;
+  flex: 0 0 auto;
+}
+.app-shell.stitch-shell .orders-reference-bottom-toolbar .bulk-action {
+  min-height: 34px !important;
+  padding: 0 13px !important;
+  color: #fff !important;
+  background: #f09a72 !important;
+  border-color: #f09a72 !important;
+  border-radius: 7px !important;
+  box-shadow: none !important;
+  font-weight: 800 !important;
+}
+.app-shell.stitch-shell .orders-reference-bottom-toolbar .bulk-action:hover:not(:disabled) {
+  background: #ffad88 !important;
+  border-color: #ffad88 !important;
+}
+.app-shell.stitch-shell .orders-reference-bottom-toolbar .bulk-action:disabled {
+  color: #8f8fa0 !important;
+  background: #292b37 !important;
+  border-color: #3a3d4d !important;
+}
+.app-shell.stitch-shell .orders-reference-bottom-toolbar .bulk-action-menu {
+  top: auto !important;
+  right: auto !important;
+  bottom: calc(100% + 6px) !important;
+  left: 0 !important;
+  z-index: 100 !important;
+  min-width: 248px !important;
+}
+.app-shell.stitch-shell .orders-bottom-select {
+  gap: 7px;
+  min-width: 0;
+  color: #aeb4cb;
+  font-size: .62rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .orders-bottom-select-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: #c8ceff;
+  stroke-width: 1.8;
+}
+.app-shell.stitch-shell .orders-bottom-select select {
+  min-width: 130px;
+  min-height: 34px !important;
+  padding: 0 27px 0 9px !important;
+  color: #e3e1ed !important;
+  background-color: #1f2230 !important;
+  border: 1px solid #3a3d54 !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  font-size: .66rem !important;
+}
+.app-shell.stitch-shell .orders-bottom-select select:focus-visible,
+.app-shell.stitch-shell .orders-reference-bottom-toolbar button:focus-visible {
+  outline: 2px solid #7783ff !important;
+  outline-offset: 2px;
+}
+.app-shell.stitch-shell .orders-reference-bottom-toolbar .orders-sort-filter select {
+  min-width: 240px;
+}
+.app-shell.stitch-shell .orders-bottom-pagination {
+  gap: 7px;
+  margin-left: auto;
+}
+.app-shell.stitch-shell .orders-bottom-pagination label {
+  gap: 8px;
+  color: #aeb4cb;
+  font-size: .62rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .orders-bottom-pagination button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  min-width: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+  place-items: center;
+  color: #c6caff !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-size: 1.2rem !important;
+  transform: none !important;
+}
+.app-shell.stitch-shell .orders-bottom-pagination button:hover:not(:disabled) {
+  color: #fff !important;
+  background: rgba(88, 101, 242, .16) !important;
+}
+.app-shell.stitch-shell .orders-bottom-pagination button:disabled {
+  opacity: .38 !important;
+}
+.app-shell.stitch-shell .orders-bottom-pagination b {
+  display: grid;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 8px;
+  place-items: center;
+  color: #fff !important;
+  background: #2a3044 !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  font-size: .68rem;
+}
+@media (max-width: 900px) {
+  .app-shell.stitch-shell .orders-reference-bottom-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .app-shell.stitch-shell .orders-bottom-pagination {
+    margin-left: 0;
+  }
+}
+@media (max-width: 560px) {
+  .app-shell.stitch-shell .orders-reference-bottom-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .app-shell.stitch-shell .orders-bottom-filter-group {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app-shell.stitch-shell .orders-reference-bottom-toolbar .bulk-menu-shell,
+  .app-shell.stitch-shell .orders-reference-bottom-toolbar .bulk-action,
+  .app-shell.stitch-shell .orders-bottom-select,
+  .app-shell.stitch-shell .orders-bottom-select select {
+    width: 100%;
+  }
+  .app-shell.stitch-shell .orders-bottom-select {
+    justify-content: space-between;
+  }
+  .app-shell.stitch-shell .orders-reference-bottom-toolbar .orders-sort-filter select {
+    min-width: 0;
+  }
+  .app-shell.stitch-shell .orders-bottom-pagination {
+    justify-content: space-between;
+    margin-left: 0;
+  }
+  .app-shell.stitch-shell .orders-bottom-pagination label {
+    flex: 1 1 auto;
+    justify-content: space-between;
+  }
+  .app-shell.stitch-shell .orders-bottom-pagination label select {
+    min-width: 120px;
+  }
 }
 
 /* Preserved sidebar: the page surfaces use the planning baseline while the
