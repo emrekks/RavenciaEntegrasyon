@@ -9552,7 +9552,7 @@ body:has(.product-add-page),
     max-width: 0;
     opacity: 0;
     pointer-events: none;
-    transform: translate3d(-6px, 0, 0);
+    transform: none;
   }
 
   .app-shell.stitch-shell.sidebar-collapsed > aside nav a .nav-icon,
@@ -9575,7 +9575,7 @@ body:has(.product-add-page),
     overflow: hidden;
     opacity: 1;
     transform: translate3d(0, 0, 0);
-    transition: max-width .18s ease, opacity .14s ease, transform .18s ease !important;
+    transition: max-width .18s ease, opacity .14s ease !important;
   }
 
   .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-brand-row {
