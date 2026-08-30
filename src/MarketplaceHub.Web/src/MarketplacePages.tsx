@@ -602,6 +602,15 @@ export function IntegrationsPage() {
   const [filterOpen, setFilterOpen] = useState(false)
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'ATTENTION'>('ALL')
   const [platformFilter, setPlatformFilter] = useState<'ALL' | 'TRENDYOL' | 'TRENDYOL_EFATURAM'>('ALL')
+  useEffect(() => {
+    if (!filterOpen) return
+    const closeOnOutsideClick = (event: globalThis.MouseEvent) => {
+      const target = event.target
+      if (target instanceof Element && !target.closest('.integration-filter-wrap')) setFilterOpen(false)
+    }
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick)
+  }, [filterOpen])
   const query = useQuery({ queryKey: ['connections'], queryFn: () => loadAllPages<Connection>('/connections') })
   const activeConnections = query.data?.items.filter(item => activePlatformCodes.has(item.platformCode)) ?? []
   const visibleConnections = activeConnections.filter(item => (platformFilter === 'ALL' || item.platformCode === platformFilter) && (filter === 'ALL' || (filter === 'ACTIVE' ? item.status === 'ACTIVE' || item.status === 'VERIFIED' : item.status !== 'ACTIVE' && item.status !== 'VERIFIED' || Boolean(item.lastErrorCode))))
