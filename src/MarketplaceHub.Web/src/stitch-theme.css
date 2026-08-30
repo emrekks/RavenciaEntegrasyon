@@ -9326,7 +9326,7 @@ body:has(.product-add-page),
   color: #ff9ca4 !important;
   background: rgba(241, 112, 124, .1) !important;
   border: 1px solid rgba(241, 112, 124, .3) !important;
-  border-radius: 999px !important;
+  border-radius: 5px !important;
   font-size: .58rem !important;
   font-weight: 800 !important;
   line-height: 1.2 !important;
@@ -9341,7 +9341,7 @@ body:has(.product-add-page),
   color: #ff9ca4 !important;
   background: rgba(241, 112, 124, .11) !important;
   border: 1px solid rgba(241, 112, 124, .35) !important;
-  border-radius: 999px !important;
+  border-radius: 5px !important;
   font-size: .58rem !important;
   font-weight: 850 !important;
   line-height: 1.2 !important;
