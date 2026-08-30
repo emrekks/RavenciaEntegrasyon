@@ -9675,6 +9675,21 @@ body:has(.product-add-page),
   }
 }
 
+/* A pinned sidebar is part of the workspace layout, not an overlay. */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell {
+    transition: grid-template-columns .18s ease !important;
+  }
+
+  .app-shell.stitch-shell.sidebar-pinned {
+    grid-template-columns: 272px minmax(0, 1fr) !important;
+  }
+
+  .app-shell.stitch-shell.sidebar-pinned > aside {
+    width: 272px !important;
+  }
+}
+
 /* The filter button carries its own affordance; remove the redundant wrapper frame. */
 .app-shell.stitch-shell .integrations-reference-page .integration-filter-wrap {
   padding: 0 !important;
