@@ -229,11 +229,16 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
 
     private static JobChangeView? Change(IntegrationJob job)
     {
+        var type = job.JobType.ToUpperInvariant();
+        if (type.Contains("ORDER_SYNC", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Sipariş senkronizasyonu", "Sipariş bilgileri pazaryerinden eşitlendi.");
+        if (type.Contains("REFERENCE_SYNC", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Referans verisi senkronizasyonu", "Kategori, marka veya özellik verileri güncellendi.");
+        if (type.Contains("PRODUCT", StringComparison.Ordinal) || type.Contains("CATALOG", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Ürün senkronizasyonu", "Ürün bilgileri pazaryerine gönderildi.");
+        if (type.Contains("INVOICE", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Fatura işlemi", "Fatura isteği pazaryerine gönderildi.");
+
         try
         {
             using var document = System.Text.Json.JsonDocument.Parse(job.PayloadJson);
             var root = document.RootElement;
-            var type = job.JobType.ToUpperInvariant();
             if (type.Contains("SHIPMENT_ACTION", StringComparison.Ordinal))
             {
                 var action = StringValue(root, "action")?.ToUpperInvariant();
@@ -244,10 +249,6 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
                 if (action == "PICKING") return new("Yapılan değişiklik", "Sipariş işleme alındı", "Paket Trendyol’a işleme alma isteğiyle gönderildi.");
                 if (!string.IsNullOrWhiteSpace(action)) return new("Yapılan değişiklik", action.Replace('_', ' '), "Paket işlemi Trendyol’a gönderildi.");
             }
-            if (type.Contains("ORDER_SYNC", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Sipariş senkronizasyonu", "Sipariş bilgileri pazaryerinden eşitlendi.");
-            if (type.Contains("REFERENCE_SYNC", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Referans verisi senkronizasyonu", "Kategori, marka veya özellik verileri güncellendi.");
-            if (type.Contains("PRODUCT", StringComparison.Ordinal) || type.Contains("CATALOG", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Ürün senkronizasyonu", "Ürün bilgileri pazaryerine gönderildi.");
-            if (type.Contains("INVOICE", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Fatura işlemi", "Fatura isteği pazaryerine gönderildi.");
         }
         catch (System.Text.Json.JsonException) { }
         return null;
