@@ -3390,7 +3390,7 @@ textarea {
 .app-shell.stitch-shell .shipping-label-barcode strong {
   color: #17223a;
   font-family: monospace;
-  font-size: 1.1rem;
+  font-size: 1.1em;
   letter-spacing: .08em;
 }
 
@@ -3399,7 +3399,7 @@ textarea {
 }
 
 .app-shell.stitch-shell .shipping-label-barcode.compact .shipping-label-barcode-bars { height: 34px; }
-.app-shell.stitch-shell .shipping-label-barcode.compact strong { font-size: .84rem; }
+.app-shell.stitch-shell .shipping-label-barcode.compact strong { font-size: .84em; }
 
 .app-shell.stitch-shell .shipping-label-address-box {
   display: grid;
@@ -3407,13 +3407,24 @@ textarea {
   margin: 0;
   padding: 12px;
   border: 2px solid #29466f;
-  font-size: .95rem;
+  font-size: .95em;
   line-height: 1.25;
 }
 
 .app-shell.stitch-shell .shipping-label-address-box strong {
   margin-bottom: 3px;
-  font-size: 1.15rem;
+  font-size: 1.15em;
+}
+
+.app-shell.stitch-shell .shipping-label-address-box > .shipping-label-block-title,
+.app-shell.stitch-shell .shipping-label-meta > .shipping-label-block-title,
+.app-shell.stitch-shell .shipping-label-footer > .shipping-label-block-title,
+.app-shell.stitch-shell .shipping-label-custom-content > .shipping-label-block-title,
+.app-shell.stitch-shell .shipping-label-block-content > .shipping-label-block-title {
+  font-size: .8em;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
 }
 
 .app-shell.stitch-shell .shipping-label-meta {
@@ -3423,6 +3434,8 @@ textarea {
   margin: 0;
 }
 
+.app-shell.stitch-shell .shipping-label-meta > .shipping-label-block-title { grid-column: 1 / -1; }
+
 .app-shell.stitch-shell .shipping-label-meta span {
   display: grid;
   gap: 3px;
@@ -3431,7 +3444,7 @@ textarea {
 }
 
 .app-shell.stitch-shell .shipping-label-meta small {
-  font-size: .66rem;
+  font-size: .66em;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -3439,7 +3452,7 @@ textarea {
 .app-shell.stitch-shell .shipping-label-meta b {
   overflow-wrap: anywhere;
   font-family: monospace;
-  font-size: .86rem;
+  font-size: .86em;
 }
 
 .app-shell.stitch-shell .shipping-label-footer {
@@ -3448,10 +3461,10 @@ textarea {
   margin-top: 0;
   padding-top: 10px;
   border-top: 2px solid #29466f;
-  font-size: .78rem;
+  font-size: .78em;
 }
 
-.app-shell.stitch-shell .shipping-label-footer strong { font-size: 1rem; }
+.app-shell.stitch-shell .shipping-label-footer strong { font-size: 1em; }
 
 .app-shell.stitch-shell .shipping-label-block-content,
 .app-shell.stitch-shell .shipping-label-custom-content {
@@ -3469,7 +3482,7 @@ textarea {
 
 .app-shell.stitch-shell .shipping-label-block-content > span small,
 .app-shell.stitch-shell .shipping-label-custom-content > span small {
-  font-size: .66rem;
+  font-size: .66em;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -3477,7 +3490,7 @@ textarea {
 .app-shell.stitch-shell .shipping-label-block-content > span b,
 .app-shell.stitch-shell .shipping-label-custom-content > span b {
   font-family: monospace;
-  font-size: .86rem;
+  font-size: .86em;
 }
 
 .app-shell.stitch-shell .shipping-label-custom-content {
@@ -3859,8 +3872,9 @@ textarea {
 
 .app-shell.stitch-shell .shipping-preview-barcode strong {
   color: #17223a;
-  font: 700 .48rem/1 monospace;
+  font: 700 .8em/1 monospace;
 }
+.app-shell.stitch-shell .shipping-preview-title { font-family: inherit!important; font-size: 1.18em!important; letter-spacing: normal!important; }
 
 .app-shell.stitch-shell .shipping-preview-content {
   display: grid;
@@ -3882,11 +3896,11 @@ textarea {
 
 .app-shell.stitch-shell .shipping-preview-content span b {
   color: #7d879b;
-  font-size: .42rem;
+  font-size: .75em;
 }
 
 .app-shell.stitch-shell .shipping-preview-content span strong,
-.app-shell.stitch-shell .shipping-preview-content > strong { font-size: .57rem; }
+.app-shell.stitch-shell .shipping-preview-content > strong { font-size: 1.18em; }
 
 .app-shell.stitch-shell .shipping-settings-grid label {
   display: grid;
@@ -12894,8 +12908,8 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-content strong { overflow: hidden; color: #182541; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-barcode { display: grid; gap: 2px; width: 100%; }
 .app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-bars { width: 100%; height: 18px; }
-.app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-barcode strong { display: block; overflow: hidden; color: #182541; font: 700 7px/1 monospace; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell.stitch-shell .shipping-designer-block-label { grid-column: 2; overflow: hidden; color: #657392; font-size: 8px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-barcode strong { display: block; overflow: hidden; color: #182541; font: 700 .8em/1 monospace; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .shipping-designer-block-label { display:none; }
 .app-shell.stitch-shell .shipping-designer-drop-empty { position: absolute; inset: 35% 15%; display: grid; place-content: center; gap: 5px; color: #60708e; text-align: center; }
 .app-shell.stitch-shell .shipping-designer-drop-empty strong { color: #34466d; font-size: 13px; }
 .app-shell.stitch-shell .shipping-designer-drop-empty span { font-size: 10px; }
@@ -13088,6 +13102,7 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .rich-text-editor-foot { background:#171b2b!important; }
 
 /* Orders: keep bulk menus above the table and action controls centered. */
+.app-shell.stitch-shell .orders-page .orders-reference-filter-shell { overflow: visible !important; }
 .app-shell.stitch-shell .orders-page .order-reference-actions { align-items:center!important; justify-content:center!important; gap:7px!important; }
 .app-shell.stitch-shell .orders-page .order-reference-actions > .order-status-column,
 .app-shell.stitch-shell .orders-page .order-reference-actions > .order-label-actions,
@@ -13113,6 +13128,12 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .shipping-designer-template-actions { display:flex; align-items:center; gap:6px; margin-left:auto; min-width:0; }
 .app-shell.stitch-shell .shipping-designer-template-actions select { min-width:140px; min-height:34px; padding:7px 25px 7px 8px; color:#e9ebff; background:#101527; border:1px solid #394364; border-radius:5px; font-size:10px; }
 .app-shell.stitch-shell .shipping-designer-template-actions button { min-height:34px; padding:7px 9px; white-space:nowrap; }
+.app-shell.stitch-shell .shipping-template-save-dialog { display:flex; align-items:end; gap:9px; margin:-7px 0 12px; padding:10px; background:#171d33; border:1px solid #5865f2; border-radius:7px; }
+.app-shell.stitch-shell .shipping-template-save-dialog label { display:grid; flex:1; gap:5px; color:#cfd4ff; font-size:10px; font-weight:800; }
+.app-shell.stitch-shell .shipping-template-save-dialog input { min-height:32px; padding:7px 8px; color:#eef0ff; background:#0c101c; border:1px solid #5865f2; border-radius:5px; font-size:11px; }
+.app-shell.stitch-shell .shipping-template-save-dialog > div { display:flex; gap:6px; }
+.app-shell.stitch-shell .shipping-template-save-dialog button { min-height:32px; padding:7px 10px; white-space:nowrap; }
+.app-shell.stitch-shell .shipping-template-status { margin:-5px 0 12px; color:#9fe6c0; font-size:10px; font-weight:700; }
 .app-shell.stitch-shell .shipping-designer-paper {
   background-image: linear-gradient(rgba(181,193,213,.42) 1px, transparent 1px), linear-gradient(90deg, rgba(181,193,213,.42) 1px, transparent 1px)!important;
   background-size:2.5% 2.5%!important;

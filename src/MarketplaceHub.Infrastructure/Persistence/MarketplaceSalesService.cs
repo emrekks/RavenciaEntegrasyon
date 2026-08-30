@@ -220,8 +220,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
-        var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
-        if (orderNumber is null) return NotFound<ShipmentView>();
+        var order = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.OrderId, cancellationToken);
+        if (order is null) return NotFound<ShipmentView>();
+        var orderNumber = order.OrderNumber;
 
         var normalizedKey = idempotencyKey.Trim();
         var existing = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
@@ -248,6 +249,22 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         package.StatusOccurredAt = timeProvider.GetUtcNow();
         package.UpdatedAt = package.StatusOccurredAt;
         package.Version++;
+        // Orders are filtered by DerivedStatus while the counters are calculated
+        // from shipment packages. Keep both read models in sync before returning
+        // so the order moves between tabs in the same response.
+        var packageStatuses = await db.ShipmentPackages.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OrderId == order.Id)
+            .Select(x => new { x.Id, x.Status })
+            .ToListAsync(cancellationToken);
+        var acceptedStatuses = packageStatuses.ToDictionary(x => x.Id, x => x.Status);
+        acceptedStatuses[package.Id] = package.Status;
+        var derivedStatus = Wire(acceptedStatuses.Values.OrderByDescending(StatusRank).FirstOrDefault(ShipmentPackageStatus.New));
+        if (!string.Equals(order.DerivedStatus, derivedStatus, StringComparison.Ordinal))
+        {
+            order.DerivedStatus = derivedStatus;
+            order.UpdatedAt = package.UpdatedAt;
+            order.Version++;
+        }
         effect.CompletedAt = package.StatusOccurredAt;
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
@@ -836,6 +853,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
     private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId);
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
+    private static int StatusRank(ShipmentPackageStatus status) => status switch { ShipmentPackageStatus.New => 1, ShipmentPackageStatus.Processing => 2, ShipmentPackageStatus.OnHold => 3, ShipmentPackageStatus.ReadyToShip => 4, ShipmentPackageStatus.Shipped => 5, ShipmentPackageStatus.Undelivered => 6, ShipmentPackageStatus.Delivered => 7, ShipmentPackageStatus.ReturnInTransit => 8, ShipmentPackageStatus.Returned => 9, ShipmentPackageStatus.PartiallyCancelled => 2, ShipmentPackageStatus.Cancelled => 9, _ => 10 };
     private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);

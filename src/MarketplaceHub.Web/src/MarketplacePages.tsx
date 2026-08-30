@@ -265,6 +265,36 @@ function patchOrderShipment(order: Order, updatedShipment: Shipment): Order {
   return { ...order, packages, derivedStatus: isPrimaryPackage ? updatedShipment.status.toUpperCase() : order.derivedStatus, cargoProviderName: isPrimaryPackage ? updatedShipment.cargoProviderName : order.cargoProviderName, cargoTrackingNumber: isPrimaryPackage ? updatedShipment.cargoTrackingNumber : order.cargoTrackingNumber }
 }
 
+function moveOrderAcrossStatusCaches(client: ReturnType<typeof useQueryClient>, order: Order, updatedShipment: Shipment) {
+  const updatedOrder = patchOrderShipment(order, updatedShipment)
+  const targetStatus = updatedOrder.derivedStatus.toUpperCase()
+  for (const status of orderSyncStatuses) {
+    client.setQueryData<Order[]>(['orders', status], current => {
+      if (!current) return current
+      const withoutOrder = current.filter(item => item.id !== order.id)
+      return status === targetStatus ? [updatedOrder, ...withoutOrder] : withoutOrder
+    })
+  }
+}
+
+function orderSummaryBucket(status: string): keyof OrderSummary | null {
+  const normalized = status.toUpperCase()
+  if (normalized === 'NEW') return 'new'
+  if (normalized === 'PROCESSING' || normalized === 'READY_TO_SHIP') return 'processing'
+  if (normalized === 'SHIPPED' || normalized === 'UNDELIVERED') return 'shipped'
+  if (normalized === 'DELIVERED') return 'delivered'
+  if (normalized === 'ON_HOLD') return 'onHold'
+  return null
+}
+
+function patchOrderSummary(summary: OrderSummary | undefined, previousStatus: string, nextStatus: string) {
+  if (!summary) return summary
+  const previousBucket = orderSummaryBucket(previousStatus)
+  const nextBucket = orderSummaryBucket(nextStatus)
+  if (!previousBucket || !nextBucket || previousBucket === nextBucket) return summary
+  return { ...summary, [previousBucket]: Math.max(0, summary[previousBucket] - 1), [nextBucket]: summary[nextBucket] + 1 }
+}
+
 function CourierChangeModal({ item, items, onClose, onConfirmed }: { item: Order; items?: Order[]; onClose: () => void; onConfirmed: (shipments: Shipment[]) => void }) {
   const targets = (items?.length ? items : [item]).flatMap(order => order.packages?.[0] ? [{ order, shipment: order.packages[0] }] : [])
   const shipment = item.packages?.[0]
@@ -391,13 +421,13 @@ function ShippingLabelModal({ item, format, onClose, inline = false }: { item: O
     const barcodeField = block.kind === 'trackingBarcode' ? 'trackingNumber' : block.kind === 'packageBarcode' ? 'packageNumber' : null
     if (barcodeField && block.fields.includes(barcodeField)) {
       const extraFields = block.fields.filter(field => field !== barcodeField)
-      return <div className="shipping-label-block-content" style={{ textAlign: block.align }}><LabelBarcode value={fieldValues[barcodeField] || (barcodeField === 'packageNumber' ? item.orderNumber : '')} compact={format === 'sticker'} />{extraFields.map(field => renderField(field))}</div>
+      return <div className="shipping-label-block-content" style={{ textAlign: block.align }}><strong className="shipping-label-block-title">{block.title}</strong><LabelBarcode value={fieldValues[barcodeField] || (barcodeField === 'packageNumber' ? item.orderNumber : '')} compact={format === 'sticker'} />{extraFields.map(field => renderField(field))}</div>
     }
     const fields = block.fields.filter(field => settings.showCustomerPhone || field !== 'customerEmail')
-    if (block.kind === 'address') return <div className="shipping-label-address-box" style={{ textAlign: block.align }}>{fields.map(field => field === 'customerName' ? <strong key={field}>{fieldValues[field]}</strong> : renderField(field))}</div>
-    if (block.kind === 'orderInfo') return <div className="shipping-label-meta" style={{ textAlign: block.align }}>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
-    if (block.kind === 'sender') return <div className="shipping-label-footer" style={{ textAlign: block.align }}>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
-    return <div className="shipping-label-custom-content" style={{ textAlign: block.align }}>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
+    if (block.kind === 'address') return <div className="shipping-label-address-box" style={{ textAlign: block.align }}><strong className="shipping-label-block-title">{block.title}</strong>{fields.map(field => field === 'customerName' ? <strong key={field}>{fieldValues[field]}</strong> : renderField(field))}</div>
+    if (block.kind === 'orderInfo') return <div className="shipping-label-meta" style={{ textAlign: block.align }}><strong className="shipping-label-block-title">{block.title}</strong>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
+    if (block.kind === 'sender') return <div className="shipping-label-footer" style={{ textAlign: block.align }}><strong className="shipping-label-block-title">{block.title}</strong>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
+    return <div className="shipping-label-custom-content" style={{ textAlign: block.align }}><strong className="shipping-label-block-title">{block.title}</strong>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
   }
   const labelSurface = <article className={`shipping-label-print-surface shipping-label-${format} a4-count-${settings.a4LabelsPerPage}`} style={style}>
     {settings.layout[format].map(block => <div key={block.id} className="shipping-label-positioned-block" style={block.position ? { left: `${block.position.x}%`, top: `${block.position.y}%`, width: `${block.position.width}%`, height: `${block.position.height}%`, fontSize: `${block.fontSize ?? 14}px`, color: '#000' } : { fontSize: `${block.fontSize ?? 14}px`, color: '#000' }}><Fragment>{renderLabelBlock(block)}</Fragment></div>)}
@@ -853,10 +883,10 @@ export function OrdersPage() {
       if (!window.confirm(`${eligible.length} yeni sipariş Trendyol’da “İşleme Al” durumuna geçirilecek. Devam edilsin mi?`)) return
       try {
         const operationId = crypto.randomUUID()
-        for (const item of eligible) { const pack = item.packages![0]; const updatedShipment = await hubApi<Shipment>(`/shipments/${pack.id}/instant-process`, { method: 'POST', headers: { 'Idempotency-Key': `bulk-picking:${pack.id}:${pack.version}:${operationId}`, 'If-Match': `"v${pack.version}"` } }); for (const status of orderSyncStatuses) client.setQueryData<Order[]>(['orders', status], current => current?.map(order => order.id === item.id ? patchOrderShipment(order, updatedShipment) : order)) }
+        for (const item of eligible) { const pack = item.packages![0]; const updatedShipment = await hubApi<Shipment>(`/shipments/${pack.id}/instant-process`, { method: 'POST', headers: { 'Idempotency-Key': `bulk-picking:${pack.id}:${pack.version}:${operationId}`, 'If-Match': `"v${pack.version}"` } }); moveOrderAcrossStatusCaches(client, item, updatedShipment); client.setQueryData<OrderSummary>(['orders', 'summary'], current => patchOrderSummary(current, pack.status, updatedShipment.status)) }
         showBulkNotice(`${eligible.length} sipariş anlık olarak işleme alındı ve panelde güncellendi.`)
         setSelectedIds([])
-        await client.invalidateQueries({ queryKey: ['orders'] })
+        await client.refetchQueries({ queryKey: ['orders'], type: 'active' })
       } catch (error) { showBulkNotice(error instanceof Error ? error.message : 'Toplu işleme alma tamamlanamadı.') }
       return
     }
@@ -878,7 +908,10 @@ export function OrdersPage() {
         method: 'POST',
         headers: { 'Idempotency-Key': `instant-picking:${item.id}:${Date.now()}` }
       })
-      for (const status of orderSyncStatuses) client.setQueryData<Order[]>(['orders', status], current => current?.map(order => order.id === item.id ? patchOrderShipment(order, updatedShipment) : order))
+      moveOrderAcrossStatusCaches(client, item, updatedShipment)
+      client.setQueryData<OrderSummary>(['orders', 'summary'], current => patchOrderSummary(current, item.packages?.[0]?.status ?? item.derivedStatus, updatedShipment.status))
+      setSelectedIds(current => current.filter(id => id !== item.id))
+      await client.refetchQueries({ queryKey: ['orders'], type: 'active' })
       showBulkNotice(`Sipariş #${item.orderNumber} anlık olarak işleme alındı ve panelde güncellendi.`)
     } catch (error) {
       showBulkNotice(error instanceof Error ? error.message : 'Sipariş işleme alınamadı.')

@@ -9,6 +9,7 @@ src/MarketplaceHub.Web/dist/
 .env.*
 !.env.example
 tmp/
+.local/
 secrets/
 data/
 *.user
