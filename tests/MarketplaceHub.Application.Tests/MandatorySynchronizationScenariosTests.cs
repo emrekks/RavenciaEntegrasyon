@@ -101,6 +101,15 @@ public sealed class MandatorySynchronizationScenariosTests
     }
 
     [Fact]
+    public void Scenario11b_TrendyolCargoCooldown_IsShownAsAStableValidationError()
+    {
+        var error = TrendyolErrorMapper.FromStatus(HttpStatusCode.Conflict, null, "request-3", "RTE003");
+        Assert.Equal("CARGO_PROVIDER_CHANGE_COOLDOWN", error.Code);
+        Assert.Equal(TimeSpan.FromMinutes(5), error.RetryAfter);
+        Assert.Contains("5 dakika", error.SafeMessage);
+    }
+
+    [Fact]
     public void Scenario12_CrashAfterCommit_UsesDeterministicPersistentStockOutboxKey()
     {
         var connection = Guid.Parse("10000000-0000-0000-0000-000000000001");
@@ -169,6 +178,7 @@ public sealed class MandatorySynchronizationScenariosTests
     public void DistributedSyncLock_UsesSeparateResourceGroupsPerConnection()
     {
         Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_ORDER_SYNC"));
+        Assert.Equal("shipment-actions", MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_SHIPMENT_ACTION"));
         Assert.Equal("returns", MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_RETURN_SYNC"));
         Assert.NotEqual(MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_ORDER_SYNC"), MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_RETURN_SYNC"));
     }

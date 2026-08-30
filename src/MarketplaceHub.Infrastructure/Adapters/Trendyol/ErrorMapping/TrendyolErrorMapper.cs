@@ -6,14 +6,20 @@ namespace MarketplaceHub.Infrastructure.Adapters.Trendyol.ErrorMapping;
 
 internal static class TrendyolErrorMapper
 {
-    public static AdapterError FromStatus(HttpStatusCode status, TimeSpan? retryAfter, string? remoteRequestId, string? vendorCode = null) => status switch
+    public static AdapterError FromStatus(HttpStatusCode status, TimeSpan? retryAfter, string? remoteRequestId, string? vendorCode = null)
     {
-        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "REMOTE_AUTHENTICATION_FAILED", "Platform kimlik doğrulaması başarısız.", (int)status, null, remoteRequestId),
-        HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "REMOTE_RATE_LIMITED", "Platform hız sınırı yanıtı verdi.", 429, retryAfter, remoteRequestId),
-        HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "REMOTE_RESOURCE_NOT_FOUND", "Platform kaynağı bulunamadı.", 404, null, remoteRequestId),
-        >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "REMOTE_SERVER_ERROR", "Platform geçici sunucu hatası verdi.", (int)status, retryAfter, remoteRequestId),
-        _ => new(AdapterErrorClass.Validation, "REMOTE_REQUEST_REJECTED", string.IsNullOrWhiteSpace(vendorCode) ? "Platform isteği reddetti." : $"Platform isteği reddetti (sağlayıcı kodu: {vendorCode}).", (int)status, null, remoteRequestId)
-    };
+        if (string.Equals(vendorCode, "RTE003", StringComparison.OrdinalIgnoreCase))
+            return new(AdapterErrorClass.Validation, "CARGO_PROVIDER_CHANGE_COOLDOWN", "Trendyol bu paket için son 5 dakika içinde kargo firması değişikliği aldı. 5 dakika dolunca tekrar deneyin.", (int)status, TimeSpan.FromMinutes(5), remoteRequestId);
+
+        return status switch
+        {
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "REMOTE_AUTHENTICATION_FAILED", "Platform kimlik doğrulaması başarısız.", (int)status, null, remoteRequestId),
+            HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "REMOTE_RATE_LIMITED", "Platform hız sınırı yanıtı verdi.", 429, retryAfter, remoteRequestId),
+            HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "REMOTE_RESOURCE_NOT_FOUND", "Platform kaynağı bulunamadı.", 404, null, remoteRequestId),
+            >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "REMOTE_SERVER_ERROR", "Platform geçici sunucu hatası verdi.", (int)status, retryAfter, remoteRequestId),
+            _ => new(AdapterErrorClass.Validation, "REMOTE_REQUEST_REJECTED", string.IsNullOrWhiteSpace(vendorCode) ? "Platform isteği reddetti." : $"Platform isteği reddetti (sağlayıcı kodu: {vendorCode}).", (int)status, null, remoteRequestId)
+        };
+    }
 
     public static string? SafeVendorCode(string responseBody)
     {

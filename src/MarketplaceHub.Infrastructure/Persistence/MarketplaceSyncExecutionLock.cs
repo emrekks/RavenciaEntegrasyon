@@ -71,6 +71,11 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
     public static string GroupFor(string jobType)
     {
         var type = jobType.ToUpperInvariant();
+        // Interactive shipment changes must not wait behind the recurring order
+        // synchronization lane. They still serialize with other shipment
+        // changes for the same connection, while their read-back can safely
+        // merge with the order projection when the sync lane is active.
+        if (type.Contains("SHIPMENT_ACTION", StringComparison.Ordinal)) return "shipment-actions";
         if (type.Contains("ORDER", StringComparison.Ordinal) || type.Contains("SHIPMENT", StringComparison.Ordinal)) return "orders";
         if (type.Contains("RETURN", StringComparison.Ordinal) || type.Contains("CLAIM", StringComparison.Ordinal)) return "returns";
         if (type.Contains("STOCK", StringComparison.Ordinal) || type.Contains("INVENTORY", StringComparison.Ordinal) || type.Contains("PRICE", StringComparison.Ordinal)) return "stock";
