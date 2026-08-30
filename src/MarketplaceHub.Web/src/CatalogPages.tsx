@@ -645,7 +645,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (values.includes(valueId)) return { ...current, [attributeId]: values.filter(item => item !== valueId) }
       const selectedOptionalAttributeCount = allRequirements.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && (current[item.attributeId]?.length ?? 0) > 0).length
       if (requirement?.role === 'ATTRIBUTE' && !requirement.isRequired && values.length === 0 && selectedOptionalAttributeCount >= MAX_PRODUCT_ATTRIBUTES) { const message = `Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`; setNotice(message); showFeedback(message, 'error'); return current }
-      return { ...current, [attributeId]: requirement?.attribute.dataType === 'SINGLE_SELECT' ? [valueId] : [...values, valueId] }
+      return { ...current, [attributeId]: requirement?.role === 'ATTRIBUTE' && requirement.attribute.dataType === 'SINGLE_SELECT' ? [valueId] : [...values, valueId] }
     })
   }
   function toggleVariantAttribute(attributeId: string) {
@@ -886,7 +886,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <span>5</span>
           <div>
             <h2>Ürün seçenekleri</h2>
-            <p>Bu alan yalnızca seçenek gruplarını tanımlar. Beden ve renk değerlerini işaretleyin; aşağıdaki “Ürün seçenek grupları” tablosu tüm kombinasyonları oluşturur.</p>
+            <p>Seçenek grubu ve değerlerini burada seçin. Kayıtlı ürün değerleri otomatik işaretlenmez; seçimleriniz yalnızca “Ürünleri ekle” tıklanınca varyant satırlarına eklenir.</p>
           </div>
         </div>
         <div className="attribute-variant-action">
