@@ -9891,6 +9891,7 @@ body:has(.product-add-page),
     margin: 0 !important;
     color: inherit;
     font-size: 13px !important;
+    text-transform: none !important;
     text-align: left !important;
     white-space: nowrap;
     opacity: 1;
