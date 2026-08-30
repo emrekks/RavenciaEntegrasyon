@@ -13041,3 +13041,9 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .order-label-filter-quick label{display:grid;grid-template-columns:auto 210px;align-items:center;gap:10px;color:var(--rv-muted);font-size:.76rem;font-weight:700}
 .app-shell.stitch-shell .order-label-filter-quick select{min-height:36px}
 @media(max-width:700px){.app-shell.stitch-shell .security-page .sessions li{grid-template-columns:32px minmax(0,1fr)}.app-shell.stitch-shell .security-page .sessions li>b{grid-column:2;text-align:left}.app-shell.stitch-shell .order-label-filter-quick{justify-content:stretch}.app-shell.stitch-shell .order-label-filter-quick label{grid-template-columns:1fr}.app-shell.stitch-shell .order-label-filter-quick select{width:100%}}
+
+/* Keep status, label and action boxes centered inside every order action cell. */
+.app-shell.stitch-shell .orders-page .order-reference-actions { align-items:center !important; justify-content:center !important; }
+.app-shell.stitch-shell .orders-page .order-reference-actions > .order-status-column { align-items:center !important; text-align:center; }
+.app-shell.stitch-shell .orders-page .order-reference-actions > .order-label-actions,
+.app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu { align-self:center !important; }
