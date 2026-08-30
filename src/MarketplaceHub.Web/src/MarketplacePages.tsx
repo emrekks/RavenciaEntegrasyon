@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, type ChangeEvent, type CSSProperties, ty
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from './api'
-import { loadShippingLabelSettings, type ShippingLabelBlock } from './shipping-label'
+import { loadShippingLabelSettings, shippingLabelFields, type ShippingLabelBlock, type ShippingLabelField } from './shipping-label'
 type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean }
 type Connection = { id: string; publicId: string; platformCode: string; environment: string; displayName: string; externalStoreId: string; status: string; apiVersion: string; lastTestedAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null; hasCredential: boolean; externalWritesEnabled: boolean; version: number }
 type Capability = { code: string; supportLevel: string; sourceUrl: string | null; verifiedAt: string | null; constraintsJson: string | null; evidenceNote: string | null; version: number }
@@ -393,18 +393,42 @@ function ShippingLabelModal({ item, format, onClose }: { item: Order; format: 'a
   const addressLines = address.split(' · ').filter(Boolean)
   const senderLines = settings.senderAddress.split(/\r?\n| · /).map(value => value.trim()).filter(Boolean)
   const style = { '--shipping-label-width': `${settings.stickerWidthMm}mm`, '--shipping-label-height': `${settings.stickerHeightMm}mm`, '--shipping-label-gap': `${settings.sectionGapMm}mm` } as CSSProperties
+  const fieldValues: Record<ShippingLabelField, string> = {
+    trackingNumber,
+    packageNumber,
+    orderNumber: `#${item.orderNumber}`,
+    customerName: customerDisplayName(item),
+    address,
+    cargoProvider: cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName),
+    senderName: settings.senderName,
+    senderAddress: settings.senderAddress,
+    customerEmail: item.customerEmail ?? '—'
+  }
+  function fieldLabel(field: ShippingLabelField) { return shippingLabelFields.find(option => option.id === field)?.label ?? field }
+  function renderField(field: ShippingLabelField) {
+    if (field === 'address' || field === 'senderAddress') {
+      const lines = field === 'address' ? addressLines : senderLines
+      return lines.length ? lines.map((line, index) => <span key={`${field}-${line}-${index}`}>{line}</span>) : <span>—</span>
+    }
+    return <span key={field}><small>{fieldLabel(field)}</small><b>{fieldValues[field] || '—'}</b></span>
+  }
   function renderLabelBlock(block: ShippingLabelBlock) {
-    if (block === 'trackingBarcode') return <LabelBarcode value={trackingNumber} compact={format === 'sticker'} />
-    if (block === 'address') return <div className="shipping-label-address-box"><strong>{customerDisplayName(item)}</strong>{addressLines.map((line, index) => <span key={`${line}-${index}`}>{line}</span>)}</div>
-    if (block === 'orderInfo') return <div className="shipping-label-meta"><span><small>Paket</small><b>{packageNumber}</b></span><span><small>Sipariş</small><b>#{item.orderNumber}</b></span>{settings.showCustomerPhone && item.customerEmail && <span><small>E-posta</small><b>{item.customerEmail}</b></span>}</div>
-    if (block === 'packageBarcode') return <LabelBarcode value={packageNumber === '—' ? item.orderNumber : packageNumber} compact />
-    return <div className="shipping-label-footer"><strong>{cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)}</strong>{settings.senderName && <span>{settings.senderName}</span>}{senderLines.map((line, index) => <span key={`${line}-${index}`}>{line}</span>)}</div>
+    const barcodeField = block.kind === 'trackingBarcode' ? 'trackingNumber' : block.kind === 'packageBarcode' ? 'packageNumber' : null
+    if (barcodeField && block.fields.includes(barcodeField)) {
+      const extraFields = block.fields.filter(field => field !== barcodeField)
+      return <div className="shipping-label-block-content" style={{ textAlign: block.align }}><LabelBarcode value={fieldValues[barcodeField] || (barcodeField === 'packageNumber' ? item.orderNumber : '')} compact={format === 'sticker'} />{extraFields.map(field => renderField(field))}</div>
+    }
+    const fields = block.fields.filter(field => settings.showCustomerPhone || field !== 'customerEmail')
+    if (block.kind === 'address') return <div className="shipping-label-address-box" style={{ textAlign: block.align }}>{fields.map(field => field === 'customerName' ? <strong key={field}>{fieldValues[field]}</strong> : renderField(field))}</div>
+    if (block.kind === 'orderInfo') return <div className="shipping-label-meta" style={{ textAlign: block.align }}>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
+    if (block.kind === 'sender') return <div className="shipping-label-footer" style={{ textAlign: block.align }}>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
+    return <div className="shipping-label-custom-content" style={{ textAlign: block.align }}>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
   }
   return <div className="workspace-modal-backdrop shipping-label-backdrop" role="presentation" onMouseDown={onClose}>
     <section className={`workspace-modal shipping-label-modal format-${format}`} role="dialog" aria-modal="true" aria-labelledby="shipping-label-title" onMouseDown={event => event.stopPropagation()}>
       <header><div><h2 id="shipping-label-title">{format === 'a4' ? 'A4 kargo etiketi' : 'Sticker kargo etiketi'}</h2><p>#{item.orderNumber} · {cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)}</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat">×</button></header>
       <div className="shipping-label-preview-wrap"><article className={`shipping-label-print-surface shipping-label-${format} a4-count-${settings.a4LabelsPerPage}`} style={style}>
-        {settings.layout[format].map(block => <Fragment key={block}>{renderLabelBlock(block)}</Fragment>)}
+        {settings.layout[format].map(block => <Fragment key={block.id}>{renderLabelBlock(block)}</Fragment>)}
       </article></div>
       <footer className="shipping-label-modal-actions"><span>Etiket bilgileri sipariş ve paket kaydından dolduruldu.</span><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" onClick={() => window.print()}>Yazdır</button></footer>
     </section>

@@ -1435,6 +1435,39 @@ textarea {
 
 .app-shell.stitch-shell .shipping-label-footer strong { font-size: 1rem; }
 
+.app-shell.stitch-shell .shipping-label-block-content,
+.app-shell.stitch-shell .shipping-label-custom-content {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+}
+
+.app-shell.stitch-shell .shipping-label-block-content > span,
+.app-shell.stitch-shell .shipping-label-custom-content > span {
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.app-shell.stitch-shell .shipping-label-block-content > span small,
+.app-shell.stitch-shell .shipping-label-custom-content > span small {
+  font-size: .66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.app-shell.stitch-shell .shipping-label-block-content > span b,
+.app-shell.stitch-shell .shipping-label-custom-content > span b {
+  font-family: monospace;
+  font-size: .86rem;
+}
+
+.app-shell.stitch-shell .shipping-label-custom-content {
+  min-height: 28px;
+  padding: 10px;
+  border: 1px solid #17223a;
+}
+
 .app-shell.stitch-shell .shipping-label-modal-actions {
   display: flex;
   align-items: center;
@@ -1595,7 +1628,7 @@ textarea {
 
 .app-shell.stitch-shell .shipping-layout-item {
   display: grid;
-  grid-template-columns: 12px 24px minmax(0, 1fr) auto;
+  grid-template-columns: 12px 24px minmax(0, 1fr) 82px auto;
   align-items: center;
   gap: 7px;
   min-width: 0;
@@ -1644,6 +1677,140 @@ textarea {
   display: grid;
   gap: 2px;
   min-width: 0;
+}
+
+.app-shell.stitch-shell .shipping-layout-item-main {
+  display: grid !important;
+  gap: 5px !important;
+  min-width: 0;
+}
+
+.app-shell.stitch-shell .shipping-layout-item-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-shell.stitch-shell .shipping-layout-block-title {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 3px !important;
+  color: #9298af;
+  font-size: .57rem;
+}
+
+.app-shell.stitch-shell .shipping-layout-block-title input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 5px 6px;
+  color: #eef0ff;
+  background: #11131d;
+  border: 1px solid #3b4055;
+  border-radius: 5px;
+  font: inherit;
+  font-size: .61rem;
+}
+
+.app-shell.stitch-shell .shipping-layout-inline-field,
+.app-shell.stitch-shell .shipping-layout-align {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 3px !important;
+  min-width: 0;
+  color: #9298af;
+  font-size: .57rem;
+}
+
+.app-shell.stitch-shell .shipping-layout-inline-field select,
+.app-shell.stitch-shell .shipping-layout-align select {
+  min-height: 28px;
+  padding: 4px 6px;
+  font-size: .59rem;
+}
+
+.app-shell.stitch-shell .shipping-layout-field-chips {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-width: 0;
+}
+
+.app-shell.stitch-shell .shipping-layout-field-chip {
+  min-height: 22px;
+  padding: 3px 6px;
+  color: #cbd0ff;
+  background: rgba(88, 101, 242, .16);
+  border: 1px solid rgba(124, 134, 255, .35);
+  border-radius: 4px;
+  font-size: .55rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.app-shell.stitch-shell .shipping-layout-field-chips > span {
+  color: #737a9b;
+  font-size: .57rem;
+}
+
+.app-shell.stitch-shell .shipping-layout-custom-text,
+.app-shell.stitch-shell .shipping-custom-block-form label {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 3px !important;
+  color: #9298af;
+  font-size: .57rem;
+}
+
+.app-shell.stitch-shell .shipping-layout-custom-text textarea,
+.app-shell.stitch-shell .shipping-custom-block-form input,
+.app-shell.stitch-shell .shipping-custom-block-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 5px 6px;
+  color: #eef0ff;
+  background: #11131d;
+  border: 1px solid #3b4055;
+  border-radius: 5px;
+  font: inherit;
+  font-size: .61rem;
+  resize: vertical;
+}
+
+.app-shell.stitch-shell .shipping-layout-delete {
+  color: #ffabb1 !important;
+}
+
+.app-shell.stitch-shell .shipping-layout-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  padding: 7px;
+  border: 1px dashed #3b4055;
+  border-radius: 6px;
+  background: rgba(17, 19, 29, .4);
+}
+
+.app-shell.stitch-shell .shipping-layout-add select,
+.app-shell.stitch-shell .shipping-layout-add button {
+  min-height: 30px;
+}
+
+.app-shell.stitch-shell .shipping-layout-add button {
+  padding: 5px 8px;
+  font-size: .61rem;
+}
+
+.app-shell.stitch-shell .shipping-custom-block-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid rgba(124, 134, 255, .2);
+  border-radius: 6px;
+  background: rgba(88, 101, 242, .06);
 }
 
 .app-shell.stitch-shell .shipping-layout-item strong,
@@ -1793,6 +1960,32 @@ textarea {
 
 .app-shell.stitch-shell .shipping-preview-sender strong { font-size: .6rem; }
 .app-shell.stitch-shell .shipping-preview-sender span { text-transform: uppercase; }
+
+.app-shell.stitch-shell .shipping-preview-content {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  color: #17223a;
+  font-size: .48rem;
+  line-height: 1.1;
+}
+
+.app-shell.stitch-shell .shipping-preview-content span {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell .shipping-preview-content span b {
+  color: #7d879b;
+  font-size: .42rem;
+}
+
+.app-shell.stitch-shell .shipping-preview-content span strong,
+.app-shell.stitch-shell .shipping-preview-content > strong { font-size: .57rem; }
 
 .app-shell.stitch-shell .shipping-settings-grid label {
   display: grid;
