@@ -9565,7 +9565,9 @@ body:has(.product-add-page),
   .app-shell.stitch-shell > aside .sidebar-brand-row {
     min-width: 0;
     overflow: hidden;
-    transition: padding .18s ease, justify-content .18s ease !important;
+    justify-content: flex-start !important;
+    padding-inline: 10px !important;
+    transition: none !important;
   }
 
   .app-shell.stitch-shell > aside .brand.wordmark {
@@ -9577,8 +9579,8 @@ body:has(.product-add-page),
   }
 
   .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-brand-row {
-    justify-content: center !important;
-    padding-inline: 0 !important;
+    justify-content: flex-start !important;
+    padding-inline: 10px !important;
   }
 
   .app-shell.stitch-shell.sidebar-collapsed > aside .brand.wordmark {
