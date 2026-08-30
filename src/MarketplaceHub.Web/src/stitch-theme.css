@@ -9301,10 +9301,39 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .cargo-track-pending { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 0 9px; color: #9ca5ff !important; border: 1px solid rgba(124, 134, 255, .34); border-radius: 7px; font-size: 10px; font-weight: 800; text-decoration: none; }
 .app-shell.stitch-shell .cargo-track-pending:hover { color: #fff !important; background: rgba(124, 134, 255, .16); }
 .app-shell.stitch-shell .order-reference-actions > small { color: #8189a8; font-size: 10px; }
+.app-shell.stitch-shell .orders-page .order-reference-row.cancelled {
+  background: rgba(241, 112, 124, .035) !important;
+  box-shadow: inset 3px 0 0 #f1707c !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-row.cancelled:hover {
+  background: rgba(241, 112, 124, .07) !important;
+}
+.app-shell.stitch-shell .orders-page .order-status-feedback {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  margin-top: 3px;
+  padding: 3px 7px;
+  color: #ff9ca4 !important;
+  background: rgba(241, 112, 124, .11) !important;
+  border: 1px solid rgba(241, 112, 124, .35) !important;
+  border-radius: 999px !important;
+  font-size: .58rem !important;
+  font-weight: 850 !important;
+  line-height: 1.2 !important;
+}
+.app-shell.stitch-shell .orders-page .order-status-feedback i {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  background: currentColor;
+  border-radius: 50%;
+}
 
 /* Order filters live next to the data they refine; keep the toolbar single-source and stable. */
 .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary {
-  grid-template-columns: minmax(220px, 1.6fr) minmax(110px, .55fr) minmax(120px, .6fr) auto auto auto !important;
+  grid-template-columns: minmax(220px, 1.65fr) minmax(130px, .7fr) auto auto auto !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-head {
   min-height: 142px !important;
@@ -9378,15 +9407,17 @@ body:has(.product-add-page),
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  width: 100%;
+  width: max-content;
+  min-width: 0;
   min-height: 27px;
   margin: 0;
-  padding: 0;
+  padding: 0 7px !important;
   color: #8f8fa0 !important;
   background: transparent !important;
-  border: 0 !important;
+  border: 1px solid transparent !important;
   border-radius: 5px;
   box-shadow: none !important;
+  cursor: pointer;
   font-size: .58rem;
   font-weight: 750;
   letter-spacing: .04em;
@@ -9397,6 +9428,7 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .orders-page .order-reference-head > .order-column-filter .order-column-filter-trigger:focus-visible {
   color: #fff !important;
   background: rgba(98, 110, 255, .13) !important;
+  border-color: rgba(137, 145, 255, .55) !important;
   outline: 0;
 }
 .app-shell.stitch-shell .orders-page .order-reference-head > .order-column-filter.has-filter .order-column-filter-trigger {
@@ -9582,6 +9614,7 @@ body:has(.product-add-page),
   padding: 10px 13px;
   background: #171a24;
   border-top: 1px solid #282b3b;
+  border-radius: 0 0 7px 7px;
 }
 .app-shell.stitch-shell .orders-bottom-filter-group,
 .app-shell.stitch-shell .orders-bottom-pagination,
@@ -9591,6 +9624,7 @@ body:has(.product-add-page),
   align-items: center;
 }
 .app-shell.stitch-shell .orders-bottom-filter-group {
+  flex: 1 1 auto;
   gap: 8px;
   min-width: 0;
 }
@@ -9632,14 +9666,6 @@ body:has(.product-add-page),
   font-size: .62rem;
   font-weight: 750;
   white-space: nowrap;
-}
-.app-shell.stitch-shell .orders-bottom-select-icon {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-  fill: none;
-  stroke: #c8ceff;
-  stroke-width: 1.8;
 }
 .app-shell.stitch-shell .orders-bottom-select select {
   min-width: 130px;
