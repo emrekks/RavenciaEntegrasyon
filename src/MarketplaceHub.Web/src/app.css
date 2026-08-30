@@ -12972,3 +12972,42 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .variant-media-cell select { min-width:0; }
 .app-shell.stitch-shell .variant-color-apply { justify-self:start; padding:2px 6px; color:#9da4ff; background:transparent; border:0; font-size:10px; font-weight:800; box-shadow:none; }
 .app-shell.stitch-shell .variant-color-apply:hover { text-decoration:underline; transform:none; }
+
+/* Product option selection is value-led: selecting a chip activates its group. */
+.app-shell.stitch-shell .attribute-builder-card:not(:has(.attribute-builder-toggle input:checked)) .option-chip-list,
+.app-shell.stitch-shell .attribute-builder-card .option-chip-list { display:flex !important; }
+.app-shell.stitch-shell .attribute-builder-card { padding:14px !important; }
+.app-shell.stitch-shell .attribute-builder-head > div { display:grid; gap:3px; min-width:0; }
+.app-shell.stitch-shell .attribute-builder-head > div > strong { color:#f1f2ff; font-size:13px; }
+.app-shell.stitch-shell .attribute-builder-head > div > small { color:#8993b4; font-size:10px; }
+.app-shell.stitch-shell .attribute-builder-selected { color:#9da4ff !important; font-weight:800; }
+.app-shell.stitch-shell .variant-table-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; color:#8993b4; font-size:10px; }
+.app-shell.stitch-shell .variant-media-bulk-button { display:inline-flex; align-items:center; gap:7px; }
+.app-shell.stitch-shell .variant-media-cell { display:grid; place-items:center; }
+.app-shell.stitch-shell .variant-media-button { position:relative; display:grid; place-items:center; width:34px; height:34px; padding:0; color:#cbd0ff; background:#202744; border:1px solid #555fa7; border-radius:8px; box-shadow:none; font-size:16px; }
+.app-shell.stitch-shell .variant-media-button:hover,
+.app-shell.stitch-shell .variant-media-button.has-media { color:#fff; background:#626eff; border-color:#8f97ff; }
+.app-shell.stitch-shell .variant-media-button i { position:absolute; right:-5px; bottom:-5px; display:grid; place-items:center; width:15px; height:15px; color:#091021; background:#71e0b0; border:2px solid #111525; border-radius:999px; font-size:9px; font-style:normal; font-weight:900; }
+.app-shell.stitch-shell .product-media-link-button { color:#bfc5ff; background:transparent; border-color:transparent; }
+.app-shell.stitch-shell .product-media-link-button:hover { color:#fff; background:rgba(124,134,255,.12); border-color:rgba(124,134,255,.28); }
+.app-shell.stitch-shell .variant-media-picker-modal { width:min(760px,calc(100vw - 32px)); max-height:min(820px,calc(100vh - 32px)); overflow:auto; background:#171b2b; border-color:rgba(124,134,255,.35); }
+.app-shell.stitch-shell .variant-media-picker-modal > header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.app-shell.stitch-shell .variant-media-picker-modal > header p { color:#9ba4ca; }
+.app-shell.stitch-shell .variant-media-bulk-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.app-shell.stitch-shell .variant-media-bulk-fields label { display:grid; gap:6px; color:#9ba4ca; font-size:10px; font-weight:800; }
+.app-shell.stitch-shell .variant-media-picker-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:10px; padding:12px; background:#111525; border:1px solid rgba(151,160,207,.2); border-radius:10px; }
+.app-shell.stitch-shell .variant-media-option { position:relative; display:grid; gap:7px; min-width:0; padding:8px; color:#cfd4ff; text-align:left; background:#1d2236; border:1px solid #323b63; border-radius:9px; box-shadow:none; }
+.app-shell.stitch-shell .variant-media-option:hover { background:#242b49; border-color:#747eff; transform:translateY(-1px); }
+.app-shell.stitch-shell .variant-media-option.selected { background:#282e56; border-color:#8c94ff; box-shadow:0 0 0 2px rgba(124,134,255,.2); }
+.app-shell.stitch-shell .variant-media-option-image { display:grid; place-items:center; height:118px; overflow:hidden; color:#8f99c5; background:#0c1020; border-radius:6px; }
+.app-shell.stitch-shell .variant-media-option-image img { width:100%; height:100%; object-fit:cover; }
+.app-shell.stitch-shell .variant-media-option-label { overflow:hidden; color:#bec5e8; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.app-shell.stitch-shell .variant-media-option > i { position:absolute; top:12px; right:12px; display:grid; place-items:center; width:20px; height:20px; color:#0e1523; background:#71e0b0; border-radius:999px; font-size:12px; font-style:normal; font-weight:900; }
+.app-shell.stitch-shell .variant-media-picker-modal > footer { display:flex; align-items:center; justify-content:flex-end; gap:9px; margin-top:16px; padding-top:14px; border-top:1px solid rgba(151,160,207,.2); }
+.app-shell.stitch-shell .variant-media-picker-modal > footer .secondary:first-child { margin-right:auto; }
+@media (max-width:680px) {
+  .app-shell.stitch-shell .variant-table-toolbar { align-items:stretch; flex-direction:column; }
+  .app-shell.stitch-shell .variant-media-bulk-fields { grid-template-columns:1fr; }
+  .app-shell.stitch-shell .variant-media-picker-modal > footer { align-items:stretch; flex-wrap:wrap; }
+  .app-shell.stitch-shell .variant-media-picker-modal > footer button { flex:1 1 130px; }
+}
