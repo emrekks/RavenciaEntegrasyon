@@ -76,6 +76,17 @@ function ImageLightboxModal({ image, onClose }: { image: { url: string; title: s
 
 type ProductMediaOption = { value: string; label: string; url?: string; file?: File }
 type VariantMediaGroup = { id: string; name: string; values: Array<{ id: string; value: string }>; attributeId?: string }
+type ParsedVariantOption = { name: string; value: string }
+
+function parseVariantOptionSignature(signature: string): ParsedVariantOption[] {
+  return signature.split(/\s*\|\s*|_(?=[^_:=]+\s*[:=])/).flatMap(part => {
+    const separatorIndex = part.search(/\s*[:=]/)
+    if (separatorIndex < 0) return []
+    const name = part.slice(0, separatorIndex).trim()
+    const value = part.slice(separatorIndex).replace(/^\s*[:=]\s*/, '').trim()
+    return name && value ? [{ name, value }] : []
+  })
+}
 
 function VariantImageIcon() {
   return <svg className="variant-media-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 5-5 3 3 2-2 6 6" /></svg>
@@ -812,10 +823,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   function rowOptionValue(row: VariantDraft, group: Pick<VariantMediaGroup, 'name'>) {
     const direct = row.options[group.name]
     if (direct) return direct
-    const parts = row.optionSignature.split(/\s*\|\s*|_(?=[^_:=]+\s*[:=])/)
-    const part = parts.find(item => item.slice(0, item.search(/\s*[:=]/)).trim().toLocaleLowerCase('tr-TR') === group.name.trim().toLocaleLowerCase('tr-TR'))
-    const separatorIndex = part?.search(/\s*[:=]/) ?? -1
-    return separatorIndex >= 0 ? part!.slice(separatorIndex).replace(/^\s*[:=]\s*/, '').trim() : ''
+    return parseVariantOptionSignature(row.optionSignature).find(option => option.name.toLocaleLowerCase('tr-TR') === group.name.trim().toLocaleLowerCase('tr-TR'))?.value ?? ''
   }
   function rowMatchesVariantMediaValue(row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) {
     return Boolean((group.attributeId && row.attributeValueIds[group.attributeId] === value.id) || rowOptionValue(row, group).trim().toLocaleLowerCase('tr-TR') === value.value.trim().toLocaleLowerCase('tr-TR'))
@@ -1003,6 +1011,18 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         .filter(value => selectedIds.includes(value.id) || variantRows.some(row => row.attributeValueIds[item.attributeId] === value.id || rowOptionValue(row, { name: item.attribute.name }).trim().toLocaleLowerCase('tr-TR') === value.value.trim().toLocaleLowerCase('tr-TR')))
         .map(value => ({ id: value.id, value: value.value }))
       addGroup({ id: `category-attribute:${item.attributeId}`, name: item.attribute.name, attributeId: item.attributeId, values })
+    }
+    const signatureValues = new Map<string, { name: string; values: Map<string, string> }>()
+    for (const row of variantRows) {
+      for (const option of parseVariantOptionSignature(row.optionSignature)) {
+        const groupKey = option.name.trim().toLocaleLowerCase('tr-TR')
+        const group = signatureValues.get(groupKey) ?? { name: option.name.trim(), values: new Map<string, string>() }
+        group.values.set(option.value.trim().toLocaleLowerCase('tr-TR'), option.value.trim())
+        signatureValues.set(groupKey, group)
+      }
+    }
+    for (const group of signatureValues.values()) {
+      addGroup({ id: `variant-signature:${group.name.toLocaleLowerCase('tr-TR')}`, name: group.name, values: [...group.values].map(([id, value]) => ({ id, value })) })
     }
     return groups
   }, [attributeSelections, optionRequirements, productToEdit.data?.options, variantRows])
