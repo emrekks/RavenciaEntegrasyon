@@ -124,7 +124,7 @@ public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffs
 public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal VatRate, string RawStatus, string SourceSnapshotJson = "{}");
 public sealed record RemotePackageAllocation(string ExternalLineId, decimal AllocatedQuantity, decimal CancelledQuantity, decimal ShippedQuantity, decimal DeliveredQuantity, decimal ReturnedQuantity);
 public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0);
-public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson);
+public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null);
 public sealed record PackageActionCommand(string ExternalPackageId, string Action, string PayloadJson);
 public sealed record ShipmentActionJobPayload(Guid JobId, Guid PackageId, string Action, string PayloadJson);
 public sealed record PackageActionResult(string ExternalPackageId, string Status, string? ExternalOperationId);
@@ -308,6 +308,18 @@ public sealed record OrderListView(
     IReadOnlyList<ShipmentView>? Packages = null,
     Guid? InvoiceId = null,
     string? InvoiceDocumentUrl = null);
+public sealed record OrderListQuery(
+    string? Status = null,
+    string? Search = null,
+    string? Platform = null,
+    string? Listing = null,
+    string? Cargo = null,
+    string? Invoice = null,
+    string? InvoiceType = null,
+    string? InvoiceRegion = null,
+    DateTimeOffset? DateFrom = null,
+    DateTimeOffset? DateTo = null,
+    string? Sort = null);
 public sealed record OrderSummaryView(
     int All,
     int New,
@@ -315,7 +327,12 @@ public sealed record OrderSummaryView(
     int Shipped,
     int Delivered,
     int Resent,
-    int OnHold);
+    int OnHold,
+    int Cancelled = 0,
+    int Returned = 0,
+    int ReturnInTransit = 0,
+    int PartiallyCancelled = 0,
+    int ManualReview = 0);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,
@@ -436,7 +453,7 @@ public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposit
 
 public interface IMarketplaceSalesService
 {
-    Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
+    Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, string? after, OrderListQuery query, CancellationToken cancellationToken);
     Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);

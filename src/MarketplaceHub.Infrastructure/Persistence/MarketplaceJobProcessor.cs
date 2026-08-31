@@ -1203,10 +1203,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
             foreach (var _ in result.Value!.Items) TrackReceived();
-            foreach (var streamedOrder in result.Value!.Items)
-            {
-                await UpsertOrder(tenantId, connectionId, streamedOrder, cancellationToken);
-            }
+            await UpsertOrders(tenantId, connectionId, result.Value!.Items, cancellationToken);
             if (result.Value.HasMore)
             {
                 if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol stream hasMore=true ancak nextCursor boş döndü.");
@@ -1248,6 +1245,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Take(50)
             .ToListAsync(cancellationToken);
 
+        var recoveredOrders = new List<RemoteOrder>();
         foreach (var externalOrderId in externalOrderIds)
         {
             TrackRequest();
@@ -1259,8 +1257,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 throw JobProcessingException.FromAdapter(result.Error!);
             }
             TrackReceived();
-            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken);
+            recoveredOrders.Add(result.Value!);
         }
+        await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken);
 
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
         cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
@@ -1286,7 +1285,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     if (!result.IsSuccess && storefront != "TR" && result.Error?.HttpStatus is 400 or 404) break;
                     if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
                     foreach (var _ in result.Value!.Items) TrackReceived();
-                    foreach (var remote in result.Value!.Items) await UpsertOrder(tenantId, connectionId, remote, cancellationToken);
+                    await UpsertOrders(tenantId, connectionId, result.Value!.Items, cancellationToken);
                     next = result.Value.HasMore ? result.Value.NextCursor : null;
                     if (result.Value.HasMore && string.IsNullOrWhiteSpace(next)) throw new InvalidOperationException("Order reconciliation cursor is missing.");
                 } while (next is not null && !cancellationToken.IsCancellationRequested);
@@ -2017,61 +2016,83 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private static string SerializeOrderSyncState(OrderSyncState state) => JsonSerializer.Serialize(state);
 
-    private async Task<RemoteOrder> EnrichOrderLineSources(Guid tenantId, Guid connectionId, string correlationId, RemoteOrder remote, Dictionary<string, string?> cache, CancellationToken cancellationToken)
-    {
-        if (products is not IProductVisualLookupPort visualLookup) return remote;
-        var enriched = new List<RemoteOrderLine>(remote.Lines.Count);
-        foreach (var line in remote.Lines)
-        {
-            if (string.IsNullOrWhiteSpace(line.Barcode)) { enriched.Add(line); continue; }
-            if (!cache.TryGetValue(line.Barcode, out var productJson))
-            {
-                var result = await visualLookup.FindByBarcodeAsync(Context(tenantId, connectionId, correlationId, $"order-product:{line.Barcode}"), line.Barcode, cancellationToken);
-                productJson = result.IsSuccess ? result.Value?.RawJson : null;
-                cache[line.Barcode] = productJson;
-            }
-            enriched.Add(string.IsNullOrWhiteSpace(productJson) ? line : line with { SourceSnapshotJson = MergeSourceSnapshots(line.SourceSnapshotJson, productJson) });
-        }
-        return remote with { Lines = enriched };
-    }
-
-    private static string MergeSourceSnapshots(string lineJson, string productJson)
-    {
-        using var line = JsonDocument.Parse(string.IsNullOrWhiteSpace(lineJson) ? "{}" : lineJson);
-        using var product = JsonDocument.Parse(string.IsNullOrWhiteSpace(productJson) ? "{}" : productJson);
-        return JsonSerializer.Serialize(new { orderLine = line.RootElement.Clone(), product = product.RootElement.Clone() });
-    }
-
     private async Task<bool> IngestWebhook(Guid tenantId, Guid connectionId, string payloadJson, CancellationToken cancellationToken)
     {
         string raw; string externalMessageId; try { using var payload = JsonDocument.Parse(payloadJson); raw = payload.RootElement.GetProperty("rawJson").GetString() ?? ""; externalMessageId = payload.RootElement.GetProperty("externalMessageId").GetString() ?? ""; } catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException) { return false; }
         AdapterPageResult<RemoteOrder> page; try { page = TrendyolJsonMapper.Orders(raw); } catch (JsonException) { return false; }
         if (configuration.GetValue("Marketplace:PersistOrderSnapshots", true))
-            foreach (var order in page.Items) await UpsertOrder(tenantId, connectionId, order, cancellationToken);
+            await UpsertOrders(tenantId, connectionId, page.Items, cancellationToken);
         var inbox = await db.InboxMessages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Source == "TRENDYOL_WEBHOOK" && x.ExternalMessageId == externalMessageId, cancellationToken); if (inbox is not null) inbox.ProcessedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return true;
     }
 
-    private async Task UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken)
+    private sealed class OrderIngestionBatch
+    {
+        public Dictionary<string, Order> OrdersByExternalId { get; } = new(StringComparer.Ordinal);
+        public Dictionary<Guid, List<OrderLine>> LinesByOrder { get; } = [];
+        public Dictionary<Guid, Dictionary<string, ShipmentPackage>> PackagesByOrder { get; } = [];
+        public Dictionary<Guid, HashSet<string>> EventIdsByOrder { get; } = [];
+        public Dictionary<string, PackageLineAllocation> AllocationsByKey { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, Guid> VariantIdsByKey { get; } = new(StringComparer.Ordinal);
+        public List<(OrderLine Line, DateTimeOffset ModifiedAt)> ReservationSources { get; } = [];
+    }
+
+    private async Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken)
+    {
+        if (remotes.Count == 0) return;
+        var batch = new OrderIngestionBatch();
+        var externalIds = remotes.Select(x => x.ExternalOrderId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.Ordinal).ToArray();
+        var orders = await db.Orders.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalIds.Contains(x.ExternalOrderId)).ToListAsync(cancellationToken);
+        foreach (var order in orders) batch.OrdersByExternalId[order.ExternalOrderId] = order;
+        var orderIds = orders.Select(x => x.Id).ToArray();
+        if (orderIds.Length > 0)
+        {
+            var lines = await db.OrderLines.Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).ToListAsync(cancellationToken);
+            foreach (var group in lines.GroupBy(x => x.OrderId)) batch.LinesByOrder[group.Key] = group.ToList();
+
+            var packages = await db.ShipmentPackages.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && orderIds.Contains(x.OrderId)).ToListAsync(cancellationToken);
+            foreach (var group in packages.GroupBy(x => x.OrderId)) batch.PackagesByOrder[group.Key] = group.ToDictionary(x => x.ExternalPackageId, StringComparer.Ordinal);
+
+            var packageIds = packages.Select(x => x.Id).ToArray();
+            if (packageIds.Length > 0)
+            {
+                var allocations = await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenantId && packageIds.Contains(x.PackageId)).ToListAsync(cancellationToken);
+                foreach (var allocation in allocations) batch.AllocationsByKey[AllocationKey(allocation.PackageId, allocation.OrderLineId, allocation.SourceEventId)] = allocation;
+            }
+
+            var history = await db.OrderStatusHistory.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).Select(x => new { x.OrderId, x.SourceEventId }).ToListAsync(cancellationToken);
+            foreach (var group in history.GroupBy(x => x.OrderId)) batch.EventIdsByOrder[group.Key] = group.Select(x => x.SourceEventId).ToHashSet(StringComparer.Ordinal);
+        }
+
+        var variantIds = await ResolveOrderLineVariantIds(tenantId, remotes.SelectMany(x => x.Lines).ToList(), cancellationToken);
+        foreach (var pair in variantIds) batch.VariantIdsByKey[pair.Key] = pair.Value;
+        foreach (var remote in remotes) await UpsertOrder(tenantId, connectionId, remote, cancellationToken, batch, saveChanges: false);
+        await ProjectOrderReservations(tenantId, connectionId, batch.ReservationSources, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch = null, bool saveChanges = true)
     {
         IReadOnlyDictionary<string, decimal> remoteLineQuantities;
         if (remote.Lines.Count == 0) remoteLineQuantities = new Dictionary<string, decimal>(StringComparer.Ordinal);
-        else if (!PackageIngestionSafety.TryGetOrderedQuantities(remote.Lines, out remoteLineQuantities)) { await RecordIssue(tenantId, $"order-lines:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_QUANTITY_INVARIANT_REJECTED", "Sipariş satır kimliği veya miktarı geçersizdi; olayın hiçbir parçası uygulanmadı.", cancellationToken); await db.SaveChangesAsync(cancellationToken); return; }
-        foreach (var remotePackage in remote.Packages) if (!PackageIngestionSafety.TryNormalizeAll(remoteLineQuantities, remotePackage.Allocations, ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus), out _)) { var rejectedEventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); await RecordIssue(tenantId, $"package-quantity:{connectionId}:{rejectedEventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken); await db.SaveChangesAsync(cancellationToken); return; }
-        var now = timeProvider.GetUtcNow(); var order = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalOrderId == remote.ExternalOrderId, cancellationToken);
+        else if (!PackageIngestionSafety.TryGetOrderedQuantities(remote.Lines, out remoteLineQuantities)) { await RecordIssue(tenantId, $"order-lines:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_QUANTITY_INVARIANT_REJECTED", "Sipariş satır kimliği veya miktarı geçersizdi; olayın hiçbir parçası uygulanmadı.", cancellationToken); if (saveChanges) await db.SaveChangesAsync(cancellationToken); return; }
+        foreach (var remotePackage in remote.Packages) if (!PackageIngestionSafety.TryNormalizeAll(remoteLineQuantities, remotePackage.Allocations, ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus), out _)) { var rejectedEventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); await RecordIssue(tenantId, $"package-quantity:{connectionId}:{rejectedEventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken); if (saveChanges) await db.SaveChangesAsync(cancellationToken); return; }
+        var now = timeProvider.GetUtcNow(); var order = batch?.OrdersByExternalId.GetValueOrDefault(remote.ExternalOrderId) ?? await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalOrderId == remote.ExternalOrderId, cancellationToken);
         var repairedProjection = false;
         if (order is not null)
         {
-            var repairCandidates = await db.ShipmentPackages.Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status == ShipmentPackageStatus.ManualReview).ToListAsync(cancellationToken);
+            var repairCandidates = batch is not null
+                ? (batch.PackagesByOrder.GetValueOrDefault(order.Id)?.Values.Where(x => x.Status == ShipmentPackageStatus.ManualReview).ToList() ?? [])
+                : await db.ShipmentPackages.Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status == ShipmentPackageStatus.ManualReview).ToListAsync(cancellationToken);
             foreach (var candidate in repairCandidates) { var canonical = ShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; repairedProjection = true; } }
         }
         // Do not short-circuit empty-line replays: the same remote package can need a safe local canonical projection repair after a previously unknown raw status becomes recognized.
-        if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", CreatedAt = now, Version = 1 }; db.Orders.Add(order); telemetryInsertedCount++; }
-        else if (remote.LastModifiedAt < order.LastRemoteModifiedAt) { if (repairedProjection) await db.SaveChangesAsync(cancellationToken); return; }
-        order.OrderNumber = remote.OrderNumber; order.Currency = remote.Currency; order.GrossAmount = remote.GrossAmount; order.DiscountAmount = remote.DiscountAmount; order.NetAmount = remote.NetAmount; order.OrderedAt = remote.OrderedAt; order.LastRemoteModifiedAt = remote.LastModifiedAt; order.CustomerSnapshotJson = remote.CustomerSnapshotJson; order.ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson; order.InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson; order.UpdatedAt = now; if (db.Entry(order).State != EntityState.Added) { order.Version++; telemetryUpdatedCount++; }
+        if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", ShipmentDueAt = remote.ShipmentDueAt, CreatedAt = now, Version = 1 }; db.Orders.Add(order); batch?.OrdersByExternalId.TryAdd(remote.ExternalOrderId, order); telemetryInsertedCount++; }
+        else if (remote.LastModifiedAt < order.LastRemoteModifiedAt) { if (repairedProjection && saveChanges) await db.SaveChangesAsync(cancellationToken); return; }
+        order.OrderNumber = remote.OrderNumber; order.Currency = remote.Currency; order.GrossAmount = remote.GrossAmount; order.DiscountAmount = remote.DiscountAmount; order.NetAmount = remote.NetAmount; order.OrderedAt = remote.OrderedAt; order.ShipmentDueAt = remote.ShipmentDueAt; order.LastRemoteModifiedAt = remote.LastModifiedAt; order.CustomerSnapshotJson = remote.CustomerSnapshotJson; order.ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson; order.InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson; order.UpdatedAt = now; if (db.Entry(order).State != EntityState.Added) { order.Version++; telemetryUpdatedCount++; }
         var lines = new Dictionary<string, OrderLine>(StringComparer.Ordinal);
-        var existingLines = await db.OrderLines
-            .Where(x => x.TenantId == tenantId && x.OrderId == order.Id)
-            .ToListAsync(cancellationToken);
+        var existingLines = batch is not null
+            ? batch.LinesByOrder.GetValueOrDefault(order.Id) ?? []
+            : await db.OrderLines.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).ToListAsync(cancellationToken);
         var linesByExternalId = existingLines
             .GroupBy(x => x.ExternalLineId, StringComparer.Ordinal)
             .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
@@ -2079,26 +2100,29 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Where(x => !string.IsNullOrWhiteSpace(x.SourceSnapshotJson) && x.SourceSnapshotJson != "{}")
             .GroupBy(x => x.SourceSnapshotJson!, StringComparer.Ordinal)
             .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
-        var packagesByExternalId = await db.ShipmentPackages
-            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.OrderId == order.Id)
-            .ToDictionaryAsync(x => x.ExternalPackageId, StringComparer.Ordinal, cancellationToken);
-        var knownEventIds = (await db.OrderStatusHistory.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.OrderId == order.Id)
-            .Select(x => x.SourceEventId)
-            .ToListAsync(cancellationToken))
-            .ToHashSet(StringComparer.Ordinal);
+        var packagesByExternalId = batch is not null
+            ? batch.PackagesByOrder.GetValueOrDefault(order.Id) ?? new Dictionary<string, ShipmentPackage>(StringComparer.Ordinal)
+            : await db.ShipmentPackages.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.OrderId == order.Id).ToDictionaryAsync(x => x.ExternalPackageId, StringComparer.Ordinal, cancellationToken);
+        var knownEventIds = batch is not null
+            ? batch.EventIdsByOrder.GetValueOrDefault(order.Id) ?? new HashSet<string>(StringComparer.Ordinal)
+            : (await db.OrderStatusHistory.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.SourceEventId).ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
         foreach (var localEvent in db.OrderStatusHistory.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id)) knownEventIds.Add(localEvent.SourceEventId);
         var packageIds = packagesByExternalId.Values.Select(x => x.Id).ToArray();
-        var allocationsByKey = (await db.PackageLineAllocations.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && packageIds.Contains(x.PackageId))
-            .ToListAsync(cancellationToken))
-            .ToDictionary(x => AllocationKey(x.PackageId, x.OrderLineId, x.SourceEventId), StringComparer.Ordinal);
-        var variantIdsByKey = await ResolveOrderLineVariantIds(tenantId, remote.Lines, cancellationToken);
+        var allocationsByKey = batch is not null
+            ? batch.AllocationsByKey.Where(x => packageIds.Contains(x.Value.PackageId)).ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal)
+            : (await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenantId && packageIds.Contains(x.PackageId)).ToListAsync(cancellationToken)).ToDictionary(x => AllocationKey(x.PackageId, x.OrderLineId, x.SourceEventId), StringComparer.Ordinal);
+        var variantIdsByKey = batch?.VariantIdsByKey ?? await ResolveOrderLineVariantIds(tenantId, remote.Lines, cancellationToken);
+        if (batch is not null)
+        {
+            batch.LinesByOrder[order.Id] = existingLines;
+            batch.PackagesByOrder[order.Id] = packagesByExternalId;
+            batch.EventIdsByOrder[order.Id] = knownEventIds;
+        }
         foreach (var remoteLine in remote.Lines)
         {
             var line = linesByExternalId.GetValueOrDefault(remoteLine.ExternalLineId);
             if (line is null && !string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}") line = linesBySnapshot.GetValueOrDefault(remoteLine.SourceSnapshotJson);
-            if (line is null) { line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = remoteLine.ExternalLineId, Sku = remoteLine.Sku, TitleSnapshot = remoteLine.Title, RawStatus = remoteLine.RawStatus, Version = 1 }; db.OrderLines.Add(line); telemetryInsertedCount++; }
+            if (line is null) { line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = remoteLine.ExternalLineId, Sku = remoteLine.Sku, TitleSnapshot = remoteLine.Title, RawStatus = remoteLine.RawStatus, Version = 1 }; db.OrderLines.Add(line); existingLines.Add(line); telemetryInsertedCount++; }
             else line.ExternalLineId = remoteLine.ExternalLineId;
             if (line.VariantId is null)
             {
@@ -2153,9 +2177,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 foreach (var remoteAllocation in remotePackage.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; line.CancelledQuantity = Math.Max(line.CancelledQuantity, allocation.CancelledQuantity); line.ShippedQuantity = Math.Max(line.ShippedQuantity, allocation.ShippedQuantity); line.DeliveredQuantity = Math.Max(line.DeliveredQuantity, allocation.DeliveredQuantity); line.ReturnedQuantity = Math.Max(line.ReturnedQuantity, allocation.ReturnedQuantity); } }
             }
         }
-        var persistedStatuses = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status).ToListAsync(cancellationToken); var acceptedStatuses = persistedStatuses.ToList(); acceptedStatuses.AddRange(db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status)); order.DerivedStatus = Wire(ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses));
-        await ProjectOrderReservations(tenantId, connectionId, lines.Values, remote.LastModifiedAt, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
+        var persistedStatuses = batch is not null
+            ? packagesByExternalId.Values.Select(x => x.Status).ToList()
+            : await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status).ToListAsync(cancellationToken);
+        var acceptedStatuses = persistedStatuses.ToList();
+        acceptedStatuses.AddRange(db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status));
+        order.DerivedStatus = Wire(ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses));
+        if (batch is null)
+            await ProjectOrderReservations(tenantId, connectionId, lines.Values.Select(line => (line, remote.LastModifiedAt)).ToList(), cancellationToken);
+        else
+            batch.ReservationSources.AddRange(lines.Values.Select(line => (line, remote.LastModifiedAt)));
+        if (saveChanges) await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<Dictionary<string, Guid>> ResolveOrderLineVariantIds(Guid tenantId, IReadOnlyList<RemoteOrderLine> remoteLines, CancellationToken cancellationToken)
@@ -2186,10 +2218,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private static string AllocationKey(Guid packageId, Guid orderLineId, string sourceEventId) => $"{packageId:D}:{orderLineId:D}:{sourceEventId}";
 
-    private async Task ProjectOrderReservations(Guid tenantId, Guid connectionId, IEnumerable<OrderLine> sourceLines, DateTimeOffset remoteModifiedAt, CancellationToken cancellationToken)
+    private async Task ProjectOrderReservations(Guid tenantId, Guid connectionId, IEnumerable<(OrderLine Line, DateTimeOffset ModifiedAt)> sourceLines, CancellationToken cancellationToken)
     {
-        var lines = sourceLines.Where(line => line.VariantId is not null).ToList();
+        var sources = sourceLines.Where(source => source.Line.VariantId is not null).GroupBy(source => source.Line.Id).Select(group => group.Last()).ToList();
+        var lines = sources.Select(source => source.Line).ToList();
         if (lines.Count == 0) return;
+        var modifiedAtByLine = sources.ToDictionary(source => source.Line.Id, source => source.ModifiedAt);
         var variantIds = lines.Select(line => line.VariantId!.Value).Distinct().ToArray();
         var items = await db.InventoryItems
             .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
@@ -2232,8 +2266,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
             item.ProjectionVersion++;
             item.Version++;
-            var eventId = $"{line.Id:N}:{remoteModifiedAt.ToUnixTimeMilliseconds()}:{desired}";
-            db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = delta > 0 ? "ORDER_RESERVED" : "ORDER_RESERVATION_RELEASED", QuantityDelta = -delta, SourceType = "ORDER_LINE", SourceId = sourceId, SourceEventId = eventId, IdempotencyKey = $"order-reservation:{eventId}", OccurredAt = remoteModifiedAt, RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}" });
+            var eventId = $"{line.Id:N}:{modifiedAtByLine[line.Id].ToUnixTimeMilliseconds()}:{desired}";
+            db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = delta > 0 ? "ORDER_RESERVED" : "ORDER_RESERVATION_RELEASED", QuantityDelta = -delta, SourceType = "ORDER_LINE", SourceId = sourceId, SourceEventId = eventId, IdempotencyKey = $"order-reservation:{eventId}", OccurredAt = modifiedAtByLine[line.Id], RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}" });
             outbox[StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion)] = (variantId, eventId);
         }
         if (outbox.Count == 0) return;

@@ -35,9 +35,10 @@ public static class TrendyolJsonMapper
             // authoritative workflow state for the order projection.
             var rawStatusPackage = Text(package, "status", "shipmentPackageStatus"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
             var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net);
+            var dueAt = FlexibleInstant(package, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
             rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
                 CustomerSnapshot(package),
-                ObjectSnapshot(package, "shipmentAddress"), ObjectSnapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText()));
+                ObjectSnapshot(package, "shipmentAddress"), ObjectSnapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText(), dueAt));
         }
         var next = NullText(root, "nextCursor");
         var hasMore = Bool(root, "hasMore");

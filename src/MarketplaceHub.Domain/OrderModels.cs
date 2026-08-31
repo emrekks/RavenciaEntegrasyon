@@ -104,6 +104,7 @@ public sealed class Order
     public decimal DiscountAmount { get; set; }
     public decimal NetAmount { get; set; }
     public DateTimeOffset OrderedAt { get; set; }
+    public DateTimeOffset? ShipmentDueAt { get; set; }
     public DateTimeOffset LastRemoteModifiedAt { get; set; }
     public required string CustomerSnapshotJson { get; set; }
     public required string ShipmentAddressSnapshotJson { get; set; }

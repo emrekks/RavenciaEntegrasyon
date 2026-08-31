@@ -10,14 +10,41 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IOrderPort orders, IReturnPort returns, TimeProvider timeProvider) : IMarketplaceSalesService
 {
-    public async Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
+    public async Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, string? after, OrderListQuery queryOptions, CancellationToken cancellationToken)
     {
         // The panel is a local read model. Remote reads belong to the scheduled worker.
-        var afterId = Decode(after);
+        var sort = NormalizeOrderSort(queryOptions.Sort);
         var query = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId);
-        if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
-        if (!string.IsNullOrWhiteSpace(status)) query = query.Where(x => x.DerivedStatus == status.Trim().ToUpperInvariant());
-        var orders = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(after))
+        {
+            if (!cursors.TryDecodeOrder(after, out var cursorSort, out var cursorDueAt, out var cursorOrderedAt, out var cursorId) || cursorSort != sort)
+                throw new ArgumentException("Cursor geçersiz veya seçili sıralamayla uyuşmuyor.", nameof(after));
+            if (sort is "DUE_ASC" or "DUE_DESC")
+            {
+                if (cursorDueAt is null)
+                    query = query.Where(x => x.ShipmentDueAt == null && (sort == "DUE_ASC"
+                        ? x.OrderedAt > cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) > 0
+                        : x.OrderedAt < cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) < 0));
+                else if (sort == "DUE_ASC")
+                    query = query.Where(x => x.ShipmentDueAt == null || x.ShipmentDueAt > cursorDueAt || x.ShipmentDueAt == cursorDueAt && (x.OrderedAt > cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) > 0));
+                else
+                    query = query.Where(x => x.ShipmentDueAt == null || x.ShipmentDueAt < cursorDueAt || x.ShipmentDueAt == cursorDueAt && (x.OrderedAt < cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) < 0));
+            }
+            else
+                query = sort == "DATE_ASC"
+                    ? query.Where(x => x.OrderedAt > cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) > 0)
+                    : query.Where(x => x.OrderedAt < cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) < 0);
+        }
+        ApplyOrderFilters(ref query, queryOptions);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var orderedQuery = sort switch
+        {
+            "DUE_ASC" => query.OrderBy(x => x.ShipmentDueAt == null).ThenBy(x => x.ShipmentDueAt).ThenBy(x => x.OrderedAt).ThenBy(x => x.Id),
+            "DUE_DESC" => query.OrderBy(x => x.ShipmentDueAt == null).ThenByDescending(x => x.ShipmentDueAt).ThenByDescending(x => x.OrderedAt).ThenByDescending(x => x.Id),
+            "DATE_ASC" => query.OrderBy(x => x.OrderedAt).ThenBy(x => x.Id),
+            _ => query.OrderByDescending(x => x.OrderedAt).ThenByDescending(x => x.Id)
+        };
+        var orders = await orderedQuery.Take(limit + 1).ToListAsync(cancellationToken);
         var orderIds = orders.Select(x => x.Id).ToArray();
         var connectionIds = orders.Select(x => x.ConnectionId).Distinct().ToArray();
         var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).ToListAsync(cancellationToken);
@@ -43,7 +70,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             var invoice = invoicesByOrder.GetValueOrDefault(order.Id);
             var connection = connections.GetValueOrDefault(order.ConnectionId);
             var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
-            var dueAt = OperationalDueAt(order.CustomerSnapshotJson);
+            var dueAt = order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson);
             var terminal = order.DerivedStatus is "DELIVERED" or "CANCELLED" or "RETURNED";
             var lineViews = orderLines.Select(x =>
             {
@@ -64,8 +91,58 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.GrossAmount, order.DiscountAmount,
                 lineViews, packageViews, invoice?.Id, InvoiceDocumentUrl(order.CustomerSnapshotJson));
         }).ToList();
-        return Page(rows, limit, x => x.Id);
+        var hasMore = orders.Count > limit;
+        var pageRows = rows.Take(limit).ToList();
+        var last = orders.Take(limit).LastOrDefault();
+        var next = hasMore && last is not null ? cursors.EncodeOrder(sort, last.ShipmentDueAt, last.OrderedAt, last.Id) : null;
+        return new(pageRows, next, hasMore, totalCount);
     }
+
+    private void ApplyOrderFilters(ref IQueryable<Order> query, OrderListQuery options)
+    {
+        var status = options.Status?.Trim().ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(status) && status != "ALL")
+        {
+            query = status switch
+            {
+                "PROCESSING" => query.Where(x => x.DerivedStatus == "PROCESSING" || x.DerivedStatus == "READY_TO_SHIP"),
+                "SHIPPED" => query.Where(x => x.DerivedStatus == "SHIPPED" || x.DerivedStatus == "UNDELIVERED"),
+                "RESENT" => query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null)),
+                _ => query.Where(x => x.DerivedStatus == status)
+            };
+        }
+
+        var search = options.Search?.Trim();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(x => x.OrderNumber.Contains(search) || x.ExternalOrderId.Contains(search) || x.CustomerSnapshotJson.Contains(search)
+                || db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id
+                    && (line.TitleSnapshot.Contains(search) || line.Sku.Contains(search) || (line.Barcode != null && line.Barcode.Contains(search)))));
+        }
+
+        var platform = options.Platform?.Trim().ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(platform) && platform != "ALL")
+            query = query.Where(x => db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == platform));
+
+        var listing = options.Listing?.Trim().ToUpperInvariant();
+        if (listing == "OPEN") query = query.Where(x => x.DerivedStatus != "DELIVERED" && x.DerivedStatus != "CANCELLED" && x.DerivedStatus != "RETURNED");
+        if (listing == "CLOSED") query = query.Where(x => x.DerivedStatus == "DELIVERED" || x.DerivedStatus == "CANCELLED" || x.DerivedStatus == "RETURNED");
+
+        var cargo = options.Cargo?.Trim();
+        if (!string.IsNullOrWhiteSpace(cargo) && cargo != "ALL")
+            query = query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.CargoProviderExternalId == cargo));
+
+        if (options.DateFrom is { } dateFrom) query = query.Where(x => x.OrderedAt >= dateFrom);
+        if (options.DateTo is { } dateTo) query = query.Where(x => x.OrderedAt <= dateTo);
+    }
+
+    private static string NormalizeOrderSort(string? value) => value?.Trim().ToUpperInvariant() switch
+    {
+        "DATE_ASC" => "DATE_ASC",
+        "DUE_ASC" => "DUE_ASC",
+        "DUE_DESC" => "DUE_DESC",
+        _ => "DATE_DESC"
+    };
 
     public async Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
     {
@@ -79,7 +156,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 group.Count(x => x.DerivedStatus == "SHIPPED" || x.DerivedStatus == "UNDELIVERED"),
                 group.Count(x => x.DerivedStatus == "DELIVERED"),
                 0,
-                group.Count(x => x.DerivedStatus == "ON_HOLD")))
+                group.Count(x => x.DerivedStatus == "ON_HOLD"),
+                group.Count(x => x.DerivedStatus == "CANCELLED"),
+                group.Count(x => x.DerivedStatus == "RETURNED"),
+                group.Count(x => x.DerivedStatus == "RETURN_IN_TRANSIT"),
+                group.Count(x => x.DerivedStatus == "PARTIALLY_CANCELLED"),
+                group.Count(x => x.DerivedStatus == "MANUAL_REVIEW")))
             .SingleOrDefaultAsync(cancellationToken);
         var resent = await db.ShipmentPackages.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.OriginExternalPackageId != null)
@@ -118,7 +200,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             lines, packages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version,
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
-            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabel(invoice, order.CustomerSnapshotJson),
+            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabel(invoice, order.CustomerSnapshotJson),
             customer.Phone, customer.IsEInvoiceAvailable, InvoiceDocumentUrl(order.CustomerSnapshotJson)));
     }
 

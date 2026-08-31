@@ -8,7 +8,7 @@ public sealed record ServiceResult<T>(T? Value, ServiceError? Error)
     public static ServiceResult<T> Fail(string code, string message, int status, IReadOnlyDictionary<string, string[]>? fields = null) => new(default, new(code, message, status, fields));
 }
 
-public sealed record PageResult<T>(IReadOnlyList<T> Items, string? NextCursor, bool HasMore);
+public sealed record PageResult<T>(IReadOnlyList<T> Items, string? NextCursor, bool HasMore, int? TotalCount = null);
 public sealed record CategoryView(Guid Id, Guid? ParentId, string Name, string Path, int Depth, bool IsLeaf, bool IsActive, long Version);
 public sealed record BrandView(Guid Id, string Name, bool IsActive, long Version);
 public sealed record AttributeValueView(Guid Id, string Value, int SortOrder, bool IsActive);
