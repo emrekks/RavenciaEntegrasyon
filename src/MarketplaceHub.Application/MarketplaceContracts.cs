@@ -453,7 +453,7 @@ public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposit
 
 public interface IMarketplaceSalesService
 {
-    Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, string? after, OrderListQuery query, CancellationToken cancellationToken);
+    Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, int page, string? after, OrderListQuery query, CancellationToken cancellationToken);
     Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);

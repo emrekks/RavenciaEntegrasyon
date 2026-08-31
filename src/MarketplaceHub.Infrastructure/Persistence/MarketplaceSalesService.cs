@@ -10,7 +10,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IOrderPort orders, IReturnPort returns, TimeProvider timeProvider) : IMarketplaceSalesService
 {
-    public async Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, string? after, OrderListQuery queryOptions, CancellationToken cancellationToken)
+    public async Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, int page, string? after, OrderListQuery queryOptions, CancellationToken cancellationToken)
     {
         // The panel is a local read model. Remote reads belong to the scheduled worker.
         var sort = NormalizeOrderSort(queryOptions.Sort);
@@ -40,13 +40,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     ? query.Where(x => x.OrderedAt > cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) > 0)
                     : query.Where(x => x.OrderedAt < cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) < 0);
         }
-        var orderedQuery = sort switch
+        IQueryable<Order> orderedQuery = sort switch
         {
             "DUE_ASC" => query.OrderBy(x => x.ShipmentDueAt == null).ThenBy(x => x.ShipmentDueAt).ThenBy(x => x.OrderedAt).ThenBy(x => x.Id),
             "DUE_DESC" => query.OrderBy(x => x.ShipmentDueAt == null).ThenByDescending(x => x.ShipmentDueAt).ThenByDescending(x => x.OrderedAt).ThenByDescending(x => x.Id),
             "DATE_ASC" => query.OrderBy(x => x.OrderedAt).ThenBy(x => x.Id),
             _ => query.OrderByDescending(x => x.OrderedAt).ThenByDescending(x => x.Id)
         };
+        if (string.IsNullOrWhiteSpace(after) && page > 1)
+            orderedQuery = orderedQuery.Skip(checked((page - 1) * limit));
         var orders = await orderedQuery.Take(limit + 1).ToListAsync(cancellationToken);
         var orderIds = orders.Select(x => x.Id).ToArray();
         var connectionIds = orders.Select(x => x.ConnectionId).Distinct().ToArray();
