@@ -21,6 +21,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                                   on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
                               where policy.Enabled && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.PlatformCode == "TRENDYOL"
                               select new { Policy = policy, Connection = connection }).ToListAsync(cancellationToken);
+        var reservedExecutionGroups = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var row in policies)
         {
@@ -40,7 +41,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .ToListAsync(cancellationToken);
             var executionGroup = MarketplaceSyncExecutionLock.GroupFor(definition.Value.JobType);
             var active = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == executionGroup);
-            if (active) continue;
+            // The jobs added during this pass are not visible to the AsNoTracking
+            // queries until SaveChangesAsync. Reserve the provider lane in memory
+            // as well, otherwise multiple order policies can be queued together.
+            if (active || reservedExecutionGroups.Contains(executionGroup)) continue;
             var latest = await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
@@ -52,6 +56,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var dedup = $"{definition.Value.DedupPrefix}:{bucket}";
             if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.JobType == definition.Value.JobType && x.JobDedupKey == dedup, cancellationToken)) continue;
             var jitter = row.Policy.JitterSeconds <= 0 ? 0 : StableJitter(row.Policy.Id, bucket, row.Policy.JitterSeconds);
+            reservedExecutionGroups.Add(executionGroup);
             db.IntegrationJobs.Add(NewJob(row.Policy.TenantId, row.Connection.Id, definition.Value.JobType, dedup, definition.Value.PayloadJson, now.AddSeconds(jitter), $"scheduler-{Guid.NewGuid():N}"));
             added++;
         }
