@@ -11,13 +11,6 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
     {
         var now = timeProvider.GetUtcNow();
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
-        await db.IntegrationJobs
-            .Where(x => (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled) && x.AttemptCount >= x.MaxAttempts)
-            .ExecuteUpdateAsync(update => update
-                .SetProperty(x => x.Status, JobStatus.Dead)
-                .SetProperty(x => x.CompletedAt, now)
-                .SetProperty(x => x.LastErrorCode, x => x.LastErrorCode ?? "MAX_ATTEMPTS_EXHAUSTED")
-                .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
         var job = (minimumPriority, maximumPriority) switch
         {
             (null, null) => await db.IntegrationJobs.FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" IN ('PENDING', 'RETRY_SCHEDULED') AND \"AttemptCount\" < \"MaxAttempts\" AND \"AvailableAt\" <= {now} ORDER BY \"Priority\" ASC, \"AvailableAt\" ASC, \"CreatedAt\" ASC FOR UPDATE SKIP LOCKED LIMIT 1").SingleOrDefaultAsync(cancellationToken),
@@ -116,7 +109,20 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
     public async Task<int> ReapExpiredAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
+        var hasReapableJobs = await db.IntegrationJobs.AsNoTracking().AnyAsync(x =>
+            x.Status == JobStatus.Leased && x.LeaseExpiresAt < now
+            || (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled) && x.AttemptCount >= x.MaxAttempts,
+            cancellationToken);
+        if (!hasReapableJobs) return 0;
+
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
+        await db.IntegrationJobs
+            .Where(x => (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled) && x.AttemptCount >= x.MaxAttempts)
+            .ExecuteUpdateAsync(update => update
+                .SetProperty(x => x.Status, JobStatus.Dead)
+                .SetProperty(x => x.CompletedAt, now)
+                .SetProperty(x => x.LastErrorCode, x => x.LastErrorCode ?? "MAX_ATTEMPTS_EXHAUSTED")
+                .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
         var expired = await db.IntegrationJobs
             .FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" = 'LEASED' AND \"LeaseExpiresAt\" < {now} ORDER BY \"LeaseExpiresAt\" ASC FOR UPDATE SKIP LOCKED")
             .ToListAsync(cancellationToken);

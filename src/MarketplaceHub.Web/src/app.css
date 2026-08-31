@@ -1,15 +1,7 @@
-/* Ravencia stylesheet entrypoint. Route modules are imported in the original cascade order. */
+/* Ravencia stylesheet entrypoint. Feature styles are loaded with their lazy route modules. */
 @import './styles/base.css';
 @import './styles/splash.css';
 @import './styles/legacy.css';
 @import './styles/ravencia-theme.css';
 @import './styles/shared-workspaces.css';
-@import './styles/operations.css';
-@import './styles/orders.css';
-@import './styles/dashboard.css';
-@import './styles/products.css';
-@import './styles/product-editor.css';
-@import './styles/returns.css';
-@import './styles/invoices.css';
 @import './styles/workspace.css';
-@import './styles/shipping-designer.css';

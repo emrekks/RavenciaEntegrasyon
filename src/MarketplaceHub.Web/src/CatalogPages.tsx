@@ -2,6 +2,8 @@ import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type Re
 import { Link, useParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from './api'
+import './styles/product-editor.css'
+import './styles/products.css'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }

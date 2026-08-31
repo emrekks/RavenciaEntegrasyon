@@ -15,6 +15,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // The panel is a local read model. Remote reads belong to the scheduled worker.
         var sort = NormalizeOrderSort(queryOptions.Sort);
         var query = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId);
+        ApplyOrderFilters(ref query, queryOptions);
+        // Count the filtered result set before applying the page cursor. Counting
+        // after the cursor made the total shrink on every subsequent page and
+        // caused the frontend to hide valid later pages.
+        var totalCount = await query.CountAsync(cancellationToken);
         if (!string.IsNullOrWhiteSpace(after))
         {
             if (!cursors.TryDecodeOrder(after, out var cursorSort, out var cursorDueAt, out var cursorOrderedAt, out var cursorId) || cursorSort != sort)
@@ -35,8 +40,6 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     ? query.Where(x => x.OrderedAt > cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) > 0)
                     : query.Where(x => x.OrderedAt < cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) < 0);
         }
-        ApplyOrderFilters(ref query, queryOptions);
-        var totalCount = await query.CountAsync(cancellationToken);
         var orderedQuery = sort switch
         {
             "DUE_ASC" => query.OrderBy(x => x.ShipmentDueAt == null).ThenBy(x => x.ShipmentDueAt).ThenBy(x => x.OrderedAt).ThenBy(x => x.Id),

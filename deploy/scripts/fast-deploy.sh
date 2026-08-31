@@ -33,7 +33,31 @@ sudo -n docker build --pull=false -t "$app_image" -f Dockerfile .
 sudo -n docker build --pull=false -t "$edge_image" -f deploy/caddy/Dockerfile.production .
 
 compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
-"${compose[@]}" up -d --no-build postgres migrate api worker caddy
+
+# Keep the currently serving API/worker/edge alive until the new database
+# migration has completed successfully. Compose's depends_on condition also
+# protects a fresh stack, but starting the one-shot migration separately makes
+# the failure boundary explicit and avoids replacing healthy application
+# containers with a stack that can never become ready.
+"${compose[@]}" up -d --no-build postgres migrate
+migrate_id="$("${compose[@]}" ps -q migrate)"
+[[ -n "$migrate_id" ]] || { echo "Migration container was not created." >&2; exit 1; }
+migration_status=""
+migration_exit_code=""
+for ((attempt = 1; attempt <= 120; attempt++)); do
+  migration_status="$(sudo -n docker inspect --format '{{.State.Status}}' "$migrate_id")"
+  if [[ "$migration_status" == "exited" ]]; then
+    migration_exit_code="$(sudo -n docker inspect --format '{{.State.ExitCode}}' "$migrate_id")"
+    break
+  fi
+  sleep 1
+done
+[[ "$migration_status" == "exited" && "$migration_exit_code" == "0" ]] || {
+  echo "Database migration did not complete successfully: state=$migration_status exit_code=${migration_exit_code:-unknown}." >&2
+  exit 1
+}
+
+"${compose[@]}" up -d --no-build api worker caddy
 
 if [[ "$verify" == true ]]; then
   site_address="${MARKETPLACEHUB_SITE_ADDRESS:-https://panel.ravencia.com}"

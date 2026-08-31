@@ -2,6 +2,8 @@ import { Fragment, useEffect, useState, type ChangeEvent, type CSSProperties, ty
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from './api'
+import './styles/orders.css'
+import './styles/returns.css'
 import { code128Bars, loadPrintedShippingLabels, loadShippingLabelSettings, markShippingLabelPrinted, printedShippingLabelKey, shippingLabelFields, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from './shipping-label'
 type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }
 type Connection = { id: string; publicId: string; platformCode: string; environment: string; displayName: string; externalStoreId: string; status: string; apiVersion: string; lastTestedAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null; hasCredential: boolean; externalWritesEnabled: boolean; version: number }

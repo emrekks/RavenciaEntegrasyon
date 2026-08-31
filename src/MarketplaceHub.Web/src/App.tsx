@@ -3,6 +3,8 @@ import { Link, Navigate, NavLink, Route, Routes, useNavigate } from 'react-route
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
 import { api, ApiRequestError, hubApi, loadAllPages, type Me, type TenantOption } from './api'
+import './styles/dashboard.css'
+import './styles/shipping-designer.css'
 const AttributesPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.AttributesPage })))
 const BrandsPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.BrandsPage })))
 const CategoriesPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.CategoriesPage })))

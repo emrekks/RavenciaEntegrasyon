@@ -36,6 +36,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 
     private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, int? minimumPriority, CancellationToken stoppingToken)
     {
+        var idleDelay = TimeSpan.FromSeconds(1);
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -48,14 +49,22 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 {
                     logger.LogInformation("Job {JobId} leased by {Lane} lane", job.Id, lane);
                     await ExecuteLeasedJobAsync(job, stoppingToken);
+                    idleDelay = TimeSpan.FromSeconds(1);
                     continue;
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-            catch (Exception exception) { logger.LogError(exception, "Worker {Lane} lease loop failed", lane); }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Worker {Lane} lease loop failed", lane);
+                idleDelay = TimeSpan.FromSeconds(1);
+            }
 
             if (!stoppingToken.IsCancellationRequested)
-                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+            {
+                await Task.Delay(idleDelay, stoppingToken);
+                idleDelay = TimeSpan.FromMilliseconds(Math.Min(3_000, idleDelay.TotalMilliseconds * 2));
+            }
         }
     }
 
