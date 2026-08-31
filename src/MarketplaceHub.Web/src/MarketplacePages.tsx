@@ -14,8 +14,16 @@ type OrderSort = 'DATE_DESC' | 'DATE_ASC' | 'DUE_DESC' | 'DUE_ASC'
 type OrderFilters = { search: string; status: string; platform: string; listing: string; cargo: string; invoice: string; invoiceType: string; invoiceRegion: string; label: string; sort: OrderSort; dateFrom: string; dateTo: string }
 type InvoiceViewer = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; taxTotal: number; invoiceNumber: string | null; lines: Array<{ id: string; description: string; sku: string | null; unit: string; quantity: number; vatRate: number; lineTotal: number }>; documents: Array<{ id: string; documentType: string; sha256: string }> }
 const initialOrderFilters: OrderFilters = { search: '', status: 'ALL', platform: 'ALL', listing: 'ALL', cargo: 'ALL', invoice: 'ALL', invoiceType: 'ALL', invoiceRegion: 'ALL', label: 'ALL', sort: 'DATE_DESC', dateFrom: '', dateTo: '' }
-const orderStatusRank: Record<string, number> = { MANUAL_REVIEW: 100, RETURNED: 90, RETURN_IN_TRANSIT: 85, DELIVERED: 80, UNDELIVERED: 70, SHIPPED: 60, READY_TO_SHIP: 50, PROCESSING: 40, ON_HOLD: 30, PARTIALLY_CANCELLED: 20, NEW: 10, CANCELLED: 0 }
+const orderStatusRank: Record<string, number> = { MANUAL_REVIEW: 110, RETURNED: 100, RETURN_IN_TRANSIT: 90, DELIVERED: 80, UNDELIVERED: 70, SHIPPED: 60, READY_TO_SHIP: 50, ON_HOLD: 40, PROCESSING: 30, PARTIALLY_CANCELLED: 20, NEW: 10, CANCELLED: 0 }
 const orderSyncStatuses = ['ALL'] as const
+function aggregateOrderStatus(statuses: string[]) {
+  const values = statuses.map(status => status.toUpperCase())
+  if (!values.length) return 'NEW'
+  if (values.includes('MANUAL_REVIEW')) return 'MANUAL_REVIEW'
+  const operational = values.filter(status => status !== 'CANCELLED' && status !== 'RETURNED')
+  if (operational.length) return operational.sort((left, right) => (orderStatusRank[right] ?? 110) - (orderStatusRank[left] ?? 110))[0]
+  return values.includes('RETURNED') ? 'RETURNED' : 'CANCELLED'
+}
 function mergeOrderRows(existing: Order, incoming: Order): Order {
   const existingPackages = existing.packages ?? []
   const incomingPackages = incoming.packages ?? []
@@ -27,9 +35,7 @@ function mergeOrderRows(existing: Order, incoming: Order): Order {
   const linesById = new Map((existing.lines ?? []).map(item => [item.id, item]))
   for (const line of incoming.lines ?? []) linesById.set(line.id, line)
   const lines = Array.from(linesById.values())
-  const derivedStatus = packages.length
-    ? packages.reduce((current, item) => (orderStatusRank[item.status.toUpperCase()] ?? 0) > (orderStatusRank[current] ?? 0) ? item.status.toUpperCase() : current, 'NEW')
-    : ((orderStatusRank[incoming.derivedStatus] ?? 0) >= (orderStatusRank[existing.derivedStatus] ?? 0) ? incoming.derivedStatus : existing.derivedStatus)
+  const derivedStatus = packages.length ? aggregateOrderStatus(packages.map(item => item.status)) : incoming.derivedStatus || existing.derivedStatus
   return { ...existing, ...incoming, derivedStatus, orderedAt: new Date(existing.orderedAt).getTime() <= new Date(incoming.orderedAt).getTime() ? existing.orderedAt : incoming.orderedAt, lineCount: lines.length, packageCount: packages.length, productQuantity: lines.reduce((total, line) => total + line.orderedQuantity, 0), customerName: incoming.customerName !== '—' ? incoming.customerName : existing.customerName, customerEmail: incoming.customerEmail ?? existing.customerEmail, customerTaxOrIdentityNumber: incoming.customerTaxOrIdentityNumber ?? existing.customerTaxOrIdentityNumber, primaryImageUrl: incoming.primaryImageUrl ?? existing.primaryImageUrl, cargoProviderName: incoming.cargoProviderName ?? existing.cargoProviderName, cargoTrackingNumber: incoming.cargoTrackingNumber ?? existing.cargoTrackingNumber, lines, packages }
 }
 async function loadOrdersByStatus(status: string): Promise<Order[]> {
@@ -259,14 +265,15 @@ function cargoMatches(value: string | null | undefined, carrier: { label: string
 }
 
 function patchOrderShipment(order: Order, updatedShipment: Shipment): Order {
-  const packages = order.packages?.map(packageItem => packageItem.id === updatedShipment.id ? { ...packageItem, ...updatedShipment } : packageItem) ?? [updatedShipment]
-  const isPrimaryPackage = order.packages?.[0]?.id === updatedShipment.id || !order.packages?.length
-  return { ...order, packages, derivedStatus: isPrimaryPackage ? updatedShipment.status.toUpperCase() : order.derivedStatus, cargoProviderName: isPrimaryPackage ? updatedShipment.cargoProviderName : order.cargoProviderName, cargoTrackingNumber: isPrimaryPackage ? updatedShipment.cargoTrackingNumber : order.cargoTrackingNumber }
+  const packages = (order.packages?.map(packageItem => packageItem.id === updatedShipment.id ? { ...packageItem, ...updatedShipment } : packageItem) ?? [updatedShipment]).sort((left, right) => new Date(right.statusOccurredAt).getTime() - new Date(left.statusOccurredAt).getTime())
+  const primaryPackage = packages[0]
+  return { ...order, packages, derivedStatus: aggregateOrderStatus(packages.map(item => item.status)), cargoProviderName: primaryPackage?.cargoProviderName ?? order.cargoProviderName, cargoTrackingNumber: primaryPackage?.cargoTrackingNumber ?? order.cargoTrackingNumber }
 }
 
 function moveOrderAcrossStatusCaches(client: ReturnType<typeof useQueryClient>, order: Order, updatedShipment: Shipment) {
   const updatedOrder = patchOrderShipment(order, updatedShipment)
   client.setQueryData<Order[]>(['orders', 'ALL'], current => current?.map(item => item.id === order.id ? updatedOrder : item))
+  return updatedOrder
 }
 
 function orderSummaryBucket(status: string): keyof OrderSummary | null {
@@ -860,7 +867,7 @@ export function OrdersPage() {
       if (!window.confirm(`${eligible.length} yeni sipariş Trendyol’da “İşleme Al” durumuna geçirilecek. Devam edilsin mi?`)) return
       try {
         const operationId = crypto.randomUUID()
-        for (const item of eligible) { const pack = item.packages![0]; const updatedShipment = await hubApi<Shipment>(`/shipments/${pack.id}/instant-process`, { method: 'POST', headers: { 'Idempotency-Key': `bulk-picking:${pack.id}:${pack.version}:${operationId}`, 'If-Match': `"v${pack.version}"` } }); moveOrderAcrossStatusCaches(client, item, updatedShipment); client.setQueryData<OrderSummary>(['orders', 'summary'], current => patchOrderSummary(current, pack.status, updatedShipment.status)) }
+        for (const item of eligible) { const pack = item.packages![0]; const updatedShipment = await hubApi<Shipment>(`/shipments/${pack.id}/instant-process`, { method: 'POST', headers: { 'Idempotency-Key': `bulk-picking:${pack.id}:${pack.version}:${operationId}`, 'If-Match': `"v${pack.version}"` } }); const updatedOrder = moveOrderAcrossStatusCaches(client, item, updatedShipment); client.setQueryData<OrderSummary>(['orders', 'summary'], current => patchOrderSummary(current, item.derivedStatus, updatedOrder.derivedStatus)) }
         showBulkNotice(`${eligible.length} sipariş anlık olarak işleme alındı ve panelde güncellendi.`)
         setSelectedIds([])
         await client.refetchQueries({ queryKey: ['orders'], type: 'active' })
@@ -885,8 +892,8 @@ export function OrdersPage() {
         method: 'POST',
         headers: { 'Idempotency-Key': `instant-picking:${item.id}:${Date.now()}` }
       })
-      moveOrderAcrossStatusCaches(client, item, updatedShipment)
-      client.setQueryData<OrderSummary>(['orders', 'summary'], current => patchOrderSummary(current, item.packages?.[0]?.status ?? item.derivedStatus, updatedShipment.status))
+      const updatedOrder = moveOrderAcrossStatusCaches(client, item, updatedShipment)
+      client.setQueryData<OrderSummary>(['orders', 'summary'], current => patchOrderSummary(current, item.derivedStatus, updatedOrder.derivedStatus))
       setSelectedIds(current => current.filter(id => id !== item.id))
       await client.refetchQueries({ queryKey: ['orders'], type: 'active' })
       showBulkNotice(`Sipariş #${item.orderNumber} anlık olarak işleme alındı ve panelde güncellendi.`)
