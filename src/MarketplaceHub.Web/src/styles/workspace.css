@@ -1123,6 +1123,138 @@
   border-radius: 6px !important;
   font-size: .68rem;
 }
+.app-shell.stitch-shell .orders-bottom-pagination {
+  gap: 12px;
+  padding-left: 12px;
+  border-left: 1px solid #2b2f41;
+}
+.app-shell.stitch-shell .orders-page-size-control {
+  gap: 6px !important;
+  color: #8f96b0 !important;
+  font-size: .59rem !important;
+  font-weight: 700 !important;
+}
+.app-shell.stitch-shell .orders-page-size-control select {
+  min-width: 48px !important;
+  width: 48px;
+  min-height: 30px !important;
+  padding: 0 20px 0 8px !important;
+  color: #f0eff8 !important;
+  background: #202435 !important;
+  border-color: #3b4260 !important;
+  border-radius: 6px !important;
+  font-size: .66rem !important;
+  font-weight: 800 !important;
+  text-align: center;
+}
+.app-shell.stitch-shell .orders-page-navigation {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  background: #11141e;
+  border: 1px solid #30364c;
+  border-radius: 8px;
+}
+.app-shell.stitch-shell .orders-page-nav-button {
+  display: grid;
+  width: 29px !important;
+  height: 29px !important;
+  min-width: 29px !important;
+  min-height: 29px !important;
+  padding: 0 !important;
+  place-items: center;
+  color: #aeb7d5 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  box-shadow: none !important;
+  font-size: 1.15rem !important;
+  line-height: 1;
+}
+.app-shell.stitch-shell .orders-page-nav-button:hover:not(:disabled) {
+  color: #fff !important;
+  background: #252b43 !important;
+}
+.app-shell.stitch-shell .orders-page-nav-button:disabled {
+  color: #5f657c !important;
+  opacity: 1 !important;
+}
+.app-shell.stitch-shell .orders-page-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 3px;
+}
+.app-shell.stitch-shell .orders-page-jump > label {
+  flex: 0 0 auto;
+  gap: 0;
+  color: #8f96b0 !important;
+  font-size: .58rem !important;
+  font-weight: 800 !important;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.app-shell.stitch-shell .orders-page-number-field {
+  display: flex;
+  align-items: center;
+  min-height: 29px;
+  padding: 0 7px 0 5px;
+  background: #202435;
+  border: 1px solid #3b4260;
+  border-radius: 6px;
+}
+.app-shell.stitch-shell .orders-page-number-field:focus-within {
+  border-color: #7783ff;
+  box-shadow: 0 0 0 2px rgba(119, 131, 255, .16);
+}
+.app-shell.stitch-shell .orders-page-number-field input {
+  width: 30px;
+  min-width: 30px;
+  height: 27px;
+  min-height: 27px !important;
+  padding: 0 !important;
+  color: #fff !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-size: .7rem !important;
+  font-weight: 850 !important;
+  line-height: 27px;
+  text-align: center;
+}
+.app-shell.stitch-shell .orders-page-number-field input::-webkit-inner-spin-button,
+.app-shell.stitch-shell .orders-page-number-field input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+.app-shell.stitch-shell .orders-page-number-field input[type='number'] {
+  appearance: textfield;
+}
+.app-shell.stitch-shell .orders-page-total {
+  color: #737b98;
+  font-size: .64rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .orders-page-jump-button {
+  width: auto !important;
+  min-width: 36px !important;
+  height: 29px !important;
+  min-height: 29px !important;
+  padding: 0 9px !important;
+  color: #fff !important;
+  background: #5865f2 !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  box-shadow: none !important;
+  font-size: .6rem !important;
+  font-weight: 850 !important;
+}
+.app-shell.stitch-shell .orders-page-jump-button:hover:not(:disabled) {
+  background: #6975ff !important;
+}
 @media (max-width: 900px) {
   .app-shell.stitch-shell .orders-reference-bottom-toolbar {
     align-items: flex-start;
@@ -1158,11 +1290,11 @@
     justify-content: space-between;
     margin-left: 0;
   }
-  .app-shell.stitch-shell .orders-bottom-pagination label {
+  .app-shell.stitch-shell .orders-page-size-control {
     flex: 1 1 auto;
     justify-content: space-between;
   }
-  .app-shell.stitch-shell .orders-bottom-pagination label select {
+  .app-shell.stitch-shell .orders-page-size-control select {
     min-width: 120px;
   }
 }
