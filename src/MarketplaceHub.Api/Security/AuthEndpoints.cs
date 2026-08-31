@@ -49,9 +49,19 @@ public static class AuthEndpoints
         await users.ResetAccessFailedCountAsync(user);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted);
         var state = user.ForcePasswordChange ? SessionState.PasswordChangeRequired : security.TotpState == TotpState.Enabled ? SessionState.MfaChallenge : SessionState.Active;
-        var membership = state == SessionState.Active ? await db.TenantMemberships.SingleAsync(x => x.UserId == user.Id && x.Status == RecordStatus.Active, context.RequestAborted) : null;
+        var memberships = await db.TenantMemberships.AsNoTracking().Where(x => x.UserId == user.Id && x.Status == RecordStatus.Active).OrderBy(x => x.CreatedAt).ToListAsync(context.RequestAborted);
+        var membership = request.TenantId is Guid requestedTenant
+            ? memberships.SingleOrDefault(x => x.TenantId == requestedTenant)
+            : memberships.Count == 1 ? memberships[0] : null;
+        if (membership is null)
+        {
+            if (memberships.Count == 0) return Results.Problem(statusCode: 403, title: "Kullanıcı için aktif çalışma alanı bulunamadı.", extensions: new Dictionary<string, object?> { ["code"] = "TENANT_NOT_AVAILABLE" });
+            var tenantIds = memberships.Select(x => x.TenantId).ToArray();
+            var tenants = await db.Tenants.AsNoTracking().Where(x => tenantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, context.RequestAborted);
+            return Results.Conflict(new { code = "TENANT_SELECTION_REQUIRED", tenants = memberships.Select(x => new { id = x.TenantId, displayName = tenants.GetValueOrDefault(x.TenantId)?.DisplayName ?? x.TenantId.ToString("D") }) });
+        }
         var raw = TokenHasher.NewToken(); var now = time.GetUtcNow();
-        db.UserSessions.Add(new UserSession { Id = Guid.NewGuid(), UserId = user.Id, TenantId = membership?.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, ReauthenticatedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
+        db.UserSessions.Add(new UserSession { Id = Guid.NewGuid(), UserId = user.Id, TenantId = membership.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, ReauthenticatedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
         user.LastLoginAt = now; await db.SaveChangesAsync(context.RequestAborted);
         SetSessionCookie(context.Response, raw, now.AddHours(12));
         return Results.Ok(new { state = SessionStateWire(state) });
@@ -75,7 +85,12 @@ public static class AuthEndpoints
         await db.UserSessions.Where(x => x.UserId == user.Id && x.Id != session.Id && x.State != SessionState.Revoked).ExecuteUpdateAsync(x => x.SetProperty(s => s.State, SessionState.Revoked).SetProperty(s => s.RevokedAt, time.GetUtcNow()), context.RequestAborted);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted);
         session.SessionVersion = user.SessionVersion; session.ReauthenticatedAt = time.GetUtcNow(); session.State = security.TotpState == TotpState.Enabled ? SessionState.MfaChallenge : SessionState.Active;
-        session.TenantId = session.State == SessionState.Active ? (await db.TenantMemberships.SingleAsync(x => x.UserId == user.Id, context.RequestAborted)).TenantId : null;
+        if (session.TenantId is null)
+        {
+            var membership = await db.TenantMemberships.AsNoTracking().Where(x => x.UserId == user.Id && x.Status == RecordStatus.Active).OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(context.RequestAborted);
+            if (membership is null) return Results.Problem(statusCode: 403, title: "Aktif çalışma alanı bulunamadı.");
+            session.TenantId = membership.TenantId;
+        }
         var raw = TokenHasher.NewToken(); session.TokenHash = hasher.Hash(raw); await db.SaveChangesAsync(context.RequestAborted); SetSessionCookie(context.Response, raw, session.AbsoluteExpiresAt);
         return Results.Ok(new { state = SessionStateWire(session.State) });
     }
@@ -167,7 +182,13 @@ public static class AuthEndpoints
             }
         }
         if (!accepted) return Results.Problem(statusCode: 400, title: "Invalid MFA challenge");
-        session.State = SessionState.Active; session.ReauthenticatedAt = time.GetUtcNow(); session.TenantId = (await db.TenantMemberships.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted)).TenantId;
+        if (session.TenantId is null)
+        {
+            var membership = await db.TenantMemberships.AsNoTracking().Where(x => x.UserId == session.UserId && x.Status == RecordStatus.Active).OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(context.RequestAborted);
+            if (membership is null) return Results.Problem(statusCode: 403, title: "Aktif çalışma alanı bulunamadı.");
+            session.TenantId = membership.TenantId;
+        }
+        session.State = SessionState.Active; session.ReauthenticatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(context.RequestAborted); return Results.Ok(new { state = SessionStateWire(session.State) });
     }
 
@@ -269,7 +290,7 @@ public static class AuthEndpoints
     private static string SessionStateWire(SessionState state) => state switch { SessionState.PasswordChangeRequired => "PASSWORD_CHANGE_REQUIRED", SessionState.MfaChallenge => "MFA_CHALLENGE", SessionState.Active => "ACTIVE", _ => "REVOKED" };
     private static readonly HashSet<string> WeakPasswords = new(StringComparer.Ordinal) { "Password123456!", "MarketplaceHub1!" };
 
-    public sealed record LoginRequest(string Email, string Password);
+    public sealed record LoginRequest(string Email, string Password, Guid? TenantId = null);
     public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     public sealed record CodeRequest(string Code, string? RecoveryCode = null);
     public sealed record ReauthenticateRequest(string Password, string? Code = null, string? RecoveryCode = null);

@@ -42,6 +42,56 @@ public static class OpenOrderLifecyclePolicy
         status is not ShipmentPackageStatus.Delivered and not ShipmentPackageStatus.Cancelled and not ShipmentPackageStatus.Returned;
 }
 
+public static class ShipmentPackageStatusPolicy
+{
+    public static ShipmentPackageStatus FromRemote(string? rawStatus) => (rawStatus ?? string.Empty).Trim().ToUpperInvariant() switch
+    {
+        "CREATED" => ShipmentPackageStatus.New,
+        "PICKING" => ShipmentPackageStatus.Processing,
+        "INVOICED" or "READY_TO_SHIP" or "READYTOSHIP" => ShipmentPackageStatus.ReadyToShip,
+        "SHIPPED" => ShipmentPackageStatus.Shipped,
+        "DELIVERED" => ShipmentPackageStatus.Delivered,
+        "PARTIALLY_CANCELLED" or "PARTIALLYCANCELLED" => ShipmentPackageStatus.PartiallyCancelled,
+        "CANCELLED" or "CANCELED" or "UNSUPPLIED" => ShipmentPackageStatus.Cancelled,
+        "UNDELIVERED" => ShipmentPackageStatus.Undelivered,
+        "RETURN_IN_TRANSIT" or "RETURNINTRANSIT" => ShipmentPackageStatus.ReturnInTransit,
+        "RETURNED" => ShipmentPackageStatus.Returned,
+        "AWAITING" or "UNPACKED" or "AT_COLLECTION_POINT" => ShipmentPackageStatus.OnHold,
+        _ => ShipmentPackageStatus.ManualReview
+    };
+
+    public static ShipmentPackageStatus Aggregate(IEnumerable<ShipmentPackageStatus> statuses)
+    {
+        var values = statuses.ToArray();
+        if (values.Length == 0) return ShipmentPackageStatus.New;
+        if (values.Contains(ShipmentPackageStatus.ManualReview)) return ShipmentPackageStatus.ManualReview;
+
+        // An order remains operational while any package still needs work. A
+        // cancelled split package must not hide another package that is being
+        // shipped or delivered.
+        var operational = values.Where(status => status is not ShipmentPackageStatus.Cancelled and not ShipmentPackageStatus.Returned);
+        if (operational.Any()) return operational.OrderByDescending(Rank).First();
+        if (values.Contains(ShipmentPackageStatus.Returned)) return ShipmentPackageStatus.Returned;
+        return ShipmentPackageStatus.Cancelled;
+    }
+
+    public static int Rank(ShipmentPackageStatus status) => status switch
+    {
+        ShipmentPackageStatus.New => 10,
+        ShipmentPackageStatus.PartiallyCancelled => 20,
+        ShipmentPackageStatus.Processing => 30,
+        ShipmentPackageStatus.OnHold => 40,
+        ShipmentPackageStatus.ReadyToShip => 50,
+        ShipmentPackageStatus.Shipped => 60,
+        ShipmentPackageStatus.Undelivered => 70,
+        ShipmentPackageStatus.Delivered => 80,
+        ShipmentPackageStatus.ReturnInTransit => 90,
+        ShipmentPackageStatus.Returned => 100,
+        ShipmentPackageStatus.Cancelled => 0,
+        _ => 110
+    };
+}
+
 public sealed class Order
 {
     public Guid Id { get; set; }

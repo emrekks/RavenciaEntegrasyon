@@ -13,5 +13,6 @@
     <ProjectReference Include="..\..\src\MarketplaceHub.Domain\MarketplaceHub.Domain.csproj" />
     <ProjectReference Include="..\..\src\MarketplaceHub.Application\MarketplaceHub.Application.csproj" />
     <ProjectReference Include="..\..\src\MarketplaceHub.Infrastructure\MarketplaceHub.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\MarketplaceHub.Api\MarketplaceHub.Api.csproj" />
   </ItemGroup>
 </Project>

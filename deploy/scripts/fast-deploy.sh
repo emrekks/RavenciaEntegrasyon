@@ -37,8 +37,33 @@ compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_
 
 if [[ "$verify" == true ]]; then
   site_address="${MARKETPLACEHUB_SITE_ADDRESS:-https://panel.ravencia.com}"
-  curl --connect-timeout 3 --max-time 10 --silent --show-error --fail "$site_address/health/ready"
-  echo
+  status="000"
+  readiness_attempts=30
+  for ((attempt = 1; attempt <= readiness_attempts; attempt++)); do
+    if status="$(curl --connect-timeout 3 --max-time 10 --silent --show-error --fail --output /dev/null --write-out '%{http_code}' "$site_address/health/ready")" && [[ "$status" == "200" ]]; then
+      break
+    fi
+    (( attempt == readiness_attempts )) || sleep 2
+  done
+  [[ "$status" == "200" ]] || { echo "Readiness did not return HTTP 200 after $readiness_attempts attempts; last status was $status." >&2; exit 1; }
+
+  worker_id="$("${compose[@]}" ps -q worker)"
+  [[ -n "$worker_id" ]] || { echo "Worker container was not created." >&2; exit 1; }
+  worker_health="$(sudo -n docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$worker_id")"
+  [[ "$worker_health" == "healthy" ]] || { echo "Worker is not healthy: $worker_health" >&2; exit 1; }
+
+  html="$(curl --connect-timeout 3 --max-time 10 --silent --show-error --fail "$site_address/")"
+  [[ "$html" == *'<div id="root">'* ]] || { echo "Frontend root marker was not served." >&2; exit 1; }
+  asset_path="$(printf '%s' "$html" | grep -oE 'src="/[^"]+\.js"' | head -1 | cut -d'"' -f2)"
+  [[ -n "$asset_path" ]] || { echo "Frontend JavaScript asset could not be identified." >&2; exit 1; }
+  curl --connect-timeout 3 --max-time 10 --silent --show-error --fail --output /dev/null "$site_address$asset_path"
 fi
+
+# Keep the current manual images and remove only older tags produced by this
+# script. Docker refuses removal while a stopped container still references an
+# image, so this remains recoverable for active containers.
+for old_image in $(sudo -n docker image ls --format '{{.Repository}}:{{.Tag}}' | awk -v app="$app_image" -v edge="$edge_image" '$0 ~ /^marketplacehub-(app|edge):manual-/ && $0 != app && $0 != edge'); do
+  sudo -n docker image rm "$old_image" >/dev/null 2>&1 || true
+done
 
 echo "Fast deploy completed: $revision"

@@ -10,6 +10,7 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var watermark = timeProvider.GetUtcNow().AddSeconds(-5);
+        var watermarkId = Guid.Empty;
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1), timeProvider);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
@@ -18,13 +19,16 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
                 await using var scope = scopes.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var completed = await db.IntegrationJobs.AsNoTracking()
-                    .Where(x => x.CompletedAt != null && x.CompletedAt > watermark)
+                    .Where(x => x.CompletedAt != null && (x.CompletedAt > watermark || x.CompletedAt == watermark && x.Id.CompareTo(watermarkId) > 0))
                     .OrderBy(x => x.CompletedAt)
+                    .ThenBy(x => x.Id)
                     .Take(250)
-                    .Select(x => new { x.TenantId, x.JobType, x.Status, x.CompletedAt })
+                    .Select(x => new { x.Id, x.TenantId, x.JobType, x.Status, x.CompletedAt })
                     .ToListAsync(stoppingToken);
                 if (completed.Count == 0) continue;
-                watermark = completed.Max(x => x.CompletedAt)!.Value;
+                var last = completed[^1];
+                watermark = last.CompletedAt!.Value;
+                watermarkId = last.Id;
                 foreach (var tenant in completed.GroupBy(x => x.TenantId))
                 {
                     var resources = tenant.Select(x => Resource(x.JobType)).Distinct(StringComparer.Ordinal).ToArray();

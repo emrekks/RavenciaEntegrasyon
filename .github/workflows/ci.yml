@@ -1,0 +1,57 @@
+name: Validate
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.1
+          cache: npm
+          cache-dependency-path: src/MarketplaceHub.Web/package-lock.json
+
+      - name: Restore backend
+        run: dotnet restore MarketplaceHub.sln
+
+      - name: Build backend
+        run: dotnet build MarketplaceHub.sln --no-restore --configuration Release
+
+      - name: Test backend
+        run: dotnet test MarketplaceHub.sln --no-build --configuration Release
+
+      - name: Install frontend dependencies
+        working-directory: src/MarketplaceHub.Web
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck frontend
+        working-directory: src/MarketplaceHub.Web
+        run: npm run typecheck
+
+      - name: Build frontend
+        working-directory: src/MarketplaceHub.Web
+        run: npm run build
+
+      - name: Audit npm dependencies
+        working-directory: src/MarketplaceHub.Web
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit NuGet dependencies
+        run: dotnet list MarketplaceHub.sln package --vulnerable --include-transitive

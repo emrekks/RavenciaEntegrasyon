@@ -13,8 +13,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     {
         await Task.WhenAll(
             RunSchedulerAsync(stoppingToken),
-            RunLeaseLaneAsync("hot", hotPriorityCeiling, stoppingToken),
-            RunLeaseLaneAsync("background", null, stoppingToken));
+            RunLeaseLaneAsync("hot", hotPriorityCeiling, null, stoppingToken),
+            RunLeaseLaneAsync("background", null, hotPriorityCeiling + 1, stoppingToken));
     }
 
     private async Task RunSchedulerAsync(CancellationToken stoppingToken)
@@ -34,13 +34,13 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
     }
 
-    private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, CancellationToken stoppingToken)
+    private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, int? minimumPriority, CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var job = await LeaseNextAsync(maximumPriority, stoppingToken);
+                var job = await LeaseNextAsync(maximumPriority, minimumPriority, stoppingToken);
                 // Health is refreshed only after a successful lease database cycle.
                 // A live process that cannot reach the database must not remain healthy.
                 TouchHealthFile();
@@ -67,13 +67,13 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (count > 0) logger.LogInformation("Enqueued {Count} scheduled integration jobs", count);
     }
 
-    private async Task<LeasedJob?> LeaseNextAsync(int? maximumPriority, CancellationToken cancellationToken)
+    private async Task<LeasedJob?> LeaseNextAsync(int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
-        var reaped = await jobs.ReapExpiredAsync(cancellationToken);
+        var reaped = minimumPriority is null ? await jobs.ReapExpiredAsync(cancellationToken) : 0;
         if (reaped > 0) logger.LogWarning("Reaped {Count} expired job leases", reaped);
-        return await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, cancellationToken);
+        return await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, minimumPriority, cancellationToken);
     }
 
     private async Task ExecuteLeasedJobAsync(LeasedJob job, CancellationToken stoppingToken)

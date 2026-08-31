@@ -1,5 +1,6 @@
 export type SessionState = 'PASSWORD_CHANGE_REQUIRED' | 'MFA_CHALLENGE' | 'ACTIVE' | 'REVOKED'
 export type Me = { id: string; email: string; displayName: string; role: string | null; state: SessionState; tenantId: string | null }
+export type TenantOption = { id: string; displayName: string }
 
 let csrfToken: string | null = null
 async function csrf(forceRefresh = false) {
@@ -37,16 +38,16 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       : response.status === 429
         ? 'Çok fazla istek gönderildi. Kısa süre sonra yeniden deneyin.'
         : problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`
-    throw new ApiRequestError(message, response.status, problem.code, problem.fieldErrors)
+    throw new ApiRequestError(message, response.status, problem.code, problem.fieldErrors, problem.tenants)
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
-export type ApiProblem = { type?: string; title?: string; code?: string; fieldErrors?: Record<string, string[]> }
+export type ApiProblem = { type?: string; title?: string; code?: string; fieldErrors?: Record<string, string[]>; tenants?: TenantOption[] }
 
 export class ApiRequestError extends Error {
-  constructor(message: string, public readonly status: number, public readonly code?: string, public readonly fieldErrors?: Record<string, string[]>) {
+  constructor(message: string, public readonly status: number, public readonly code?: string, public readonly fieldErrors?: Record<string, string[]>, public readonly tenants?: TenantOption[]) {
     super(message)
     this.name = 'ApiRequestError'
   }
@@ -57,7 +58,7 @@ export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     if (response.status === 401) csrfToken = null
     const problem = await response.json().catch(() => ({})) as ApiProblem
-    throw new ApiRequestError(problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`, response.status, problem.code, problem.fieldErrors)
+    throw new ApiRequestError(problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`, response.status, problem.code, problem.fieldErrors, problem.tenants)
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>

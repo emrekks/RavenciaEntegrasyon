@@ -23,6 +23,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).ToListAsync(cancellationToken);
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
         var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
+        var linesByOrder = lines.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
+        var packagesByOrder = packages.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
+        var invoicesByOrder = invoices.Where(x => x.OriginalInvoiceId == null).GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.First());
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var variantIds = lines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
         var lineSkus = lines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
@@ -34,9 +37,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var now = timeProvider.GetUtcNow();
         var rows = orders.Select(order =>
         {
-            var orderLines = lines.Where(x => x.OrderId == order.Id).ToList();
-            var package = packages.FirstOrDefault(x => x.OrderId == order.Id);
-            var invoice = invoices.FirstOrDefault(x => x.OrderId == order.Id && x.OriginalInvoiceId == null);
+            var orderLines = linesByOrder.GetValueOrDefault(order.Id) ?? [];
+            var orderPackages = packagesByOrder.GetValueOrDefault(order.Id) ?? [];
+            var package = orderPackages.FirstOrDefault();
+            var invoice = invoicesByOrder.GetValueOrDefault(order.Id);
             var connection = connections.GetValueOrDefault(order.ConnectionId);
             var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
             var dueAt = OperationalDueAt(order.CustomerSnapshotJson);
@@ -47,10 +51,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 var source = SourceLine(x.SourceSnapshotJson);
                 return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id)));
             }).ToList();
-            var packageViews = packages.Where(x => x.OrderId == order.Id).Select(x => Map(x, order.OrderNumber)).ToList();
+            var packageViews = orderPackages.Select(x => Map(x, order.OrderNumber)).ToList();
             return new OrderListView(
                 order.Id, order.OrderNumber, order.DerivedStatus, order.Currency, order.NetAmount, order.OrderedAt,
-                orderLines.Count, packages.Count(x => x.OrderId == order.Id), order.Version,
+                orderLines.Count, orderPackages.Count, order.Version,
                 order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
                 customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
                 !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabel(invoice, order.CustomerSnapshotJson),
@@ -65,19 +69,25 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     public async Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
     {
-        var summary = await db.ShipmentPackages.AsNoTracking()
+        var summary = await db.Orders.AsNoTracking()
             .Where(x => x.TenantId == tenantId)
             .GroupBy(_ => 1)
             .Select(group => new OrderSummaryView(
                 group.Count(),
-                group.Count(x => x.Status == ShipmentPackageStatus.New),
-                group.Count(x => x.Status == ShipmentPackageStatus.Processing || x.Status == ShipmentPackageStatus.ReadyToShip),
-                group.Count(x => x.Status == ShipmentPackageStatus.Shipped || x.Status == ShipmentPackageStatus.Undelivered),
-                group.Count(x => x.Status == ShipmentPackageStatus.Delivered),
-                group.Count(x => x.OriginExternalPackageId != null),
-                group.Count(x => x.Status == ShipmentPackageStatus.OnHold)))
+                group.Count(x => x.DerivedStatus == "NEW"),
+                group.Count(x => x.DerivedStatus == "PROCESSING" || x.DerivedStatus == "READY_TO_SHIP" || x.DerivedStatus == "PARTIALLY_CANCELLED"),
+                group.Count(x => x.DerivedStatus == "SHIPPED" || x.DerivedStatus == "UNDELIVERED"),
+                group.Count(x => x.DerivedStatus == "DELIVERED"),
+                0,
+                group.Count(x => x.DerivedStatus == "ON_HOLD")))
             .SingleOrDefaultAsync(cancellationToken);
-        return summary ?? new OrderSummaryView(0, 0, 0, 0, 0, 0, 0);
+        var resent = await db.ShipmentPackages.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OriginExternalPackageId != null)
+            .Select(x => x.OrderId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+        if (summary is null) return new OrderSummaryView(0, 0, 0, 0, 0, resent, 0);
+        return summary with { Resent = resent };
     }
 
     public async Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -258,7 +268,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             .ToListAsync(cancellationToken);
         var acceptedStatuses = packageStatuses.ToDictionary(x => x.Id, x => x.Status);
         acceptedStatuses[package.Id] = package.Status;
-        var derivedStatus = Wire(acceptedStatuses.Values.OrderByDescending(StatusRank).FirstOrDefault(ShipmentPackageStatus.New));
+        var derivedStatus = Wire(ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses.Values));
         if (!string.Equals(order.DerivedStatus, derivedStatus, StringComparison.Ordinal))
         {
             order.DerivedStatus = derivedStatus;
@@ -601,7 +611,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private Task<bool> Supported(Guid tenantId, Guid connectionId, string code, CancellationToken cancellationToken) => db.PlatformCapabilities.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken);
     private Task<bool> IsStageConnection(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.Environment == "STAGE", cancellationToken);
     private Task<bool> IsProductionConnection(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.Environment == "PRODUCTION", cancellationToken);
-    private async Task<bool> WritesEnabled(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) { if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false; var settings = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.SettingsJson).SingleOrDefaultAsync(cancellationToken); if (settings is null) return false; try { return JsonDocument.Parse(settings).RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True; } catch (JsonException) { return false; } }
+    private async Task<bool> WritesEnabled(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) { if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false; var settings = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.SettingsJson).SingleOrDefaultAsync(cancellationToken); if (settings is null) return false; try { using var document = JsonDocument.Parse(settings); return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True; } catch (JsonException) { return false; } }
     private async Task<IReadOnlyList<string>> CapabilityValues(Guid tenantId, Guid connectionId, string code, string property, CancellationToken cancellationToken) { var capability = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken); if (capability?.ConstraintsJson is null) return []; try { using var doc = JsonDocument.Parse(capability.ConstraintsJson); return doc.RootElement.TryGetProperty(property, out var values) && values.ValueKind == JsonValueKind.Array ? values.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList() : []; } catch (JsonException) { return []; } }
     private static ProductVariant? ResolveVariant(OrderLine line, IReadOnlyDictionary<Guid, ProductVariant> variants, IReadOnlyDictionary<string, ProductVariant> variantsBySku, IReadOnlyDictionary<string, ProductVariant> variantsByBarcode) =>
         line.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) :
@@ -853,7 +863,6 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
     private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId);
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
-    private static int StatusRank(ShipmentPackageStatus status) => status switch { ShipmentPackageStatus.New => 1, ShipmentPackageStatus.Processing => 2, ShipmentPackageStatus.OnHold => 3, ShipmentPackageStatus.ReadyToShip => 4, ShipmentPackageStatus.Shipped => 5, ShipmentPackageStatus.Undelivered => 6, ShipmentPackageStatus.Delivered => 7, ShipmentPackageStatus.ReturnInTransit => 8, ShipmentPackageStatus.Returned => 9, ShipmentPackageStatus.PartiallyCancelled => 2, ShipmentPackageStatus.Cancelled => 9, _ => 10 };
     private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);

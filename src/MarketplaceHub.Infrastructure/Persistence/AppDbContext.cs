@@ -250,7 +250,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.ToTable("api_idempotency_records", "ops"); entity.HasKey(x => x.Id);
             entity.Property(x => x.RouteTemplate).HasMaxLength(256); entity.Property(x => x.IdempotencyKey).HasMaxLength(256);
-            entity.Property(x => x.RequestHash).HasMaxLength(128); entity.Property(x => x.State).HasMaxLength(24);
+            entity.Property(x => x.RequestHash).HasMaxLength(128); entity.Property(x => x.State).HasMaxLength(24); entity.Property(x => x.ResponseBody).HasColumnType("text");
             entity.HasIndex(x => new { x.TenantId, x.RouteTemplate, x.IdempotencyKey }).IsUnique(); entity.HasIndex(x => x.ExpiresAt);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });

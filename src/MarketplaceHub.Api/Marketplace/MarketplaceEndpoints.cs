@@ -135,27 +135,33 @@ public static class MarketplaceEndpoints
         var file = form.Files.GetFile("file");
         if (file is null || file.Length <= 0) return Problem(http, new("EVIDENCE_FILE_REQUIRED", "file alanında kanıt dosyası gereklidir.", 400));
         if (file.Length > maximumBytes) return Problem(http, new("EVIDENCE_TOO_LARGE", "İade kanıtı en fazla 10 MiB olabilir.", 413));
-        if (file.ContentType is not ("application/pdf" or "image/jpeg" or "image/png")) return Problem(http, new("EVIDENCE_TYPE_UNSUPPORTED", "Yalnız PDF, JPEG veya PNG iade kanıtı kabul edilir.", 415));
 
         await using var input = file.OpenReadStream();
         await using var buffer = new MemoryStream((int)file.Length);
         await input.CopyToAsync(buffer, http.RequestAborted);
         if (buffer.Length != file.Length || buffer.Length > maximumBytes) return Problem(http, new("EVIDENCE_SIZE_MISMATCH", "Dosya boyutu doğrulanamadı.", 422));
         var bytes = buffer.ToArray();
+        var mimeType = DetectEvidenceMimeType(bytes);
+        if (mimeType is null) return Problem(http, new("EVIDENCE_TYPE_UNSUPPORTED", "Yalnız gerçek PDF, JPEG veya PNG iade kanıtı kabul edilir.", 415));
         var hash = Convert.ToHexString(SHA256.HashData(bytes));
         var asset = await db.FileAssets.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Classification == "RETURN_EVIDENCE" && x.Sha256 == hash && x.ArchivedAt == null && x.Status == "ACTIVE", http.RequestAborted);
         if (asset is null)
         {
             var id = Guid.CreateVersion7();
-            var extension = file.ContentType switch { "application/pdf" => ".pdf", "image/jpeg" => ".jpg", _ => ".png" };
+            var extension = mimeType switch { "application/pdf" => ".pdf", "image/jpeg" => ".jpg", _ => ".png" };
             buffer.Position = 0;
-            var stored = await storage.SaveAsync(tenant.TenantId, $"{id:N}{extension}", file.ContentType, buffer, maximumBytes, http.RequestAborted);
-            asset = new FileAsset { Id = id, TenantId = tenant.TenantId, Classification = "RETURN_EVIDENCE", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = file.ContentType, SizeBytes = bytes.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
+            var stored = await storage.SaveAsync(tenant.TenantId, $"{id:N}{extension}", mimeType, buffer, maximumBytes, http.RequestAborted);
+            asset = new FileAsset { Id = id, TenantId = tenant.TenantId, Classification = "RETURN_EVIDENCE", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = mimeType, SizeBytes = bytes.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
             db.FileAssets.Add(asset);
             await db.SaveChangesAsync(http.RequestAborted);
         }
         return Results.Created($"/api/v1/files/return-evidence/{asset.Id:D}", new { asset.Id, asset.MimeType, asset.SizeBytes, asset.Sha256 });
     }
+
+    private static string? DetectEvidenceMimeType(byte[] bytes) => bytes.Length >= 5 && bytes[..5].SequenceEqual("%PDF-"u8.ToArray()) ? "application/pdf"
+        : bytes.Length >= 3 && bytes[..3].SequenceEqual(new byte[] { 0xFF, 0xD8, 0xFF }) ? "image/jpeg"
+        : bytes.Length >= 8 && bytes[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }) ? "image/png"
+        : null;
 
     private static async Task<IResult> ReceiveWebhook(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service)
     {

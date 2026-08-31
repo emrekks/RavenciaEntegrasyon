@@ -2050,36 +2050,69 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         IReadOnlyDictionary<string, decimal> remoteLineQuantities;
         if (remote.Lines.Count == 0) remoteLineQuantities = new Dictionary<string, decimal>(StringComparer.Ordinal);
         else if (!PackageIngestionSafety.TryGetOrderedQuantities(remote.Lines, out remoteLineQuantities)) { await RecordIssue(tenantId, $"order-lines:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_QUANTITY_INVARIANT_REJECTED", "Sipariş satır kimliği veya miktarı geçersizdi; olayın hiçbir parçası uygulanmadı.", cancellationToken); await db.SaveChangesAsync(cancellationToken); return; }
-        foreach (var remotePackage in remote.Packages) if (!PackageIngestionSafety.TryNormalizeAll(remoteLineQuantities, remotePackage.Allocations, CanonicalPackage(remotePackage.RawStatus), out _)) { var rejectedEventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); await RecordIssue(tenantId, $"package-quantity:{connectionId}:{rejectedEventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken); await db.SaveChangesAsync(cancellationToken); return; }
+        foreach (var remotePackage in remote.Packages) if (!PackageIngestionSafety.TryNormalizeAll(remoteLineQuantities, remotePackage.Allocations, ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus), out _)) { var rejectedEventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); await RecordIssue(tenantId, $"package-quantity:{connectionId}:{rejectedEventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken); await db.SaveChangesAsync(cancellationToken); return; }
         var now = timeProvider.GetUtcNow(); var order = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalOrderId == remote.ExternalOrderId, cancellationToken);
         var repairedProjection = false;
         if (order is not null)
         {
             var repairCandidates = await db.ShipmentPackages.Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status == ShipmentPackageStatus.ManualReview).ToListAsync(cancellationToken);
-            foreach (var candidate in repairCandidates) { var canonical = CanonicalPackage(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; repairedProjection = true; } }
+            foreach (var candidate in repairCandidates) { var canonical = ShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; repairedProjection = true; } }
         }
         // Do not short-circuit empty-line replays: the same remote package can need a safe local canonical projection repair after a previously unknown raw status becomes recognized.
         if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", CreatedAt = now, Version = 1 }; db.Orders.Add(order); telemetryInsertedCount++; }
         else if (remote.LastModifiedAt < order.LastRemoteModifiedAt) { if (repairedProjection) await db.SaveChangesAsync(cancellationToken); return; }
         order.OrderNumber = remote.OrderNumber; order.Currency = remote.Currency; order.GrossAmount = remote.GrossAmount; order.DiscountAmount = remote.DiscountAmount; order.NetAmount = remote.NetAmount; order.OrderedAt = remote.OrderedAt; order.LastRemoteModifiedAt = remote.LastModifiedAt; order.CustomerSnapshotJson = remote.CustomerSnapshotJson; order.ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson; order.InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson; order.UpdatedAt = now; if (db.Entry(order).State != EntityState.Added) { order.Version++; telemetryUpdatedCount++; }
         var lines = new Dictionary<string, OrderLine>(StringComparer.Ordinal);
+        var existingLines = await db.OrderLines
+            .Where(x => x.TenantId == tenantId && x.OrderId == order.Id)
+            .ToListAsync(cancellationToken);
+        var linesByExternalId = existingLines
+            .GroupBy(x => x.ExternalLineId, StringComparer.Ordinal)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
+        var linesBySnapshot = existingLines
+            .Where(x => !string.IsNullOrWhiteSpace(x.SourceSnapshotJson) && x.SourceSnapshotJson != "{}")
+            .GroupBy(x => x.SourceSnapshotJson!, StringComparer.Ordinal)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
+        var packagesByExternalId = await db.ShipmentPackages
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.OrderId == order.Id)
+            .ToDictionaryAsync(x => x.ExternalPackageId, StringComparer.Ordinal, cancellationToken);
+        var knownEventIds = (await db.OrderStatusHistory.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OrderId == order.Id)
+            .Select(x => x.SourceEventId)
+            .ToListAsync(cancellationToken))
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var localEvent in db.OrderStatusHistory.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id)) knownEventIds.Add(localEvent.SourceEventId);
+        var packageIds = packagesByExternalId.Values.Select(x => x.Id).ToArray();
+        var allocationsByKey = (await db.PackageLineAllocations.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && packageIds.Contains(x.PackageId))
+            .ToListAsync(cancellationToken))
+            .ToDictionary(x => AllocationKey(x.PackageId, x.OrderLineId, x.SourceEventId), StringComparer.Ordinal);
+        var variantIdsByKey = await ResolveOrderLineVariantIds(tenantId, remote.Lines, cancellationToken);
         foreach (var remoteLine in remote.Lines)
         {
-            var line = await db.OrderLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken);
-            if (line is null && !string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}")
-                line = await db.OrderLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.SourceSnapshotJson == remoteLine.SourceSnapshotJson, cancellationToken);
+            var line = linesByExternalId.GetValueOrDefault(remoteLine.ExternalLineId);
+            if (line is null && !string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}") line = linesBySnapshot.GetValueOrDefault(remoteLine.SourceSnapshotJson);
             if (line is null) { line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = remoteLine.ExternalLineId, Sku = remoteLine.Sku, TitleSnapshot = remoteLine.Title, RawStatus = remoteLine.RawStatus, Version = 1 }; db.OrderLines.Add(line); telemetryInsertedCount++; }
             else line.ExternalLineId = remoteLine.ExternalLineId;
-            line.VariantId ??= await ResolveOrderLineVariantId(tenantId, remoteLine.Sku, remoteLine.Barcode, cancellationToken);
+            if (line.VariantId is null)
+            {
+                var barcodeKey = VariantLookupKey(remoteLine.Barcode, true);
+                var skuKey = VariantLookupKey(remoteLine.Sku, false);
+                line.VariantId = barcodeKey is not null && variantIdsByKey.TryGetValue(barcodeKey, out var barcodeVariant)
+                    ? barcodeVariant
+                    : skuKey is not null && variantIdsByKey.TryGetValue(skuKey, out var skuVariant) ? skuVariant : null;
+            }
             line.Sku = remoteLine.Sku; line.Barcode = remoteLine.Barcode; line.TitleSnapshot = remoteLine.Title; line.SourceSnapshotJson = remoteLine.SourceSnapshotJson; line.OrderedQuantity = remoteLine.Quantity; line.UnitPrice = remoteLine.UnitPrice; line.VatRate = remoteLine.VatRate; line.RawStatus = remoteLine.RawStatus; if (db.Entry(line).State != EntityState.Added) line.Version++; lines[remoteLine.ExternalLineId] = line;
+            linesByExternalId[remoteLine.ExternalLineId] = line;
+            if (!string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}") linesBySnapshot[remoteLine.SourceSnapshotJson] = line;
         }
         foreach (var remotePackage in remote.Packages)
         {
-            var target = CanonicalPackage(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
+            var target = ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
             if (!PackageIngestionSafety.TryNormalizeAll(orderedQuantities, remotePackage.Allocations, target, out var safeAllocations)) { await RecordIssue(tenantId, $"package-quantity:{connectionId}:{eventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken); continue; }
-            var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalPackageId == remotePackage.ExternalPackageId, cancellationToken);
+            var package = packagesByExternalId.GetValueOrDefault(remotePackage.ExternalPackageId);
             if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; continue; }
-            var eventAlreadyRecorded = db.OrderStatusHistory.Local.Any(x => x.TenantId == tenantId && x.OrderId == order.Id && x.SourceEventId == eventId) || await db.OrderStatusHistory.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.SourceEventId == eventId, cancellationToken);
+            var eventAlreadyRecorded = knownEventIds.Contains(eventId);
             if (eventAlreadyRecorded)
             {
                 // The initial projection used shipmentPackageStatus before the
@@ -2105,84 +2138,110 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 continue;
             }
             var accept = package is null || PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt);
-            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); telemetryInsertedCount++; }
+            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; }
             else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = remotePackage.OccurredAt; package.Version++; }
             else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target) await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
             if (accept)
             {
-                package.OriginExternalPackageId = remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now });
-                foreach (var remoteAllocation in remotePackage.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocation = await db.PackageLineAllocations.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.PackageId == package.Id && x.OrderLineId == line.Id && x.SourceEventId == eventId, cancellationToken); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); telemetryInsertedCount++; line.CancelledQuantity = Math.Max(line.CancelledQuantity, allocation.CancelledQuantity); line.ShippedQuantity = Math.Max(line.ShippedQuantity, allocation.ShippedQuantity); line.DeliveredQuantity = Math.Max(line.DeliveredQuantity, allocation.DeliveredQuantity); line.ReturnedQuantity = Math.Max(line.ReturnedQuantity, allocation.ReturnedQuantity); } }
+                package.OriginExternalPackageId = remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now }); knownEventIds.Add(eventId);
+                foreach (var remoteAllocation in remotePackage.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; line.CancelledQuantity = Math.Max(line.CancelledQuantity, allocation.CancelledQuantity); line.ShippedQuantity = Math.Max(line.ShippedQuantity, allocation.ShippedQuantity); line.DeliveredQuantity = Math.Max(line.DeliveredQuantity, allocation.DeliveredQuantity); line.ReturnedQuantity = Math.Max(line.ReturnedQuantity, allocation.ReturnedQuantity); } }
             }
         }
-        var persistedStatuses = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => new { x.Id, x.Status }).ToListAsync(cancellationToken); var acceptedStatuses = persistedStatuses.ToDictionary(x => x.Id, x => x.Status); foreach (var tracked in db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id)) acceptedStatuses[tracked.Id] = tracked.Status; order.DerivedStatus = Wire(acceptedStatuses.Count == 0 ? ShipmentPackageStatus.New : acceptedStatuses.Values.OrderByDescending(StatusRank).First());
-        foreach (var line in lines.Values) await ProjectOrderReservation(tenantId, connectionId, line, remote.LastModifiedAt, cancellationToken);
+        var persistedStatuses = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status).ToListAsync(cancellationToken); var acceptedStatuses = persistedStatuses.ToList(); acceptedStatuses.AddRange(db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status)); order.DerivedStatus = Wire(ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses));
+        await ProjectOrderReservations(tenantId, connectionId, lines.Values, remote.LastModifiedAt, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task<Guid?> ResolveOrderLineVariantId(Guid tenantId, string sku, string? barcode, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, Guid>> ResolveOrderLineVariantIds(Guid tenantId, IReadOnlyList<RemoteOrderLine> remoteLines, CancellationToken cancellationToken)
     {
-        var normalizedSku = NormalizeCatalogKey(sku, 160);
-        var normalizedBarcode = NormalizeCatalogKey(barcode, 160);
-        return await db.ProductVariants.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && (x.SkuNormalized == normalizedSku || normalizedBarcode != "" && x.BarcodeNormalized == normalizedBarcode))
-            .OrderByDescending(x => normalizedBarcode != "" && x.BarcodeNormalized == normalizedBarcode)
-            .Select(x => (Guid?)x.Id)
-            .FirstOrDefaultAsync(cancellationToken);
+        var skuKeys = remoteLines.Select(line => VariantLookupKey(line.Sku, false)).Where(key => key is not null).Select(key => key![2..]).Distinct(StringComparer.Ordinal).ToArray();
+        var barcodeKeys = remoteLines.Select(line => VariantLookupKey(line.Barcode, true)).Where(key => key is not null).Select(key => key![2..]).Distinct(StringComparer.Ordinal).ToArray();
+        if (skuKeys.Length == 0 && barcodeKeys.Length == 0) return new Dictionary<string, Guid>(StringComparer.Ordinal);
+        var rows = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && (skuKeys.Contains(x.SkuNormalized) || barcodeKeys.Contains(x.BarcodeNormalized)))
+            .OrderBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var result = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            var skuKey = VariantLookupKey(row.SkuNormalized, false);
+            var barcodeKey = VariantLookupKey(row.BarcodeNormalized, true);
+            if (skuKey is not null) result.TryAdd(skuKey, row.Id);
+            if (barcodeKey is not null) result.TryAdd(barcodeKey, row.Id);
+        }
+        return result;
     }
 
-    private async Task ProjectOrderReservation(Guid tenantId, Guid connectionId, OrderLine line, DateTimeOffset remoteModifiedAt, CancellationToken cancellationToken)
+    private static string? VariantLookupKey(string? value, bool barcode)
     {
-        if (line.VariantId is not Guid variantId) return;
-        var item = db.InventoryItems.Local.FirstOrDefault(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN")
-            ?? await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
-        if (item is null) return;
-        var desired = OrderInventoryReservationPolicy.DesiredQuantity(line.OrderedQuantity, line.CancelledQuantity);
-        var reservation = await db.StockReservations.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InventoryItemId == item.Id && x.SourceType == "ORDER_LINE" && x.SourceId == line.Id.ToString("D"), cancellationToken);
-        var current = reservation is { Status: ReservationStatus.Active } ? reservation.Quantity : 0m;
-        if (current == desired) return;
+        var normalized = NormalizeCatalogKey(value, 160);
+        return string.IsNullOrWhiteSpace(normalized) ? null : (barcode ? "b:" : "s:") + normalized;
+    }
 
-        if (reservation is null && desired > 0)
-        {
-            reservation = new StockReservation { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, SourceType = "ORDER_LINE", SourceId = line.Id.ToString("D"), Quantity = desired, Status = ReservationStatus.Active, Version = 1 };
-            db.StockReservations.Add(reservation);
-        }
-        else if (reservation is not null)
-        {
-            if (desired == 0)
-            {
-                reservation.Status = ReservationStatus.Released;
-                reservation.ReleasedAt = timeProvider.GetUtcNow();
-            }
-            else
-            {
-                reservation.Quantity = desired;
-                reservation.Status = ReservationStatus.Active;
-                reservation.ReleasedAt = null;
-            }
-            reservation.Version++;
-        }
+    private static string AllocationKey(Guid packageId, Guid orderLineId, string sourceEventId) => $"{packageId:D}:{orderLineId:D}:{sourceEventId}";
 
-        var delta = desired - current;
-        item.Reserved = Math.Max(0, item.Reserved + delta);
-        item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
-        item.ProjectionVersion++;
-        item.Version++;
+    private async Task ProjectOrderReservations(Guid tenantId, Guid connectionId, IEnumerable<OrderLine> sourceLines, DateTimeOffset remoteModifiedAt, CancellationToken cancellationToken)
+    {
+        var lines = sourceLines.Where(line => line.VariantId is not null).ToList();
+        if (lines.Count == 0) return;
+        var variantIds = lines.Select(line => line.VariantId!.Value).Distinct().ToArray();
+        var items = await db.InventoryItems
+            .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
+            .ToListAsync(cancellationToken);
+        var itemsByVariant = items.ToDictionary(x => x.VariantId);
+        foreach (var item in db.InventoryItems.Local.Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))) itemsByVariant.TryAdd(item.VariantId, item);
+        var sourceIds = lines.Select(line => line.Id.ToString("D")).ToArray();
+        var itemIds = itemsByVariant.Values.Select(item => item.Id).ToArray();
+        var reservations = itemIds.Length == 0
+            ? []
+            : await db.StockReservations
+                .Where(x => x.TenantId == tenantId && x.SourceType == "ORDER_LINE" && itemIds.Contains(x.InventoryItemId) && sourceIds.Contains(x.SourceId))
+                .ToListAsync(cancellationToken);
+        var reservationsByKey = reservations.ToDictionary(x => (x.InventoryItemId, x.SourceId), x => x);
         var now = timeProvider.GetUtcNow();
-        var eventId = $"{line.Id:N}:{remoteModifiedAt.ToUnixTimeMilliseconds()}:{desired}";
-        db.StockLedgerEntries.Add(new StockLedgerEntry
+        var outbox = new Dictionary<string, (Guid VariantId, string EventId)>(StringComparer.Ordinal);
+        foreach (var line in lines)
         {
-            Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id,
-            MovementType = delta > 0 ? "ORDER_RESERVED" : "ORDER_RESERVATION_RELEASED",
-            QuantityDelta = -delta, SourceType = "ORDER_LINE", SourceId = line.Id.ToString("D"),
-            SourceEventId = eventId, IdempotencyKey = $"order-reservation:{eventId}",
-            OccurredAt = remoteModifiedAt, RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}"
-        });
-
-        var payload = JsonSerializer.Serialize(new { variantId, sourceEventId = eventId });
-        var dedup = StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion);
-        if (!db.IntegrationJobs.Local.Any(x => x.TenantId == tenantId && x.JobDedupKey == dedup)
-            && !await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobDedupKey == dedup, cancellationToken))
-            db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.StockProjectionDispatch, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = 1, Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = $"stock:{variantId:N}", CreatedAt = now, Version = 1 });
+            var variantId = line.VariantId!.Value;
+            if (!itemsByVariant.TryGetValue(variantId, out var item)) continue;
+            var sourceId = line.Id.ToString("D");
+            var desired = OrderInventoryReservationPolicy.DesiredQuantity(line.OrderedQuantity, line.CancelledQuantity);
+            reservationsByKey.TryGetValue((item.Id, sourceId), out var reservation);
+            var current = reservation is { Status: ReservationStatus.Active } ? reservation.Quantity : 0m;
+            if (current == desired) continue;
+            if (reservation is null && desired > 0)
+            {
+                reservation = new StockReservation { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, SourceType = "ORDER_LINE", SourceId = sourceId, Quantity = desired, Status = ReservationStatus.Active, Version = 1 };
+                db.StockReservations.Add(reservation);
+                reservationsByKey[(item.Id, sourceId)] = reservation;
+            }
+            else if (reservation is not null)
+            {
+                if (desired == 0) { reservation.Status = ReservationStatus.Released; reservation.ReleasedAt = now; }
+                else { reservation.Quantity = desired; reservation.Status = ReservationStatus.Active; reservation.ReleasedAt = null; }
+                reservation.Version++;
+            }
+            var delta = desired - current;
+            item.Reserved = Math.Max(0, item.Reserved + delta);
+            item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
+            item.ProjectionVersion++;
+            item.Version++;
+            var eventId = $"{line.Id:N}:{remoteModifiedAt.ToUnixTimeMilliseconds()}:{desired}";
+            db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = delta > 0 ? "ORDER_RESERVED" : "ORDER_RESERVATION_RELEASED", QuantityDelta = -delta, SourceType = "ORDER_LINE", SourceId = sourceId, SourceEventId = eventId, IdempotencyKey = $"order-reservation:{eventId}", OccurredAt = remoteModifiedAt, RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}" });
+            outbox[StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion)] = (variantId, eventId);
+        }
+        if (outbox.Count == 0) return;
+        var dedupKeys = outbox.Keys.ToArray();
+        var existingDedupKeys = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && dedupKeys.Contains(x.JobDedupKey))
+            .Select(x => x.JobDedupKey)
+            .ToHashSetAsync(StringComparer.Ordinal, cancellationToken);
+        foreach (var (dedup, details) in outbox)
+        {
+            if (existingDedupKeys.Contains(dedup) || db.IntegrationJobs.Local.Any(x => x.TenantId == tenantId && x.JobDedupKey == dedup)) continue;
+            var payload = JsonSerializer.Serialize(new { variantId = details.VariantId, sourceEventId = details.EventId });
+            db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.StockProjectionDispatch, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = 1, Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = $"stock:{details.VariantId:N}", CreatedAt = now, Version = 1 });
+        }
     }
 
     private async Task<JobExecutionResult> DispatchStockProjection(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -2550,8 +2609,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) { var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is not null) issue.Status = IssueStatus.Resolved; }
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-    private static ShipmentPackageStatus CanonicalPackage(string raw) => raw.ToUpperInvariant() switch { "CREATED" => ShipmentPackageStatus.New, "PICKING" => ShipmentPackageStatus.Processing, "INVOICED" or "READY_TO_SHIP" or "READYTOSHIP" => ShipmentPackageStatus.ReadyToShip, "SHIPPED" => ShipmentPackageStatus.Shipped, "DELIVERED" => ShipmentPackageStatus.Delivered, "CANCELLED" or "UNSUPPLIED" => ShipmentPackageStatus.Cancelled, "UNDELIVERED" => ShipmentPackageStatus.Undelivered, "RETURNED" => ShipmentPackageStatus.Returned, "AWAITING" or "UNPACKED" or "AT_COLLECTION_POINT" => ShipmentPackageStatus.OnHold, _ => ShipmentPackageStatus.ManualReview };
     private static ReturnClaimStatus CanonicalReturn(string raw, string? cargoTrackingLink = null) => raw.ToUpperInvariant() switch { "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit, "CREATED" => ReturnClaimStatus.Requested, "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment, "WAITINGINCARGO" => ReturnClaimStatus.InTransit, "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit, "WAITINGINACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" => ReturnClaimStatus.Disputed, "COMPLETED" => ReturnClaimStatus.Completed, "CANCELLED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
-    private static int StatusRank(ShipmentPackageStatus status) => status switch { ShipmentPackageStatus.New => 1, ShipmentPackageStatus.Processing => 2, ShipmentPackageStatus.OnHold => 3, ShipmentPackageStatus.ReadyToShip => 4, ShipmentPackageStatus.Shipped => 5, ShipmentPackageStatus.Undelivered => 6, ShipmentPackageStatus.Delivered => 7, ShipmentPackageStatus.ReturnInTransit => 8, ShipmentPackageStatus.Returned => 9, ShipmentPackageStatus.PartiallyCancelled => 2, ShipmentPackageStatus.Cancelled => 9, _ => 10 };
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
 }

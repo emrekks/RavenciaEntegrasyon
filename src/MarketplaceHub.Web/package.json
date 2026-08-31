@@ -14,11 +14,9 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.101.4",
-    "@tanstack/react-table": "8.21.3",
     "@microsoft/signalr": "10.0.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-hook-form": "7.83.0",
     "react-router": "7.18.2"
   },
   "devDependencies": {

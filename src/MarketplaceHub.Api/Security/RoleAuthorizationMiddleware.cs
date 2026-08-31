@@ -12,7 +12,11 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
     public async Task InvokeAsync(HttpContext context)
     {
         var path = context.Request.Path;
-        if (!path.StartsWithSegments("/api/v1") || path.StartsWithSegments("/api/v1/auth") || HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+        if (!path.StartsWithSegments("/api/v1")
+            || path.StartsWithSegments("/api/v1/auth")
+            || path.StartsWithSegments("/api/v1/hooks")
+            || HttpMethods.IsGet(context.Request.Method)
+            || HttpMethods.IsHead(context.Request.Method))
         {
             await next(context);
             return;

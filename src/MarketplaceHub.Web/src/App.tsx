@@ -1,12 +1,27 @@
-import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
-import { api, ApiRequestError, hubApi, loadAllPages, type Me } from './api'
-import { AttributesPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, InventoryPage, NewProductPage, ProductDetailPage, ProductsPage } from './CatalogPages'
-import { IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage } from './MarketplacePages'
-import { InvoicesPage } from './InvoicingPages'
-import { JobsPage } from './OperationsPages'
+import { api, ApiRequestError, hubApi, loadAllPages, type Me, type TenantOption } from './api'
+const AttributesPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.AttributesPage })))
+const BrandsPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.BrandsPage })))
+const CategoriesPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.CategoriesPage })))
+const ImportDetailPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.ImportDetailPage })))
+const ImportsPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.ImportsPage })))
+const InventoryPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.InventoryPage })))
+const NewProductPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.NewProductPage })))
+const ProductDetailPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.ProductDetailPage })))
+const ProductsPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.ProductsPage })))
+const IntegrationDetailPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.IntegrationDetailPage })))
+const IntegrationsPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.IntegrationsPage })))
+const MappingPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.MappingPage })))
+const OrdersPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.OrdersPage })))
+const ReturnDetailPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.ReturnDetailPage })))
+const ReturnsPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.ReturnsPage })))
+const ShipmentDetailPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.ShipmentDetailPage })))
+const ShipmentsPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.ShipmentsPage })))
+const InvoicesPage = lazy(() => import('./InvoicingPages').then(module => ({ default: module.InvoicesPage })))
+const JobsPage = lazy(() => import('./OperationsPages').then(module => ({ default: module.JobsPage })))
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, loadShippingLabelSettings, saveShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from './shipping-label'
 
 type ShellConnection = {
@@ -63,7 +78,7 @@ function Shell({ me }: { me: Me }) {
       <div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları')}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Çıkış Yap</span></button></div>
     </aside>
     <main>
-      <Routes><Route path="/dashboard" element={<Dashboard me={me} />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/inventory" element={<InventoryPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/invoices/:id" element={<Navigate to="/orders" replace />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/billing" element={<Navigate to="/settings" replace />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes>
+      <Suspense fallback={<Status title="Ekran yükleniyor" />}><Routes><Route path="/dashboard" element={<Dashboard me={me} />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/inventory" element={<InventoryPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/invoices/:id" element={<Navigate to="/orders" replace />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/billing" element={<Navigate to="/settings" replace />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense>
     </main>
   </div>
 }
@@ -93,8 +108,22 @@ function useOperationsRealtime(enabled: boolean) {
       void client.invalidateQueries({ queryKey: ['jobs'] })
       void client.invalidateQueries({ queryKey: ['dashboard-jobs'] })
     })
-    void connection.start()
-    return () => { void connection.stop() }
+    let stopped = false
+    let retryTimer: number | null = null
+    const start = async () => {
+      if (stopped || connection.state !== 'Disconnected') return
+      try {
+        await connection.start()
+      } catch {
+        if (!stopped) retryTimer = window.setTimeout(() => void start(), 3000)
+      }
+    }
+    void start()
+    return () => {
+      stopped = true
+      if (retryTimer !== null) window.clearTimeout(retryTimer)
+      void connection.stop()
+    }
   }, [client, enabled])
 }
 
@@ -119,6 +148,8 @@ function Login() {
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [tenantOptions, setTenantOptions] = useState<TenantOption[]>([])
+  const [tenantId, setTenantId] = useState('')
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -126,14 +157,15 @@ function Login() {
     setLoading(true)
     const data = new FormData(event.currentTarget)
     try {
-      await api<{ state: string }>('/login', { method: 'POST', body: JSON.stringify({ email: email.trim(), password: data.get('password') }) })
+      await api<{ state: string }>('/login', { method: 'POST', body: JSON.stringify({ email: email.trim(), password: data.get('password'), tenantId: tenantId || null }) })
       const currentUser = await api<Me>('/me')
       if (rememberMe) localStorage.setItem('ravencia.rememberedEmail', email.trim())
       else localStorage.removeItem('ravencia.rememberedEmail')
       client.setQueryData(['me'], currentUser)
       navigate('/dashboard', { replace: true })
     } catch (reason) {
-      if (reason instanceof ApiRequestError && reason.status === 401) setError('E-posta veya parola hatalı. Art arda başarısız denemelerde hesap 15 dakika geçici olarak kilitlenir.')
+      if (reason instanceof ApiRequestError && reason.code === 'TENANT_SELECTION_REQUIRED') { setTenantOptions(reason.tenants ?? []); setError('Bir çalışma alanı seçip girişe devam edin.') }
+      else if (reason instanceof ApiRequestError && reason.status === 401) setError('E-posta veya parola hatalı. Art arda başarısız denemelerde hesap 15 dakika geçici olarak kilitlenir.')
       else if (reason instanceof ApiRequestError && reason.status === 429) setError('Çok fazla giriş denemesi yapıldı. Bir dakika bekleyip yeniden deneyin.')
       else if (reason instanceof ApiRequestError && reason.status === 400) setError('Güvenlik doğrulaması tamamlanamadı. Sayfayı yenileyip tekrar deneyin.')
       else setError('Giriş servisine ulaşılamadı. Bağlantınızı kontrol edip yeniden deneyin.')
@@ -177,6 +209,7 @@ function Login() {
             <input id="login-password" name="password" type={showPw ? 'text' : 'password'} required autoComplete="current-password" placeholder="Parolanızı girin" />
             <button type="button" className="cyber-password-toggle" aria-label={showPw ? 'Parolayı gizle' : 'Parolayı göster'} onClick={() => setShowPw(value => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
           </div>
+          {tenantOptions.length > 0 && <label htmlFor="login-tenant">Çalışma alanı<select id="login-tenant" value={tenantId} onChange={event => setTenantId(event.target.value)} required><option value="">Çalışma alanı seçin</option>{tenantOptions.map(option => <option key={option.id} value={option.id}>{option.displayName}</option>)}</select></label>}
           <label className="cyber-remember"><input type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} /><span>E-posta adresimi bu cihazda hatırla</span></label>
           {error && <div className="cyber-login-error" role="alert"><i /> <span>{error}</span></div>}
           <button className="cyber-login-submit" type="submit" disabled={loading}>{loading ? <><i /> Oturum doğrulanıyor…</> : <>Güvenli giriş yap <span>→</span></>}</button>

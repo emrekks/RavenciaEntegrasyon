@@ -30,7 +30,7 @@ public sealed class MarketplaceReconciliationService(AppDbContext db, TimeProvid
             var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId).ToListAsync(cancellationToken); compared += orders.Count;
             foreach (var order in orders)
             {
-                var packageStatuses = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status).ToListAsync(cancellationToken); var derived = packageStatuses.Count == 0 ? "NEW" : Wire(packageStatuses.OrderByDescending(StatusRank).First());
+                var packageStatuses = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status).ToListAsync(cancellationToken); var derived = Wire(ShipmentPackageStatusPolicy.Aggregate(packageStatuses));
                 if (derived != order.DerivedStatus) differences.Add(Difference(tenantId, run.Id, "ORDER", order.ExternalOrderId, "DERIVED_STATUS", order.DerivedStatus, derived, "LOCAL_RECOMPUTE_REQUIRED"));
             }
         }
@@ -44,7 +44,6 @@ public sealed class MarketplaceReconciliationService(AppDbContext db, TimeProvid
     private static ReconciliationDifference Difference(Guid tenantId, Guid runId, string entityType, string entityKey, string field, string local, string remote, string resolution) => new() { Id = Guid.CreateVersion7(), TenantId = tenantId, RunId = runId, EntityType = entityType, EntityKey = entityKey, FieldName = field, LocalValueHash = Hash(local), RemoteValueHash = Hash(remote), Resolution = resolution };
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static ReconciliationRunView Map(ReconciliationRun run, IReadOnlyList<ReconciliationDifference> differences) => new(run.Id, run.ConnectionId, run.Scope, run.Status, run.ComparedCount, run.DifferenceCount, run.StartedAt, run.CompletedAt, differences.Select(x => new ReconciliationDifferenceView(x.EntityType, x.EntityKey, x.FieldName, x.LocalValueHash, x.RemoteValueHash, x.Resolution)).ToList());
-    private static int StatusRank(ShipmentPackageStatus status) => status switch { ShipmentPackageStatus.New => 1, ShipmentPackageStatus.Processing => 2, ShipmentPackageStatus.OnHold => 3, ShipmentPackageStatus.ReadyToShip => 4, ShipmentPackageStatus.Shipped => 5, ShipmentPackageStatus.Undelivered => 6, ShipmentPackageStatus.Delivered => 7, ShipmentPackageStatus.ReturnInTransit => 8, ShipmentPackageStatus.Returned => 9, ShipmentPackageStatus.PartiallyCancelled => 2, ShipmentPackageStatus.Cancelled => 9, _ => 10 };
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
     private static ServiceResult<ReconciliationRunView> NotFound() => ServiceResult<ReconciliationRunView>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
 }

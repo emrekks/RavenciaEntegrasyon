@@ -13196,3 +13196,23 @@ body:has(.product-add-page),
   .app-shell.stitch-shell .shipping-designer-template-actions { width:100%; margin-left:0; flex-wrap:wrap; }
   .app-shell.stitch-shell .shipping-designer-template-actions select { flex:1 1 180px; }
 }
+.app-shell.stitch-shell .order-hidden-cancelled-notice {
+  pointer-events: auto !important;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-shell.stitch-shell .order-hidden-cancelled-notice span {
+  margin-right: auto;
+}
+
+.app-shell.stitch-shell .order-hidden-cancelled-notice button {
+  flex: 0 0 auto;
+  color: #dff7ff;
+  background: rgba(24, 186, 255, .14);
+  border: 1px solid rgba(24, 186, 255, .48);
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+}

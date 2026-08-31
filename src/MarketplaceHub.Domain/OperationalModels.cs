@@ -123,6 +123,7 @@ public sealed class ApiIdempotencyRecord
     public required string RequestHash { get; set; }
     public required string State { get; set; }
     public int? ResponseStatus { get; set; }
+    public string? ResponseBody { get; set; }
     public Guid? ResourceId { get; set; }
     public Guid? JobId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
