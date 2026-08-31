@@ -55,8 +55,10 @@ public static class CatalogEndpoints
         api.MapPut("/catalog/categories/{id:guid}/attribute-requirements", async (Guid id, IReadOnlyList<AttributeRequirementCommand> command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.ReplaceRequirementsAsync(tenant.TenantId, id, version, command, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
 
-        api.MapGet("/products", async (HttpContext http, ICatalogService service, int? limit, string? after, string? status) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.ListProductsAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http));
+        api.MapGet("/products", async (HttpContext http, ICatalogService service, int? limit, string? after, string? status, string? search, string? platform, string? stock) =>
+            Tenant(http) is { } tenant ? Results.Ok(await service.ListProductsAsync(tenant.TenantId, PageSize(limit), after, status, search, platform, stock, http.RequestAborted)) : Unauthorized(http));
+        api.MapGet("/products/summary", async (HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant ? Results.Ok(await service.ProductSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
         api.MapGet("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetProductAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPost("/products", async (CreateProductCommand command, HttpContext http, ICatalogService service) =>

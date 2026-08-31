@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiRequestError, hubApi, loadAllPages } from './api'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from './api'
 import './styles/product-editor.css'
 import './styles/products.css'
 
@@ -24,6 +24,8 @@ type Product = Versioned & {
   options?: Array<{ id: string; label: string; values: Array<{ id: string; label: string }> }>
   mediaUrls?: string[]
 }
+type ProductListFilters = { search: string; status: string; platform: string; stock: string }
+type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number; platforms: string[] }
 type ImportSession = Versioned & { sourceType: string; status: string; totalRows: number; validRows: number; errorRows: number; reviewRows: number; sourceAssetId: string | null }
 type Candidate = Versioned & { matchRule: string; safeSummary: string; productId: string | null; variantId: string | null }
 type Inventory = Versioned & { variantId: string; sku: string; locationCode: string; onHand: number; reserved: number; available: number }
@@ -32,6 +34,15 @@ type AcceptedJob = { jobId: string }
 
 const key = () => crypto.randomUUID()
 const isProductPublicationConnection = (item: TrendyolConnection) => item.platformCode.trim().toUpperCase() === 'TRENDYOL' && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
+async function fetchProductPage(limit: number, filters: ProductListFilters, after: string | null) {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (after) params.set('after', after)
+  if (filters.search) params.set('search', filters.search)
+  if (filters.status) params.set('status', filters.status)
+  if (filters.platform) params.set('platform', filters.platform)
+  if (filters.stock) params.set('stock', filters.stock)
+  return hubApi<CursorPage<Product>>(`/products?${params.toString()}`)
+}
 const ErrorBox = ({ error }: { error: unknown }) => error ? <div className="error" role="alert">{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</div> : null
 type OperationFeedback = { message: string; kind: 'success' | 'error' | 'info' }
 function OperationFeedbackToast({ feedback, onClose }: { feedback: OperationFeedback | null; onClose: () => void }) {
@@ -282,31 +293,75 @@ function ProductColorRows({ product, selected, onSelect, onQuickEdit, onImageCli
 }
 
 export function ProductsPage() {
-  const client = useQueryClient(); const [search, setSearch] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1)
-  const query = useQuery({ queryKey: ['products'], queryFn: () => loadAllPages<Product>('/products') })
-  const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<TrendyolConnection>('/connections') })
-  const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(item => item.status === 'ACTIVE')
-  const platforms = useMemo(() => [...new Set(products.flatMap(product => product.activePlatforms ?? []))].sort(), [products])
-  const normalized = search.trim().toLocaleLowerCase('tr-TR')
-  const visible = products.filter(product => {
-    const searchMatch = !normalized || [product.title, product.modelCode ?? '', ...product.variants.flatMap(variant => [variant.sku, variant.barcode ?? ''])].some(value => value.toLocaleLowerCase('tr-TR').includes(normalized))
-    const statusMatch = !status || product.status === status; const platformMatch = !platform || product.activePlatforms?.includes(platform)
-    const stockMatch = !stock || (stock === 'OUT' ? product.totalStock <= 0 : stock === 'LOW' ? product.totalStock > 0 && product.totalStock <= 5 : product.totalStock > 5)
-    return searchMatch && statusMatch && platformMatch && stockMatch
+  const client = useQueryClient(); const [search, setSearch] = useState(''); const [searchFilter, setSearchFilter] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>({})
+  const productFilters = useMemo<ProductListFilters>(() => ({ search: searchFilter, status, platform, stock }), [searchFilter, status, platform, stock])
+  const productFilterKey = JSON.stringify(productFilters)
+  const pageCursor = pageCursors[productFilterKey]?.[pageNumber] ?? null
+  const query = useQuery({
+    queryKey: ['products', productFilters, pageSize, pageNumber, pageCursor],
+    queryFn: () => fetchProductPage(pageSize, productFilters, pageCursor),
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true
   })
-  const selectedProducts = products.filter(product => quickEdit?.productIds.includes(product.id))
-  const totalPages = Math.max(1, Math.ceil(visible.length / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-  const pageNumbers = [...new Set([1, currentPage - 1, currentPage, currentPage + 1, totalPages].filter(page => page >= 1 && page <= totalPages))].sort((a, b) => a - b)
-  useEffect(() => { setPageNumber(1) }, [search, status, platform, stock, pageSize])
+  const summaryQuery = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
+  const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<TrendyolConnection>('/connections') })
+  const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(item => item.status === 'ACTIVE'); const platforms = summaryQuery.data?.platforms ?? []
+  const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = currentPage === pageNumber ? products : []
+  const selectedProducts = selectedProductIds.map(id => selectedProductCache[id]).filter((product): product is Product => Boolean(product))
+  const nextPageCursor = query.data?.nextCursor ?? null
+  useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
+  useEffect(() => { setPageNumber(1); setPageCursors({}) }, [productFilterKey, pageSize])
+  useEffect(() => {
+    if (query.data?.totalCount == null) return
+    const nextTotalPages = Math.max(1, Math.ceil(query.data.totalCount / pageSize))
+    setPageNumber(value => value > nextTotalPages ? nextTotalPages : value)
+  }, [pageSize, query.data?.totalCount])
+  useEffect(() => {
+    if (query.isPlaceholderData || !nextPageCursor || !query.data?.hasMore) return
+    const nextPage = currentPage + 1
+    setPageCursors(current => current[productFilterKey]?.[nextPage] === nextPageCursor ? current : { ...current, [productFilterKey]: { ...(current[productFilterKey] ?? {}), [nextPage]: nextPageCursor } })
+    void client.prefetchQuery({ queryKey: ['products', productFilters, pageSize, nextPage, nextPageCursor], queryFn: () => fetchProductPage(pageSize, productFilters, nextPageCursor), staleTime: 30_000 })
+  }, [client, currentPage, nextPageCursor, pageSize, productFilterKey, productFilters, query.data?.hasMore, query.isPlaceholderData])
+  useEffect(() => {
+    if (!products.length || !selectedProductIds.length) return
+    setSelectedProductCache(current => {
+      let changed = false; const next = { ...current }
+      for (const product of products) if (selectedProductIds.includes(product.id) && next[product.id] !== product) { next[product.id] = product; changed = true }
+      return changed ? next : current
+    })
+  }, [products, selectedProductIds])
   const allVisibleSelected = pageProducts.length > 0 && pageProducts.every(product => selectedProductIds.includes(product.id))
   const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
   function showProductToast(message: string, kind: 'success' | 'error') { setProductToast({ message, kind }); window.setTimeout(() => setProductToast(current => current?.message === message ? null : current), 4000) }
-  function toggleProduct(id: string) { setSelectedProductIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id]) }
-  function toggleAllVisible() { setSelectedProductIds(ids => allVisibleSelected ? ids.filter(id => !pageProducts.some(product => product.id === id)) : [...new Set([...ids, ...pageProducts.map(product => product.id)])]) }
+  function toggleProduct(product: Product) {
+    const wasSelected = selectedProductIds.includes(product.id)
+    setSelectedProductIds(ids => wasSelected ? ids.filter(item => item !== product.id) : [...ids, product.id])
+    setSelectedProductCache(current => {
+      if (!wasSelected) return { ...current, [product.id]: product }
+      const next = { ...current }; delete next[product.id]; return next
+    })
+  }
+  function toggleAllVisible() {
+    const pageIds = new Set(pageProducts.map(product => product.id))
+    if (allVisibleSelected) {
+      setSelectedProductIds(ids => ids.filter(id => !pageIds.has(id)))
+      setSelectedProductCache(current => { const next = { ...current }; pageIds.forEach(id => delete next[id]); return next })
+    } else {
+      setSelectedProductIds(ids => [...new Set([...ids, ...pageProducts.map(product => product.id)])])
+      setSelectedProductCache(current => ({ ...current, ...Object.fromEntries(pageProducts.map(product => [product.id, product])) }))
+    }
+  }
+  function goToNextPage() {
+    if (!nextPageCursor || currentPage >= totalPages) return
+    const nextPage = currentPage + 1
+    setPageCursors(current => current[productFilterKey]?.[nextPage] === nextPageCursor ? current : { ...current, [productFilterKey]: { ...(current[productFilterKey] ?? {}), [nextPage]: nextPageCursor } })
+    setPageNumber(nextPage)
+  }
 
   async function bulkSetProductStatus(newStatus: 'ACTIVE' | 'ARCHIVED') {
     setBulkOpen(false)
-    const targets = products.filter(p => selectedProductIds.includes(p.id))
+    const targets = selectedProducts
     if (!targets.length) return
     try {
       for (const p of targets) {
@@ -318,6 +373,7 @@ export function ProductsPage() {
       }
       showProductToast(`${targets.length} ürün durumu “${newStatus === 'ACTIVE' ? 'Satışta' : 'Kapalı'}” olarak güncellendi.`, 'success')
       setSelectedProductIds([])
+      setSelectedProductCache({})
       await refresh()
     } catch (err) {
       showProductToast(err instanceof Error ? err.message : 'Toplu durum güncelleme başarısız.', 'error')
@@ -325,7 +381,7 @@ export function ProductsPage() {
   }
 
   return <Page className="products-page" title="Ürünler" eyebrow="Katalog" action={<Link className="button-link" to="/products/new"><span aria-hidden="true">＋</span> Yeni Ürün Ekle</Link>}>
-    <div className="product-metrics metrics"><article className="product-metric-total"><small>Toplam Ürün</small><strong>{products.length}</strong><span>katalog kaydı</span></article><article className="product-metric-active"><small>Aktif Ürün</small><strong>{products.filter(x => x.status === 'ACTIVE').length}</strong><span>ürün</span></article><article className="product-metric-empty"><small>Stoksuz Ürün</small><strong>{products.filter(x => x.totalStock <= 0).length}</strong><span>aksiyon gerekli</span></article><article className="product-metric-low"><small>Düşük Stoklu</small><strong>{products.filter(x => x.totalStock > 0 && x.totalStock <= 5).length}</strong><span>5 ve altı</span></article></div>
+    <div className="product-metrics metrics"><article className="product-metric-total"><small>Toplam Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.totalCount ?? 0}</strong><span>katalog kaydı</span></article><article className="product-metric-active"><small>Aktif Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.activeCount ?? 0}</strong><span>ürün</span></article><article className="product-metric-empty"><small>Stoksuz Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.outOfStockCount ?? 0}</strong><span>aksiyon gerekli</span></article><article className="product-metric-low"><small>Düşük Stoklu</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.lowStockCount ?? 0}</strong><span>5 ve altı</span></article></div>
     <div className="product-toolbar">
       <div className="bulk-menu-shell">
         <button type="button" className="bulk-action" disabled={!selectedProductIds.length} aria-expanded={bulkOpen} onClick={() => setBulkOpen(v => !v)}>
@@ -356,19 +412,19 @@ export function ProductsPage() {
       <select aria-label="Platform filtresi" value={platform} onChange={event => setPlatform(event.target.value)}><option value="">Platform Durumu</option>{platforms.map(item => <option key={item}>{item}</option>)}</select>
       <select aria-label="Stok filtresi" value={stock} onChange={event => setStock(event.target.value)}><option value="">Stok Durumu</option><option value="OUT">Stoksuz</option><option value="LOW">Düşük stok</option><option value="OK">Yeterli stok</option></select>
     </div>
-    <ErrorBox error={query.error ?? connectionsQuery.error} />
-    {query.isLoading ? <p>Yükleniyor…</p> : !visible.length ? <div className="empty">Filtrelerle eşleşen ürün yok.</div> : (
+    <ErrorBox error={query.error ?? summaryQuery.error ?? connectionsQuery.error} />
+    {query.isLoading && !pageProducts.length ? <p>Yükleniyor…</p> : !pageProducts.length ? <div className="empty">Filtrelerle eşleşen ürün yok.</div> : (
       <div className="product-catalog-table preferred-product-catalog">
         <div className="product-catalog-head">
           <label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} /><span>Ürün Detayı</span></label>
           <span>Varyant</span><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
         </div>
         {pageProducts.map(product => (
-          <ProductColorRows key={product.id} product={product} selected={selectedProductIds.includes(product.id)} onSelect={() => toggleProduct(product.id)} onQuickEdit={mode => setQuickEdit({ productIds: [product.id], mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} />
+          <ProductColorRows key={product.id} product={product} selected={selectedProductIds.includes(product.id)} onSelect={() => toggleProduct(product)} onQuickEdit={mode => setQuickEdit({ productIds: [product.id], mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} />
         ))}
       </div>
     )}
-    {visible.length > 0 && <div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına ürün" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label><span>Toplam {visible.length.toLocaleString('tr-TR')} kayıttan {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, visible.length)} arası gösteriliyor</span><div className="product-pagination-controls"><button type="button" aria-label="Önceki sayfa" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>‹</button>{pageNumbers.map((page, index) => <Fragment key={page}>{index > 0 && page - pageNumbers[index - 1] > 1 && <span className="pagination-ellipsis">…</span>}<button type="button" className={page === currentPage ? 'active' : ''} onClick={() => setPageNumber(page)}>{page}</button></Fragment>)}<button type="button" aria-label="Sonraki sayfa" disabled={currentPage >= totalPages} onClick={() => setPageNumber(value => Math.min(totalPages, value + 1))}>›</button></div></div>}
+    {totalCount > 0 && <div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına ürün" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label><span>Toplam {totalCount.toLocaleString('tr-TR')} kayıttan {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)} arası gösteriliyor</span><div className="product-pagination-controls"><button type="button" aria-label="Önceki sayfa" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>‹</button><b>Sayfa {currentPage} / {totalPages}</b><button type="button" aria-label="Sonraki sayfa" disabled={currentPage >= totalPages || !nextPageCursor} onClick={goToNextPage}>›</button></div></div>}
     {quickEdit && <ProductQuickEditModal products={selectedProducts} connections={connections} mode={quickEdit.mode} onChanged={refresh} onResult={showProductToast} onClose={() => setQuickEdit(null)} />}
     {productToast && <div className={`product-operation-toast ${productToast.kind}`} role={productToast.kind === 'success' ? 'status' : 'alert'}><strong>{productToast.kind === 'success' ? 'Güncellendi' : 'Başarısız'}</strong><span>{productToast.message}</span></div>}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}

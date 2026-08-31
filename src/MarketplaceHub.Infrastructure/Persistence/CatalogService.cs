@@ -264,14 +264,51 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var current = await db.CategoryAttributeRequirements.Where(x => x.TenantId == tenantId && x.CategoryId == categoryId).ToListAsync(cancellationToken); db.CategoryAttributeRequirements.RemoveRange(current); db.CategoryAttributeRequirements.AddRange(requirements.Select(x => new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = categoryId, AttributeId = x.AttributeId, IsRequired = x.IsRequired, AllowsCustomValue = x.AllowsCustomValue, Role = NormalizeRequirementRole(x.Role), DisplayOrder = x.DisplayOrder })); category.Version++; category.UpdatedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return ServiceResult<IReadOnlyList<AttributeRequirementCommand>>.Ok(requirements);
     }
 
-    public async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
+    public async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, CancellationToken cancellationToken)
     {
-        var afterId = Decode(after); var query = db.Products.AsNoTracking().Where(x => x.TenantId == tenantId); if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0); if (!string.IsNullOrWhiteSpace(status) && TryProductStatus(status, out var parsed)) query = query.Where(x => x.Status == parsed);
+        var afterId = Decode(after); var query = db.Products.AsNoTracking().Where(x => x.TenantId == tenantId);
+        ApplyProductFilters(ref query, tenantId, status, search, platform, stock);
+        var totalCount = await query.CountAsync(cancellationToken);
+        if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
         var rows = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
         var hasMore = rows.Count > limit; var products = rows.Take(limit).ToList(); var ids = products.Select(x => x.Id).ToArray();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken);
-        return new(views, hasMore ? cursors.Encode(rows[limit - 1].Id) : null, hasMore);
+        return new(views, hasMore ? cursors.Encode(rows[limit - 1].Id) : null, hasMore, totalCount);
+    }
+
+    public async Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var products = await db.Products.AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .Select(x => new { x.Id, x.Status })
+            .ToListAsync(cancellationToken);
+        var variants = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .Select(x => new { x.Id, x.ProductId })
+            .ToListAsync(cancellationToken);
+        var inventoryByVariant = await db.InventoryItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN")
+            .GroupBy(x => x.VariantId)
+            .Select(group => new { VariantId = group.Key, TotalStock = group.Sum(x => x.OnHand) })
+            .ToDictionaryAsync(x => x.VariantId, x => x.TotalStock, cancellationToken);
+        var stockByProduct = variants
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(group => group.Key, group => group.Sum(variant => inventoryByVariant.GetValueOrDefault(variant.Id)));
+        var platforms = await (from profile in db.ChannelListingProfiles.AsNoTracking()
+                               join connection in db.PlatformConnections.AsNoTracking()
+                                   on new { profile.TenantId, profile.ConnectionId } equals new { connection.TenantId, ConnectionId = connection.Id }
+                               where profile.TenantId == tenantId && profile.Enabled
+                               select connection.DisplayName)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToListAsync(cancellationToken);
+        return new(
+            products.Count,
+            products.Count(x => x.Status == ProductStatus.Active),
+            products.Count(x => stockByProduct.GetValueOrDefault(x.Id) <= 0),
+            products.Count(x => stockByProduct.GetValueOrDefault(x.Id) > 0 && stockByProduct.GetValueOrDefault(x.Id) <= 5),
+            platforms);
     }
 
     public async Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken)
@@ -831,6 +868,57 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     private async Task RefreshLeafAsync(Guid tenantId, Guid? id, CancellationToken cancellationToken)
     {
         if (id is not Guid categoryId) return; var parent = await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == categoryId, cancellationToken); if (parent is not null) parent.IsLeaf = !await db.Categories.AnyAsync(x => x.TenantId == tenantId && x.ParentId == categoryId && x.IsActive, cancellationToken);
+    }
+
+    private void ApplyProductFilters(ref IQueryable<Product> query, Guid tenantId, string? status, string? search, string? platform, string? stock)
+    {
+        if (!string.IsNullOrWhiteSpace(status) && TryProductStatus(status, out var parsed))
+            query = query.Where(x => x.Status == parsed);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = $"%{search.Trim()}%";
+            query = query.Where(product =>
+                EF.Functions.ILike(product.Title, pattern) ||
+                db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == product.Id &&
+                    (EF.Functions.ILike(variant.Sku, pattern) ||
+                     (variant.Barcode != null && EF.Functions.ILike(variant.Barcode, pattern)) ||
+                     (variant.ModelCode != null && EF.Functions.ILike(variant.ModelCode, pattern)))));
+        }
+
+        if (!string.IsNullOrWhiteSpace(platform))
+        {
+            var platformName = platform.Trim();
+            query = query.Where(product => db.ChannelListingProfiles.Any(profile =>
+                profile.TenantId == tenantId && profile.ProductId == product.Id && profile.Enabled &&
+                db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == profile.ConnectionId && connection.DisplayName == platformName)));
+        }
+
+        var stockTotals = db.ProductVariants.AsNoTracking()
+            .Where(variant => variant.TenantId == tenantId)
+            .Select(variant => new
+            {
+                variant.ProductId,
+                TotalStock = db.InventoryItems.AsNoTracking()
+                    .Where(inventory => inventory.TenantId == tenantId && inventory.VariantId == variant.Id && inventory.LocationCode == "MAIN")
+                    .Select(inventory => (decimal?)inventory.OnHand)
+                    .FirstOrDefault() ?? 0
+            })
+            .GroupBy(value => value.ProductId)
+            .Select(group => new { ProductId = group.Key, TotalStock = group.Sum(value => value.TotalStock) });
+
+        switch (stock?.Trim().ToUpperInvariant())
+        {
+            case "OUT":
+                query = query.Where(product => !stockTotals.Any(total => total.ProductId == product.Id && total.TotalStock > 0));
+                break;
+            case "LOW":
+                query = query.Where(product => stockTotals.Any(total => total.ProductId == product.Id && total.TotalStock > 0 && total.TotalStock <= 5));
+                break;
+            case "OK":
+                query = query.Where(product => stockTotals.Any(total => total.ProductId == product.Id && total.TotalStock > 5));
+                break;
+        }
     }
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));

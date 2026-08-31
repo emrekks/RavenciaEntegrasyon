@@ -64,7 +64,7 @@ export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export type CursorPage<T> = { items: T[]; nextCursor: string | null; hasMore: boolean }
+export type CursorPage<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }
 
 /** Reads every cursor page. The server still keeps each individual request bounded. */
 export async function loadAllPages<T>(path: string, limit = 200): Promise<CursorPage<T>> {

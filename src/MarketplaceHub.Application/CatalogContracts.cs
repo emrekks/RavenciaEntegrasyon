@@ -63,6 +63,12 @@ public sealed record ProductView(
     IReadOnlyList<ProductAttributeAssignmentView>? Attributes = null,
     IReadOnlyList<ProductOptionView>? Options = null,
     IReadOnlyList<string>? MediaUrls = null);
+public sealed record ProductSummaryView(
+    int TotalCount,
+    int ActiveCount,
+    int OutOfStockCount,
+    int LowStockCount,
+    IReadOnlyList<string> Platforms);
 public sealed record ListingProfileView(Guid Id, Guid ProductId, Guid ConnectionId, string? TitleOverride, string? DescriptionOverride, string? ExternalCategoryId, string? ExternalBrandId, int? DeliveryTimeDays, bool Enabled, string DesiredStatus, string ActualStatus, long Version);
 public sealed record PublicationLineView(Guid VariantId, string Sku, string? Barcode, string DesiredStatus, string ActualStatus, string? RejectionCode);
 public sealed record PublicationStatusView(Guid ProductId, Guid ConnectionId, Guid? ProfileId, string? DesiredStatus, string? ActualStatus, string? LastRejectionCode, Guid? LastJobId, string? LastJobStatus, IReadOnlyList<PublicationLineView> Lines);
@@ -100,7 +106,8 @@ public interface ICatalogService
     Task<ServiceResult<AttributeView>> DeactivateAttributeValueAsync(Guid tenantId, Guid attributeId, Guid valueId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>> GetRequirementsAsync(Guid tenantId, Guid categoryId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<AttributeRequirementCommand>>> ReplaceRequirementsAsync(Guid tenantId, Guid categoryId, long expectedVersion, IReadOnlyList<AttributeRequirementCommand> requirements, CancellationToken cancellationToken);
-    Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
+    Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, CancellationToken cancellationToken);
+    Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken);
