@@ -104,7 +104,7 @@ function MediaOptionThumb({ option, selected, onClick }: { option: ProductMediaO
     setSrc(objectUrl)
     return () => URL.revokeObjectURL(objectUrl)
   }, [option.file])
-  return <button type="button" className={`variant-media-option ${selected ? 'selected' : ''}`} aria-label={option.label} aria-pressed={selected} onClick={onClick}>
+  return <button type="button" className={`variant-media-option ${selected ? 'selected' : ''}`} aria-label={`${option.label}${selected ? ' seçimini kaldır' : ''}`} aria-pressed={selected} onClick={onClick}>
     <span className="variant-media-option-image">{src ? <img src={src} alt="" /> : <VariantImageIcon />}</span>
     <i aria-hidden="true">{selected ? '✓' : ''}</i>
   </button>
@@ -147,7 +147,7 @@ function VariantMediaPickerModal({
       </header>
       {mode === 'bulk' && groups?.length ? <><div className="variant-media-bulk-fields"><label>Seçenek grubu<select value={selectedGroupId} onChange={event => onGroupChange?.(event.target.value)}><option value="">Seçenek grubu seçin</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label><label>Seçenek değeri<select value={selectedValueId} onChange={event => onValueChange?.(event.target.value)} disabled={!selectedGroup}><option value="">Değer seçin</option>{selectedGroup?.values.map(value => <option key={value.id} value={value.id}>{value.value}</option>)}</select></label></div>{selectedValue && <p className={`variant-media-bulk-match-summary ${matchedVariantCount ? '' : 'is-empty'}`}>{matchedVariantCount ? <><strong>{selectedGroup?.name}: {selectedValue.value}</strong> seçili — {matchedVariantCount} varyant satırına uygulanacak.</> : <>Bu değerle eşleşen varyant satırı bulunamadı.</>}</p>}</> : null}
       <div className="variant-media-picker-grid">
-        {options.length ? options.map(option => <MediaOptionThumb key={option.value} option={option} selected={selectedRef === option.value} onClick={() => onRefChange(option.value)} />) : <div className="empty small"><strong>Seçilebilir görsel yok</strong><p>Önce ürün görsellerine HTTPS linki veya dosya ekleyin.</p></div>}
+        {options.length ? options.map(option => <MediaOptionThumb key={option.value} option={option} selected={selectedRef === option.value} onClick={() => onRefChange(selectedRef === option.value ? '' : option.value)} />) : <div className="empty small"><strong>Seçilebilir görsel yok</strong><p>Önce ürün görsellerine HTTPS linki veya dosya ekleyin.</p></div>}
       </div>
       <footer><button type="button" className="secondary" onClick={() => onRefChange('')}>Görseli kaldır</button><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" onClick={onApply} disabled={!options.length || (mode === 'bulk' && (!selectedGroupId || !selectedValueId || !matchedVariantCount))}>{mode === 'bulk' ? selectedRef ? 'Seçeneklere uygula' : 'Görselleri kaldır' : 'Görseli kaydet'}</button></footer>
     </section>
@@ -659,6 +659,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [scheduledPublishOpen, setScheduledPublishOpen] = useState(false)
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
   const [variantMediaModal, setVariantMediaModal] = useState<{ mode: 'variant' | 'bulk'; rowKey?: string; draftRef: string; groupId: string; valueId: string } | null>(null)
+  const [expandedOptionGroupIds, setExpandedOptionGroupIds] = useState<Record<string, boolean>>({})
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const [mediaUrlSettingsOpen, setMediaUrlSettingsOpen] = useState(false)
@@ -1112,12 +1113,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <div className="unknown"><strong>Kategori özellikleri alınamadı</strong><p>Önce kategori eşleme ekranında ilgili kategorinin özellik başlıklarını hazırlayın.</p></div>
         ) : (
           <div className="attribute-builder-list">
-            {visibleOptionRequirements.map(item => (
-              <article className="attribute-builder-card" key={item.attributeId}>
-                <div className="attribute-builder-head">
-                  <div><strong>{item.attribute.name}</strong><small>{item.attribute.values.length} değer · seçenek grubu</small></div>
-                  <small className={variantAttributeIds.includes(item.attributeId) ? 'attribute-builder-selected' : ''}>{(attributeSelections[item.attributeId]?.length ?? 0) > 0 ? `${attributeSelections[item.attributeId].length} değer seçildi` : 'Değer seçin'}</small>
-                </div>
+            {visibleOptionRequirements.map((item, index) => {
+              const expandable = item.attribute.values.length > 0
+              const expanded = !expandable || (expandedOptionGroupIds[item.attributeId] ?? index === 0)
+              return (
+              <article className={`attribute-builder-card ${expanded ? 'is-open' : ''}`} key={item.attributeId}>
+                <button type="button" className="attribute-builder-disclosure" aria-expanded={expanded} aria-controls={`option-values-${item.attributeId}`} disabled={!expandable} onClick={() => setExpandedOptionGroupIds(current => ({ ...current, [item.attributeId]: !expanded }))}>
+                  <span className="attribute-builder-disclosure-copy"><strong>{item.attribute.name}</strong><small>{item.attribute.values.length} değer · seçenek grubu</small></span>
+                  <span className="attribute-builder-disclosure-meta"><small className={variantAttributeIds.includes(item.attributeId) ? 'attribute-builder-selected' : ''}>{(attributeSelections[item.attributeId]?.length ?? 0) > 0 ? `${attributeSelections[item.attributeId].length} değer seçildi` : 'Değer seçin'}</small>{expandable && <i aria-hidden="true">⌄</i>}</span>
+                </button>
+                {expanded && <div id={`option-values-${item.attributeId}`} className="attribute-builder-values">
                 {item.attribute.values.length ? (
                   <div className="option-chip-list">
                     {item.attribute.values.map(value => {
@@ -1139,8 +1144,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                 ) : (
                   <label>Değer<input value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))} type={item.attribute.dataType === 'NUMBER' ? 'number' : 'text'} placeholder="Değer girin" /></label>
                 )}
+                </div>}
               </article>
-            ))}
+              )
+            })}
             {!visibleOptionRequirements.length && (
               <div className="empty small" style={{ gridColumn: '1 / -1' }}>
                 <p>Bu ürün için kayıtlı seçenek grubu bulunamadı. Seçenek Eşitleme ekranından seçenek grubu oluşturabilirsiniz.</p>
