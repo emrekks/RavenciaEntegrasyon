@@ -30,8 +30,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         if (connectionId is null) return JobExecutionResult.Blocked("CONNECTION_REQUIRED", "Job requires a platform connection.");
-        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId.Value).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var connectionState = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId.Value).Select(x => new { x.PlatformCode, x.Status }).SingleOrDefaultAsync(cancellationToken);
+        var platform = connectionState?.PlatformCode;
         if (!ActiveIntegrationScope.Contains(platform)) return JobExecutionResult.Blocked("CONNECTION_OUT_OF_SCOPE", "Connection is not active in the current integration scope.");
+        // A disabled connection may still be tested so it can be reactivated, but
+        // no data sync or marketplace operation may execute while it is passive.
+        if (jobType != MarketplaceJobTypes.ConnectionTest && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
+            return JobExecutionResult.Blocked("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için işlem çalıştırılmadı.");
         var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken);
         if (syncLock is null) return JobExecutionResult.Retry("SYNC_LOCK_BUSY", "Aynı Trendyol mağazası için aynı senkronizasyon akışı zaten çalışıyor.", TimeSpan.FromSeconds(5));
         await using (syncLock)
