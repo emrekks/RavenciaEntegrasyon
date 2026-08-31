@@ -355,6 +355,13 @@
   margin-right: auto;
 }
 
+.app-shell.stitch-shell .order-hidden-cancelled-notice-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .app-shell.stitch-shell .order-hidden-cancelled-notice button {
   flex: 0 0 auto;
   color: #dff7ff;
@@ -363,4 +370,15 @@
   border-radius: 6px;
   padding: 7px 10px;
   cursor: pointer;
+}
+
+.app-shell.stitch-shell .order-hidden-cancelled-notice button.notice-dismiss {
+  color: #b9c0d8;
+  background: transparent;
+  border-color: #464b60;
+}
+
+.app-shell.stitch-shell .order-hidden-cancelled-notice button.notice-dismiss:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, .06);
 }
