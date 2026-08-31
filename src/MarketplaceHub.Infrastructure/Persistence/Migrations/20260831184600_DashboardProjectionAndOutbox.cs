@@ -34,7 +34,7 @@ public partial class DashboardProjectionAndOutbox : Migration
         }, constraints: table =>
         {
             table.PrimaryKey("PK_snapshot", x => x.TenantId);
-            table.ForeignKey("FK_snapshot_tenants_TenantId", x => x.TenantId, "iam", "tenants", "Id", onDelete: ReferentialAction.Restrict);
+            table.ForeignKey(name: "FK_snapshot_tenants_TenantId", column: x => x.TenantId, principalSchema: "iam", principalTable: "tenants", principalColumn: "Id", onDelete: ReferentialAction.Restrict);
         });
 
         migrationBuilder.CreateTable(name: "revenue_daily", schema: "dashboard", columns: table => new
@@ -49,7 +49,7 @@ public partial class DashboardProjectionAndOutbox : Migration
         }, constraints: table =>
         {
             table.PrimaryKey("PK_revenue_daily", x => new { x.TenantId, x.Day, x.PlatformName, x.Currency });
-            table.ForeignKey("FK_revenue_daily_tenants_TenantId", x => x.TenantId, "iam", "tenants", "Id", onDelete: ReferentialAction.Restrict);
+            table.ForeignKey(name: "FK_revenue_daily_tenants_TenantId", column: x => x.TenantId, principalSchema: "iam", principalTable: "tenants", principalColumn: "Id", onDelete: ReferentialAction.Restrict);
         });
 
         migrationBuilder.CreateTable(name: "low_stock", schema: "dashboard", columns: table => new
@@ -63,7 +63,7 @@ public partial class DashboardProjectionAndOutbox : Migration
         }, constraints: table =>
         {
             table.PrimaryKey("PK_low_stock", x => new { x.TenantId, x.ProductId });
-            table.ForeignKey("FK_low_stock_tenants_TenantId", x => x.TenantId, "iam", "tenants", "Id", onDelete: ReferentialAction.Restrict);
+            table.ForeignKey(name: "FK_low_stock_tenants_TenantId", column: x => x.TenantId, principalSchema: "iam", principalTable: "tenants", principalColumn: "Id", onDelete: ReferentialAction.Restrict);
         });
 
         migrationBuilder.CreateTable(name: "sync_status", schema: "dashboard", columns: table => new
@@ -81,7 +81,7 @@ public partial class DashboardProjectionAndOutbox : Migration
         }, constraints: table =>
         {
             table.PrimaryKey("PK_sync_status", x => new { x.TenantId, x.ResourceType });
-            table.ForeignKey("FK_sync_status_tenants_TenantId", x => x.TenantId, "iam", "tenants", "Id", onDelete: ReferentialAction.Restrict);
+            table.ForeignKey(name: "FK_sync_status_tenants_TenantId", column: x => x.TenantId, principalSchema: "iam", principalTable: "tenants", principalColumn: "Id", onDelete: ReferentialAction.Restrict);
         });
 
         migrationBuilder.CreateTable(name: "outbox_events", schema: "integration", columns: table => new
@@ -102,7 +102,7 @@ public partial class DashboardProjectionAndOutbox : Migration
         }, constraints: table =>
         {
             table.PrimaryKey("PK_outbox_events", x => x.Id);
-            table.ForeignKey("FK_outbox_events_tenants_TenantId", x => x.TenantId, "iam", "tenants", "Id", onDelete: ReferentialAction.Restrict);
+            table.ForeignKey(name: "FK_outbox_events_tenants_TenantId", column: x => x.TenantId, principalSchema: "iam", principalTable: "tenants", principalColumn: "Id", onDelete: ReferentialAction.Restrict);
         });
 
         migrationBuilder.CreateIndex(name: "IX_revenue_daily_TenantId_Day", schema: "dashboard", table: "revenue_daily", columns: new[] { "TenantId", "Day" });
