@@ -158,6 +158,9 @@
 .app-shell.stitch-shell .variant-media-picker-modal > header p { color:#9ba4ca; }
 .app-shell.stitch-shell .variant-media-bulk-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
 .app-shell.stitch-shell .variant-media-bulk-fields label { display:grid; gap:6px; color:#9ba4ca; font-size:10px; font-weight:800; }
+.app-shell.stitch-shell .variant-media-bulk-match-summary { margin:0 0 14px; padding:10px 12px; color:#bfead4; background:rgba(113,224,176,.08); border:1px solid rgba(113,224,176,.24); border-radius:8px; font-size:11px; }
+.app-shell.stitch-shell .variant-media-bulk-match-summary strong { color:#fff; }
+.app-shell.stitch-shell .variant-media-bulk-match-summary.is-empty { color:#ffb5bc; background:rgba(255,111,125,.08); border-color:rgba(255,111,125,.3); }
 .app-shell.stitch-shell .variant-media-picker-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:8px; padding:10px; background:#111525; border:1px solid rgba(151,160,207,.2); border-radius:10px; }
 .app-shell.stitch-shell .variant-media-option { position:relative; display:grid; grid-template-rows:minmax(0,1fr) auto; gap:6px; min-width:0; aspect-ratio:1; padding:6px; color:#cfd4ff; text-align:left; background:#1d2236; border:1px solid #323b63; border-radius:8px; box-shadow:none; }
 .app-shell.stitch-shell .variant-media-option:hover { background:#242b49; border-color:#747eff; transform:translateY(-1px); }
