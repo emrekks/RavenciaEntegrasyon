@@ -166,10 +166,14 @@
 .app-shell.stitch-shell .variant-media-option-image img { display:block; width:100%; height:100%; object-fit:cover; }
 .app-shell.stitch-shell .variant-media-option-label { overflow:hidden; color:#bec5e8; font-size:9px; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
 .app-shell.stitch-shell .variant-media-option > i { position:absolute; top:9px; right:9px; display:grid; place-items:center; width:18px; height:18px; color:#0e1523; background:#71e0b0; border-radius:999px; font-size:11px; font-style:normal; font-weight:900; }
-.app-shell.stitch-shell .variant-row-lead { background:transparent!important; border:0!important; }
-.app-shell.stitch-shell .variant-row-number { min-width:25px; height:25px; color:#dfe2ff; background:transparent!important; border:0!important; border-right:1px dashed rgba(143,153,197,.6)!important; border-radius:0!important; }
-.app-shell.stitch-shell .variant-row-lead .variant-drag-handle { display:grid; place-items:center; flex:0 0 22px; height:25px; color:#929bc9; background:repeating-linear-gradient(90deg,rgba(143,153,197,.7) 0 2px,transparent 2px 5px); border:0!important; border-radius:0!important; font-size:0; opacity:.9; }
-.app-shell.stitch-shell .variant-row-lead .variant-drag-handle::after { content:'☰'; font-size:13px; line-height:1; opacity:.75; }
+.app-shell.stitch-shell .variant-row-lead { background:transparent!important; border:0!important; gap:6px; }
+.app-shell.stitch-shell .variant-row-number { min-width:25px; height:25px; color:#eef0ff; background:rgba(124,134,255,.14)!important; border:1px solid rgba(124,134,255,.38)!important; border-radius:7px!important; font-size:10px; font-weight:850; }
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle { display:grid; place-items:center; flex:0 0 28px; width:28px; height:28px; padding:0; color:#aeb8e8; background:#1a2035; border:1px solid #354064!important; border-radius:7px!important; cursor:grab; font-size:0; opacity:1; transition:color .14s ease,background .14s ease,border-color .14s ease,transform .14s ease; }
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle:hover { color:#fff; background:#252e4c; border-color:#6876d8!important; transform:translateY(-1px); }
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle:active { cursor:grabbing; transform:translateY(0); }
+.app-shell.stitch-shell .variant-drag-icon { width:13px; height:17px; fill:currentColor; opacity:.92; }
+.app-shell.stitch-shell .variant-media-button { color:#bfc7f2; background:#1a2035; border-color:#354064; border-radius:7px; }
+.app-shell.stitch-shell .variant-media-button:hover { color:#fff; background:#252e4c; border-color:#6876d8; transform:translateY(-1px); }
 .app-shell.stitch-shell .variant-media-picker-modal > footer { display:flex; align-items:center; justify-content:flex-end; gap:9px; margin-top:16px; padding-top:14px; border-top:1px solid rgba(151,160,207,.2); }
 .app-shell.stitch-shell .variant-media-picker-modal > footer .secondary:first-child { margin-right:auto; }
 @media (max-width:680px) {
