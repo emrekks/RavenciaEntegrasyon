@@ -19,22 +19,35 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                 nullable: true);
 
             migrationBuilder.Sql("""
+                WITH order_snapshots AS (
+                    SELECT
+                        "Id",
+                        CASE
+                            WHEN pg_input_is_valid("CustomerSnapshotJson", 'jsonb')
+                            THEN "CustomerSnapshotJson"::jsonb
+                        END AS snapshot
+                    FROM sales.orders
+                ), due_values AS (
+                    SELECT
+                        "Id",
+                        COALESCE(
+                            snapshot ->> 'agreedDeliveryDate',
+                            snapshot ->> 'estimatedDeliveryEndDate',
+                            snapshot ->> 'lastDeliveryDate',
+                            snapshot ->> 'deliveryDate',
+                            snapshot ->> 'estimatedDeliveryStartDate',
+                            snapshot ->> 'dueDate',
+                            snapshot ->> 'shipmentDueDate',
+                            snapshot ->> 'deliveryDueAt'
+                        ) AS raw_value
+                    FROM order_snapshots
+                )
                 UPDATE sales.orders AS order_row
-                SET "ShipmentDueAt" = to_timestamp(due_value.raw_value::double precision / 1000)
-                FROM LATERAL (
-                    SELECT COALESCE(
-                        order_row."CustomerSnapshotJson"::jsonb ->> 'agreedDeliveryDate',
-                        order_row."CustomerSnapshotJson"::jsonb ->> 'estimatedDeliveryEndDate',
-                        order_row."CustomerSnapshotJson"::jsonb ->> 'lastDeliveryDate',
-                        order_row."CustomerSnapshotJson"::jsonb ->> 'deliveryDate',
-                        order_row."CustomerSnapshotJson"::jsonb ->> 'estimatedDeliveryStartDate',
-                        order_row."CustomerSnapshotJson"::jsonb ->> 'dueDate',
-                        order_row."CustomerSnapshotJson"::jsonb ->> 'shipmentDueDate',
-                        order_row."CustomerSnapshotJson"::jsonb ->> 'deliveryDueAt'
-                    ) AS raw_value
-                ) AS due_value
-                WHERE order_row."ShipmentDueAt" IS NULL
-                  AND due_value.raw_value ~ '^[0-9]+$';
+                SET "ShipmentDueAt" = to_timestamp(due_values.raw_value::double precision / 1000)
+                FROM due_values
+                WHERE order_row."Id" = due_values."Id"
+                  AND order_row."ShipmentDueAt" IS NULL
+                  AND due_values.raw_value ~ '^[0-9]+$';
                 """);
 
             migrationBuilder.CreateIndex(
