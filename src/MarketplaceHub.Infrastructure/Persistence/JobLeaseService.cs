@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Security;
@@ -73,6 +74,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             job.LastErrorSummary ??= "Maksimum otomatik deneme sayısına ulaşıldı.";
         }
 
+        AddOutboxEvent(job, now);
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }
@@ -116,13 +118,17 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         if (!hasReapableJobs) return 0;
 
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
-        await db.IntegrationJobs
+        var exhausted = await db.IntegrationJobs
             .Where(x => (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled) && x.AttemptCount >= x.MaxAttempts)
-            .ExecuteUpdateAsync(update => update
-                .SetProperty(x => x.Status, JobStatus.Dead)
-                .SetProperty(x => x.CompletedAt, now)
-                .SetProperty(x => x.LastErrorCode, x => x.LastErrorCode ?? "MAX_ATTEMPTS_EXHAUSTED")
-                .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+            .ToListAsync(cancellationToken);
+        foreach (var job in exhausted)
+        {
+            job.Status = JobStatus.Dead;
+            job.CompletedAt = now;
+            job.LastErrorCode ??= "MAX_ATTEMPTS_EXHAUSTED";
+            job.Version++;
+            AddOutboxEvent(job, now);
+        }
         var expired = await db.IntegrationJobs
             .FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" = 'LEASED' AND \"LeaseExpiresAt\" < {now} ORDER BY \"LeaseExpiresAt\" ASC FOR UPDATE SKIP LOCKED")
             .ToListAsync(cancellationToken);
@@ -133,14 +139,35 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             job.LastErrorCode = "LEASE_EXPIRED"; job.LeaseTokenHash = null; job.LeaseExpiresAt = null; job.HeartbeatAt = null; job.Version++;
             if (job.AttemptCount >= job.MaxAttempts) { job.Status = JobStatus.Dead; job.CompletedAt = now; }
             else { job.Status = JobStatus.RetryScheduled; job.AvailableAt = now.Add(JobRetryPolicy.DelayAfterAttempt(job.AttemptCount, job.Id)); }
+            AddOutboxEvent(job, now);
         }
-        if (expired.Count == 0)
+        if (expired.Count == 0 && exhausted.Count == 0)
         {
             await transaction.CommitAsync(cancellationToken);
             return 0;
         }
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return expired.Count;
+        return expired.Count + exhausted.Count;
     }
+
+    private void AddOutboxEvent(IntegrationJob job, DateTimeOffset now)
+    {
+        var metadata = IntegrationJobMetadataPolicy.Apply(job);
+        db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = job.TenantId,
+            ResourceType = metadata.ResourceType,
+            OperationType = metadata.OperationType,
+            AggregateType = "IntegrationJob",
+            AggregateId = job.Id,
+            AggregateVersion = job.Version,
+            PayloadJson = JsonSerializer.Serialize(new { jobId = job.Id, jobType = job.JobType, status = JobStatusText(job.Status), version = job.Version }),
+            CreatedAt = now,
+            NextAttemptAt = now
+        });
+    }
+
+    private static string JobStatusText(JobStatus status) => status == JobStatus.RetryScheduled ? "RETRY_SCHEDULED" : status == JobStatus.ManualReview ? "MANUAL_REVIEW" : status.ToString().ToUpperInvariant();
 }

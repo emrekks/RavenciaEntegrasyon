@@ -1,5 +1,6 @@
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
+using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<BootstrapState> BootstrapStates => Set<BootstrapState>();
     public DbSet<IntegrationJob> IntegrationJobs => Set<IntegrationJob>();
+    public DbSet<IntegrationOutboxEvent> IntegrationOutboxEvents => Set<IntegrationOutboxEvent>();
     public DbSet<JobAttempt> JobAttempts => Set<JobAttempt>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
     public DbSet<ExternalEffectRecord> ExternalEffectRecords => Set<ExternalEffectRecord>();
@@ -96,6 +98,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<InvoiceDocument> InvoiceDocuments => Set<InvoiceDocument>();
     public DbSet<InvoiceSubmissionAttempt> InvoiceSubmissionAttempts => Set<InvoiceSubmissionAttempt>();
     public DbSet<MarketplaceDelivery> MarketplaceDeliveries => Set<MarketplaceDelivery>();
+    public DbSet<DashboardSnapshot> DashboardSnapshots => Set<DashboardSnapshot>();
+    public DbSet<DashboardRevenueDaily> DashboardRevenueDaily => Set<DashboardRevenueDaily>();
+    public DbSet<DashboardLowStockProjection> DashboardLowStockProjections => Set<DashboardLowStockProjection>();
+    public DbSet<DashboardSyncStatusProjection> DashboardSyncStatusProjections => Set<DashboardSyncStatusProjection>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -103,13 +109,75 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         ConfigureIdentity(builder);
         ConfigureIntegration(builder);
         ConfigureOperations(builder);
+        ConfigureDashboard(builder);
         builder.ConfigureCatalogModels();
         builder.ConfigureMarketplaceModels();
         builder.ConfigureInvoicingModels();
     }
 
-    public override int SaveChanges(bool acceptAllChangesOnSuccess) { GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) { GuardAppendOnlyAudit(); return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+    public override int SaveChanges(bool acceptAllChangesOnSuccess) { ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) { ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+
+    private void ApplyIntegrationJobMetadata()
+    {
+        foreach (var entry in ChangeTracker.Entries<IntegrationJob>().Where(x => x.State == EntityState.Added))
+        {
+            if (entry.Entity.ResourceType != "jobs") continue;
+            var metadata = IntegrationJobMetadataPolicy.FromJobType(entry.Entity.JobType);
+            entry.Entity.ResourceType = metadata.ResourceType;
+            entry.Entity.OperationType = metadata.OperationType;
+            entry.Entity.TriggerType = metadata.TriggerType;
+        }
+    }
+
+    private void AppendDataChangeOutboxEvents()
+    {
+        var existing = ChangeTracker.Entries<IntegrationOutboxEvent>()
+            .Where(x => x.State == EntityState.Added)
+            .Select(x => (x.Entity.ResourceType, x.Entity.AggregateType, x.Entity.AggregateId))
+            .ToHashSet();
+        foreach (var entry in ChangeTracker.Entries().Where(x => x.State is EntityState.Added or EntityState.Modified))
+        {
+            var change = OutboxChange(entry.Entity);
+            if (change is null || !existing.Add((change.Value.ResourceType, change.Value.AggregateType, change.Value.AggregateId))) continue;
+            var now = DateTimeOffset.UtcNow;
+            IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = change.Value.TenantId,
+                ResourceType = change.Value.ResourceType,
+                OperationType = entry.State == EntityState.Added ? "created" : "updated",
+                AggregateType = change.Value.AggregateType,
+                AggregateId = change.Value.AggregateId,
+                AggregateVersion = change.Value.Version,
+                PayloadJson = JsonSerializer.Serialize(new { aggregateType = change.Value.AggregateType, aggregateId = change.Value.AggregateId, version = change.Value.Version }),
+                CreatedAt = now,
+                NextAttemptAt = now
+            });
+        }
+    }
+
+    private static (Guid TenantId, string ResourceType, string AggregateType, Guid AggregateId, long? Version)? OutboxChange(object entity) => entity switch
+    {
+        Order value => (value.TenantId, "orders", "Order", value.Id, value.Version),
+        OrderLine value => (value.TenantId, "orders", "Order", value.OrderId, value.Version),
+        ShipmentPackage value => (value.TenantId, "orders", "ShipmentPackage", value.Id, value.Version),
+        PackageLineAllocation value => (value.TenantId, "orders", "ShipmentPackage", value.PackageId, null),
+        Product value => (value.TenantId, "products", "Product", value.Id, value.Version),
+        ProductVariant value => (value.TenantId, "products", "Product", value.ProductId, value.Version),
+        ProductMedia value => (value.TenantId, "products", "Product", value.ProductId, null),
+        InventoryItem value => (value.TenantId, "inventory", "InventoryItem", value.Id, value.Version),
+        StockLedgerEntry value => (value.TenantId, "inventory", "InventoryItem", value.InventoryItemId, null),
+        StockReservation value => (value.TenantId, "inventory", "InventoryItem", value.InventoryItemId, value.Version),
+        ReturnClaim value => (value.TenantId, "returns", "ReturnClaim", value.Id, value.Version),
+        ReturnLine value => (value.TenantId, "returns", "ReturnClaim", value.ClaimId, null),
+        Invoice value => (value.TenantId, "invoices", "Invoice", value.Id, value.Version),
+        InvoiceLine value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
+        InvoiceDocument value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
+        MarketplaceDelivery value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
+        PlatformConnection value => (value.TenantId, "connections", "PlatformConnection", value.Id, value.Version),
+        _ => null
+    };
 
     private void GuardAppendOnlyAudit()
     {
@@ -193,7 +261,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.Entity<IntegrationJob>(entity =>
         {
             entity.ToTable("jobs", "integration", table => table.HasCheckConstraint("ck_job_attempt_bounds", "\"AttemptCount\" >= 0 AND \"MaxAttempts\" > 0 AND \"AttemptCount\" <= \"MaxAttempts\"")); entity.HasKey(x => x.Id);
-            entity.Property(x => x.JobType).HasMaxLength(96); entity.Property(x => x.JobDedupKey).HasMaxLength(256);
+            entity.Property(x => x.JobType).HasMaxLength(96); entity.Property(x => x.ResourceType).HasMaxLength(48).HasDefaultValue("jobs"); entity.Property(x => x.OperationType).HasMaxLength(64).HasDefaultValue("execute"); entity.Property(x => x.TriggerType).HasMaxLength(32).HasDefaultValue("system"); entity.Property(x => x.JobDedupKey).HasMaxLength(256);
             entity.Property(x => x.EffectIdempotencyKey).HasMaxLength(256); entity.Property(x => x.PayloadHash).HasMaxLength(128);
             entity.Property(x => x.Status).HasConversion(JobStatusConverter).HasMaxLength(24); entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()").ValueGeneratedOnAdd(); entity.Property(x => x.MaxAttempts).HasDefaultValue(JobRetryPolicy.DefaultMaxAttempts); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.JobType, x.JobDedupKey }).IsUnique();
@@ -217,6 +285,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.ToTable("external_effect_records", "integration"); entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.TenantId, x.EffectType, x.IdempotencyKey }).IsUnique();
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<IntegrationOutboxEvent>(entity =>
+        {
+            entity.ToTable("outbox_events", "integration"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.ResourceType).HasMaxLength(48);
+            entity.Property(x => x.OperationType).HasMaxLength(64);
+            entity.Property(x => x.AggregateType).HasMaxLength(96);
+            entity.Property(x => x.PayloadJson).HasColumnType("jsonb");
+            entity.Property(x => x.LastDispatchError).HasMaxLength(512);
+            entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()").ValueGeneratedOnAdd();
+            entity.HasIndex(x => new { x.PublishedAt, x.NextAttemptAt, x.CreatedAt });
+            entity.HasIndex(x => new { x.TenantId, x.CreatedAt });
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
     }
@@ -252,6 +333,37 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.RouteTemplate).HasMaxLength(256); entity.Property(x => x.IdempotencyKey).HasMaxLength(256);
             entity.Property(x => x.RequestHash).HasMaxLength(128); entity.Property(x => x.State).HasMaxLength(24); entity.Property(x => x.ResponseBody).HasColumnType("text");
             entity.HasIndex(x => new { x.TenantId, x.RouteTemplate, x.IdempotencyKey }).IsUnique(); entity.HasIndex(x => x.ExpiresAt);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureDashboard(ModelBuilder builder)
+    {
+        builder.Entity<DashboardSnapshot>(entity =>
+        {
+            entity.ToTable("snapshot", "dashboard"); entity.HasKey(x => x.TenantId);
+            entity.Property(x => x.PendingByPlatformJson).HasColumnType("jsonb");
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<DashboardRevenueDaily>(entity =>
+        {
+            entity.ToTable("revenue_daily", "dashboard"); entity.HasKey(x => new { x.TenantId, x.Day, x.PlatformName, x.Currency });
+            entity.Property(x => x.Day).HasColumnType("date"); entity.Property(x => x.PlatformName).HasMaxLength(160); entity.Property(x => x.Currency).HasMaxLength(3);
+            entity.HasIndex(x => new { x.TenantId, x.Day });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<DashboardLowStockProjection>(entity =>
+        {
+            entity.ToTable("low_stock", "dashboard"); entity.HasKey(x => new { x.TenantId, x.ProductId });
+            entity.Property(x => x.Title).HasMaxLength(512); entity.Property(x => x.PrimaryImageUrl).HasMaxLength(1024);
+            entity.HasIndex(x => new { x.TenantId, x.TotalStock });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<DashboardSyncStatusProjection>(entity =>
+        {
+            entity.ToTable("sync_status", "dashboard"); entity.HasKey(x => new { x.TenantId, x.ResourceType });
+            entity.Property(x => x.ResourceType).HasMaxLength(48); entity.Property(x => x.DisplayName).HasMaxLength(96); entity.Property(x => x.Kind).HasMaxLength(32); entity.Property(x => x.Status).HasMaxLength(32); entity.Property(x => x.LastErrorCode).HasMaxLength(128); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
     }

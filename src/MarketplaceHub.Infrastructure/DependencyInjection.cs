@@ -26,6 +26,7 @@ public static class DependencyInjection
         var keysRoot = configuration["DataProtection:KeysRoot"] ?? Path.Combine(AppContext.BaseDirectory, "dp-keys");
 
         services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connection));
+        services.AddMemoryCache(options => options.SizeLimit = 10_000);
         services.AddIdentityCore<ApplicationUser>(options =>
         {
             options.Password.RequiredLength = 15; options.Password.RequiredUniqueChars = 4;
@@ -51,6 +52,7 @@ public static class DependencyInjection
         services.AddSingleton<TotpService>();
         services.AddScoped<IJobLeaseService, JobLeaseService>();
         services.AddScoped<IJobOperationsService, JobOperationsService>();
+        services.AddScoped<IDashboardReadService, DashboardReadService>();
         services.AddScoped<IScheduledJobProducer, ScheduledJobProducer>();
         services.AddSingleton<CursorCodec>();
         services.AddScoped<ICatalogService, CatalogService>();

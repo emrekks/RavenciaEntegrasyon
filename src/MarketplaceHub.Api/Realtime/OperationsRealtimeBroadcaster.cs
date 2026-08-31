@@ -1,58 +1,99 @@
-using MarketplaceHub.Domain;
+using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Api.Realtime;
 
+/// <summary>
+/// Dispatches durable integration outbox events. A completed job is therefore
+/// visible after the API restarts too; no moving watermark or full jobs scan is
+/// needed. Dashboard projections are rebuilt once per affected tenant batch.
+/// </summary>
 public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, IHubContext<OperationsHub> hub, TimeProvider timeProvider, ILogger<OperationsRealtimeBroadcaster> logger) : BackgroundService
 {
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan ReconciliationInterval = TimeSpan.FromMinutes(5);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var watermark = timeProvider.GetUtcNow().AddSeconds(-5);
-        var watermarkId = Guid.Empty;
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1), timeProvider);
+        var nextReconciliation = timeProvider.GetUtcNow();
+        using var timer = new PeriodicTimer(PollInterval, timeProvider);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var completed = await db.IntegrationJobs.AsNoTracking()
-                    .Where(x => x.CompletedAt != null && (x.CompletedAt > watermark || x.CompletedAt == watermark && x.Id.CompareTo(watermarkId) > 0))
-                    .OrderBy(x => x.CompletedAt)
+                var dashboard = scope.ServiceProvider.GetRequiredService<IDashboardReadService>();
+                var now = timeProvider.GetUtcNow();
+                var events = await db.IntegrationOutboxEvents.AsNoTracking()
+                    .Where(x => x.PublishedAt == null && x.NextAttemptAt <= now)
+                    .OrderBy(x => x.CreatedAt)
                     .ThenBy(x => x.Id)
                     .Take(250)
-                    .Select(x => new { x.Id, x.TenantId, x.JobType, x.Status, x.CompletedAt })
                     .ToListAsync(stoppingToken);
-                if (completed.Count == 0) continue;
-                var last = completed[^1];
-                watermark = last.CompletedAt!.Value;
-                watermarkId = last.Id;
-                foreach (var tenant in completed.GroupBy(x => x.TenantId))
+
+                foreach (var tenantEvents in events.GroupBy(x => x.TenantId))
                 {
-                    var resources = tenant.Select(x => Resource(x.JobType)).Distinct(StringComparer.Ordinal).ToArray();
-                    await hub.Clients.Group(OperationsHub.TenantGroup(tenant.Key.ToString("D")))
-                        .SendAsync("operationsChanged", new { resources, occurredAt = watermark }, stoppingToken);
+                    try
+                    {
+                        await dashboard.RebuildTenantAsync(tenantEvents.Key, stoppingToken);
+                        var resourceEvents = tenantEvents.Select(x => new
+                        {
+                            eventId = x.Id,
+                            resource = x.ResourceType,
+                            operation = x.OperationType,
+                            aggregateId = x.AggregateId,
+                            version = x.AggregateVersion,
+                            occurredAt = x.CreatedAt
+                        }).ToArray();
+                        var resources = tenantEvents.Select(x => x.ResourceType).Distinct(StringComparer.Ordinal).ToArray();
+                        await hub.Clients.Group(OperationsHub.TenantGroup(tenantEvents.Key.ToString("D")))
+                            .SendAsync("operationsChanged", new { resources, events = resourceEvents, occurredAt = now }, stoppingToken);
+
+                        var ids = tenantEvents.Select(x => x.Id).ToArray();
+                        await db.IntegrationOutboxEvents.Where(x => ids.Contains(x.Id)).ExecuteUpdateAsync(update => update
+                            .SetProperty(x => x.PublishedAt, now)
+                            .SetProperty(x => x.DispatchAttempts, x => x.DispatchAttempts + 1)
+                            .SetProperty(x => x.LastDispatchError, (string?)null), stoppingToken);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
+                    catch (Exception exception)
+                    {
+                        await MarkFailedAsync(db, tenantEvents.Select(x => x.Id).ToArray(), now, exception, stoppingToken);
+                        logger.LogWarning(exception, "Realtime outbox olayı yayınlanamadı; tekrar denenecek. TenantId: {TenantId}", tenantEvents.Key);
+                    }
+                }
+
+                if (now >= nextReconciliation)
+                {
+                    var tenantIds = await db.Tenants.AsNoTracking().Select(x => x.Id).ToListAsync(stoppingToken);
+                    foreach (var tenantId in tenantIds)
+                        await dashboard.RebuildTenantAsync(tenantId, stoppingToken);
+                    nextReconciliation = now.Add(ReconciliationInterval);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception exception)
             {
-                logger.LogWarning(exception, "Realtime operasyon değişiklikleri yayınlanamadı");
+                logger.LogWarning(exception, "Realtime outbox dispatcher döngüsü başarısız oldu");
             }
         }
     }
 
-    private static string Resource(string jobType) => jobType switch
+    private static async Task MarkFailedAsync(AppDbContext db, Guid[] ids, DateTimeOffset now, Exception exception, CancellationToken cancellationToken)
     {
-        var value when value.Contains("ORDER", StringComparison.Ordinal) => "orders",
-        var value when value.Contains("WEBHOOK", StringComparison.Ordinal) => "orders",
-        var value when value.Contains("RETURN", StringComparison.Ordinal) => "returns",
-        var value when value.Contains("INVENTORY", StringComparison.Ordinal) || value.Contains("STOCK", StringComparison.Ordinal) => "inventory",
-        var value when value.Contains("PRODUCT", StringComparison.Ordinal) => "products",
-        var value when value.Contains("INVOICE", StringComparison.Ordinal) || value.Contains("EFATURAM", StringComparison.Ordinal) || value.Contains("BILLING", StringComparison.Ordinal) => "invoices",
-        var value when value.Contains("CONNECTION", StringComparison.Ordinal) || value.Contains("PROBE", StringComparison.Ordinal) => "connections",
-        _ => "jobs"
-    };
+        var safeError = exception.Message.Length > 512 ? exception.Message[..512] : exception.Message;
+        var events = await db.IntegrationOutboxEvents.Where(x => ids.Contains(x.Id)).ToListAsync(cancellationToken);
+        foreach (var item in events)
+        {
+            item.DispatchAttempts++;
+            item.LastDispatchError = safeError;
+            item.NextAttemptAt = now.AddSeconds(BackoffSeconds(item.DispatchAttempts));
+        }
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static double BackoffSeconds(int attempts) => Math.Min(60, Math.Pow(2, Math.Min(attempts + 1, 6)));
 }

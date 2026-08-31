@@ -361,17 +361,11 @@ export function ProductsPage() {
 
   async function bulkSetProductStatus(newStatus: 'ACTIVE' | 'ARCHIVED') {
     setBulkOpen(false)
-    const targets = selectedProducts
-    if (!targets.length) return
+    const targetCount = selectedProductIds.length
+    if (!targetCount) return
     try {
-      for (const p of targets) {
-        await hubApi(`/products/${p.id}`, {
-          method: 'PATCH',
-          headers: { 'If-Match': `"v${p.version}"` },
-          body: JSON.stringify({ status: newStatus })
-        })
-      }
-      showProductToast(`${targets.length} ürün durumu “${newStatus === 'ACTIVE' ? 'Satışta' : 'Kapalı'}” olarak güncellendi.`, 'success')
+      await hubApi('/products/bulk-status', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productIds: selectedProductIds, status: newStatus }) })
+      showProductToast(`${targetCount} ürün durumu “${newStatus === 'ACTIVE' ? 'Satışta' : 'Kapalı'}” olarak güncellendi.`, 'success')
       setSelectedProductIds([])
       setSelectedProductCache({})
       await refresh()

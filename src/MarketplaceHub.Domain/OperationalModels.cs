@@ -9,6 +9,9 @@ public sealed class IntegrationJob
     public Guid TenantId { get; set; }
     public Guid? ConnectionId { get; set; }
     public required string JobType { get; set; }
+    public string ResourceType { get; set; } = "jobs";
+    public string OperationType { get; set; } = "execute";
+    public string TriggerType { get; set; } = "system";
     public required string PayloadJson { get; set; }
     public int PayloadVersion { get; set; }
     public required string PayloadHash { get; set; }

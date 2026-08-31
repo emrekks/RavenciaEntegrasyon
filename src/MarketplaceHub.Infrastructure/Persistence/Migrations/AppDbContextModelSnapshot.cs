@@ -910,6 +910,168 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardLowStockProjection", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PrimaryImageUrl")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<decimal>("TotalStock")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("TenantId", "ProductId");
+
+                    b.HasIndex("TenantId", "TotalStock");
+
+                    b.ToTable("low_stock", "dashboard");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardRevenueDaily", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<string>("PlatformName")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("OrderCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("TenantId", "Day", "PlatformName", "Currency");
+
+                    b.HasIndex("TenantId", "Day");
+
+                    b.ToTable("revenue_daily", "dashboard");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardSnapshot", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ActiveConnections")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DueSoonInvoices")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LateOrders")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LowStockProducts")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MonthOrders")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("MonthProductQuantity")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("PendingByPlatformJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("PendingOrders")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PendingReturns")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TodayOrders")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("TodayProductQuantity")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("UninvoicedInvoices")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("snapshot", "dashboard");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardSyncStatusProjection", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ResourceType")
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("LastSuccessAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("TenantId", "ResourceType");
+
+                    b.ToTable("sync_status", "dashboard");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.ExternalEffectRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1454,6 +1616,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(6);
 
+                    b.Property<string>("OperationType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasDefaultValue("execute");
+
                     b.Property<string>("PayloadHash")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -1469,6 +1637,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)")
+                        .HasDefaultValue("jobs");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1479,6 +1653,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("TriggerType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("system");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
@@ -1495,6 +1675,67 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_job_attempt_bounds", "\"AttemptCount\" >= 0 AND \"MaxAttempts\" > 0 AND \"AttemptCount\" <= \"MaxAttempts\"");
                         });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.IntegrationOutboxEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AggregateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AggregateType")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<long?>("AggregateVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int>("DispatchAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LastDispatchError")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OperationType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CreatedAt");
+
+                    b.HasIndex("PublishedAt", "NextAttemptAt", "CreatedAt");
+
+                    b.ToTable("outbox_events", "integration");
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.InventoryItem", b =>
@@ -4757,6 +4998,42 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardLowStockProjection", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardRevenueDaily", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardSnapshot", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardSyncStatusProjection", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.ExternalEffectRecord", b =>
                 {
                     b.HasOne("MarketplaceHub.Domain.Tenant", null)
@@ -4815,6 +5092,15 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.IntegrationJob", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.IntegrationOutboxEvent", b =>
                 {
                     b.HasOne("MarketplaceHub.Domain.Tenant", null)
                         .WithMany()

@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using MarketplaceHub.Api.Catalog;
+using MarketplaceHub.Api.Dashboard;
 using MarketplaceHub.Api.Invoicing;
 using MarketplaceHub.Api.Marketplace;
 using MarketplaceHub.Api.Operations;
@@ -88,6 +89,7 @@ app.UseMiddleware<IdempotencyMiddleware>();
 app.UseRateLimiter();
 app.MapAuthEndpoints();
 app.MapCatalogEndpoints();
+app.MapDashboardEndpoints();
 app.MapJobEndpoints();
 app.MapMarketplaceEndpoints();
 app.MapInvoicingEndpoints();

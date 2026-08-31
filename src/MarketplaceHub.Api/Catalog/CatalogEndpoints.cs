@@ -59,6 +59,8 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? Results.Ok(await service.ListProductsAsync(tenant.TenantId, PageSize(limit), after, status, search, platform, stock, http.RequestAborted)) : Unauthorized(http));
         api.MapGet("/products/summary", async (HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ProductSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
+        api.MapPost("/products/bulk-status", async (BulkProductStatusCommand command, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetStatusAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : MissingContext(http));
         api.MapGet("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetProductAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPost("/products", async (CreateProductCommand command, HttpContext http, ICatalogService service) =>

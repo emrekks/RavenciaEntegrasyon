@@ -5,11 +5,12 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, TimeProvider timeProvider) : ICatalogService
+public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, TimeProvider timeProvider, IMemoryCache countCache) : ICatalogService
 {
     public async Task<PageResult<CategoryView>> ListCategoriesAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken)
     {
@@ -266,15 +267,21 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     public async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, CancellationToken cancellationToken)
     {
-        var afterId = Decode(after); var query = db.Products.AsNoTracking().Where(x => x.TenantId == tenantId);
+        var query = db.Products.AsNoTracking().Where(x => x.TenantId == tenantId);
         ApplyProductFilters(ref query, tenantId, status, search, platform, stock);
-        var totalCount = await query.CountAsync(cancellationToken);
-        if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
-        var rows = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+        var countKey = $"catalog:product-count:{tenantId:N}:{status?.Trim()}:{search?.Trim()}:{platform?.Trim()}:{stock?.Trim()}";
+        var cachedCount = countCache.Get(countKey);
+        var totalCount = cachedCount is int count ? count : await query.CountAsync(cancellationToken);
+        if (cachedCount is not int)
+            countCache.Set(countKey, totalCount, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(15), Size = 1 });
+        if (!cursors.TryDecodeProduct(after, out var afterUpdatedAt, out var afterId))
+            throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(after));
+        if (afterId != Guid.Empty) query = query.Where(x => x.UpdatedAt < afterUpdatedAt || x.UpdatedAt == afterUpdatedAt && x.Id.CompareTo(afterId) < 0);
+        var rows = await query.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
         var hasMore = rows.Count > limit; var products = rows.Take(limit).ToList(); var ids = products.Select(x => x.Id).ToArray();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken);
-        return new(views, hasMore ? cursors.Encode(rows[limit - 1].Id) : null, hasMore, totalCount);
+        return new(views, hasMore ? cursors.EncodeProduct(rows[limit - 1].UpdatedAt, rows[limit - 1].Id) : null, hasMore, totalCount);
     }
 
     public async Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
@@ -309,6 +316,27 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             products.Count(x => stockByProduct.GetValueOrDefault(x.Id) <= 0),
             products.Count(x => stockByProduct.GetValueOrDefault(x.Id) > 0 && stockByProduct.GetValueOrDefault(x.Id) <= 5),
             platforms);
+    }
+
+    public async Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken)
+    {
+        var ids = command.ProductIds.Distinct().ToArray();
+        if (ids.Length is 0 or > 500) return ServiceResult<int>.Fail("BULK_PRODUCT_LIMIT", "Toplu işlemde 1-500 ürün seçilebilir.", 422);
+        if (!Enum.TryParse<ProductStatus>(command.Status, true, out var status) || status == ProductStatus.Draft)
+            return ServiceResult<int>.Fail("BULK_PRODUCT_STATUS_INVALID", "Toplu işlem yalnız ACTIVE veya ARCHIVED durumuna izin verir.", 422);
+
+        var products = await db.Products.Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).ToListAsync(cancellationToken);
+        if (products.Count != ids.Length) return ServiceResult<int>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
+        var now = timeProvider.GetUtcNow();
+        foreach (var product in products)
+        {
+            product.Status = status;
+            product.ArchivedAt = status == ProductStatus.Archived ? now : null;
+            product.UpdatedAt = now;
+            product.Version++;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<int>.Ok(products.Count);
     }
 
     public async Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken)

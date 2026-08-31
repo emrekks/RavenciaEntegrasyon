@@ -10,6 +10,31 @@ public sealed class CursorCodec(IDataProtectionProvider provider, TimeProvider t
 
     public string Encode(Guid id) => _protector.Protect(id.ToString("D"), TimeSpan.FromHours(1));
 
+    public string EncodeProduct(DateTimeOffset updatedAt, Guid id) =>
+        _protector.Protect($"PRODUCT|{updatedAt.UtcTicks.ToString(CultureInfo.InvariantCulture)}|{id:D}", TimeSpan.FromHours(1));
+
+    public bool TryDecodeProduct(string? cursor, out DateTimeOffset updatedAt, out Guid id)
+    {
+        updatedAt = default;
+        id = Guid.Empty;
+        if (string.IsNullOrWhiteSpace(cursor)) return true;
+        try
+        {
+            var value = _protector.Unprotect(cursor, out var expiration);
+            var parts = value.Split('|');
+            long ticks = 0;
+            var validTicks = parts.Length == 3 && long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out ticks);
+            if (validTicks) updatedAt = new DateTimeOffset(ticks, TimeSpan.Zero);
+            return expiration > timeProvider.GetUtcNow()
+                && parts.Length == 3
+                && parts[0] == "PRODUCT"
+                && validTicks
+                && Guid.TryParse(parts[2], out id);
+        }
+        catch (CryptographicException) { return false; }
+        catch (ArgumentOutOfRangeException) { return false; }
+    }
+
     public bool TryDecode(string? cursor, out Guid id)
     {
         id = Guid.Empty;

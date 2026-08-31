@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type D
 import { Link, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
-import { api, ApiRequestError, hubApi, loadAllPages, type Me, type TenantOption } from './api'
+import { api, ApiRequestError, hubApi, type Me, type TenantOption } from './api'
 import './styles/dashboard.css'
 import './styles/shipping-designer.css'
 const AttributesPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.AttributesPage })))
@@ -28,15 +28,6 @@ const InvoiceDetailPage = lazy(() => import('./InvoicingPages').then(module => (
 const BillingSettingsPage = lazy(() => import('./InvoicingPages').then(module => ({ default: module.BillingSettingsPage })))
 const JobsPage = lazy(() => import('./OperationsPages').then(module => ({ default: module.JobsPage })))
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, loadShippingLabelSettings, saveShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from './shipping-label'
-
-type ShellConnection = {
-  id: string
-  displayName: string
-  platformCode: string
-  environment: string
-  status: string
-  lastSuccessAt: string | null
-}
 
 function Shell({ me }: { me: Me }) {
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
@@ -97,21 +88,37 @@ function useOperationsRealtime(enabled: boolean) {
       .withAutomaticReconnect([0, 1000, 3000, 10_000])
       .configureLogging(LogLevel.Warning)
       .build()
-    connection.on('operationsChanged', ({ resources }: { resources?: string[] }) => {
+    const seenEvents = new Set<string>()
+    const pendingResources = new Set<string>()
+    let flushTimer: number | null = null
+    const flush = () => {
+      flushTimer = null
+      const resources = [...pendingResources]
+      pendingResources.clear()
       const queryKeysByResource: Record<string, string[][]> = {
-        orders: [['orders'], ['dashboard-orders'], ['dashboard-invoice-workspace']],
-        returns: [['returns'], ['dashboard-returns']],
-        products: [['products'], ['dashboard-products']],
-        inventory: [['inventory'], ['dashboard-products']],
-        invoices: [['invoices'], ['dashboard-invoice-workspace']],
-        connections: [['connections'], ['dashboard-connections']],
-        jobs: [['jobs'], ['dashboard-jobs']]
+        orders: [['orders'], ['dashboard-bootstrap'], ['dashboard-revenue-series']],
+        returns: [['returns'], ['dashboard-bootstrap']],
+        products: [['products'], ['dashboard-bootstrap']],
+        inventory: [['inventory'], ['dashboard-bootstrap']],
+        invoices: [['invoices'], ['dashboard-bootstrap']],
+        connections: [['connections'], ['dashboard-bootstrap']],
+        jobs: [['jobs']]
       }
-      for (const resource of resources ?? []) {
+      for (const resource of resources) {
         for (const queryKey of queryKeysByResource[resource.toLowerCase()] ?? []) void client.invalidateQueries({ queryKey })
       }
-      void client.invalidateQueries({ queryKey: ['jobs'] })
-      void client.invalidateQueries({ queryKey: ['dashboard-jobs'] })
+    }
+    connection.on('operationsChanged', ({ resources, events }: { resources?: string[]; events?: { eventId?: string }[] }) => {
+      for (const event of events ?? []) {
+        if (!event.eventId || seenEvents.has(event.eventId)) continue
+        seenEvents.add(event.eventId)
+      }
+      for (const resource of resources ?? []) pendingResources.add(resource)
+      if (flushTimer === null) flushTimer = window.setTimeout(flush, 250)
+    })
+    connection.onreconnected(() => {
+      void client.invalidateQueries({ queryKey: ['dashboard-bootstrap'] })
+      void client.invalidateQueries({ queryKey: ['dashboard-revenue-series'] })
     })
     let stopped = false
     let retryTimer: number | null = null
@@ -127,6 +134,7 @@ function useOperationsRealtime(enabled: boolean) {
     return () => {
       stopped = true
       if (retryTimer !== null) window.clearTimeout(retryTimer)
+      if (flushTimer !== null) window.clearTimeout(flushTimer)
       void connection.stop()
     }
   }, [client, enabled])
@@ -227,11 +235,11 @@ function Login() {
 
 function ChangePassword() { const client = useQueryClient(); const [message, setMessage] = useState('İlk girişte parolanızı değiştirmeniz gerekir.'); async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await api('/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: data.get('current'), newPassword: data.get('next') }) }); await client.invalidateQueries({ queryKey: ['me'] }) } catch { setMessage('Parola değiştirilemedi; politika ve mevcut parolayı kontrol edin.') } } return <div className="auth-page"><section className="auth-card"><h1>Parolanızı değiştirin</h1><p role="status">{message}</p><form onSubmit={submit}><label>Geçerli parola<input name="current" type="password" required /></label><label>Yeni parola<input name="next" type="password" minLength={15} maxLength={64} required /></label><button>Parolayı değiştir</button></form></section></div> }
 function MfaChallenge() { const client = useQueryClient(); const [error, setError] = useState(''); async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await api('/mfa/challenge', { method: 'POST', body: JSON.stringify({ code: data.get('code'), recoveryCode: data.get('recovery') || null }) }); await client.invalidateQueries({ queryKey: ['me'] }) } catch { setError('Kod geçersiz veya daha önce kullanılmış.') } } return <div className="auth-page"><section className="auth-card"><h1>İki adımlı doğrulama</h1><p>Authenticator uygulamanızdaki 6 haneli kodu girin.</p><form onSubmit={submit}><label>Doğrulama kodu<input name="code" inputMode="numeric" pattern="[0-9]{6}" /></label><label>Kurtarma kodu (alternatif)<input name="recovery" /></label>{error && <div role="alert" className="error">{error}</div>}<button>Doğrula</button></form></section></div> }
-type DashboardOrder = { orderNumber: string; derivedStatus: string; orderedAt: string; currency: string; grossAmount: number; netAmount: number; platformDisplayName: string; shipmentDueAt: string | null; isDeadlineCritical: boolean; cargoProviderName: string | null; productQuantity: number }
-type DashboardReturn = { status: string }
-type DashboardInvoice = { invoiceId: string | null; isDueSoon: boolean; canCreateInvoice: boolean }
-type DashboardProduct = { id: string; title: string; totalStock: number; primaryImageUrl: string | null; activePlatforms: string[] | null }
-type DashboardJob = { jobType: string; status: string; createdAt: string; completedAt: string | null }
+type DashboardMetrics = { pendingOrders: number; lateOrders: number; todayOrders: number; todayProductQuantity: number; monthOrders: number; monthProductQuantity: number; pendingReturns: number; dueSoonInvoices: number; uninvoicedInvoices: number; lowStockProducts: number; activeConnections: number; pendingByPlatform: Record<string, number> }
+type DashboardLowStock = { id: string; title: string; totalStock: number; primaryImageUrl: string | null }
+type DashboardSyncStatus = { resourceType: string; label: string; kind: string; status: string; lastAttemptAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null }
+type DashboardBootstrap = { metrics: DashboardMetrics; lowStock: DashboardLowStock[]; sync: DashboardSyncStatus[]; platforms: { name: string; status: string }[]; generatedAt: string; version: number }
+type DashboardRevenuePoint = { day: string; amount: number; orderCount: number; currency: string }
 type DashboardRevenueRange = '1' | '3' | '7' | '14' | '30' | 'month' | 'custom'
 
 function dashboardDateKey(value: Date) {
@@ -241,15 +249,6 @@ function dashboardDateKey(value: Date) {
 }
 
 function dashboardDateInputValue(value = new Date()) { return dashboardDateKey(value) }
-function dashboardRevenueAmount(item: DashboardOrder) {
-  const status = item.derivedStatus.toUpperCase()
-  return status === 'CANCELLED' || status === 'CANCELED' || status === 'RETURNED' ? 0 : item.netAmount || item.grossAmount || 0
-}
-
-function dashboardIsRevenueOrder(item: DashboardOrder) {
-  return dashboardRevenueAmount(item) > 0
-}
-
 function DashboardMetricIcon({ kind }: { kind: string }) {
   const icons: Record<string, ReactNode> = {
     pending: <><path d="M4 6h16v12H4z"/><path d="M8 4v4M16 4v4M7 11h4M7 15h7"/></>,
@@ -264,9 +263,9 @@ function DashboardMetricIcon({ kind }: { kind: string }) {
   return <span className={`dashboard-metric-icon ${kind}`} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{icons[kind] ?? icons.pending}</svg></span>
 }
 
-function dashboardSyncTime(job: DashboardJob | undefined) {
-  if (!job) return 'Kayıt yok'
-  const timestamp = new Date(job.completedAt ?? job.createdAt)
+function dashboardSyncTime(sync: DashboardSyncStatus | undefined) {
+  if (!sync || !sync.lastSuccessAt) return 'Kayıt yok'
+  const timestamp = new Date(sync.lastSuccessAt)
   if (Number.isNaN(timestamp.getTime())) return 'Kayıt yok'
   const minutes = Math.max(0, Math.floor((Date.now() - timestamp.getTime()) / 60_000))
   if (minutes < 1) return 'Az önce'
@@ -285,30 +284,11 @@ function Dashboard({ me }: { me: Me }) {
   const [revenueFrom, setRevenueFrom] = useState(() => dashboardDateInputValue())
   const [revenueTo, setRevenueTo] = useState(() => dashboardDateInputValue())
   const [revenuePlatform, setRevenuePlatform] = useState('ALL')
-  const dashboardRefreshOptions = { refetchInterval: 60_000, refetchOnWindowFocus: true } as const
-  const connections = useQuery({ queryKey: ['dashboard-connections'], queryFn: () => loadAllPages<ShellConnection>('/connections'), ...dashboardRefreshOptions })
-  const orders = useQuery({ queryKey: ['dashboard-orders'], queryFn: () => loadAllPages<DashboardOrder>('/orders'), ...dashboardRefreshOptions })
-  const returns = useQuery({ queryKey: ['dashboard-returns'], queryFn: () => loadAllPages<DashboardReturn>('/returns'), ...dashboardRefreshOptions })
-  const invoices = useQuery({ queryKey: ['dashboard-invoice-workspace'], queryFn: () => hubApi<DashboardInvoice[]>('/invoice-workspace'), ...dashboardRefreshOptions })
-  const products = useQuery({ queryKey: ['dashboard-products'], queryFn: () => loadAllPages<DashboardProduct>('/products'), ...dashboardRefreshOptions })
-  const jobs = useQuery({ queryKey: ['dashboard-jobs'], queryFn: () => hubApi<DashboardJob[]>('/jobs'), ...dashboardRefreshOptions })
-  const loading = [connections, orders, returns, invoices, products, jobs].some(query => query.isLoading)
-  const now = new Date(); const orderItems = orders.data?.items ?? []; const productItems = products.data?.items ?? []
-  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const terminal = new Set(['DELIVERED', 'CANCELLED', 'CANCELED', 'RETURNED'])
-  const pending = orderItems.filter(item => !terminal.has(item.derivedStatus.toUpperCase()))
-  const late = pending.filter(item => item.shipmentDueAt && new Date(item.shipmentDueAt) < now)
-  const today = orderItems.filter(item => { const value = new Date(item.orderedAt); return dashboardIsRevenueOrder(item) && value >= todayStart && value <= now })
-  const month = orderItems.filter(item => { const value = new Date(item.orderedAt); return dashboardIsRevenueOrder(item) && value >= monthStart && value <= now })
-  const pendingReturns = (returns.data?.items ?? []).filter(item => ['REQUESTED', 'AWAITING_SHIPMENT', 'IN_TRANSIT', 'ACTION_REQUIRED', 'DISPUTED'].includes(item.status.toUpperCase())).length
-  const uninvoiced = (invoices.data ?? []).filter(item => !item.invoiceId && item.canCreateInvoice).length
-  const dueSoon = (invoices.data ?? []).filter(item => !item.invoiceId && item.isDueSoon).length
-  const lowStock = productItems.filter(item => item.totalStock <= 5)
-  const verified = (connections.data?.items ?? []).filter(item => item.status === 'VERIFIED' || item.status === 'ACTIVE').length
-  const group = (values: string[]) => Object.entries(values.reduce<Record<string, number>>((acc, value) => { const label = value || 'Belirtilmemiş'; acc[label] = (acc[label] ?? 0) + 1; return acc }, {})).sort((a, b) => b[1] - a[1])
-  const byPlatform = group(pending.map(item => item.platformDisplayName || 'Trendyol'))
-  const revenuePlatformOptions = group(orderItems.map(item => item.platformDisplayName || 'Belirtilmemiş')).map(([name]) => name)
+  const dashboardRefreshOptions = { refetchInterval: 60_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 30_000 } as const
+  const bootstrap = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), ...dashboardRefreshOptions })
+  const loading = bootstrap.isLoading
+  const now = new Date(); const metrics = bootstrap.data?.metrics
+  const revenuePlatformOptions = (bootstrap.data?.platforms ?? []).map(platform => platform.name)
   const customFromDate = new Date(`${revenueFrom}T00:00:00`)
   const customToDate = new Date(`${revenueTo}T23:59:59.999`)
   const customStart = customFromDate <= customToDate ? customFromDate : customToDate
@@ -319,37 +299,24 @@ function Dashboard({ me }: { me: Me }) {
       ? new Date(now.getFullYear(), now.getMonth(), 1)
       : (() => { const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - (Number(revenueRange) - 1)); return date })()
   const revenueEnd = revenueRange === 'custom' ? customEnd : now
-  const revenueDays = Math.max(1, Math.floor((revenueEnd.getTime() - revenueStart.getTime()) / 86_400_000) + 1)
-  const revenueOrders = orderItems.filter(item => { const orderedAt = new Date(item.orderedAt); return dashboardRevenueAmount(item) > 0 && orderedAt >= revenueStart && orderedAt <= revenueEnd && (revenuePlatform === 'ALL' || (item.platformDisplayName || 'Belirtilmemiş') === revenuePlatform) })
-  const revenueSeries = Array.from({ length: revenueDays }, (_, index) => {
-    const date = new Date(revenueStart)
-    date.setDate(revenueStart.getDate() + index)
-    const key = dashboardDateKey(date)
-    const amount = revenueOrders.filter(item => dashboardDateKey(new Date(item.orderedAt)) === key).reduce((sum, item) => sum + dashboardRevenueAmount(item), 0)
-    return { key, amount, label: date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }), currency: revenueOrders.find(item => dashboardDateKey(new Date(item.orderedAt)) === key)?.currency || 'TRY' }
-  })
+  const revenueQuery = useQuery({ queryKey: ['dashboard-revenue-series', revenueRange, revenueFrom, revenueTo, revenuePlatform], queryFn: () => hubApi<DashboardRevenuePoint[]>(`/dashboard/revenue-series?from=${encodeURIComponent(revenueStart.toISOString())}&to=${encodeURIComponent(revenueEnd.toISOString())}&platform=${encodeURIComponent(revenuePlatform)}`), ...dashboardRefreshOptions })
+  const revenueSeries = (revenueQuery.data ?? []).map(point => { const date = new Date(point.day); return { ...point, key: dashboardDateKey(date), label: date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) } })
   const maxRevenue = Math.max(1, ...revenueSeries.map(item => item.amount))
   const revenueTotal = revenueSeries.reduce((sum, item) => sum + item.amount, 0)
-  const connectionItems = connections.data?.items ?? []
-  const activeConnections = connectionItems.filter(item => ['ACTIVE', 'VERIFIED', 'CONNECTED'].includes(item.status.toUpperCase()))
-  const syncConnection = activeConnections[0] ?? connectionItems[0]
-  const latestSuccessfulJob = (terms: string[]) => (jobs.data ?? []).filter(job => job.status === 'SUCCEEDED' && terms.some(term => job.jobType.toUpperCase().includes(term))).sort((a, b) => new Date(b.completedAt ?? b.createdAt).getTime() - new Date(a.completedAt ?? a.createdAt).getTime())[0]
-  const syncDefinitions = [
-    { label: 'Siparişler', kind: 'orders', terms: ['ORDER', 'SHIPMENT', 'PACKAGE', 'WEBHOOK'], required: true },
-    { label: 'İadeler', kind: 'returns', terms: ['RETURN', 'CLAIM'], required: true },
-    { label: 'Stok', kind: 'stock', terms: ['INVENTORY', 'STOCK', 'PRICE'], required: true },
-    { label: 'Ürünler', kind: 'products', terms: ['PRODUCT', 'CATALOG', 'PUBLICATION'], required: false },
-    { label: 'Faturalar', kind: 'invoices', terms: ['INVOICE', 'EFATURAM', 'BILLING'], required: false },
-    { label: 'Kategoriler', kind: 'catalog', terms: ['CATEGORY', 'BRAND', 'ATTRIBUTE', 'MAPPING'], required: false }
-  ]
-  const syncRows = syncDefinitions.map(definition => ({ ...definition, job: latestSuccessfulJob(definition.terms) })).filter(row => row.required || row.job)
-  const latestSyncJob = syncRows.map(row => row.job).filter((job): job is DashboardJob => Boolean(job)).sort((a, b) => new Date(b.completedAt ?? b.createdAt).getTime() - new Date(a.completedAt ?? a.createdAt).getTime())[0]
-  const errors = [connections.error, orders.error, returns.error, invoices.error, products.error, jobs.error].filter(Boolean)
+  const revenueOrderCount = revenueSeries.reduce((sum, item) => sum + item.orderCount, 0)
+  const platformItems = bootstrap.data?.platforms ?? []
+  const activeConnections = platformItems.filter(item => ['ACTIVE', 'VERIFIED', 'CONNECTED'].includes(item.status.toUpperCase()))
+  const syncConnection = activeConnections[0] ?? platformItems[0]
+  const syncRows = bootstrap.data?.sync ?? []
+  const latestSync = [...syncRows].sort((a, b) => new Date(b.lastSuccessAt ?? 0).getTime() - new Date(a.lastSuccessAt ?? 0).getTime())[0]
+  const lowStock = bootstrap.data?.lowStock ?? []
+  const byPlatform = Object.entries(metrics?.pendingByPlatform ?? {}).sort((a, b) => b[1] - a[1])
+  const errors = [bootstrap.error, revenueQuery.error].filter(Boolean)
   return <section className="content dashboard"><div className="page-heading"><div><p className="eyebrow">Operasyon merkezi</p><h1>Genel Bakış</h1><p className="lede">Merhaba {me.displayName}. Günlük operasyonun önemli sinyalleri tek ekranda.</p></div><div className="dashboard-heading-actions"><span className="dashboard-date">{now.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div></div>
     {errors.length > 0 && <div role="alert" className="error">Bazı operasyon verileri alınamadı; görünen metrikler kısmi olabilir.</div>}
-    <div className="metrics dashboard-metrics operational-metrics"><article><DashboardMetricIcon kind="pending" /><small>Bekleyen Sipariş</small><strong>{loading ? '—' : pending.length}</strong><p>{byPlatform.map(([name, count]) => `${name}: ${count}`).join(' · ') || 'Bekleyen yok'}</p></article><article className={late.length ? 'danger-metric' : ''}><DashboardMetricIcon kind="late" /><small>Geciken Sipariş</small><strong>{loading ? '—' : late.length}</strong><p>Termin zamanı aşılmış</p></article><article><DashboardMetricIcon kind="today" /><small>Bugünkü Sipariş</small><strong>{loading ? '—' : today.length}</strong><p>{today.reduce((sum, item) => sum + item.productQuantity, 0)} ürün · İptal/iade hariç</p></article><article><DashboardMetricIcon kind="month" /><small>Bu Ayki Sipariş</small><strong>{loading ? '—' : month.length}</strong><p>Satışa dönüşenler · İptal/iade hariç</p></article><article><DashboardMetricIcon kind="return" /><small>Bekleyen İade</small><strong>{loading ? '—' : pendingReturns}</strong><p>İşlem veya taşıma aşaması</p></article><article className={dueSoon ? 'warning-metric' : ''}><DashboardMetricIcon kind="invoice" /><small>Süresi Yaklaşan Fatura</small><strong>{loading ? '—' : dueSoon}</strong><p>5. gün ve sonrası</p></article><article><DashboardMetricIcon kind="uninvoiced" /><small>Faturalandırılmamış</small><strong>{loading ? '—' : uninvoiced}</strong><p>Kesilebilir kayıtlar</p></article><article><DashboardMetricIcon kind="stock" /><small>Düşük / Yok Stok</small><strong>{loading ? '—' : lowStock.length}</strong><p>5 adet ve altı</p></article></div>
-    <div className="dashboard-report-grid"><article className="panel dashboard-revenue-panel"><div className="panel-title"><div><h2>Satış cirosu</h2><p>Seçilen dönemde gerçekleşen sipariş toplamı</p></div><div className="dashboard-revenue-controls"><label className="dashboard-period-select"><span>Ciro dönemi</span><select aria-label="Ciro dönemi" value={revenueRange} onChange={event => setRevenueRange(event.target.value as DashboardRevenueRange)}><option value="1">Günlük</option><option value="3">Son 3 gün</option><option value="7">Son 7 gün</option><option value="14">Son 14 gün</option><option value="30">Son 30 gün</option><option value="month">Bu ay</option><option value="custom">Özel tarih</option></select></label><label><span>Platform</span><select aria-label="Ciro platformu" value={revenuePlatform} onChange={event => setRevenuePlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div></div>{revenueRange === 'custom' && <div className="dashboard-custom-range"><label><span>Başlangıç</span><input type="date" value={revenueFrom} max={revenueTo} onChange={event => setRevenueFrom(event.target.value)} /></label><label><span>Bitiş</span><input type="date" value={revenueTo} min={revenueFrom} onChange={event => setRevenueTo(event.target.value)} /></label></div>}<div className="dashboard-revenue-summary"><strong>{dashboardMoney(revenueTotal, revenueSeries.find(item => item.amount > 0)?.currency || 'TRY')}</strong><span>{revenueOrders.length} sipariş</span></div><div className="dashboard-revenue-chart">{revenueSeries.map(point => <div className="dashboard-revenue-column" key={point.key}><div className="dashboard-revenue-bar-wrap"><b className="dashboard-revenue-bar" style={{ height: `${Math.max(point.amount ? 12 : 4, point.amount / maxRevenue * 100)}%` }} title={dashboardMoney(point.amount, point.currency)} /></div><span>{point.label}</span></div>)}</div></article><article className="panel dashboard-api-panel"><div className="panel-title"><div><h2>Son senkronizasyonlar</h2><p>Sipariş, iade ve stok kayıtlarının güncel zamanı</p></div><Link to="/jobs">İşlem takibi →</Link></div><div className="dashboard-api-list dashboard-sync-list">{syncRows.map(row => <Link to="/jobs" key={row.label}><span className={`dashboard-sync-icon ${row.kind}`} aria-hidden="true">↻</span><span><strong>{row.label}</strong><small>{row.job ? 'Başarılı senkronizasyon' : 'Henüz kayıt yok'}</small></span><b>{dashboardSyncTime(row.job)}</b></Link>)}</div><div className="dashboard-sync-meta"><span aria-hidden="true">↻</span><span className="dashboard-sync-meta-copy"><strong>{latestSyncJob ? `Son veri senkronizasyonu: ${dashboardSyncTime(latestSyncJob)}` : 'Senkronizasyon kaydı yok'}</strong><small>Otomatik kontrol: 60 sn · Veri: {latestSyncJob ? dashboardSyncTime(latestSyncJob) : 'Kayıt yok'}</small></span></div></article></div>
-    <div className="dashboard-bottom-grid"><article className="panel dashboard-flow-panel"><div className="panel-title"><div><h2>Sipariş akışı</h2><p>Operasyon kayıtlarının anlık özeti</p></div><Link to="/orders">Detaylar →</Link></div><div className="dashboard-flow-list"><Link to="/orders"><span><i className="flow-dot new" /><strong>Bekleyen sipariş</strong></span><b>{loading ? '—' : pending.length}</b></Link><Link to="/orders"><span><i className="flow-dot late" /><strong>Geciken sipariş</strong></span><b>{loading ? '—' : late.length}</b></Link><Link to="/invoices"><span><i className="flow-dot invoice" /><strong>Fatura bekliyor</strong></span><b>{loading ? '—' : uninvoiced}</b></Link><Link to="/returns"><span><i className="flow-dot return" /><strong>Bekleyen iade</strong></span><b>{loading ? '—' : pendingReturns}</b></Link></div></article><article className="panel dashboard-active-platform"><div className="dashboard-platform-orbit" aria-hidden="true"><span /><span /><span /><i /></div><small>Aktif Platform</small><strong>{loading ? '—' : activeConnections.length || verified}</strong><p>{syncConnection?.displayName ?? 'Bağlantı bekleniyor'}</p><Link to="/integrations">Platformları yönet →</Link></article><article className="panel dashboard-stock-panel"><div className="panel-title"><div><h2>Stok durumu</h2><p>En düşük stoklu ürünler</p></div><Link to="/products">Ürünler →</Link></div><div className="dashboard-product-list">{lowStock.sort((a, b) => a.totalStock - b.totalStock).slice(0, 4).map(item => <Link to={`/products/${item.id}`} key={item.id}>{item.primaryImageUrl ? <img src={item.primaryImageUrl} alt="" /> : <span>▧</span>}<strong>{item.title}</strong><b>{item.totalStock}</b></Link>)}{!lowStock.length && <p>Düşük stoklu ürün yok.</p>}</div></article></div>
+    <div className="metrics dashboard-metrics operational-metrics"><article><DashboardMetricIcon kind="pending" /><small>Bekleyen Sipariş</small><strong>{loading ? '—' : metrics?.pendingOrders ?? 0}</strong><p>{byPlatform.map(([name, count]) => `${name}: ${count}`).join(' · ') || 'Bekleyen yok'}</p></article><article className={(metrics?.lateOrders ?? 0) ? 'danger-metric' : ''}><DashboardMetricIcon kind="late" /><small>Geciken Sipariş</small><strong>{loading ? '—' : metrics?.lateOrders ?? 0}</strong><p>Termin zamanı aşılmış</p></article><article><DashboardMetricIcon kind="today" /><small>Bugünkü Sipariş</small><strong>{loading ? '—' : metrics?.todayOrders ?? 0}</strong><p>{metrics?.todayProductQuantity ?? 0} ürün · İptal/iade hariç</p></article><article><DashboardMetricIcon kind="month" /><small>Bu Ayki Sipariş</small><strong>{loading ? '—' : metrics?.monthOrders ?? 0}</strong><p>Satışa dönüşenler · İptal/iade hariç</p></article><article><DashboardMetricIcon kind="return" /><small>Bekleyen İade</small><strong>{loading ? '—' : metrics?.pendingReturns ?? 0}</strong><p>İşlem veya taşıma aşaması</p></article><article className={(metrics?.dueSoonInvoices ?? 0) ? 'warning-metric' : ''}><DashboardMetricIcon kind="invoice" /><small>Süresi Yaklaşan Fatura</small><strong>{loading ? '—' : metrics?.dueSoonInvoices ?? 0}</strong><p>5. gün ve sonrası</p></article><article><DashboardMetricIcon kind="uninvoiced" /><small>Faturalandırılmamış</small><strong>{loading ? '—' : metrics?.uninvoicedInvoices ?? 0}</strong><p>Kesilebilir kayıtlar</p></article><article><DashboardMetricIcon kind="stock" /><small>Düşük / Yok Stok</small><strong>{loading ? '—' : metrics?.lowStockProducts ?? 0}</strong><p>5 adet ve altı</p></article></div>
+    <div className="dashboard-report-grid"><article className="panel dashboard-revenue-panel"><div className="panel-title"><div><h2>Satış cirosu</h2><p>Seçilen dönemde gerçekleşen sipariş toplamı</p></div><div className="dashboard-revenue-controls"><label className="dashboard-period-select"><span>Ciro dönemi</span><select aria-label="Ciro dönemi" value={revenueRange} onChange={event => setRevenueRange(event.target.value as DashboardRevenueRange)}><option value="1">Günlük</option><option value="3">Son 3 gün</option><option value="7">Son 7 gün</option><option value="14">Son 14 gün</option><option value="30">Son 30 gün</option><option value="month">Bu ay</option><option value="custom">Özel tarih</option></select></label><label><span>Platform</span><select aria-label="Ciro platformu" value={revenuePlatform} onChange={event => setRevenuePlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div></div>{revenueRange === 'custom' && <div className="dashboard-custom-range"><label><span>Başlangıç</span><input type="date" value={revenueFrom} max={revenueTo} onChange={event => setRevenueFrom(event.target.value)} /></label><label><span>Bitiş</span><input type="date" value={revenueTo} min={revenueFrom} onChange={event => setRevenueTo(event.target.value)} /></label></div>}<div className="dashboard-revenue-summary"><strong>{dashboardMoney(revenueTotal, revenueSeries.find(item => item.amount > 0)?.currency || 'TRY')}</strong><span>{revenueOrderCount} sipariş</span></div><div className="dashboard-revenue-chart">{revenueSeries.map(point => <div className="dashboard-revenue-column" key={point.key}><div className="dashboard-revenue-bar-wrap"><b className="dashboard-revenue-bar" style={{ height: `${Math.max(point.amount ? 12 : 4, point.amount / maxRevenue * 100)}%` }} title={dashboardMoney(point.amount, point.currency)} /></div><span>{point.label}</span></div>)}</div></article><article className="panel dashboard-api-panel"><div className="panel-title"><div><h2>Son senkronizasyonlar</h2><p>Sipariş, iade ve stok kayıtlarının güncel zamanı</p></div><Link to="/jobs">İşlem takibi →</Link></div><div className="dashboard-api-list dashboard-sync-list">{syncRows.map(row => <Link to="/jobs" key={row.resourceType}><span className={`dashboard-sync-icon ${row.kind}`} aria-hidden="true">↻</span><span><strong>{row.label}</strong><small>{row.status === 'SUCCEEDED' ? 'Başarılı senkronizasyon' : 'Henüz kayıt yok'}</small></span><b>{dashboardSyncTime(row)}</b></Link>)}</div><div className="dashboard-sync-meta"><span aria-hidden="true">↻</span><span className="dashboard-sync-meta-copy"><strong>{latestSync ? `Son veri senkronizasyonu: ${dashboardSyncTime(latestSync)}` : 'Senkronizasyon kaydı yok'}</strong><small>Projection güncellemesi: {latestSync ? dashboardSyncTime(latestSync) : 'Kayıt yok'}</small></span></div></article></div>
+    <div className="dashboard-bottom-grid"><article className="panel dashboard-flow-panel"><div className="panel-title"><div><h2>Sipariş akışı</h2><p>Operasyon kayıtlarının anlık özeti</p></div><Link to="/orders">Detaylar →</Link></div><div className="dashboard-flow-list"><Link to="/orders"><span><i className="flow-dot new" /><strong>Bekleyen sipariş</strong></span><b>{loading ? '—' : metrics?.pendingOrders ?? 0}</b></Link><Link to="/orders"><span><i className="flow-dot late" /><strong>Geciken sipariş</strong></span><b>{loading ? '—' : metrics?.lateOrders ?? 0}</b></Link><Link to="/invoices"><span><i className="flow-dot invoice" /><strong>Fatura bekliyor</strong></span><b>{loading ? '—' : metrics?.uninvoicedInvoices ?? 0}</b></Link><Link to="/returns"><span><i className="flow-dot return" /><strong>Bekleyen iade</strong></span><b>{loading ? '—' : metrics?.pendingReturns ?? 0}</b></Link></div></article><article className="panel dashboard-active-platform"><div className="dashboard-platform-orbit" aria-hidden="true"><span /><span /><span /><i /></div><small>Aktif Platform</small><strong>{loading ? '—' : activeConnections.length}</strong><p>{syncConnection?.name ?? 'Bağlantı bekleniyor'}</p><Link to="/integrations">Platformları yönet →</Link></article><article className="panel dashboard-stock-panel"><div className="panel-title"><div><h2>Stok durumu</h2><p>En düşük stoklu ürünler</p></div><Link to="/products">Ürünler →</Link></div><div className="dashboard-product-list">{[...lowStock].sort((a, b) => a.totalStock - b.totalStock).slice(0, 4).map(item => <Link to={`/products/${item.id}`} key={item.id}>{item.primaryImageUrl ? <img src={item.primaryImageUrl} alt="" /> : <span>▧</span>}<strong>{item.title}</strong><b>{item.totalStock}</b></Link>)}{!lowStock.length && <p>Düşük stoklu ürün yok.</p>}</div></article></div>
   </section>
 }
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
