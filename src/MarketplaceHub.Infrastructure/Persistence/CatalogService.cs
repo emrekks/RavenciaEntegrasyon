@@ -1,4 +1,4 @@
-﻿using System.Data;
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -408,7 +408,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         }
         var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft);
         product.Title = command.Title.Trim(); product.Description = command.Description.Trim(); product.CategoryId = command.CategoryId; product.BrandId = command.BrandId; product.Version++; product.UpdatedAt = timeProvider.GetUtcNow();
-        if (command.Status != null) {
+        if (command.Status != null)
+        {
             product.Status = productStatus;
             foreach (var variant in existingVariants) { variant.Status = productStatus; variant.UpdatedAt = product.UpdatedAt; variant.Version++; }
         }

@@ -1,4 +1,4 @@
-﻿namespace MarketplaceHub.Domain;
+namespace MarketplaceHub.Domain;
 
 public enum ProductStatus { Draft = 0, Archived = 1, Active = 2 }
 public enum AttributeDataType { Text, Number, SingleSelect, MultiSelect, Boolean }

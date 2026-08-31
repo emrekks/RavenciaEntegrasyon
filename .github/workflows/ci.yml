@@ -31,11 +31,20 @@ jobs:
       - name: Restore backend
         run: dotnet restore MarketplaceHub.sln
 
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Verify .NET format
+        run: dotnet format MarketplaceHub.sln --verify-no-changes --no-restore
+
       - name: Build backend
         run: dotnet build MarketplaceHub.sln --no-restore --configuration Release
 
       - name: Test backend
         run: dotnet test MarketplaceHub.sln --no-build --configuration Release
+
+      - name: Verify EF model has no pending migration
+        run: dotnet tool run dotnet-ef migrations has-pending-model-changes --project src/MarketplaceHub.Infrastructure/MarketplaceHub.Infrastructure.csproj --startup-project src/MarketplaceHub.Api/MarketplaceHub.Api.csproj --no-build --configuration Release
 
       - name: Install frontend dependencies
         working-directory: src/MarketplaceHub.Web
@@ -48,6 +57,10 @@ jobs:
       - name: Build frontend
         working-directory: src/MarketplaceHub.Web
         run: npm run build
+
+      - name: Check frontend bundle budget
+        working-directory: src/MarketplaceHub.Web
+        run: npm run check:bundle
 
       - name: Audit npm dependencies
         working-directory: src/MarketplaceHub.Web

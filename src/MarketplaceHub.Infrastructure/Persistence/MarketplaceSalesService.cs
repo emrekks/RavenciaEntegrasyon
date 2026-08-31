@@ -163,9 +163,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return ServiceResult<ShipmentDetailView>.Ok(new(Map(row.Package, row.OrderNumber), actions, formats, stage, documents));
     }
 
-      public Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, full ? MarketplaceJobTypes.OrderRecoverySync : MarketplaceJobTypes.OrderSync, JsonSerializer.Serialize(new { connectionId, externalOrderId, full }), correlationId, cancellationToken);
+    public Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, full ? MarketplaceJobTypes.OrderRecoverySync : MarketplaceJobTypes.OrderSync, JsonSerializer.Serialize(new { connectionId, externalOrderId, full }), correlationId, cancellationToken);
 
-      public Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, MarketplaceJobTypes.ProductSync, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken);
+    public Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, MarketplaceJobTypes.ProductSync, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken);
 
     public Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)
     {

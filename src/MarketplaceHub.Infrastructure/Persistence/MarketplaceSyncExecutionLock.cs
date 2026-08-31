@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
-using Npgsql;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 

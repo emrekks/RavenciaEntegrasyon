@@ -1,0 +1,366 @@
+/* Paper-first shipping label designer. */
+.app-shell.stitch-shell .shipping-designer-panel { padding: 24px; }
+.app-shell.stitch-shell .shipping-designer-panel .shipping-settings-intro { margin-bottom: 18px; }
+.app-shell.stitch-shell .shipping-designer-page-settings { margin-bottom: 22px; }
+.app-shell.stitch-shell .shipping-designer { margin-top: 0; padding: 16px; background: #0e1220; border-color: #3f4c83; }
+.app-shell.stitch-shell .shipping-designer-toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.app-shell.stitch-shell .shipping-designer-toolbar > div:first-child { display: grid; gap: 3px; min-width: 0; }
+.app-shell.stitch-shell .shipping-designer-kicker { color: #8f9cff; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.app-shell.stitch-shell .shipping-designer-toolbar h3 { margin: 0; color: #f2f3ff; font-size: 17px; }
+.app-shell.stitch-shell .shipping-designer-toolbar > .secondary { margin-left: auto; white-space: nowrap; }
+.app-shell.stitch-shell .shipping-designer-format-tabs { display: inline-flex; gap: 4px; padding: 4px; background: #171d33; border: 1px solid #30395e; border-radius: 7px; }
+.app-shell.stitch-shell .shipping-designer-format-tabs button { display: grid; gap: 2px; min-width: 104px; padding: 7px 11px; color: #9da6c8; background: transparent; border: 0; border-radius: 4px; font-size: 11px; font-weight: 800; }
+.app-shell.stitch-shell .shipping-designer-format-tabs button small { color: #737d9f; font-size: 9px; font-weight: 600; }
+.app-shell.stitch-shell .shipping-designer-format-tabs button.is-active { color: #fff; background: #5865f2; box-shadow: 0 4px 10px rgba(88, 101, 242, .24); }
+.app-shell.stitch-shell .shipping-designer-format-tabs button.is-active small { color: #dfe2ff; }
+.app-shell.stitch-shell .shipping-designer-workspace { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(360px, 1.55fr) minmax(220px, .85fr); align-items: start; gap: 14px; }
+.app-shell.stitch-shell .shipping-designer-palette,
+.app-shell.stitch-shell .shipping-designer-stage,
+.app-shell.stitch-shell .shipping-designer-inspector { min-width: 0; padding: 12px; border: 1px solid #30395e; border-radius: 8px; background: #14192a; }
+.app-shell.stitch-shell .shipping-designer-panel-heading { display: grid; gap: 4px; margin-bottom: 11px; }
+.app-shell.stitch-shell .shipping-designer-panel-heading > span { color: #f0f1ff; font-size: 12px; font-weight: 800; }
+.app-shell.stitch-shell .shipping-designer-panel-heading > small { color: #8791b2; font-size: 10px; }
+.app-shell.stitch-shell .shipping-designer-palette-list { display: grid; gap: 7px; }
+.app-shell.stitch-shell .shipping-designer-palette-list button { display: grid; grid-template-columns: 28px minmax(0, 1fr) 18px; align-items: center; gap: 8px; width: 100%; padding: 8px; color: #e9ebff; background: #0e1220; border: 1px solid #2a3355; border-radius: 6px; cursor: grab; text-align: left; }
+.app-shell.stitch-shell .shipping-designer-palette-list button:hover:not(:disabled) { border-color: #737fff; background: #1b2140; transform: translateY(-1px); }
+.app-shell.stitch-shell .shipping-designer-palette-list button:disabled { opacity: .42; cursor: not-allowed; }
+.app-shell.stitch-shell .shipping-designer-palette-list button > span:nth-child(2) { display: grid; gap: 3px; min-width: 0; }
+.app-shell.stitch-shell .shipping-designer-palette-list strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .shipping-designer-palette-list small { overflow: hidden; color: #838eaf; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .shipping-designer-palette-list i { color: #8994ff; font-size: 17px; font-style: normal; text-align: center; }
+.app-shell.stitch-shell .shipping-designer-palette-icon { display: grid; place-items: center; width: 28px; height: 28px; color: #b9c0ff; background: #252d59; border-radius: 5px; font-size: 15px; }
+.app-shell.stitch-shell .shipping-designer-custom-fields { display: grid; gap: 9px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #2d3554; }
+.app-shell.stitch-shell .shipping-designer-custom-fields label,
+.app-shell.stitch-shell .shipping-designer-inspector-body > label,
+.app-shell.stitch-shell .shipping-designer-number-field { display: grid; gap: 5px; color: #9ba4c4; font-size: 10px; font-weight: 700; }
+.app-shell.stitch-shell .shipping-designer-custom-fields input,
+.app-shell.stitch-shell .shipping-designer-custom-fields textarea,
+.app-shell.stitch-shell .shipping-designer-inspector input,
+.app-shell.stitch-shell .shipping-designer-inspector select,
+.app-shell.stitch-shell .shipping-designer-inspector textarea { min-height: 32px; padding: 7px 8px; color: #eef0ff; background: #0c101c; border: 1px solid #394364; border-radius: 5px; font-size: 10px; }
+.app-shell.stitch-shell .shipping-designer-custom-fields textarea,
+.app-shell.stitch-shell .shipping-designer-inspector textarea { min-height: 64px; resize: vertical; }
+.app-shell.stitch-shell .shipping-designer-stage { background: #0b0f1a; }
+.app-shell.stitch-shell .shipping-designer-stage-bar { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 9px; color: #e8eaff; font-size: 10px; font-weight: 800; }
+.app-shell.stitch-shell .shipping-designer-stage-bar small { color: #7f89a9; font-size: 9px; font-weight: 600; }
+.app-shell.stitch-shell .shipping-designer-paper { position: relative; width: min(100%, 560px); margin: 0 auto; overflow: hidden; background-color: #fff; background-image: linear-gradient(#e9edf4 1px, transparent 1px), linear-gradient(90deg, #e9edf4 1px, transparent 1px); background-size: 5% 5%; border: 1px solid #abb7cb; border-radius: 3px; box-shadow: 0 14px 26px rgba(0, 0, 0, .28); }
+.app-shell.stitch-shell .shipping-designer-block { position: absolute; display: grid; grid-template-columns: 18px minmax(0, 1fr); grid-template-rows: 18px minmax(0, 1fr); align-items: start; gap: 2px 5px; min-width: 28px; min-height: 24px; padding: 4px; overflow: hidden; color: #182541; background: rgba(255,255,255,.91); border: 1px solid #9eabc1; border-radius: 3px; cursor: grab; text-align: left; transition: border-color .14s ease, box-shadow .14s ease, background .14s ease; }
+.app-shell.stitch-shell .shipping-designer-block:hover { border-color: #6475f4; box-shadow: 0 0 0 2px rgba(88, 101, 242, .15); }
+.app-shell.stitch-shell .shipping-designer-block.is-selected { z-index: 3; border: 2px solid #5865f2; box-shadow: 0 0 0 3px rgba(88, 101, 242, .22); background: rgba(247,248,255,.96); }
+.app-shell.stitch-shell .shipping-designer-block-handle { grid-row: 1 / span 2; align-self: center; color: #707c9b; font-size: 13px; line-height: 1; letter-spacing: -3px; user-select: none; }
+.app-shell.stitch-shell .shipping-designer-block-index { display: grid; place-items: center; width: 17px; height: 17px; color: #fff; background: #5865f2; border-radius: 50%; font-size: 8px; font-weight: 900; }
+.app-shell.stitch-shell .shipping-designer-block-preview { grid-column: 2; min-width: 0; min-height: 0; overflow: hidden; }
+.app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-content { display: grid; gap: 2px; width: 100%; color: #182541; font-size: clamp(6px, 1.1vw, 10px); line-height: 1.12; }
+.app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-content span { display: grid; gap: 1px; overflow: hidden; }
+.app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-content b { overflow: hidden; color: #60708e; font-size: .75em; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-content strong { overflow: hidden; color: #182541; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-barcode { display: grid; gap: 2px; width: 100%; }
+.app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-bars { width: 100%; height: 18px; }
+.app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-barcode strong { display: block; overflow: hidden; color: #182541; font: 700 .8em/1 monospace; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .shipping-designer-block-label { display:none; }
+.app-shell.stitch-shell .shipping-designer-drop-empty { position: absolute; inset: 35% 15%; display: grid; place-content: center; gap: 5px; color: #60708e; text-align: center; }
+.app-shell.stitch-shell .shipping-designer-drop-empty strong { color: #34466d; font-size: 13px; }
+.app-shell.stitch-shell .shipping-designer-drop-empty span { font-size: 10px; }
+.app-shell.stitch-shell .shipping-designer-stage-help { margin-top: 9px; color: #75809f; font-size: 9px; text-align: center; }
+.app-shell.stitch-shell .shipping-designer-inspector-tabs { display: flex; gap: 3px; margin-bottom: 13px; padding-bottom: 5px; border-bottom: 1px solid #2e3757; }
+.app-shell.stitch-shell .shipping-designer-inspector-tabs button { padding: 5px 7px; color: #8993b4; background: transparent; border: 0; border-bottom: 2px solid transparent; font-size: 10px; font-weight: 800; }
+.app-shell.stitch-shell .shipping-designer-inspector-tabs button.is-active { color: #cfd4ff; border-bottom-color: #7a86ff; }
+.app-shell.stitch-shell .shipping-designer-inspector-body { display: grid; gap: 10px; }
+.app-shell.stitch-shell .shipping-designer-inspector-body > label { margin: 0; }
+.app-shell.stitch-shell .shipping-designer-position-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 9px; background: #101527; border: 1px solid #2b3555; border-radius: 6px; }
+.app-shell.stitch-shell .shipping-designer-position-grid input { min-height: 28px; }
+.app-shell.stitch-shell .shipping-designer-field-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.app-shell.stitch-shell .shipping-designer-field-chips button { padding: 5px 7px; color: #d6d9ff; background: #252d59; border: 1px solid #4d5ac3; border-radius: 4px; font-size: 9px; }
+.app-shell.stitch-shell .shipping-designer-help,
+.app-shell.stitch-shell .shipping-designer-barcode-settings p { margin: 0; color: #8791b0; font-size: 10px; line-height: 1.45; }
+.app-shell.stitch-shell .shipping-designer-barcode-settings { display: grid; gap: 9px; padding: 10px; background: #101527; border: 1px solid #2b3555; border-radius: 6px; }
+.app-shell.stitch-shell .shipping-designer-barcode-settings strong { color: #e4e6ff; font-size: 11px; }
+.app-shell.stitch-shell .shipping-designer-delete { width: 100%; margin-top: 4px; padding: 7px; color: #ffb7c0; background: rgba(176, 54, 78, .13); border: 1px solid rgba(236, 100, 121, .45); border-radius: 5px; font-size: 10px; font-weight: 800; }
+.app-shell.stitch-shell .shipping-designer-empty { display: grid; place-items: center; min-height: 220px; color: #7f89a9; font-size: 10px; text-align: center; }
+@media (max-width: 1080px) {
+  .app-shell.stitch-shell .shipping-designer-workspace { grid-template-columns: minmax(170px, .8fr) minmax(300px, 1.4fr); }
+  .app-shell.stitch-shell .shipping-designer-inspector { grid-column: 1 / -1; }
+}
+@media (max-width: 680px) {
+  .app-shell.stitch-shell .shipping-designer-panel { padding: 14px; }
+  .app-shell.stitch-shell .shipping-designer-toolbar { align-items: stretch; flex-direction: column; }
+  .app-shell.stitch-shell .shipping-designer-toolbar > .secondary { margin-left: 0; }
+  .app-shell.stitch-shell .shipping-designer-format-tabs { width: 100%; }
+  .app-shell.stitch-shell .shipping-designer-format-tabs button { flex: 1; }
+  .app-shell.stitch-shell .shipping-designer-workspace { grid-template-columns: 1fr; }
+  .app-shell.stitch-shell .shipping-designer-palette,
+  .app-shell.stitch-shell .shipping-designer-stage,
+  .app-shell.stitch-shell .shipping-designer-inspector { grid-column: auto; }
+}
+
+/* Rich-text alignment controls: keep the left/center/right order visible. */
+.app-shell .product-add-page .rich-text-editor-pro .rich-text-alignment-group {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.app-shell .product-add-page .rich-text-editor-pro .rich-text-tool { white-space: nowrap; }
+.app-shell .product-add-page .rich-text-editor-pro .alignment-icon {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  min-width: 14px;
+  height: 12px;
+  font-size: 0;
+  background-repeat: no-repeat;
+  background-image: linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor);
+  background-size: 14px 2px, 10px 2px, 12px 2px;
+}
+.app-shell .product-add-page .rich-text-editor-pro .alignment-left { background-position: left top, left 5px, left 10px; }
+.app-shell .product-add-page .rich-text-editor-pro .alignment-center { background-position: center top, center 5px, center 10px; }
+.app-shell .product-add-page .rich-text-editor-pro .alignment-right { background-position: right top, right 5px, right 10px; }
+.app-shell.stitch-shell .product-media-card .editor-section-title { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; }
+.app-shell.stitch-shell .product-media-link-button { display:inline-grid; place-items:center; position:relative; width:38px; height:38px; padding:0; color:#e9ebff; background:rgba(124,134,255,.12); border:1px solid rgba(124,134,255,.65); border-radius:10px; box-shadow:none; font-size:1.15rem; }
+.app-shell.stitch-shell .product-media-link-button:hover { color:#fff; background:rgba(124,134,255,.24); transform:translateY(-1px); }
+.app-shell.stitch-shell .product-media-link-button b { position:absolute; top:-7px; right:-7px; display:grid; place-items:center; min-width:18px; height:18px; padding:0 4px; color:#fff; background:#626eff; border-radius:999px; font-size:10px; }
+.app-shell.stitch-shell .product-media-url-modal { width:min(680px,calc(100vw - 32px)); background:#171b2b; border-color:rgba(124,134,255,.35); }
+.app-shell.stitch-shell .product-media-url-modal>header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.app-shell.stitch-shell .product-media-url-modal>header p,.app-shell.stitch-shell .product-media-url-modal>footer span { color:#9ba4ca; }
+.app-shell.stitch-shell .product-media-url-modal .product-media-url-field { display:grid; gap:7px; }
+.app-shell.stitch-shell .product-media-url-modal textarea { min-height:180px; resize:vertical; }
+.app-shell.stitch-shell .product-media-url-modal>footer { display:flex; align-items:center; justify-content:flex-end; gap:12px; margin-top:18px; padding-top:14px; border-top:1px solid rgba(151,160,207,.2); }
+.app-shell.stitch-shell .product-media-url-modal>footer span { margin-right:auto; font-size:12px; }
+.app-shell.stitch-shell .variant-table-editor { overflow-x:auto; scrollbar-color:#626eff #111525; }
+.app-shell.stitch-shell .variant-table-head,.app-shell.stitch-shell .variant-table-row { min-width:1110px; grid-template-columns:58px minmax(150px,1.6fr) minmax(170px,1.35fr) minmax(130px,1.15fr) minmax(150px,1.25fr) .72fr .9fr .95fr auto; }
+.app-shell.stitch-shell .variant-row-lead { display:flex; align-items:center; gap:5px; min-width:0; }
+.app-shell.stitch-shell .variant-row-number { display:grid; place-items:center; min-width:25px; height:25px; color:#dfe2ff; background:rgba(124,134,255,.14); border:1px solid rgba(124,134,255,.38); border-radius:7px; font-size:11px; font-weight:800; }
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle { flex:1; }
+.app-shell.stitch-shell .variant-media-cell { display:grid; gap:4px; min-width:0; }
+.app-shell.stitch-shell .variant-media-cell select { min-width:0; }
+.app-shell.stitch-shell .variant-color-apply { justify-self:start; padding:2px 6px; color:#9da4ff; background:transparent; border:0; font-size:10px; font-weight:800; box-shadow:none; }
+.app-shell.stitch-shell .variant-color-apply:hover { text-decoration:underline; transform:none; }
+
+/* Product option selection is value-led: selecting a chip activates its group. */
+.app-shell.stitch-shell .attribute-builder-card:not(:has(.attribute-builder-toggle input:checked)) .option-chip-list,
+.app-shell.stitch-shell .attribute-builder-card .option-chip-list { display:flex !important; }
+.app-shell.stitch-shell .attribute-builder-card { padding:14px !important; }
+.app-shell.stitch-shell .attribute-builder-head > div { display:grid; gap:3px; min-width:0; }
+.app-shell.stitch-shell .attribute-builder-head > div > strong { color:#f1f2ff; font-size:13px; }
+.app-shell.stitch-shell .attribute-builder-head > div > small { color:#8993b4; font-size:10px; }
+.app-shell.stitch-shell .attribute-builder-selected { color:#9da4ff !important; font-weight:800; }
+.app-shell.stitch-shell .variant-table-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; color:#8993b4; font-size:10px; }
+.app-shell.stitch-shell .variant-media-bulk-button { display:inline-flex; align-items:center; gap:7px; opacity:1; filter:none; cursor:pointer; }
+.app-shell.stitch-shell .variant-media-icon { width:15px; height:15px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }
+.app-shell.stitch-shell .variant-media-cell { display:grid; place-items:center; }
+.app-shell.stitch-shell .variant-media-button { position:relative; display:grid; place-items:center; width:34px; height:34px; padding:0; color:#cbd0ff; background:#202744; border:1px solid #555fa7; border-radius:8px; box-shadow:none; font-size:16px; }
+.app-shell.stitch-shell .variant-media-button:hover,
+.app-shell.stitch-shell .variant-media-button.has-media { color:#fff; background:#626eff; border-color:#8f97ff; }
+.app-shell.stitch-shell .variant-media-button i { position:absolute; right:-5px; bottom:-5px; display:grid; place-items:center; width:15px; height:15px; color:#091021; background:#71e0b0; border:2px solid #111525; border-radius:999px; font-size:9px; font-style:normal; font-weight:900; }
+.app-shell.stitch-shell .product-media-link-button { color:#bfc5ff; background:transparent; border-color:transparent; }
+.app-shell.stitch-shell .product-media-link-button:hover { color:#fff; background:rgba(124,134,255,.12); border-color:rgba(124,134,255,.28); }
+.app-shell.stitch-shell .variant-media-picker-modal { width:min(920px,calc(100vw - 24px)); max-height:min(860px,calc(100vh - 24px)); overflow:auto; background:#171b2b; border-color:rgba(124,134,255,.35); }
+.app-shell.stitch-shell .variant-media-picker-modal > header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.app-shell.stitch-shell .variant-media-picker-modal > header p { color:#9ba4ca; }
+.app-shell.stitch-shell .variant-media-bulk-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.app-shell.stitch-shell .variant-media-bulk-fields label { display:grid; gap:6px; color:#9ba4ca; font-size:10px; font-weight:800; }
+.app-shell.stitch-shell .variant-media-picker-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:8px; padding:10px; background:#111525; border:1px solid rgba(151,160,207,.2); border-radius:10px; }
+.app-shell.stitch-shell .variant-media-option { position:relative; display:grid; grid-template-rows:minmax(0,1fr) auto; gap:6px; min-width:0; aspect-ratio:1; padding:6px; color:#cfd4ff; text-align:left; background:#1d2236; border:1px solid #323b63; border-radius:8px; box-shadow:none; }
+.app-shell.stitch-shell .variant-media-option:hover { background:#242b49; border-color:#747eff; transform:translateY(-1px); }
+.app-shell.stitch-shell .variant-media-option.selected { background:#282e56; border-color:#8c94ff; box-shadow:0 0 0 2px rgba(124,134,255,.2); }
+.app-shell.stitch-shell .variant-media-option-image { display:grid; place-items:center; justify-self:center; width:auto; height:100%; aspect-ratio:2 / 3; min-height:0; overflow:hidden; color:#8f99c5; background:#0c1020; border-radius:5px; }
+.app-shell.stitch-shell .variant-media-option-image img { display:block; width:100%; height:100%; object-fit:cover; }
+.app-shell.stitch-shell .variant-media-option-label { overflow:hidden; color:#bec5e8; font-size:9px; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
+.app-shell.stitch-shell .variant-media-option > i { position:absolute; top:9px; right:9px; display:grid; place-items:center; width:18px; height:18px; color:#0e1523; background:#71e0b0; border-radius:999px; font-size:11px; font-style:normal; font-weight:900; }
+.app-shell.stitch-shell .variant-row-lead { background:transparent!important; border:0!important; }
+.app-shell.stitch-shell .variant-row-number { min-width:25px; height:25px; color:#dfe2ff; background:transparent!important; border:0!important; border-right:1px dashed rgba(143,153,197,.6)!important; border-radius:0!important; }
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle { display:grid; place-items:center; flex:0 0 22px; height:25px; color:#929bc9; background:repeating-linear-gradient(90deg,rgba(143,153,197,.7) 0 2px,transparent 2px 5px); border:0!important; border-radius:0!important; font-size:0; opacity:.9; }
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle::after { content:'☰'; font-size:13px; line-height:1; opacity:.75; }
+.app-shell.stitch-shell .variant-media-picker-modal > footer { display:flex; align-items:center; justify-content:flex-end; gap:9px; margin-top:16px; padding-top:14px; border-top:1px solid rgba(151,160,207,.2); }
+.app-shell.stitch-shell .variant-media-picker-modal > footer .secondary:first-child { margin-right:auto; }
+@media (max-width:680px) {
+  .app-shell.stitch-shell .variant-table-toolbar { align-items:stretch; flex-direction:column; }
+  .app-shell.stitch-shell .variant-media-bulk-fields { grid-template-columns:1fr; }
+  .app-shell.stitch-shell .variant-media-picker-modal > footer { align-items:stretch; flex-wrap:wrap; }
+  .app-shell.stitch-shell .variant-media-picker-modal > footer button { flex:1 1 130px; }
+}
+
+/* Orders and settings polish: keep action cells aligned, readable and theme-consistent. */
+.app-shell.stitch-shell .order-reference-actions{align-items:flex-start;justify-content:flex-end;min-width:0;gap:8px;padding:12px 10px}
+.app-shell.stitch-shell .order-status-column{min-width:0;width:100%;align-items:flex-start;gap:6px}
+.app-shell.stitch-shell .order-status-column small{white-space:normal;line-height:1.35}
+.app-shell.stitch-shell .order-reference-actions>.row-menu{width:100%;max-width:150px}
+.app-shell.stitch-shell .order-reference-actions>.row-menu .row-menu-trigger{width:100%;justify-content:space-between}
+.app-shell.stitch-shell .order-label-actions{display:grid;gap:6px;width:100%;max-width:170px}
+.app-shell.stitch-shell .order-label-action{display:flex;align-items:center;justify-content:space-between;gap:5px;width:100%;min-width:0;white-space:nowrap}
+.app-shell.stitch-shell .order-label-action span{overflow:hidden;text-overflow:ellipsis}
+.app-shell.stitch-shell .order-label-action small{flex:0 0 auto}
+.app-shell.stitch-shell .order-label-action.is-printed{opacity:.48;filter:saturate(.45)}
+.app-shell.stitch-shell .order-label-action.is-printed i{font-style:normal;color:#96efbd}
+.app-shell.stitch-shell .invoice-info-modal .invoice-address-sheet>p{margin:18px 0 0;padding:12px 14px;color:var(--rv-muted);background:rgba(113,104,245,.09);border:1px solid rgba(113,104,245,.25);border-radius:9px;line-height:1.5}
+.app-shell.stitch-shell .invoice-info-modal .invoice-address-sheet>p strong{color:#e9e7ff}
+.app-shell.stitch-shell .security-page .sessions li{grid-template-columns:32px minmax(0,1fr) auto;min-width:0;gap:14px}
+.app-shell.stitch-shell .security-page .sessions li>span:nth-child(2){min-width:0;overflow:hidden}
+.app-shell.stitch-shell .security-page .sessions li>span:nth-child(2) small{display:block;overflow-wrap:anywhere;line-height:1.45}
+.app-shell.stitch-shell .security-page .sessions li>b{white-space:nowrap;text-align:right}
+.app-shell.stitch-shell aside nav a.active{border-left-color:transparent!important}
+.app-shell.stitch-shell aside nav a.active:hover{border-left-color:transparent!important}
+.app-shell.stitch-shell .order-label-filter-quick{display:flex;justify-content:flex-end;margin:0 0 10px}
+.app-shell.stitch-shell .order-label-filter-quick label{display:grid;grid-template-columns:auto 210px;align-items:center;gap:10px;color:var(--rv-muted);font-size:.76rem;font-weight:700}
+.app-shell.stitch-shell .order-label-filter-quick select{min-height:36px}
+@media(max-width:700px){.app-shell.stitch-shell .security-page .sessions li{grid-template-columns:32px minmax(0,1fr)}.app-shell.stitch-shell .security-page .sessions li>b{grid-column:2;text-align:left}.app-shell.stitch-shell .order-label-filter-quick{justify-content:stretch}.app-shell.stitch-shell .order-label-filter-quick label{grid-template-columns:1fr}.app-shell.stitch-shell .order-label-filter-quick select{width:100%}}
+
+/* Keep status, label and action boxes centered inside every order action cell. */
+.app-shell.stitch-shell .orders-page .order-reference-actions { align-items:center !important; justify-content:center !important; }
+.app-shell.stitch-shell .orders-page .order-reference-actions > .order-status-column { align-items:center !important; text-align:center; }
+.app-shell.stitch-shell .orders-page .order-reference-actions > .order-label-actions,
+.app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu { align-self:center !important; }
+
+/* Product option/media polish. */
+.app-shell.stitch-shell .variant-media-option {
+  display:grid; place-items:center; padding:0; aspect-ratio:1; overflow:hidden;
+  background:transparent!important; border:0!important; border-radius:0!important; box-shadow:none!important;
+}
+.app-shell.stitch-shell .variant-media-option:hover,
+.app-shell.stitch-shell .variant-media-option.selected {
+  background:transparent!important; border:0!important; box-shadow:none!important; transform:none;
+}
+.app-shell.stitch-shell .variant-media-option-image {
+  width:auto; height:calc(100% - 12px); aspect-ratio:2 / 3;
+  background:transparent; border-radius:0;
+}
+.app-shell.stitch-shell .variant-media-option-image img { object-fit:cover; }
+.app-shell.stitch-shell .variant-media-option > i { top:7px; right:7px; width:18px; height:18px; border:0; }
+.app-shell.stitch-shell .variant-table-toolbar { align-items:center; }
+.app-shell.stitch-shell .variant-table-toolbar-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-left:auto; }
+.app-shell.stitch-shell .variant-clear-button { color:#ff9ca4!important; background:transparent!important; border-color:rgba(241,112,124,.48)!important; }
+.app-shell.stitch-shell .variant-clear-button:hover { color:#fff!important; background:rgba(241,112,124,.14)!important; border-color:#f1707c!important; }
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle {
+  display:grid; place-items:center; flex:0 0 24px; width:24px; height:28px;
+  background:transparent!important; border:0!important; font-size:0;
+}
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle::after {
+  content:''; width:16px; height:24px;
+  background:repeating-linear-gradient(90deg, #8f99c5 0 1px, transparent 1px 4px); opacity:.82;
+}
+.app-shell.stitch-shell .product-add-page .product-top-sidebar > .product-category-mapping-card { height:auto!important; align-self:start; }
+.app-shell.stitch-shell .product-description-field > .rich-text-editor { background:#171b2b!important; }
+.app-shell.stitch-shell .rich-text-editor-head { background:linear-gradient(100deg,#20253f,#1b2035)!important; }
+.app-shell.stitch-shell .rich-text-mode-switch { background:#171b2b!important; }
+.app-shell.stitch-shell .rich-text-toolbar { flex-wrap:nowrap!important; gap:3px!important; overflow-x:auto; scrollbar-width:thin; background:#171b2b!important; }
+.app-shell.stitch-shell .rich-text-tool-group { flex:0 0 auto; gap:2px!important; padding-right:5px; }
+.app-shell.stitch-shell .rich-text-editor-pro .rich-text-toolbar button,
+.app-shell.stitch-shell .rich-text-editor-pro .rich-text-toolbar select { min-height:28px!important; padding-inline:5px!important; font-size:8px!important; }
+.app-shell.stitch-shell .rich-text-canvas,
+.app-shell.stitch-shell .rich-text-html-editor { background:#15192a!important; }
+.app-shell.stitch-shell .rich-text-editor-foot { background:#171b2b!important; }
+
+/* Orders: keep bulk menus above the table and action controls centered. */
+.app-shell.stitch-shell .orders-page .orders-reference-filter-shell { overflow: visible !important; }
+.app-shell.stitch-shell .orders-page .order-reference-actions { align-items:center!important; justify-content:center!important; gap:7px!important; }
+.app-shell.stitch-shell .orders-page .order-reference-actions > .order-status-column,
+.app-shell.stitch-shell .orders-page .order-reference-actions > .order-label-actions,
+.app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu { align-self:center!important; }
+.app-shell.stitch-shell .orders-page .order-action-menu { display:inline-flex!important; align-items:center!important; justify-content:center!important; gap:7px!important; height:30px!important; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-menu-shell { z-index:2200; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu {
+  z-index:2300!important;
+  min-width:248px!important;
+  padding:7px!important;
+  color:#eef0ff!important;
+  background:linear-gradient(180deg,#1c2032 0%,#151826 100%)!important;
+  border:1px solid rgba(124,134,255,.34)!important;
+  border-radius:9px!important;
+  box-shadow:0 20px 46px rgba(0,0,0,.52),0 0 0 1px rgba(255,255,255,.025) inset!important;
+}
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button {
+  display:grid!important;
+  grid-template-columns:30px minmax(0,1fr)!important;
+  gap:8px!important;
+  align-items:center!important;
+  min-height:48px!important;
+  padding:8px 9px!important;
+  color:#eef0ff!important;
+  background:transparent!important;
+  border:0!important;
+  border-bottom:1px solid rgba(139,146,184,.16)!important;
+  border-radius:6px!important;
+  box-shadow:none!important;
+  text-align:left!important;
+  transform:none!important;
+  transition:background-color .15s ease,color .15s ease!important;
+}
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button:last-child { border-bottom-color:transparent!important; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button:hover,
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button:focus-visible {
+  color:#fff!important;
+  background:rgba(88,101,242,.16)!important;
+  outline:0!important;
+}
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button>b {
+  display:grid!important;
+  place-items:center!important;
+  width:26px!important;
+  height:26px!important;
+  color:#e7e9ff!important;
+  background:rgba(88,101,242,.28)!important;
+  border:1px solid rgba(124,134,255,.48)!important;
+  border-radius:6px!important;
+  font-size:.62rem!important;
+}
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button>span { display:grid!important; gap:2px!important; font-size:.72rem!important; font-weight:750!important; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button small { color:#aeb4d1!important; font-size:.61rem!important; font-weight:550!important; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu.opens-up { top:auto!important; bottom:calc(100% + 6px)!important; }
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu.opens-down { top:calc(100% + 6px)!important; bottom:auto!important; }
+.app-shell.stitch-shell .bulk-operation-summary { display:grid; gap:4px; margin:12px 24px 0; padding:10px 12px; color:#e8eaff; background:rgba(113,104,245,.1); border:1px solid rgba(124,134,255,.25); border-radius:8px; }
+.app-shell.stitch-shell .bulk-operation-summary small { color:#aeb4d1; line-height:1.4; }
+.app-shell.stitch-shell .shipping-label-batch-preview { display:grid; gap:16px; max-height:min(620px,65vh); overflow:auto; padding:12px; background:#0d111e; }
+.app-shell.stitch-shell .shipping-label-batch-preview > .shipping-label-print-surface { margin:0 auto; }
+@media print {
+  .app-shell.stitch-shell .shipping-label-batch-preview { display:block!important; max-height:none!important; overflow:visible!important; padding:0!important; background:#fff!important; }
+  .app-shell.stitch-shell .shipping-label-batch-preview > .shipping-label-print-surface { margin:0!important; break-inside:avoid; page-break-inside:avoid; }
+}
+
+/* Shipping designer: dense snap grid, non-colliding selection outline and true drag feedback. */
+.app-shell.stitch-shell .shipping-settings-check { display:flex!important; align-items:center; gap:9px!important; }
+.app-shell.stitch-shell .shipping-settings-check input { width:16px; min-width:16px; min-height:16px; margin:0; cursor:pointer; }
+.app-shell.stitch-shell .shipping-settings-check span { cursor:default; user-select:none; }
+.app-shell.stitch-shell .shipping-designer-template-actions { display:flex; align-items:center; gap:6px; margin-left:auto; min-width:0; }
+.app-shell.stitch-shell .shipping-designer-template-actions select { min-width:140px; min-height:34px; padding:7px 25px 7px 8px; color:#e9ebff; background:#101527; border:1px solid #394364; border-radius:5px; font-size:10px; }
+.app-shell.stitch-shell .shipping-designer-template-actions button { min-height:34px; padding:7px 9px; white-space:nowrap; }
+.app-shell.stitch-shell .shipping-template-save-dialog { display:flex; align-items:end; gap:9px; margin:-7px 0 12px; padding:10px; background:#171d33; border:1px solid #5865f2; border-radius:7px; }
+.app-shell.stitch-shell .shipping-template-save-dialog label { display:grid; flex:1; gap:5px; color:#cfd4ff; font-size:10px; font-weight:800; }
+.app-shell.stitch-shell .shipping-template-save-dialog input { min-height:32px; padding:7px 8px; color:#eef0ff; background:#0c101c; border:1px solid #5865f2; border-radius:5px; font-size:11px; }
+.app-shell.stitch-shell .shipping-template-save-dialog > div { display:flex; gap:6px; }
+.app-shell.stitch-shell .shipping-template-save-dialog button { min-height:32px; padding:7px 10px; white-space:nowrap; }
+.app-shell.stitch-shell .shipping-template-status { margin:-5px 0 12px; color:#9fe6c0; font-size:10px; font-weight:700; }
+.app-shell.stitch-shell .shipping-designer-paper {
+  background-image: linear-gradient(rgba(181,193,213,.42) 1px, transparent 1px), linear-gradient(90deg, rgba(181,193,213,.42) 1px, transparent 1px)!important;
+  background-size:2.5% 2.5%!important;
+}
+.app-shell.stitch-shell .shipping-designer-block { touch-action:none; color:#000!important; }
+.app-shell.stitch-shell .shipping-designer-block.is-selected { border:1px solid #5865f2!important; outline:2px solid rgba(88,101,242,.82); box-shadow:none!important; }
+.app-shell.stitch-shell .shipping-designer-block-preview,
+.app-shell.stitch-shell .shipping-designer-block-preview * { color:#000!important; }
+.app-shell.stitch-shell .shipping-designer-block-label { color:#000!important; }
+.app-shell.stitch-shell .shipping-designer-block-handle { cursor:grab; }
+.app-shell.stitch-shell .shipping-designer-block:active,
+.app-shell.stitch-shell .shipping-designer-block:active .shipping-designer-block-handle { cursor:grabbing; }
+@media (max-width:900px) {
+  .app-shell.stitch-shell .shipping-designer-template-actions { width:100%; margin-left:0; flex-wrap:wrap; }
+  .app-shell.stitch-shell .shipping-designer-template-actions select { flex:1 1 180px; }
+}
+.app-shell.stitch-shell .order-hidden-cancelled-notice {
+  pointer-events: auto !important;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-shell.stitch-shell .order-hidden-cancelled-notice span {
+  margin-right: auto;
+}
+
+.app-shell.stitch-shell .order-hidden-cancelled-notice button {
+  flex: 0 0 auto;
+  color: #dff7ff;
+  background: rgba(24, 186, 255, .14);
+  border: 1px solid rgba(24, 186, 255, .48);
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
