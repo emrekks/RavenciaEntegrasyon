@@ -28,9 +28,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             if (definition is null) continue;
 
             var interval = Math.Clamp(row.Policy.IntervalSeconds, 30, 86_400);
-            var active = await db.IntegrationJobs.AsNoTracking()
-                .AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType
-                    && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
+            // Different scheduled job types can share one provider execution
+            // lane (for example order sync and order reconciliation). Checking
+            // only the exact job type allowed those jobs to pile up behind the
+            // advisory lock and eventually exhaust retries with SYNC_LOCK_BUSY.
+            var activeJobTypes = await db.IntegrationJobs.AsNoTracking()
+                .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id
+                    && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
+                .Select(x => x.JobType)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            var executionGroup = MarketplaceSyncExecutionLock.GroupFor(definition.Value.JobType);
+            var active = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == executionGroup);
             if (active) continue;
             var latest = await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
