@@ -526,7 +526,7 @@ html, body, #root {
 .cyber-login-input { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 47px; padding: 0 12px; color: var(--rv-muted-2); background: #0c121c; border: 1px solid var(--rv-line-strong); border-radius: 9px; transition: border-color .15s ease, box-shadow .15s ease; }
 .cyber-login-input:focus-within { color: var(--rv-primary-hover); border-color: var(--rv-primary); box-shadow: 0 0 0 3px rgba(113, 104, 245, .1); }
 .cyber-login-input > svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.cyber-login-input input { width: 100%; min-width: 0; height: 44px; padding: 0; color: var(--rv-ink); background: transparent; border: 0; outline: 0; font: inherit; font-size: .76rem; }
+.cyber-login-input input { width: 100%; min-width: 0; height: 44px; padding: 0; color: var(--rv-ink); background: transparent; border: 0 !important; border-radius: 0 !important; outline: 0 !important; box-shadow: none !important; -webkit-box-shadow: none !important; appearance: none; font: inherit; font-size: .76rem; }
 .cyber-login-input input::placeholder { color: #596579; }
 .cyber-login-input input:-webkit-autofill,
 .cyber-login-input input:-webkit-autofill:hover,
@@ -534,11 +534,13 @@ html, body, #root {
   -webkit-text-fill-color: var(--rv-ink);
   caret-color: var(--rv-ink);
   background: transparent !important;
-  box-shadow: inset 0 0 0 1000px #0c121c !important;
-  border-radius: 6px;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
   transition: background-color 9999s ease-in-out 0s;
 }
-.cyber-password-toggle { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; color: var(--rv-muted-2); background: transparent; border: 0; border-radius: 7px; box-shadow: none; }
+.cyber-password-toggle { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; color: var(--rv-muted-2); background: transparent; border: 0 !important; border-radius: 7px; box-shadow: none !important; outline: 0 !important; }
 .cyber-password-toggle:hover { color: var(--rv-ink); background: var(--rv-surface-raised); box-shadow: none; transform: none; }
 .cyber-password-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .cyber-remember { display: flex; align-items: center; gap: 8px; margin: 3px 0 5px; color: var(--rv-muted) !important; cursor: pointer; }

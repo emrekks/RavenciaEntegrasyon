@@ -779,6 +779,13 @@ textarea {
 
 .app-shell.stitch-shell .orders-reference-bottom-toolbar .orders-sort-filter select { min-width: 0; }
 
+.app-shell.stitch-shell .orders-reference-bottom-toolbar .orders-label-filter {
+  flex: 0 1 220px;
+  min-width: 205px;
+}
+
+.app-shell.stitch-shell .orders-reference-bottom-toolbar .orders-label-filter select { min-width: 0; }
+
 .app-shell.stitch-shell .orders-bottom-pagination {
   justify-content: flex-end;
   margin-left: 0;
@@ -897,6 +904,9 @@ textarea {
 
 @media (max-width: 900px) {
   .app-shell.stitch-shell .orders-reference-bottom-toolbar { grid-template-columns: 1fr; align-items: stretch; }
+  .app-shell.stitch-shell .orders-bottom-filter-group { flex-wrap: wrap; }
+  .app-shell.stitch-shell .orders-reference-bottom-toolbar .orders-label-filter,
+  .app-shell.stitch-shell .orders-reference-bottom-toolbar .orders-sort-filter { flex: 1 1 220px; }
   .app-shell.stitch-shell .orders-bottom-pagination { justify-content: flex-start; }
 }
 

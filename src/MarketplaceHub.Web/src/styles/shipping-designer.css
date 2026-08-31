@@ -216,10 +216,7 @@
 .app-shell.stitch-shell .security-page .sessions li>b{white-space:nowrap;text-align:right}
 .app-shell.stitch-shell aside nav a.active{border-left-color:transparent!important}
 .app-shell.stitch-shell aside nav a.active:hover{border-left-color:transparent!important}
-.app-shell.stitch-shell .order-label-filter-quick{display:flex;justify-content:flex-end;margin:0 0 10px}
-.app-shell.stitch-shell .order-label-filter-quick label{display:grid;grid-template-columns:auto 210px;align-items:center;gap:10px;color:var(--rv-muted);font-size:.76rem;font-weight:700}
-.app-shell.stitch-shell .order-label-filter-quick select{min-height:36px}
-@media(max-width:700px){.app-shell.stitch-shell .security-page .sessions li{grid-template-columns:32px minmax(0,1fr)}.app-shell.stitch-shell .security-page .sessions li>b{grid-column:2;text-align:left}.app-shell.stitch-shell .order-label-filter-quick{justify-content:stretch}.app-shell.stitch-shell .order-label-filter-quick label{grid-template-columns:1fr}.app-shell.stitch-shell .order-label-filter-quick select{width:100%}}
+@media(max-width:700px){.app-shell.stitch-shell .security-page .sessions li{grid-template-columns:32px minmax(0,1fr)}.app-shell.stitch-shell .security-page .sessions li>b{grid-column:2;text-align:left}}
 
 /* Keep status, label and action boxes centered inside every order action cell. */
 .app-shell.stitch-shell .orders-page .order-reference-actions { align-items:center !important; justify-content:center !important; }

@@ -55,7 +55,7 @@ public static class MarketplaceEndpoints
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.OrdersAsync(tenant.TenantId, PageSize(limit), PageNumber(page), after, new(status, search, platform, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, sort), http.RequestAborted))
                 : Unauthorized(http));
-        api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Results.Ok(await service.OrderSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
+        api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service, string? platform) => Tenant(http) is { } tenant ? Results.Ok(await service.OrderSummaryAsync(tenant.TenantId, platform, http.RequestAborted)) : Unauthorized(http));
         api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted), value => Results.Redirect(value)) : Unauthorized(http));
         api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPost("/orders/{id:guid}/instant-process", async (Guid id, HttpContext http, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor) =>

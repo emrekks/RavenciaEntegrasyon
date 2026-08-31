@@ -149,32 +149,31 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         _ => "DATE_DESC"
     };
 
-    public async Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
+    public async Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, string? platform, CancellationToken cancellationToken)
     {
-        var summary = await db.Orders.AsNoTracking()
-            .Where(x => x.TenantId == tenantId)
+        // Marketplace status tabs are package-based. Counting Orders here made
+        // split packages and the provider's package counters incomparable.
+        var packages = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId);
+        var platformCode = platform?.Trim().ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(platformCode) && platformCode != "ALL")
+            packages = packages.Where(x => db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.PlatformCode == platformCode));
+
+        return await packages
             .GroupBy(_ => 1)
             .Select(group => new OrderSummaryView(
                 group.Count(),
-                group.Count(x => x.DerivedStatus == "NEW"),
-                group.Count(x => x.DerivedStatus == "PROCESSING" || x.DerivedStatus == "READY_TO_SHIP" || x.DerivedStatus == "PARTIALLY_CANCELLED"),
-                group.Count(x => x.DerivedStatus == "SHIPPED" || x.DerivedStatus == "UNDELIVERED"),
-                group.Count(x => x.DerivedStatus == "DELIVERED"),
-                0,
-                group.Count(x => x.DerivedStatus == "ON_HOLD"),
-                group.Count(x => x.DerivedStatus == "CANCELLED"),
-                group.Count(x => x.DerivedStatus == "RETURNED"),
-                group.Count(x => x.DerivedStatus == "RETURN_IN_TRANSIT"),
-                group.Count(x => x.DerivedStatus == "PARTIALLY_CANCELLED"),
-                group.Count(x => x.DerivedStatus == "MANUAL_REVIEW")))
-            .SingleOrDefaultAsync(cancellationToken);
-        var resent = await db.ShipmentPackages.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.OriginExternalPackageId != null)
-            .Select(x => x.OrderId)
-            .Distinct()
-            .CountAsync(cancellationToken);
-        if (summary is null) return new OrderSummaryView(0, 0, 0, 0, 0, resent, 0);
-        return summary with { Resent = resent };
+                group.Count(x => x.Status == ShipmentPackageStatus.New),
+                group.Count(x => x.Status == ShipmentPackageStatus.Processing || x.Status == ShipmentPackageStatus.ReadyToShip),
+                group.Count(x => x.Status == ShipmentPackageStatus.Shipped || x.Status == ShipmentPackageStatus.Undelivered),
+                group.Count(x => x.Status == ShipmentPackageStatus.Delivered),
+                group.Count(x => x.OriginExternalPackageId != null),
+                group.Count(x => x.Status == ShipmentPackageStatus.OnHold),
+                group.Count(x => x.Status == ShipmentPackageStatus.Cancelled),
+                group.Count(x => x.Status == ShipmentPackageStatus.Returned),
+                group.Count(x => x.Status == ShipmentPackageStatus.ReturnInTransit),
+                group.Count(x => x.Status == ShipmentPackageStatus.PartiallyCancelled),
+                group.Count(x => x.Status == ShipmentPackageStatus.ManualReview)))
+            .SingleOrDefaultAsync(cancellationToken) ?? new OrderSummaryView(0, 0, 0, 0, 0, 0, 0);
     }
 
     public async Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
