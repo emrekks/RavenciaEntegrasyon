@@ -66,5 +66,7 @@ internal static class TrendyolReadStorefronts
     public static readonly string[] ReturnCodes = ["TR"];
     // Return hydration is a bounded fallback for the seller's Türkiye and UAE
     // order scopes. Other storefront orders arrive through the full order stream.
-    public static readonly string[] ReturnOrderCodes = ["AE", "TR"];
+    // Domestic orders are the normal lifecycle path for a seller. Probe TR first
+    // so a slow optional international storefront cannot hide a current status.
+    public static readonly string[] ReturnOrderCodes = ["TR", "AE"];
 }

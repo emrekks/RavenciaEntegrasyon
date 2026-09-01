@@ -1259,12 +1259,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 if (result.Error?.Class == AdapterErrorClass.NotFound) continue;
                 TrackResultFailure(result.Error);
-                throw JobProcessingException.FromAdapter(result.Error!);
+                var error = result.Error!;
+                await RecordIssue(
+                    tenantId,
+                    $"order-lifecycle:{connectionId}:{externalOrderId}",
+                    error.Code,
+                    $"Sipariş yaşam döngüsü yenilenemedi; sonraki otomatik taramada tekrar denenecek. {error.SafeMessage}",
+                    cancellationToken);
+                continue;
             }
             TrackReceived();
             recoveredOrders.Add(result.Value!);
+            await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{externalOrderId}", cancellationToken);
         }
-        await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken);
+        if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken);
 
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
         cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
