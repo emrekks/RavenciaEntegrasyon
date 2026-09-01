@@ -87,6 +87,8 @@
   margin: 0 !important;
   padding: 0 7px !important;
   overflow-x: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: #5865f2 #0d0e16;
   background: #0d0e16 !important;
   border: 0 !important;
   border-bottom: 1px solid #1e202f !important;
@@ -107,6 +109,7 @@
   font-size: .67rem !important;
   font-weight: 650 !important;
   white-space: nowrap !important;
+  flex: 0 0 auto !important;
   transform: none !important;
 }
 .orders-reference-filter-shell .order-tabs button:hover {
@@ -139,7 +142,6 @@
   border-color: rgba(255, 180, 171, .24) !important;
 }
 .orders-reference-filter-shell .order-tabs button small { display: none !important; }
-.orders-reference-filter-shell .order-tabs button:nth-child(n+8) { display: none !important; }
 .orders-reference-filter-shell .order-filter-panel {
   margin: 0 !important;
   padding: 0 !important;

@@ -727,13 +727,13 @@ export function OrdersPage() {
     ['NEW', 'Yeni'],
     ['PROCESSING', 'İşleme alınanlar'],
     ['ON_HOLD', 'Askıdaki'],
+    ['RESENT', 'Yeniden Gönderimler'],
     ['SHIPPED', 'Kargoda'],
     ['DELIVERED', 'Teslim edildi'],
     ['CANCELLED', 'İptal'],
     ['RETURNED', 'İade Edilen'],
     ['RETURN_IN_TRANSIT', 'İade kargoda'],
     ['PARTIALLY_CANCELLED', 'Kısmi iptal'],
-    ['RESENT', 'Yeniden Gönderimler'],
     ['MANUAL_REVIEW', 'Kontrol Gereken']
   ] as const
 
