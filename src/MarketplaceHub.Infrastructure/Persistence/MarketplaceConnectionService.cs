@@ -90,19 +90,56 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
     public async Task<ServiceResult<ConnectionView>> UpdateAsync(Guid tenantId, Guid id, long expectedVersion, UpdateConnectionCommand command, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM"), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM"), cancellationToken);
+        if (connection is null) return NotFound<ConnectionView>();
+        if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>();
+        if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
         if (string.IsNullOrWhiteSpace(command.DisplayName)) return Invalid<ConnectionView>("connection", "Bağlantı adı zorunludur.");
-        if (command.Environment is not null && command.Environment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Ortam STAGE veya PRODUCTION olmalıdır.");
+
+        var requestedEnvironment = command.Environment?.Trim().ToUpperInvariant();
+        if (requestedEnvironment is not null && requestedEnvironment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Ortam STAGE veya PRODUCTION olmalıdır.");
+        if (command.ExternalStoreId is not null && string.IsNullOrWhiteSpace(command.ExternalStoreId)) return Invalid<ConnectionView>("externalStoreId", "Mağaza/firma kapsamı boş olamaz.");
+
+        var requestedStoreId = command.ExternalStoreId?.Trim();
+        var currentSettings = connection.PlatformCode == "TRENDYOL" ? ReadSettings(connection) : null;
+        var requestedUserAgent = string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? null : command.UserAgentIdentity.Trim();
+        var environmentChanged = requestedEnvironment is not null && !string.Equals(connection.Environment, requestedEnvironment, StringComparison.OrdinalIgnoreCase);
+        var storeScopeChanged = requestedStoreId is not null && !string.Equals(connection.ExternalStoreId, requestedStoreId, StringComparison.Ordinal);
+        var userAgentChanged = currentSettings is not null && requestedUserAgent is not null && !string.Equals(currentSettings.UserAgentIdentity, requestedUserAgent, StringComparison.Ordinal);
+
         connection.DisplayName = command.DisplayName.Trim();
-        if (command.Environment is not null) connection.Environment = command.Environment;
-        if (command.ExternalStoreId is not null) connection.ExternalStoreId = command.ExternalStoreId.Trim();
+        if (requestedEnvironment is not null) connection.Environment = requestedEnvironment;
+        if (requestedStoreId is not null) connection.ExternalStoreId = requestedStoreId;
         if (connection.PlatformCode == "TRENDYOL")
         {
-            var current = ReadSettings(connection);
-            connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? current.UserAgentIdentity : command.UserAgentIdentity.Trim(), command.ExternalWritesEnabled ?? current.ExternalWritesEnabled));
+            var current = currentSettings ?? new ConnectionSettings("", false);
+            connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(requestedUserAgent ?? current.UserAgentIdentity, command.ExternalWritesEnabled ?? current.ExternalWritesEnabled));
         }
         else
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
+
+        if (environmentChanged || storeScopeChanged || userAgentChanged)
+        {
+            connection.LastTestedAt = null;
+            connection.LastSuccessAt = null;
+            connection.LastErrorCode = null;
+            connection.Status = "DRAFT";
+            foreach (var capability in await db.PlatformCapabilities.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken))
+            {
+                capability.SupportLevel = CapabilitySupportLevel.Unknown;
+                capability.Environment = connection.Environment;
+                capability.StoreScope = connection.ExternalStoreId;
+                capability.SourceUrl = null;
+                capability.SourceVersion = null;
+                capability.RequiredScope = null;
+                capability.ConstraintsJson = null;
+                capability.EvidenceNote = "Ortam, mağaza kapsamı veya User-Agent değişti; yeniden bağlantı testi gerekiyor.";
+                capability.FixtureChecksum = null;
+                capability.VerifiedAt = null;
+                capability.Version++;
+            }
+        }
+
         connection.Version++;
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, await HasCredential(tenantId, id, cancellationToken)));
     }
@@ -145,7 +182,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM"), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode) && active) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
         if (active)
         {
-            var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == MarketplaceCapabilities.ConnectionTest, cancellationToken);
+            var connectionTestCode = connection.PlatformCode == "TRENDYOL" ? MarketplaceCapabilities.ConnectionTest : InvoicingCapabilities.ConnectionTest;
+            var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == connectionTestCode && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
             if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported) return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Bağlantı etkinleştirilmeden önce başarılı Stage/Production testi gerekir.", 422);
             connection.Status = "ACTIVE";
         }

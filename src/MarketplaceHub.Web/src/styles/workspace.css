@@ -505,8 +505,13 @@
 }
 .operation-feedback-toast > button:hover { color: #fff; background: rgba(255, 255, 255, .08); }
 @keyframes ravencia-operation-toast-in { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: none; } }
+.app-shell.stitch-shell .integrations-reference-page .operation-feedback-toast {
+  top: auto;
+  bottom: 24px;
+}
 @media (max-width: 720px) {
   .app-shell.stitch-shell .operation-feedback-toast { top: 66px; right: 12px; width: calc(100vw - 24px); }
+  .app-shell.stitch-shell .integrations-reference-page .operation-feedback-toast { top: auto; bottom: 12px; }
 }
 
 /* Category attribute cards stay in the existing popup, two per row on desktop. */
