@@ -129,9 +129,11 @@ public static class TrendyolJsonMapper
                     NullText(variant, "modelCode", "productMainId") ?? productMainId,
                     Options(variant),
                     Bool(variant, "archived"),
-                    DecimalNullable(variant, "salePrice") ?? DecimalNullable(variant, "price", "salePrice"),
-                    DecimalNullable(variant, "listPrice") ?? DecimalNullable(variant, "price", "listPrice"),
+                    DecimalNullable(variant, "salePrice") ?? NestedDecimalNullable(variant, "price", "salePrice"),
+                    DecimalNullable(variant, "listPrice") ?? NestedDecimalNullable(variant, "price", "listPrice"),
                     DecimalNullable(variant, "vatRate"),
+                    DecimalNullable(variant, "quantity") ?? NestedDecimalNullable(variant, "stock", "quantity"),
+                    NestedText(variant, "price", "currency"),
                     variant.GetRawText()));
             }
         }
@@ -141,7 +143,7 @@ public static class TrendyolJsonMapper
             var sku = NullText(product, "stockCode", "merchantSku", "sku") ?? barcode;
             var variantId = NullText(product, "variantId", "id", "barcode", "stockCode");
             if (!string.IsNullOrWhiteSpace(variantId) && !string.IsNullOrWhiteSpace(sku))
-                variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, Options(product), Bool(product, "archived"), DecimalNullable(product, "salePrice"), DecimalNullable(product, "listPrice"), DecimalNullable(product, "vatRate"), product.GetRawText()));
+                variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, Options(product), Bool(product, "archived"), DecimalNullable(product, "salePrice") ?? NestedDecimalNullable(product, "price", "salePrice"), DecimalNullable(product, "listPrice") ?? NestedDecimalNullable(product, "price", "listPrice"), DecimalNullable(product, "vatRate"), DecimalNullable(product, "quantity") ?? NestedDecimalNullable(product, "stock", "quantity"), NestedText(product, "price", "currency"), product.GetRawText()));
         }
         return new(productId, productMainId, title, description, brand.Id, brand.Name, category.Id, category.Name, images, variants, product.GetRawText());
     }
@@ -471,7 +473,9 @@ public static class TrendyolJsonMapper
     private static string? FirstArrayText(JsonElement value, string field) => value.TryGetProperty(field, out var array) && array.ValueKind == JsonValueKind.Array && array.GetArrayLength() > 0 ? array[0].ToString() : null;
     private static string Text(JsonElement value, params string[] names) => NullText(value, names) ?? "";
     private static string? NullText(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.ToString(); return null; }
+    private static string? NestedText(JsonElement value, string objectName, params string[] names) => value.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object ? NullText(nested, names) : null;
     private static decimal Decimal(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && (item.TryGetDecimal(out var result) || decimal.TryParse(item.ToString(), CultureInfo.InvariantCulture, out result))) return result; return 0; }
+    private static decimal? NestedDecimalNullable(JsonElement value, string objectName, params string[] names) => value.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object ? DecimalNullable(nested, names) : null;
     private static decimal? DecimalNullable(JsonElement value, params string[] names)
     {
         foreach (var name in names)

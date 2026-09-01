@@ -111,6 +111,8 @@ public sealed record RemoteCatalogVariant(
     decimal? SalePrice,
     decimal? ListPrice,
     decimal? VatRate,
+    decimal? StockQuantity,
+    string? Currency,
     string RawJson);
 public sealed record RemotePublicationStatus(string Barcode, string Status, string? ExternalProductId, string? ExternalVariantId, string? RejectionCode, string RawJson);
 public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter);

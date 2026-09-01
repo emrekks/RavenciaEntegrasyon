@@ -1340,7 +1340,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             foreach (var snapshot in result.Value!.Items
                          .Where(x => !string.IsNullOrWhiteSpace(x.ExternalProductId))
                          .GroupBy(x => x.ExternalProductId, StringComparer.OrdinalIgnoreCase)
-                         .Select(x => x.Last()))
+                         .Select(MergeCatalogSnapshots))
             {
                 var categoryContext = categoryReferences is null
                     ? null
@@ -1657,12 +1657,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
         var remoteHash = Hash(JsonSerializer.Serialize(snapshot));
+        var isNewProduct = false;
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
         Product? product = link is null
             ? null
             : await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == link.ProductId, cancellationToken);
         if (product is null)
         {
+            isNewProduct = true;
             product = new Product
             {
                 Id = Guid.CreateVersion7(),
@@ -1684,7 +1686,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
         }
 
-        if (link is not null && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase))
+        if (!isNewProduct && link is not null && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase) && await CatalogSnapshotAlreadyApplied(tenantId, product.Id, snapshot, cancellationToken))
         {
             telemetrySkippedCount++;
             return;
@@ -1738,6 +1740,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         link.Version++;
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<bool> CatalogSnapshotAlreadyApplied(Guid tenantId, Guid productId, RemoteCatalogProduct snapshot, CancellationToken cancellationToken)
+    {
+        var variantCount = await db.ProductVariants.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.ProductId == productId, cancellationToken);
+        if (variantCount < snapshot.Variants.Count) return false;
+
+        var mediaCount = await db.ProductMedia.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE", cancellationToken);
+        return mediaCount >= snapshot.ImageUrls.Count;
     }
 
     private async Task<Brand?> UpsertCatalogBrand(Guid tenantId, string? name, CancellationToken cancellationToken)
@@ -1834,6 +1845,157 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         await UpsertCatalogOptions(tenantId, connectionId, product.Id, variant.Id, remote.Options, categoryContext, cancellationToken);
         if (categoryContext is not null)
             await UpsertProductAttributeAssignments(tenantId, product, variant, remote.Options, categoryContext, cancellationToken);
+        await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, now, cancellationToken);
+    }
+
+    private static RemoteCatalogProduct MergeCatalogSnapshots(IEnumerable<RemoteCatalogProduct> source)
+    {
+        var snapshots = source.ToList();
+        var first = snapshots[0];
+        var variants = snapshots
+            .SelectMany(snapshot => snapshot.Variants)
+            .GroupBy(VariantMergeKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Last())
+            .ToList();
+        var images = snapshots
+            .SelectMany(snapshot => snapshot.ImageUrls)
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(8)
+            .ToList();
+        return first with
+        {
+            ProductMainId = snapshots.Select(x => x.ProductMainId).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+            Title = snapshots.Select(x => x.Title).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? first.Title,
+            Description = snapshots.Select(x => x.Description).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? first.Description,
+            BrandExternalId = snapshots.Select(x => x.BrandExternalId).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+            BrandName = snapshots.Select(x => x.BrandName).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+            CategoryExternalId = snapshots.Select(x => x.CategoryExternalId).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+            CategoryName = snapshots.Select(x => x.CategoryName).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+            ImageUrls = images,
+            Variants = variants,
+            RawJson = snapshots[^1].RawJson
+        };
+    }
+
+    private static string VariantMergeKey(RemoteCatalogVariant variant) =>
+        !string.IsNullOrWhiteSpace(variant.ExternalVariantId)
+            ? $"id:{variant.ExternalVariantId}"
+            : $"sku:{NormalizeCatalogKey(variant.Sku, 160)}";
+
+    private async Task UpsertCatalogOfferAndInventory(Guid tenantId, Guid connectionId, ProductVariant variant, RemoteCatalogVariant remote, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (remote.StockQuantity is decimal stockQuantity)
+        {
+            var onHand = decimal.Round(Math.Max(0m, stockQuantity), 4, MidpointRounding.ToEven);
+            var inventory = db.InventoryItems.Local.FirstOrDefault(x => x.TenantId == tenantId && x.VariantId == variant.Id && x.LocationCode == "MAIN")
+                ?? await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variant.Id && x.LocationCode == "MAIN", cancellationToken);
+            if (inventory is null)
+            {
+                db.InventoryItems.Add(new InventoryItem
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    VariantId = variant.Id,
+                    LocationCode = "MAIN",
+                    OnHand = onHand,
+                    Reserved = 0,
+                    Available = onHand,
+                    ReconciledAt = now,
+                    ProjectionVersion = 1,
+                    Version = 1
+                });
+            }
+            else if (inventory.OnHand != onHand)
+            {
+                inventory.OnHand = onHand;
+                inventory.Available = InventoryProjection.Available(onHand, inventory.Reserved);
+                inventory.ReconciledAt = now;
+                inventory.ProjectionVersion++;
+                inventory.Version++;
+            }
+            else if (inventory.ReconciledAt is null)
+            {
+                inventory.ReconciledAt = now;
+            }
+        }
+
+        if (remote.SalePrice is null && remote.ListPrice is null) return;
+        var salePrice = decimal.Round(Math.Max(0m, remote.SalePrice ?? remote.ListPrice ?? 0m), 4, MidpointRounding.ToEven);
+        var listPrice = decimal.Round(Math.Max(salePrice, Math.Max(0m, remote.ListPrice ?? salePrice)), 4, MidpointRounding.ToEven);
+        var currency = NormalizeCurrency(remote.Currency);
+        var vatRate = decimal.Round(Math.Max(0m, remote.VatRate ?? 0m), 4, MidpointRounding.ToEven);
+        var status = remote.Archived ? "INACTIVE" : "ACTIVE";
+        var offer = db.ChannelOffers.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id)
+            ?? await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id, cancellationToken);
+        if (offer is null)
+        {
+            offer = new ChannelOffer
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ConnectionId = connectionId,
+                VariantId = variant.Id,
+                ListPrice = listPrice,
+                SalePrice = salePrice,
+                Currency = currency,
+                VatRate = vatRate,
+                VatInclusion = "INCLUDED",
+                RoundingMode = "HALF_EVEN",
+                SafetyStock = 0,
+                Status = status,
+                PriceVersion = 1,
+                Version = 1
+            };
+            db.ChannelOffers.Add(offer);
+            db.ChannelPriceHistory.Add(new ChannelPriceHistory
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                OfferId = offer.Id,
+                PriceVersion = offer.PriceVersion,
+                ListPrice = offer.ListPrice,
+                SalePrice = offer.SalePrice,
+                Currency = offer.Currency,
+                Reason = "TRENDYOL_CATALOG_IMPORT",
+                ActorSource = "SYSTEM:TRENDYOL",
+                EffectiveAt = now
+            });
+            return;
+        }
+
+        var priceChanged = offer.ListPrice != listPrice || offer.SalePrice != salePrice || !string.Equals(offer.Currency, currency, StringComparison.OrdinalIgnoreCase) || offer.VatRate != vatRate;
+        var statusChanged = offer.Status != status;
+        if (!priceChanged && !statusChanged) return;
+        offer.ListPrice = listPrice;
+        offer.SalePrice = salePrice;
+        offer.Currency = currency;
+        offer.VatRate = vatRate;
+        offer.Status = status;
+        offer.Version++;
+        if (priceChanged)
+        {
+            offer.PriceVersion++;
+            db.ChannelPriceHistory.Add(new ChannelPriceHistory
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                OfferId = offer.Id,
+                PriceVersion = offer.PriceVersion,
+                ListPrice = offer.ListPrice,
+                SalePrice = offer.SalePrice,
+                Currency = offer.Currency,
+                Reason = "TRENDYOL_CATALOG_IMPORT",
+                ActorSource = "SYSTEM:TRENDYOL",
+                EffectiveAt = now
+            });
+        }
+    }
+
+    private static string NormalizeCurrency(string? value)
+    {
+        var currency = value?.Trim().ToUpperInvariant();
+        return currency is { Length: 3 } && currency.All(character => character is >= 'A' and <= 'Z') ? currency : "TRY";
     }
 
     private async Task<string> PanelOptionSignatureAsync(Guid tenantId, Guid connectionId, CategoryAttributeContext categoryContext, IReadOnlyDictionary<string, string> options, CancellationToken cancellationToken)
