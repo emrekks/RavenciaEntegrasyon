@@ -1736,7 +1736,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             foreach (var remote in snapshot.Variants)
                 await UpsertCatalogVariant(tenantId, connectionId, product, remote, categoryContext, now, cancellationToken);
 
-            await UpsertCatalogMedia(tenantId, product, snapshot.ImageUrls, product.Title, cancellationToken);
+            var productImageUrls = snapshot.ImageUrls
+                .Concat(snapshot.Variants.SelectMany(variant => variant.ImageUrls ?? []))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            await UpsertCatalogMedia(tenantId, product, null, productImageUrls, product.Title, cancellationToken);
         }
         link ??= await db.MarketplaceProductLinks.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
         link.LastImportedPayloadHash = remoteHash;
@@ -1861,6 +1865,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (categoryContext is not null)
             await UpsertProductAttributeAssignments(tenantId, product, variant, remote.Options, categoryContext, cancellationToken);
         await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, now, cancellationToken);
+        if (remote.ImageUrls is not null)
+            await UpsertCatalogMedia(tenantId, product, variant.Id, remote.ImageUrls, $"{product.Title} · {optionSignature}", cancellationToken);
     }
 
     private static RemoteCatalogProduct MergeCatalogSnapshots(IEnumerable<RemoteCatalogProduct> source)
@@ -1870,13 +1876,25 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var variants = snapshots
             .SelectMany(snapshot => snapshot.Variants)
             .GroupBy(VariantMergeKey, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.Last())
+            .Select(group =>
+            {
+                var entries = group.ToList();
+                var last = entries[^1];
+                var hasImagePayload = entries.Any(entry => entry.ImageUrls is not null);
+                var imageUrls = entries
+                    .Where(entry => entry.ImageUrls is not null)
+                    .SelectMany(entry => entry.ImageUrls!)
+                    .Where(url => !string.IsNullOrWhiteSpace(url))
+                    .Select(url => url.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                return last with { ImageUrls = hasImagePayload ? imageUrls : null };
+            })
             .ToList();
         var images = snapshots
-            .SelectMany(snapshot => snapshot.ImageUrls)
+            .SelectMany(snapshot => snapshot.ImageUrls.Concat(snapshot.Variants.SelectMany(variant => variant.ImageUrls ?? [])))
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(8)
             .ToList();
         return first with
         {
@@ -2069,10 +2087,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
     }
 
-    private async Task UpsertCatalogMedia(Guid tenantId, Product product, IReadOnlyList<string> sourceUrls, string altText, CancellationToken cancellationToken)
+    private async Task UpsertCatalogMedia(Guid tenantId, Product product, Guid? variantId, IReadOnlyList<string> sourceUrls, string altText, CancellationToken cancellationToken)
     {
-        var urls = sourceUrls.Select(NormalizeCatalogImageUrl).Where(x => x is not null).Select(x => x!).Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToArray();
-        var existing = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId == null).ToListAsync(cancellationToken);
+        var urls = sourceUrls.Select(NormalizeCatalogImageUrl).Where(x => x is not null).Select(x => x!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var existing = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId == variantId).ToListAsync(cancellationToken);
         foreach (var row in existing.Where(x => x.SortOrder >= urls.Length)) row.Status = "ARCHIVED";
         for (var index = 0; index < urls.Length; index++)
         {
@@ -2086,7 +2104,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             else if (asset.Status != "ACTIVE" || asset.ArchivedAt is not null) { asset.Status = "ACTIVE"; asset.ArchivedAt = null; }
             var media = existing.SingleOrDefault(x => x.SortOrder == index);
-            if (media is null) db.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, VariantId = null, FileAssetId = asset.Id, MediaRole = index == 0 ? "PRIMARY" : "GALLERY", SortOrder = index, AltText = Short(altText, 320), Status = "ACTIVE" });
+            if (media is null) db.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, VariantId = variantId, FileAssetId = asset.Id, MediaRole = index == 0 ? "PRIMARY" : "GALLERY", SortOrder = index, AltText = Short(altText, 320), Status = "ACTIVE" });
             else
             {
                 var nextRole = index == 0 ? "PRIMARY" : "GALLERY";

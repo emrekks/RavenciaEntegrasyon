@@ -81,4 +81,66 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal(199.90m, small.ListPrice);
         Assert.Equal("TRY", small.Currency);
     }
+
+    [Fact]
+    public void CatalogProductResponse_MapsVariantImagesAndPreservesOrderedUniqueUrls()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "contentId": 800002,
+              "productMainId": "PRODUCT-002",
+              "title": "Görselli ürün",
+              "images": [
+                { "url": "https://cdn.example.test/shared.jpg" },
+                { "url": "https://cdn.example.test/product.jpg" },
+                { "url": "https://cdn.example.test/shared.jpg" }
+              ],
+              "variants": [
+                {
+                  "variantId": 820001,
+                  "stockCode": "SKU-002-S",
+                  "images": [
+                    "https://cdn.example.test/shared.jpg",
+                    { "url": "https://cdn.example.test/variant-s-front.jpg" },
+                    { "imageUrl": "https://cdn.example.test/variant-s-back.jpg" }
+                  ]
+                },
+                {
+                  "variantId": 820002,
+                  "stockCode": "SKU-002-M",
+                  "imageUrl": "https://cdn.example.test/variant-m-front.jpg"
+                }
+              ]
+            }
+          ]
+        }
+        """;
+
+        var result = TrendyolJsonMapper.CatalogProducts(json);
+        var product = Assert.Single(result.Items);
+        var small = Assert.Single(product.Variants, variant => variant.Sku == "SKU-002-S");
+        var medium = Assert.Single(product.Variants, variant => variant.Sku == "SKU-002-M");
+
+        Assert.Equal(
+            new[]
+            {
+                "https://cdn.example.test/shared.jpg",
+                "https://cdn.example.test/product.jpg",
+                "https://cdn.example.test/variant-s-front.jpg",
+                "https://cdn.example.test/variant-s-back.jpg",
+                "https://cdn.example.test/variant-m-front.jpg"
+            },
+            product.ImageUrls);
+        Assert.Equal(
+            new[]
+            {
+                "https://cdn.example.test/shared.jpg",
+                "https://cdn.example.test/variant-s-front.jpg",
+                "https://cdn.example.test/variant-s-back.jpg"
+            },
+            small.ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/variant-m-front.jpg" }, medium.ImageUrls);
+    }
 }

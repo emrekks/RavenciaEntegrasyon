@@ -856,10 +856,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                            select new { item.ProductId, item.VariantId, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         var mediaUrlsByVariant = media.Where(x => x.VariantId is not null)
             .GroupBy(x => x.VariantId!.Value)
-            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(MediaUrl).ToList());
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(MediaUrl).Distinct(StringComparer.OrdinalIgnoreCase).ToList());
         var globalMediaUrlsByProduct = media.Where(x => x.VariantId is null)
             .GroupBy(x => x.ProductId)
-            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(MediaUrl).ToList());
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(MediaUrl).Distinct(StringComparer.OrdinalIgnoreCase).ToList());
         var inventoryByVariant = inventories.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
         var offerByVariant = offers.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
         return products.Select(product =>

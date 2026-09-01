@@ -113,7 +113,8 @@ public sealed record RemoteCatalogVariant(
     decimal? VatRate,
     decimal? StockQuantity,
     string? Currency,
-    string RawJson);
+    string RawJson,
+    IReadOnlyList<string>? ImageUrls = null);
 public sealed record RemotePublicationStatus(string Barcode, string Status, string? ExternalProductId, string? ExternalVariantId, string? RejectionCode, string RawJson);
 public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter);
 public sealed record StockPushLine(Guid VariantId, string Barcode, decimal Quantity, long ProjectionVersion);
