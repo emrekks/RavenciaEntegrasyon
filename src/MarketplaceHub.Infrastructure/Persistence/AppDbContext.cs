@@ -136,7 +136,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             .Where(x => x.State == EntityState.Added)
             .Select(x => (x.Entity.ResourceType, x.Entity.AggregateType, x.Entity.AggregateId))
             .ToHashSet();
-        foreach (var entry in ChangeTracker.Entries().Where(x => x.State is EntityState.Added or EntityState.Modified))
+        // Adding an outbox event updates ChangeTracker. Materialize the source
+        // entries first so the enumeration is not invalidated by that append.
+        foreach (var entry in ChangeTracker.Entries().Where(x => x.State is EntityState.Added or EntityState.Modified).ToList())
         {
             var change = OutboxChange(entry.Entity);
             if (change is null || !existing.Add((change.Value.ResourceType, change.Value.AggregateType, change.Value.AggregateId))) continue;
