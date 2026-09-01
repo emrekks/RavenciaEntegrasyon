@@ -90,7 +90,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 orderLines.Count, orderPackages.Count, order.Version,
                 order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
                 customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
-                !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabel(invoice, order.CustomerSnapshotJson),
+                !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabel(invoice, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus)),
                 package?.CargoProviderExternalId, package?.CargoTrackingNumber,
                 orderLines.Select(x => ResolveVariant(x, variants, variantsBySku, variantsByBarcode)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
                 orderLines.Sum(x => x.OrderedQuantity), customer.Email, customer.TaxOrIdentityNumber,
@@ -207,7 +207,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             lines, packages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version,
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
-            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabel(invoice, order.CustomerSnapshotJson),
+            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabel(invoice, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus)),
             customer.Phone, customer.IsEInvoiceAvailable, InvoiceDocumentUrl(order.CustomerSnapshotJson)));
     }
 
@@ -550,7 +550,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, claim.ActionDueAt, claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", package?.CargoProviderExternalId, package?.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode,
-                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : InvoiceLabel(invoice, order.CustomerSnapshotJson), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
+                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : InvoiceLabel(invoice, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus]), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport);
         }).ToList();
         return latest ? new(rows.Take(limit).ToList(), null, rows.Count > limit) : Page(rows, limit, x => x.Id);
@@ -772,7 +772,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private static DateTimeOffset? OperationalDueAt(string json) =>
         JsonInstant(json, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
 
-    internal static string InvoiceLabel(Invoice? invoice, string customerJson)
+    internal static string InvoiceLabel(Invoice? invoice, string customerJson) =>
+        InvoiceLabel(invoice, customerJson, []);
+
+    internal static string InvoiceLabel(Invoice? invoice, string customerJson, IEnumerable<string?> packageRawStatuses)
     {
         // Once a local invoice exists, its state is authoritative. The Trendyol
         // order snapshot keeps invoiceStatus at NOTINVOICED and is not refreshed
@@ -786,6 +789,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             if (invoice.Status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview) return "FATURA_REDDEDILDI";
             return "FATURA_ISLENIYOR";
         }
+        // Trendyol's order payloads expose the same business fact in two
+        // different places depending on the endpoint/version: invoiceStatus
+        // in the package snapshot, or the package's raw status as INVOICED.
+        // RawStatus must be considered before the snapshot fallback because a
+        // later shipment update can replace the snapshot's invoice fields.
+        if (packageRawStatuses.Any(IsInvoicedRemoteStatus))
+            return "FATURA_KESILDI";
+
         var remote = JsonText(customerJson, "invoiceStatus")?.Trim().ToUpperInvariant();
         if (remote is "INVOICED") return "FATURA_KESILDI";
         if (remote is "RECEIVED") return "FATURA_KONTROLDE";
@@ -793,6 +804,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (remote is "NOTINVOICED") return "FATURA_BEKLIYOR";
         return "FATURA_BEKLIYOR";
     }
+
+    private static bool IsInvoicedRemoteStatus(string? status) =>
+        string.Equals(status?.Trim(), "INVOICED", StringComparison.OrdinalIgnoreCase);
 
     private static string? InvoiceDocumentUrl(string customerJson)
     {

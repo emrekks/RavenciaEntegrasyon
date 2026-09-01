@@ -143,9 +143,15 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             var invoicesByOrder = activeInvoices
                 .GroupBy(x => x.OrderId)
                 .ToDictionary(x => x.Key, x => x.First());
+            var packageRawStatusesByOrder = activePackageRows
+                .GroupBy(x => x.OrderId)
+                .ToDictionary(x => x.Key, x => x.Select(package => (string?)package.RawStatus).ToArray());
             uninvoicedInvoices = activePackageRows.Count(package =>
                 activeOrders.TryGetValue(package.OrderId, out var order)
-                && MarketplaceSalesService.InvoiceLabel(invoicesByOrder.GetValueOrDefault(order.Id), order.CustomerSnapshotJson) == "FATURA_BEKLIYOR");
+                && MarketplaceSalesService.InvoiceLabel(
+                    invoicesByOrder.GetValueOrDefault(order.Id),
+                    order.CustomerSnapshotJson,
+                    packageRawStatusesByOrder.GetValueOrDefault(order.Id) ?? Array.Empty<string?>()) == "FATURA_BEKLIYOR");
             var invoiceDueAt = now.AddDays(-DashboardMetricPolicy.InvoiceDueDays);
             var invoiceReminderAt = now.AddDays(-DashboardMetricPolicy.InvoiceReminderStartDays);
             dueSoonInvoices = await activePackages.CountAsync(package => package.Status == ShipmentPackageStatus.Delivered
