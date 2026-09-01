@@ -1,5 +1,28 @@
 namespace MarketplaceHub.Domain;
 
+public static class DashboardMetricPolicy
+{
+    // Dashboard metrics must use the same connection lifecycle as the rest of
+    // the active panel. Hidden and deleted connection history is not live data.
+    public static readonly string[] OperationalConnectionStatuses = ["ACTIVE", "VERIFIED", "CONNECTED"];
+
+    // A shipment that has already left the warehouse is no longer a late
+    // fulfillment order. Its delivery tracking belongs to the shipment view.
+    public static readonly string[] LateOrderStatuses =
+        ["NEW", "PROCESSING", "ON_HOLD", "READY_TO_SHIP", "PARTIALLY_CANCELLED", "MANUAL_REVIEW"];
+
+    // Approved, rejected, disputed and terminal claims are separate queues.
+    // This metric is the actionable return flow shown as pending in the panel.
+    public static readonly ReturnClaimStatus[] PendingReturnStatuses =
+        [ReturnClaimStatus.Requested, ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired];
+
+    public static bool IsLateOrderStatus(string? status) =>
+        status is "NEW" or "PROCESSING" or "ON_HOLD" or "READY_TO_SHIP" or "PARTIALLY_CANCELLED" or "MANUAL_REVIEW";
+
+    public static bool IsPendingReturn(ReturnClaimStatus status) =>
+        status is ReturnClaimStatus.Requested or ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit or ReturnClaimStatus.ActionRequired;
+}
+
 /// <summary>
 /// Small, tenant-scoped read models used by the operations dashboard. They are
 /// deliberately separate from the transactional tables so a dashboard request

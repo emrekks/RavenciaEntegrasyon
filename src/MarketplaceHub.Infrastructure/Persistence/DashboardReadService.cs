@@ -90,14 +90,15 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var monthStart = UtcOffset(new DateTime(localNow.Year, localNow.Month, 1), timezone);
         var terminalStatuses = new[] { "DELIVERED", "CANCELLED", "CANCELED", "RETURNED" };
         var salesOrders = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN")
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
             && !terminalStatuses.Contains(x.DerivedStatus));
         var revenueOrders = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN")
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
             && !new[] { "CANCELLED", "CANCELED", "RETURNED" }.Contains(x.DerivedStatus) && (x.NetAmount > 0 || x.GrossAmount > 0));
 
         var pendingOrders = await salesOrders.CountAsync(cancellationToken);
-        var lateOrders = await salesOrders.CountAsync(x => x.ShipmentDueAt != null && x.ShipmentDueAt < now, cancellationToken);
+        var lateOrders = await salesOrders.CountAsync(x => DashboardMetricPolicy.LateOrderStatuses.Contains(x.DerivedStatus)
+            && x.ShipmentDueAt != null && x.ShipmentDueAt < now, cancellationToken);
         var todayOrdersQuery = revenueOrders.Where(x => x.OrderedAt >= todayStart && x.OrderedAt < todayStart.AddDays(1));
         var monthOrdersQuery = revenueOrders.Where(x => x.OrderedAt >= monthStart && x.OrderedAt < monthStart.AddMonths(1));
         var todayOrders = await todayOrdersQuery.CountAsync(cancellationToken);
@@ -120,15 +121,15 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
 
         var pendingReturns = await db.ReturnClaims.AsNoTracking()
             .CountAsync(x => x.TenantId == tenantId
-                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN")
-                && x.Status != ReturnClaimStatus.Completed && x.Status != ReturnClaimStatus.Cancelled, cancellationToken);
-        var hasOperationalTrendyol = await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.PlatformCode == "TRENDYOL" && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
+                && DashboardMetricPolicy.PendingReturnStatuses.Contains(x.Status), cancellationToken);
+        var hasOperationalTrendyol = await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.PlatformCode == "TRENDYOL" && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(x.Status), cancellationToken);
         var uninvoicedInvoices = 0;
         var dueSoonInvoices = 0;
         if (hasOperationalTrendyol)
         {
             var activePackages = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId
-                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN")
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
                 && x.Status != ShipmentPackageStatus.Cancelled && x.Status != ShipmentPackageStatus.Returned);
             uninvoicedInvoices = await activePackages.CountAsync(package => !db.Invoices.AsNoTracking().Any(invoice => invoice.TenantId == tenantId && invoice.OriginalInvoiceId == null && (invoice.PackageId == package.Id || invoice.PackageId == null && invoice.OrderId == package.OrderId)), cancellationToken);
             var dueSoonAt = now.AddDays(-5);
@@ -188,7 +189,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         snapshot.DueSoonInvoices = dueSoonInvoices;
         snapshot.UninvoicedInvoices = uninvoicedInvoices;
         snapshot.LowStockProducts = lowProducts.Count;
-        snapshot.ActiveConnections = await db.PlatformConnections.AsNoTracking().CountAsync(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED" || x.Status == "CONNECTED"), cancellationToken);
+        snapshot.ActiveConnections = await db.PlatformConnections.AsNoTracking().CountAsync(x => x.TenantId == tenantId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(x.Status), cancellationToken);
         snapshot.PendingByPlatformJson = JsonSerializer.Serialize(pendingByPlatform);
         snapshot.UpdatedAt = now;
 
