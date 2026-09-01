@@ -132,8 +132,12 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                 && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
                 && x.Status != ShipmentPackageStatus.Cancelled && x.Status != ShipmentPackageStatus.Returned);
             uninvoicedInvoices = await activePackages.CountAsync(package => !db.Invoices.AsNoTracking().Any(invoice => invoice.TenantId == tenantId && invoice.OriginalInvoiceId == null && (invoice.PackageId == package.Id || invoice.PackageId == null && invoice.OrderId == package.OrderId)), cancellationToken);
-            var dueSoonAt = now.AddDays(-5);
-            dueSoonInvoices = await activePackages.CountAsync(package => package.Status == ShipmentPackageStatus.Delivered && package.StatusOccurredAt <= dueSoonAt && !db.Invoices.AsNoTracking().Any(invoice => invoice.TenantId == tenantId && invoice.OriginalInvoiceId == null && (invoice.PackageId == package.Id || invoice.PackageId == null && invoice.OrderId == package.OrderId)), cancellationToken);
+            var invoiceDueAt = now.AddDays(-DashboardMetricPolicy.InvoiceDueDays);
+            var invoiceReminderAt = now.AddDays(-DashboardMetricPolicy.InvoiceReminderStartDays);
+            dueSoonInvoices = await activePackages.CountAsync(package => package.Status == ShipmentPackageStatus.Delivered
+                && package.StatusOccurredAt > invoiceDueAt
+                && package.StatusOccurredAt <= invoiceReminderAt
+                && !db.Invoices.AsNoTracking().Any(invoice => invoice.TenantId == tenantId && invoice.OriginalInvoiceId == null && (invoice.PackageId == package.Id || invoice.PackageId == null && invoice.OrderId == package.OrderId)), cancellationToken);
         }
 
         var stockRows = await (from variant in db.ProductVariants.AsNoTracking()

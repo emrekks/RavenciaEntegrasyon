@@ -2,6 +2,9 @@ namespace MarketplaceHub.Domain;
 
 public static class DashboardMetricPolicy
 {
+    public const int InvoiceReminderStartDays = 5;
+    public const int InvoiceDueDays = 7;
+
     // Dashboard metrics must use the same connection lifecycle as the rest of
     // the active panel. Hidden and deleted connection history is not live data.
     public static readonly string[] OperationalConnectionStatuses = ["ACTIVE", "VERIFIED", "CONNECTED"];
@@ -21,6 +24,12 @@ public static class DashboardMetricPolicy
 
     public static bool IsPendingReturn(ReturnClaimStatus status) =>
         status is ReturnClaimStatus.Requested or ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit or ReturnClaimStatus.ActionRequired;
+
+    public static bool IsInvoiceDueSoon(DateTimeOffset deliveredAt, DateTimeOffset now)
+    {
+        var age = now - deliveredAt;
+        return age >= TimeSpan.FromDays(InvoiceReminderStartDays) && age < TimeSpan.FromDays(InvoiceDueDays);
+    }
 }
 
 /// <summary>

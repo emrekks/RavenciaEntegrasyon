@@ -5,6 +5,18 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class DashboardMetricPolicyTests
 {
+    [Fact]
+    public void InvoiceIsDueSoonOnlyDuringFiveToSevenDayReminderWindow()
+    {
+        var now = new DateTimeOffset(2026, 9, 1, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.True(DashboardMetricPolicy.IsInvoiceDueSoon(now.AddDays(-5), now));
+        Assert.True(DashboardMetricPolicy.IsInvoiceDueSoon(now.AddDays(-6), now));
+        Assert.False(DashboardMetricPolicy.IsInvoiceDueSoon(now.AddDays(-7), now));
+        Assert.False(DashboardMetricPolicy.IsInvoiceDueSoon(now.AddDays(-8), now));
+        Assert.False(DashboardMetricPolicy.IsInvoiceDueSoon(now.AddDays(-4), now));
+    }
+
     [Theory]
     [InlineData("NEW")]
     [InlineData("PROCESSING")]
