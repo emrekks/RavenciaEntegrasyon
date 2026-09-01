@@ -731,10 +731,7 @@ export function OrdersPage() {
     ['SHIPPED', 'Kargoda'],
     ['DELIVERED', 'Teslim edildi'],
     ['CANCELLED', 'İptal'],
-    ['RETURNED', 'İade Edilen'],
-    ['RETURN_IN_TRANSIT', 'İade kargoda'],
     ['PARTIALLY_CANCELLED', 'Kısmi iptal'],
-    ['MANUAL_REVIEW', 'Kontrol Gereken']
   ] as const
 
   const allOrders = ordersQuery.data?.items ?? []; const all = allOrders.filter(item => !hiddenCancelledOrderIds.includes(item.id)); const ordersLoading = ordersQuery.isPending; const ordersError = ordersQuery.error
