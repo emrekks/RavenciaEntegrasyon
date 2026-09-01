@@ -34,6 +34,23 @@ public sealed class DashboardMetricPolicyTests
     public void ShippedOrClosedOrdersAreNotLateFulfillmentOrders(string status) => Assert.False(DashboardMetricPolicy.IsLateOrderStatus(status));
 
     [Theory]
+    [InlineData("NEW")]
+    [InlineData("PROCESSING")]
+    [InlineData("ON_HOLD")]
+    [InlineData("READY_TO_SHIP")]
+    [InlineData("PARTIALLY_CANCELLED")]
+    [InlineData("MANUAL_REVIEW")]
+    public void PendingOrdersAreLimitedToWarehouseActionStatuses(string status) => Assert.True(DashboardMetricPolicy.IsPendingOrderStatus(status));
+
+    [Theory]
+    [InlineData("SHIPPED")]
+    [InlineData("UNDELIVERED")]
+    [InlineData("DELIVERED")]
+    [InlineData("RETURNED")]
+    [InlineData("CANCELLED")]
+    public void TransportAndTerminalOrdersAreNotPending(string status) => Assert.False(DashboardMetricPolicy.IsPendingOrderStatus(status));
+
+    [Theory]
     [InlineData(ReturnClaimStatus.Requested)]
     [InlineData(ReturnClaimStatus.AwaitingShipment)]
     [InlineData(ReturnClaimStatus.InTransit)]
@@ -47,4 +64,16 @@ public sealed class DashboardMetricPolicyTests
     [InlineData(ReturnClaimStatus.Completed)]
     [InlineData(ReturnClaimStatus.Cancelled)]
     public void ResolvedOrSeparateReturnQueuesAreNotPending(ReturnClaimStatus status) => Assert.False(DashboardMetricPolicy.IsPendingReturn(status));
+
+    [Fact]
+    public void OnlyDeliveredPackagesAreInvoiceEligible() => Assert.True(DashboardMetricPolicy.IsInvoiceEligiblePackage(ShipmentPackageStatus.Delivered));
+
+    [Theory]
+    [InlineData(ShipmentPackageStatus.New)]
+    [InlineData(ShipmentPackageStatus.Processing)]
+    [InlineData(ShipmentPackageStatus.Shipped)]
+    [InlineData(ShipmentPackageStatus.Undelivered)]
+    [InlineData(ShipmentPackageStatus.Cancelled)]
+    [InlineData(ShipmentPackageStatus.Returned)]
+    public void UndeliveredPackagesAreNotInvoiceEligible(ShipmentPackageStatus status) => Assert.False(DashboardMetricPolicy.IsInvoiceEligiblePackage(status));
 }

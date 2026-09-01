@@ -14,6 +14,11 @@ public static class DashboardMetricPolicy
     public static readonly string[] LateOrderStatuses =
         ["NEW", "PROCESSING", "ON_HOLD", "READY_TO_SHIP", "PARTIALLY_CANCELLED", "MANUAL_REVIEW"];
 
+    // "Bekleyen" is the warehouse action queue. Shipped and undelivered
+    // packages are still operational, but belong to transport tracking.
+    public static readonly string[] PendingOrderStatuses =
+        ["NEW", "PROCESSING", "ON_HOLD", "READY_TO_SHIP", "PARTIALLY_CANCELLED", "MANUAL_REVIEW"];
+
     // Approved, rejected, disputed and terminal claims are separate queues.
     // This metric is the actionable return flow shown as pending in the panel.
     public static readonly ReturnClaimStatus[] PendingReturnStatuses =
@@ -22,8 +27,13 @@ public static class DashboardMetricPolicy
     public static bool IsLateOrderStatus(string? status) =>
         status is "NEW" or "PROCESSING" or "ON_HOLD" or "READY_TO_SHIP" or "PARTIALLY_CANCELLED" or "MANUAL_REVIEW";
 
+    public static bool IsPendingOrderStatus(string? status) =>
+        status is "NEW" or "PROCESSING" or "ON_HOLD" or "READY_TO_SHIP" or "PARTIALLY_CANCELLED" or "MANUAL_REVIEW";
+
     public static bool IsPendingReturn(ReturnClaimStatus status) =>
         status is ReturnClaimStatus.Requested or ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit or ReturnClaimStatus.ActionRequired;
+
+    public static bool IsInvoiceEligiblePackage(ShipmentPackageStatus status) => status == ShipmentPackageStatus.Delivered;
 
     public static bool IsInvoiceDueSoon(DateTimeOffset deliveredAt, DateTimeOffset now)
     {
