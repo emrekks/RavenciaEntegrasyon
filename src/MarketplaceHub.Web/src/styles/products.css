@@ -72,7 +72,7 @@
 }
 .app-shell .products-page .product-toolbar {
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) 112px 126px 112px !important;
+  grid-template-columns: 162px minmax(0, 1fr) 112px 126px 112px !important;
   gap: 8px !important;
   align-items: center !important;
   padding: 0 !important;
@@ -81,7 +81,110 @@
   border: 0 !important;
 }
 .app-shell .products-page .product-toolbar .bulk-menu-shell {
-  display: none !important;
+  position: relative;
+  display: block !important;
+  min-width: 0;
+}
+.app-shell .products-page .product-toolbar .bulk-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 10px !important;
+  color: #dfe2ff !important;
+  background: #252943 !important;
+  border: 1px solid #454b73 !important;
+  border-radius: 4px !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  white-space: nowrap;
+}
+.app-shell .products-page .product-toolbar .bulk-action:hover:not(:disabled),
+.app-shell .products-page .product-toolbar .bulk-action:focus-visible {
+  color: #fff !important;
+  background: #5865f2 !important;
+  border-color: #7783ff !important;
+}
+.app-shell .products-page .product-toolbar .bulk-action:disabled {
+  color: #9b9aae !important;
+  background: #1b1d28 !important;
+  border-color: #34384a !important;
+  cursor: default;
+}
+.app-shell .products-page .product-toolbar .bulk-action-menu {
+  top: calc(100% + 6px);
+  right: auto;
+  bottom: auto;
+  left: 0;
+  z-index: 100;
+  width: 280px;
+  padding: 6px;
+  color: #e3e1ed !important;
+  background: #1f202a !important;
+  border: 1px solid #454b73 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, .5) !important;
+}
+.app-shell .products-page .product-toolbar .bulk-action-menu button {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 42px;
+  padding: 7px 8px !important;
+  color: #d4d3df !important;
+  background: transparent !important;
+  border: 0;
+  border-radius: 4px;
+  text-align: left;
+}
+.app-shell .products-page .product-toolbar .bulk-action-menu button:hover:not(:disabled),
+.app-shell .products-page .product-toolbar .bulk-action-menu button:focus-visible {
+  color: #fff !important;
+  background: #2b2f48 !important;
+}
+.app-shell .products-page .product-toolbar .bulk-action-menu button:disabled {
+  color: #777b91 !important;
+  cursor: not-allowed;
+  opacity: .68;
+}
+.app-shell .products-page .product-toolbar .bulk-action-menu button > b {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: #bfc4ff;
+  background: #30365c;
+  border-radius: 4px;
+  font-size: 9px;
+}
+.app-shell .products-page .product-toolbar .bulk-action-menu button > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 10px;
+  font-weight: 750;
+}
+.app-shell .products-page .product-toolbar .bulk-action-menu button small {
+  color: #9296ab;
+  font-size: 9px;
+  font-weight: 550;
+}
+.app-shell .products-page .product-toolbar .bulk-action-menu button.destructive > b {
+  color: #ffb0b9;
+  background: #4a2936;
+}
+.app-shell .products-page .product-toolbar .bulk-action-menu .bulk-action-empty {
+  margin: 4px 2px 6px;
+  padding: 8px;
+  color: #aeb3cb;
+  background: #292c3d;
+  border: 1px solid #3c4261;
+  border-radius: 4px;
+  font-size: 9px;
+  line-height: 1.35;
 }
 .app-shell .products-page .product-toolbar .order-search {
   position: relative;
@@ -388,13 +491,14 @@
 }
 @media (max-width: 900px) {
   .app-shell .products-page .product-toolbar {
-    grid-template-columns: minmax(0, 1fr) repeat(3, minmax(96px, .32fr)) !important;
+    grid-template-columns: minmax(140px, .42fr) minmax(0, 1fr) repeat(3, minmax(96px, .32fr)) !important;
   }
 }
 @media (max-width: 700px) {
   .app-shell .products-page { padding-inline: 12px !important; }
   .app-shell .products-page .product-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .app-shell .products-page .product-toolbar { grid-template-columns: 1fr 1fr !important; }
+  .app-shell .products-page .product-toolbar .bulk-menu-shell { grid-column: span 1; }
   .app-shell .products-page .product-toolbar .order-search { grid-column: 1 / -1; }
   .app-shell .products-page .order-pagination > span { max-width: 52%; line-height: 1.3; }
 }

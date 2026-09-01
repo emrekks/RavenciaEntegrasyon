@@ -306,7 +306,7 @@ function ProductColorRows({ product, selected, onSelect, onQuickEdit, onImageCli
         <div className="product-list-stock clickable-cell" title="Stoğu hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('stock')}><strong>{product.totalStock}</strong></div>
         <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ''}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'}>TY<i /></span><small>{platformActive ? 'Eşleşti' : 'Eşleşmedi'}</small></div>
         <div className={`product-list-status ${product.status === 'ACTIVE' ? 'active' : 'inactive'}`}><Tag>{product.status === 'ACTIVE' ? 'Satışta' : 'Kapalı'}</Tag><small>{product.status === 'ACTIVE' ? 'Aktif' : product.status === 'ARCHIVED' ? 'Pasif' : 'Taslak'}</small></div>
-        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title="Ürünü düzenle"><span className="product-edit-icon" aria-hidden="true">✎</span></Link><button type="button" className="product-delete-button" onClick={onDelete} aria-label={`${product.title} ürününü sil`} title="Ürünü sil"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16m-10 0V4h4v3m-7 0 1 13h8l1-13m-5 4v6m4-6v6" /></svg></button><span className="product-more-icon" aria-hidden="true">⋮</span></div>
+        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title="Ürünü düzenle"><span className="product-edit-icon" aria-hidden="true">✎</span></Link><button type="button" className="product-delete-button" onClick={event => { event.stopPropagation(); onDelete() }} aria-label={`${product.title} ürününü sil`} title="Ürünü sil"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16m-10 0V4h4v3m-7 0 1 13h8l1-13m-5 4v6m4-6v6" /></svg></button><span className="product-more-icon" aria-hidden="true">⋮</span></div>
       </div>
     </article>
 }
@@ -425,27 +425,28 @@ export function ProductsPage() {
     <div className="product-metrics metrics"><article className="product-metric-total"><small>Toplam Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.totalCount ?? 0}</strong><span>katalog kaydı</span></article><article className="product-metric-active"><small>Aktif Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.activeCount ?? 0}</strong><span>ürün</span></article><article className="product-metric-empty"><small>Stoksuz Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.outOfStockCount ?? 0}</strong><span>aksiyon gerekli</span></article><article className="product-metric-low"><small>Düşük Stoklu</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.lowStockCount ?? 0}</strong><span>5 ve altı</span></article></div>
     <div className="product-toolbar">
       <div className="bulk-menu-shell">
-        <button type="button" className="bulk-action" disabled={!selectedProductIds.length} aria-expanded={bulkOpen} onClick={() => setBulkOpen(v => !v)}>
+        <button type="button" className="bulk-action" aria-expanded={bulkOpen} aria-controls="products-bulk-action-menu" onClick={() => setBulkOpen(v => !v)}>
           Toplu işlemler {selectedProductIds.length > 0 ? `(${selectedProductIds.length})` : ''} ⌄
         </button>
         {bulkOpen && (
-          <div className="bulk-action-menu" role="menu">
-            <button type="button" role="menuitem" onClick={() => { setBulkOpen(false); setQuickEdit({ productIds: selectedProductIds, mode: 'both' }); }}>
+          <div id="products-bulk-action-menu" className="bulk-action-menu" role="menu">
+            {!selectedProductIds.length && <div className="bulk-action-empty" role="status">İşlem yapmak için önce en az bir ürün seçin.</div>}
+            <button type="button" role="menuitem" disabled={!selectedProductIds.length} onClick={() => { setBulkOpen(false); setQuickEdit({ productIds: selectedProductIds, mode: 'both' }); }}>
               <b>01</b><span>Toplu Fiyat &amp; Stok Düzenle<small>Seçili ürünler</small></span>
             </button>
-            <button type="button" role="menuitem" onClick={() => { setBulkOpen(false); setQuickEdit({ productIds: selectedProductIds, mode: 'price' }); }}>
+            <button type="button" role="menuitem" disabled={!selectedProductIds.length} onClick={() => { setBulkOpen(false); setQuickEdit({ productIds: selectedProductIds, mode: 'price' }); }}>
               <b>02</b><span>Toplu Fiyat Düzenle<small>Fiyatları tek seferde güncelle</small></span>
             </button>
-            <button type="button" role="menuitem" onClick={() => { setBulkOpen(false); setQuickEdit({ productIds: selectedProductIds, mode: 'stock' }); }}>
+            <button type="button" role="menuitem" disabled={!selectedProductIds.length} onClick={() => { setBulkOpen(false); setQuickEdit({ productIds: selectedProductIds, mode: 'stock' }); }}>
               <b>03</b><span>Toplu Stok Düzenle<small>Stokları artır / azalt / eşitle</small></span>
             </button>
-            <button type="button" role="menuitem" onClick={() => void bulkSetProductStatus('ACTIVE')}>
+            <button type="button" role="menuitem" disabled={!selectedProductIds.length} onClick={() => void bulkSetProductStatus('ACTIVE')}>
               <b>04</b><span>Toplu Satışa Aç<small>Seçili ürünleri satışta yap</small></span>
             </button>
-            <button type="button" role="menuitem" className="destructive" onClick={() => void bulkSetProductStatus('ARCHIVED')}>
+            <button type="button" role="menuitem" className="destructive" disabled={!selectedProductIds.length} onClick={() => void bulkSetProductStatus('ARCHIVED')}>
               <b>05</b><span>Toplu Satışa Kapat<small>Seçili ürünleri arşive al</small></span>
             </button>
-            <button type="button" role="menuitem" className="destructive" onClick={() => void bulkDeleteProducts()}>
+            <button type="button" role="menuitem" className="destructive" disabled={!selectedProductIds.length} onClick={() => void bulkDeleteProducts()}>
               <b>06</b><span>Seçili Ürünleri Sil<small>Yerel katalogdan kalıcı olarak kaldır</small></span>
             </button>
           </div>
