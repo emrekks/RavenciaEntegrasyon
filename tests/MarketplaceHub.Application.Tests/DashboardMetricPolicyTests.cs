@@ -71,11 +71,11 @@ public sealed class DashboardMetricPolicyTests
     [InlineData(ShipmentPackageStatus.Shipped)]
     [InlineData(ShipmentPackageStatus.Undelivered)]
     [InlineData(ShipmentPackageStatus.Delivered)]
+    [InlineData(ShipmentPackageStatus.Returned)]
     [InlineData(ShipmentPackageStatus.ManualReview)]
-    public void AnyNonTerminalPackageCanBeInvoiceEligible(ShipmentPackageStatus status) => Assert.True(DashboardMetricPolicy.IsInvoiceEligiblePackage(status));
+    public void NonCancelledPackageCanBeInvoiceEligible(ShipmentPackageStatus status) => Assert.True(DashboardMetricPolicy.IsInvoiceEligiblePackage(status));
 
     [Theory]
     [InlineData(ShipmentPackageStatus.Cancelled)]
-    [InlineData(ShipmentPackageStatus.Returned)]
-    public void CancelledOrReturnedPackagesAreNotInvoiceEligible(ShipmentPackageStatus status) => Assert.False(DashboardMetricPolicy.IsInvoiceEligiblePackage(status));
+    public void CancelledPackagesAreNotInvoiceEligible(ShipmentPackageStatus status) => Assert.False(DashboardMetricPolicy.IsInvoiceEligiblePackage(status));
 }

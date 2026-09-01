@@ -772,7 +772,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private static DateTimeOffset? OperationalDueAt(string json) =>
         JsonInstant(json, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
 
-    private static string InvoiceLabel(Invoice? invoice, string customerJson)
+    internal static string InvoiceLabel(Invoice? invoice, string customerJson)
     {
         // Once a local invoice exists, its state is authoritative. The Trendyol
         // order snapshot keeps invoiceStatus at NOTINVOICED and is not refreshed

@@ -108,14 +108,16 @@ public sealed partial class InvoicingBillingService(
             if (!orders.TryGetValue(package.OrderId, out var order)) return null;
             var orderLines = linesByOrder.GetValueOrDefault(order.Id) ?? [];
             var invoice = invoices.FirstOrDefault(x => x.PackageId == package.Id) ?? invoices.FirstOrDefault(x => x.PackageId == null && x.OrderId == order.Id);
-            if (invoice is null && package.Status is (ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Returned)) return null;
+            var invoiceStatus = MarketplaceSalesService.InvoiceLabel(invoice, order.CustomerSnapshotJson);
+            if (invoiceStatus == "FATURA_BEKLIYOR"
+                && (package.Status == ShipmentPackageStatus.Cancelled
+                    || DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus))) return null;
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
             var dueAt = deliveredAt?.AddDays(7);
-            var dueSoon = invoice is null && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);
+            var dueSoon = invoiceStatus == "FATURA_BEKLIYOR" && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);
             var image = orderLines.Where(x => x.VariantId != null).Select(x => mediaByVariant.GetValueOrDefault(x.VariantId!.Value)).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
             var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
-            var status = invoice is null ? "FATURALANDIRILMADI" : Status(invoice.Status);
-            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, status, invoice?.InvoiceNumber, invoice is null);
+            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, invoice?.InvoiceNumber, invoiceStatus == "FATURA_BEKLIYOR");
         }).Where(x => x is not null).Select(x => x!).ToList();
     }
 
@@ -168,9 +170,13 @@ public sealed partial class InvoicingBillingService(
         {
             selectedPackage = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId && x.OrderId == command.OrderId, cancellationToken);
             if (selectedPackage is null) return Invalid<InvoiceDetailView>("packageId", "Paket siparişe ait değil.");
-            if (command.OriginalInvoiceId is null && !DashboardMetricPolicy.IsInvoiceEligiblePackage(selectedPackage.Status)) return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "İptal edilmiş veya iade edilmiş paket için satış faturası oluşturulamaz.", 422);
+            if (command.OriginalInvoiceId is null
+                && (DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
+                    || !DashboardMetricPolicy.IsInvoiceEligiblePackage(selectedPackage.Status))) return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "İptal edilmiş sipariş/paket için satış faturası oluşturulamaz.", 422);
         }
-        else if (command.OriginalInvoiceId is null && !await db.ShipmentPackages.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.OrderId == command.OrderId && x.Status != ShipmentPackageStatus.Cancelled && x.Status != ShipmentPackageStatus.Returned, cancellationToken))
+        else if (command.OriginalInvoiceId is null
+            && (DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
+                || !await db.ShipmentPackages.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.OrderId == command.OrderId && x.Status != ShipmentPackageStatus.Cancelled, cancellationToken)))
         {
             return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "Satış faturası için siparişte uygun paket bulunamadı.", 422);
         }

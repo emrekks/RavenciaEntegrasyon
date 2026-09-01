@@ -19,6 +19,8 @@ public static class DashboardMetricPolicy
     public static readonly string[] PendingOrderStatuses =
         ["NEW", "PROCESSING", "ON_HOLD", "READY_TO_SHIP", "PARTIALLY_CANCELLED", "MANUAL_REVIEW"];
 
+    public static readonly string[] InvoiceExcludedOrderStatuses = ["CANCELLED", "CANCELED"];
+
     // Approved, rejected, disputed and terminal claims are separate queues.
     // This metric is the actionable return flow shown as pending in the panel.
     public static readonly ReturnClaimStatus[] PendingReturnStatuses =
@@ -34,7 +36,7 @@ public static class DashboardMetricPolicy
         status is ReturnClaimStatus.Requested or ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit or ReturnClaimStatus.ActionRequired;
 
     public static bool IsInvoiceEligiblePackage(ShipmentPackageStatus status) =>
-        status is not ShipmentPackageStatus.Cancelled and not ShipmentPackageStatus.Returned;
+        status is not ShipmentPackageStatus.Cancelled;
 
     public static bool IsInvoiceDueSoon(DateTimeOffset deliveredAt, DateTimeOffset now)
     {

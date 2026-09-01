@@ -129,12 +129,26 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         {
             var activePackages = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId
                 && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
-                && x.Status != ShipmentPackageStatus.Cancelled && x.Status != ShipmentPackageStatus.Returned);
-            var invoiceEligiblePackages = activePackages;
-            uninvoicedInvoices = await invoiceEligiblePackages.CountAsync(package => !db.Invoices.AsNoTracking().Any(invoice => invoice.TenantId == tenantId && invoice.OriginalInvoiceId == null && (invoice.PackageId == package.Id || invoice.PackageId == null && invoice.OrderId == package.OrderId)), cancellationToken);
+                && x.Status != ShipmentPackageStatus.Cancelled
+                && db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)));
+            var activePackageRows = await activePackages.ToListAsync(cancellationToken);
+            var activeOrderIds = activePackageRows.Select(x => x.OrderId).Distinct().ToArray();
+            var activeOrders = await db.Orders.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && activeOrderIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, cancellationToken);
+            var activeInvoices = await db.Invoices.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null && activeOrderIds.Contains(x.OrderId))
+                .OrderByDescending(x => x.CreatedAt)
+                .ToListAsync(cancellationToken);
+            var invoicesByOrder = activeInvoices
+                .GroupBy(x => x.OrderId)
+                .ToDictionary(x => x.Key, x => x.First());
+            uninvoicedInvoices = activePackageRows.Count(package =>
+                activeOrders.TryGetValue(package.OrderId, out var order)
+                && MarketplaceSalesService.InvoiceLabel(invoicesByOrder.GetValueOrDefault(order.Id), order.CustomerSnapshotJson) == "FATURA_BEKLIYOR");
             var invoiceDueAt = now.AddDays(-DashboardMetricPolicy.InvoiceDueDays);
             var invoiceReminderAt = now.AddDays(-DashboardMetricPolicy.InvoiceReminderStartDays);
-            dueSoonInvoices = await invoiceEligiblePackages.CountAsync(package => package.Status == ShipmentPackageStatus.Delivered
+            dueSoonInvoices = await activePackages.CountAsync(package => package.Status == ShipmentPackageStatus.Delivered
                 && package.StatusOccurredAt > invoiceDueAt
                 && package.StatusOccurredAt <= invoiceReminderAt
                 && !db.Invoices.AsNoTracking().Any(invoice => invoice.TenantId == tenantId && invoice.OriginalInvoiceId == null && (invoice.PackageId == package.Id || invoice.PackageId == null && invoice.OrderId == package.OrderId)), cancellationToken);
