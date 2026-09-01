@@ -3036,7 +3036,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.HasIndex("TenantId", "PlatformCode", "Environment", "ExternalStoreId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"Status\" <> 'DELETED'");
 
                     b.ToTable("platform_connections", "integration");
                 });

@@ -48,7 +48,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (platform == "TRENDYOL" && !string.Equals(apiVersion, "V2", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Trendyol marketplace bağlantısı yalnız Product Integration V2 kullanır.");
         if (platform == "TRENDYOL_EFATURAM" && !string.Equals(apiVersion, "1.0.0", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "E-Faturam bağlantısı doğrulanmış doküman sürümü 1.0.0 ile pinlenmelidir.");
         if (string.IsNullOrWhiteSpace(command.DisplayName) || string.IsNullOrWhiteSpace(command.ExternalStoreId) || platform == "TRENDYOL" && string.IsNullOrWhiteSpace(command.UserAgentIdentity)) return Invalid<ConnectionView>("connection", "Ad ve dış mağaza/firma kapsamı; Trendyol için ayrıca User-Agent kimliği zorunludur.");
-        if (await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.PlatformCode == platform && x.Environment == environment && x.ExternalStoreId == command.ExternalStoreId.Trim(), cancellationToken)) return ServiceResult<ConnectionView>.Fail("CONNECTION_ALREADY_EXISTS", "Bu platform kapsamı ve environment için bağlantı zaten var.", 409);
+        if (await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Status != "DELETED" && x.PlatformCode == platform && x.Environment == environment && x.ExternalStoreId == command.ExternalStoreId.Trim(), cancellationToken)) return ServiceResult<ConnectionView>.Fail("CONNECTION_ALREADY_EXISTS", "Bu platform kapsamı ve environment için bağlantı zaten var.", 409);
 
         var now = timeProvider.GetUtcNow(); var connection = new PlatformConnection
         {

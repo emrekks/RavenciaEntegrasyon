@@ -114,7 +114,7 @@ internal static class CatalogModelConfiguration
         {
             entity.ToTable("platform_connections", "integration"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
             entity.Property(x => x.PlatformCode).HasMaxLength(64); entity.Property(x => x.Environment).HasMaxLength(24); entity.Property(x => x.DisplayName).HasMaxLength(160); entity.Property(x => x.ExternalStoreId).HasMaxLength(256); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.ApiVersion).HasMaxLength(64);
-            entity.HasIndex(x => x.PublicId).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.PlatformCode, x.Environment, x.ExternalStoreId }).IsUnique(); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => x.PublicId).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.PlatformCode, x.Environment, x.ExternalStoreId }).IsUnique().HasFilter("\"Status\" <> 'DELETED'"); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<ReferenceSnapshot>(entity =>
