@@ -14,7 +14,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     {
         // The panel is a local read model. Remote reads belong to the scheduled worker.
         var sort = NormalizeOrderSort(queryOptions.Sort);
-        var query = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId);
+        var query = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"));
         ApplyOrderFilters(ref query, queryOptions);
         // Count the filtered result set before applying the page cursor. Counting
         // after the cursor made the total shrink on every subsequent page and
@@ -127,7 +128,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
         var platform = options.Platform?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(platform) && platform != "ALL")
-            query = query.Where(x => db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == platform));
+            query = query.Where(x => db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN" && connection.PlatformCode == platform));
 
         var listing = options.Listing?.Trim().ToUpperInvariant();
         if (listing == "OPEN") query = query.Where(x => x.DerivedStatus != "DELIVERED" && x.DerivedStatus != "CANCELLED" && x.DerivedStatus != "RETURNED");
@@ -153,10 +154,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     {
         // Marketplace status tabs are package-based. Counting Orders here made
         // split packages and the provider's package counters incomparable.
-        var packages = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId);
+        var packages = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"));
         var platformCode = platform?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(platformCode) && platformCode != "ALL")
-            packages = packages.Where(x => db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.PlatformCode == platformCode));
+            packages = packages.Where(x => db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN" && connection.PlatformCode == platformCode));
 
         return await packages
             .GroupBy(_ => 1)
@@ -179,7 +181,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     public async Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
         // Detail pages also read the persisted snapshot; they never call the marketplace.
-        var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"), cancellationToken);
         if (order is null) return NotFound<OrderDetailView>();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var variantIds = orderLines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
@@ -230,14 +233,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     public async Task<PageResult<ShipmentView>> ShipmentsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
-        var afterId = Decode(after); var query = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId); if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0); if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ShipmentPackageStatus>(status, true, out var parsed)) query = query.Where(x => x.Status == parsed);
+        var afterId = Decode(after); var query = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN")); if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0); if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ShipmentPackageStatus>(status, true, out var parsed)) query = query.Where(x => x.Status == parsed);
         var rows = await (from package in query orderby package.Id join order in db.Orders.AsNoTracking() on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id } select new { Package = package, order.OrderNumber }).Take(limit + 1).ToListAsync(cancellationToken);
         return Page(rows.Select(x => Map(x.Package, x.OrderNumber)).ToList(), limit, x => x.Id);
     }
 
     public async Task<ServiceResult<ShipmentDetailView>> ShipmentAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        var row = await (from package in db.ShipmentPackages.AsNoTracking() where package.TenantId == tenantId && package.Id == id join order in db.Orders.AsNoTracking() on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id } select new { Package = package, order.OrderNumber }).SingleOrDefaultAsync(cancellationToken); if (row is null) return NotFound<ShipmentDetailView>();
+        var row = await (from package in db.ShipmentPackages.AsNoTracking() where package.TenantId == tenantId && package.Id == id && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == package.ConnectionId && connection.Status != "HIDDEN") join order in db.Orders.AsNoTracking() on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id } select new { Package = package, order.OrderNumber }).SingleOrDefaultAsync(cancellationToken); if (row is null) return NotFound<ShipmentDetailView>();
         var stage = await IsStageConnection(tenantId, row.Package.ConnectionId, cancellationToken);
         var actions = stage
             ? ShipmentActions
@@ -513,7 +516,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (!hasOperationalTrendyol) return new([], null, false);
 
         var afterId = latest ? Guid.Empty : Decode(after);
-        var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId);
+        var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"));
         if (!latest && afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ReturnClaimStatus>(status, true, out var parsed)) query = query.Where(x => x.Status == parsed);
         var claims = latest
@@ -554,7 +558,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     public async Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"), cancellationToken);
         if (claim is null) return NotFound<ReturnDetailView>();
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claim.OrderId, cancellationToken);
         if (order is null) return NotFound<ReturnDetailView>();
@@ -584,7 +589,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     public async Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken)
     {
-        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"), cancellationToken);
         if (claim is null) return NotFound<IReadOnlyList<ReturnIssueReason>>();
         var context = new AdapterContext(tenantId, claim.ConnectionId, correlationId, $"return-issue-reasons:{claim.ConnectionId:N}", timeProvider.GetUtcNow().AddSeconds(30));
         var result = await returns.IssueReasonsAsync(context, cancellationToken);
@@ -598,7 +604,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     public async Task<ServiceResult<Guid>> EnqueueReturnActionAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, ReturnDecisionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
         var normalizedKey = idempotencyKey.Trim(); var prior = await db.ReturnDecisions.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == normalizedKey, cancellationToken); if (prior is not null) return ServiceResult<Guid>.Ok(prior.Id);
-        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId, cancellationToken); if (claim is null) return NotFound<Guid>(); if (claim.Version != expectedVersion) return Precondition<Guid>(claim.Version);
+        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"), cancellationToken); if (claim is null) return NotFound<Guid>(); if (claim.Version != expectedVersion) return Precondition<Guid>(claim.Version);
         var action = command.Action.Trim().ToUpperInvariant(); if (action is not ("APPROVE" or "REJECT")) return Invalid<Guid>("action", "İade aksiyonu APPROVE veya REJECT olmalıdır.");
         if (claim.Status != ReturnClaimStatus.ActionRequired) return ServiceResult<Guid>.Fail("RETURN_ACTION_NOT_ALLOWED", "İade aksiyonu yalnız ACTION_REQUIRED durumunda oluşturulabilir.", 409);
         var activeDecision = await db.ReturnDecisions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && (x.Status == "PENDING" || x.Status == "SUBMITTED" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW")).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);

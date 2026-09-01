@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider) : IOperationalDataMaintenanceService
+public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider, IDashboardReadService dashboard) : IOperationalDataMaintenanceService
 {
     private static readonly HashSet<string> AllowedScopes = new(StringComparer.Ordinal) { "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS", "OPTIONS", "ORDERS", "RETURNS", "INVOICES" };
     private static readonly HashSet<string> ConnectionDeleteScopes = new(StringComparer.Ordinal) { "PRODUCTS", "ORDERS", "RETURNS", "INVOICES" };
@@ -13,7 +13,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
     {
         var scopes = command.Scopes.Select(value => value.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal).ToHashSet(StringComparer.Ordinal);
         if (scopes.Count == 0 || scopes.Any(scope => !AllowedScopes.Contains(scope))) return Invalid("Geçerli en az bir veri alanı seçin.");
-        if (!string.Equals(command.Confirmation?.Trim(), "VERİLERİ SİL", StringComparison.Ordinal)) return Invalid("Onay alanına tam olarak VERİLERİ SİL yazın.");
+        if (command.Confirmation?.Trim() is not ("Verileri sil" or "VERİLERİ SİL")) return Invalid("Onay alanına tam olarak Verileri sil yazın.");
 
         var counts = await CountsAsync(tenantId, null, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -36,7 +36,28 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "OPERATIONAL_DATA_RESET", "Tenant", tenantId.ToString("D"), string.Join(',', scopes.Order()), correlationId));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
         return ServiceResult<OperationalDataResetView>.Ok(counts);
+    }
+
+    public async Task<ServiceResult<bool>> SetDataVisibilityAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, bool hidden, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status != "DELETED", cancellationToken);
+        if (connection is null) return ServiceResult<bool>.Fail("RESOURCE_NOT_FOUND", "Bağlantı bulunamadı.", 404);
+        if (connection.Version != expectedVersion) return ServiceResult<bool>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{connection.Version}.", 412);
+        if (hidden)
+        {
+            connection.Status = "HIDDEN";
+        }
+        else if (connection.Status == "HIDDEN")
+        {
+            connection.Status = "DISABLED";
+        }
+        connection.Version++;
+        db.AuditLogs.Add(Audit(tenantId, actorUserId, hidden ? "CONNECTION_DATA_HIDDEN" : "CONNECTION_DATA_SHOWN", "PlatformConnection", connectionId.ToString("D"), hidden ? "platform-data-hidden" : "platform-data-shown", correlationId));
+        await db.SaveChangesAsync(cancellationToken);
+        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
+        return ServiceResult<bool>.Ok(hidden);
     }
 
     public async Task<ServiceResult<OperationalDataResetView>> DeleteConnectionAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, DeleteConnectionCommand command, string correlationId, CancellationToken cancellationToken)
@@ -60,6 +81,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "CONNECTION_DEEP_DELETED", "PlatformConnection", connectionId.ToString("D"), $"{connection.PlatformCode}:{connection.ExternalStoreId}", correlationId));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
         return ServiceResult<OperationalDataResetView>.Ok(counts with { ConnectionDeleted = true });
     }
 

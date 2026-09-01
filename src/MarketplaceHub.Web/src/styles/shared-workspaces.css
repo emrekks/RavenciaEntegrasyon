@@ -490,6 +490,9 @@ textarea {
 .reference-connection-state { display: inline-flex; align-items: center; gap: 7px; color: var(--st-primary-soft); font-size: 14px; font-weight: 700; }
 .reference-connection-state i { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
 .reference-connection-state.inactive { color: var(--st-orange); }
+.reference-connection-state.hidden { color: var(--st-red); }
+.reference-integration-card-hidden { border-color: rgba(255, 135, 153, .5) !important; }
+.reference-integration-card-hidden .reference-integration-accent { background: var(--st-red); box-shadow: 0 0 12px rgba(255, 135, 153, .55); }
 .reference-integration-menu { position: relative; }
 .reference-menu-trigger { width: 30px; height: 34px; color: var(--st-text); background: transparent; border: 0; font-size: 29px; line-height: 1; cursor: pointer; }
 .reference-menu-trigger:hover { color: var(--st-primary-soft); }

@@ -57,7 +57,10 @@ public sealed partial class InvoicingBillingService(
 
     public async Task<PageResult<InvoiceListView>> ListAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
-        var afterId = Decode(after); var query = db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId);
+        var afterId = Decode(after); var query = db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId
+            && !db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Status == "HIDDEN"
+                && (connection.Id == x.ProviderConnectionId
+                    || db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId && order.ConnectionId == connection.Id))));
         if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<InvoiceStatus>(status, true, out var parsed)) query = query.Where(x => x.Status == parsed);
         var rows = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken); var orderIds = rows.Select(x => x.OrderId).Distinct().ToList();
@@ -75,7 +78,8 @@ public sealed partial class InvoicingBillingService(
         if (!hasOperationalTrendyol) return [];
 
         var packages = await db.ShipmentPackages.AsNoTracking()
-            .Where(x => x.TenantId == tenantId)
+            .Where(x => x.TenantId == tenantId
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"))
             .OrderByDescending(x => x.StatusOccurredAt)
             .ToListAsync(cancellationToken);
         if (packages.Count == 0) return [];
@@ -267,7 +271,10 @@ public sealed partial class InvoicingBillingService(
 
     public async Task<ServiceResult<InvoiceDetailView>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id
+            && !db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Status == "HIDDEN"
+                && (connection.Id == x.ProviderConnectionId
+                    || db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId && order.ConnectionId == connection.Id))), cancellationToken);
         if (invoice is null) return NotFound<InvoiceDetailView>();
         var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId).Select(x => x.OrderNumber).SingleAsync(cancellationToken);
         var lines = await db.InvoiceLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.LineSequence).Select(x => new InvoiceLineView(x.Id, x.LineSequence, x.DescriptionSnapshot, x.SkuSnapshot, x.UnitSnapshot, x.Quantity, x.UnitPrice, x.DiscountAmount, x.VatRate, x.VatAmount, x.LineTotal)).ToListAsync(cancellationToken);

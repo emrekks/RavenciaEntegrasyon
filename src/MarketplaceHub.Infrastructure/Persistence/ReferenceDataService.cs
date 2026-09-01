@@ -8,7 +8,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
 {
     public async Task<ServiceResult<ReferenceDataView>> ListAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, CancellationToken cancellationToken)
     {
-        if (!await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)) return NotFound<ReferenceDataView>();
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<ReferenceDataView>();
         var scope = string.IsNullOrWhiteSpace(parentExternalId) ? "" : parentExternalId.Trim();
         var snapshot = await db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType && x.ScopeExternalId == scope && x.IsCurrent).OrderByDescending(x => x.FetchedAt).Select(x => new { x.Id, x.ResourceType, x.FetchedAt }).FirstOrDefaultAsync(cancellationToken);
         if (snapshot is null) return ServiceResult<ReferenceDataView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Doğrulanmış güncel reference snapshot yok; canlı platform çağrısı yapılmadı.", 422);
@@ -20,7 +20,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
 
     public async Task<ServiceResult<IReadOnlyList<CatalogMappingView>>> ListMappingsAsync(Guid tenantId, string mappingType, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken)
     {
-        if (!await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)) return NotFound<IReadOnlyList<CatalogMappingView>>();
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<IReadOnlyList<CatalogMappingView>>();
         var scope = string.IsNullOrWhiteSpace(scopeExternalId) ? "" : scopeExternalId.Trim();
         var query = Query(mappingType).AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId);
         // The mapping centre's read-only overview intentionally uses '*' to show
@@ -32,6 +32,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
 
     public async Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken)
     {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<CatalogMappingView?>();
         var scope = string.IsNullOrWhiteSpace(scopeExternalId) ? "" : scopeExternalId.Trim();
         var mapping = await Query(mappingType).AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == connectionId && x.ScopeExternalId == scope, cancellationToken);
         return ServiceResult<CatalogMappingView?>.Ok(mapping is null ? null : Map(mapping));
@@ -39,6 +40,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
 
     public async Task<ServiceResult<CatalogMappingView>> UpsertMappingAsync(Guid tenantId, string mappingType, Guid localId, long? expectedVersion, UpsertCatalogMappingCommand command, CancellationToken cancellationToken)
     {
+        if (!await VisibleConnectionAsync(tenantId, command.ConnectionId, cancellationToken)) return NotFound<CatalogMappingView>();
         if (!await LocalExistsAsync(tenantId, mappingType, localId, cancellationToken)) return NotFound<CatalogMappingView>();
         if (!string.Equals(command.Status, "VERIFIED", StringComparison.Ordinal)) return ServiceResult<CatalogMappingView>.Fail("MAPPING_STATUS_INVALID", "Panel üzerinden yalnız VERIFIED mapping kaydedilebilir.", 422);
         var snapshot = await db.ReferenceSnapshots.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && x.Id == command.SnapshotId && x.IsCurrent, cancellationToken);
@@ -114,6 +116,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
 
     public async Task<ServiceResult<bool>> DeleteMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, long expectedVersion, CancellationToken cancellationToken)
     {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<bool>();
         var scope = string.IsNullOrWhiteSpace(scopeExternalId) ? "" : scopeExternalId.Trim();
         var mapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == connectionId && x.ScopeExternalId == scope, cancellationToken);
         if (mapping is null) return NotFound<bool>();
@@ -149,6 +152,9 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         "attribute-values" => db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.Id == localId && x.IsActive, cancellationToken),
         _ => Task.FromResult(false)
     };
+
+    private Task<bool> VisibleConnectionAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status != "HIDDEN", cancellationToken);
 
     private static CatalogMappingView Map(CatalogMapping value) => new(value.Id, value.ConnectionId, value.SnapshotId, value.LocalId, value.ScopeExternalId, value.ExternalId, value.Status, value.VerifiedAt, value.Version);
     private static string NormalizeRequirementRole(string? value) => string.Equals(value?.Trim(), "OPTION", StringComparison.OrdinalIgnoreCase) ? "OPTION" : string.Equals(value?.Trim(), "ATTRIBUTE", StringComparison.OrdinalIgnoreCase) ? "ATTRIBUTE" : value?.Trim().ToUpperInvariant() ?? "";

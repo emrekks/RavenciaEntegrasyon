@@ -13,6 +13,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     {
         if (jobType != InvoicingJobTypes.InvoiceDueScan && connectionId is null)
             return JobExecutionResult.Blocked("CONNECTION_REQUIRED", "Job requires a provider connection.");
+        if (connectionId is Guid connection
+            && jobType is not InvoicingJobTypes.ConnectionTest and not InvoicingJobTypes.StageCapabilityProbe
+            && !await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connection && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken))
+            return JobExecutionResult.Blocked("CONNECTION_INACTIVE", "Bağlantı pasif veya gizli olduğu için işlem çalıştırılmadı.");
         try
         {
             var succeeded = jobType switch

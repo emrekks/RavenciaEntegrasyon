@@ -240,6 +240,7 @@ public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType,
 public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType, string? Username, string? Password, string? ApiKey);
 public sealed record CreatedWebhookSubscription(WebhookSubscriptionView Subscription, Guid ConnectionPublicId, string RouteToken);
 public sealed record DeleteConnectionCommand(string Confirmation);
+public sealed record DataVisibilityCommand(bool Hidden);
 public sealed record ResetOperationalDataCommand(IReadOnlyList<string> Scopes, string Confirmation);
 public sealed record OperationalDataResetView(
     int Products,
@@ -255,6 +256,7 @@ public sealed record OperationalDataResetView(
 public interface IOperationalDataMaintenanceService
 {
     Task<ServiceResult<OperationalDataResetView>> DeleteConnectionAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, DeleteConnectionCommand command, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<bool>> SetDataVisibilityAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, bool hidden, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<OperationalDataResetView>> ResetAsync(Guid tenantId, Guid actorUserId, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken);
 }
 

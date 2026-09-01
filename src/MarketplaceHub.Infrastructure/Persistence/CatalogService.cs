@@ -267,7 +267,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     public async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, CancellationToken cancellationToken)
     {
-        var query = db.Products.AsNoTracking().Where(x => x.TenantId == tenantId);
+        var query = VisibleProducts(tenantId);
         ApplyProductFilters(ref query, tenantId, status, search, platform, stock);
         var countKey = $"catalog:product-count:{tenantId:N}:{status?.Trim()}:{search?.Trim()}:{platform?.Trim()}:{stock?.Trim()}";
         var cachedCount = countCache.Get(countKey);
@@ -286,8 +286,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     public async Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
     {
-        var products = await db.Products.AsNoTracking()
-            .Where(x => x.TenantId == tenantId)
+        var products = await VisibleProducts(tenantId)
             .Select(x => new { x.Id, x.Status })
             .ToListAsync(cancellationToken);
         var variants = await db.ProductVariants.AsNoTracking()
@@ -305,7 +304,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var platforms = await (from profile in db.ChannelListingProfiles.AsNoTracking()
                                join connection in db.PlatformConnections.AsNoTracking()
                                    on new { profile.TenantId, profile.ConnectionId } equals new { connection.TenantId, ConnectionId = connection.Id }
-                               where profile.TenantId == tenantId && profile.Enabled
+                               where profile.TenantId == tenantId && profile.Enabled && connection.Status != "HIDDEN"
                                select connection.DisplayName)
             .Distinct()
             .OrderBy(x => x)
@@ -392,7 +391,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     public async Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>();
+        var product = await VisibleProducts(tenantId).SingleOrDefaultAsync(x => x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken);
         var views = await BuildProductViewsAsync(tenantId, [product], variants, cancellationToken);
         return ServiceResult<ProductView>.Ok(views[0]);
@@ -703,7 +702,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var variantIds = variants.Select(x => x.Id).ToArray();
         var inventories = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").ToListAsync(cancellationToken);
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).OrderByDescending(x => x.Status == "ACTIVE").ThenBy(x => x.Id).ToListAsync(cancellationToken);
-        var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.Enabled).ToListAsync(cancellationToken);
+        var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.Enabled
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN")).ToListAsync(cancellationToken);
         var productAttributes = await db.ProductAttributeAssignments.AsNoTracking()
             .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.VariantId == null)
             .OrderBy(x => x.SortOrder)
@@ -898,6 +898,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (id is not Guid categoryId) return; var parent = await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == categoryId, cancellationToken); if (parent is not null) parent.IsLeaf = !await db.Categories.AnyAsync(x => x.TenantId == tenantId && x.ParentId == categoryId && x.IsActive, cancellationToken);
     }
 
+    private IQueryable<Product> VisibleProducts(Guid tenantId) => db.Products.AsNoTracking().Where(product =>
+        product.TenantId == tenantId
+        && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == product.Id)
+            || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == product.Id
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId && connection.Status != "HIDDEN"))));
+
     private void ApplyProductFilters(ref IQueryable<Product> query, Guid tenantId, string? status, string? search, string? platform, string? stock)
     {
         if (!string.IsNullOrWhiteSpace(status) && TryProductStatus(status, out var parsed))
@@ -919,7 +925,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var platformName = platform.Trim();
             query = query.Where(product => db.ChannelListingProfiles.Any(profile =>
                 profile.TenantId == tenantId && profile.ProductId == product.Id && profile.Enabled &&
-                db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == profile.ConnectionId && connection.DisplayName == platformName)));
+                db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == profile.ConnectionId && connection.Status != "HIDDEN" && connection.DisplayName == platformName)));
         }
 
         var stockTotals = db.ProductVariants.AsNoTracking()
