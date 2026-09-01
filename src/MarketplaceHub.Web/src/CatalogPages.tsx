@@ -34,6 +34,31 @@ type AcceptedJob = { jobId: string }
 
 const key = () => crypto.randomUUID()
 const isProductPublicationConnection = (item: TrendyolConnection) => item.platformCode.trim().toUpperCase() === 'TRENDYOL' && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
+
+type ProductGroup = {
+  id: string
+  primary: Product
+  products: Product[]
+  variants: Array<{ product: Product; variant: Variant }>
+}
+
+function groupProductRows(products: Product[]): ProductGroup[] {
+  const groups = new Map<string, ProductGroup>()
+  for (const product of products) {
+    const modelCode = product.modelCode?.trim().toLocaleLowerCase('tr-TR')
+    // Model code is the catalog's stable family key. Products without one stay
+    // independent so two unrelated same-name products are never merged.
+    const id = modelCode
+      ? `model:${modelCode}|brand:${product.brandId ?? ''}|category:${product.categoryId ?? ''}`
+      : `product:${product.id}`
+    const group = groups.get(id) ?? { id, primary: product, products: [], variants: [] }
+    group.products.push(product)
+    group.variants.push(...product.variants.map(variant => ({ product, variant })))
+    groups.set(id, group)
+  }
+  return [...groups.values()]
+}
+
 async function fetchProductPage(limit: number, filters: ProductListFilters, after: string | null) {
   const params = new URLSearchParams({ limit: String(limit) })
   if (after) params.set('after', after)
@@ -294,19 +319,31 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect }:
   return <div className="quick-edit-variant-controls" onClick={event => event.stopPropagation()}><label><small>Stok</small><input aria-label={`${variant.sku} stok`} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStock(Number(event.target.value || 0)) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label><label><small>Fiyat</small><input aria-label={`${variant.sku} fiyat`} value={price} onFocus={onSelect} onChange={event => { onSelect(); setPrice(event.target.value === '' ? '' : Number(event.target.value)) }} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /></label></div>
 }
 
-function ProductColorRows({ product, selected, onSelect, onQuickEdit, onImageClick, onDelete }: { product: Product; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void; onDelete: () => void }) {
-  const platformActive = Boolean(product.activePlatforms?.length)
-  return <article className="product-catalog-item color-variant-item">
+function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick, onDelete }: { group: ProductGroup; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void; onDelete: () => void }) {
+  const product = group.primary
+  const platformActive = group.products.some(item => Boolean(item.activePlatforms?.length))
+  const totalStock = group.products.reduce((sum, item) => sum + item.totalStock, 0)
+  const prices = group.products.map(item => item.startingPrice).filter((price): price is number => price != null)
+  const startingPrice = prices.length ? Math.min(...prices) : null
+  const statuses = new Set(group.products.map(item => item.status))
+  const status = statuses.size === 1 ? product.status : 'MIXED'
+  const statusLabel = status === 'ACTIVE' ? 'Satışta' : status === 'ARCHIVED' ? 'Kapalı' : status === 'MIXED' ? 'Karışık' : 'Taslak'
+  const statusHint = status === 'ACTIVE' ? 'Aktif' : status === 'ARCHIVED' ? 'Pasif' : status === 'MIXED' ? 'Kayıtlar farklı durumda' : 'Taslak'
+  const variantLabels = [...new Set(group.variants.map(item => item.variant.optionSignature || item.variant.sku))]
+  const visibleVariantLabels = variantLabels.slice(0, 5)
+  const hiddenVariantCount = Math.max(0, variantLabels.length - visibleVariantLabels.length)
+  const modelCode = group.products.map(item => item.modelCode).find(value => value?.trim()) ?? '—'
+  return <article className="product-catalog-item color-variant-item product-group-card">
       <div className="product-catalog-row">
-        <input className="product-row-select" type="checkbox" aria-label={`${product.title} seç`} checked={selected} onChange={onSelect} />
+        <input className="product-row-select" type="checkbox" aria-label={`${product.title} ürün grubunu seç`} checked={selected} onChange={onSelect} />
         {product.primaryImageUrl ? <img src={product.primaryImageUrl} alt={product.title} className="product-list-thumb clickable-thumb" onClick={() => onImageClick(product.primaryImageUrl!, product.title)} title="Görseli büyütmek için tıklayın" /> : <span className="product-list-placeholder">Görsel yok</span>}
-        <div className="product-list-identity"><strong>{product.title}</strong><small>Model Kodu: <code className="technical-text model-code-value">{product.modelCode ?? '—'}</code></small></div>
-        <strong className="product-list-variants">{product.variants.length} varyant</strong>
-        <div className="product-list-price clickable-cell" title="Fiyatı hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('price')}><strong>{money(product.startingPrice, product.currency)}</strong></div>
-        <div className="product-list-stock clickable-cell" title="Stoğu hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('stock')}><strong>{product.totalStock}</strong></div>
+        <div className="product-list-identity"><strong>{product.title}</strong><small>Model Kodu: <code className="technical-text model-code-value">{modelCode}</code></small>{group.products.length > 1 && <small className="product-list-group-note">{group.products.length} katalog kaydı tek kartta</small>}</div>
+        <div className="product-list-variants" title={variantLabels.join(' · ')}><strong>{group.variants.length} varyant</strong><div className="product-variant-summary">{visibleVariantLabels.map(label => <span key={label}>{label}</span>)}{hiddenVariantCount > 0 && <span>+{hiddenVariantCount} daha</span>}</div></div>
+        <div className="product-list-price clickable-cell" title="Fiyatı hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('price')}><strong>{money(startingPrice, product.currency)}</strong></div>
+        <div className="product-list-stock clickable-cell" title="Stoğu hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('stock')}><strong>{totalStock}</strong></div>
         <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ''}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'}>TY<i /></span><small>{platformActive ? 'Eşleşti' : 'Eşleşmedi'}</small></div>
-        <div className={`product-list-status ${product.status === 'ACTIVE' ? 'active' : 'inactive'}`}><Tag>{product.status === 'ACTIVE' ? 'Satışta' : 'Kapalı'}</Tag><small>{product.status === 'ACTIVE' ? 'Aktif' : product.status === 'ARCHIVED' ? 'Pasif' : 'Taslak'}</small></div>
-        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title="Ürünü düzenle"><span className="product-edit-icon" aria-hidden="true">✎</span></Link><button type="button" className="product-delete-button" onClick={event => { event.stopPropagation(); onDelete() }} aria-label={`${product.title} ürününü sil`} title="Ürünü sil"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16m-10 0V4h4v3m-7 0 1 13h8l1-13m-5 4v6m4-6v6" /></svg></button><span className="product-more-icon" aria-hidden="true">⋮</span></div>
+        <div className={`product-list-status ${status === 'ACTIVE' ? 'active' : 'inactive'}`}><Tag>{statusLabel}</Tag><small>{statusHint}</small></div>
+        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title={group.products.length > 1 ? 'Ürün grubundaki ilk kaydı düzenle' : 'Ürünü düzenle'}><span className="product-edit-icon" aria-hidden="true">✎</span></Link><button type="button" className="product-delete-button" onClick={event => { event.stopPropagation(); onDelete() }} aria-label={`${product.title} ürün grubunu sil`} title={group.products.length > 1 ? 'Ürün grubundaki tüm kayıtları sil' : 'Ürünü sil'}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16m-10 0V4h4v3m-7 0 1 13h8l1-13m-5 4v6m4-6v6" /></svg></button><span className="product-more-icon" aria-hidden="true">⋮</span></div>
       </div>
     </article>
 }
@@ -326,7 +363,7 @@ export function ProductsPage() {
   const summaryQuery = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
   const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<TrendyolConnection>('/connections') })
   const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(item => item.status === 'ACTIVE'); const platforms = summaryQuery.data?.platforms ?? []
-  const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = currentPage === pageNumber ? products : []
+  const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = currentPage === pageNumber ? products : []; const pageProductGroups = useMemo(() => groupProductRows(pageProducts), [pageProducts])
   const selectedProducts = selectedProductIds.map(id => selectedProductCache[id]).filter((product): product is Product => Boolean(product))
   const nextPageCursor = query.data?.nextCursor ?? null
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
@@ -350,15 +387,18 @@ export function ProductsPage() {
       return changed ? next : current
     })
   }, [products, selectedProductIds])
-  const allVisibleSelected = pageProducts.length > 0 && pageProducts.every(product => selectedProductIds.includes(product.id))
+  const allVisibleSelected = pageProductGroups.length > 0 && pageProductGroups.every(group => group.products.every(product => selectedProductIds.includes(product.id)))
   const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
   function showProductToast(message: string, kind: 'success' | 'error') { setProductToast({ message, kind }); window.setTimeout(() => setProductToast(current => current?.message === message ? null : current), 4000) }
-  function toggleProduct(product: Product) {
-    const wasSelected = selectedProductIds.includes(product.id)
-    setSelectedProductIds(ids => wasSelected ? ids.filter(item => item !== product.id) : [...ids, product.id])
+  function toggleProductGroup(group: ProductGroup) {
+    const groupIds = group.products.map(product => product.id)
+    const allSelected = groupIds.every(id => selectedProductIds.includes(id))
+    setSelectedProductIds(ids => allSelected ? ids.filter(id => !groupIds.includes(id)) : [...new Set([...ids, ...groupIds])])
     setSelectedProductCache(current => {
-      if (!wasSelected) return { ...current, [product.id]: product }
-      const next = { ...current }; delete next[product.id]; return next
+      const next = { ...current }
+      if (allSelected) groupIds.forEach(id => delete next[id])
+      else group.products.forEach(product => { next[product.id] = product })
+      return next
     })
   }
   function toggleAllVisible() {
@@ -403,6 +443,22 @@ export function ProductsPage() {
       await refresh()
     } catch (err) {
       showProductToast(err instanceof Error ? err.message : 'Ürün silme başarısız.', 'error')
+    }
+  }
+
+  async function deleteProductGroup(group: ProductGroup) {
+    if (group.products.length === 1) return deleteProduct(group.primary)
+    const ids = group.products.map(product => product.id)
+    if (!window.confirm(`“${group.primary.title}” ürün grubundaki ${ids.length} katalog kaydı kalıcı olarak silinsin mi?\n\nBu işlem geri alınamaz. Sipariş geçmişi korunur; kayıtların yerel varyant, stok, fiyat ve platform eşleşmeleri silinir. Marketplace üzerindeki ilanlar otomatik olarak silinmez.`)) return
+    try {
+      await hubApi('/products/bulk-delete', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productIds: ids }) })
+      const targetIds = new Set(ids)
+      setSelectedProductIds(current => current.filter(id => !targetIds.has(id)))
+      setSelectedProductCache(current => { const next = { ...current }; targetIds.forEach(id => delete next[id]); return next })
+      showProductToast(`${ids.length} katalog kaydı silindi.`, 'success')
+      await refresh()
+    } catch (err) {
+      showProductToast(err instanceof Error ? err.message : 'Ürün grubu silme başarısız.', 'error')
     }
   }
 
@@ -464,12 +520,12 @@ export function ProductsPage() {
           <label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} /><span>Ürün Detayı</span></label>
           <span>Varyant</span><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
         </div>
-        {pageProducts.map(product => (
-          <ProductColorRows key={product.id} product={product} selected={selectedProductIds.includes(product.id)} onSelect={() => toggleProduct(product)} onQuickEdit={mode => setQuickEdit({ productIds: [product.id], mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} onDelete={() => void deleteProduct(product)} />
+        {pageProductGroups.map(group => (
+          <ProductColorRows key={group.id} group={group} selected={group.products.every(product => selectedProductIds.includes(product.id))} onSelect={() => toggleProductGroup(group)} onQuickEdit={mode => setQuickEdit({ productIds: group.products.map(product => product.id), mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} onDelete={() => void deleteProductGroup(group)} />
         ))}
       </div>
     )}
-    {totalCount > 0 && <div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına ürün" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100].map(value => <option key={value} value={value}>{value}</option>)}</select> ürün</label><span>Toplam {totalCount.toLocaleString('tr-TR')} kayıttan {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)} arası gösteriliyor</span><div className="product-pagination-controls"><button type="button" aria-label="Önceki sayfa" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>‹</button><b>Sayfa {currentPage} / {totalPages}</b><button type="button" aria-label="Sonraki sayfa" disabled={currentPage >= totalPages || !nextPageCursor} onClick={goToNextPage}>›</button></div></div>}
+    {totalCount > 0 && <div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına ürün" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100].map(value => <option key={value} value={value}>{value}</option>)}</select> ürün</label><span>Toplam {totalCount.toLocaleString('tr-TR')} katalog kaydından {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)} arası gösteriliyor · Bu sayfada {pageProductGroups.length} ürün kartı</span><div className="product-pagination-controls"><button type="button" aria-label="Önceki sayfa" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>‹</button><b>Sayfa {currentPage} / {totalPages}</b><button type="button" aria-label="Sonraki sayfa" disabled={currentPage >= totalPages || !nextPageCursor} onClick={goToNextPage}>›</button></div></div>}
     {quickEdit && <ProductQuickEditModal products={selectedProducts} connections={connections} mode={quickEdit.mode} onChanged={refresh} onResult={showProductToast} onClose={() => setQuickEdit(null)} />}
     {productToast && <div className={`product-operation-toast ${productToast.kind}`} role={productToast.kind === 'success' ? 'status' : 'alert'}><strong>{productToast.kind === 'success' ? 'Güncellendi' : 'Başarısız'}</strong><span>{productToast.message}</span></div>}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}

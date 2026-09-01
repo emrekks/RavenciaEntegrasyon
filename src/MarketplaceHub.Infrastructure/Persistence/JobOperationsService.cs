@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
@@ -52,15 +53,36 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     {
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
         if (job is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "Job bulunamadı.", 404);
-        if (job.Status == JobStatus.Leased) return ServiceResult<JobDetailView>.Fail("JOB_ALREADY_RUNNING", "Çalışan job lease süresi bitmeden iptal edilemez.", 409);
         if (job.Status is JobStatus.Succeeded or JobStatus.Dead or JobStatus.Cancelled)
             return ServiceResult<JobDetailView>.Fail("JOB_TERMINAL", "Terminal durumdaki job iptal edilemez.", 409);
 
+        var now = timeProvider.GetUtcNow();
+        var wasLeased = job.Status == JobStatus.Leased;
+        if (wasLeased)
+        {
+            var attempt = await db.JobAttempts.SingleOrDefaultAsync(x =>
+                x.JobId == job.Id && x.AttemptNumber == job.AttemptCount && x.CompletedAt == null,
+                cancellationToken);
+            if (attempt is not null)
+            {
+                attempt.CompletedAt = now;
+                attempt.Succeeded = false;
+                attempt.ErrorCode = "CANCELLED_BY_OPERATOR";
+                attempt.ErrorSummary = "Çalışan job kullanıcı tarafından durduruldu.";
+            }
+        }
+
         job.Status = JobStatus.Cancelled;
-        job.CompletedAt = timeProvider.GetUtcNow();
+        job.CompletedAt = now;
         job.LastErrorCode = "CANCELLED_BY_OPERATOR";
-        job.LastErrorSummary = "Job kullanıcı tarafından iptal edildi.";
+        job.LastErrorSummary = wasLeased
+            ? "Çalışan job kullanıcı tarafından durduruldu."
+            : "Job kullanıcı tarafından iptal edildi.";
+        job.LeaseTokenHash = null;
+        job.LeaseExpiresAt = null;
+        job.HeartbeatAt = null;
         job.Version++;
+        AddOutboxEvent(job, now);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
     }
@@ -161,6 +183,26 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var lineCount = await db.OrderLines.AsNoTracking().CountAsync(x => x.TenantId == job.TenantId && x.OrderId == order.Id, cancellationToken);
         return new JobOrderContextView(order.Id, order.OrderNumber, order.ExternalOrderId, order.DerivedStatus, order.Currency, order.NetAmount, order.OrderedAt, externalPackageId, cargoProvider, cargoTrackingNumber, CustomerName(order.CustomerSnapshotJson), lineCount);
     }
+
+    private void AddOutboxEvent(IntegrationJob job, DateTimeOffset now)
+    {
+        var metadata = IntegrationJobMetadataPolicy.Apply(job);
+        db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = job.TenantId,
+            ResourceType = metadata.ResourceType,
+            OperationType = metadata.OperationType,
+            AggregateType = "IntegrationJob",
+            AggregateId = job.Id,
+            AggregateVersion = job.Version,
+            PayloadJson = JsonSerializer.Serialize(new { jobId = job.Id, jobType = job.JobType, status = JobStatusText(job.Status), version = job.Version }),
+            CreatedAt = now,
+            NextAttemptAt = now
+        });
+    }
+
+    private static string JobStatusText(JobStatus status) => status == JobStatus.RetryScheduled ? "RETRY_SCHEDULED" : status == JobStatus.ManualReview ? "MANUAL_REVIEW" : status.ToString().ToUpperInvariant();
 
     private static Guid? GuidValue(System.Text.Json.JsonElement root, string name) =>
         Property(root, name) is { } value && value.ValueKind == System.Text.Json.JsonValueKind.String && Guid.TryParse(value.GetString(), out var result)

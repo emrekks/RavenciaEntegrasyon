@@ -2312,3 +2312,132 @@ body:has(.product-add-page),
     border-left-color: transparent !important;
   }
 }
+
+/* Catalog families: one visual card can contain several imported product
+   records that share a model code. Keep the variants readable without
+   returning to one repeated card per record. */
+.app-shell .products-page .product-group-card .product-catalog-row {
+  height: auto !important;
+  min-height: 92px !important;
+  align-items: stretch;
+}
+.app-shell .products-page .product-group-card .product-list-identity,
+.app-shell .products-page .product-group-card .product-list-price,
+.app-shell .products-page .product-group-card .product-list-stock,
+.app-shell .products-page .product-group-card .product-list-platforms,
+.app-shell .products-page .product-group-card .product-list-status,
+.app-shell .products-page .product-group-card .product-list-actions {
+  height: auto !important;
+  min-height: 92px;
+}
+.app-shell .products-page .product-group-card .product-list-identity {
+  align-content: center;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.app-shell .products-page .product-group-card .product-list-group-note {
+  color: var(--st-primary-soft) !important;
+}
+.app-shell .products-page .product-group-card .product-list-variants {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  white-space: normal;
+}
+.app-shell .products-page .product-group-card .product-list-variants > strong {
+  color: #e3e1ed;
+  font-size: 9px;
+}
+.app-shell .products-page .product-variant-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-height: 34px;
+  overflow: hidden;
+}
+.app-shell .products-page .product-variant-summary span {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 5px;
+  color: #bfc4ff;
+  background: rgba(88, 101, 242, .1);
+  border: 1px solid rgba(124, 134, 255, .22);
+  border-radius: 3px;
+  font-size: 8px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell .products-page .product-group-card .product-list-price,
+.app-shell .products-page .product-group-card .product-list-stock,
+.app-shell .products-page .product-group-card .product-list-platforms,
+.app-shell .products-page .product-group-card .product-list-status,
+.app-shell .products-page .product-group-card .product-list-actions {
+  align-self: stretch;
+}
+.app-shell .products-page .product-group-card .product-list-actions {
+  align-items: center;
+}
+
+/* Product editor overflow guard: the basics card must not stretch to the
+   height of a long category-attribute column, and large value sets scroll
+   inside their own field instead of shifting the whole page. */
+.app-shell.stitch-shell .product-add-page,
+.app-shell.stitch-shell .product-add-page .product-add-workspace,
+.app-shell.stitch-shell .product-add-page .product-top-layout,
+.app-shell.stitch-shell .product-add-page .product-top-sidebar,
+.app-shell.stitch-shell .product-add-page .product-step-card,
+.app-shell.stitch-shell .product-add-page .product-step-grid {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+.app-shell.stitch-shell .product-add-page {
+  overflow-x: hidden !important;
+}
+.app-shell.stitch-shell .product-add-page .product-top-layout {
+  width: 100% !important;
+  align-items: start !important;
+}
+.app-shell.stitch-shell .product-add-page .product-basics-card {
+  align-self: start !important;
+}
+.app-shell.stitch-shell .product-add-page .product-top-sidebar {
+  height: auto !important;
+  min-height: 0 !important;
+  align-content: start !important;
+}
+.app-shell.stitch-shell .product-add-page .product-top-sidebar > .product-category-mapping-card {
+  height: auto !important;
+  align-self: start !important;
+}
+.app-shell.stitch-shell .product-add-page .category-attribute-mapping-list,
+.app-shell.stitch-shell .product-add-page .category-attribute-field,
+.app-shell.stitch-shell .product-add-page .category-attribute-field-head,
+.app-shell.stitch-shell .product-add-page .category-attribute-values {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+.app-shell.stitch-shell .product-add-page .category-attribute-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  align-content: start;
+  max-height: 178px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 3px;
+  scrollbar-gutter: stable;
+}
+.app-shell.stitch-shell .product-add-page .category-attribute-value {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .product-add-page .product-submit-sticky {
+  max-width: 100% !important;
+  box-sizing: border-box;
+}

@@ -105,7 +105,17 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         var now = timeProvider.GetUtcNow();
         if (job is null || job.Status != JobStatus.Leased || job.LeaseTokenHash is null || job.LeaseExpiresAt <= now || !hasher.Verify(leaseToken, job.LeaseTokenHash)) return false;
         job.HeartbeatAt = now; job.LeaseExpiresAt = now.Add(extension);
-        await db.SaveChangesAsync(cancellationToken); return true;
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // An operator may have cancelled the job while this heartbeat was in flight.
+            // Treat the stale lease as lost so the worker cancels its local execution.
+            return false;
+        }
     }
 
     public async Task<int> ReapExpiredAsync(CancellationToken cancellationToken)
