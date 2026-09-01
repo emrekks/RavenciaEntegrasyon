@@ -61,12 +61,22 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? Results.Ok(await service.ProductSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
         api.MapPost("/products/bulk-status", async (BulkProductStatusCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetStatusAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : MissingContext(http));
+        api.MapPost("/products/bulk-delete", async (BulkProductDeleteCommand command, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkDeleteProductsAsync(tenant.TenantId, command, http.RequestAborted), count => Results.Ok(new { deletedCount = count })) : MissingContext(http));
         api.MapGet("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetProductAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPost("/products", async (CreateProductCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateProductAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/products") : MissingContext(http));
         api.MapPatch("/products/{id:guid}", async (Guid id, UpdateProductCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateProductAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+        api.MapDelete("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+            return TryIfMatch(http, out var version, out var failure)
+                ? Result(await service.DeleteProductAsync(tenant.TenantId, id, version, http.RequestAborted), count => Results.Ok(new { deletedCount = count }))
+                : failure!;
+        });
         api.MapPost("/products/{id:guid}/archive", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? (RequireIdempotency(http) is { } keyFailure ? keyFailure : TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ArchiveProductAsync(tenant.TenantId, id, version, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
         api.MapGet("/products/{id:guid}/listing-profiles/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>

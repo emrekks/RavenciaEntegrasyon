@@ -294,7 +294,7 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect }:
   return <div className="quick-edit-variant-controls" onClick={event => event.stopPropagation()}><label><small>Stok</small><input aria-label={`${variant.sku} stok`} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStock(Number(event.target.value || 0)) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label><label><small>Fiyat</small><input aria-label={`${variant.sku} fiyat`} value={price} onFocus={onSelect} onChange={event => { onSelect(); setPrice(event.target.value === '' ? '' : Number(event.target.value)) }} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /></label></div>
 }
 
-function ProductColorRows({ product, selected, onSelect, onQuickEdit, onImageClick }: { product: Product; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void }) {
+function ProductColorRows({ product, selected, onSelect, onQuickEdit, onImageClick, onDelete }: { product: Product; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void; onDelete: () => void }) {
   const platformActive = Boolean(product.activePlatforms?.length)
   return <article className="product-catalog-item color-variant-item">
       <div className="product-catalog-row">
@@ -306,7 +306,7 @@ function ProductColorRows({ product, selected, onSelect, onQuickEdit, onImageCli
         <div className="product-list-stock clickable-cell" title="Stoğu hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('stock')}><strong>{product.totalStock}</strong></div>
         <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ''}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'}>TY<i /></span><small>{platformActive ? 'Eşleşti' : 'Eşleşmedi'}</small></div>
         <div className={`product-list-status ${product.status === 'ACTIVE' ? 'active' : 'inactive'}`}><Tag>{product.status === 'ACTIVE' ? 'Satışta' : 'Kapalı'}</Tag><small>{product.status === 'ACTIVE' ? 'Aktif' : product.status === 'ARCHIVED' ? 'Pasif' : 'Taslak'}</small></div>
-        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`}><span className="product-edit-icon" aria-hidden="true">✎</span></Link><span className="product-more-icon" aria-hidden="true">⋮</span></div>
+        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title="Ürünü düzenle"><span className="product-edit-icon" aria-hidden="true">✎</span></Link><button type="button" className="product-delete-button" onClick={onDelete} aria-label={`${product.title} ürününü sil`} title="Ürünü sil"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16m-10 0V4h4v3m-7 0 1 13h8l1-13m-5 4v6m4-6v6" /></svg></button><span className="product-more-icon" aria-hidden="true">⋮</span></div>
       </div>
     </article>
 }
@@ -393,6 +393,34 @@ export function ProductsPage() {
     }
   }
 
+  async function deleteProduct(product: Product) {
+    if (!window.confirm(`“${product.title}” ürünü yerel katalogdan kalıcı olarak silinsin mi?\n\nBu işlem geri alınamaz. Sipariş geçmişi korunur; ürünün yerel varyant, stok, fiyat ve platform eşleşme kayıtları silinir. Marketplace üzerindeki ilan otomatik olarak silinmez.`)) return
+    try {
+      await hubApi(`/products/${product.id}`, { method: 'DELETE', headers: { 'If-Match': `\"v${product.version}\"`, 'Idempotency-Key': key() } })
+      showProductToast('Ürün yerel katalogdan silindi.', 'success')
+      setSelectedProductIds(ids => ids.filter(id => id !== product.id))
+      setSelectedProductCache(current => { const next = { ...current }; delete next[product.id]; return next })
+      await refresh()
+    } catch (err) {
+      showProductToast(err instanceof Error ? err.message : 'Ürün silme başarısız.', 'error')
+    }
+  }
+
+  async function bulkDeleteProducts() {
+    setBulkOpen(false)
+    const targetCount = selectedProductIds.length
+    if (!targetCount || !window.confirm(`${targetCount} ürün yerel katalogdan kalıcı olarak silinsin mi?\n\nBu işlem geri alınamaz. Sipariş geçmişi korunur; seçili ürünlerin yerel varyant, stok, fiyat ve platform eşleşme kayıtları silinir. Marketplace üzerindeki ilanlar otomatik olarak silinmez.`)) return
+    try {
+      await hubApi('/products/bulk-delete', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productIds: selectedProductIds }) })
+      showProductToast(`${targetCount} ürün yerel katalogdan silindi.`, 'success')
+      setSelectedProductIds([])
+      setSelectedProductCache({})
+      await refresh()
+    } catch (err) {
+      showProductToast(err instanceof Error ? err.message : 'Toplu ürün silme başarısız.', 'error')
+    }
+  }
+
   return <Page className="products-page" title="Ürünler" eyebrow="Katalog" action={<Link className="button-link" to="/products/new"><span aria-hidden="true">＋</span> Yeni Ürün Ekle</Link>}>
     <div className="product-metrics metrics"><article className="product-metric-total"><small>Toplam Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.totalCount ?? 0}</strong><span>katalog kaydı</span></article><article className="product-metric-active"><small>Aktif Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.activeCount ?? 0}</strong><span>ürün</span></article><article className="product-metric-empty"><small>Stoksuz Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.outOfStockCount ?? 0}</strong><span>aksiyon gerekli</span></article><article className="product-metric-low"><small>Düşük Stoklu</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.lowStockCount ?? 0}</strong><span>5 ve altı</span></article></div>
     <div className="product-toolbar">
@@ -417,6 +445,9 @@ export function ProductsPage() {
             <button type="button" role="menuitem" className="destructive" onClick={() => void bulkSetProductStatus('ARCHIVED')}>
               <b>05</b><span>Toplu Satışa Kapat<small>Seçili ürünleri arşive al</small></span>
             </button>
+            <button type="button" role="menuitem" className="destructive" onClick={() => void bulkDeleteProducts()}>
+              <b>06</b><span>Seçili Ürünleri Sil<small>Yerel katalogdan kalıcı olarak kaldır</small></span>
+            </button>
           </div>
         )}
       </div>
@@ -433,7 +464,7 @@ export function ProductsPage() {
           <span>Varyant</span><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
         </div>
         {pageProducts.map(product => (
-          <ProductColorRows key={product.id} product={product} selected={selectedProductIds.includes(product.id)} onSelect={() => toggleProduct(product)} onQuickEdit={mode => setQuickEdit({ productIds: [product.id], mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} />
+          <ProductColorRows key={product.id} product={product} selected={selectedProductIds.includes(product.id)} onSelect={() => toggleProduct(product)} onQuickEdit={mode => setQuickEdit({ productIds: [product.id], mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} onDelete={() => void deleteProduct(product)} />
         ))}
       </div>
     )}

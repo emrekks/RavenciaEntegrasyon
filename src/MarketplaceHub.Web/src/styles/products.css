@@ -454,19 +454,48 @@
   text-align: left;
 }
 .app-shell .products-page .product-list-actions {
-  gap: 8px;
+  gap: 3px;
 }
 .app-shell .products-page .product-list-actions .product-edit-link {
-  width: 22px !important;
+  width: 20px !important;
   height: 22px;
   color: #bec2ff !important;
   font-size: 17px !important;
+}
+.app-shell .products-page .product-list-actions .product-delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px !important;
+  height: 22px;
+  min-height: 22px !important;
+  padding: 0 !important;
+  color: #f08d9a !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+.app-shell .products-page .product-list-actions .product-delete-button:hover,
+.app-shell .products-page .product-list-actions .product-delete-button:focus-visible {
+  color: #ffb0b9 !important;
+  background: rgba(240, 91, 111, .14) !important;
+}
+.app-shell .products-page .product-list-actions .product-delete-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 .app-shell .products-page .product-edit-icon {
   display: block;
   transform: rotate(-12deg);
 }
 .app-shell .products-page .product-more-icon {
+  width: 10px;
   color: #9b9aae;
   font-size: 17px;
   line-height: 1;

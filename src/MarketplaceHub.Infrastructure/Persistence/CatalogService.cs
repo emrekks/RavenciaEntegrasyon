@@ -338,6 +338,136 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return ServiceResult<int>.Ok(products.Count);
     }
 
+    public Task<ServiceResult<int>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken) =>
+        DeleteProductsAsync(tenantId, [id], expectedVersion, cancellationToken);
+
+    public async Task<ServiceResult<int>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken)
+    {
+        var ids = command.ProductIds.Distinct().ToArray();
+        if (ids.Length is 0 or > 500) return ServiceResult<int>.Fail("BULK_PRODUCT_LIMIT", "Toplu silme işleminde 1-500 ürün seçilebilir.", 422);
+        return await DeleteProductsAsync(tenantId, ids, null, cancellationToken);
+    }
+
+    private async Task<ServiceResult<int>> DeleteProductsAsync(Guid tenantId, IReadOnlyList<Guid> ids, long? expectedVersion, CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var products = await db.Products
+            .Where(x => x.TenantId == tenantId && ids.Contains(x.Id))
+            .ToListAsync(cancellationToken);
+        if (expectedVersion is not null)
+        {
+            var product = products.SingleOrDefault(x => x.Id == ids[0]);
+            if (product is null) return NotFound<int>();
+            if (product.Version != expectedVersion.Value) return Precondition<int>(product.Version);
+        }
+        else if (products.Count != ids.Count)
+        {
+            return ServiceResult<int>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
+        }
+
+        var targetIds = products.Select(x => x.Id).ToArray();
+        var variantIds = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && targetIds.Contains(x.ProductId))
+            .Select(x => x.Id)
+            .ToArrayAsync(cancellationToken);
+        var inventoryIds = await db.InventoryItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId))
+            .Select(x => x.Id)
+            .ToArrayAsync(cancellationToken);
+        if (inventoryIds.Length > 0 && await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId), cancellationToken))
+            return Conflict<int>("PRODUCT_DELETE_BLOCKED", "Ürün iade stok hareketine bağlı olduğu için silinemiyor. Sipariş ve iade geçmişini korumak için ürünü arşivleyin.");
+
+        await db.Database.ExecuteSqlInterpolatedAsync($$"""
+            CREATE TEMP TABLE IF NOT EXISTS purge_product_ids ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
+            TRUNCATE purge_product_ids;
+            INSERT INTO purge_product_ids ("Id") SELECT unnest({{targetIds}});
+
+            -- Sipariş geçmişi korunur; yalnızca silinen varyantla canlı bağlantı kaldırılır.
+            UPDATE sales.order_lines
+            SET "VariantId"=NULL
+            WHERE "TenantId"={{tenantId}}
+              AND "VariantId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_product_ids p ON p."Id"=v."ProductId" WHERE v."TenantId"={{tenantId}});
+
+            DELETE FROM catalog.import_decisions
+            WHERE "TenantId"={{tenantId}}
+              AND "CandidateId" IN (
+                  SELECT c."Id" FROM catalog.import_match_candidates c
+                  WHERE c."TenantId"={{tenantId}}
+                    AND (c."ProductId" IN (SELECT "Id" FROM purge_product_ids)
+                      OR c."VariantId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_product_ids p ON p."Id"=v."ProductId")));
+            DELETE FROM catalog.import_match_candidates c
+            WHERE c."TenantId"={{tenantId}}
+              AND (c."ProductId" IN (SELECT "Id" FROM purge_product_ids)
+                OR c."VariantId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_product_ids p ON p."Id"=v."ProductId"));
+            DELETE FROM catalog.field_provenance f
+            WHERE f."TenantId"={{tenantId}}
+              AND (f."ProductId" IN (SELECT "Id" FROM purge_product_ids)
+                OR f."VariantId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_product_ids p ON p."Id"=v."ProductId"));
+            DELETE FROM catalog.external_identifier_aliases a
+            WHERE a."TenantId"={{tenantId}}
+              AND ((a."EntityType"='PRODUCT' AND a."LocalId" IN (SELECT "Id" FROM purge_product_ids))
+                OR (a."EntityType"='VARIANT' AND a."LocalId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_product_ids p ON p."Id"=v."ProductId")));
+
+            DELETE FROM inventory.channel_price_history h
+            USING inventory.channel_offers o, catalog.product_variants v, purge_product_ids p
+            WHERE h."TenantId"={{tenantId}} AND h."OfferId"=o."Id" AND o."VariantId"=v."Id" AND v."ProductId"=p."Id";
+            DELETE FROM inventory.channel_offers o
+            USING catalog.product_variants v, purge_product_ids p
+            WHERE o."TenantId"={{tenantId}} AND o."VariantId"=v."Id" AND v."ProductId"=p."Id";
+            DELETE FROM inventory.stock_reservations r
+            USING inventory.inventory_items i, catalog.product_variants v, purge_product_ids p
+            WHERE r."TenantId"={{tenantId}} AND r."InventoryItemId"=i."Id" AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
+            DELETE FROM inventory.stock_ledger_entries l
+            USING inventory.inventory_items i, catalog.product_variants v, purge_product_ids p
+            WHERE l."TenantId"={{tenantId}} AND l."InventoryItemId"=i."Id" AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
+            DELETE FROM inventory.inventory_items i
+            USING catalog.product_variants v, purge_product_ids p
+            WHERE i."TenantId"={{tenantId}} AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
+
+            DELETE FROM catalog.marketplace_listing_states s
+            USING catalog.product_variants v, purge_product_ids p
+            WHERE s."TenantId"={{tenantId}} AND s."VariantId"=v."Id" AND v."ProductId"=p."Id";
+            DELETE FROM catalog.marketplace_variant_links l
+            USING catalog.product_variants v, purge_product_ids p
+            WHERE l."TenantId"={{tenantId}} AND l."VariantId"=v."Id" AND v."ProductId"=p."Id";
+            DELETE FROM catalog.channel_media_order o
+            USING catalog.product_media m, purge_product_ids p
+            WHERE o."TenantId"={{tenantId}} AND o."MediaId"=m."Id" AND m."ProductId"=p."Id";
+            DELETE FROM catalog.channel_listing_profiles p
+            USING purge_product_ids targets
+            WHERE p."TenantId"={{tenantId}} AND p."ProductId"=targets."Id";
+            DELETE FROM catalog.marketplace_product_links l
+            USING purge_product_ids p
+            WHERE l."TenantId"={{tenantId}} AND l."ProductId"=p."Id";
+            DELETE FROM catalog.product_media m
+            USING purge_product_ids p
+            WHERE m."TenantId"={{tenantId}} AND m."ProductId"=p."Id";
+            DELETE FROM catalog.product_attribute_assignments a
+            USING purge_product_ids p
+            WHERE a."TenantId"={{tenantId}} AND a."ProductId"=p."Id";
+            DELETE FROM catalog.variant_option_values x
+            USING catalog.product_variants v, purge_product_ids p
+            WHERE x."TenantId"={{tenantId}} AND x."VariantId"=v."Id" AND v."ProductId"=p."Id";
+            DELETE FROM catalog.product_option_values x
+            USING catalog.product_options o, purge_product_ids p
+            WHERE x."TenantId"={{tenantId}} AND x."OptionId"=o."Id" AND o."ProductId"=p."Id";
+            DELETE FROM catalog.product_options o
+            USING purge_product_ids p
+            WHERE o."TenantId"={{tenantId}} AND o."ProductId"=p."Id";
+            DELETE FROM catalog.product_variants v
+            USING purge_product_ids p
+            WHERE v."TenantId"={{tenantId}} AND v."ProductId"=p."Id";
+            DELETE FROM dashboard.low_stock d
+            USING purge_product_ids p
+            WHERE d."TenantId"={{tenantId}} AND d."ProductId"=p."Id";
+            DELETE FROM catalog.products x
+            USING purge_product_ids p
+            WHERE x."TenantId"={{tenantId}} AND x."Id"=p."Id";
+            """, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return ServiceResult<int>.Ok(products.Count);
+    }
+
     public async Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken)
     {
         var validation = await ValidateProductReferencesAsync(tenantId, command.Title, command.CategoryId, command.BrandId, cancellationToken);
