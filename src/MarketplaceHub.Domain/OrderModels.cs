@@ -32,8 +32,36 @@ public static class ShipmentPackageStateMachine
             [ShipmentPackageStatus.PartiallyCancelled] = [ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.Shipped, ShipmentPackageStatus.Cancelled]
         };
 
-    public static bool CanTransition(ShipmentPackageStatus current, ShipmentPackageStatus next) =>
-        current == next || Allowed.TryGetValue(current, out var allowed) && allowed.Contains(next);
+    public static bool CanTransition(ShipmentPackageStatus current, ShipmentPackageStatus next)
+    {
+        if (current == next) return true;
+        if (Allowed.TryGetValue(current, out var allowed) && allowed.Contains(next)) return true;
+
+        // Marketplace snapshots are authoritative and can skip intermediate
+        // workflow states (for example NEW -> SHIPPED). Accept a monotonic
+        // forward projection while keeping local terminal states immutable.
+        if (current is ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Returned) return false;
+        if (current == ShipmentPackageStatus.ManualReview) return next != ShipmentPackageStatus.ManualReview;
+        if (next is ShipmentPackageStatus.New or ShipmentPackageStatus.ManualReview or ShipmentPackageStatus.Cancelled) return false;
+
+        return ProgressRank(next) > ProgressRank(current);
+    }
+
+    private static int ProgressRank(ShipmentPackageStatus status) => status switch
+    {
+        ShipmentPackageStatus.New => 10,
+        ShipmentPackageStatus.PartiallyCancelled => 20,
+        ShipmentPackageStatus.Processing => 30,
+        ShipmentPackageStatus.OnHold => 40,
+        ShipmentPackageStatus.ReadyToShip => 50,
+        ShipmentPackageStatus.Shipped => 60,
+        ShipmentPackageStatus.Undelivered => 70,
+        ShipmentPackageStatus.Delivered => 80,
+        ShipmentPackageStatus.ReturnInTransit => 90,
+        ShipmentPackageStatus.Returned => 100,
+        ShipmentPackageStatus.Cancelled => 0,
+        _ => 110
+    };
 }
 
 public static class OpenOrderLifecyclePolicy

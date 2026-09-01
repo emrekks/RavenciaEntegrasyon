@@ -41,10 +41,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .ToListAsync(cancellationToken);
             var executionGroup = MarketplaceSyncExecutionLock.GroupFor(definition.Value.JobType);
             var active = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == executionGroup);
+            var isOrderLifecycle = definition.Value.JobType == MarketplaceJobTypes.OrderStatusSync;
+            var lifecycleAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderStatusSync, StringComparer.Ordinal);
+            var activeOrderLane = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == "orders");
+            var canQueueLifecycleBehindOrderLane = isOrderLifecycle && activeOrderLane && !lifecycleAlreadyQueued;
             // The jobs added during this pass are not visible to the AsNoTracking
             // queries until SaveChangesAsync. Reserve the provider lane in memory
             // as well, otherwise multiple order policies can be queued together.
-            if (active || reservedExecutionGroups.Contains(executionGroup)) continue;
+            // A lifecycle scan is the exception: one pending lifecycle job may
+            // wait behind the hot order stream, otherwise a continuously busy
+            // stream can starve status refreshes forever.
+            if ((active && !canQueueLifecycleBehindOrderLane)
+                || (reservedExecutionGroups.Contains(executionGroup) && !canQueueLifecycleBehindOrderLane)) continue;
             var latest = await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);

@@ -25,4 +25,22 @@ public sealed class ShipmentPackageStatusPolicyTests
     {
         Assert.Equal(expected, ShipmentPackageStatusPolicy.FromRemote(rawStatus));
     }
+
+    [Theory]
+    [InlineData(ShipmentPackageStatus.New, ShipmentPackageStatus.Shipped)]
+    [InlineData(ShipmentPackageStatus.Processing, ShipmentPackageStatus.Delivered)]
+    [InlineData(ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.Returned)]
+    public void StateMachine_AcceptsAuthoritativeForwardSnapshots(ShipmentPackageStatus current, ShipmentPackageStatus incoming)
+    {
+        Assert.True(ShipmentPackageStateMachine.CanTransition(current, incoming));
+    }
+
+    [Theory]
+    [InlineData(ShipmentPackageStatus.Shipped, ShipmentPackageStatus.Processing)]
+    [InlineData(ShipmentPackageStatus.Delivered, ShipmentPackageStatus.New)]
+    [InlineData(ShipmentPackageStatus.Cancelled, ShipmentPackageStatus.Shipped)]
+    public void StateMachine_RejectsBackwardOrTerminalReopening(ShipmentPackageStatus current, ShipmentPackageStatus incoming)
+    {
+        Assert.False(ShipmentPackageStateMachine.CanTransition(current, incoming));
+    }
 }
