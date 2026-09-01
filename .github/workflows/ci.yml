@@ -1,10 +1,9 @@
 name: Validate
 
+# Geçici olarak otomatik çalıştırma durduruldu. Gerektiğinde Actions ekranından
+# manuel olarak başlatılabilir.
 on:
-  push:
-    branches: [main, 'codex/**']
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
