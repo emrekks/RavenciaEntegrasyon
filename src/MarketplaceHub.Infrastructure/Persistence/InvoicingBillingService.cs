@@ -79,8 +79,7 @@ public sealed partial class InvoicingBillingService(
 
         var packages = await db.ShipmentPackages.AsNoTracking()
             .Where(x => x.TenantId == tenantId
-                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN")
-                && (x.Status == ShipmentPackageStatus.Delivered || db.Invoices.Any(invoice => invoice.TenantId == tenantId && invoice.OriginalInvoiceId == null && (invoice.PackageId == x.Id || invoice.PackageId == null && invoice.OrderId == x.OrderId))))
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"))
             .OrderByDescending(x => x.StatusOccurredAt)
             .ToListAsync(cancellationToken);
         if (packages.Count == 0) return [];
@@ -109,7 +108,7 @@ public sealed partial class InvoicingBillingService(
             if (!orders.TryGetValue(package.OrderId, out var order)) return null;
             var orderLines = linesByOrder.GetValueOrDefault(order.Id) ?? [];
             var invoice = invoices.FirstOrDefault(x => x.PackageId == package.Id) ?? invoices.FirstOrDefault(x => x.PackageId == null && x.OrderId == order.Id);
-            if (invoice is null && !DashboardMetricPolicy.IsInvoiceEligiblePackage(package.Status)) return null;
+            if (invoice is null && package.Status is (ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Returned)) return null;
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
             var dueAt = deliveredAt?.AddDays(7);
             var dueSoon = invoice is null && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);
@@ -169,11 +168,11 @@ public sealed partial class InvoicingBillingService(
         {
             selectedPackage = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId && x.OrderId == command.OrderId, cancellationToken);
             if (selectedPackage is null) return Invalid<InvoiceDetailView>("packageId", "Paket siparişe ait değil.");
-            if (command.OriginalInvoiceId is null && !DashboardMetricPolicy.IsInvoiceEligiblePackage(selectedPackage.Status)) return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_NOT_DELIVERED", "Satış faturası yalnız teslim edilmiş paket için oluşturulabilir.", 422);
+            if (command.OriginalInvoiceId is null && !DashboardMetricPolicy.IsInvoiceEligiblePackage(selectedPackage.Status)) return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "İptal edilmiş veya iade edilmiş paket için satış faturası oluşturulamaz.", 422);
         }
-        else if (command.OriginalInvoiceId is null && !await db.ShipmentPackages.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.OrderId == command.OrderId && x.Status == ShipmentPackageStatus.Delivered, cancellationToken))
+        else if (command.OriginalInvoiceId is null && !await db.ShipmentPackages.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.OrderId == command.OrderId && x.Status != ShipmentPackageStatus.Cancelled && x.Status != ShipmentPackageStatus.Returned, cancellationToken))
         {
-            return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_NOT_DELIVERED", "Satış faturası için siparişte teslim edilmiş paket bulunamadı.", 422);
+            return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "Satış faturası için siparişte uygun paket bulunamadı.", 422);
         }
         var provider = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.ProviderConnectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
         if (provider is null) return Invalid<InvoiceDetailView>("billing", "Trendyol E-Faturam bağlantısı zorunludur.");

@@ -33,7 +33,8 @@ public static class DashboardMetricPolicy
     public static bool IsPendingReturn(ReturnClaimStatus status) =>
         status is ReturnClaimStatus.Requested or ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit or ReturnClaimStatus.ActionRequired;
 
-    public static bool IsInvoiceEligiblePackage(ShipmentPackageStatus status) => status == ShipmentPackageStatus.Delivered;
+    public static bool IsInvoiceEligiblePackage(ShipmentPackageStatus status) =>
+        status is not ShipmentPackageStatus.Cancelled and not ShipmentPackageStatus.Returned;
 
     public static bool IsInvoiceDueSoon(DateTimeOffset deliveredAt, DateTimeOffset now)
     {

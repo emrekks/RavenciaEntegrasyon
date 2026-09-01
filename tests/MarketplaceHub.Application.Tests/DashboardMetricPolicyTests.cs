@@ -65,15 +65,17 @@ public sealed class DashboardMetricPolicyTests
     [InlineData(ReturnClaimStatus.Cancelled)]
     public void ResolvedOrSeparateReturnQueuesAreNotPending(ReturnClaimStatus status) => Assert.False(DashboardMetricPolicy.IsPendingReturn(status));
 
-    [Fact]
-    public void OnlyDeliveredPackagesAreInvoiceEligible() => Assert.True(DashboardMetricPolicy.IsInvoiceEligiblePackage(ShipmentPackageStatus.Delivered));
-
     [Theory]
     [InlineData(ShipmentPackageStatus.New)]
     [InlineData(ShipmentPackageStatus.Processing)]
     [InlineData(ShipmentPackageStatus.Shipped)]
     [InlineData(ShipmentPackageStatus.Undelivered)]
+    [InlineData(ShipmentPackageStatus.Delivered)]
+    [InlineData(ShipmentPackageStatus.ManualReview)]
+    public void AnyNonTerminalPackageCanBeInvoiceEligible(ShipmentPackageStatus status) => Assert.True(DashboardMetricPolicy.IsInvoiceEligiblePackage(status));
+
+    [Theory]
     [InlineData(ShipmentPackageStatus.Cancelled)]
     [InlineData(ShipmentPackageStatus.Returned)]
-    public void UndeliveredPackagesAreNotInvoiceEligible(ShipmentPackageStatus status) => Assert.False(DashboardMetricPolicy.IsInvoiceEligiblePackage(status));
+    public void CancelledOrReturnedPackagesAreNotInvoiceEligible(ShipmentPackageStatus status) => Assert.False(DashboardMetricPolicy.IsInvoiceEligiblePackage(status));
 }

@@ -130,11 +130,12 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             var activePackages = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId
                 && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
                 && x.Status != ShipmentPackageStatus.Cancelled && x.Status != ShipmentPackageStatus.Returned);
-            var invoiceEligiblePackages = activePackages.Where(package => package.Status == ShipmentPackageStatus.Delivered);
+            var invoiceEligiblePackages = activePackages;
             uninvoicedInvoices = await invoiceEligiblePackages.CountAsync(package => !db.Invoices.AsNoTracking().Any(invoice => invoice.TenantId == tenantId && invoice.OriginalInvoiceId == null && (invoice.PackageId == package.Id || invoice.PackageId == null && invoice.OrderId == package.OrderId)), cancellationToken);
             var invoiceDueAt = now.AddDays(-DashboardMetricPolicy.InvoiceDueDays);
             var invoiceReminderAt = now.AddDays(-DashboardMetricPolicy.InvoiceReminderStartDays);
-            dueSoonInvoices = await invoiceEligiblePackages.CountAsync(package => package.StatusOccurredAt > invoiceDueAt
+            dueSoonInvoices = await invoiceEligiblePackages.CountAsync(package => package.Status == ShipmentPackageStatus.Delivered
+                && package.StatusOccurredAt > invoiceDueAt
                 && package.StatusOccurredAt <= invoiceReminderAt
                 && !db.Invoices.AsNoTracking().Any(invoice => invoice.TenantId == tenantId && invoice.OriginalInvoiceId == null && (invoice.PackageId == package.Id || invoice.PackageId == null && invoice.OrderId == package.OrderId)), cancellationToken);
         }
