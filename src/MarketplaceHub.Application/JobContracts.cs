@@ -86,12 +86,23 @@ public sealed record JobOrderContextView(
 
 public sealed record JobChangeView(string Label, string Value, string? Detail = null);
 
+public sealed record JobScanView(
+    string Mode,
+    string Label,
+    string Detail,
+    string? Window = null,
+    int? PlannedIntervalSeconds = null,
+    string? PlannedIntervalLabel = null,
+    string? PreviousScheduledAt = null,
+    string? ActualIntervalLabel = null);
+
 public sealed record JobDetailView(
     JobSummaryView Job,
     IReadOnlyList<JobAttemptDetailView> Attempts,
     JobOrderContextView? Order = null,
     JobChangeView? Change = null,
-    IReadOnlyList<JobOrderContextView>? RelatedOrders = null);
+    IReadOnlyList<JobOrderContextView>? RelatedOrders = null,
+    JobScanView? Scan = null);
 
 public interface IJobOperationsService
 {

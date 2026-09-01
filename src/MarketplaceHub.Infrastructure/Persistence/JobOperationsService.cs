@@ -110,7 +110,148 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             var relatedOrder = await OrderContext(relatedJob, cancellationToken);
             if (relatedOrder is not null && relatedOrders.All(order => order.OrderId != relatedOrder.OrderId)) relatedOrders.Add(relatedOrder);
         }
-        return new JobDetailView(Summary(job, failureTimes, relatedJobs.Count), attempts, currentOrder, Change(job), relatedOrders);
+        var scan = await ScanAsync(job, cancellationToken);
+        return new JobDetailView(Summary(job, failureTimes, relatedJobs.Count), attempts, currentOrder, Change(job), relatedOrders, scan);
+    }
+
+    private async Task<JobScanView> ScanAsync(IntegrationJob job, CancellationToken cancellationToken)
+    {
+        var type = job.JobType.ToUpperInvariant();
+        var mode = "OPERATION";
+        var label = "Standart işlem";
+        var detail = "Bu işlem belirli bir tarama kapsamı yerine tek bir operasyon yürütür.";
+        string? window = null;
+        string? externalOrderId = null;
+        var full = false;
+        int? lookbackDays = null;
+        int? lookbackHours = null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(job.PayloadJson);
+            var root = document.RootElement;
+            externalOrderId = StringValue(root, "externalOrderId");
+            full = BoolValue(root, "full");
+            lookbackDays = IntValue(root, "lookbackDays");
+            lookbackHours = IntValue(root, "lookbackHours");
+        }
+        catch (JsonException) { }
+
+        if (type.Contains("ORDER_SYNC", StringComparison.Ordinal))
+        {
+            if (!string.IsNullOrWhiteSpace(externalOrderId))
+            {
+                mode = "SINGLE";
+                label = "Tekil sipariş taraması";
+                detail = $"Yalnızca {externalOrderId} numaralı sipariş yenilendi.";
+            }
+            else if (full)
+            {
+                mode = "FULL";
+                label = "Tam sipariş taraması";
+                detail = "Erişilebilen sipariş geçmişi baştan taranır ve yerel kayıtlarla uzlaştırılır.";
+                window = "Trendyol Stream sınırı nedeniyle 14 günlük güvenli pencereler";
+            }
+            else
+            {
+                mode = "QUICK";
+                label = "Hızlı sipariş taraması";
+                detail = "Son başarılı watermark sonrasındaki değişiklikler alınır; güvenlik örtüşmesiyle kaçan kayıtlar tekrar kontrol edilir.";
+                window = "Son watermark + güvenlik örtüşmesi";
+            }
+        }
+        else if (type.Contains("ORDER_RECOVERY_SYNC", StringComparison.Ordinal))
+        {
+            mode = "FULL";
+            label = "Tam sipariş taraması";
+            detail = "Sipariş geçmişindeki erişilebilir pencereler sırayla taranarak eksik yerel kayıtlar tamamlanır.";
+            window = "14 günlük güvenli pencereler";
+        }
+        else if (type.Contains("ORDER_RECONCILIATION", StringComparison.Ordinal))
+        {
+            mode = "COMPREHENSIVE";
+            label = "Kapsamlı sipariş taraması";
+            detail = "Yerel siparişler ile pazaryeri kayıtları karşılaştırılır; durum ve paket farklılıkları düzeltilir.";
+            window = lookbackDays is > 0 ? $"Son {lookbackDays} gün" : "Uzlaştırma kapsamı";
+        }
+        else if (type.Contains("ORDER_STATUS_SYNC", StringComparison.Ordinal))
+        {
+            mode = "STATUS";
+            label = "Sipariş durum taraması";
+            detail = "Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel durum güncellenir.";
+            window = "Açık siparişler";
+        }
+        else if (type.Contains("RETURN_RECONCILIATION", StringComparison.Ordinal))
+        {
+            mode = "COMPREHENSIVE";
+            label = "Kapsamlı iade taraması";
+            detail = "Yerel iade kayıtları ile pazaryeri kayıtları karşılaştırılır ve farklar giderilir.";
+            window = lookbackDays is > 0 ? $"Son {lookbackDays} gün" : "Uzlaştırma kapsamı";
+        }
+        else if (type.Contains("RETURN_SYNC", StringComparison.Ordinal))
+        {
+            mode = "QUICK";
+            label = "Hızlı iade taraması";
+            detail = "Son değişen iade talepleri güvenlik örtüşmesiyle alınır.";
+            window = "Son watermark + güvenlik örtüşmesi";
+        }
+        else if (type.Contains("RETURN_STATUS_SYNC", StringComparison.Ordinal))
+        {
+            mode = "STATUS";
+            label = "İade durum taraması";
+            detail = "Açık iadelerin güncel durumları kontrol edilir.";
+            window = "Açık iadeler";
+        }
+        else if (type.Contains("STOCK_RECONCILIATION", StringComparison.Ordinal))
+        {
+            mode = "COMPREHENSIVE";
+            label = "Kapsamlı stok taraması";
+            detail = "Yerel stok projeksiyonları ile pazaryeri stokları karşılaştırılır.";
+            window = lookbackHours is > 0 ? $"Son {lookbackHours} saat" : "Uzlaştırma kapsamı";
+        }
+        else if (type.Contains("PRODUCT_SYNC", StringComparison.Ordinal))
+        {
+            mode = "FULL";
+            label = "Tam ürün taraması";
+            detail = "Pazaryerindeki erişilebilir katalog ürünleri ve varyantları baştan okunur.";
+            window = "Erişilebilir tüm katalog";
+        }
+        else if (type.Contains("REFERENCE_SYNC", StringComparison.Ordinal))
+        {
+            mode = "FULL";
+            label = "Tam referans taraması";
+            detail = "Seçilen kategori, marka veya özellik referansları sayfa sayfa yenilenir.";
+            window = "Erişilebilir tüm referans kayıtları";
+        }
+
+        var resourceType = ScheduledResourceType(job.JobDedupKey);
+        var scheduledPrefix = ScheduledPrefix(job.JobDedupKey);
+        var policy = resourceType is null || job.ConnectionId is null
+            ? null
+            : await db.ConnectionSyncPolicies.AsNoTracking()
+                .Where(x => x.TenantId == job.TenantId && x.ConnectionId == job.ConnectionId.Value && x.ResourceType == resourceType)
+                .Select(x => new { x.IntervalSeconds })
+                .FirstOrDefaultAsync(cancellationToken);
+        var previous = scheduledPrefix is null
+            ? null
+            : await db.IntegrationJobs.AsNoTracking()
+                .Where(x => x.TenantId == job.TenantId && x.Id != job.Id && x.CreatedAt < job.CreatedAt && x.JobDedupKey.StartsWith(scheduledPrefix))
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => (DateTimeOffset?)x.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        var actualInterval = previous is { } previousAt
+            ? job.CreatedAt - previousAt
+            : (TimeSpan?)null;
+        return new JobScanView(
+            mode,
+            label,
+            detail,
+            window,
+            policy?.IntervalSeconds,
+            policy is null ? null : DurationLabel(TimeSpan.FromSeconds(policy.IntervalSeconds)),
+            previous?.ToString("O"),
+            actualInterval is { } gap && gap > TimeSpan.Zero ? DurationLabel(gap) : null);
     }
 
     private async Task<JobOrderContextView?> OrderContext(IntegrationJob job, CancellationToken cancellationToken)
@@ -213,6 +354,50 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         Property(root, name) is { } value && value.ValueKind == System.Text.Json.JsonValueKind.String
             ? value.GetString()
             : null;
+
+    private static bool BoolValue(System.Text.Json.JsonElement root, string name) =>
+        Property(root, name) is { } value && value.ValueKind == System.Text.Json.JsonValueKind.True;
+
+    private static int? IntValue(System.Text.Json.JsonElement root, string name) =>
+        Property(root, name) is { } value && value.ValueKind == System.Text.Json.JsonValueKind.Number && value.TryGetInt32(out var result)
+            ? result
+            : null;
+
+    private static string? ScheduledResourceType(string dedupKey)
+    {
+        if (!dedupKey.StartsWith("scheduled:", StringComparison.Ordinal)) return null;
+        if (dedupKey.StartsWith("scheduled:orders:", StringComparison.Ordinal)) return "ORDERS";
+        if (dedupKey.StartsWith("scheduled:order-recovery:", StringComparison.Ordinal)) return "ORDER_RECOVERY";
+        if (dedupKey.StartsWith("scheduled:order-lifecycle:", StringComparison.Ordinal)) return "ORDER_LIFECYCLE";
+        if (dedupKey.StartsWith("scheduled:order-reconcile-short:", StringComparison.Ordinal)) return "ORDER_RECONCILE_SHORT";
+        if (dedupKey.StartsWith("scheduled:order-reconcile-medium:", StringComparison.Ordinal)) return "ORDER_RECONCILE_MEDIUM";
+        if (dedupKey.StartsWith("scheduled:order-reconcile-daily:", StringComparison.Ordinal)) return "ORDER_RECONCILE_DAILY";
+        if (dedupKey.StartsWith("scheduled:returns:", StringComparison.Ordinal)) return "RETURNS";
+        if (dedupKey.StartsWith("scheduled:return-lifecycle:", StringComparison.Ordinal)) return "RETURN_LIFECYCLE";
+        if (dedupKey.StartsWith("scheduled:return-reconcile-short:", StringComparison.Ordinal)) return "RETURN_RECONCILE_SHORT";
+        if (dedupKey.StartsWith("scheduled:return-reconcile-medium:", StringComparison.Ordinal)) return "RETURN_RECONCILE_MEDIUM";
+        if (dedupKey.StartsWith("scheduled:return-reconcile-daily:", StringComparison.Ordinal)) return "RETURN_RECONCILE_DAILY";
+        if (dedupKey.StartsWith("scheduled:stock-reconcile-short:", StringComparison.Ordinal)) return "STOCK_RECONCILE_SHORT";
+        if (dedupKey.StartsWith("scheduled:stock-reconcile-medium:", StringComparison.Ordinal)) return "STOCK_RECONCILE_MEDIUM";
+        if (dedupKey.StartsWith("scheduled:stock-reconcile-daily:", StringComparison.Ordinal)) return "STOCK_RECONCILE_DAILY";
+        if (dedupKey.StartsWith("scheduled:reference:", StringComparison.Ordinal)) return "REFERENCE_DATA";
+        return null;
+    }
+
+    private static string? ScheduledPrefix(string dedupKey)
+    {
+        if (!dedupKey.StartsWith("scheduled:", StringComparison.Ordinal)) return null;
+        var separator = dedupKey.LastIndexOf(':');
+        return separator > 0 ? dedupKey[..separator] : dedupKey;
+    }
+
+    private static string DurationLabel(TimeSpan duration)
+    {
+        var seconds = Math.Max(0, (int)Math.Round(duration.TotalSeconds));
+        if (seconds < 60) return $"{seconds} sn";
+        var minutes = seconds / 60;
+        return seconds % 60 == 0 ? $"{minutes} dk" : $"{minutes} dk {seconds % 60} sn";
+    }
 
     private static System.Text.Json.JsonElement? Property(System.Text.Json.JsonElement root, string name)
     {

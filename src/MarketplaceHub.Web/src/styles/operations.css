@@ -667,3 +667,56 @@
   margin: 0 !important;
   transition: color .16s ease, background .16s ease !important;
 }
+
+.jobs-reference-scan-summary {
+  margin: 18px 0;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, rgba(88,101,242,.14), rgba(25,27,45,.72));
+  border: 1px solid rgba(118,127,255,.42);
+  border-radius: 10px;
+}
+.jobs-reference-scan-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(190px, .8fr);
+  gap: 18px;
+  align-items: start;
+}
+.jobs-reference-scan-content h3 {
+  margin: 5px 0 7px;
+  color: var(--st-text);
+  font-size: 18px;
+}
+.jobs-reference-scan-content p {
+  margin: 0;
+  color: var(--st-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.jobs-reference-scan-facts {
+  display: grid;
+  gap: 8px;
+}
+.jobs-reference-scan-facts p {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  background: rgba(7,9,18,.28);
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 7px;
+}
+.jobs-reference-scan-facts small {
+  color: var(--st-muted);
+  font-size: 10px;
+}
+.jobs-reference-scan-facts strong {
+  color: var(--st-text);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.jobs-reference-scan-full { border-color: rgba(103,214,174,.42); }
+.jobs-reference-scan-comprehensive { border-color: rgba(255,190,112,.48); }
+.jobs-reference-scan-single { border-color: rgba(101,196,255,.46); }
+
+@media (max-width: 700px) {
+  .jobs-reference-scan-content { grid-template-columns: 1fr; }
+}

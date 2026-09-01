@@ -75,7 +75,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     MarketplaceJobTypes.OrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
                     MarketplaceJobTypes.OrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderReconciliation => await ReconcileOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.ProductSync => await SyncProducts(tenantId, connectionId.Value, correlationId, cancellationToken),
+                    MarketplaceJobTypes.ProductSync => await SyncProducts(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnSync => await SyncReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnReconciliation => await ReconcileReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
@@ -1307,7 +1307,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
-    private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
@@ -1315,7 +1315,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // Keep it restricted to operational connections and recognised environments.
         if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED")) return false;
 
+        var fullScan = ReadBoolean(payloadJson, "full");
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
+        if (fullScan && cursor.OpaqueCursor is not null)
+        {
+            cursor.OpaqueCursor = null;
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
         var hasSnapshots = await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
         var hasCategoryMappings = await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
         // The first attribute backfill must revisit the already imported catalog. Keep
@@ -1327,7 +1334,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
         }
-        DateTimeOffset? modifiedAfter = hasSnapshots && cursor.LastModifiedWatermark is not null ? cursor.LastModifiedWatermark.Value.AddMinutes(-2) : null;
+        DateTimeOffset? modifiedAfter = !fullScan && hasSnapshots && cursor.LastModifiedWatermark is not null ? cursor.LastModifiedWatermark.Value.AddMinutes(-2) : null;
         var categoryReferences = await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
         IReadOnlyList<ReferenceItem> categoryItems = categoryReferences is null
             ? []
@@ -2644,6 +2651,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 : fallback;
         }
         catch (JsonException) { return fallback; }
+    }
+
+    private static bool ReadBoolean(string payloadJson, string propertyName)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return document.RootElement.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
     }
 
     private static ReturnSyncState ReadReturnSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap)

@@ -31,6 +31,7 @@ type Candidate = Versioned & { matchRule: string; safeSummary: string; productId
 type Inventory = Versioned & { variantId: string; sku: string; locationCode: string; onHand: number; reserved: number; available: number }
 type TrendyolConnection = { id: string; platformCode: string; displayName: string; externalStoreId: string; status: string }
 type AcceptedJob = { jobId: string }
+type ProductImportMode = 'INCREMENTAL' | 'FULL'
 
 const key = () => crypto.randomUUID()
 const isProductPublicationConnection = (item: TrendyolConnection) => item.platformCode.trim().toUpperCase() === 'TRENDYOL' && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
@@ -349,7 +350,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
 }
 
 export function ProductsPage() {
-  const client = useQueryClient(); const [search, setSearch] = useState(''); const [searchFilter, setSearchFilter] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>({})
+  const client = useQueryClient(); const [search, setSearch] = useState(''); const [searchFilter, setSearchFilter] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('INCREMENTAL'); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>({})
   const productFilters = useMemo<ProductListFilters>(() => ({ search: searchFilter, status, platform, stock }), [searchFilter, status, platform, stock])
   const productFilterKey = JSON.stringify(productFilters)
   const pageCursor = pageCursors[productFilterKey]?.[pageNumber] ?? null
@@ -362,12 +363,12 @@ export function ProductsPage() {
   })
   const summaryQuery = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
   const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<TrendyolConnection>('/connections') })
-  const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(item => item.status === 'ACTIVE'); const platforms = summaryQuery.data?.platforms ?? []
+  const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(isProductPublicationConnection); const platforms = summaryQuery.data?.platforms ?? []
   const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = currentPage === pageNumber ? products : []; const pageProductGroups = useMemo(() => groupProductRows(pageProducts), [pageProducts])
   const selectedProducts = selectedProductIds.map(id => selectedProductCache[id]).filter((product): product is Product => Boolean(product))
   const nextPageCursor = query.data?.nextCursor ?? null
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
-  useEffect(() => { setPageNumber(1); setPageCursors({}) }, [productFilterKey, pageSize])
+  useEffect(() => { setPageNumber(1); setPageCursors({}); setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false); setBulkOpen(false) }, [productFilterKey, pageSize])
   useEffect(() => {
     if (query.data?.totalCount == null) return
     const nextTotalPages = Math.max(1, Math.ceil(query.data.totalCount / pageSize))
@@ -388,11 +389,34 @@ export function ProductsPage() {
     })
   }, [products, selectedProductIds])
   const allVisibleSelected = pageProductGroups.length > 0 && pageProductGroups.every(group => group.products.every(product => selectedProductIds.includes(product.id)))
+  const hasMoreProductsToSelect = totalCount > pageProducts.length
   const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
   function showProductToast(message: string, kind: 'success' | 'error') { setProductToast({ message, kind }); window.setTimeout(() => setProductToast(current => current?.message === message ? null : current), 4000) }
+  function openProductImport() {
+    setProductImportConnectionIds(connections.length === 1 ? [connections[0].id] : [])
+    setProductImportMode('INCREMENTAL')
+    setProductImportOpen(true)
+  }
+  async function importProductsFromPlatforms() {
+    if (productImporting) return
+    if (!productImportConnectionIds.length) { showProductToast('Ürün çekmek için en az bir aktif Trendyol bağlantısı seçin.', 'error'); return }
+    setProductImporting(true)
+    try {
+      const full = productImportMode === 'FULL'
+      await Promise.all(productImportConnectionIds.map(connectionId => hubApi<AcceptedJob>(`/connections/${connectionId}/product-sync-jobs?full=${full}`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: '{}' })))
+      setProductImportOpen(false)
+      showProductToast(`${productImportConnectionIds.length} platform için ${full ? 'tam' : 'artımlı'} ürün taraması kuyruğa alındı. İşlem Takibi’nden ilerlemeyi izleyebilirsiniz.`, 'success')
+      void client.invalidateQueries({ queryKey: ['jobs'] })
+    } catch (err) {
+      showProductToast(err instanceof Error ? err.message : 'Platform ürünleri panele alınamadı.', 'error')
+    } finally {
+      setProductImporting(false)
+    }
+  }
   function toggleProductGroup(group: ProductGroup) {
     const groupIds = group.products.map(product => product.id)
     const allSelected = groupIds.every(id => selectedProductIds.includes(id))
+    setAllProductsSelected(false)
     setSelectedProductIds(ids => allSelected ? ids.filter(id => !groupIds.includes(id)) : [...new Set([...ids, ...groupIds])])
     setSelectedProductCache(current => {
       const next = { ...current }
@@ -403,12 +427,40 @@ export function ProductsPage() {
   }
   function toggleAllVisible() {
     const pageIds = new Set(pageProducts.map(product => product.id))
+    if (allProductsSelected) {
+      setSelectedProductIds([])
+      setSelectedProductCache({})
+      setAllProductsSelected(false)
+      return
+    }
     if (allVisibleSelected) {
       setSelectedProductIds(ids => ids.filter(id => !pageIds.has(id)))
       setSelectedProductCache(current => { const next = { ...current }; pageIds.forEach(id => delete next[id]); return next })
+      setAllProductsSelected(false)
     } else {
       setSelectedProductIds(ids => [...new Set([...ids, ...pageProducts.map(product => product.id)])])
       setSelectedProductCache(current => ({ ...current, ...Object.fromEntries(pageProducts.map(product => [product.id, product])) }))
+    }
+  }
+  async function selectAllFilteredProducts() {
+    if (selectingAllProducts || !hasMoreProductsToSelect) return
+    setSelectingAllProducts(true)
+    try {
+      const params = new URLSearchParams()
+      if (productFilters.search) params.set('search', productFilters.search)
+      if (productFilters.status) params.set('status', productFilters.status)
+      if (productFilters.platform) params.set('platform', productFilters.platform)
+      if (productFilters.stock) params.set('stock', productFilters.stock)
+      const all = await loadAllPages<Product>(`/products?${params.toString()}`, 200)
+      const ids = all.items.map(product => product.id)
+      setSelectedProductIds(ids)
+      setSelectedProductCache(Object.fromEntries(all.items.map(product => [product.id, product])))
+      setAllProductsSelected(true)
+      showProductToast(`${ids.length} katalog kaydı tüm sayfalardan seçildi.`, 'success')
+    } catch (err) {
+      showProductToast(err instanceof Error ? err.message : 'Tüm sayfalardaki ürünler seçilemedi.', 'error')
+    } finally {
+      setSelectingAllProducts(false)
     }
   }
   function goToNextPage() {
@@ -423,10 +475,14 @@ export function ProductsPage() {
     const targetCount = selectedProductIds.length
     if (!targetCount) return
     try {
-      await hubApi('/products/bulk-status', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productIds: selectedProductIds, status: newStatus }) })
+      for (let index = 0; index < selectedProductIds.length; index += 500) {
+        const productIds = selectedProductIds.slice(index, index + 500)
+        await hubApi('/products/bulk-status', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productIds, status: newStatus }) })
+      }
       showProductToast(`${targetCount} ürün durumu “${newStatus === 'ACTIVE' ? 'Satışta' : 'Kapalı'}” olarak güncellendi.`, 'success')
       setSelectedProductIds([])
       setSelectedProductCache({})
+      setAllProductsSelected(false)
       await refresh()
     } catch (err) {
       showProductToast(err instanceof Error ? err.message : 'Toplu durum güncelleme başarısız.', 'error')
@@ -440,6 +496,7 @@ export function ProductsPage() {
       showProductToast('Ürün yerel katalogdan silindi.', 'success')
       setSelectedProductIds(ids => ids.filter(id => id !== product.id))
       setSelectedProductCache(current => { const next = { ...current }; delete next[product.id]; return next })
+      setAllProductsSelected(false)
       await refresh()
     } catch (err) {
       showProductToast(err instanceof Error ? err.message : 'Ürün silme başarısız.', 'error')
@@ -455,6 +512,7 @@ export function ProductsPage() {
       const targetIds = new Set(ids)
       setSelectedProductIds(current => current.filter(id => !targetIds.has(id)))
       setSelectedProductCache(current => { const next = { ...current }; targetIds.forEach(id => delete next[id]); return next })
+      setAllProductsSelected(false)
       showProductToast(`${ids.length} katalog kaydı silindi.`, 'success')
       await refresh()
     } catch (err) {
@@ -467,17 +525,21 @@ export function ProductsPage() {
     const targetCount = selectedProductIds.length
     if (!targetCount || !window.confirm(`${targetCount} ürün yerel katalogdan kalıcı olarak silinsin mi?\n\nBu işlem geri alınamaz. Sipariş geçmişi korunur; seçili ürünlerin yerel varyant, stok, fiyat ve platform eşleşme kayıtları silinir. Marketplace üzerindeki ilanlar otomatik olarak silinmez.`)) return
     try {
-      await hubApi('/products/bulk-delete', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productIds: selectedProductIds }) })
+      for (let index = 0; index < selectedProductIds.length; index += 500) {
+        const productIds = selectedProductIds.slice(index, index + 500)
+        await hubApi('/products/bulk-delete', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productIds }) })
+      }
       showProductToast(`${targetCount} ürün yerel katalogdan silindi.`, 'success')
       setSelectedProductIds([])
       setSelectedProductCache({})
+      setAllProductsSelected(false)
       await refresh()
     } catch (err) {
       showProductToast(err instanceof Error ? err.message : 'Toplu ürün silme başarısız.', 'error')
     }
   }
 
-  return <Page className="products-page" title="Ürünler" eyebrow="Katalog" action={<Link className="button-link" to="/products/new"><span aria-hidden="true">＋</span> Yeni Ürün Ekle</Link>}>
+  return <Page className="products-page" title="Ürünler" eyebrow="Katalog" action={<div className="products-page-actions"><button type="button" className="button-link product-import-trigger" onClick={openProductImport}><span aria-hidden="true">↧</span> Platformdan Ürün Çek</button><Link className="button-link" to="/products/new"><span aria-hidden="true">＋</span> Yeni Ürün Ekle</Link></div>}>
     <div className="product-metrics metrics"><article className="product-metric-total"><small>Toplam Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.totalCount ?? 0}</strong><span>katalog kaydı</span></article><article className="product-metric-active"><small>Aktif Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.activeCount ?? 0}</strong><span>ürün</span></article><article className="product-metric-empty"><small>Stoksuz Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.outOfStockCount ?? 0}</strong><span>aksiyon gerekli</span></article><article className="product-metric-low"><small>Düşük Stoklu</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.lowStockCount ?? 0}</strong><span>5 ve altı</span></article></div>
     <div className="product-toolbar">
       <div className="bulk-menu-shell">
@@ -513,6 +575,10 @@ export function ProductsPage() {
       <select aria-label="Platform filtresi" value={platform} onChange={event => setPlatform(event.target.value)}><option value="">Platform Durumu</option>{platforms.map(item => <option key={item}>{item}</option>)}</select>
       <select aria-label="Stok filtresi" value={stock} onChange={event => setStock(event.target.value)}><option value="">Stok Durumu</option><option value="OUT">Stoksuz</option><option value="LOW">Düşük stok</option><option value="OK">Yeterli stok</option></select>
     </div>
+    {selectedProductIds.length > 0 && hasMoreProductsToSelect && <div className={`product-selection-banner${allProductsSelected ? ' is-all' : ''}`} role="status">
+      <div><strong>{allProductsSelected ? `Tüm ${selectedProductIds.length.toLocaleString('tr-TR')} katalog kaydı seçildi.` : `${selectedProductIds.length.toLocaleString('tr-TR')} kayıt bu sayfadan seçildi.`}</strong><span>{allProductsSelected ? 'Toplu işlemler tüm filtrelenmiş sayfalara uygulanacak.' : `Bu sayfada ${pageProductGroups.length} ürün kartı gösteriliyor; diğer sayfaları da seçebilirsiniz.`}</span></div>
+      {allProductsSelected ? <button type="button" className="secondary" onClick={() => { setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) }}>Seçimi temizle</button> : <button type="button" onClick={() => void selectAllFilteredProducts()} disabled={selectingAllProducts}>{selectingAllProducts ? 'Tüm sayfalar seçiliyor…' : `Tüm ${totalCount.toLocaleString('tr-TR')} kaydı seç`}</button>}
+    </div>}
     <ErrorBox error={query.error ?? summaryQuery.error ?? connectionsQuery.error} />
     {query.isLoading && !pageProducts.length ? <p>Yükleniyor…</p> : !pageProducts.length ? <div className="empty">Filtrelerle eşleşen ürün yok.</div> : (
       <div className="product-catalog-table preferred-product-catalog">
@@ -527,6 +593,7 @@ export function ProductsPage() {
     )}
     {totalCount > 0 && <div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına ürün" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100].map(value => <option key={value} value={value}>{value}</option>)}</select> ürün</label><span>Toplam {totalCount.toLocaleString('tr-TR')} katalog kaydından {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)} arası gösteriliyor · Bu sayfada {pageProductGroups.length} ürün kartı</span><div className="product-pagination-controls"><button type="button" aria-label="Önceki sayfa" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>‹</button><b>Sayfa {currentPage} / {totalPages}</b><button type="button" aria-label="Sonraki sayfa" disabled={currentPage >= totalPages || !nextPageCursor} onClick={goToNextPage}>›</button></div></div>}
     {quickEdit && <ProductQuickEditModal products={selectedProducts} connections={connections} mode={quickEdit.mode} onChanged={refresh} onResult={showProductToast} onClose={() => setQuickEdit(null)} />}
+    {productImportOpen && <div className="workspace-modal-backdrop product-import-backdrop" role="presentation" onMouseDown={() => !productImporting && setProductImportOpen(false)}><section className="workspace-modal product-import-modal" role="dialog" aria-modal="true" aria-labelledby="product-import-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">PLATFORM KATALOĞU</p><h2 id="product-import-title">Ürünleri platformdan çek</h2><p>Seçtiğiniz aktif Trendyol bağlantılarındaki ürünleri yerel kataloğa salt-okunur olarak alın.</p></div><button type="button" className="modal-close" onClick={() => setProductImportOpen(false)} disabled={productImporting} aria-label="Pencereyi kapat">×</button></header><div className="product-import-body"><fieldset><legend>Platform bağlantıları</legend>{connections.length ? <div className="product-import-connections">{connections.map(connection => { const selected = productImportConnectionIds.includes(connection.id); return <label key={connection.id} className={`product-import-connection${selected ? ' selected' : ''}`}><input type="checkbox" checked={selected} onChange={() => setProductImportConnectionIds(ids => selected ? ids.filter(id => id !== connection.id) : [...ids, connection.id])} /><span><strong>{connection.displayName}</strong><small>{connection.externalStoreId} · {connection.status === 'VERIFIED' ? 'Doğrulanmış' : 'Aktif'}</small></span></label> })}</div> : <p className="product-import-empty">Ürün çekmeye uygun aktif veya doğrulanmış Trendyol bağlantısı bulunamadı.</p>}</fieldset><fieldset><legend>Tarama ayarı</legend><label className={`product-import-mode${productImportMode === 'INCREMENTAL' ? ' selected' : ''}`}><input type="radio" name="product-import-mode" value="INCREMENTAL" checked={productImportMode === 'INCREMENTAL'} onChange={() => setProductImportMode('INCREMENTAL')} /><span><strong>Yeni ve değişen ürünler</strong><small>Son başarılı watermark’tan güvenlik örtüşmesiyle devam eder.</small></span></label><label className={`product-import-mode${productImportMode === 'FULL' ? ' selected' : ''}`}><input type="radio" name="product-import-mode" value="FULL" checked={productImportMode === 'FULL'} onChange={() => setProductImportMode('FULL')} /><span><strong>Tüm katalog</strong><small>Erişilebilen tüm ürün ve varyantları baştan tarar.</small></span></label></fieldset><p className="product-import-note">Bu işlem platforma veri göndermez; yalnızca seçilen bağlantılardan panel kataloğuna okuma yapar.</p></div><footer><button type="button" className="secondary" onClick={() => setProductImportOpen(false)} disabled={productImporting}>Vazgeç</button><button type="button" onClick={() => void importProductsFromPlatforms()} disabled={productImporting || !productImportConnectionIds.length}>{productImporting ? 'Kuyruğa alınıyor…' : 'Ürünleri panele çek'}</button></footer></section></div>}
     {productToast && <div className={`product-operation-toast ${productToast.kind}`} role={productToast.kind === 'success' ? 'status' : 'alert'}><strong>{productToast.kind === 'success' ? 'Güncellendi' : 'Başarısız'}</strong><span>{productToast.message}</span></div>}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
   </Page>

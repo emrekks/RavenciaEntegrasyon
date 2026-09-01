@@ -2441,3 +2441,131 @@ body:has(.product-add-page),
   max-width: 100% !important;
   box-sizing: border-box;
 }
+
+/* Cross-page selection is explicit so bulk operations never look limited to
+   the currently loaded cursor page. */
+.app-shell.stitch-shell .products-page .product-selection-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 10px 0 12px;
+  padding: 11px 14px;
+  color: #e9ebff;
+  background: rgba(88, 101, 242, .12);
+  border: 1px solid rgba(124, 134, 255, .38);
+  border-radius: 8px;
+}
+.app-shell.stitch-shell .products-page .product-selection-banner.is-all {
+  background: rgba(34, 197, 149, .1);
+  border-color: rgba(75, 220, 177, .38);
+}
+.app-shell.stitch-shell .products-page .product-selection-banner > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.app-shell.stitch-shell .products-page .product-selection-banner strong {
+  font-size: .73rem;
+}
+.app-shell.stitch-shell .products-page .product-selection-banner span {
+  color: #aeb4d1;
+  font-size: .64rem;
+  line-height: 1.35;
+}
+.app-shell.stitch-shell .products-page .product-selection-banner button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 7px 11px;
+  white-space: nowrap;
+}
+@media (max-width: 680px) {
+  .app-shell.stitch-shell .products-page .product-selection-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+.app-shell.stitch-shell .products-page .products-page-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.app-shell.stitch-shell .products-page .product-import-trigger {
+  color: #d9ddff !important;
+  background: rgba(88, 101, 242, .15) !important;
+  border-color: rgba(124, 134, 255, .55) !important;
+  box-shadow: none !important;
+}
+.app-shell.stitch-shell .products-page .product-import-trigger:hover,
+.app-shell.stitch-shell .products-page .product-import-trigger:focus-visible {
+  color: #fff !important;
+  background: rgba(88, 101, 242, .3) !important;
+}
+.product-import-modal {
+  width: min(680px, 100%);
+  color: #eef0ff;
+  background: #151722 !important;
+  border-color: #34384c !important;
+}
+.product-import-modal header h2 { color: #f2f3ff !important; }
+.product-import-modal header p { color: #aeb4d1 !important; }
+.product-import-body {
+  display: grid;
+  gap: 18px;
+  padding: 0 24px;
+}
+.product-import-body fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #34384c;
+  border-radius: 8px;
+}
+.product-import-body legend {
+  padding: 0 6px;
+  color: #c8ccf4;
+  font-size: .72rem;
+  font-weight: 800;
+}
+.product-import-connections { display: grid; gap: 8px; }
+.product-import-connection,
+.product-import-mode {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 11px 12px;
+  color: #e7e9ff;
+  background: #1b1e2b;
+  border: 1px solid #34384c;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.product-import-connection.selected,
+.product-import-mode.selected {
+  background: rgba(88, 101, 242, .16);
+  border-color: #6975ff;
+}
+.product-import-connection input,
+.product-import-mode input { flex: 0 0 auto; width: 16px; height: 16px; accent-color: #6975ff; }
+.product-import-connection span,
+.product-import-mode span { display: grid; gap: 3px; min-width: 0; }
+.product-import-connection strong,
+.product-import-mode strong { color: #f0f1ff; font-size: .73rem; }
+.product-import-connection small,
+.product-import-mode small { color: #aeb4d1; font-size: .65rem; line-height: 1.3; }
+.product-import-empty,
+.product-import-note { margin: 0; color: #aeb4d1; font-size: .7rem; line-height: 1.4; }
+.product-import-note { padding: 10px 12px; color: #9fe2ce; background: rgba(43, 193, 148, .08); border: 1px solid rgba(43, 193, 148, .3); border-radius: 7px; }
+@media (max-width: 680px) {
+  .app-shell.stitch-shell .products-page .products-page-actions { justify-content: stretch; }
+  .app-shell.stitch-shell .products-page .products-page-actions .button-link { flex: 1 1 180px; justify-content: center; }
+  .product-import-body { padding: 0 16px; }
+  .product-import-modal header,
+  .product-import-modal footer { padding-right: 16px; padding-left: 16px; }
+}

@@ -1049,10 +1049,19 @@ textarea {
   flex: 0 0 auto;
   position: relative;
   display: block;
+  box-sizing: border-box;
+  overflow: hidden;
+  width: 210mm;
+  height: 297mm;
   color: #17223a;
   background: #fff;
   box-shadow: 0 10px 34px rgba(0, 0, 0, .34);
   font-family: Arial, "Segoe UI", sans-serif;
+}
+
+.app-shell.stitch-shell .shipping-label-print-surface.shipping-label-sticker {
+  width: var(--shipping-label-width);
+  height: var(--shipping-label-height);
 }
 
 .app-shell.stitch-shell .shipping-label-positioned-block {
