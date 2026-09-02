@@ -1320,7 +1320,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                                           && package.Status != ShipmentPackageStatus.Cancelled
                                           && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
                                           && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced
-                                      orderby package.MarketplaceInvoiceObservedAt, package.UpdatedAt
+                                      orderby package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received ? 0 : 1,
+                                          package.MarketplaceInvoiceObservedAt, package.UpdatedAt
                                       select order.ExternalOrderId)
             .Distinct()
             .Take(batchSize)
@@ -2228,9 +2229,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (start < oldestAvailable) start = oldestAvailable;
 
         // A normal run reads only the changes since the last completed anchor,
-        // plus the configured safety overlap. If the worker was offline for more
-        // than Trendyol's 14-day stream window, reuse the durable multi-window
-        // state to catch up without skipping any still-accessible change.
+        // plus the configured safety overlap. A single stream request may span
+        // at most 14 days, so a larger gap reuses durable multi-window state.
         var mode = baseline || anchor - start > OrderStreamWindowSpan
             ? OrderSyncMode.Baseline
             : OrderSyncMode.Incremental;
@@ -2386,7 +2386,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var target = ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
             if (!PackageIngestionSafety.TryNormalizeAll(orderedQuantities, remotePackage.Allocations, target, out var safeAllocations)) { await RecordIssue(tenantId, $"package-quantity:{connectionId}:{eventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken); continue; }
             var package = packagesByExternalId.GetValueOrDefault(remotePackage.ExternalPackageId);
-            if (package is not null) MergeMarketplaceInvoiceState(package, remotePackage, remotePackage.OccurredAt);
+            if (package is not null) MergeMarketplaceInvoiceState(package, remotePackage);
             if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; continue; }
             var eventAlreadyRecorded = knownEventIds.Contains(eventId);
             if (eventAlreadyRecorded)
@@ -2413,7 +2413,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 continue;
             }
             var accept = package is null || PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt);
-            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; MergeMarketplaceInvoiceState(package, remotePackage, remotePackage.OccurredAt); }
+            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; MergeMarketplaceInvoiceState(package, remotePackage); }
             else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = remotePackage.OccurredAt; package.Version++; }
             else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target) await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
             if (accept)
@@ -2435,8 +2435,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (saveChanges) await db.SaveChangesAsync(cancellationToken);
     }
 
-    private void MergeMarketplaceInvoiceState(ShipmentPackage package, RemotePackage remotePackage, DateTimeOffset observedAt)
+    private void MergeMarketplaceInvoiceState(ShipmentPackage package, RemotePackage remotePackage)
     {
+        var observedAt = timeProvider.GetUtcNow();
         var observation = remotePackage.Invoice;
         var incomingStatus = MarketplaceInvoiceStatePolicy.FromRemote(
             observation?.RawStatus,

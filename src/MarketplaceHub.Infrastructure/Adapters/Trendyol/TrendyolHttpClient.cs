@@ -274,7 +274,7 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
                 try
                 {
                     var page = TrendyolJsonMapper.Orders(response.Value!);
-                    var order = page.Items.FirstOrDefault(x => string.Equals(x.ExternalOrderId, normalizedOrderNumber, StringComparison.OrdinalIgnoreCase) || string.Equals(x.OrderNumber, normalizedOrderNumber, StringComparison.OrdinalIgnoreCase));
+                    var order = TrendyolJsonMapper.MergeOrderPackages(page.Items, normalizedOrderNumber);
                     if (order is not null) return AdapterResult<RemoteOrder>.Success(order, response.RateLimit);
                 }
                 catch (JsonException) { return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Contract()); }

@@ -53,5 +53,45 @@ public sealed class MarketplaceInvoiceStatePolicyTests
         Assert.Equal("Invoiced", invoice.RawStatus);
         Assert.Equal("INV-1", invoice.InvoiceNumber);
         Assert.Equal("https://example.test/invoice.pdf", invoice.InvoiceUrl);
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1760000000000), invoice.SourceUpdatedAt);
+    }
+
+    [Fact]
+    public void DirectOrderRead_MergesEveryPackageBeforeReconciliation()
+    {
+        const string json = """
+            {"content":[
+              {"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceStatus":"NotInvoiced","packageTotalPrice":10,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"First","quantity":1,"lineItemPrice":10}]},
+              {"id":"pkg-2","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000100000,"invoiceStatus":"Invoiced","invoiceNumber":"INV-2","invoiceLink":"https://example.test/invoice-2.pdf","packageTotalPrice":20,"lines":[{"lineId":"line-2","stockCode":"SKU-2","productName":"Second","quantity":1,"lineItemPrice":20}]}
+            ]}
+            """;
+
+        var page = TrendyolJsonMapper.Orders(json);
+        var order = TrendyolJsonMapper.MergeOrderPackages(page.Items, "ord-1");
+
+        Assert.NotNull(order);
+        Assert.Equal(2, order.Packages.Count);
+        Assert.Equal(2, order.Lines.Count);
+        Assert.Equal(30m, order.NetAmount);
+        Assert.Contains(order.Packages, package => package.ExternalPackageId == "pkg-2" && package.Invoice?.RawStatus == "Invoiced");
+    }
+
+    [Fact]
+    public void InvoiceIssueDate_DoesNotBlockLaterMarketplaceStatusTransition()
+    {
+        const string receivedJson = """
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceDateTime":1759000000000,"invoiceStatus":"Received","lines":[]}]}
+            """;
+        const string invoicedJson = """
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000100000,"invoiceDateTime":1759000000000,"invoiceStatus":"Invoiced","invoiceLink":"https://example.test/invoice.pdf","lines":[]}]}
+            """;
+
+        var received = Assert.Single(Assert.Single(TrendyolJsonMapper.Orders(receivedJson).Items).Packages).Invoice!;
+        var invoiced = Assert.Single(Assert.Single(TrendyolJsonMapper.Orders(invoicedJson).Items).Packages).Invoice!;
+
+        Assert.True(invoiced.SourceUpdatedAt > received.SourceUpdatedAt);
+        Assert.True(MarketplaceInvoiceStatePolicy.ShouldApply(
+            MarketplaceInvoiceStatus.Received, received.SourceUpdatedAt, received.SourceUpdatedAt,
+            MarketplaceInvoiceStatus.Invoiced, invoiced.SourceUpdatedAt, invoiced.SourceUpdatedAt!.Value));
     }
 }

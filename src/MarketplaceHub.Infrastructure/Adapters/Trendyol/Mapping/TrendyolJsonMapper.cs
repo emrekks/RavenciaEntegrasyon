@@ -38,7 +38,7 @@ public static class TrendyolJsonMapper
                 NullText(package, "invoiceStatus"),
                 NullText(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber"),
                 NullText(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"),
-                FlexibleInstant(package, "invoiceDateTime", "invoiceDate", "invoiceCreatedAt", "invoiceUpdatedAt"));
+                FlexibleInstant(package, "invoiceUpdatedAt") ?? modified);
             var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net, invoice);
             var dueAt = FlexibleInstant(package, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
             rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
@@ -58,6 +58,37 @@ public static class TrendyolJsonMapper
             }
         }
         return new(rows, next, hasMore);
+    }
+
+    public static RemoteOrder? MergeOrderPackages(IEnumerable<RemoteOrder> candidates, string externalOrderId)
+    {
+        var matches = candidates
+            .Where(x => string.Equals(x.ExternalOrderId, externalOrderId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(x.OrderNumber, externalOrderId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (matches.Count == 0) return null;
+
+        var latest = matches.OrderByDescending(x => x.LastModifiedAt).First();
+        var packages = matches
+            .SelectMany(x => x.Packages)
+            .GroupBy(x => x.ExternalPackageId, StringComparer.Ordinal)
+            .Select(group => group.OrderByDescending(x => x.OccurredAt).First())
+            .ToList();
+        var lines = matches
+            .SelectMany(x => x.Lines)
+            .GroupBy(x => x.ExternalLineId, StringComparer.Ordinal)
+            .Select(group => group.OrderByDescending(x => x.Quantity).First())
+            .ToList();
+
+        return latest with
+        {
+            LastModifiedAt = matches.Max(x => x.LastModifiedAt),
+            GrossAmount = packages.Sum(x => x.GrossAmount),
+            DiscountAmount = packages.Sum(x => x.DiscountAmount),
+            NetAmount = packages.Sum(x => x.NetAmount),
+            Lines = lines,
+            Packages = packages
+        };
     }
 
     public static AdapterPageResult<RemoteProduct> Products(string json)
