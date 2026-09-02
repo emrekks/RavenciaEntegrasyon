@@ -327,6 +327,35 @@
 .app-shell .reference-returns-page .order-reference-prices,
 .app-shell .reference-returns-page .order-reference-cargo,
 .app-shell .reference-returns-page .order-reference-invoice { text-align: left !important; }
+.app-shell .reference-returns-page .order-reference-cargo .cargo-provider-display {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+.app-shell .reference-returns-page .order-reference-cargo .cargo-provider-icon {
+  display: block !important;
+  width: 82px !important;
+  height: 30px !important;
+  max-width: 100% !important;
+  object-fit: contain !important;
+  object-position: left center !important;
+}
+.app-shell .reference-returns-page .order-reference-cargo .cargo-provider-icon-fallback {
+  display: grid !important;
+  place-items: center !important;
+  width: 36px !important;
+  height: 26px !important;
+  color: #bec2ff !important;
+  background: rgba(88, 101, 242, .14) !important;
+  border: 1px solid rgba(88, 101, 242, .3) !important;
+  border-radius: 5px !important;
+  font-size: .58rem !important;
+  font-weight: 800 !important;
+}
 .app-shell .reference-returns-page .order-reference-prices > strong { font-size: .64rem !important; }
 .app-shell .reference-returns-page .order-reference-cargo strong { font-size: .67rem !important; line-height: 1.2 !important; }
 .app-shell .reference-returns-page .order-reference-cargo b { font-size: .6rem !important; overflow-wrap: anywhere !important; }

@@ -31,6 +31,10 @@ public sealed class IntegrationJob
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
+    public int ProgressCurrent { get; set; }
+    public int? ProgressTotal { get; set; }
+    public int? ProgressPercent { get; set; }
+    public string? ProgressLabel { get; set; }
     public long Version { get; set; }
 }
 

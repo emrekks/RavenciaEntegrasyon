@@ -27,7 +27,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private int telemetryRetryCount;
     private int telemetryRateLimitCount;
 
-    public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken, Guid? jobId = null)
     {
         if (connectionId is null) return JobExecutionResult.Blocked("CONNECTION_REQUIRED", "Job requires a platform connection.");
         var connectionState = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId.Value).Select(x => new { x.PlatformCode, x.Status }).SingleOrDefaultAsync(cancellationToken);
@@ -76,7 +76,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     MarketplaceJobTypes.OrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderReconciliation => await ReconcileOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderInvoiceReconciliation => await ReconcileOrderInvoices(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.ProductSync => await SyncProducts(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                    MarketplaceJobTypes.ProductSync => await SyncProducts(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
                     MarketplaceJobTypes.ReturnSync => await SyncReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnReconciliation => await ReconcileReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
@@ -1376,7 +1376,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
-    private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
@@ -1385,6 +1385,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED")) return false;
 
         var fullScan = ReadBoolean(payloadJson, "full");
+        var processedProducts = 0;
+        if (jobId is { } currentJob)
+            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, 0, fullScan ? "Trendyol kataloğu taranıyor" : "Yeni ve değişen ürünler taranıyor", cancellationToken);
+        int? totalProducts = null;
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
         if (fullScan && cursor.OpaqueCursor is not null)
         {
@@ -1420,6 +1424,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 cancellationToken);
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
             foreach (var _ in result.Value!.Items) TrackReceived();
+            processedProducts += result.Value.Items.Count;
+            totalProducts ??= result.Value.TotalCount;
 
             foreach (var snapshot in result.Value!.Items
                          .Where(x => !string.IsNullOrWhiteSpace(x.ExternalProductId))
@@ -1430,6 +1436,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     ? null
                     : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, categoryContexts, correlationId, cancellationToken);
                 await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, cancellationToken);
+            }
+
+            if (jobId is { } progressJob)
+            {
+                var percent = totalProducts is { } total && total > 0
+                    ? Math.Clamp((int)Math.Floor(processedProducts * 100d / total), 0, 99)
+                    : (int?)null;
+                var label = totalProducts is { } totalCount && totalCount > 0
+                    ? $"{processedProducts:N0} / {totalCount:N0} ürün işlendi"
+                    : $"{processedProducts:N0} ürün işlendi · toplam sayı bekleniyor";
+                await UpdateProductSyncProgressAsync(tenantId, progressJob, processedProducts, totalProducts, percent, label, cancellationToken);
             }
 
             if (result.Value.HasMore)
@@ -1447,11 +1464,21 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 // overlap so a variant changed while a page was being read is not lost.
                 cursor.LastModifiedWatermark = timeProvider.GetUtcNow().AddSeconds(-60);
                 cursor.Version++;
+                if (jobId is { } completedJob)
+                    await UpdateProductSyncProgressAsync(tenantId, completedJob, processedProducts, null, 100, $"{processedProducts:N0} ürün aktarımı tamamlandı", cancellationToken, keepExistingTotal: true);
                 await db.SaveChangesAsync(cancellationToken);
                 break;
             }
         } while (!cancellationToken.IsCancellationRequested);
         return true;
+    }
+
+    private Task<int> UpdateProductSyncProgressAsync(Guid tenantId, Guid jobId, int current, int? total, int? percent, string label, CancellationToken cancellationToken, bool keepExistingTotal = false)
+    {
+        var query = db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.Id == jobId && x.JobType == MarketplaceJobTypes.ProductSync);
+        return keepExistingTotal
+            ? query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label), cancellationToken)
+            : query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressTotal, total).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label), cancellationToken);
     }
 
     private async Task<ReferenceSnapshot?> EnsureReferenceSnapshot(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)

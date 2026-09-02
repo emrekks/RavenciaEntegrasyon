@@ -760,7 +760,9 @@ export function OrdersPage() {
     ['PARTIALLY_CANCELLED', 'Kısmi iptal'],
   ] as const
 
-  const allOrders = ordersQuery.data?.items ?? []; const all = allOrders.filter(item => !hiddenCancelledOrderIds.includes(item.id)); const ordersLoading = ordersQuery.isPending; const ordersError = ordersQuery.error
+  const allOrders = ordersQuery.data?.items ?? [];
+  const all = allOrders.filter(item => !hiddenCancelledOrderIds.includes(item.id) && (filters.status !== 'ALL' || item.derivedStatus.toUpperCase() !== 'CANCELLED'));
+  const ordersLoading = ordersQuery.isPending; const ordersError = ordersQuery.error
   const cargos = Array.from(new Set(all.flatMap(item => [item.packages?.[0]?.cargoProviderName ?? item.cargoProviderName].filter((value): value is string => !!value))))
   const platforms = Array.from(new Set(all.map(item => item.platformCode).filter(Boolean)))
   const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura bekliyor'], ['FATURA_ISLENIYOR', 'Fatura işleniyor'], ['FATURA_KONTROLDE', 'Kontrolde'], ['FATURA_KESILDI', 'Fatura kesildi'], ['FATURA_REDDEDILDI', 'Reddedildi'], ['FATURA_IPTAL', 'İptal edildi']] as const

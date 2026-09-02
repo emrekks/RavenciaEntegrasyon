@@ -459,7 +459,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         x.CreatedAt, x.StartedAt, x.CompletedAt, Marketplace(x.JobType), ExternalId(x.PayloadJson),
         failure?.FirstFailedAt, failure?.LastFailedAt,
         x.Status is JobStatus.Pending or JobStatus.RetryScheduled ? x.AvailableAt : null,
-        Math.Max(1, batchCount));
+        Math.Max(1, batchCount), x.ProgressCurrent, x.ProgressTotal, x.ProgressPercent, x.ProgressLabel);
 
     private static JobChangeView? Change(IntegrationJob job)
     {

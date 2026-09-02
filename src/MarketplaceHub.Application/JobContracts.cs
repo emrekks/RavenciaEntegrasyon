@@ -68,7 +68,11 @@ public sealed record JobSummaryView(
     DateTimeOffset? FirstFailedAt = null,
     DateTimeOffset? LastFailedAt = null,
     DateTimeOffset? NextRetryAt = null,
-    int BatchCount = 1);
+    int BatchCount = 1,
+    int ProgressCurrent = 0,
+    int? ProgressTotal = null,
+    int? ProgressPercent = null,
+    string? ProgressLabel = null);
 
 public sealed record JobOrderContextView(
     Guid OrderId,

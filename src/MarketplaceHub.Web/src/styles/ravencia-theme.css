@@ -403,6 +403,31 @@ html, body, #root {
 .app-shell .quick-edit-color > summary b,
 .app-shell .invoice-document-link,
 .app-shell .invoice-menu-view { color: var(--rv-primary); }
+.app-shell.stitch-shell .orders-page .order-reference-invoice .invoice-document-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 27px;
+  padding: 4px 8px;
+  color: #b8f1d0;
+  background: rgba(47, 203, 155, .12);
+  border: 1px solid rgba(47, 203, 155, .36);
+  border-radius: 5px;
+  font-size: .62rem;
+  font-weight: 800;
+  line-height: 1.15;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .orders-page .order-reference-invoice .invoice-document-link:hover {
+  color: #fff;
+  background: rgba(47, 203, 155, .24);
+  border-color: #61dfb3;
+  box-shadow: none;
+  transform: none;
+}
 .app-shell .dashboard .panel-title a, .app-shell .notice a { color: var(--rv-cyan); }
 .app-shell .tag, .app-shell .platform-state-icon, .app-shell .platform-mark { color: #cad2df; background: #192130; border-color: var(--rv-line); }
 .app-shell .tag.good,

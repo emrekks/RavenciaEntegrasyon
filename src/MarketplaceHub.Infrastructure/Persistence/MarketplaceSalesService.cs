@@ -151,6 +151,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (listing == "OPEN") query = query.Where(x => x.DerivedStatus != "DELIVERED" && x.DerivedStatus != "CANCELLED" && x.DerivedStatus != "RETURNED");
         if (listing == "CLOSED") query = query.Where(x => x.DerivedStatus == "DELIVERED" || x.DerivedStatus == "CANCELLED" || x.DerivedStatus == "RETURNED");
 
+        // "Tümü" is the active-worklist view. Cancellations have their own
+        // tab and must not silently inflate the default order list. Keep an
+        // explicit closed listing or the İptal tab able to request them.
+        if ((string.IsNullOrWhiteSpace(status) || status == "ALL")
+            && (string.IsNullOrWhiteSpace(listing) || listing == "ALL"))
+            query = query.Where(x => x.DerivedStatus != "CANCELLED");
+
         var cargo = options.Cargo?.Trim();
         if (!string.IsNullOrWhiteSpace(cargo) && cargo != "ALL")
             query = query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.CargoProviderExternalId == cargo));
@@ -195,7 +202,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return await packages
             .GroupBy(_ => 1)
             .Select(group => new OrderSummaryView(
-                group.Count(),
+                group.Count(x => x.Status != ShipmentPackageStatus.Cancelled),
                 group.Count(x => x.Status == ShipmentPackageStatus.New),
                 group.Count(x => x.Status == ShipmentPackageStatus.Processing || x.Status == ShipmentPackageStatus.ReadyToShip),
                 group.Count(x => x.Status == ShipmentPackageStatus.Shipped || x.Status == ShipmentPackageStatus.Undelivered),

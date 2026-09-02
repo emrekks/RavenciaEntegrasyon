@@ -266,6 +266,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.JobType).HasMaxLength(96); entity.Property(x => x.ResourceType).HasMaxLength(48).HasDefaultValue("jobs"); entity.Property(x => x.OperationType).HasMaxLength(64).HasDefaultValue("execute"); entity.Property(x => x.TriggerType).HasMaxLength(32).HasDefaultValue("system"); entity.Property(x => x.JobDedupKey).HasMaxLength(256);
             entity.Property(x => x.EffectIdempotencyKey).HasMaxLength(256); entity.Property(x => x.PayloadHash).HasMaxLength(128);
             entity.Property(x => x.Status).HasConversion(JobStatusConverter).HasMaxLength(24); entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()").ValueGeneratedOnAdd(); entity.Property(x => x.MaxAttempts).HasDefaultValue(JobRetryPolicy.DefaultMaxAttempts); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.ProgressLabel).HasMaxLength(256);
             entity.HasIndex(x => new { x.TenantId, x.JobType, x.JobDedupKey }).IsUnique();
             entity.HasIndex(x => new { x.Status, x.Priority, x.AvailableAt, x.CreatedAt });
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);

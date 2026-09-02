@@ -94,12 +94,27 @@ public sealed partial class InvoicingBillingService(
             .ToListAsync(cancellationToken);
 
         var variantIds = lines.Where(x => x.VariantId != null).Select(x => x.VariantId!.Value).Distinct().ToArray();
+        var lineSkus = lines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var lineBarcodes = lines.Select(x => x.Barcode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var variantRows = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && (variantIds.Contains(x.Id) || lineSkus.Contains(x.Sku) || (x.Barcode != null && lineBarcodes.Contains(x.Barcode))))
+            .Select(x => new { x.Id, x.ProductId, x.Sku, x.Barcode })
+            .ToListAsync(cancellationToken);
+        var variantProductIds = variantRows.ToDictionary(x => x.Id, x => x.ProductId);
+        var variantBySku = variantRows.Where(x => !string.IsNullOrWhiteSpace(x.Sku)).GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First().Id, StringComparer.OrdinalIgnoreCase);
+        var variantByBarcode = variantRows.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).GroupBy(x => x.Barcode!, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First().Id, StringComparer.OrdinalIgnoreCase);
+        Guid? ResolveVariantId(OrderLine line) => line.VariantId ?? (line.Barcode is not null && variantByBarcode.TryGetValue(line.Barcode, out var barcodeVariantId) ? barcodeVariantId : variantBySku.GetValueOrDefault(line.Sku));
+        var resolvedVariantIds = lines.Select(ResolveVariantId).Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToArray();
+        foreach (var row in variantRows) variantProductIds.TryAdd(row.Id, row.ProductId);
+        variantIds = resolvedVariantIds;
+        var productIds = variantProductIds.Values.Distinct().ToArray();
         var mediaRows = await (from media in db.ProductMedia.AsNoTracking()
                                join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
-                               where media.TenantId == tenantId && media.VariantId != null && variantIds.Contains(media.VariantId.Value) && media.Status == "ACTIVE" && asset.Status == "ACTIVE" && asset.Classification == "PRODUCT_MEDIA_URL"
+                               where media.TenantId == tenantId && ((media.VariantId != null && variantIds.Contains(media.VariantId.Value)) || (media.VariantId == null && productIds.Contains(media.ProductId))) && media.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                                orderby media.SortOrder
-                               select new { VariantId = media.VariantId!.Value, Url = asset.RelativePath }).ToListAsync(cancellationToken);
-        var mediaByVariant = mediaRows.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Url);
+                               select new { media.VariantId, media.ProductId, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
+        var mediaByVariant = mediaRows.Where(x => x.VariantId.HasValue).GroupBy(x => x.VariantId!.Value).ToDictionary(x => x.Key, x => MediaUrl(x.First().Id, x.First().Classification, x.First().RelativePath));
+        var mediaByProduct = mediaRows.Where(x => x.VariantId == null).GroupBy(x => x.ProductId).ToDictionary(x => x.Key, x => MediaUrl(x.First().Id, x.First().Classification, x.First().RelativePath));
         var linesByOrder = lines.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
         var now = timeProvider.GetUtcNow();
 
@@ -115,11 +130,16 @@ public sealed partial class InvoicingBillingService(
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
             var dueAt = deliveredAt?.AddDays(7);
             var dueSoon = invoiceStatus == "FATURA_BEKLIYOR" && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);
-            var image = orderLines.Where(x => x.VariantId != null).Select(x => mediaByVariant.GetValueOrDefault(x.VariantId!.Value)).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+            var image = orderLines.Select(line => ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
             var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
-            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, invoice?.InvoiceNumber, invoiceStatus == "FATURA_BEKLIYOR");
+            var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(line.Sku, line.Barcode, line.TitleSnapshot, line.OrderedQuantity, line.UnitPrice, line.VatRate, ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null)).ToList();
+            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, invoice?.InvoiceNumber, invoiceStatus == "FATURA_BEKLIYOR", order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines);
         }).Where(x => x is not null).Select(x => x!).ToList();
     }
+
+    private static string MediaUrl(Guid assetId, string classification, string relativePath) => classification == "PRODUCT_MEDIA_URL"
+        ? relativePath
+        : $"/api/v1/files/product-media/{assetId:D}/content";
 
     private static string InvoiceWorkspaceCustomerName(string customerJson, string invoiceAddressJson)
     {

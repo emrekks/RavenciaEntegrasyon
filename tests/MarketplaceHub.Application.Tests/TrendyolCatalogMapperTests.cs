@@ -143,4 +143,30 @@ public sealed class TrendyolCatalogMapperTests
             small.ImageUrls);
         Assert.Equal(new[] { "https://cdn.example.test/variant-m-front.jpg" }, medium.ImageUrls);
     }
+
+    [Fact]
+    public void CatalogProductResponse_AssociatesTopLevelColorImagesWithMatchingVariants()
+    {
+        const string json = """
+        {
+          "content": [{
+            "contentId": 800003,
+            "title": "Renkli ürün",
+            "images": [
+              { "variantId": 830001, "link": "https://cdn.example.test/red.jpg" },
+              { "variantId": 830002, "url": "https://cdn.example.test/blue.jpg" }
+            ],
+            "variants": [
+              { "variantId": 830001, "stockCode": "SKU-003-RED" },
+              { "variantId": 830002, "stockCode": "SKU-003-BLUE" }
+            ]
+          }]
+        }
+        """;
+
+        var product = Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items);
+
+        Assert.Equal(new[] { "https://cdn.example.test/red.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-003-RED").ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/blue.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-003-BLUE").ImageUrls);
+    }
 }

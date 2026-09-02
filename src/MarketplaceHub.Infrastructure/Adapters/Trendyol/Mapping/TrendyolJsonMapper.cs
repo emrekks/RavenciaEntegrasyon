@@ -123,7 +123,8 @@ public static class TrendyolJsonMapper
             next = $"p:{currentPage + 1}";
         else if (!string.IsNullOrWhiteSpace(token))
             next = $"t:{token}";
-        return new(rows, next, !string.IsNullOrWhiteSpace(next));
+        var total = NullableLong(root, "totalElements", "totalCount", "totalResults");
+        return new(rows, next, !string.IsNullOrWhiteSpace(next), total is > int.MaxValue ? int.MaxValue : (int?)total);
     }
 
     public static AdapterPageResult<RemoteCatalogProduct> CatalogProducts(string json)
@@ -143,7 +144,8 @@ public static class TrendyolJsonMapper
             next = $"p:{currentPage + 1}";
         else if (!string.IsNullOrWhiteSpace(token))
             next = $"t:{token}";
-        return new(rows, next, !string.IsNullOrWhiteSpace(next));
+        var total = NullableLong(root, "totalElements", "totalCount", "totalResults");
+        return new(rows, next, !string.IsNullOrWhiteSpace(next), total is > int.MaxValue ? int.MaxValue : (int?)total);
     }
 
     public static RemoteCatalogProduct ProductSnapshot(string json)
@@ -170,6 +172,9 @@ public static class TrendyolJsonMapper
                 var barcode = NullText(variant, "barcode");
                 var sku = NullText(variant, "stockCode", "merchantSku", "sku") ?? barcode ?? variantId;
                 if (string.IsNullOrWhiteSpace(variantId) || string.IsNullOrWhiteSpace(sku)) continue;
+                var variantImages = (VariantImageUrls(variant) ?? []).Concat(LinkedImageUrls(product, variant))
+                    .Where(url => !string.IsNullOrWhiteSpace(url)).Select(url => url.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 variants.Add(new(
                     variantId,
                     sku,
@@ -183,7 +188,7 @@ public static class TrendyolJsonMapper
                     DecimalNullable(variant, "quantity") ?? NestedDecimalNullable(variant, "stock", "quantity"),
                     NestedText(variant, "price", "currency"),
                     variant.GetRawText(),
-                    VariantImageUrls(variant)));
+                    variantImages.Count == 0 ? null : variantImages));
             }
         }
         if (variants.Count == 0)
@@ -211,28 +216,63 @@ public static class TrendyolJsonMapper
 
     private static IReadOnlyList<string> ImageUrls(JsonElement product)
     {
-        if (!product.TryGetProperty("images", out var images) || images.ValueKind != JsonValueKind.Array) return [];
-        return ImageValues(images);
+        var urls = new List<string>();
+        foreach (var propertyName in new[] { "images", "imageUrls", "media", "colorImages", "colorImageUrls" })
+            if (product.TryGetProperty(propertyName, out var images)) urls.AddRange(ImageValues(images));
+        return urls.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static IReadOnlyList<string> LinkedImageUrls(JsonElement product, JsonElement variant)
+    {
+        var identifiers = new[] { "variantId", "id", "barcode", "stockCode", "merchantSku", "sku" }
+            .Select(name => NullText(variant, name))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (identifiers.Count == 0) return [];
+        var urls = new List<string>();
+        foreach (var propertyName in new[] { "images", "imageUrls", "media", "colorImages", "colorImageUrls" })
+        {
+            if (!product.TryGetProperty(propertyName, out var images) || images.ValueKind != JsonValueKind.Array) continue;
+            urls.AddRange(images.EnumerateArray()
+                .Where(image => image.ValueKind == JsonValueKind.Object && ImageReferenceMatches(image, identifiers))
+                .SelectMany(ImageValues));
+        }
+        return urls.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static bool ImageReferenceMatches(JsonElement image, IReadOnlySet<string> identifiers)
+    {
+        foreach (var name in new[] { "variantId", "barcode", "stockCode", "merchantSku", "sku" })
+        {
+            var value = NullText(image, name);
+            if (!string.IsNullOrWhiteSpace(value) && identifiers.Contains(value.Trim())) return true;
+        }
+        if (!image.TryGetProperty("variantIds", out var values) || values.ValueKind != JsonValueKind.Array) return false;
+        return values.EnumerateArray().Any(value => value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined or JsonValueKind.Object or JsonValueKind.Array) && identifiers.Contains(value.ToString().Trim()));
     }
 
     private static IReadOnlyList<string>? VariantImageUrls(JsonElement variant)
     {
-        foreach (var propertyName in new[] { "images", "imageUrls", "media", "imageUrl", "image" })
+        var foundProperty = false;
+        foreach (var propertyName in new[] { "images", "imageUrls", "media", "imageUrl", "image", "colorImages", "colorImageUrls", "variantImages" })
         {
-            if (variant.TryGetProperty(propertyName, out var value))
-                return ImageValues(value);
+            if (!variant.TryGetProperty(propertyName, out var value)) continue;
+            foundProperty = true;
+            var urls = ImageValues(value);
+            if (urls.Count > 0) return urls;
         }
 
-        return null;
+        return foundProperty ? [] : null;
     }
 
     private static IReadOnlyList<string> ImageValues(JsonElement images)
     {
         if (images.ValueKind == JsonValueKind.Object)
         {
-            var direct = NullText(images, "url", "imageUrl", "src");
+            var direct = NullText(images, "url", "imageUrl", "src", "link");
             if (!string.IsNullOrWhiteSpace(direct)) return [direct.Trim()];
-            foreach (var propertyName in new[] { "images", "imageUrls", "media" })
+            foreach (var propertyName in new[] { "images", "imageUrls", "media", "colorImages", "colorImageUrls", "variantImages" })
             {
                 if (images.TryGetProperty(propertyName, out var nested))
                     return ImageValues(nested);
@@ -243,7 +283,7 @@ public static class TrendyolJsonMapper
             ? images.EnumerateArray()
             : [images];
         return values
-            .Select(image => image.ValueKind == JsonValueKind.Object ? NullText(image, "url", "imageUrl", "src") : image.ValueKind == JsonValueKind.String ? image.GetString() : null)
+            .Select(image => image.ValueKind == JsonValueKind.Object ? NullText(image, "url", "imageUrl", "src", "link") : image.ValueKind == JsonValueKind.String ? image.GetString() : null)
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Select(url => url!.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -582,6 +622,12 @@ public static class TrendyolJsonMapper
         return null;
     }
     private static long Long(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result) ? result : 0;
+    private static long? NullableLong(JsonElement value, params string[] names)
+    {
+        foreach (var name in names)
+            if (value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result)) return result;
+        return null;
+    }
     private static bool Bool(JsonElement value, string name)
     {
         if (!value.TryGetProperty(name, out var item)) return false;

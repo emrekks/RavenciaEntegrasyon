@@ -1638,6 +1638,19 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("integer");
 
+                    b.Property<int>("ProgressCurrent")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ProgressPercent")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProgressLabel")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int?>("ProgressTotal")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ResourceType")
                         .IsRequired()
                         .ValueGeneratedOnAdd()

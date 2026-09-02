@@ -24,6 +24,10 @@ type JobSummary = {
   lastFailedAt: string | null
   nextRetryAt: string | null
   batchCount: number
+  progressCurrent: number
+  progressTotal: number | null
+  progressPercent: number | null
+  progressLabel: string | null
 }
 type JobOrderContext = { orderId: string; orderNumber: string; externalOrderId: string; status: string; currency: string; netAmount: number; orderedAt: string; externalPackageId: string | null; cargoProvider: string | null; cargoTrackingNumber: string | null; customerName: string | null; lineCount: number }
 type JobChange = { label: string; value: string; detail: string | null }

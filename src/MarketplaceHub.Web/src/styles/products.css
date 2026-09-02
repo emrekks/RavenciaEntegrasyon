@@ -1831,6 +1831,136 @@ body:has(.product-add-page),
 .app-shell .product-add-page .product-top-sidebar .product-pricing-card {
   position: static;
 }
+/* Category mappings are a full-width work area below the basic/pricing row.
+   This keeps long value lists from squeezing the product editor into a
+   narrow sidebar and makes all mapped values visible at a glance. */
+.app-shell .product-add-page .product-top-layout + .product-category-mapping-card {
+  width: 100%;
+  margin: 16px 0 0;
+}
+.app-shell .product-add-page .product-top-layout + .product-category-mapping-card .category-attribute-mapping-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+.app-shell .product-add-page .product-top-layout + .product-category-mapping-card .category-attribute-field {
+  min-width: 0;
+}
+.marketplace-pricing-bars {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--st-surface-highest);
+}
+.marketplace-pricing-bars-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.marketplace-pricing-bars-head > div,
+.marketplace-pricing-bar legend > span:last-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.marketplace-pricing-bars-head strong,
+.marketplace-pricing-bar legend strong {
+  color: var(--st-text);
+  font-size: 10px;
+}
+.marketplace-pricing-bars-head small,
+.marketplace-pricing-bar legend small {
+  color: var(--st-muted);
+  font-size: 8px;
+  line-height: 1.3;
+}
+.marketplace-pricing-bars-head > span {
+  flex: 0 0 auto;
+  padding: 4px 6px;
+  color: var(--st-primary-soft);
+  background: rgba(88, 101, 242, .12);
+  border: 1px solid rgba(88, 101, 242, .24);
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.marketplace-pricing-bar-list { display: grid; gap: 8px; }
+.marketplace-pricing-bar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  color: var(--st-text);
+  background: rgba(16, 17, 24, .52);
+  border: 1px solid var(--st-surface-highest);
+  border-radius: 6px;
+}
+.marketplace-pricing-bar.selected { border-color: rgba(88, 101, 242, .62); background: rgba(88, 101, 242, .08); }
+.marketplace-pricing-bar legend {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  grid-column: 1 / -1;
+  padding: 0;
+}
+.marketplace-pricing-bar legend .publish-platform-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  color: #fff;
+  background: #5865f2;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 800;
+}
+.marketplace-pricing-bar label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--st-muted);
+  font-size: 8px;
+  font-weight: 650;
+}
+.marketplace-pricing-bar input,
+.marketplace-pricing-bar select {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 8px;
+  color: var(--st-text);
+  background: var(--st-surface);
+  border: 1px solid var(--st-surface-highest);
+  border-radius: 4px;
+  font-size: 10px;
+}
+.marketplace-pricing-bar .marketplace-pricing-toggle {
+  min-height: 32px;
+  align-self: end;
+  padding: 6px 8px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.marketplace-pricing-bar .marketplace-pricing-toggle.selected {
+  color: #d7d9ff;
+  border-color: rgba(88, 101, 242, .58);
+  background: rgba(88, 101, 242, .16);
+}
+@media (max-width: 900px) {
+  .app-shell .product-add-page .product-top-layout + .product-category-mapping-card .category-attribute-mapping-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .app-shell .product-add-page .product-top-layout + .product-category-mapping-card .category-attribute-mapping-list {
+    grid-template-columns: 1fr;
+  }
+}
 .app-shell .product-add-page .product-category-mapping-card {
   padding: 18px !important;
   background: linear-gradient(180deg, rgba(31, 32, 41, .98), rgba(24, 25, 33, .98)) !important;
@@ -2562,6 +2692,27 @@ body:has(.product-add-page),
 .product-import-empty,
 .product-import-note { margin: 0; color: #aeb4d1; font-size: .7rem; line-height: 1.4; }
 .product-import-note { padding: 10px 12px; color: #9fe2ce; background: rgba(43, 193, 148, .08); border: 1px solid rgba(43, 193, 148, .3); border-radius: 7px; }
+.product-variant-hover { position: relative; cursor: help; }
+.product-variant-hover-hint { color: #8e93b3; font-size: 8px; }
+.product-variant-tooltip { position: absolute; z-index: 5; left: 0; top: calc(100% - 2px); display: none; width: max-content; max-width: min(360px, 30vw); padding: 9px 11px; color: #f4f5ff; background: #242943; border: 1px solid #6975ff; border-radius: 6px; box-shadow: 0 12px 28px rgba(0,0,0,.35); font-size: 10px; line-height: 1.45; white-space: normal; }
+.product-variant-hover:hover .product-variant-tooltip, .product-variant-hover:focus-within .product-variant-tooltip { display: block; }
+.product-import-progress { display: grid; gap: 11px; padding: 14px; background: rgba(88,101,242,.08); border: 1px solid rgba(105,117,255,.45); border-radius: 8px; }
+.product-import-progress-heading, .product-import-progress-top, .product-import-progress-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.product-import-progress-heading strong { color: #f1f2ff; font-size: .72rem; }
+.product-import-progress-heading small, .product-import-progress-bottom small { color: #aeb4d1; font-size: .63rem; }
+.product-import-progress article { display: grid; gap: 6px; }
+.product-import-progress-top span { min-width: 0; overflow: hidden; color: #d9ddff; font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; }
+.product-import-progress-top strong { flex: 0 0 auto; color: #fff; font-size: .7rem; }
+.product-import-progress-track { height: 7px; overflow: hidden; background: #292d49; border-radius: 999px; }
+.product-import-progress-track i { display: block; height: 100%; background: linear-gradient(90deg, #5964ef, #9d86ff); border-radius: inherit; transition: width .35s ease; }
+.product-import-progress-track.indeterminate i { width: 35%; animation: product-import-progress-slide 1.25s ease-in-out infinite; }
+.product-import-progress-bottom button { min-height: 28px; padding: 0 10px; font-size: .62rem; }
+.product-media-link-button { display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 5px !important; width: 38px !important; height: 34px !important; min-width: 38px !important; padding: 0 !important; color: #eef0ff !important; background: #5b65ef !important; border: 1px solid #7e86ff !important; border-radius: 6px !important; font-size: 0 !important; box-shadow: 0 5px 14px rgba(88,101,242,.2) !important; }
+.product-media-link-button::before { content: '+'; display: block; font-size: 19px; font-weight: 400; line-height: 1; }
+.product-media-link-button b { display: grid; width: 16px; height: 16px; place-items: center; color: #5b65ef; background: #fff; border-radius: 50%; font-size: 9px; }
+.app-shell.stitch-shell .product-add-page .image-preview-card { width: 116px !important; aspect-ratio: 2 / 3 !important; overflow: hidden !important; }
+.app-shell.stitch-shell .product-add-page .image-preview-card img { width: 100% !important; height: 100% !important; object-fit: cover !important; }
+@keyframes product-import-progress-slide { from { transform: translateX(-120%); } to { transform: translateX(340%); } }
 @media (max-width: 680px) {
   .app-shell.stitch-shell .products-page .products-page-actions { justify-content: stretch; }
   .app-shell.stitch-shell .products-page .products-page-actions .button-link { flex: 1 1 180px; justify-content: center; }
