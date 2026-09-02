@@ -76,6 +76,7 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal("869000000001", small.Barcode);
         Assert.Equal("S", small.Options["Beden"]);
         Assert.Equal("Siyah", small.Options["Renk"]);
+        Assert.Equal("Unisex", small.Options["Cinsiyet"]);
         Assert.Equal(7m, small.StockQuantity);
         Assert.Equal(149.90m, small.SalePrice);
         Assert.Equal(199.90m, small.ListPrice);
@@ -142,6 +143,49 @@ public sealed class TrendyolCatalogMapperTests
             },
             small.ImageUrls);
         Assert.Equal(new[] { "https://cdn.example.test/variant-m-front.jpg" }, medium.ImageUrls);
+    }
+
+    [Fact]
+    public void ApprovedProductResponse_InheritsContentColorAndImagesToEverySizeVariant()
+    {
+        const string json = """
+        {
+          "content": [{
+            "contentId": 800004,
+            "productMainId": "PRODUCT-004",
+            "title": "Haki kazak",
+            "images": [
+              { "url": "https://cdn.example.test/haki-front.jpg" },
+              { "url": "https://cdn.example.test/haki-back.jpg" }
+            ],
+            "attributes": [
+              { "attributeName": "Renk", "attributeValue": "Haki" }
+            ],
+            "variants": [
+              {
+                "variantId": 840001,
+                "barcode": "869000000041",
+                "stockCode": "SKU-004-S",
+                "attributes": [{ "attributeName": "Beden", "attributeValue": "S" }]
+              },
+              {
+                "variantId": 840002,
+                "barcode": "869000000042",
+                "stockCode": "SKU-004-M",
+                "attributes": [{ "attributeName": "Beden", "attributeValue": "M" }]
+              }
+            ]
+          }]
+        }
+        """;
+
+        var product = Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items);
+        foreach (var variant in product.Variants)
+        {
+            Assert.Equal("Haki", variant.Options["Renk"]);
+            Assert.Equal(2, variant.ImageUrls?.Count);
+            Assert.Contains("https://cdn.example.test/haki-front.jpg", variant.ImageUrls!);
+        }
     }
 
     [Fact]

@@ -163,6 +163,11 @@ public static class TrendyolJsonMapper
         var brand = NamedReference(product, "brand");
         var category = NamedReference(product, "category");
         var images = ImageUrls(product);
+        // Trendyol v2 places the slicer attribute (most commonly Renk) on the
+        // content object, while the size/stock attributes stay on each
+        // variant. Carry the content attributes down so every local variant
+        // keeps the complete option signature.
+        var contentOptions = Options(product);
         var variants = new List<RemoteCatalogVariant>();
         if (product.TryGetProperty("variants", out var variantArray) && variantArray.ValueKind == JsonValueKind.Array)
         {
@@ -172,15 +177,22 @@ public static class TrendyolJsonMapper
                 var barcode = NullText(variant, "barcode");
                 var sku = NullText(variant, "stockCode", "merchantSku", "sku") ?? barcode ?? variantId;
                 if (string.IsNullOrWhiteSpace(variantId) || string.IsNullOrWhiteSpace(sku)) continue;
+                var variantOptions = MergeOptions(contentOptions, Options(variant));
                 var variantImages = (VariantImageUrls(variant) ?? []).Concat(LinkedImageUrls(product, variant))
                     .Where(url => !string.IsNullOrWhiteSpace(url)).Select(url => url.Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                // In the official response, content.images belongs to the
+                // content-level slicer (for example one colour) and is shared
+                // by all size variants in that content. Preserve it on each
+                // variant when it is not explicitly linked to another one.
+                if (variantImages.Count == 0 && HasColorOption(contentOptions))
+                    variantImages = images.ToList();
                 variants.Add(new(
                     variantId,
                     sku,
                     barcode,
                     NullText(variant, "modelCode", "productMainId") ?? productMainId,
-                    Options(variant),
+                    variantOptions,
                     Bool(variant, "archived"),
                     DecimalNullable(variant, "salePrice") ?? NestedDecimalNullable(variant, "price", "salePrice"),
                     DecimalNullable(variant, "listPrice") ?? NestedDecimalNullable(variant, "price", "listPrice"),
@@ -197,7 +209,7 @@ public static class TrendyolJsonMapper
             var sku = NullText(product, "stockCode", "merchantSku", "sku") ?? barcode;
             var variantId = NullText(product, "variantId", "id", "barcode", "stockCode");
             if (!string.IsNullOrWhiteSpace(variantId) && !string.IsNullOrWhiteSpace(sku))
-                variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, Options(product), Bool(product, "archived"), DecimalNullable(product, "salePrice") ?? NestedDecimalNullable(product, "price", "salePrice"), DecimalNullable(product, "listPrice") ?? NestedDecimalNullable(product, "price", "listPrice"), DecimalNullable(product, "vatRate"), DecimalNullable(product, "quantity") ?? NestedDecimalNullable(product, "stock", "quantity"), NestedText(product, "price", "currency"), product.GetRawText(), VariantImageUrls(product)));
+                variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, contentOptions, Bool(product, "archived"), DecimalNullable(product, "salePrice") ?? NestedDecimalNullable(product, "price", "salePrice"), DecimalNullable(product, "listPrice") ?? NestedDecimalNullable(product, "price", "listPrice"), DecimalNullable(product, "vatRate"), DecimalNullable(product, "quantity") ?? NestedDecimalNullable(product, "stock", "quantity"), NestedText(product, "price", "currency"), product.GetRawText(), VariantImageUrls(product)));
         }
         var allImages = images
             .Concat(variants.SelectMany(variant => variant.ImageUrls ?? []))
@@ -299,6 +311,19 @@ public static class TrendyolJsonMapper
             .GroupBy(x => x.Key!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(x => x.Key, x => x.Last().Value!, StringComparer.OrdinalIgnoreCase);
     }
+
+    private static IReadOnlyDictionary<string, string> MergeOptions(IReadOnlyDictionary<string, string> parent, IReadOnlyDictionary<string, string> variant)
+    {
+        var merged = new Dictionary<string, string>(parent, StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in variant) merged[pair.Key] = pair.Value;
+        return merged;
+    }
+
+    private static bool HasColorOption(IReadOnlyDictionary<string, string> options) => options.Keys.Any(key =>
+    {
+        var normalized = key.Replace(" ", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
+        return normalized is "RENK" or "WEBCOLOR" or "COLOR";
+    });
 
     public static RemoteProduct Product(string json, string barcode)
     {
