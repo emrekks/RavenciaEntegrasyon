@@ -51,13 +51,13 @@ public sealed class DashboardMetricPolicyTests
     public void TransportAndTerminalOrdersAreNotPending(string status) => Assert.False(DashboardMetricPolicy.IsPendingOrderStatus(status));
 
     [Theory]
+    [InlineData(ReturnClaimStatus.ActionRequired)]
+    public void OnlyActionRequiredReturnsArePending(ReturnClaimStatus status) => Assert.True(DashboardMetricPolicy.IsPendingReturn(status));
+
+    [Theory]
     [InlineData(ReturnClaimStatus.Requested)]
     [InlineData(ReturnClaimStatus.AwaitingShipment)]
     [InlineData(ReturnClaimStatus.InTransit)]
-    [InlineData(ReturnClaimStatus.ActionRequired)]
-    public void ActionableReturnFlowIsPending(ReturnClaimStatus status) => Assert.True(DashboardMetricPolicy.IsPendingReturn(status));
-
-    [Theory]
     [InlineData(ReturnClaimStatus.Approved)]
     [InlineData(ReturnClaimStatus.Rejected)]
     [InlineData(ReturnClaimStatus.Disputed)]
