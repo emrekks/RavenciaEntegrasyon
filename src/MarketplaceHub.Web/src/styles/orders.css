@@ -1072,3 +1072,22 @@
     width: 68px;
   }
 }
+
+/* v10.37: keep the two order-control rows compact on desktop. */
+@media (min-width: 901px) {
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary {
+    min-height: 0 !important;
+    padding: 10px 13px !important;
+    column-gap: 8px !important;
+    row-gap: 0 !important;
+  }
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary > label {
+    min-width: 0 !important;
+  }
+  .app-shell.stitch-shell .orders-reference-bottom-toolbar {
+    min-height: 0 !important;
+    height: 64px !important;
+    box-sizing: border-box !important;
+    padding: 10px 13px !important;
+  }
+}
