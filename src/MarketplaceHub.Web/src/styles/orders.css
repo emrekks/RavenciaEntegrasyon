@@ -451,6 +451,19 @@
 .app-shell .orders-page .order-pagination b { color: #fff !important; background: #5865f2 !important; border-color: #5865f2 !important; }
 .app-shell .orders-page .order-pagination button:hover:not(:disabled) { color: #fff !important; background: #292932 !important; border-color: #454655 !important; }
 .app-shell .orders-page .order-pagination button:disabled { opacity: .45 !important; }
+.app-shell .orders-page .orders-selection-summary {
+  display: inline-flex !important;
+  align-items: center !important;
+  min-height: 28px !important;
+  padding: 0 10px !important;
+  color: #dfe0ff !important;
+  background: rgba(88, 101, 242, .16) !important;
+  border: 1px solid rgba(126, 136, 255, .45) !important;
+  border-radius: 4px !important;
+  font-size: .63rem !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+}
 
 @media (max-width: 900px) {
   .app-shell .orders-page > .page-heading { align-items: flex-start !important; flex-direction: column !important; }
