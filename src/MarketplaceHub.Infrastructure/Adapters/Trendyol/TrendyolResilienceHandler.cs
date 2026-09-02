@@ -8,23 +8,18 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
 {
     private readonly TrendyolOptions options;
     private readonly TimeProvider timeProvider;
-    private readonly SemaphoreSlim concurrency;
-    private readonly object stateLock = new();
-    private readonly Dictionary<string, Queue<DateTimeOffset>> requestStarts = new(StringComparer.Ordinal);
-    private int consecutiveFailures;
-    private DateTimeOffset? circuitOpenUntil;
-    private bool halfOpenRequestActive;
+    private readonly TrendyolResilienceState state;
 
-    public TrendyolResilienceHandler(IOptions<TrendyolOptions> options, TimeProvider timeProvider)
+    public TrendyolResilienceHandler(IOptions<TrendyolOptions> options, TimeProvider timeProvider, TrendyolResilienceState state)
     {
         this.options = options.Value;
         this.timeProvider = timeProvider;
-        concurrency = new SemaphoreSlim(Math.Clamp(this.options.MaxConcurrency, 1, 64));
+        this.state = state;
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        await concurrency.WaitAsync(cancellationToken);
+        await state.Concurrency.WaitAsync(cancellationToken);
         var halfOpen = false;
         try
         {
@@ -51,21 +46,18 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                 throw;
             }
         }
-        finally
-        {
-            concurrency.Release();
-        }
+        finally { state.Concurrency.Release(); }
     }
 
     private bool TryEnterCircuit(out bool halfOpen)
     {
-        lock (stateLock)
+        lock (state.SyncRoot)
         {
             halfOpen = false;
-            if (circuitOpenUntil is null) return true;
-            if (timeProvider.GetUtcNow() < circuitOpenUntil) return false;
-            if (halfOpenRequestActive) return false;
-            halfOpenRequestActive = true;
+            if (state.CircuitOpenUntil is null) return true;
+            if (timeProvider.GetUtcNow() < state.CircuitOpenUntil) return false;
+            if (state.HalfOpenRequestActive) return false;
+            state.HalfOpenRequestActive = true;
             halfOpen = true;
             return true;
         }
@@ -73,20 +65,20 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
 
     private void RecordResult(bool succeeded, bool halfOpen)
     {
-        lock (stateLock)
+        lock (state.SyncRoot)
         {
             if (succeeded)
             {
-                consecutiveFailures = 0;
-                circuitOpenUntil = null;
-                halfOpenRequestActive = false;
+                state.ConsecutiveFailures = 0;
+                state.CircuitOpenUntil = null;
+                state.HalfOpenRequestActive = false;
                 return;
             }
 
-            halfOpenRequestActive = false;
-            consecutiveFailures++;
-            if (halfOpen || consecutiveFailures >= Math.Clamp(options.CircuitFailureThreshold, 2, 50))
-                circuitOpenUntil = timeProvider.GetUtcNow().Add(options.CircuitBreakDuration <= TimeSpan.Zero ? TimeSpan.FromSeconds(30) : options.CircuitBreakDuration);
+            state.HalfOpenRequestActive = false;
+            state.ConsecutiveFailures++;
+            if (halfOpen || state.ConsecutiveFailures >= Math.Clamp(options.CircuitFailureThreshold, 2, 50))
+                state.CircuitOpenUntil = timeProvider.GetUtcNow().Add(options.CircuitBreakDuration <= TimeSpan.Zero ? TimeSpan.FromSeconds(30) : options.CircuitBreakDuration);
         }
     }
 
@@ -97,13 +89,13 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         while (true)
         {
             TimeSpan delay;
-            lock (stateLock)
+            lock (state.SyncRoot)
             {
                 var now = timeProvider.GetUtcNow();
-                if (!requestStarts.TryGetValue(bucket, out var starts))
+                if (!state.RequestStarts.TryGetValue(bucket, out var starts))
                 {
                     starts = new Queue<DateTimeOffset>();
-                    requestStarts[bucket] = starts;
+                    state.RequestStarts[bucket] = starts;
                 }
                 while (starts.TryPeek(out var oldest) && now - oldest >= interval) starts.Dequeue();
                 if (starts.Count < limit)
@@ -141,4 +133,21 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(30));
         return response;
     }
+}
+
+// HttpClientFactory creates the delegating handler per handler lifetime. The
+// limiter and circuit state must outlive that handler, otherwise every worker
+// scope gets a fresh limiter and concurrent jobs can collectively exceed the
+// seller's Trendyol quota.
+public sealed class TrendyolResilienceState
+{
+    public TrendyolResilienceState(IOptions<TrendyolOptions> options) =>
+        Concurrency = new SemaphoreSlim(Math.Clamp(options.Value.MaxConcurrency, 1, 64));
+
+    public SemaphoreSlim Concurrency { get; }
+    public object SyncRoot { get; } = new();
+    public Dictionary<string, Queue<DateTimeOffset>> RequestStarts { get; } = new(StringComparer.Ordinal);
+    public int ConsecutiveFailures { get; set; }
+    public DateTimeOffset? CircuitOpenUntil { get; set; }
+    public bool HalfOpenRequestActive { get; set; }
 }

@@ -69,6 +69,11 @@ public static class PackageIngestionSafety
         out IReadOnlyDictionary<string, NormalizedPackageAllocation> normalized)
     {
         var values = new Dictionary<string, NormalizedPackageAllocation>(StringComparer.Ordinal);
+        if (orderedQuantities.Count > 0 && remoteAllocations.Count == 0)
+        {
+            normalized = values;
+            return false;
+        }
         foreach (var remote in remoteAllocations)
         {
             if (!orderedQuantities.TryGetValue(remote.ExternalLineId, out var ordered) ||

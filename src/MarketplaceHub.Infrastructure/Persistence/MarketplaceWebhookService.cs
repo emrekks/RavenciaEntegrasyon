@@ -17,9 +17,18 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         var subscriptions = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && x.Status == "ACTIVE").ToListAsync(cancellationToken); var subscription = subscriptions.SingleOrDefault(x => SafeVerify(routeToken, x.RouteTokenHash)); if (subscription is null) return NotFound();
         var verified = await verifier.VerifyAsync(rawBody, headers, connection.Id, subscription.Id, cancellationToken); if (!verified.IsSuccess) return ServiceResult<bool>.Fail(verified.Error!.Code, verified.Error.SafeMessage, verified.Error.HttpStatus ?? 422);
         const string source = "TRENDYOL_WEBHOOK"; const string jobType = MarketplaceJobTypes.WebhookIngest;
-        var envelope = verified.Value!; var exists = await db.InboxMessages.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.Source == source && x.ExternalMessageId == envelope.ExternalMessageId, cancellationToken); if (exists) return ServiceResult<bool>.Ok(true);
-        var now = timeProvider.GetUtcNow(); db.InboxMessages.Add(new InboxMessage { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, Source = source, ExternalMessageId = envelope.ExternalMessageId, PayloadHash = envelope.PayloadHash, ReceivedAt = now });
-        var payload = JsonSerializer.Serialize(new { connectionId = connection.Id, externalMessageId = envelope.ExternalMessageId, rawJson = envelope.RawJson }); var dedup = $"webhook:{connection.Id}:{envelope.ExternalMessageId}"; db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.Id, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, AvailableAt = now, CorrelationId = correlationId, Version = 1 });
+        var envelope = verified.Value!;
+        var dedup = $"webhook:{connection.Id}:{envelope.ExternalMessageId}";
+        var inboxExists = await db.InboxMessages.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.Source == source && x.ExternalMessageId == envelope.ExternalMessageId, cancellationToken);
+        var jobExists = await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        if (!inboxExists)
+            db.InboxMessages.Add(new InboxMessage { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, Source = source, ExternalMessageId = envelope.ExternalMessageId, PayloadHash = envelope.PayloadHash, ReceivedAt = now });
+        if (!jobExists)
+        {
+            var payload = JsonSerializer.Serialize(new { connectionId = connection.Id, externalMessageId = envelope.ExternalMessageId, rawJson = envelope.RawJson });
+            db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.Id, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, AvailableAt = now, CorrelationId = correlationId, Version = 1 });
+        }
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateException exception) when (IsDuplicateCandidate(exception))
         {

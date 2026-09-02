@@ -799,14 +799,18 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     internal static string InvoiceLabel(Invoice? invoice, string customerJson, IEnumerable<string?> packageRawStatuses)
     {
-        // Once a local invoice exists, its state is authoritative. The Trendyol
-        // order snapshot keeps invoiceStatus at NOTINVOICED and is not refreshed
-        // by the E-Faturam write, which otherwise makes a successfully created
-        // invoice appear as still waiting in the orders screen.
+        // The local fiscal invoice and the marketplace delivery are separate
+        // facts. A fiscal invoice number does not prove that Trendyol accepted
+        // the document, so Submitted/Accepted/MarketplacePending stay visible
+        // as an in-progress marketplace delivery.
         if (invoice is not null)
         {
-            if (!string.IsNullOrWhiteSpace(invoice.InvoiceNumber) || invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed)
+            if (invoice.Status == InvoiceStatus.Completed)
                 return "FATURA_KESILDI";
+            if (invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending)
+                return "FATURA_KONTROLDE";
+            if (!string.IsNullOrWhiteSpace(invoice.InvoiceNumber) && invoice.Status is not (InvoiceStatus.Draft or InvoiceStatus.Validating or InvoiceStatus.Ready))
+                return "FATURA_KONTROLDE";
             if (invoice.Status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal) return "FATURA_IPTAL";
             if (invoice.Status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview) return "FATURA_REDDEDILDI";
             return "FATURA_ISLENIYOR";
@@ -833,7 +837,19 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     internal static string InvoiceLabel(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses)
     {
-        if (invoice is not null) return InvoiceLabel(invoice, customerJson, packageRawStatuses);
+        if (invoice is not null)
+        {
+            // The marketplace observation is authoritative for the delivery
+            // leg. A local invoice number only proves that our fiscal provider
+            // created a document; it does not prove Trendyol accepted it.
+            if (marketplaceStatus == MarketplaceInvoiceStatus.Invoiced) return "FATURA_KESILDI";
+            if (marketplaceStatus == MarketplaceInvoiceStatus.Rejected) return "FATURA_REDDEDILDI";
+            if (marketplaceStatus == MarketplaceInvoiceStatus.Received) return "FATURA_KONTROLDE";
+            if ((marketplaceStatus is MarketplaceInvoiceStatus.Unknown or MarketplaceInvoiceStatus.NotInvoiced)
+                && (invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed))
+                return "FATURA_KONTROLDE";
+            return InvoiceLabel(invoice, customerJson, packageRawStatuses);
+        }
         return marketplaceStatus switch
         {
             MarketplaceInvoiceStatus.Invoiced => "FATURA_KESILDI",

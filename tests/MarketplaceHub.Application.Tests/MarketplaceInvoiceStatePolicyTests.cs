@@ -43,7 +43,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void MapperCarriesPackageInvoiceFieldsAlongsideShipmentState()
     {
         const string json = """
-            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceStatus":"Invoiced","invoiceNumber":"INV-1","invoiceLink":"https://example.test/invoice.pdf","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10}]}]}
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceStatus":"Invoiced","invoiceNumber":"INV-1","invoiceLink":"https://example.test/invoice.pdf","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
             """;
 
         var result = TrendyolJsonMapper.Orders(json);
@@ -57,12 +57,29 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     }
 
     [Fact]
+    public void InvoiceNumberOrLinkAloneDoesNotProveMarketplaceInvoice()
+    {
+        Assert.Equal(MarketplaceInvoiceStatus.Unknown,
+            MarketplaceInvoiceStatePolicy.FromRemote(null, "Delivered", "INV-1", "https://example.test/invoice.pdf"));
+    }
+
+    [Fact]
+    public void MapperRejectsOrderLineWithMissingCommercialFields()
+    {
+        const string json = """
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1}]}]}
+            """;
+
+        Assert.Throws<System.Text.Json.JsonException>(() => TrendyolJsonMapper.Orders(json));
+    }
+
+    [Fact]
     public void DirectOrderRead_MergesEveryPackageBeforeReconciliation()
     {
         const string json = """
             {"content":[
-              {"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceStatus":"NotInvoiced","packageTotalPrice":10,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"First","quantity":1,"lineItemPrice":10}]},
-              {"id":"pkg-2","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000100000,"invoiceStatus":"Invoiced","invoiceNumber":"INV-2","invoiceLink":"https://example.test/invoice-2.pdf","packageTotalPrice":20,"lines":[{"lineId":"line-2","stockCode":"SKU-2","productName":"Second","quantity":1,"lineItemPrice":20}]}
+              {"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceStatus":"NotInvoiced","packageTotalPrice":10,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"First","quantity":1,"lineItemPrice":10,"vatRate":20}]},
+              {"id":"pkg-2","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000100000,"invoiceStatus":"Invoiced","invoiceNumber":"INV-2","invoiceLink":"https://example.test/invoice-2.pdf","packageTotalPrice":20,"lines":[{"lineId":"line-2","stockCode":"SKU-2","productName":"Second","quantity":1,"lineItemPrice":20,"vatRate":20}]}
             ]}
             """;
 
@@ -80,10 +97,10 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void InvoiceIssueDate_DoesNotBlockLaterMarketplaceStatusTransition()
     {
         const string receivedJson = """
-            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceDateTime":1759000000000,"invoiceStatus":"Received","lines":[]}]}
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceDateTime":1759000000000,"invoiceStatus":"Received","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
             """;
         const string invoicedJson = """
-            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000100000,"invoiceDateTime":1759000000000,"invoiceStatus":"Invoiced","invoiceLink":"https://example.test/invoice.pdf","lines":[]}]}
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000100000,"invoiceDateTime":1759000000000,"invoiceStatus":"Invoiced","invoiceLink":"https://example.test/invoice.pdf","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
             """;
 
         var received = Assert.Single(Assert.Single(TrendyolJsonMapper.Orders(receivedJson).Items).Packages).Invoice!;

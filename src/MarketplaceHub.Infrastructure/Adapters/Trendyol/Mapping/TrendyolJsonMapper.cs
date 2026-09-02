@@ -20,8 +20,20 @@ public static class TrendyolJsonMapper
                 foreach (var line in lineArray.EnumerateArray())
                 {
                     var externalLineId = Text(line, "lineId", "id"); if (string.IsNullOrWhiteSpace(externalLineId)) continue;
-                    var quantity = Decimal(line, "quantity"); var rawStatus = Text(line, "orderLineItemStatusName");
-                    lines.Add(new(externalLineId, Text(line, "stockCode", "merchantSku"), NullText(line, "barcode"), Text(line, "productName"), quantity, Decimal(line, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount"), Decimal(line, "vatRate", "vatBaseAmount"), rawStatus, line.GetRawText()));
+                    if (!TryDecimal(line, out var quantity, "quantity") || quantity <= 0)
+                        throw new JsonException($"Order line {externalLineId} has no valid positive quantity.");
+                    if (!TryDecimal(line, out var unitPrice, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount") || unitPrice < 0)
+                        throw new JsonException($"Order line {externalLineId} has no valid unit price.");
+                    if (!TryDecimal(line, out var vatRate, "vatRate", "vatBaseAmount") || vatRate < 0)
+                        throw new JsonException($"Order line {externalLineId} has no valid VAT value.");
+                    var barcode = NullText(line, "barcode");
+                    var sku = Text(line, "stockCode", "merchantSku");
+                    if (string.IsNullOrWhiteSpace(sku)) sku = barcode ?? "";
+                    var title = Text(line, "productName", "title");
+                    if (string.IsNullOrWhiteSpace(sku) || string.IsNullOrWhiteSpace(title))
+                        throw new JsonException($"Order line {externalLineId} has no SKU/barcode or product name.");
+                    var rawStatus = Text(line, "orderLineItemStatusName");
+                    lines.Add(new(externalLineId, sku, barcode, title, quantity, unitPrice, vatRate, rawStatus, line.GetRawText()));
                     allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
                 }
             }
@@ -546,7 +558,14 @@ public static class TrendyolJsonMapper
     private static string Text(JsonElement value, params string[] names) => NullText(value, names) ?? "";
     private static string? NullText(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.ToString(); return null; }
     private static string? NestedText(JsonElement value, string objectName, params string[] names) => value.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object ? NullText(nested, names) : null;
-    private static decimal Decimal(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && (item.TryGetDecimal(out var result) || decimal.TryParse(item.ToString(), CultureInfo.InvariantCulture, out result))) return result; return 0; }
+    private static decimal Decimal(JsonElement value, params string[] names) => TryDecimal(value, out var result, names) ? result : 0;
+    private static bool TryDecimal(JsonElement value, out decimal result, params string[] names)
+    {
+        foreach (var name in names)
+            if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) && (item.TryGetDecimal(out result) || decimal.TryParse(item.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out result))) return true;
+        result = 0;
+        return false;
+    }
     private static decimal? NestedDecimalNullable(JsonElement value, string objectName, params string[] names) => value.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object ? DecimalNullable(nested, names) : null;
     private static decimal? DecimalNullable(JsonElement value, params string[] names)
     {

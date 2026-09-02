@@ -190,17 +190,37 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice?.PackageId is null) return false;
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.PackageId, cancellationToken);
+        var orderSnapshot = package is null
+            ? null
+            : await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.CustomerSnapshotJson).SingleOrDefaultAsync(cancellationToken);
         var permanentUrl = await db.InvoiceDocuments.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null).OrderByDescending(x => x.CreatedAt).Select(x => x.PermanentUrl).FirstOrDefaultAsync(cancellationToken);
-        if (package is null || string.IsNullOrWhiteSpace(permanentUrl) || string.IsNullOrWhiteSpace(invoice.InvoiceNumber) || invoice.IssuedAt is null || !Uri.TryCreate(permanentUrl, UriKind.Absolute, out var link) || link.Scheme != Uri.UriSchemeHttps) return false;
+        if (package is null || string.IsNullOrWhiteSpace(permanentUrl) || !Uri.TryCreate(permanentUrl, UriKind.Absolute, out var link) || link.Scheme != Uri.UriSchemeHttps) return false;
 
         var submitted = await db.MarketplaceDeliveries
             .Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.Status == "SUBMITTED" && x.ExternalReference != null)
             .OrderByDescending(x => x.AttemptNumber)
             .FirstOrDefaultAsync(cancellationToken);
         if (submitted is not null)
-            return await ConfirmDelivery(tenantId, invoice, package, submitted, correlationId, cancellationToken);
+        {
+            // A previous 201 only proves that Trendyol accepted the link
+            // submission. Keep it pending until order stream/webhook data
+            // reports invoiceStatus=Invoiced or Rejected.
+            invoice.Status = InvoiceStatus.MarketplacePending;
+            invoice.LastErrorCode = null;
+            invoice.UpdatedAt = timeProvider.GetUtcNow();
+            invoice.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
 
-        var payload = JsonSerializer.Serialize(new { shipmentPackageId = package.ExternalPackageId, invoiceLink = link.AbsoluteUri, invoiceDateTime = invoice.IssuedAt.Value.ToUnixTimeMilliseconds(), invoiceNumber = invoice.InvoiceNumber });
+        var payload = JsonSerializer.Serialize(new
+        {
+            shipmentPackageId = package.ExternalPackageId,
+            invoiceLink = link.AbsoluteUri,
+            invoiceDateTime = invoice.IssuedAt?.ToUnixTimeMilliseconds(),
+            invoiceNumber = invoice.InvoiceNumber,
+            micro = IsMicroExport(orderSnapshot)
+        });
         var requestHash = Hash(payload);
         var delivery = await db.MarketplaceDeliveries
             .Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.Status == "RETRYABLE_FAILURE")
@@ -241,18 +261,6 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         invoice.UpdatedAt = timeProvider.GetUtcNow();
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
-        if (AcceptedDeliveryStatuses.Contains(NormalizeRemoteStatus(result.Value!.RawStatus)))
-        {
-            delivery.Status = "CONFIRMED";
-            delivery.ErrorCode = null;
-            delivery.CompletedAt = timeProvider.GetUtcNow();
-            invoice.Status = InvoiceStatus.Completed;
-            invoice.LastErrorCode = null;
-            invoice.UpdatedAt = timeProvider.GetUtcNow();
-            invoice.Version++;
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
-        }
         return await ConfirmDelivery(tenantId, invoice, package, delivery, correlationId, cancellationToken);
     }
 
@@ -270,7 +278,19 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             invoice.Version++;
             await db.SaveChangesAsync(cancellationToken);
             if (confirmation.Error.Class == AdapterErrorClass.NotSupported)
-                throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_CONFIRMATION_REQUIRED", "Fatura linki gönderildi; Trendyol tarafındaki kesin kabul henüz otomatik doğrulanamıyor.", delivery.ExternalReference));
+            {
+                // Trendyol exposes the definitive state through the order
+                // package invoiceStatus/webhook flow, not a delivery query.
+                // Do not fail the job or mark the invoice complete here.
+                delivery.Status = "SUBMITTED";
+                delivery.ErrorCode = null;
+                invoice.Status = InvoiceStatus.MarketplacePending;
+                invoice.LastErrorCode = null;
+                invoice.UpdatedAt = timeProvider.GetUtcNow();
+                invoice.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                return true;
+            }
             throw JobProcessingException.FromAdapter(confirmation.Error);
         }
 
@@ -299,6 +319,23 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    private static bool IsMicroExport(string? customerSnapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(customerSnapshotJson)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(customerSnapshotJson);
+            var root = document.RootElement;
+            if (root.TryGetProperty("micro", out var micro) && micro.ValueKind == JsonValueKind.True) return true;
+            if (root.TryGetProperty("microExport", out var microExport) && microExport.ValueKind == JsonValueKind.True) return true;
+            if (root.TryGetProperty("3pByTrendyol", out var thirdParty) && thirdParty.ValueKind == JsonValueKind.True) return true;
+            foreach (var name in new[] { "shipmentPackageType", "orderType" })
+                if (root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && (value.GetString()?.Contains("MICRO", StringComparison.OrdinalIgnoreCase) == true || value.GetString()?.Contains("İHRAC", StringComparison.OrdinalIgnoreCase) == true)) return true;
+        }
+        catch (JsonException) { }
+        return false;
     }
 
     private async Task<bool> FetchDocument(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)

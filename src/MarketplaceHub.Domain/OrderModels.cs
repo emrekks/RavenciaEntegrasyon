@@ -34,11 +34,11 @@ public static class MarketplaceInvoiceStatePolicy
         if (normalized is "RECEIVED" or "PROCESSING" or "PENDING") return MarketplaceInvoiceStatus.Received;
         if (normalized is "REJECTED" or "FAILED") return MarketplaceInvoiceStatus.Rejected;
         if (normalized is "NOTINVOICED" or "NOT_INVOICED" or "WAITING" or "WAITING_FOR_INVOICE") return MarketplaceInvoiceStatus.NotInvoiced;
-        if (!string.IsNullOrWhiteSpace(invoiceNumber) || !string.IsNullOrWhiteSpace(invoiceUrl)) return MarketplaceInvoiceStatus.Invoiced;
-
         // Older Trendyol payloads sometimes exposed only the package status.
         // Preserve this as positive evidence, while never treating a generic
-        // delivered/shipped status as proof that an invoice exists.
+        // delivered/shipped status, an invoice number, or a URL as proof that
+        // an invoice exists. Trendyol's invoiceStatus is the only authoritative
+        // positive signal; links and numbers can be present in partial payloads.
         return packageRawStatus?.Trim().ToUpperInvariant() == "INVOICED"
             ? MarketplaceInvoiceStatus.Invoiced
             : MarketplaceInvoiceStatus.Unknown;
@@ -53,8 +53,6 @@ public static class MarketplaceInvoiceStatePolicy
         DateTimeOffset incomingObservedAt)
     {
         if (incoming == MarketplaceInvoiceStatus.Unknown) return false;
-        if (current == MarketplaceInvoiceStatus.Invoiced && incoming != MarketplaceInvoiceStatus.Invoiced)
-            return false;
         if (currentSourceUpdatedAt is { } currentSource && incomingSourceUpdatedAt is { } incomingSource && incomingSource < currentSource)
             return false;
         if (currentSourceUpdatedAt is { } sameCurrentSource && incomingSourceUpdatedAt is { } sameIncomingSource

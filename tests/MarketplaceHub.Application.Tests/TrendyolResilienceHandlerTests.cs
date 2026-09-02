@@ -36,7 +36,11 @@ public sealed class TrendyolResilienceHandlerTests
                 CircuitFailureThreshold = 2,
                 CircuitBreakDuration = TimeSpan.FromMinutes(1)
             }),
-            TimeProvider.System)
+            TimeProvider.System,
+            new TrendyolResilienceState(Options.Create(new TrendyolOptions
+            {
+                MaxConcurrency = 1
+            })))
         {
             InnerHandler = downstream
         };
