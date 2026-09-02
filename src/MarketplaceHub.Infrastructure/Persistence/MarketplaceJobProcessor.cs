@@ -1287,26 +1287,42 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task<bool> ReconcileOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var lookbackDays = ReadBoundedInt(payloadJson, "lookbackDays", 1, 1, 90);
+        var batchSize = ReadBoundedInt(payloadJson, "batchSize", 25, 1, 100);
         var end = timeProvider.GetUtcNow();
-        var chunks = SynchronizationWindowPolicy.ForwardChunks(end.AddDays(-lookbackDays), end, OrderStreamWindowSpan);
-        foreach (var (start, chunkEnd) in chunks)
+        var start = end.AddDays(-lookbackDays);
+        // Reconciliation is deliberately driven by local order numbers and the
+        // documented orderNumber read. The stream is ideal for discovery, but a
+        // per-order read is the reliable repair path for already imported orders
+        // when a stream cursor or stream request is temporarily unavailable.
+        var externalOrderIds = await db.Orders.AsNoTracking()
+            .Where(x => x.TenantId == tenantId
+                && x.ConnectionId == connectionId
+                && x.OrderedAt >= start
+                && x.OrderedAt <= end)
+            .OrderBy(x => x.UpdatedAt)
+            .ThenBy(x => x.OrderedAt)
+            .Select(x => x.ExternalOrderId)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+
+        foreach (var externalOrderId in externalOrderIds)
         {
-            foreach (var storefront in TrendyolReadStorefronts.Codes)
+            TrackRequest();
+            var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-reconcile:{externalOrderId}"), externalOrderId, cancellationToken);
+            if (!result.IsSuccess)
             {
-                string? next = null;
-                do
-                {
-                    TrackRequest();
-                    var result = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-reconcile:{lookbackDays}:{storefront}:{next ?? "0"}"), new(start, chunkEnd, null, storefront), new(next, 200), cancellationToken);
-                    if (!result.IsSuccess && storefront != "TR" && result.Error?.HttpStatus is 400 or 404) break;
-                    if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
-                    foreach (var _ in result.Value!.Items) TrackReceived();
-                    await UpsertOrders(tenantId, connectionId, result.Value!.Items, cancellationToken);
-                    next = result.Value.HasMore ? result.Value.NextCursor : null;
-                    if (result.Value.HasMore && string.IsNullOrWhiteSpace(next)) throw new InvalidOperationException("Order reconciliation cursor is missing.");
-                } while (next is not null && !cancellationToken.IsCancellationRequested);
+                if (result.Error?.Class == AdapterErrorClass.NotFound) continue;
+                TrackResultFailure(result.Error);
+                await RecordIssue(tenantId, $"order-reconcile:{connectionId}:{externalOrderId}", result.Error!.Code,
+                    $"Sipariş uzlaştırılamadı; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
+                continue;
             }
+
+            TrackReceived();
+            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken);
+            await ResolveIssue(tenantId, $"order-reconcile:{connectionId}:{externalOrderId}", cancellationToken);
         }
+
         return true;
     }
 
