@@ -2714,6 +2714,9 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .product-add-page .image-preview-card img { width: 100% !important; height: 100% !important; object-fit: cover !important; }
 .app-shell.stitch-shell .product-add-page .family-media-preview { border-color: rgba(105, 117, 255, .65) !important; background: rgba(105, 117, 255, .06) !important; }
 .app-shell.stitch-shell .product-add-page .family-media-preview figcaption { color: #9da7ff !important; }
+.app-shell.stitch-shell .product-add-page .media-sortable { cursor: grab !important; user-select: none; transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
+.app-shell.stitch-shell .product-add-page .media-sortable:active { cursor: grabbing !important; }
+.app-shell.stitch-shell .product-add-page .media-sortable.is-media-drag-over { transform: translateY(-4px); border-color: #6f79ff !important; box-shadow: 0 0 0 2px rgba(105, 117, 255, .3), 0 12px 22px rgba(33, 38, 95, .28); }
 @keyframes product-import-progress-slide { from { transform: translateX(-120%); } to { transform: translateX(340%); } }
 @media (max-width: 680px) {
   .app-shell.stitch-shell .products-page .products-page-actions { justify-content: stretch; }
