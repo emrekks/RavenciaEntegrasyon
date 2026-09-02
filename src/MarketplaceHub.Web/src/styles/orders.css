@@ -1295,3 +1295,254 @@
   .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-advanced { grid-template-columns: 1fr !important; }
   .app-shell.stitch-shell .orders-reference-filter-shell .order-search { grid-column: auto !important; }
 }
+
+/* v10.42: rebuild the selected filter/action area as a two-zone command
+   center. The copy stays useful on narrow screens, while desktop gets a
+   dedicated context rail and a separate view bar. */
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-panel {
+  display: grid !important;
+  grid-template-columns: 194px minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  gap: 0 !important;
+  min-height: 142px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #171823 !important;
+  border: 1px solid #2c3049 !important;
+  border-radius: 11px !important;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, .2) !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading {
+  grid-column: 1 !important;
+  grid-row: 1 / span 2 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 20px 16px !important;
+  border-right: 1px solid #2c3049 !important;
+  border-bottom: 0 !important;
+  background: linear-gradient(165deg, #232852 0%, #191b2d 72%) !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading > div:first-child {
+  gap: 5px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-kicker {
+  color: #aeb5ff !important;
+  font-size: .52rem !important;
+  letter-spacing: .15em !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading strong {
+  font-size: .9rem !important;
+  line-height: 1.15 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading small {
+  max-width: 150px !important;
+  color: #b7bad3 !important;
+  font-size: .59rem !important;
+  line-height: 1.45 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading-meta {
+  display: grid !important;
+  justify-content: stretch !important;
+  gap: 5px !important;
+  width: 100% !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading-meta > span,
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading-meta > b {
+  justify-content: flex-start !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  min-height: 24px !important;
+  padding: 0 7px !important;
+  font-size: .55rem !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  display: grid !important;
+  grid-template-columns: minmax(210px, 1.8fr) minmax(145px, .8fr) auto auto auto !important;
+  align-items: end !important;
+  gap: 8px !important;
+  min-height: 0 !important;
+  padding: 18px 16px 14px !important;
+  background: #171823 !important;
+  border: 0 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary > label {
+  gap: 5px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary input,
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary select {
+  min-height: 40px !important;
+  padding: 0 11px !important;
+  color: #f0eff7 !important;
+  background: #0d0f18 !important;
+  border: 1px solid #3a3f60 !important;
+  border-radius: 7px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary input:focus,
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary select:focus {
+  border-color: #7b84ff !important;
+  box-shadow: 0 0 0 3px rgba(88, 101, 242, .16) !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .filter-toggle,
+.app-shell.stitch-shell .orders-reference-filter-shell .filter-clear,
+.app-shell.stitch-shell .orders-reference-filter-shell .filter-apply {
+  min-height: 40px !important;
+  height: 40px !important;
+  padding: 0 12px !important;
+  border-radius: 7px !important;
+  white-space: nowrap !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .filter-toggle {
+  color: #e1e3ff !important;
+  background: #282d58 !important;
+  border-color: #6069cf !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .filter-clear {
+  color: #b9bbce !important;
+  background: #12131d !important;
+  border-color: #343852 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .filter-apply {
+  min-width: 70px !important;
+  color: #fff !important;
+  background: #5865f2 !important;
+  border-color: #7d86ff !important;
+  box-shadow: 0 7px 16px rgba(45, 59, 255, .2) !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-advanced {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(135px, 1fr)) !important;
+  gap: 8px !important;
+  margin: 0 !important;
+  padding: 0 16px 14px !important;
+  background: #171823 !important;
+  border: 0 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-advanced label {
+  gap: 4px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-advanced input,
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-advanced select {
+  min-height: 34px !important;
+  background: #0d0f18 !important;
+  border-color: #343852 !important;
+  border-radius: 6px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-reference-bottom-toolbar {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-height: 58px !important;
+  height: auto !important;
+  margin-top: 0 !important;
+  padding: 9px 12px !important;
+  background: #11121b !important;
+  border: 1px solid #2c3049 !important;
+  border-radius: 9px !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .14) !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-filter-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-filter-group::before {
+  content: 'Görünüm' !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  min-height: 26px !important;
+  padding-right: 9px !important;
+  color: #777b98 !important;
+  border-right: 1px solid #30344f !important;
+  font-size: .56rem !important;
+  font-weight: 800 !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-select {
+  display: grid !important;
+  grid-template-columns: auto minmax(105px, 1fr) !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-select > span {
+  color: #777b98 !important;
+  font-size: .57rem !important;
+  font-weight: 700 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-select select {
+  min-height: 32px !important;
+  min-width: 0 !important;
+  padding: 0 8px !important;
+  color: #e5e6f1 !important;
+  background: #1a1c2a !important;
+  border: 1px solid #353a59 !important;
+  border-radius: 6px !important;
+  font-size: .6rem !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-selection-summary {
+  min-height: 27px !important;
+  padding: 0 8px !important;
+  font-size: .57rem !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-pagination {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-page-size-control {
+  color: #777b98 !important;
+  font-size: .57rem !important;
+  white-space: nowrap !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-page-size-control select {
+  min-height: 32px !important;
+  margin: 0 4px !important;
+  color: #e5e6f1 !important;
+  background: #1a1c2a !important;
+  border: 1px solid #353a59 !important;
+  border-radius: 6px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-page-navigation {
+  min-height: 32px !important;
+  padding: 0 4px !important;
+  background: #1a1c2a !important;
+  border: 1px solid #353a59 !important;
+  border-radius: 7px !important;
+}
+@media (max-width: 900px) {
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-panel { grid-template-columns: 1fr !important; grid-template-rows: auto auto auto !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading { grid-column: 1 !important; grid-row: 1 !important; flex-direction: row !important; align-items: center !important; justify-content: space-between !important; padding: 14px 16px !important; border-right: 0 !important; border-bottom: 1px solid #2c3049 !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading small { max-width: none !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading-meta { width: auto !important; display: flex !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading-meta > span,
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading-meta > b { width: auto !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary { grid-column: 1 !important; grid-row: 2 !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-advanced { grid-column: 1 !important; grid-row: 3 !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .orders-reference-bottom-toolbar { grid-template-columns: 1fr !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-pagination { justify-content: flex-start !important; }
+}
+@media (max-width: 560px) {
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-heading { align-items: flex-start !important; flex-direction: column !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary,
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-advanced { grid-template-columns: 1fr !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary > label,
+  .app-shell.stitch-shell .orders-reference-filter-shell .order-search { grid-column: auto !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-filter-group { display: grid !important; grid-template-columns: 1fr !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-filter-group::before { border-right: 0 !important; border-bottom: 1px solid #30344f !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-select { grid-template-columns: 78px minmax(0, 1fr) !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-pagination { flex-wrap: wrap !important; }
+}
