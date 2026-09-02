@@ -31,7 +31,15 @@ public static class InvoicingEndpoints
         api.MapGet("/invoices/{invoiceId:guid}/documents/latest/content", async (Guid invoiceId, HttpContext http, AppDbContext db, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
-            var documentId = await db.InvoiceDocuments.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.InvoiceId == invoiceId && x.DocumentType == "PDF").OrderByDescending(x => x.CreatedAt).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(http.RequestAborted);
+            // Provider documents are typed as PDF, whereas manually uploaded
+            // PDF files are intentionally stored as MANUAL_UPLOAD. Both are
+            // valid invoice documents and the latest one must be downloadable
+            // from the order card.
+            var documentId = await db.InvoiceDocuments.AsNoTracking()
+                .Where(x => x.TenantId == tenant.TenantId && x.InvoiceId == invoiceId)
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => (Guid?)x.Id)
+                .FirstOrDefaultAsync(http.RequestAborted);
             return documentId is { } id ? Stream(await service.OpenDocumentAsync(tenant.TenantId, invoiceId, id, http.RequestAborted), http) : Problem(http, new("INVOICE_PDF_NOT_READY", "Faturanın PDF belgesi henüz arşivlenmedi.", 404));
         });
         api.MapGet("/invoices/{invoiceId:guid}/documents/{documentId:guid}/content", async (Guid invoiceId, Guid documentId, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? Stream(await service.OpenDocumentAsync(tenant.TenantId, invoiceId, documentId, http.RequestAborted), http) : Unauthorized(http));

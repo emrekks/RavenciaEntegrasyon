@@ -74,7 +74,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             var orderLines = linesByOrder.GetValueOrDefault(order.Id) ?? [];
             var orderPackages = packagesByOrder.GetValueOrDefault(order.Id) ?? [];
             var package = orderPackages.FirstOrDefault();
-            var invoice = (package is not null ? invoicesByPackage.GetValueOrDefault(package.Id) : null) ?? invoicesByOrder.GetValueOrDefault(order.Id);
+            // The displayed package is ordered by the latest operational event,
+            // while an invoice may have been created against another package of
+            // the same order (especially for older/split-package orders). The
+            // order card must still expose that invoice instead of showing a
+            // created state without a document action.
+            var invoice = (package is not null ? invoicesByPackage.GetValueOrDefault(package.Id) : null)
+                ?? orderPackages.Select(x => invoicesByPackage.GetValueOrDefault(x.Id)).FirstOrDefault(x => x is not null)
+                ?? invoicesByOrder.GetValueOrDefault(order.Id);
             var connection = connections.GetValueOrDefault(order.ConnectionId);
             var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
             var dueAt = order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson);
@@ -201,7 +208,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         }).ToList();
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);
-        var invoice = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.OriginalInvoiceId == null).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        var invoices = await db.Invoices.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.OriginalInvoiceId == null)
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+        var invoice = packages.Select(x => invoices.FirstOrDefault(invoice => invoice.PackageId == x.Id)).FirstOrDefault(x => x is not null)
+            ?? invoices.FirstOrDefault(x => x.PackageId == null)
+            ?? invoices.FirstOrDefault();
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<OrderDetailView>.Ok(new(
             order.Id, order.OrderNumber, order.DerivedStatus, order.Currency, order.GrossAmount, order.DiscountAmount, order.NetAmount, order.OrderedAt,
