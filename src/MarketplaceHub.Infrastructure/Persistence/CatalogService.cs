@@ -535,8 +535,14 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                                      join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
                                      where item.TenantId == tenantId && familyProductIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                                      orderby item.SortOrder
-                                     select new { asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+                                     select new { item.ProductId, item.VariantId, item.SortOrder, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         var familyMediaUrls = familyMediaRows
+            .GroupBy(item => item.ProductId)
+            .Select(group => group
+                .Where(item => item.VariantId is null)
+                .OrderBy(item => item.SortOrder)
+                .FirstOrDefault() ?? group.OrderBy(item => item.SortOrder).First())
+            .OrderBy(item => item.SortOrder)
             .Select(item => item.Classification == "PRODUCT_MEDIA_URL" ? item.Url : $"/api/v1/files/product-media/{item.Id:D}/content")
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -898,10 +904,47 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var options = productOptions.Where(x => x.ProductId == product.Id)
                 .Select(option => new ProductOptionView(option.Id, option.Label, optionValues.Where(value => value.OptionId == option.Id).Select(value => new ProductOptionValueView(value.Id, value.Label)).ToList()))
                 .ToList();
-            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), prices.Count > 0 ? prices.Min() : null, currency, modelCode, activePlatforms, attributes, options, globalMediaUrlsByProduct.GetValueOrDefault(product.Id));
+            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), prices.Count > 0 ? prices.Min() : null, currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id)));
         }).ToList();
 
         static string MediaUrl(dynamic item) => item.Classification == "PRODUCT_MEDIA_URL" ? item.Url : $"/api/v1/files/product-media/{item.Id:D}/content";
+    }
+
+    private static IReadOnlyList<string> ProductMediaForView(IReadOnlyList<ProductVariantView> variants, IReadOnlyList<string>? globalMedia)
+    {
+        var fallback = globalMedia ?? [];
+        var hasColor = variants.Any(variant => ColorOptionValue(variant.OptionSignature) is not null);
+        if (!hasColor) return fallback;
+
+        var selected = new List<string>();
+        var seenColors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var variant in variants)
+        {
+            var color = ColorOptionValue(variant.OptionSignature);
+            if (color is null || !seenColors.Add(color)) continue;
+            var image = variant.MediaUrls?.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
+            if (!string.IsNullOrWhiteSpace(image) && !selected.Contains(image, StringComparer.OrdinalIgnoreCase)) selected.Add(image);
+        }
+
+        return selected.Count > 0 ? selected : fallback.Take(1).ToList();
+    }
+
+    private static string? ColorOptionValue(string optionSignature)
+    {
+        foreach (var part in optionSignature.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separator = part.IndexOf(':');
+            if (separator < 0) separator = part.IndexOf('=');
+            if (separator < 0) continue;
+            var key = part[..separator].Replace(" ", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
+            if (key is "RENK" or "WEBCOLOR" or "COLOR" or "COLOUR")
+            {
+                var value = part[(separator + 1)..].Trim();
+                return string.IsNullOrWhiteSpace(value) ? null : value.ToUpperInvariant();
+            }
+        }
+
+        return null;
     }
 
     private static decimal? PositiveOrNull(decimal? value) => value is > 0 ? value : null;
