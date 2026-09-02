@@ -34,7 +34,12 @@ public static class TrendyolJsonMapper
             // ReadyToShip while status is still Created; the latter is the
             // authoritative workflow state for the order projection.
             var rawStatusPackage = Text(package, "status", "shipmentPackageStatus"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
-            var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net);
+            var invoice = new RemotePackageInvoiceObservation(
+                NullText(package, "invoiceStatus"),
+                NullText(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber"),
+                NullText(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"),
+                FlexibleInstant(package, "invoiceDateTime", "invoiceDate", "invoiceCreatedAt", "invoiceUpdatedAt"));
+            var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net, invoice);
             var dueAt = FlexibleInstant(package, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
             rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
                 CustomerSnapshot(package),

@@ -11,7 +11,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
 
     private static readonly (string ResourceType, string Label, string Kind, string[] JobTypes, bool Required)[] SyncDefinitions =
     [
-        ("orders", "Siparişler", "orders", [MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.WebhookIngest, MarketplaceJobTypes.ShipmentAction], true),
+        ("orders", "Siparişler", "orders", [MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.WebhookIngest, MarketplaceJobTypes.ShipmentAction], true),
         ("returns", "İadeler", "returns", [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.ReturnStatusSync, MarketplaceJobTypes.ReturnReconciliation, MarketplaceJobTypes.ReturnAction], true),
         ("inventory", "Stok", "stock", [MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StockProjectionDispatch, MarketplaceJobTypes.StockReconciliation], true),
         ("products", "Ürünler", "products", [MarketplaceJobTypes.ProductSync, MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive, MarketplaceJobTypes.ProductApprovalReconcile], false),
@@ -141,23 +141,31 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                 .OrderByDescending(x => x.CreatedAt)
                 .ToListAsync(cancellationToken);
             var invoicesByOrder = activeInvoices
+                .Where(x => x.PackageId == null)
                 .GroupBy(x => x.OrderId)
                 .ToDictionary(x => x.Key, x => x.First());
-            var packageRawStatusesByOrder = activePackageRows
-                .GroupBy(x => x.OrderId)
-                .ToDictionary(x => x.Key, x => x.Select(package => (string?)package.RawStatus).ToArray());
+            var invoicesByPackage = activeInvoices
+                .Where(x => x.PackageId != null)
+                .GroupBy(x => x.PackageId!.Value)
+                .ToDictionary(x => x.Key, x => x.First());
             uninvoicedInvoices = activePackageRows.Count(package =>
                 activeOrders.TryGetValue(package.OrderId, out var order)
                 && MarketplaceSalesService.InvoiceLabel(
-                    invoicesByOrder.GetValueOrDefault(order.Id),
+                    invoicesByPackage.GetValueOrDefault(package.Id) ?? invoicesByOrder.GetValueOrDefault(order.Id),
+                    package.MarketplaceInvoiceStatus,
                     order.CustomerSnapshotJson,
-                    packageRawStatusesByOrder.GetValueOrDefault(order.Id) ?? Array.Empty<string?>()) == "FATURA_BEKLIYOR");
+                    [package.RawStatus]) == "FATURA_BEKLIYOR");
             var invoiceDueAt = now.AddDays(-DashboardMetricPolicy.InvoiceDueDays);
             var invoiceReminderAt = now.AddDays(-DashboardMetricPolicy.InvoiceReminderStartDays);
-            dueSoonInvoices = await activePackages.CountAsync(package => package.Status == ShipmentPackageStatus.Delivered
+            dueSoonInvoices = activePackageRows.Count(package => package.Status == ShipmentPackageStatus.Delivered
                 && package.StatusOccurredAt > invoiceDueAt
                 && package.StatusOccurredAt <= invoiceReminderAt
-                && !db.Invoices.AsNoTracking().Any(invoice => invoice.TenantId == tenantId && invoice.OriginalInvoiceId == null && (invoice.PackageId == package.Id || invoice.PackageId == null && invoice.OrderId == package.OrderId)), cancellationToken);
+                && activeOrders.TryGetValue(package.OrderId, out var order)
+                && MarketplaceSalesService.InvoiceLabel(
+                    invoicesByPackage.GetValueOrDefault(package.Id) ?? invoicesByOrder.GetValueOrDefault(order.Id),
+                    package.MarketplaceInvoiceStatus,
+                    order.CustomerSnapshotJson,
+                    [package.RawStatus]) != "FATURA_KESILDI");
         }
 
         var stockRows = await (from variant in db.ProductVariants.AsNoTracking()

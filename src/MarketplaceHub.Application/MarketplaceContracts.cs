@@ -13,6 +13,7 @@ public static class MarketplaceJobTypes
     public const string OrderRecoverySync = "TRENDYOL_ORDER_RECOVERY_SYNC";
     public const string OrderStatusSync = "TRENDYOL_ORDER_STATUS_SYNC";
     public const string OrderReconciliation = "TRENDYOL_ORDER_RECONCILIATION";
+    public const string OrderInvoiceReconciliation = "TRENDYOL_ORDER_INVOICE_RECONCILIATION";
     public const string ProductSync = "TRENDYOL_PRODUCT_SYNC";
     public const string ShipmentAction = "TRENDYOL_SHIPMENT_ACTION";
     public const string ReturnSync = "TRENDYOL_RETURN_SYNC";
@@ -126,7 +127,8 @@ public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOper
 public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? PackageItemStatuses = null, string? StoreFrontCode = null);
 public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal VatRate, string RawStatus, string SourceSnapshotJson = "{}");
 public sealed record RemotePackageAllocation(string ExternalLineId, decimal AllocatedQuantity, decimal CancelledQuantity, decimal ShippedQuantity, decimal DeliveredQuantity, decimal ReturnedQuantity);
-public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0);
+public sealed record RemotePackageInvoiceObservation(string? RawStatus, string? InvoiceNumber, string? InvoiceUrl, DateTimeOffset? SourceUpdatedAt);
+public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null);
 public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null);
 public sealed record PackageActionCommand(string ExternalPackageId, string Action, string PayloadJson);
 public sealed record ShipmentActionJobPayload(Guid JobId, Guid PackageId, string Action, string PayloadJson);

@@ -75,6 +75,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     MarketplaceJobTypes.OrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
                     MarketplaceJobTypes.OrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderReconciliation => await ReconcileOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                    MarketplaceJobTypes.OrderInvoiceReconciliation => await ReconcileOrderInvoices(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ProductSync => await SyncProducts(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnSync => await SyncReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -113,6 +114,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         MarketplaceJobTypes.OrderRecoverySync => "ORDERS_RECOVERY",
         MarketplaceJobTypes.OrderStatusSync => "ORDER_LIFECYCLE",
         MarketplaceJobTypes.OrderReconciliation => "ORDER_RECONCILIATION",
+        MarketplaceJobTypes.OrderInvoiceReconciliation => "ORDER_INVOICE_RECONCILIATION",
         MarketplaceJobTypes.ReturnSync => "RETURNS",
         MarketplaceJobTypes.ReturnStatusSync => "RETURN_LIFECYCLE",
         MarketplaceJobTypes.ReturnReconciliation => "RETURN_RECONCILIATION",
@@ -1307,6 +1309,44 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
+    private async Task<bool> ReconcileOrderInvoices(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var batchSize = ReadBoundedInt(payloadJson, "batchSize", 50, 1, 250);
+        var externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()
+                                      join order in db.Orders.AsNoTracking()
+                                          on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                                      where package.TenantId == tenantId
+                                          && package.ConnectionId == connectionId
+                                          && package.Status != ShipmentPackageStatus.Cancelled
+                                          && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
+                                          && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced
+                                      orderby package.MarketplaceInvoiceObservedAt, package.UpdatedAt
+                                      select order.ExternalOrderId)
+            .Distinct()
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+
+        foreach (var externalOrderId in externalOrderIds)
+        {
+            TrackRequest();
+            var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-invoice-reconciliation:{externalOrderId}"), externalOrderId, cancellationToken);
+            if (!result.IsSuccess)
+            {
+                if (result.Error?.Class == AdapterErrorClass.NotFound) continue;
+                TrackResultFailure(result.Error);
+                await RecordIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", result.Error!.Code,
+                    $"Siparişin pazaryeri fatura durumu yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
+                continue;
+            }
+
+            TrackReceived();
+            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken);
+            await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
+        }
+
+        return true;
+    }
+
     private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
@@ -2277,22 +2317,27 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         else if (!PackageIngestionSafety.TryGetOrderedQuantities(remote.Lines, out remoteLineQuantities)) { await RecordIssue(tenantId, $"order-lines:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_QUANTITY_INVARIANT_REJECTED", "Sipariş satır kimliği veya miktarı geçersizdi; olayın hiçbir parçası uygulanmadı.", cancellationToken); if (saveChanges) await db.SaveChangesAsync(cancellationToken); return; }
         foreach (var remotePackage in remote.Packages) if (!PackageIngestionSafety.TryNormalizeAll(remoteLineQuantities, remotePackage.Allocations, ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus), out _)) { var rejectedEventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); await RecordIssue(tenantId, $"package-quantity:{connectionId}:{rejectedEventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken); if (saveChanges) await db.SaveChangesAsync(cancellationToken); return; }
         var now = timeProvider.GetUtcNow(); var order = batch?.OrdersByExternalId.GetValueOrDefault(remote.ExternalOrderId) ?? await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalOrderId == remote.ExternalOrderId, cancellationToken);
-        var repairedProjection = false;
         if (order is not null)
         {
             var repairCandidates = batch is not null
                 ? (batch.PackagesByOrder.GetValueOrDefault(order.Id)?.Values.Where(x => x.Status == ShipmentPackageStatus.ManualReview).ToList() ?? [])
                 : await db.ShipmentPackages.Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status == ShipmentPackageStatus.ManualReview).ToListAsync(cancellationToken);
-            foreach (var candidate in repairCandidates) { var canonical = ShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; repairedProjection = true; } }
+            foreach (var candidate in repairCandidates) { var canonical = ShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; } }
         }
         // Do not short-circuit empty-line replays: the same remote package can need a safe local canonical projection repair after a previously unknown raw status becomes recognized.
+        var orderIsFresh = order is null || remote.LastModifiedAt >= order.LastRemoteModifiedAt;
+        if (!orderIsFresh) telemetrySkippedCount++;
         if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", ShipmentDueAt = remote.ShipmentDueAt, CreatedAt = now, Version = 1 }; db.Orders.Add(order); batch?.OrdersByExternalId.TryAdd(remote.ExternalOrderId, order); telemetryInsertedCount++; }
-        else if (remote.LastModifiedAt < order.LastRemoteModifiedAt) { if (repairedProjection && saveChanges) await db.SaveChangesAsync(cancellationToken); return; }
-        order.OrderNumber = remote.OrderNumber; order.Currency = remote.Currency; order.GrossAmount = remote.GrossAmount; order.DiscountAmount = remote.DiscountAmount; order.NetAmount = remote.NetAmount; order.OrderedAt = remote.OrderedAt; order.ShipmentDueAt = remote.ShipmentDueAt; order.LastRemoteModifiedAt = remote.LastModifiedAt; order.CustomerSnapshotJson = remote.CustomerSnapshotJson; order.ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson; order.InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson; order.UpdatedAt = now; if (db.Entry(order).State != EntityState.Added) { order.Version++; telemetryUpdatedCount++; }
-        var lines = new Dictionary<string, OrderLine>(StringComparer.Ordinal);
+        if (orderIsFresh)
+        {
+            order.OrderNumber = remote.OrderNumber; order.Currency = remote.Currency; order.GrossAmount = remote.GrossAmount; order.DiscountAmount = remote.DiscountAmount; order.NetAmount = remote.NetAmount; order.OrderedAt = remote.OrderedAt; order.ShipmentDueAt = remote.ShipmentDueAt; order.LastRemoteModifiedAt = remote.LastModifiedAt; order.CustomerSnapshotJson = remote.CustomerSnapshotJson; order.ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson; order.InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson; order.UpdatedAt = now; if (db.Entry(order).State != EntityState.Added) { order.Version++; telemetryUpdatedCount++; }
+        }
         var existingLines = batch is not null
             ? batch.LinesByOrder.GetValueOrDefault(order.Id) ?? []
             : await db.OrderLines.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).ToListAsync(cancellationToken);
+        var lines = existingLines
+            .GroupBy(x => x.ExternalLineId, StringComparer.Ordinal)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
         var linesByExternalId = existingLines
             .GroupBy(x => x.ExternalLineId, StringComparer.Ordinal)
             .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
@@ -2318,7 +2363,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             batch.PackagesByOrder[order.Id] = packagesByExternalId;
             batch.EventIdsByOrder[order.Id] = knownEventIds;
         }
-        foreach (var remoteLine in remote.Lines)
+        if (orderIsFresh) foreach (var remoteLine in remote.Lines)
         {
             var line = linesByExternalId.GetValueOrDefault(remoteLine.ExternalLineId);
             if (line is null && !string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}") line = linesBySnapshot.GetValueOrDefault(remoteLine.SourceSnapshotJson);
@@ -2341,6 +2386,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var target = ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
             if (!PackageIngestionSafety.TryNormalizeAll(orderedQuantities, remotePackage.Allocations, target, out var safeAllocations)) { await RecordIssue(tenantId, $"package-quantity:{connectionId}:{eventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken); continue; }
             var package = packagesByExternalId.GetValueOrDefault(remotePackage.ExternalPackageId);
+            if (package is not null) MergeMarketplaceInvoiceState(package, remotePackage, remotePackage.OccurredAt);
             if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; continue; }
             var eventAlreadyRecorded = knownEventIds.Contains(eventId);
             if (eventAlreadyRecorded)
@@ -2362,13 +2408,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     package.StatusOccurredAt = remotePackage.OccurredAt;
                     package.UpdatedAt = now;
                     package.Version++;
-                    repairedProjection = true;
                 }
                 if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; }
                 continue;
             }
             var accept = package is null || PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt);
-            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; }
+            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; MergeMarketplaceInvoiceState(package, remotePackage, remotePackage.OccurredAt); }
             else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = remotePackage.OccurredAt; package.Version++; }
             else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target) await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
             if (accept)
@@ -2388,6 +2433,33 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         else
             batch.ReservationSources.AddRange(lines.Values.Select(line => (line, remote.LastModifiedAt)));
         if (saveChanges) await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private void MergeMarketplaceInvoiceState(ShipmentPackage package, RemotePackage remotePackage, DateTimeOffset observedAt)
+    {
+        var observation = remotePackage.Invoice;
+        var incomingStatus = MarketplaceInvoiceStatePolicy.FromRemote(
+            observation?.RawStatus,
+            remotePackage.RawStatus,
+            observation?.InvoiceNumber,
+            observation?.InvoiceUrl);
+        if (!MarketplaceInvoiceStatePolicy.ShouldApply(
+                package.MarketplaceInvoiceStatus,
+                package.MarketplaceInvoiceSourceUpdatedAt,
+                package.MarketplaceInvoiceObservedAt,
+                incomingStatus,
+                observation?.SourceUpdatedAt,
+                observedAt)) return;
+
+        package.MarketplaceInvoiceStatus = incomingStatus;
+        package.MarketplaceInvoiceRawStatus = observation?.RawStatus ?? package.MarketplaceInvoiceRawStatus;
+        package.MarketplaceInvoiceNumber = observation?.InvoiceNumber ?? package.MarketplaceInvoiceNumber;
+        package.MarketplaceInvoiceUrl = observation?.InvoiceUrl ?? package.MarketplaceInvoiceUrl;
+        package.MarketplaceInvoiceSourceUpdatedAt = observation?.SourceUpdatedAt ?? package.MarketplaceInvoiceSourceUpdatedAt;
+        package.MarketplaceInvoiceObservedAt = observedAt;
+        package.UpdatedAt = timeProvider.GetUtcNow();
+        package.Version++;
+        telemetryUpdatedCount++;
     }
 
     private async Task<Dictionary<string, Guid>> ResolveOrderLineVariantIds(Guid tenantId, IReadOnlyList<RemoteOrderLine> remoteLines, CancellationToken cancellationToken)

@@ -108,7 +108,7 @@ public sealed partial class InvoicingBillingService(
             if (!orders.TryGetValue(package.OrderId, out var order)) return null;
             var orderLines = linesByOrder.GetValueOrDefault(order.Id) ?? [];
             var invoice = invoices.FirstOrDefault(x => x.PackageId == package.Id) ?? invoices.FirstOrDefault(x => x.PackageId == null && x.OrderId == order.Id);
-            var invoiceStatus = MarketplaceSalesService.InvoiceLabel(invoice, order.CustomerSnapshotJson, [package.RawStatus]);
+            var invoiceStatus = MarketplaceSalesService.InvoiceLabel(invoice, package.MarketplaceInvoiceStatus, order.CustomerSnapshotJson, [package.RawStatus]);
             if (invoiceStatus == "FATURA_BEKLIYOR"
                 && (package.Status == ShipmentPackageStatus.Cancelled
                     || DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus))) return null;

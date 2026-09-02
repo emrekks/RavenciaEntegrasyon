@@ -167,6 +167,13 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             detail = "Sipariş geçmişindeki erişilebilir pencereler sırayla taranarak eksik yerel kayıtlar tamamlanır.";
             window = "14 günlük güvenli pencereler";
         }
+        else if (type.Contains("ORDER_INVOICE_RECONCILIATION", StringComparison.Ordinal))
+        {
+            mode = "INVOICE";
+            label = "Paket fatura taraması";
+            detail = "Teslim edilmiş ve açık paketlerin pazaryeri fatura durumu ayrı kontrol edilir; sipariş gövdesinin eski olması bu kontrolü engellemez.";
+            window = "Faturası kesinleşmemiş paketler";
+        }
         else if (type.Contains("ORDER_RECONCILIATION", StringComparison.Ordinal))
         {
             mode = "COMPREHENSIVE";

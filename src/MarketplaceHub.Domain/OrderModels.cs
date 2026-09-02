@@ -16,6 +16,57 @@ public enum ShipmentPackageStatus
     ManualReview
 }
 
+public enum MarketplaceInvoiceStatus
+{
+    Unknown,
+    NotInvoiced,
+    Received,
+    Invoiced,
+    Rejected
+}
+
+public static class MarketplaceInvoiceStatePolicy
+{
+    public static MarketplaceInvoiceStatus FromRemote(string? rawStatus, string? packageRawStatus = null, string? invoiceNumber = null, string? invoiceUrl = null)
+    {
+        var normalized = rawStatus?.Trim().ToUpperInvariant();
+        if (normalized is "INVOICED" or "INVOICE" or "COMPLETED") return MarketplaceInvoiceStatus.Invoiced;
+        if (normalized is "RECEIVED" or "PROCESSING" or "PENDING") return MarketplaceInvoiceStatus.Received;
+        if (normalized is "REJECTED" or "FAILED") return MarketplaceInvoiceStatus.Rejected;
+        if (normalized is "NOTINVOICED" or "NOT_INVOICED" or "WAITING" or "WAITING_FOR_INVOICE") return MarketplaceInvoiceStatus.NotInvoiced;
+        if (!string.IsNullOrWhiteSpace(invoiceNumber) || !string.IsNullOrWhiteSpace(invoiceUrl)) return MarketplaceInvoiceStatus.Invoiced;
+
+        // Older Trendyol payloads sometimes exposed only the package status.
+        // Preserve this as positive evidence, while never treating a generic
+        // delivered/shipped status as proof that an invoice exists.
+        return packageRawStatus?.Trim().ToUpperInvariant() == "INVOICED"
+            ? MarketplaceInvoiceStatus.Invoiced
+            : MarketplaceInvoiceStatus.Unknown;
+    }
+
+    public static bool ShouldApply(
+        MarketplaceInvoiceStatus current,
+        DateTimeOffset? currentSourceUpdatedAt,
+        DateTimeOffset? currentObservedAt,
+        MarketplaceInvoiceStatus incoming,
+        DateTimeOffset? incomingSourceUpdatedAt,
+        DateTimeOffset incomingObservedAt)
+    {
+        if (incoming == MarketplaceInvoiceStatus.Unknown) return false;
+        if (current == MarketplaceInvoiceStatus.Invoiced && incoming != MarketplaceInvoiceStatus.Invoiced)
+            return false;
+        if (currentSourceUpdatedAt is { } currentSource && incomingSourceUpdatedAt is { } incomingSource && incomingSource < currentSource)
+            return false;
+        if (currentSourceUpdatedAt is { } sameCurrentSource && incomingSourceUpdatedAt is { } sameIncomingSource
+            && sameIncomingSource == sameCurrentSource && current != incoming)
+            return false;
+        if (current == incoming)
+            return incomingSourceUpdatedAt > currentSourceUpdatedAt || incomingObservedAt > currentObservedAt;
+        if (incomingSourceUpdatedAt is not null && currentSourceUpdatedAt is null) return true;
+        return currentObservedAt is null || incomingObservedAt >= currentObservedAt;
+    }
+}
+
 public static class ShipmentPackageStateMachine
 {
     private static readonly IReadOnlyDictionary<ShipmentPackageStatus, ShipmentPackageStatus[]> Allowed =
@@ -193,6 +244,12 @@ public sealed class ShipmentPackage
     public ShipmentPackageStatus Status { get; set; }
     public required string RawStatus { get; set; }
     public DateTimeOffset StatusOccurredAt { get; set; }
+    public MarketplaceInvoiceStatus MarketplaceInvoiceStatus { get; set; }
+    public string? MarketplaceInvoiceRawStatus { get; set; }
+    public string? MarketplaceInvoiceNumber { get; set; }
+    public string? MarketplaceInvoiceUrl { get; set; }
+    public DateTimeOffset? MarketplaceInvoiceSourceUpdatedAt { get; set; }
+    public DateTimeOffset? MarketplaceInvoiceObservedAt { get; set; }
     public string? RemoteVersion { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

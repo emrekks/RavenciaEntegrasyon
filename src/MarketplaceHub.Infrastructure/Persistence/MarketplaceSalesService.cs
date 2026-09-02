@@ -59,6 +59,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var linesByOrder = lines.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
         var packagesByOrder = packages.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
         var invoicesByOrder = invoices.Where(x => x.OriginalInvoiceId == null).GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.First());
+        var invoicesByPackage = invoices.Where(x => x.OriginalInvoiceId == null && x.PackageId != null).GroupBy(x => x.PackageId!.Value).ToDictionary(x => x.Key, x => x.First());
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var variantIds = lines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
         var lineSkus = lines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
@@ -73,7 +74,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             var orderLines = linesByOrder.GetValueOrDefault(order.Id) ?? [];
             var orderPackages = packagesByOrder.GetValueOrDefault(order.Id) ?? [];
             var package = orderPackages.FirstOrDefault();
-            var invoice = invoicesByOrder.GetValueOrDefault(order.Id);
+            var invoice = (package is not null ? invoicesByPackage.GetValueOrDefault(package.Id) : null) ?? invoicesByOrder.GetValueOrDefault(order.Id);
             var connection = connections.GetValueOrDefault(order.ConnectionId);
             var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
             var dueAt = order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson);
@@ -90,7 +91,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 orderLines.Count, orderPackages.Count, order.Version,
                 order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
                 customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
-                !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabel(invoice, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus)),
+                !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus)),
                 package?.CargoProviderExternalId, package?.CargoTrackingNumber,
                 orderLines.Select(x => ResolveVariant(x, variants, variantsBySku, variantsByBarcode)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
                 orderLines.Sum(x => x.OrderedQuantity), customer.Email, customer.TaxOrIdentityNumber,
@@ -207,7 +208,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             lines, packages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version,
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
-            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabel(invoice, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus)),
+            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabel(invoice, packages.FirstOrDefault()?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus)),
             customer.Phone, customer.IsEInvoiceAvailable, InvoiceDocumentUrl(order.CustomerSnapshotJson)));
     }
 
@@ -550,7 +551,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, claim.ActionDueAt, claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", package?.CargoProviderExternalId, package?.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode,
-                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : InvoiceLabel(invoice, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus]), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
+                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : InvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus]), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport);
         }).ToList();
         return latest ? new(rows.Take(limit).ToList(), null, rows.Count > limit) : Page(rows, limit, x => x.Id);
@@ -803,6 +804,19 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (remote is "REJECTED") return "FATURA_REDDEDILDI";
         if (remote is "NOTINVOICED") return "FATURA_BEKLIYOR";
         return "FATURA_BEKLIYOR";
+    }
+
+    internal static string InvoiceLabel(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses)
+    {
+        if (invoice is not null) return InvoiceLabel(invoice, customerJson, packageRawStatuses);
+        return marketplaceStatus switch
+        {
+            MarketplaceInvoiceStatus.Invoiced => "FATURA_KESILDI",
+            MarketplaceInvoiceStatus.Received => "FATURA_KONTROLDE",
+            MarketplaceInvoiceStatus.Rejected => "FATURA_REDDEDILDI",
+            MarketplaceInvoiceStatus.NotInvoiced => "FATURA_BEKLIYOR",
+            _ => InvoiceLabel(null, customerJson, packageRawStatuses)
+        };
     }
 
     private static bool IsInvoicedRemoteStatus(string? status) =>

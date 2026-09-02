@@ -132,7 +132,7 @@ public static class IntegrationJobMetadataPolicy
 {
     public static IntegrationJobMetadata FromJobType(string? jobType) => jobType switch
     {
-        "TRENDYOL_ORDER_SYNC" or "TRENDYOL_ORDER_RECOVERY_SYNC" or "TRENDYOL_ORDER_STATUS_SYNC" or "TRENDYOL_ORDER_RECONCILIATION" or "TRENDYOL_WEBHOOK_INGEST" => new("orders", "sync", "scheduled"),
+        "TRENDYOL_ORDER_SYNC" or "TRENDYOL_ORDER_RECOVERY_SYNC" or "TRENDYOL_ORDER_STATUS_SYNC" or "TRENDYOL_ORDER_RECONCILIATION" or "TRENDYOL_ORDER_INVOICE_RECONCILIATION" or "TRENDYOL_WEBHOOK_INGEST" => new("orders", "sync", "scheduled"),
         "TRENDYOL_SHIPMENT_ACTION" or "TRENDYOL_COMMON_LABEL" => new("orders", "shipment_action", "manual"),
         "TRENDYOL_RETURN_SYNC" or "TRENDYOL_RETURN_STATUS_SYNC" or "TRENDYOL_RETURN_RECONCILIATION" or "TRENDYOL_RETURN_ACTION" => new("returns", "sync", "scheduled"),
         "TRENDYOL_PRODUCT_SYNC" or "TRENDYOL_PRODUCT_CREATE" or "TRENDYOL_PRODUCT_APPROVAL_RECONCILE" or "TRENDYOL_PRODUCT_UPDATE" or "TRENDYOL_PRODUCT_ARCHIVE" => new("products", "sync", "scheduled"),
