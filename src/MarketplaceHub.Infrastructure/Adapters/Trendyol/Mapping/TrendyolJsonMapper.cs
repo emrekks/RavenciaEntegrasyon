@@ -169,6 +169,7 @@ public static class TrendyolJsonMapper
         // keeps the complete option signature.
         var contentOptions = Options(product);
         var variants = new List<RemoteCatalogVariant>();
+        var seenColorGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (product.TryGetProperty("variants", out var variantArray) && variantArray.ValueKind == JsonValueKind.Array)
         {
             foreach (var variant in variantArray.EnumerateArray())
@@ -178,15 +179,41 @@ public static class TrendyolJsonMapper
                 var sku = NullText(variant, "stockCode", "merchantSku", "sku") ?? barcode ?? variantId;
                 if (string.IsNullOrWhiteSpace(variantId) || string.IsNullOrWhiteSpace(sku)) continue;
                 var variantOptions = MergeOptions(contentOptions, Options(variant));
-                var variantImages = (VariantImageUrls(variant) ?? []).Concat(LinkedImageUrls(product, variant))
-                    .Where(url => !string.IsNullOrWhiteSpace(url)).Select(url => url.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var explicitVariantImages = VariantImageUrls(variant);
+                var linkedVariantImages = LinkedImageUrls(product, variant);
+                var hasImagePayload = explicitVariantImages is not null || linkedVariantImages.Count > 0;
+                List<string>? variantImages = hasImagePayload
+                    ? (explicitVariantImages ?? []).Concat(linkedVariantImages)
+                        .Where(url => !string.IsNullOrWhiteSpace(url)).Select(url => url.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                    : null;
                 // In the official response, content.images belongs to the
                 // content-level slicer (for example one colour) and is shared
-                // by all size variants in that content. Preserve it on each
-                // variant when it is not explicitly linked to another one.
-                if (variantImages.Count == 0 && HasColorOption(contentOptions))
-                    variantImages = images.ToList();
+                // by all size variants in that content. Use exactly one
+                // representative image for each colour; copying the complete
+                // image set to every size makes the local gallery fill with
+                // duplicate black/blue/etc. images.
+                var colorValue = ColorOptionValue(variantOptions);
+                if (colorValue is not null)
+                {
+                    var firstVariantForColor = seenColorGroups.Add(colorValue);
+                    if (!firstVariantForColor)
+                    {
+                        // An empty, non-null payload is intentional here. The
+                        // importer uses it to archive stale media previously
+                        // assigned to duplicate size variants.
+                        variantImages = hasImagePayload || images.Count > 0 ? [] : null;
+                    }
+                    else
+                    {
+                        variantImages = (variantImages ?? []).Take(1).ToList();
+                        if (variantImages.Count == 0 && images.Count > 0)
+                        {
+                            variantImages = images.Take(1).ToList();
+                            hasImagePayload = true;
+                        }
+                    }
+                }
                 variants.Add(new(
                     variantId,
                     sku,
@@ -200,7 +227,7 @@ public static class TrendyolJsonMapper
                     DecimalNullable(variant, "quantity") ?? NestedDecimalNullable(variant, "stock", "quantity"),
                     NestedText(variant, "price", "currency"),
                     variant.GetRawText(),
-                    variantImages.Count == 0 ? null : variantImages));
+                    variantImages));
             }
         }
         if (variants.Count == 0)
@@ -211,7 +238,8 @@ public static class TrendyolJsonMapper
             if (!string.IsNullOrWhiteSpace(variantId) && !string.IsNullOrWhiteSpace(sku))
                 variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, contentOptions, Bool(product, "archived"), DecimalNullable(product, "salePrice") ?? NestedDecimalNullable(product, "price", "salePrice"), DecimalNullable(product, "listPrice") ?? NestedDecimalNullable(product, "price", "listPrice"), DecimalNullable(product, "vatRate"), DecimalNullable(product, "quantity") ?? NestedDecimalNullable(product, "stock", "quantity"), NestedText(product, "price", "currency"), product.GetRawText(), VariantImageUrls(product)));
         }
-        var allImages = images
+        var productImages = HasColorOption(contentOptions) || variants.Any(variant => ColorOptionValue(variant.Options) is not null) ? images.Take(1) : images;
+        var allImages = productImages
             .Concat(variants.SelectMany(variant => variant.ImageUrls ?? []))
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Select(url => url.Trim())
@@ -319,11 +347,18 @@ public static class TrendyolJsonMapper
         return merged;
     }
 
-    private static bool HasColorOption(IReadOnlyDictionary<string, string> options) => options.Keys.Any(key =>
+    private static bool HasColorOption(IReadOnlyDictionary<string, string> options) => options.Keys.Any(IsColorOptionKey);
+
+    private static string? ColorOptionValue(IReadOnlyDictionary<string, string> options) => options
+        .Where(pair => IsColorOptionKey(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
+        .Select(pair => pair.Value.Trim().ToUpperInvariant())
+        .FirstOrDefault();
+
+    private static bool IsColorOptionKey(string value)
     {
-        var normalized = key.Replace(" ", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
-        return normalized is "RENK" or "WEBCOLOR" or "COLOR";
-    });
+        var normalized = value.Replace(" ", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
+        return normalized is "RENK" or "WEBCOLOR" or "COLOR" or "COLOUR";
+    }
 
     public static RemoteProduct Product(string json, string barcode)
     {

@@ -68,7 +68,7 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal("800001", product.ExternalProductId);
         Assert.Equal("PRODUCT-001", product.ProductMainId);
         Assert.Equal(2, product.Variants.Count);
-        Assert.Equal(2, product.ImageUrls.Count);
+        Assert.Equal(new[] { "https://cdn.example.test/products/test-front.jpg" }, product.ImageUrls);
         Assert.Equal("Ravencia", product.BrandName);
         Assert.Equal("Giyim", product.CategoryName);
 
@@ -146,7 +146,7 @@ public sealed class TrendyolCatalogMapperTests
     }
 
     [Fact]
-    public void ApprovedProductResponse_InheritsContentColorAndImagesToEverySizeVariant()
+    public void ApprovedProductResponse_UsesOneRepresentativeImagePerColorAcrossSizeVariants()
     {
         const string json = """
         {
@@ -180,12 +180,12 @@ public sealed class TrendyolCatalogMapperTests
         """;
 
         var product = Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items);
-        foreach (var variant in product.Variants)
-        {
-            Assert.Equal("Haki", variant.Options["Renk"]);
-            Assert.Equal(2, variant.ImageUrls?.Count);
-            Assert.Contains("https://cdn.example.test/haki-front.jpg", variant.ImageUrls!);
-        }
+        var small = Assert.Single(product.Variants, variant => variant.Sku == "SKU-004-S");
+        var medium = Assert.Single(product.Variants, variant => variant.Sku == "SKU-004-M");
+        Assert.Equal("Haki", small.Options["Renk"]);
+        Assert.Equal(new[] { "https://cdn.example.test/haki-front.jpg" }, small.ImageUrls);
+        Assert.Empty(medium.ImageUrls!);
+        Assert.Equal(new[] { "https://cdn.example.test/haki-front.jpg" }, product.ImageUrls);
     }
 
     [Fact]
@@ -212,5 +212,46 @@ public sealed class TrendyolCatalogMapperTests
 
         Assert.Equal(new[] { "https://cdn.example.test/red.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-003-RED").ImageUrls);
         Assert.Equal(new[] { "https://cdn.example.test/blue.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-003-BLUE").ImageUrls);
+    }
+
+    [Fact]
+    public void CatalogProductResponse_SkipsAdditionalSizesForTheSameColorAndKeepsNextColor()
+    {
+        const string json = """
+        {
+          "content": [{
+            "contentId": 800005,
+            "productMainId": "PRODUCT-005",
+            "title": "Renk ve bedenli ürün",
+            "variants": [
+              {
+                "variantId": 850001,
+                "stockCode": "SKU-005-BLACK-S",
+                "attributes": [{ "attributeName": "Renk", "attributeValue": "Siyah" }, { "attributeName": "Beden", "attributeValue": "S" }],
+                "images": ["https://cdn.example.test/black-front.jpg", "https://cdn.example.test/black-back.jpg"]
+              },
+              {
+                "variantId": 850002,
+                "stockCode": "SKU-005-BLACK-M",
+                "attributes": [{ "attributeName": "Renk", "attributeValue": "Siyah" }, { "attributeName": "Beden", "attributeValue": "M" }],
+                "images": ["https://cdn.example.test/black-front-m.jpg"]
+              },
+              {
+                "variantId": 850003,
+                "stockCode": "SKU-005-BLUE-S",
+                "attributes": [{ "attributeName": "Renk", "attributeValue": "Mavi" }, { "attributeName": "Beden", "attributeValue": "S" }],
+                "images": ["https://cdn.example.test/blue-front.jpg"]
+              }
+            ]
+          }]
+        }
+        """;
+
+        var product = Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items);
+
+        Assert.Equal(new[] { "https://cdn.example.test/black-front.jpg", "https://cdn.example.test/blue-front.jpg" }, product.ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/black-front.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-005-BLACK-S").ImageUrls);
+        Assert.Empty(Assert.Single(product.Variants, x => x.Sku == "SKU-005-BLACK-M").ImageUrls!);
+        Assert.Equal(new[] { "https://cdn.example.test/blue-front.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-005-BLUE-S").ImageUrls);
     }
 }
