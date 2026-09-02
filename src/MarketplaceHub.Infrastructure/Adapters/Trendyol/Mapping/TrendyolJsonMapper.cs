@@ -189,9 +189,9 @@ public static class TrendyolJsonMapper
                     : null;
                 // In the official response, content.images belongs to the
                 // content-level slicer (for example one colour) and is shared
-                // by all size variants in that content. Use exactly one
-                // representative image for each colour; copying the complete
-                // image set to every size makes the local gallery fill with
+                // by all size variants in that content. Keep the complete
+                // image set from the first size of each colour; copying that
+                // set to every size makes the local gallery fill with
                 // duplicate black/blue/etc. images.
                 var colorValue = ColorOptionValue(variantOptions);
                 if (colorValue is not null)
@@ -206,10 +206,10 @@ public static class TrendyolJsonMapper
                     }
                     else
                     {
-                        variantImages = (variantImages ?? []).Take(1).ToList();
+                        variantImages = (variantImages ?? []).ToList();
                         if (variantImages.Count == 0 && images.Count > 0)
                         {
-                            variantImages = images.Take(1).ToList();
+                            variantImages = images.ToList();
                             hasImagePayload = true;
                         }
                     }
@@ -238,7 +238,7 @@ public static class TrendyolJsonMapper
             if (!string.IsNullOrWhiteSpace(variantId) && !string.IsNullOrWhiteSpace(sku))
                 variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, contentOptions, Bool(product, "archived"), DecimalNullable(product, "salePrice") ?? NestedDecimalNullable(product, "price", "salePrice"), DecimalNullable(product, "listPrice") ?? NestedDecimalNullable(product, "price", "listPrice"), DecimalNullable(product, "vatRate"), DecimalNullable(product, "quantity") ?? NestedDecimalNullable(product, "stock", "quantity"), NestedText(product, "price", "currency"), product.GetRawText(), VariantImageUrls(product)));
         }
-        var productImages = HasColorOption(contentOptions) || variants.Any(variant => ColorOptionValue(variant.Options) is not null) ? images.Take(1) : images;
+        var productImages = images;
         var allImages = productImages
             .Concat(variants.SelectMany(variant => variant.ImageUrls ?? []))
             .Where(url => !string.IsNullOrWhiteSpace(url))

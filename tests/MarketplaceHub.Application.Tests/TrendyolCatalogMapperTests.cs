@@ -68,7 +68,7 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal("800001", product.ExternalProductId);
         Assert.Equal("PRODUCT-001", product.ProductMainId);
         Assert.Equal(2, product.Variants.Count);
-        Assert.Equal(new[] { "https://cdn.example.test/products/test-front.jpg" }, product.ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/products/test-front.jpg", "https://cdn.example.test/products/test-back.jpg" }, product.ImageUrls);
         Assert.Equal("Ravencia", product.BrandName);
         Assert.Equal("Giyim", product.CategoryName);
 
@@ -183,9 +183,9 @@ public sealed class TrendyolCatalogMapperTests
         var small = Assert.Single(product.Variants, variant => variant.Sku == "SKU-004-S");
         var medium = Assert.Single(product.Variants, variant => variant.Sku == "SKU-004-M");
         Assert.Equal("Haki", small.Options["Renk"]);
-        Assert.Equal(new[] { "https://cdn.example.test/haki-front.jpg" }, small.ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/haki-front.jpg", "https://cdn.example.test/haki-back.jpg" }, small.ImageUrls);
         Assert.Empty(medium.ImageUrls!);
-        Assert.Equal(new[] { "https://cdn.example.test/haki-front.jpg" }, product.ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/haki-front.jpg", "https://cdn.example.test/haki-back.jpg" }, product.ImageUrls);
     }
 
     [Fact]
@@ -249,8 +249,8 @@ public sealed class TrendyolCatalogMapperTests
 
         var product = Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items);
 
-        Assert.Equal(new[] { "https://cdn.example.test/black-front.jpg", "https://cdn.example.test/blue-front.jpg" }, product.ImageUrls);
-        Assert.Equal(new[] { "https://cdn.example.test/black-front.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-005-BLACK-S").ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/black-front.jpg", "https://cdn.example.test/black-back.jpg", "https://cdn.example.test/blue-front.jpg" }, product.ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/black-front.jpg", "https://cdn.example.test/black-back.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-005-BLACK-S").ImageUrls);
         Assert.Empty(Assert.Single(product.Variants, x => x.Sku == "SKU-005-BLACK-M").ImageUrls!);
         Assert.Equal(new[] { "https://cdn.example.test/blue-front.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-005-BLUE-S").ImageUrls);
     }

@@ -538,10 +538,11 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                                      select new { item.ProductId, item.VariantId, item.SortOrder, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         var familyMediaUrls = familyMediaRows
             .GroupBy(item => item.ProductId)
-            .Select(group => group
-                .Where(item => item.VariantId is null)
-                .OrderBy(item => item.SortOrder)
-                .FirstOrDefault() ?? group.OrderBy(item => item.SortOrder).First())
+            .SelectMany(group =>
+            {
+                var productMedia = group.Where(item => item.VariantId is null).OrderBy(item => item.SortOrder).ToList();
+                return productMedia.Count > 0 ? productMedia : group.OrderBy(item => item.SortOrder).Take(1).ToList();
+            })
             .OrderBy(item => item.SortOrder)
             .Select(item => item.Classification == "PRODUCT_MEDIA_URL" ? item.Url : $"/api/v1/files/product-media/{item.Id:D}/content")
             .Where(url => !string.IsNullOrWhiteSpace(url))
@@ -922,8 +923,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         {
             var color = ColorOptionValue(variant.OptionSignature);
             if (color is null || !seenColors.Add(color)) continue;
-            var image = variant.MediaUrls?.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
-            if (!string.IsNullOrWhiteSpace(image) && !selected.Contains(image, StringComparer.OrdinalIgnoreCase)) selected.Add(image);
+            foreach (var image in variant.MediaUrls ?? [])
+                if (!string.IsNullOrWhiteSpace(image) && !selected.Contains(image, StringComparer.OrdinalIgnoreCase)) selected.Add(image);
         }
 
         return selected.Count > 0 ? selected : fallback.Take(1).ToList();

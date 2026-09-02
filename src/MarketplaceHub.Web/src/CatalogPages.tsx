@@ -45,7 +45,7 @@ function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[
       const group = color ?? `variant:${variant.id}`
       if (seenColors.has(group)) continue
       seenColors.add(group)
-      add(variant.mediaUrls?.[0])
+      for (const url of variant.mediaUrls ?? []) add(url)
     }
     if (!ordered.length) add(productMediaUrls[0])
   } else {
