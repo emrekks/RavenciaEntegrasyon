@@ -1546,3 +1546,70 @@
   .app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-select { grid-template-columns: 78px minmax(0, 1fr) !important; }
   .app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-pagination { flex-wrap: wrap !important; }
 }
+
+/* v10.43: restore the original order-status tab treatment. The status
+   navigation remains a simple underline bar; only the filter workspace below
+   it keeps the newer command-center layout. */
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs {
+  display: flex !important;
+  align-items: stretch !important;
+  gap: 0 !important;
+  min-height: 43px !important;
+  margin: 0 !important;
+  padding: 0 7px !important;
+  overflow-x: auto !important;
+  background: #0d0e16 !important;
+  border: 0 !important;
+  border-bottom: 1px solid #1e202f !important;
+  border-radius: 0 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs button {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  min-height: 43px !important;
+  margin: 0 !important;
+  padding: 0 13px !important;
+  color: #c6c5d7 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: .67rem !important;
+  font-weight: 650 !important;
+  white-space: nowrap !important;
+  flex: 0 0 auto !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs button:hover {
+  color: #e3e1ed !important;
+  background: #1a1b23 !important;
+  border-color: transparent !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs button.active {
+  color: #bec2ff !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  border-bottom-color: #5865f2 !important;
+  text-shadow: 0 0 8px rgba(88, 101, 242, .42) !important;
+  box-shadow: none !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs button b {
+  display: inline-grid !important;
+  place-items: center !important;
+  min-width: 22px !important;
+  height: 20px !important;
+  margin: 0 !important;
+  padding: 0 5px !important;
+  color: #c6c5d7 !important;
+  background: #1f1f27 !important;
+  border: 1px solid #1e202f !important;
+  border-radius: 999px !important;
+  font-size: .58rem !important;
+  font-weight: 700 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs button:nth-child(2) b {
+  color: #ffb4ab !important;
+  background: rgba(147, 0, 10, .2) !important;
+  border-color: rgba(255, 180, 171, .24) !important;
+}
