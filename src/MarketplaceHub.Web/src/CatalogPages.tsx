@@ -368,7 +368,7 @@ export function ProductsPage() {
   })
   const summaryQuery = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
   const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<TrendyolConnection>('/connections') })
-  const productSyncJobsQuery = useQuery({ queryKey: ['jobs', 'product-import'], queryFn: () => hubApi<ProductSyncJob[]>('/jobs'), enabled: productImportOpen, refetchInterval: productImportOpen ? 2000 : false, staleTime: 0 })
+  const productSyncJobsQuery = useQuery({ queryKey: ['jobs', 'product-import'], queryFn: () => hubApi<ProductSyncJob[]>('/jobs', { cache: 'no-store' }), enabled: productImportOpen, refetchInterval: productImportOpen ? 1000 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
   const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(isProductPublicationConnection); const platforms = summaryQuery.data?.platforms ?? []
   const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = currentPage === pageNumber ? products : []; const pageProductGroups = useMemo(() => groupProductRows(pageProducts), [pageProducts])
   const activeProductSyncJobs = useMemo(() => (productSyncJobsQuery.data ?? []).filter(job => job.jobType === 'TRENDYOL_PRODUCT_SYNC' && !['SUCCEEDED', 'CANCELLED', 'DEAD'].includes(job.status) && (!productImportConnectionIds.length || (job.connectionId && productImportConnectionIds.includes(job.connectionId)))), [productImportConnectionIds, productSyncJobsQuery.data])
@@ -413,6 +413,7 @@ export function ProductsPage() {
       const full = productImportMode === 'FULL'
       await Promise.all(productImportConnectionIds.map(connectionId => hubApi<AcceptedJob>(`/connections/${connectionId}/product-sync-jobs?full=${full}`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: '{}' })))
       showProductToast(`${productImportConnectionIds.length} platform için ${full ? 'tam' : 'artımlı'} ürün taraması kuyruğa alındı. İlerlemeyi bu pencereden izleyebilir veya durdurabilirsiniz.`, 'success')
+      void productSyncJobsQuery.refetch()
       void client.invalidateQueries({ queryKey: ['jobs'] })
     } catch (err) {
       showProductToast(err instanceof Error ? err.message : 'Platform ürünleri panele alınamadı.', 'error')

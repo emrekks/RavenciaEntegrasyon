@@ -1387,7 +1387,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var fullScan = ReadBoolean(payloadJson, "full");
         var processedProducts = 0;
         if (jobId is { } currentJob)
-            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, 0, fullScan ? "Trendyol kataloğu taranıyor" : "Yeni ve değişen ürünler taranıyor", cancellationToken);
+            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, fullScan ? "Trendyol kataloğu taranıyor · İlk sayfa bekleniyor" : "Yeni ve değişen ürünler taranıyor · İlk sayfa bekleniyor", cancellationToken);
         int? totalProducts = null;
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
         if (fullScan && cursor.OpaqueCursor is not null)
@@ -1414,8 +1414,24 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             : await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == categoryReferences.Id && x.ResourceType == "CATEGORIES" && x.IsActive).ToListAsync(cancellationToken);
         var categoryContexts = new Dictionary<string, CategoryAttributeContext>(StringComparer.Ordinal);
         var nextCursor = cursor.OpaqueCursor;
+        var pageNumber = 0;
         do
         {
+            pageNumber++;
+            if (jobId is { } readingJob)
+            {
+                var scanLabel = fullScan ? "Trendyol kataloğu taranıyor" : "Yeni ve değişen ürünler taranıyor";
+                await UpdateProductSyncProgressAsync(
+                    tenantId,
+                    readingJob,
+                    processedProducts,
+                    totalProducts,
+                    totalProducts is { } knownTotal && knownTotal > 0
+                        ? Math.Clamp((int)Math.Floor(processedProducts * 100d / knownTotal), 0, 99)
+                        : null,
+                    $"{scanLabel} · {pageNumber}. sayfa okunuyor",
+                    cancellationToken);
+            }
             TrackRequest();
             var result = await products.ListCatalogAsync(
                 Context(tenantId, connectionId, correlationId, $"product-sync:{nextCursor ?? "0"}"),
@@ -1426,6 +1442,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             foreach (var _ in result.Value!.Items) TrackReceived();
             processedProducts += result.Value.Items.Count;
             totalProducts ??= result.Value.TotalCount;
+
+            if (jobId is { } receivedJob)
+            {
+                var percent = totalProducts is { } total && total > 0
+                    ? Math.Clamp((int)Math.Floor(processedProducts * 100d / total), 0, 99)
+                    : (int?)null;
+                var label = totalProducts is { } totalCount && totalCount > 0
+                    ? $"{processedProducts:N0} / {totalCount:N0} ürün alındı · {pageNumber}. sayfa"
+                    : $"{processedProducts:N0} ürün alındı · {pageNumber}. sayfa";
+                await UpdateProductSyncProgressAsync(tenantId, receivedJob, processedProducts, totalProducts, percent, label, cancellationToken);
+            }
 
             foreach (var snapshot in result.Value!.Items
                          .Where(x => !string.IsNullOrWhiteSpace(x.ExternalProductId))
@@ -1438,15 +1465,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, cancellationToken);
             }
 
-            if (jobId is { } progressJob)
+            if (jobId is { } processedJob)
             {
                 var percent = totalProducts is { } total && total > 0
                     ? Math.Clamp((int)Math.Floor(processedProducts * 100d / total), 0, 99)
                     : (int?)null;
                 var label = totalProducts is { } totalCount && totalCount > 0
-                    ? $"{processedProducts:N0} / {totalCount:N0} ürün işlendi"
-                    : $"{processedProducts:N0} ürün işlendi · toplam sayı bekleniyor";
-                await UpdateProductSyncProgressAsync(tenantId, progressJob, processedProducts, totalProducts, percent, label, cancellationToken);
+                    ? $"{processedProducts:N0} / {totalCount:N0} ürün işlendi · {pageNumber}. sayfa tamamlandı"
+                    : $"{processedProducts:N0} ürün işlendi · {pageNumber}. sayfa tamamlandı";
+                await UpdateProductSyncProgressAsync(tenantId, processedJob, processedProducts, totalProducts, percent, label, cancellationToken);
             }
 
             if (result.Value.HasMore)
