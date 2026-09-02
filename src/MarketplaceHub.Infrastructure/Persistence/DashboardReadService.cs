@@ -165,7 +165,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                     invoicesByPackage.GetValueOrDefault(package.Id) ?? invoicesByOrder.GetValueOrDefault(order.Id),
                     package.MarketplaceInvoiceStatus,
                     order.CustomerSnapshotJson,
-                    [package.RawStatus]) != "FATURA_KESILDI");
+                    [package.RawStatus]) == "FATURA_BEKLIYOR");
         }
 
         var stockRows = await (from variant in db.ProductVariants.AsNoTracking()

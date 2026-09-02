@@ -1199,6 +1199,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     cursor.OpaqueCursor = SerializeOrderSyncState(state);
                     cursor.Version++;
                     await db.SaveChangesAsync(cancellationToken);
+                    // Recovery is a low-priority backfill. Persist the next
+                    // window and release the orders lane between windows so
+                    // lifecycle/reconciliation jobs can repair current orders.
+                    if (cursorResourceType == "ORDERS_RECOVERY") return true;
                     await Task.Delay(OrderStreamRequestInterval, cancellationToken);
                     continue;
                 }
@@ -1223,6 +1227,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             else if (state.Mode == OrderSyncMode.Baseline && HasEarlierOrderWindow(state))
             {
                 state = state with { WindowIndex = state.WindowIndex + 1, StoreFrontIndex = 0, NextCursor = null };
+                if (cursorResourceType == "ORDERS_RECOVERY")
+                {
+                    cursor.OpaqueCursor = SerializeOrderSyncState(state);
+                    cursor.Version++;
+                    await db.SaveChangesAsync(cancellationToken);
+                    return true;
+                }
             }
             else
             {
