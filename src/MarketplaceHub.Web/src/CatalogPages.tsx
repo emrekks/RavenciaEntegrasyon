@@ -24,6 +24,25 @@ type Product = Versioned & {
   options?: Array<{ id: string; label: string; values: Array<{ id: string; label: string }> }>
   mediaUrls?: string[]
 }
+
+function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[], primaryImageUrl: string | null) {
+  const ordered: string[] = []
+  const seen = new Set<string>()
+  const add = (url: string | null | undefined) => {
+    const normalized = url?.trim()
+    if (!normalized) return
+    const key = normalized.toLocaleLowerCase('tr-TR')
+    if (seen.has(key)) return
+    seen.add(key)
+    ordered.push(normalized)
+  }
+
+  for (const variant of variants) for (const url of variant.mediaUrls ?? []) add(url)
+  for (const url of productMediaUrls) add(url)
+  add(primaryImageUrl)
+  return ordered
+}
+
 type ProductListFilters = { search: string; status: string; platform: string; stock: string }
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number; platforms: string[] }
 type ImportSession = Versioned & { sourceType: string; status: string; totalRows: number; validRows: number; errorRows: number; reviewRows: number; sourceAssetId: string | null }
@@ -877,7 +896,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (initializedEditProductKey.current === productKey) return
     initializedEditProductKey.current = productKey
     const primary = product.variants[0]
-    const savedMediaUrls = product.mediaUrls?.length ? product.mediaUrls : (product.primaryImageUrl ? [product.primaryImageUrl] : [])
+    const savedMediaUrls = orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl)
     setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: primary?.sku ?? '', barcode: primary?.barcode ?? '', modelCode: primary?.modelCode ?? product.modelCode ?? '', weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(primary?.listPrice ?? primary?.salePrice ?? 0), salePrice: String(primary?.salePrice ?? 0), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
     setMediaFiles([])
