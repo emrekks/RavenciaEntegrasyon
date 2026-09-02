@@ -524,7 +524,24 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var product = await VisibleProducts(tenantId).SingleOrDefaultAsync(x => x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken);
         var views = await BuildProductViewsAsync(tenantId, [product], variants, cancellationToken);
-        return ServiceResult<ProductView>.Ok(views[0]);
+        var modelCode = variants.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
+        var familyProductIds = string.IsNullOrWhiteSpace(modelCode)
+            ? [id]
+            : await (from siblingVariant in db.ProductVariants.AsNoTracking()
+                     join siblingProduct in VisibleProducts(tenantId) on siblingVariant.ProductId equals siblingProduct.Id
+                     where siblingVariant.ModelCode != null && siblingVariant.ModelCode == modelCode
+                     select siblingProduct.Id).Distinct().ToListAsync(cancellationToken);
+        var familyMediaRows = await (from item in db.ProductMedia.AsNoTracking()
+                                     join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
+                                     where item.TenantId == tenantId && familyProductIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
+                                     orderby item.SortOrder
+                                     select new { asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+        var familyMediaUrls = familyMediaRows
+            .Select(item => item.Classification == "PRODUCT_MEDIA_URL" ? item.Url : $"/api/v1/files/product-media/{item.Id:D}/content")
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return ServiceResult<ProductView>.Ok(views[0] with { FamilyMediaUrls = familyMediaUrls });
     }
 
     public async Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken)

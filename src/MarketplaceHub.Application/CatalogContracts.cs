@@ -62,7 +62,8 @@ public sealed record ProductView(
     IReadOnlyList<string>? ActivePlatforms = null,
     IReadOnlyList<ProductAttributeAssignmentView>? Attributes = null,
     IReadOnlyList<ProductOptionView>? Options = null,
-    IReadOnlyList<string>? MediaUrls = null);
+    IReadOnlyList<string>? MediaUrls = null,
+    IReadOnlyList<string>? FamilyMediaUrls = null);
 public sealed record ProductSummaryView(
     int TotalCount,
     int ActiveCount,

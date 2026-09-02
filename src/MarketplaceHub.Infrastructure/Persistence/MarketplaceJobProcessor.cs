@@ -1735,7 +1735,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 sortOrder++;
                 continue;
             }
-            if (mapped.Role == "OPTION")
+            if (mapped.Role == "OPTION" || IsColorOptionKey(pair.Key))
             {
                 sortOrder++;
                 continue;
@@ -1794,7 +1794,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
-        var remoteHash = Hash(JsonSerializer.Serialize(snapshot));
+        // Keep the import contract version in the hash. This invalidates older
+        // snapshots after changing option-role interpretation, so existing
+        // catalog records receive the corrected color option on the next scan.
+        var remoteHash = Hash(JsonSerializer.Serialize(new
+        {
+            Snapshot = snapshot,
+            OptionRoleVersion = "catalog-options-v2-color"
+        }));
         var isNewProduct = false;
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
         Product? product = link is null
@@ -2160,10 +2167,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         foreach (var pair in options)
         {
             var optionKey = NormalizeCatalogKey(pair.Key, 320);
-            if (!categoryContext.Attributes.TryGetValue(optionKey, out var mapped) || mapped.Role != "OPTION") continue;
+            if (!categoryContext.Attributes.TryGetValue(optionKey, out var mapped) || (mapped.Role != "OPTION" && !IsColorOptionKey(pair.Key))) continue;
             panelOptions[mapped.Definition.Name] = await PanelOptionValueAsync(tenantId, connectionId, categoryContext, mapped, pair.Value, cancellationToken);
         }
         return OptionSignature(panelOptions.Count > 0 ? panelOptions : options);
+    }
+
+    private static bool IsColorOptionKey(string value)
+    {
+        var normalized = NormalizeCatalogKey(value, 320).Replace(" ", "", StringComparison.Ordinal);
+        return normalized is "RENK" or "COLOR" or "WEBCOLOR" or "COLOUR";
     }
 
     private async Task<string> PanelOptionValueAsync(Guid tenantId, Guid connectionId, CategoryAttributeContext categoryContext, LocalCategoryAttribute mapped, string remoteValue, CancellationToken cancellationToken)
@@ -2191,7 +2204,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var optionKey = NormalizeCatalogKey(pair.Key, 160); var valueKey = NormalizeCatalogKey(pair.Value, 160);
             if (string.IsNullOrWhiteSpace(optionKey) || string.IsNullOrWhiteSpace(valueKey)) continue;
             LocalCategoryAttribute? mapped = null;
-            if (categoryContext is not null && (!categoryContext.Attributes.TryGetValue(optionKey, out mapped) || mapped.Role != "OPTION")) continue;
+            if (categoryContext is not null && (!categoryContext.Attributes.TryGetValue(optionKey, out mapped) || (mapped.Role != "OPTION" && !IsColorOptionKey(pair.Key)))) continue;
             var panelLabel = mapped?.Definition.Name ?? pair.Key;
             var panelValue = mapped is null ? pair.Value : await PanelOptionValueAsync(tenantId, connectionId, categoryContext!, mapped, pair.Value, cancellationToken);
             optionKey = NormalizeCatalogKey(panelLabel, 160);

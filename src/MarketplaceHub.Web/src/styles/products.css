@@ -2712,6 +2712,8 @@ body:has(.product-add-page),
 .product-media-link-button b { display: grid; width: 16px; height: 16px; place-items: center; color: #5b65ef; background: #fff; border-radius: 50%; font-size: 9px; }
 .app-shell.stitch-shell .product-add-page .image-preview-card { width: 116px !important; aspect-ratio: 2 / 3 !important; overflow: hidden !important; }
 .app-shell.stitch-shell .product-add-page .image-preview-card img { width: 100% !important; height: 100% !important; object-fit: cover !important; }
+.app-shell.stitch-shell .product-add-page .family-media-preview { border-color: rgba(105, 117, 255, .65) !important; background: rgba(105, 117, 255, .06) !important; }
+.app-shell.stitch-shell .product-add-page .family-media-preview figcaption { color: #9da7ff !important; }
 @keyframes product-import-progress-slide { from { transform: translateX(-120%); } to { transform: translateX(340%); } }
 @media (max-width: 680px) {
   .app-shell.stitch-shell .products-page .products-page-actions { justify-content: stretch; }
