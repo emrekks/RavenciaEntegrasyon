@@ -82,6 +82,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             var invoice = (package is not null ? invoicesByPackage.GetValueOrDefault(package.Id) : null)
                 ?? orderPackages.Select(x => invoicesByPackage.GetValueOrDefault(x.Id)).FirstOrDefault(x => x is not null)
                 ?? invoicesByOrder.GetValueOrDefault(order.Id);
+            var invoiceDocumentUrl = orderPackages
+                .Select(x => ValidInvoiceDocumentUrl(x.MarketplaceInvoiceUrl))
+                .FirstOrDefault(x => x is not null)
+                ?? InvoiceDocumentUrl(order.CustomerSnapshotJson);
             var connection = connections.GetValueOrDefault(order.ConnectionId);
             var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
             var dueAt = order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson);
@@ -103,7 +107,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 orderLines.Select(x => ResolveVariant(x, variants, variantsBySku, variantsByBarcode)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
                 orderLines.Sum(x => x.OrderedQuantity), customer.Email, customer.TaxOrIdentityNumber,
                 order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.GrossAmount, order.DiscountAmount,
-                lineViews, packageViews, invoice?.Id, InvoiceDocumentUrl(order.CustomerSnapshotJson));
+                lineViews, packageViews, invoice?.Id, invoiceDocumentUrl);
         }).ToList();
         var hasMore = orders.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -215,6 +219,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var invoice = packages.Select(x => invoices.FirstOrDefault(invoice => invoice.PackageId == x.Id)).FirstOrDefault(x => x is not null)
             ?? invoices.FirstOrDefault(x => x.PackageId == null)
             ?? invoices.FirstOrDefault();
+        var invoiceDocumentUrl = packages
+            .Select(x => ValidInvoiceDocumentUrl(x.MarketplaceInvoiceUrl))
+            .FirstOrDefault(x => x is not null)
+            ?? InvoiceDocumentUrl(order.CustomerSnapshotJson);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<OrderDetailView>.Ok(new(
             order.Id, order.OrderNumber, order.DerivedStatus, order.Currency, order.GrossAmount, order.DiscountAmount, order.NetAmount, order.OrderedAt,
@@ -222,7 +230,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
             order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabel(invoice, packages.FirstOrDefault()?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus)),
-            customer.Phone, customer.IsEInvoiceAvailable, InvoiceDocumentUrl(order.CustomerSnapshotJson)));
+            customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl));
     }
 
     public async Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken)
@@ -837,7 +845,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     private static string? InvoiceDocumentUrl(string customerJson)
     {
-        var value = JsonText(customerJson, "invoiceLink");
+        return ValidInvoiceDocumentUrl(JsonText(customerJson, "invoiceLink"));
+    }
+
+    private static string? ValidInvoiceDocumentUrl(string? value)
+    {
         return Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
     }
 
