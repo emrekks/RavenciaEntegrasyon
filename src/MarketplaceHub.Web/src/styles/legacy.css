@@ -1100,8 +1100,8 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
 .product-image-modal {
   z-index: 100000 !important;
   position: relative !important;
-  max-width: 540px !important;
-  width: min(540px, 92vw) !important;
+  max-width: 520px !important;
+  width: min(520px, 92vw, calc((88vh - 72px) * 2 / 3)) !important;
   max-height: 88vh !important;
   background: var(--rv-surface) !important;
   border: 1px solid var(--rv-line-strong) !important;
@@ -1131,25 +1131,34 @@ aside nav::-webkit-scrollbar, aside .settings-nav::-webkit-scrollbar {
 }
 
 .product-image-modal-body {
-  padding: 20px !important;
+  padding: 0 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  background: #ffffff !important;
+  width: 100% !important;
+  aspect-ratio: 2 / 3 !important;
+  box-sizing: border-box !important;
+  background: #eef2f6 !important;
   border-radius: 0 0 var(--rv-radius-md) var(--rv-radius-md) !important;
-  min-height: 280px !important;
-  max-height: calc(85vh - 70px) !important;
-  overflow: auto !important;
+  min-height: 0 !important;
+  max-height: calc(88vh - 72px) !important;
+  overflow: hidden !important;
 }
 
 .product-image-modal-body img,
 .product-image-modal > img {
-  max-width: 100% !important;
-  max-height: min(480px, 60vh) !important;
-  width: auto !important;
-  height: auto !important;
-  object-fit: contain !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: cover !important;
   display: block !important;
-  margin: 0 auto !important;
-  border-radius: 4px !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
+@media (max-width: 620px) {
+  .product-image-modal {
+    width: min(calc(100vw - 32px), calc((88vh - 72px) * 2 / 3)) !important;
+  }
 }
