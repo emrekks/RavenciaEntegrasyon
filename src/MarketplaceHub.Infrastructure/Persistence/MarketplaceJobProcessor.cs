@@ -1242,6 +1242,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
+        var lifecycleBatchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:OrderLifecycle:BatchSize", 25), 1, 100);
         var externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()
                                       join order in db.Orders.AsNoTracking()
                                           on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
@@ -1249,7 +1250,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                                       group package by order.ExternalOrderId into openOrder
                                       orderby openOrder.Min(x => x.UpdatedAt)
                                       select openOrder.Key)
-            .Take(50)
+            .Take(lifecycleBatchSize)
             .ToListAsync(cancellationToken);
 
         var recoveredOrders = new List<RemoteOrder>();

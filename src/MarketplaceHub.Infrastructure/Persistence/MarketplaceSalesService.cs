@@ -824,7 +824,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (remote is "RECEIVED") return "FATURA_KONTROLDE";
         if (remote is "REJECTED") return "FATURA_REDDEDILDI";
         if (remote is "NOTINVOICED") return "FATURA_BEKLIYOR";
-        return "FATURA_BEKLIYOR";
+        // Missing marketplace evidence is not the same as an explicit
+        // NotInvoiced response. Historical Trendyol payloads often omit the
+        // invoice field entirely; presenting those packages as actionable
+        // invoice work creates false Dashboard counts.
+        return "FATURA_BILINMIYOR";
     }
 
     internal static string InvoiceLabel(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses)

@@ -22,6 +22,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                               where policy.Enabled && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.PlatformCode == "TRENDYOL"
                               select new { Policy = policy, Connection = connection }).ToListAsync(cancellationToken);
         var reservedExecutionGroups = new HashSet<string>(StringComparer.Ordinal);
+        var backgroundOrderReservations = new HashSet<Guid>();
 
         foreach (var row in policies)
         {
@@ -45,14 +46,20 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var lifecycleAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderStatusSync, StringComparer.Ordinal);
             var activeOrderLane = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == "orders");
             var canQueueLifecycleBehindOrderLane = isOrderLifecycle && activeOrderLane && !lifecycleAlreadyQueued;
+            var isOrderBackground = IsOrderBackgroundJob(definition.Value.JobType);
+            var backgroundOrderAlreadyQueued = activeJobTypes.Any(IsOrderBackgroundJob);
+            var canQueueOrderBackgroundBehindOrderLane = isOrderBackground
+                && activeOrderLane
+                && !backgroundOrderAlreadyQueued
+                && !backgroundOrderReservations.Contains(row.Connection.Id);
             // The jobs added during this pass are not visible to the AsNoTracking
             // queries until SaveChangesAsync. Reserve the provider lane in memory
             // as well, otherwise multiple order policies can be queued together.
             // A lifecycle scan is the exception: one pending lifecycle job may
             // wait behind the hot order stream, otherwise a continuously busy
             // stream can starve status refreshes forever.
-            if ((active && !canQueueLifecycleBehindOrderLane)
-                || (reservedExecutionGroups.Contains(executionGroup) && !canQueueLifecycleBehindOrderLane)) continue;
+            if ((active && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)
+                || (reservedExecutionGroups.Contains(executionGroup) && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)) continue;
             var latest = await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
@@ -64,6 +71,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var dedup = $"{definition.Value.DedupPrefix}:{bucket}";
             if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.JobType == definition.Value.JobType && x.JobDedupKey == dedup, cancellationToken)) continue;
             reservedExecutionGroups.Add(executionGroup);
+            if (canQueueOrderBackgroundBehindOrderLane) backgroundOrderReservations.Add(row.Connection.Id);
             db.IntegrationJobs.Add(NewJob(row.Policy.TenantId, row.Connection.Id, definition.Value.JobType, dedup, definition.Value.PayloadJson, now, $"scheduler-{Guid.NewGuid():N}"));
             added++;
         }
@@ -199,6 +207,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         current.IntervalSeconds == 300 && current.OverlapSeconds is 60 or 120 && current.JitterSeconds == 15
         || current.ResourceType == "ORDERS" && current.IntervalSeconds == 30 && current.OverlapSeconds == 600 && current.JitterSeconds == 2
         || current.ResourceType == "RETURNS" && current.IntervalSeconds == 60 && current.OverlapSeconds == 900 && current.JitterSeconds == 5;
+
+    private static bool IsOrderBackgroundJob(string jobType) =>
+        jobType is MarketplaceJobTypes.OrderRecoverySync
+            or MarketplaceJobTypes.OrderReconciliation
+            or MarketplaceJobTypes.OrderInvoiceReconciliation;
 
     private (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId) => resourceType switch
     {

@@ -16,10 +16,10 @@ public sealed class MarketplaceSalesInvoiceLabelTests
     }
 
     [Fact]
-    public void NonInvoicedPackageStatusStillWaitsWhenRemoteInvoiceStatusIsMissing()
+    public void MissingRemoteInvoiceStatusIsPresentedAsUnknownInsteadOfWaiting()
     {
         var label = MarketplaceSalesService.InvoiceLabel(null, "{}", ["Delivered"]);
 
-        Assert.Equal("FATURA_BEKLIYOR", label);
+        Assert.Equal("FATURA_BILINMIYOR", label);
     }
 }
