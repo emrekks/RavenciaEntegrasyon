@@ -28,6 +28,7 @@ type Product = Versioned & {
 function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[], primaryImageUrl: string | null) {
   const ordered: string[] = []
   const seen = new Set<string>()
+  const seenColors = new Set<string>()
   const add = (url: string | null | undefined) => {
     const normalized = url?.trim()
     if (!normalized) return
@@ -37,10 +38,30 @@ function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[
     ordered.push(normalized)
   }
 
-  for (const variant of variants) for (const url of variant.mediaUrls ?? []) add(url)
-  for (const url of productMediaUrls) add(url)
+  const colorVariants = variants.some(variant => variantColorKey(variant) !== null)
+  if (colorVariants) {
+    for (const variant of variants) {
+      const color = variantColorKey(variant)
+      const group = color ?? `variant:${variant.id}`
+      if (seenColors.has(group)) continue
+      seenColors.add(group)
+      add(variant.mediaUrls?.[0])
+    }
+    if (!ordered.length) add(productMediaUrls[0])
+  } else {
+    for (const variant of variants) for (const url of variant.mediaUrls ?? []) add(url)
+    for (const url of productMediaUrls) add(url)
+  }
   add(primaryImageUrl)
   return ordered
+}
+
+function variantColorKey(variant: Variant) {
+  const color = parseVariantOptionSignature(variant.optionSignature).find(option => {
+    const name = option.name.replace(/\s+/g, '').toLocaleUpperCase('tr-TR')
+    return name === 'RENK' || name === 'COLOR' || name === 'COLOUR' || name === 'WEBCOLOR'
+  })
+  return color?.value.trim().toLocaleLowerCase('tr-TR') || null
 }
 
 type ProductListFilters = { search: string; status: string; platform: string; stock: string }
