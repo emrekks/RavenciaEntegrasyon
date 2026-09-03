@@ -2367,7 +2367,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<string> PanelOptionValueAsync(Guid tenantId, Guid connectionId, CategoryAttributeContext categoryContext, LocalCategoryAttribute mapped, string remoteValue, CancellationToken cancellationToken)
     {
-        var remote = mapped.Values.FirstOrDefault(value => NormalizeCatalogKey(value.Name, 320) == NormalizeCatalogKey(remoteValue, 320));
+        var cleanedRemoteValue = CleanCatalogOptionValue(remoteValue);
+        var remote = mapped.Values.FirstOrDefault(value => NormalizeCatalogKey(value.Name, 320) == NormalizeCatalogKey(cleanedRemoteValue, 320));
         if (remote is not null)
         {
             var scope = $"{categoryContext.ExternalCategoryId}/{mapped.Remote.ExternalId}";
@@ -2378,8 +2379,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 if (localValue is not null) return localValue.Value;
             }
         }
-        var direct = await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == NormalizeCatalogKey(remoteValue, 320), cancellationToken);
-        return direct?.Value ?? remoteValue;
+        var direct = await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == NormalizeCatalogKey(cleanedRemoteValue, 320), cancellationToken);
+        return direct?.Value ?? cleanedRemoteValue;
     }
 
     private async Task UpsertCatalogOptions(Guid tenantId, Guid connectionId, Guid productId, Guid variantId, IReadOnlyDictionary<string, string> options, CategoryAttributeContext? categoryContext, CancellationToken cancellationToken)
@@ -2441,7 +2442,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     }
 
     private static string ProductTitle(string? title, string externalId) => Short(string.IsNullOrWhiteSpace(title) ? $"Trendyol ürün {externalId}" : title.Trim(), 320);
-    private static string OptionSignature(IReadOnlyDictionary<string, string> options) => string.Join(" | ", options.Select(x => $"{Short(x.Key, 80)}: {Short(x.Value, 120)}"));
+    private static string CleanCatalogOptionValue(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Trim('"', '“', '”').Trim();
+    private static string OptionSignature(IReadOnlyDictionary<string, string> options) => string.Join(" | ", options.Select(x => $"{Short(x.Key, 80)}: {Short(CleanCatalogOptionValue(x.Value), 120)}"));
     private TimeSpan ProductUpdatePollDelay(DateTimeOffset submittedAt)
     {
         var now = timeProvider.GetUtcNow();

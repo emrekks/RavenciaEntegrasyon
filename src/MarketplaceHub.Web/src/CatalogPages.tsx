@@ -176,9 +176,20 @@ function parseVariantOptionSignature(signature: string): ParsedVariantOption[] {
     const separatorIndex = part.search(/\s*[:=]/)
     if (separatorIndex < 0) return []
     const name = part.slice(0, separatorIndex).trim()
-    const value = part.slice(separatorIndex).replace(/^\s*[:=]\s*/, '').trim()
+    const value = cleanOptionValue(part.slice(separatorIndex).replace(/^\s*[:=]\s*/, ''))
     return name && value ? [{ name, value }] : []
   })
+}
+
+function cleanOptionValue(value: string) {
+  return value.replace(/^["“”]+|["“”]+$/g, '').trim()
+}
+
+function variantSignatureKey(signature: string) {
+  return parseVariantOptionSignature(signature)
+    .map(option => `${option.name.replace(/\s+/g, '').toLocaleLowerCase('tr-TR')}:${cleanOptionValue(option.value).toLocaleLowerCase('tr-TR')}`)
+    .sort()
+    .join('|')
 }
 
 function isVariantOptionName(name: string) {
@@ -780,7 +791,7 @@ function buildVariantMatrix(requirements: CategoryRequirement[], variantAttribut
   const prefix = (baseSku || 'URUN').trim().replace(/\s+/g, '-').toLocaleUpperCase('tr-TR')
   return combinations.map((entry, index) => ({
     key: crypto.randomUUID(),
-    optionSignature: Object.entries(entry.options).map(([name, value]) => `${name}:${value}`).join('_'),
+    optionSignature: Object.entries(entry.options).map(([name, value]) => `${name}:${cleanOptionValue(value)}`).join('_'),
     options: entry.options,
     attributeValueIds: entry.attributeValueIds,
     sku: `${prefix}-${index + 1}`,
@@ -1007,9 +1018,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         return
       }
       setVariantRows(current => {
-        const existingMap = new Map(current.map(row => [row.optionSignature, row]))
+        const existingMap = new Map(current.map(row => [variantSignatureKey(row.optionSignature), row]))
         const merged = generated.map(gen => {
-          const match = existingMap.get(gen.optionSignature)
+          const match = existingMap.get(variantSignatureKey(gen.optionSignature))
           if (match) {
             existingMap.delete(gen.optionSignature)
             return match
@@ -1306,6 +1317,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     { title: 'Görsel Kalitesi', detail: hasProductMedia ? `${mediaCount} adet ürün görseli eklendi.` : 'En az bir yüksek çözünürlüklü görsel ekleyin.', ok: hasProductMedia },
     { title: 'Varyant Bilgileri', detail: hasVariantData ? 'Varyant yapısı yayınlanmaya hazır.' : 'Seçilen seçenekler için varyant satırlarını oluşturun.', ok: hasVariantData }
   ]
+  const canAddVariantCombinations = useMemo(() => {
+    if (!variantAttributeIds.length) return false
+    try {
+      const generated = buildVariantMatrix(requirements.data ?? [], variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, initialStock)
+      const existing = new Set(variantRows.map(row => variantSignatureKey(row.optionSignature)))
+      return generated.some(row => !existing.has(variantSignatureKey(row.optionSignature)))
+    } catch { return false }
+  }, [attributeSelections, fallbackListPrice, fallbackSalePrice, form.baseSku, form.modelCode, form.title, initialStock, requirements.data, variantAttributeIds, variantRows])
 
   return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog"><p className="lede page-lede">Ürün bilgilerini ve varyantları hazırlayın; yayınlama adımında kanalları seçip gönderim kuyruğunu başlatın.</p><div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün bilgileri ve varyantlar</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div><form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid} noValidate>
     <div className="product-top-layout">
@@ -1383,7 +1402,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
              <small>{variantAttributeIds.length ? `${variantAttributeIds.map(id => allRequirements.find(item => item.attributeId === id)?.attribute.name).filter(Boolean).join(' × ')} · ${variantAttributeIds.reduce((total, id) => total * Math.max(1, attributeSelections[id]?.length ?? 0), 1)} kombinasyon` : 'Önce seçenek grubunu ve değerlerini işaretleyin.'}</small>
           </div>
           <div className="attribute-variant-actions">
-            <button type="button" onClick={generateVariants}>Ürünleri ekle</button>
+            <button type="button" onClick={generateVariants} disabled={!canAddVariantCombinations}>{canAddVariantCombinations ? 'Ürünleri ekle' : 'Seçenekler güncel'}</button>
           </div>
         </div>
         {!form.categoryId ? (
@@ -1394,9 +1413,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <div className="unknown"><strong>Kategori özellikleri alınamadı</strong><p>Önce kategori eşleme ekranında ilgili kategorinin özellik başlıklarını hazırlayın.</p></div>
         ) : (
           <div className="attribute-builder-list">
-            {visibleOptionRequirements.map((item, index) => {
+            {visibleOptionRequirements.map(item => {
               const expandable = item.attribute.values.length > 0
-              const expanded = !expandable || (expandedOptionGroupIds[item.attributeId] ?? index === 0)
+              const expanded = !expandable || (expandedOptionGroupIds[item.attributeId] ?? false)
               return (
               <article className={`attribute-builder-card ${expanded ? 'is-open' : ''}`} key={item.attributeId}>
                 <button type="button" className="attribute-builder-disclosure" aria-expanded={expanded} aria-controls={`option-values-${item.attributeId}`} disabled={!expandable} onClick={() => setExpandedOptionGroupIds(current => ({ ...current, [item.attributeId]: !expanded }))}>
@@ -1415,7 +1434,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                           className={`option-chip ${isSelected ? 'active' : ''}`}
                           onClick={() => toggleAttributeValue(item.attributeId, value.id)}
                         >
-                          {value.value}
+                          {cleanOptionValue(value.value)}
                         </button>
                       )
                     })}

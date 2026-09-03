@@ -2567,6 +2567,54 @@ body:has(.product-add-page),
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Product editor refinements: compact attributes, clear media action, and balanced copy. */
+.app-shell.stitch-shell .product-add-page .attribute-builder-card:not(.is-open) .attribute-builder-values { display: none !important; }
+.app-shell.stitch-shell .product-add-page .product-media-card .editor-section-title { display: flex !important; align-items: flex-start !important; }
+.app-shell.stitch-shell .product-add-page .product-media-card .editor-section-title > div { min-width: 0 !important; }
+.app-shell.stitch-shell .product-add-page .product-media-card .product-media-link-button { margin-left: auto !important; flex: 0 0 auto !important; }
+.app-shell.stitch-shell .product-add-page .product-media-link-button::before { content: '↗' !important; font-size: 17px !important; }
+.app-shell.stitch-shell .product-add-page .product-media-link-button { width: 42px !important; height: 38px !important; border-radius: 9px !important; }
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-mapping-list {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  align-items: start !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field {
+  min-width: 0 !important;
+  padding: 11px !important;
+  border-radius: 10px !important;
+  background: #151a2b !important;
+  border-color: #30385d !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.required { border-color: rgba(113, 104, 245, .75) !important; }
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-values {
+  max-height: 154px !important;
+  padding-right: 3px !important;
+  overflow-y: auto !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-value {
+  min-height: 29px !important;
+  padding: 0 8px !important;
+  border-radius: 7px !important;
+  font-size: .61rem !important;
+}
+.app-shell.stitch-shell .product-add-page .product-basics-card .product-description-field { min-width: 0 !important; }
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-editor-pro { min-width: 0 !important; width: 100% !important; }
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-canvas,
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-html-editor {
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  line-height: 1.7 !important;
+}
+@media (max-width: 900px) {
+  .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-mapping-list { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+@media (max-width: 600px) {
+  .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-mapping-list { grid-template-columns: 1fr !important; }
+}
 .app-shell.stitch-shell .product-add-page .product-submit-sticky {
   max-width: 100% !important;
   box-sizing: border-box;
