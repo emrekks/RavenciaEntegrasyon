@@ -544,15 +544,36 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     public async Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
         var product = await VisibleProducts(tenantId).SingleOrDefaultAsync(x => x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>();
-        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken);
-        var views = await BuildProductViewsAsync(tenantId, [product], variants, cancellationToken);
-        var modelCode = variants.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
+        var ownVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken);
+        var modelCode = ownVariants.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
         var familyProductIds = string.IsNullOrWhiteSpace(modelCode)
             ? [id]
             : await (from siblingVariant in db.ProductVariants.AsNoTracking()
                      join siblingProduct in VisibleProducts(tenantId) on siblingVariant.ProductId equals siblingProduct.Id
-                     where siblingVariant.ModelCode != null && siblingVariant.ModelCode == modelCode
+                     where siblingVariant.ModelCode != null && siblingVariant.ModelCode.ToUpper() == modelCode.ToUpper()
                      select siblingProduct.Id).Distinct().ToListAsync(cancellationToken);
+        if (!familyProductIds.Contains(id)) familyProductIds.Add(id);
+        var familyProducts = await VisibleProducts(tenantId)
+            .Where(x => familyProductIds.Contains(x.Id))
+            .OrderBy(x => x.Id == id ? 0 : 1)
+            .ThenBy(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+        var familyVariants = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && familyProductIds.Contains(x.ProductId))
+            .ToListAsync(cancellationToken);
+        var familyViews = await BuildProductViewsAsync(tenantId, familyProducts, familyVariants, cancellationToken);
+        var primaryView = familyViews.First(x => x.Id == id);
+        var allVariants = familyViews.SelectMany(x => x.Variants).ToList();
+        var allOptions = familyViews.SelectMany(x => x.Options ?? [])
+            .GroupBy(x => x.Label, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new ProductOptionView(
+                group.First().Id,
+                group.First().Label,
+                group.SelectMany(x => x.Values)
+                    .GroupBy(value => value.Label, StringComparer.OrdinalIgnoreCase)
+                    .Select(value => value.First())
+                    .ToList()))
+            .ToList();
         var familyMediaRows = await (from item in db.ProductMedia.AsNoTracking()
                                      join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
                                      where item.TenantId == tenantId && familyProductIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
@@ -570,7 +591,14 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        return ServiceResult<ProductView>.Ok(views[0] with { FamilyMediaUrls = familyMediaUrls });
+        return ServiceResult<ProductView>.Ok(primaryView with
+        {
+            Variants = allVariants,
+            TotalStock = allVariants.Sum(x => x.OnHand),
+            StartingPrice = allVariants.Where(x => x.SalePrice is not null).Select(x => x.SalePrice!.Value).DefaultIfEmpty().Min() is var minPrice && minPrice > 0 ? minPrice : null,
+            Options = allOptions,
+            FamilyMediaUrls = familyMediaUrls
+        });
     }
 
     public async Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken)
@@ -586,8 +614,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         // Status updates apply to every existing sale row as well. Load the rows
         // whenever status is present; otherwise a save that only changes the
         // product status leaves its variants on their previous status.
+        var familyVariantProductIds = await ProductFamilyProductIdsAsync(tenantId, product, cancellationToken);
         var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0 || command.Status is not null
-            ? await db.ProductVariants.Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken)
+            ? await db.ProductVariants.Where(x => x.TenantId == tenantId && familyVariantProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken)
             : [];
         if (variantUpdates.Count > 0)
         {
@@ -597,7 +626,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             if (proposedSkus.Any(string.IsNullOrWhiteSpace) || proposedSkus.Distinct().Count() != proposedSkus.Length) return Invalid<ProductView>("variantUpdates", "Stok kodları boş veya tekrarlı olamaz.");
             var proposedBarcodes = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? Normalize(update.Barcode ?? string.Empty) : variant.BarcodeNormalized).Where(value => !string.IsNullOrWhiteSpace(value)).Cast<string>().ToArray();
             if (proposedBarcodes.Distinct().Count() != proposedBarcodes.Length) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkodlar ürün içinde benzersiz olmalıdır.");
-            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.ProductId != id && (proposedSkus.Contains(x.SkuNormalized) || x.BarcodeNormalized != null && proposedBarcodes.Contains(x.BarcodeNormalized)), cancellationToken)) return Conflict<ProductView>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod başka bir varyantla çakışıyor.");
+            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId) && (proposedSkus.Contains(x.SkuNormalized) || x.BarcodeNormalized != null && proposedBarcodes.Contains(x.BarcodeNormalized)), cancellationToken)) return Conflict<ProductView>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod başka bir varyantla çakışıyor.");
             var updatedAt = timeProvider.GetUtcNow();
             foreach (var update in variantUpdates)
             {
@@ -870,6 +899,22 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static bool ReusePublicationJob(IntegrationJob job) => job.Status is not JobStatus.Blocked and not JobStatus.Cancelled;
     private static string JobWire(JobStatus value) => value switch { JobStatus.RetryScheduled => "RETRY_SCHEDULED", JobStatus.ManualReview => "MANUAL_REVIEW", _ => value.ToString().ToUpperInvariant() };
+
+    private async Task<List<Guid>> ProductFamilyProductIdsAsync(Guid tenantId, Product product, CancellationToken cancellationToken)
+    {
+        var modelCode = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.ModelCode != null)
+            .Select(x => x.ModelCode)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(modelCode)) return [product.Id];
+
+        var ids = await (from siblingVariant in db.ProductVariants.AsNoTracking()
+                         join siblingProduct in VisibleProducts(tenantId) on siblingVariant.ProductId equals siblingProduct.Id
+                         where siblingVariant.ModelCode != null && siblingVariant.ModelCode.ToUpper() == modelCode.ToUpper()
+                         select siblingProduct.Id).Distinct().ToListAsync(cancellationToken);
+        if (!ids.Contains(product.Id)) ids.Add(product.Id);
+        return ids;
+    }
 
     private async Task<IReadOnlyList<ProductView>> BuildProductViewsAsync(Guid tenantId, IReadOnlyList<Product> products, IReadOnlyList<ProductVariant> variants, CancellationToken cancellationToken)
     {
