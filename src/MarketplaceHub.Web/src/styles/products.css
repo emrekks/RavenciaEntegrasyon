@@ -2620,6 +2620,163 @@ body:has(.product-add-page),
   grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)) !important;
   gap: 6px !important;
 }
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown {
+  position: relative;
+  min-width: 0;
+  z-index: 2;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-select-trigger {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100% !important;
+  min-height: 45px !important;
+  padding: 7px 10px !important;
+  color: #d6d9f5 !important;
+  text-align: left;
+  background: #1a2035 !important;
+  border: 1px solid #394568 !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-select-trigger:hover,
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-select-trigger[aria-expanded="true"] {
+  background: #222b4a !important;
+  border-color: #7380ef !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-select-trigger.active {
+  color: #fff !important;
+  background: linear-gradient(180deg, #6875ff, #5964df) !important;
+  border-color: #a5adff !important;
+  box-shadow: 0 4px 10px rgba(98, 110, 255, .22) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-select-trigger > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-select-trigger small {
+  color: #aeb4d3;
+  font-size: .55rem;
+  line-height: 1;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-select-trigger.active small { color: rgba(255, 255, 255, .78); }
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-select-trigger strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: .67rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-select-trigger > i {
+  flex: 0 0 auto;
+  color: #c5caff;
+  font-size: .9rem;
+  font-style: normal;
+  transition: transform .16s ease;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-select-trigger[aria-expanded="true"] > i { transform: rotate(180deg); }
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: 7px;
+  min-width: 220px;
+  padding: 8px;
+  background: #171c30;
+  border: 1px solid #5865b8;
+  border-radius: 8px;
+  box-shadow: 0 16px 32px rgba(3, 6, 18, .42);
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown-tools {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown-tools input {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px !important;
+  padding: 0 9px !important;
+  color: #eef0ff !important;
+  background: #0f1425 !important;
+  border: 1px solid #3b466e !important;
+  border-radius: 5px !important;
+  font-size: .63rem;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown-tools > span {
+  flex: 0 0 auto;
+  color: #aeb4d3;
+  font-size: .57rem;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-clear-selection {
+  justify-self: start;
+  min-height: 25px !important;
+  padding: 0 7px !important;
+  color: #bec4ff !important;
+  background: transparent !important;
+  border: 1px solid rgba(145, 153, 255, .35) !important;
+  border-radius: 4px !important;
+  font-size: .57rem !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-clear-selection:hover {
+  color: #fff !important;
+  background: rgba(113, 104, 245, .22) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown-options {
+  display: grid;
+  gap: 3px;
+  max-height: 210px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown-options > button {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100% !important;
+  min-height: 31px !important;
+  padding: 0 8px !important;
+  color: #d6d9f5 !important;
+  text-align: left;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 5px !important;
+  font-size: .62rem !important;
+  cursor: pointer !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown-options > button:hover {
+  color: #fff !important;
+  background: rgba(113, 104, 245, .16) !important;
+  border-color: rgba(145, 153, 255, .3) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown-options > button.active {
+  color: #fff !important;
+  background: #626eff !important;
+  border-color: #8991ff !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown-options > button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown-options > button > i {
+  flex: 0 0 auto;
+  color: #fff;
+  font-style: normal;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown-empty {
+  padding: 12px 8px;
+  color: #9da4c5;
+  font-size: .61rem;
+  text-align: center;
+}
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-value {
   min-height: 29px !important;
   padding: 0 7px !important;

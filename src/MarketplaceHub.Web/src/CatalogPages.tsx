@@ -693,6 +693,7 @@ export function ProductsPage() {
 }
 
 type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; attribute: Attribute }
+const CATEGORY_ATTRIBUTE_DROPDOWN_THRESHOLD = 8
 type VariantDraft = {
   key: string
   optionSignature: string
@@ -820,6 +821,62 @@ function productAttributePayload(requirement: CategoryRequirement, selectedIds: 
   return [{ attributeId: requirement.attributeId, valueId: null, textValue: typed, numberValue: null, booleanValue: null, sortOrder }]
 }
 
+function CategoryAttributeValueDropdown({
+  attributeName,
+  dataType,
+  values,
+  selectedValues,
+  onToggleValue
+}: {
+  attributeName: string
+  dataType: string
+  values: Array<{ id: string; value: string }>
+  selectedValues: string[]
+  onToggleValue: (valueId: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
+  const isSingle = dataType === 'SINGLE_SELECT'
+  const selected = values.filter(value => selectedValues.includes(value.id))
+  const normalizedSearch = search.trim().toLocaleLowerCase('tr-TR')
+  const filteredValues = values.filter(value => !normalizedSearch || value.value.toLocaleLowerCase('tr-TR').includes(normalizedSearch))
+  const summary = selected.length === 0 ? 'Değer seçin' : isSingle ? selected[0].value : selected.length === 1 ? selected[0].value : `${selected[0].value} + ${selected.length - 1} değer`
+
+  useEffect(() => {
+    if (!open) return
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
+  }, [open])
+
+  function clearSelection() {
+    selected.forEach(value => onToggleValue(value.id))
+  }
+
+  return <div className="category-attribute-dropdown" ref={rootRef}>
+    <button type="button" className={`category-attribute-select-trigger ${selected.length ? 'active' : ''}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)}>
+      <span><small>{selected.length ? (isSingle ? 'Seçili değer' : `${selected.length} değer seçildi`) : 'Seçim yapın'}</small><strong>{summary}</strong></span>
+      <i aria-hidden="true">⌄</i>
+    </button>
+    {open && <div className="category-attribute-dropdown-menu" role="listbox" aria-label={`${attributeName} değerleri`}>
+      <div className="category-attribute-dropdown-tools">
+        <input autoFocus value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara..." aria-label={`${attributeName} değerlerinde ara`} />
+        <span>{filteredValues.length}/{values.length}</span>
+      </div>
+      {selected.length > 0 && <button type="button" className="category-attribute-clear-selection" onClick={clearSelection}>Seçimi temizle</button>}
+      <div className="category-attribute-dropdown-options">
+        {filteredValues.length ? filteredValues.map(value => {
+          const isSelected = selectedValues.includes(value.id)
+          return <button type="button" role="option" aria-selected={isSelected} className={isSelected ? 'active' : ''} key={value.id} onClick={() => { onToggleValue(value.id); if (isSingle) setOpen(false) }}><span>{value.value}</span><i aria-hidden="true">{isSelected ? '✓' : ''}</i></button>
+        }) : <span className="category-attribute-dropdown-empty">Aramaya uygun değer yok.</span>}
+      </div>
+    </div>}
+  </div>
+}
+
 function CategoryAttributeMappingPanel({
   categoryId,
   categoryLabel,
@@ -877,7 +934,9 @@ function CategoryAttributeMappingPanel({
               </div>
               {item.attribute.values.length > 0 && <span className={`category-attribute-count ${selectedValues.length ? '' : 'is-empty'}`}>{selectedValues.length ? `${selectedValues.length} seçildi` : 'Değer seçin'}</span>}
             </div>
-            {item.attribute.values.length ? (
+            {item.attribute.values.length ? item.attribute.values.length > CATEGORY_ATTRIBUTE_DROPDOWN_THRESHOLD ? (
+              <CategoryAttributeValueDropdown attributeName={item.attribute.name} dataType={item.attribute.dataType} values={item.attribute.values} selectedValues={selectedValues} onToggleValue={valueId => onToggleValue(item.attributeId, valueId)} />
+            ) : (
               <div className="category-attribute-values">
                 {item.attribute.values.map(value => <button type="button" key={value.id} title={value.value} aria-label={`${item.attribute.name}: ${value.value}`} aria-pressed={selectedValues.includes(value.id)} className={`category-attribute-value ${selectedValues.includes(value.id) ? 'active' : ''}`} onClick={() => onToggleValue(item.attributeId, value.id)}>{value.value}</button>)}
               </div>
