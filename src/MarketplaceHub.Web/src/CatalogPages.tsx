@@ -64,6 +64,22 @@ function variantColorKey(variant: Variant) {
   return color?.value.trim().toLocaleLowerCase('tr-TR') || null
 }
 
+function seedVariantMediaRefs(variants: Variant[]) {
+  const mediaByColor = new Map<string, string[]>()
+  for (const variant of variants) {
+    const color = variantColorKey(variant)
+    if (!color) continue
+    const urls = mediaByColor.get(color) ?? []
+    for (const url of variant.mediaUrls ?? []) if (url && !urls.some(item => item.localeCompare(url, undefined, { sensitivity: 'accent' }) === 0)) urls.push(url)
+    mediaByColor.set(color, urls)
+  }
+  return variants.map(variant => {
+    const color = variantColorKey(variant)
+    const urls = color ? (mediaByColor.get(color) ?? variant.mediaUrls ?? []) : (variant.mediaUrls ?? [])
+    return [...new Set(urls.filter(Boolean).map(url => `url|${url}`))]
+  })
+}
+
 type ProductListFilters = { search: string; status: string; platform: string; stock: string }
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number; platforms: string[] }
 type ImportSession = Versioned & { sourceType: string; status: string; totalRows: number; validRows: number; errorRows: number; reviewRows: number; sourceAssetId: string | null }
@@ -940,7 +956,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: primary?.sku ?? '', barcode: primary?.barcode ?? '', modelCode: primary?.modelCode ?? product.modelCode ?? '', weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(primary?.listPrice ?? primary?.salePrice ?? 0), salePrice: String(primary?.salePrice ?? 0), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
     setMediaFiles([])
-    setVariantRows(product.variants.map(variant => ({ key: variant.id, optionSignature: variant.optionSignature || 'Tek Ürün', options: {}, attributeValueIds: {}, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.salePrice ?? 0, listPrice: variant.listPrice ?? variant.salePrice ?? 0, mediaRefs: [...new Set((variant.mediaUrls ?? []).map(url => `url|${url}`))] })))
+    const seededMediaRefs = seedVariantMediaRefs(product.variants)
+    setVariantRows(product.variants.map((variant, index) => ({ key: variant.id, optionSignature: variant.optionSignature || 'Tek Ürün', options: {}, attributeValueIds: {}, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.salePrice ?? 0, listPrice: variant.listPrice ?? variant.salePrice ?? 0, mediaRefs: seededMediaRefs[index] ?? [] })))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
