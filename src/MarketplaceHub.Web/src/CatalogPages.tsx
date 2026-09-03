@@ -169,6 +169,7 @@ function ImageLightboxModal({ image, onClose }: { image: { url: string; title: s
 
 type ProductMediaOption = { value: string; label: string; url?: string; file?: File }
 type VariantMediaGroup = { id: string; name: string; values: Array<{ id: string; value: string }>; attributeId?: string }
+type VariantFilterSelections = Record<string, string[]>
 type ParsedVariantOption = { name: string; value: string }
 
 function parseVariantOptionSignature(signature: string): ParsedVariantOption[] {
@@ -877,6 +878,55 @@ function CategoryAttributeValueDropdown({
   </div>
 }
 
+function VariantFilterDropdown({
+  group,
+  selectedValueIds,
+  onToggle,
+  onClear
+}: {
+  group: VariantMediaGroup
+  selectedValueIds: string[]
+  onToggle: (valueId: string) => void
+  onClear: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
+  const selected = group.values.filter(value => selectedValueIds.includes(value.id))
+  const normalizedSearch = search.trim().toLocaleLowerCase('tr-TR')
+  const filteredValues = group.values.filter(value => !normalizedSearch || value.value.toLocaleLowerCase('tr-TR').includes(normalizedSearch))
+  const summary = selected.length === 0 ? 'Değer seçin' : selected.length === 1 ? selected[0].value : `${selected[0].value} + ${selected.length - 1} değer`
+
+  useEffect(() => {
+    if (!open) return
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
+  }, [open])
+
+  return <div className="variant-filter-field" ref={rootRef}>
+    <button type="button" className={`variant-filter-select-trigger ${selected.length ? 'active' : ''}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)}>
+      <span><small>{selected.length ? `${selected.length} değer seçildi` : group.name}</small><strong>{summary}</strong></span>
+      <i aria-hidden="true">⌄</i>
+    </button>
+    {open && <div className="variant-filter-dropdown-menu" role="listbox" aria-label={`${group.name} filtre değerleri`}>
+      <div className="variant-filter-dropdown-tools">
+        <input autoFocus value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara..." aria-label={`${group.name} değerlerinde ara`} />
+        <span>{filteredValues.length}/{group.values.length}</span>
+      </div>
+      {selected.length > 0 && <button type="button" className="variant-filter-clear-selection" onClick={onClear}>Seçimi temizle</button>}
+      <div className="variant-filter-dropdown-options">
+        {filteredValues.length ? filteredValues.map(value => {
+          const isSelected = selectedValueIds.includes(value.id)
+          return <button type="button" role="option" aria-selected={isSelected} className={isSelected ? 'active' : ''} key={value.id} onClick={() => onToggle(value.id)}><span>{value.value}</span><i aria-hidden="true">{isSelected ? '✓' : ''}</i></button>
+        }) : <span className="variant-filter-dropdown-empty">Aramaya uygun değer yok.</span>}
+      </div>
+    </div>}
+  </div>
+}
+
 function CategoryAttributeMappingPanel({
   categoryId,
   categoryLabel,
@@ -962,7 +1012,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const client = useQueryClient();
   const [error, setError] = useState<unknown>(); const [created, setCreated] = useState<Product>(); const [, setNotice] = useState(''); const [feedback, setFeedback] = useState<OperationFeedback | null>(null); const [submitting, setSubmitting] = useState(false); const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '2', mediaUrls: '', status: 'ACTIVE' })
-  const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
+  const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const initializedEditProductKey = useRef<string | null>(null)
   const initializedEditOptionsKey = useRef<string | null>(null)
   const [wizardStep, setWizardStep] = useState<1 | 2>(1)
@@ -1128,9 +1178,35 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
   function applyBulk() {
     const stock = bulkStock === '' ? null : Number(bulkStock); const sale = bulkSalePrice === '' ? null : Number(bulkSalePrice); const list = bulkListPrice === '' ? null : Number(bulkListPrice)
-    setVariantRows(rows => rows.map(row => ({ ...row, stock: stock == null || !Number.isFinite(stock) ? row.stock : stock, salePrice: sale == null || !Number.isFinite(sale) ? row.salePrice : sale, listPrice: list == null || !Number.isFinite(list) ? row.listPrice : list })))
-    const message = 'Toplu stok ve fiyat değerleri varyantlara uygulandı.'; setNotice(message); showFeedback(message, 'success')
+    const matchingKeys = new Set(variantRows.filter(row => rowMatchesVariantFilters(row)).map(row => row.key))
+    if (hasVariantFilters && !matchingKeys.size) {
+      const message = 'Seçtiğiniz filtrelerle eşleşen varyant bulunamadı.'; setNotice(message); showFeedback(message, 'error')
+      return
+    }
+    setVariantRows(rows => rows.map(row => !matchingKeys.has(row.key) ? row : { ...row, stock: stock == null || !Number.isFinite(stock) ? row.stock : stock, salePrice: sale == null || !Number.isFinite(sale) ? row.salePrice : sale, listPrice: list == null || !Number.isFinite(list) ? row.listPrice : list }))
+    const message = hasVariantFilters ? `Toplu stok ve fiyat değerleri ${matchingKeys.size} seçili varyanta uygulandı.` : 'Toplu stok ve fiyat değerleri tüm varyantlara uygulandı.'; setNotice(message); showFeedback(message, 'success')
   }
+
+  function applyBarcodeToSku() {
+    const rowsWithBarcode = variantRows.filter(row => row.barcode.trim())
+    if (!rowsWithBarcode.length) {
+      const message = 'Stok kodu oluşturmak için önce en az bir barkod girin.'; setNotice(message); showFeedback(message, 'error')
+      return
+    }
+    const rowsWithBarcodeKeys = new Set(rowsWithBarcode.map(row => row.key))
+    setVariantRows(rows => rows.map(row => rowsWithBarcodeKeys.has(row.key) ? { ...row, sku: row.barcode.trim() } : row))
+    const message = `${rowsWithBarcode.length} varyantın stok kodu barkoddan dolduruldu.`; setNotice(message); showFeedback(message, 'success')
+  }
+
+  function toggleVariantFilter(groupId: string, valueId: string) {
+    setVariantFilterSelections(current => {
+      const values = current[groupId] ?? []
+      const nextValues = values.includes(valueId) ? values.filter(item => item !== valueId) : [...values, valueId]
+      return { ...current, [groupId]: nextValues }
+    })
+  }
+
+  function clearVariantFilters() { setVariantFilterSelections({}) }
 
   function openVariantMediaPicker(rowKey: string) {
     const row = variantRows.find(item => item.key === rowKey)
@@ -1153,6 +1229,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
   function rowMatchesVariantMediaValue(row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) {
     return Boolean((group.attributeId && row.attributeValueIds[group.attributeId] === value.id) || rowOptionValue(row, group).trim().toLocaleLowerCase('tr-TR') === value.value.trim().toLocaleLowerCase('tr-TR'))
+  }
+  function rowMatchesVariantFilters(row: VariantDraft) {
+    return variantFilterGroups.every(group => {
+      const selectedValueIds = variantFilterSelections[group.id] ?? []
+      if (!selectedValueIds.length) return true
+      return group.values.filter(value => selectedValueIds.includes(value.id)).some(value => rowMatchesVariantMediaValue(row, group, value))
+    })
   }
   function applyVariantMediaSelection() {
     if (!variantMediaModal) return
@@ -1366,6 +1449,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     }
     return groups
   }, [attributeSelections, optionRequirements, productToEdit.data?.options, variantRows])
+  const variantFilterGroups = useMemo(() => bulkMediaGroups.filter(group => variantRows.some(row => rowOptionValue(row, group).trim())), [bulkMediaGroups, variantRows])
+  const activeVariantFilterEntries = variantFilterGroups.map(group => ({ group, valueIds: variantFilterSelections[group.id] ?? [] })).filter(entry => entry.valueIds.length > 0)
+  const hasVariantFilters = activeVariantFilterEntries.length > 0
+  const matchingVariantCount = variantRows.filter(row => rowMatchesVariantFilters(row)).length
   const selectedBulkMediaGroup = variantMediaModal?.mode === 'bulk' ? bulkMediaGroups.find(group => group.id === variantMediaModal.groupId) : undefined
   const selectedBulkMediaValue = selectedBulkMediaGroup?.values.find(value => value.id === variantMediaModal?.valueId)
   const selectedBulkMediaMatchCount = selectedBulkMediaGroup && selectedBulkMediaValue ? variantRows.filter(row => rowMatchesVariantMediaValue(row, selectedBulkMediaGroup, selectedBulkMediaValue)).length : 0
@@ -1524,10 +1611,15 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       <section className="panel product-step-card">
         <div className="editor-section-title"><span>6</span><div><h2>Ürün seçenek grupları</h2><p>İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</p></div></div>
         {variantRows.length > 0 && <>
-          <div className="variant-bulk-editor"><input value={bulkStock} onChange={event => setBulkStock(event.target.value)} type="number" min="0" placeholder="Tüm stoklar" /><input value={bulkSalePrice} onChange={event => setBulkSalePrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm satış fiyatları" /><input value={bulkListPrice} onChange={event => setBulkListPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm liste fiyatları" /><button type="button" className="secondary" onClick={applyBulk}>Tümüne uygula</button></div>
+          <div className="variant-filter-panel">
+            <div className="variant-filter-panel-head"><div><strong>Varyantları filtrele</strong><span>Renk, beden gibi seçenekleri seçin; eşleşen satırlar aşağıda vurgulansın.</span></div><div className="variant-filter-panel-summary"><b>{hasVariantFilters ? `${matchingVariantCount} varyant seçildi` : 'Tüm varyantlar seçili'}</b>{hasVariantFilters && <button type="button" className="variant-filter-clear" onClick={clearVariantFilters}>Filtreleri temizle</button>}</div></div>
+            {variantFilterGroups.length ? <div className="variant-filter-grid">{variantFilterGroups.map(group => <VariantFilterDropdown key={group.id} group={group} selectedValueIds={variantFilterSelections[group.id] ?? []} onToggle={valueId => toggleVariantFilter(group.id, valueId)} onClear={() => setVariantFilterSelections(current => ({ ...current, [group.id]: [] }))} />)}</div> : <p className="variant-filter-empty">Filtrelemek için seçenek grubu bulunamadı.</p>}
+            <p className="variant-filter-help">Aynı grupta birden fazla değer seçildiğinde <strong>veya</strong>, farklı gruplarda seçim yapıldığında <strong>ve</strong> mantığı uygulanır. Örneğin 2 renk + 2 beden, 4 eşleşen varyantı seçer.</p>
+          </div>
+          <div className="variant-bulk-editor"><input value={bulkStock} onChange={event => setBulkStock(event.target.value)} type="number" min="0" placeholder="Tüm stoklar" /><input value={bulkSalePrice} onChange={event => setBulkSalePrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm satış fiyatları" /><input value={bulkListPrice} onChange={event => setBulkListPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm liste fiyatları" /><button type="button" className="secondary" onClick={applyBulk} disabled={hasVariantFilters && matchingVariantCount === 0}>{hasVariantFilters ? `${matchingVariantCount} seçilene uygula` : 'Tümüne uygula'}</button></div>
             <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary variant-clear-button" onClick={clearVariants}>Oluşan varyantları temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere görsel ata</button></div></div>
         </>}
-           <div className="variant-table-editor"><div className="variant-table-head"><span>#</span><span>Seçenek</span><span>Barkod</span><span>Stok kodu</span><span>Stok</span><span>Fiyat</span><span>Liste fiyatı</span><span>Varyant görseli</span><span>İşlem</span></div>{variantRows.length ? variantRows.map((row, index) => <div className={`variant-table-row ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key} onDragOver={event => event.preventDefault()} onDragEnter={() => { if (!draggedVariantKey || draggedVariantKey === row.key || dragOverVariantKey === row.key) return; swapVariants(draggedVariantKey, row.key); setDragOverVariantKey(row.key) }}><div className="variant-row-lead"><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle" draggable title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; setDraggedVariantKey(row.key); setDragOverVariantKey(null) }} onDragEnd={() => { setDraggedVariantKey(null); setDragOverVariantKey(null) }}><VariantDragHandleIcon /></span></div><input value={row.optionSignature} readOnly /><input className="technical-field barcode-value" value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" /><input className="technical-field sku-value" value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" /><input value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" /><input value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /><input value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /><div className="variant-media-cell"><button type="button" className={`variant-media-button ${row.mediaRefs.length ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç`} title="Varyant görsellerini seç"><VariantImageIcon />{row.mediaRefs.length > 0 && <i aria-hidden="true">{row.mediaRefs.length}</i>}</button></div><button type="button" className="secondary" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))}>Sil</button></div>) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}</div>
+            <div className="variant-table-editor"><div className="variant-table-head"><span>#</span><span>Seçenek</span><span>Barkod</span><span className="variant-table-header-with-action"><span>Stok kodu</span><button type="button" className="variant-header-action" onClick={applyBarcodeToSku} title="Her satırın barkodunu stok kodu yap">Barkoddan doldur</button></span><span>Stok</span><span>Fiyat</span><span>Liste fiyatı</span><span>Varyant görseli</span><span>İşlem</span></div>{variantRows.length ? variantRows.map((row, index) => { const matchesFilter = rowMatchesVariantFilters(row); return <div className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key} onDragOver={event => event.preventDefault()} onDragEnter={() => { if (!draggedVariantKey || draggedVariantKey === row.key || dragOverVariantKey === row.key) return; swapVariants(draggedVariantKey, row.key); setDragOverVariantKey(row.key) }}><div className="variant-row-lead"><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle" draggable title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; setDraggedVariantKey(row.key); setDragOverVariantKey(null) }} onDragEnd={() => { setDraggedVariantKey(null); setDragOverVariantKey(null) }}><VariantDragHandleIcon /></span></div><input value={row.optionSignature} readOnly /><input className="technical-field barcode-value" value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" /><input className="technical-field sku-value" value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" /><input value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" /><input value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /><input value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /><div className="variant-media-cell"><button type="button" className={`variant-media-button ${row.mediaRefs.length ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç`} title="Varyant görsellerini seç"><VariantImageIcon />{row.mediaRefs.length > 0 && <i aria-hidden="true">{row.mediaRefs.length}</i>}</button></div><button type="button" className="secondary" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))}>Sil</button></div> }) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}</div>
       </section>
     </div></div>
 

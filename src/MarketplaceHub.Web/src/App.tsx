@@ -141,6 +141,14 @@ function useOperationsRealtime(enabled: boolean) {
 export function App() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me'), retry: false })
   useOperationsRealtime(me.data?.state === 'ACTIVE')
+  useEffect(() => {
+    const blurNumberInputOnWheel = (event: WheelEvent) => {
+      const target = event.target
+      if (target instanceof HTMLInputElement && target.type === 'number' && document.activeElement === target) target.blur()
+    }
+    document.addEventListener('wheel', blurNumberInputOnWheel, { capture: true })
+    return () => document.removeEventListener('wheel', blurNumberInputOnWheel, { capture: true })
+  }, [])
   if (me.isLoading) return null
   if (me.isError) return <Routes><Route path="*" element={<Login />} /></Routes>
   if (!me.data) return <Status title="Oturum bilgisi alınamadı" />

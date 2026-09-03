@@ -396,3 +396,102 @@
   color: #fff;
   background: rgba(255, 255, 255, .06);
 }
+
+/* Variant bulk filters: select a compact set of option values and keep matching rows visible at a glance. */
+.app-shell.stitch-shell .variant-filter-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #111525;
+  border: 1px solid #354064;
+  border-radius: 10px;
+}
+.app-shell.stitch-shell .variant-filter-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.app-shell.stitch-shell .variant-filter-panel-head > div:first-child { display: grid; gap: 3px; min-width: 0; }
+.app-shell.stitch-shell .variant-filter-panel-head strong { color: #eef0ff; font-size: 12px; }
+.app-shell.stitch-shell .variant-filter-panel-head span { color: #8993b4; font-size: 10px; line-height: 1.4; }
+.app-shell.stitch-shell .variant-filter-panel-summary { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.app-shell.stitch-shell .variant-filter-panel-summary b { color: #aeb8e8; font-size: 10px; white-space: nowrap; }
+.app-shell.stitch-shell .variant-filter-clear,
+.app-shell.stitch-shell .variant-filter-clear-selection {
+  padding: 0;
+  color: #9da4ff;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.app-shell.stitch-shell .variant-filter-clear:hover,
+.app-shell.stitch-shell .variant-filter-clear-selection:hover { color: #fff; text-decoration: underline; transform: none; }
+.app-shell.stitch-shell .variant-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+.app-shell.stitch-shell .variant-filter-field { position: relative; min-width: 0; }
+.app-shell.stitch-shell .variant-filter-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  color: #e9ebff;
+  text-align: left;
+  background: #171d33;
+  border: 1px solid #354064;
+  border-radius: 8px;
+  box-shadow: none;
+}
+.app-shell.stitch-shell .variant-filter-select-trigger:hover,
+.app-shell.stitch-shell .variant-filter-select-trigger.active { background: #1c2440; border-color: #6876d8; }
+.app-shell.stitch-shell .variant-filter-select-trigger > span { display: grid; gap: 3px; min-width: 0; }
+.app-shell.stitch-shell .variant-filter-select-trigger small { overflow: hidden; color: #8993b4; font-size: 9px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .variant-filter-select-trigger strong { overflow: hidden; color: #f1f2ff; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .variant-filter-select-trigger > i { flex: 0 0 auto; color: #aeb8e8; font-size: 15px; font-style: normal; transition: transform .16s ease; }
+.app-shell.stitch-shell .variant-filter-select-trigger[aria-expanded="true"] > i { transform: rotate(180deg); }
+.app-shell.stitch-shell .variant-filter-dropdown-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: 7px;
+  max-height: min(360px, 50vh);
+  padding: 8px;
+  overflow: hidden;
+  background: #171b2b;
+  border: 1px solid #5865f2;
+  border-radius: 8px;
+  box-shadow: 0 18px 36px rgba(3, 7, 18, .42);
+}
+.app-shell.stitch-shell .variant-filter-dropdown-tools { display: flex; align-items: center; gap: 7px; }
+.app-shell.stitch-shell .variant-filter-dropdown-tools input { min-width: 0; flex: 1; min-height: 32px; padding: 7px 8px; color: #eef0ff; background: #0c101c; border: 1px solid #354064; border-radius: 6px; font-size: 10px; }
+.app-shell.stitch-shell .variant-filter-dropdown-tools span { color: #8993b4; font-size: 9px; white-space: nowrap; }
+.app-shell.stitch-shell .variant-filter-dropdown-options { display: grid; gap: 4px; max-height: 265px; overflow: auto; scrollbar-color: #626eff #111525; }
+.app-shell.stitch-shell .variant-filter-dropdown-options button { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 7px 8px; color: #cfd4ff; text-align: left; background: #1d2236; border: 1px solid transparent; border-radius: 6px; box-shadow: none; font-size: 10px; }
+.app-shell.stitch-shell .variant-filter-dropdown-options button:hover,
+.app-shell.stitch-shell .variant-filter-dropdown-options button.active { color: #fff; background: #282e56; border-color: #747eff; }
+.app-shell.stitch-shell .variant-filter-dropdown-options button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .variant-filter-dropdown-options button i { flex: 0 0 auto; min-width: 14px; color: #71e0b0; font-size: 12px; font-style: normal; font-weight: 900; text-align: center; }
+.app-shell.stitch-shell .variant-filter-dropdown-empty,
+.app-shell.stitch-shell .variant-filter-empty { padding: 7px 8px; color: #8993b4; font-size: 10px; }
+.app-shell.stitch-shell .variant-filter-help { margin: 0; color: #8993b4; font-size: 10px; line-height: 1.45; }
+.app-shell.stitch-shell .variant-filter-help strong { color: #cfd4ff; }
+.app-shell.stitch-shell .variant-table-header-with-action { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+.app-shell.stitch-shell .variant-table-header-with-action > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .variant-header-action { flex: 0 0 auto; padding: 3px 6px; color: #aeb8e8; background: #202744; border: 1px solid #4d5a9a; border-radius: 5px; box-shadow: none; font-size: 9px; font-weight: 800; white-space: nowrap; }
+.app-shell.stitch-shell .variant-header-action:hover { color: #fff; background: #2a3357; border-color: #8490ff; transform: none; }
+.app-shell.stitch-shell .variant-table-row.is-filter-match { border-color: #7786ff !important; box-shadow: inset 3px 0 #7786ff, 0 0 0 1px rgba(119, 134, 255, .22); }
+.app-shell.stitch-shell .variant-table-row.is-filter-dimmed { opacity: .58; }
+.app-shell.stitch-shell .variant-bulk-editor button:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 680px) {
+  .app-shell.stitch-shell .variant-filter-panel-head { flex-direction: column; }
+  .app-shell.stitch-shell .variant-filter-panel-summary { justify-content: space-between; width: 100%; }
+  .app-shell.stitch-shell .variant-filter-grid { grid-template-columns: 1fr; }
+}
