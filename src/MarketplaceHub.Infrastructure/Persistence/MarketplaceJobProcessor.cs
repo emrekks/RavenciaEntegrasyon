@@ -1818,14 +1818,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var role = IsWebColorOptionKey(remoteAttribute.Name)
             ? "ATTRIBUTE"
             : requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
-        if (requirement is null)
-            db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = category.Id, AttributeId = attribute.Id, IsRequired = remoteAttribute.IsRequired == true, AllowsCustomValue = remoteAttribute.AllowsCustomValue == true, DisplayOrder = remoteAttribute.SortOrder ?? 0, Role = role, Version = 1 });
-        else
+        if (requirement is null && role == "OPTION")
+            db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = category.Id, AttributeId = attribute.Id, IsRequired = remoteAttribute.IsRequired == true, AllowsCustomValue = remoteAttribute.AllowsCustomValue == true, IsPanelScoped = true, DisplayOrder = remoteAttribute.SortOrder ?? 0, Role = role, Version = 1 });
+        else if (requirement is not null)
         {
             requirement.IsRequired = remoteAttribute.IsRequired == true;
             requirement.AllowsCustomValue = remoteAttribute.AllowsCustomValue == true;
             requirement.DisplayOrder = remoteAttribute.SortOrder ?? requirement.DisplayOrder;
             requirement.Role = role;
+            if (role == "OPTION") requirement.IsPanelScoped = true;
             requirement.Version++;
         }
 

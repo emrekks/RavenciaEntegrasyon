@@ -56,6 +56,7 @@ internal static class CatalogModelConfiguration
         builder.Entity<CategoryAttributeRequirement>(entity =>
         {
             entity.ToTable("category_attribute_requirements", "catalog"); entity.HasKey(x => x.Id); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.IsPanelScoped).HasDefaultValue(false);
             entity.Property(x => x.Role).HasMaxLength(24).HasDefaultValue("ATTRIBUTE");
             entity.HasIndex(x => new { x.TenantId, x.CategoryId, x.AttributeId }).IsUnique();
             entity.HasOne<Category>().WithMany().HasForeignKey(x => new { x.TenantId, x.CategoryId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);

@@ -95,13 +95,15 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
                         AttributeId = localId,
                         IsRequired = external.IsRequired == true,
                         AllowsCustomValue = external.AllowsCustomValue == true,
+                        IsPanelScoped = true,
                         Role = role,
                         DisplayOrder = external.SortOrder ?? 0,
                         Version = 1
                     });
                 }
-                else if (requirement.Role != role || requirement.IsRequired != (external.IsRequired == true) || requirement.AllowsCustomValue != (external.AllowsCustomValue == true) || requirement.DisplayOrder != (external.SortOrder ?? requirement.DisplayOrder))
+                else if (!requirement.IsPanelScoped || requirement.Role != role || requirement.IsRequired != (external.IsRequired == true) || requirement.AllowsCustomValue != (external.AllowsCustomValue == true) || requirement.DisplayOrder != (external.SortOrder ?? requirement.DisplayOrder))
                 {
+                    requirement.IsPanelScoped = true;
                     requirement.Role = role;
                     requirement.IsRequired = external.IsRequired == true;
                     requirement.AllowsCustomValue = external.AllowsCustomValue == true;

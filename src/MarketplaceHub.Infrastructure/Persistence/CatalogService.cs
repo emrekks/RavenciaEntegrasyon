@@ -97,7 +97,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         var afterId = Decode(after); var query = db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsActive); if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
         var rows = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken); var ids = rows.Take(limit).Select(x => x.Id).ToArray(); var values = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.AttributeId)).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken);
-        var roleRows = await db.CategoryAttributeRequirements.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.AttributeId)).Select(x => new { x.AttributeId, x.Role }).ToListAsync(cancellationToken);
+        var roleRows = await db.CategoryAttributeRequirements.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.AttributeId) && (x.IsPanelScoped || x.Role == "OPTION")).Select(x => new { x.AttributeId, x.Role }).ToListAsync(cancellationToken);
         var roles = roleRows.GroupBy(x => x.AttributeId).ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(x => NormalizeRequirementRole(x.Role)).Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToList());
         return Page(rows, limit, attribute => MapAttribute(attribute, values.Where(x => x.AttributeId == attribute.Id), roles.GetValueOrDefault(attribute.Id)));
     }
@@ -287,7 +287,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         if (!await db.Categories.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == categoryId, cancellationToken)) return NotFound<IReadOnlyList<CategoryAttributeRequirementView>>();
         var requirements = await db.CategoryAttributeRequirements.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.CategoryId == categoryId)
+            .Where(x => x.TenantId == tenantId && x.CategoryId == categoryId && (x.IsPanelScoped || x.Role == "OPTION"))
             .OrderBy(x => x.DisplayOrder)
             .ToListAsync(cancellationToken);
         var attributeIds = requirements.Select(x => x.AttributeId).Distinct().ToArray();
@@ -311,7 +311,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var optionCount = requirements.Count(x => string.Equals(NormalizeRequirementRole(x.Role), "OPTION", StringComparison.Ordinal));
         if (optionCount > 2) return Invalid<IReadOnlyList<AttributeRequirementCommand>>("requirements", "Bir kategoride en fazla 2 seçenek grubu tanımlanabilir.");
         var ids = requirements.Select(x => x.AttributeId).ToArray(); if (await db.AttributeDefinitions.CountAsync(x => x.TenantId == tenantId && ids.Contains(x.Id) && x.IsActive, cancellationToken) != ids.Length) return Invalid<IReadOnlyList<AttributeRequirementCommand>>("requirements", "Etkin olmayan veya bulunmayan özellik vardır.");
-        var current = await db.CategoryAttributeRequirements.Where(x => x.TenantId == tenantId && x.CategoryId == categoryId).ToListAsync(cancellationToken); db.CategoryAttributeRequirements.RemoveRange(current); db.CategoryAttributeRequirements.AddRange(requirements.Select(x => new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = categoryId, AttributeId = x.AttributeId, IsRequired = x.IsRequired, AllowsCustomValue = x.AllowsCustomValue, Role = NormalizeRequirementRole(x.Role), DisplayOrder = x.DisplayOrder })); category.Version++; category.UpdatedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return ServiceResult<IReadOnlyList<AttributeRequirementCommand>>.Ok(requirements);
+        var current = await db.CategoryAttributeRequirements.Where(x => x.TenantId == tenantId && x.CategoryId == categoryId).ToListAsync(cancellationToken); db.CategoryAttributeRequirements.RemoveRange(current); db.CategoryAttributeRequirements.AddRange(requirements.Select(x => new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = categoryId, AttributeId = x.AttributeId, IsRequired = x.IsRequired, AllowsCustomValue = x.AllowsCustomValue, IsPanelScoped = true, Role = NormalizeRequirementRole(x.Role), DisplayOrder = x.DisplayOrder })); category.Version++; category.UpdatedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return ServiceResult<IReadOnlyList<AttributeRequirementCommand>>.Ok(requirements);
     }
 
     public async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, CancellationToken cancellationToken)
@@ -559,7 +559,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (command.CategoryId is Guid categoryId)
         {
             var requiredAttributeIds = await db.CategoryAttributeRequirements.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.CategoryId == categoryId && x.IsRequired)
+                .Where(x => x.TenantId == tenantId && x.CategoryId == categoryId && (x.IsPanelScoped || x.Role == "OPTION") && x.IsRequired)
                 .Select(x => x.AttributeId)
                 .ToListAsync(cancellationToken);
             var globalIds = globalAssignments.Select(x => x.AttributeId).ToHashSet();
@@ -702,7 +702,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var globalAssignments = command.Attributes ?? await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && x.VariantId == null).Select(x => new ProductAttributeCommand(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder)).ToListAsync(cancellationToken);
             if (command.CategoryId is Guid categoryId)
             {
-                var requiredAttributeIds = await db.CategoryAttributeRequirements.AsNoTracking().Where(x => x.TenantId == tenantId && x.CategoryId == categoryId && x.IsRequired).Select(x => x.AttributeId).ToListAsync(cancellationToken);
+                var requiredAttributeIds = await db.CategoryAttributeRequirements.AsNoTracking().Where(x => x.TenantId == tenantId && x.CategoryId == categoryId && (x.IsPanelScoped || x.Role == "OPTION") && x.IsRequired).Select(x => x.AttributeId).ToListAsync(cancellationToken);
                 var globalIds = globalAssignments.Select(x => x.AttributeId).ToHashSet();
                 for (var index = 0; index < variantsToCreate.Count; index++)
                 {
@@ -1086,7 +1086,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (valueValidation is not null) return valueValidation;
         if (categoryId is Guid category)
         {
-            var required = await db.CategoryAttributeRequirements.AsNoTracking().Where(x => x.TenantId == tenantId && x.CategoryId == category && x.IsRequired).Select(x => x.AttributeId).ToListAsync(cancellationToken);
+            var required = await db.CategoryAttributeRequirements.AsNoTracking().Where(x => x.TenantId == tenantId && x.CategoryId == category && (x.IsPanelScoped || x.Role == "OPTION") && x.IsRequired).Select(x => x.AttributeId).ToListAsync(cancellationToken);
             var supplied = assignments.Select(x => x.AttributeId).ToHashSet();
             if (required.Any(id => !supplied.Contains(id))) return new("REQUIRED_ATTRIBUTE_MISSING", "Kategori için zorunlu özellikler eksik.", 422, new Dictionary<string, string[]> { ["attributes"] = ["Tüm zorunlu kategori özelliklerini girin."] });
         }

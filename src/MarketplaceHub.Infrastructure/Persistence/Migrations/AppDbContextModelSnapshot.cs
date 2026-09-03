@@ -457,6 +457,11 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<int>("DisplayOrder")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("IsPanelScoped")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("IsRequired")
                         .HasColumnType("boolean");
 
