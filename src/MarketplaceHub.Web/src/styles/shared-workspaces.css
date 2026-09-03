@@ -1826,6 +1826,23 @@ textarea {
   width: calc(100% / var(--barcode-module-count));
 }
 
+/* Keep sticker tracking barcodes compact instead of stretching across the label. */
+.app-shell.stitch-shell .shipping-label-print-surface.shipping-label-sticker .shipping-label-barcode.compact {
+  width: 68% !important;
+  max-width: 68% !important;
+  margin-right: auto !important;
+  margin-left: auto !important;
+  gap: 3px !important;
+}
+.app-shell.stitch-shell .shipping-label-print-surface.shipping-label-sticker .shipping-label-barcode.compact .shipping-label-barcode-bars {
+  width: 100% !important;
+  height: 28px !important;
+}
+.app-shell.stitch-shell .shipping-label-print-surface.shipping-label-sticker .shipping-label-barcode.compact strong {
+  font-size: .7em !important;
+  letter-spacing: .04em !important;
+}
+
 /* Keep settings surfaces aligned with the dark workspace; print output stays white. */
 .app-shell.stitch-shell .shipping-layout-paper,
 .app-shell.stitch-shell .shipping-paper-canvas .shipping-layout-paper,
