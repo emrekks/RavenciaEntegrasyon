@@ -2618,6 +2618,9 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-value {
   min-height: 29px !important;
   padding: 0 7px !important;
+  color: #d6d9f5 !important;
+  background: #1a2035 !important;
+  border: 1px solid #394568 !important;
   border-radius: 7px !important;
   font-size: .61rem !important;
   line-height: 1.15 !important;
@@ -2627,7 +2630,16 @@ body:has(.product-add-page),
   transition: color .16s ease, background-color .16s ease, border-color .16s ease, transform .16s ease !important;
 }
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-value:hover {
+  color: #fff !important;
+  background: #27315a !important;
+  border-color: #7380ef !important;
   transform: translateY(-1px);
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-value.active {
+  color: #fff !important;
+  background: linear-gradient(180deg, #6875ff, #5964df) !important;
+  border-color: #a5adff !important;
+  box-shadow: 0 4px 10px rgba(98, 110, 255, .24) !important;
 }
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-value:focus-visible {
   outline: 2px solid #9ea7ff !important;

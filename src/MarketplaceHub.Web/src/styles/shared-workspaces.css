@@ -3939,10 +3939,16 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   white-space: nowrap;
 }
 .panel-attribute-sort-hint > span { color: #bfc3ff; font-size: 16px; line-height: 1; }
+.panel-attribute-sort-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; white-space: nowrap; }
+.panel-attribute-sort-actions > span { margin-right: 2px; color: #9293a3; font-size: 10px; }
+.panel-attribute-sort-actions > button { min-width: 42px !important; min-height: 30px !important; padding: 0 8px !important; color: #d9dcff !important; background: rgba(113, 104, 245, .16) !important; border: 1px solid rgba(134, 142, 255, .48) !important; border-radius: 4px !important; font-size: 10px !important; font-weight: 750; }
+.panel-attribute-sort-actions > button:hover { color: #fff !important; background: #7168f5 !important; border-color: #8f94ff !important; }
+.panel-attribute-sort-actions > button:focus-visible { outline: 2px solid #9ea7ff !important; outline-offset: 2px; }
 .panel-attribute-value-sort { display: flex !important; gap: 3px !important; }
 .panel-attribute-value-sort button { color: #aeb7ff !important; }
 .panel-attribute-value-sort button:disabled { opacity: .35; cursor: not-allowed; }
 @media (max-width: 760px) {
   .panel-attribute-add-value { grid-template-columns: 1fr !important; }
   .panel-attribute-sort-hint { justify-content: flex-start; }
+  .panel-attribute-sort-actions { justify-content: flex-start; }
 }
