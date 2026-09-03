@@ -1625,7 +1625,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var externalCategoryId = Short(snapshot.CategoryExternalId, 256);
         if (string.IsNullOrWhiteSpace(externalCategoryId)) return null;
-        if (cache.TryGetValue(externalCategoryId, out var cached)) return cached;
+        if (cache.TryGetValue(externalCategoryId, out var cached))
+        {
+            await EnsureObservedVariantAttributeValues(tenantId, cached, snapshot, cancellationToken);
+            return cached;
+        }
 
         var categoryItem = categoryItems.FirstOrDefault(x => string.Equals(x.ExternalId, externalCategoryId, StringComparison.Ordinal));
         if (categoryItem is null)
@@ -1676,8 +1680,53 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         var result = new CategoryAttributeContext(localCategory, externalCategoryId, attributes);
+        await EnsureObservedVariantAttributeValues(tenantId, result, snapshot, cancellationToken);
         cache[externalCategoryId] = result;
         return result;
+    }
+
+    private async Task EnsureObservedVariantAttributeValues(
+        Guid tenantId,
+        CategoryAttributeContext categoryContext,
+        RemoteCatalogProduct snapshot,
+        CancellationToken cancellationToken)
+    {
+        var observedValues = snapshot.Variants
+            .SelectMany(x => x.Options)
+            .Select(pair => (Axis: VariantOptionAxis(pair.Key), Value: pair.Value.Trim()))
+            .Where(item => item.Axis is not null && !string.IsNullOrWhiteSpace(item.Value))
+            .GroupBy(item => item.Axis!, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList(), StringComparer.Ordinal);
+
+        foreach (var mapped in categoryContext.Attributes.Values)
+        {
+            var axis = VariantOptionAxis(mapped.Definition.Name);
+            if (axis is null || !observedValues.TryGetValue(axis, out var values)) continue;
+            mapped.Definition.DataType = AttributeDataType.SingleSelect;
+            mapped.Definition.SelectionMode = "SINGLE";
+            foreach (var valueText in values)
+            {
+                var normalized = NormalizeCatalogKey(valueText, 320);
+                var value = db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.NormalizedValue == normalized)
+                    ?? await db.AttributeValues.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.NormalizedValue == normalized, cancellationToken);
+                if (value is not null)
+                {
+                    value.IsActive = true;
+                    continue;
+                }
+                db.AttributeValues.Add(new AttributeValue
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    AttributeId = mapped.Definition.Id,
+                    Value = Short(valueText, 320),
+                    NormalizedValue = normalized,
+                    SortOrder = values.IndexOf(valueText),
+                    IsActive = true,
+                    Version = 1
+                });
+            }
+        }
     }
 
     private async Task<Category> EnsureMappedCategory(Guid tenantId, Guid connectionId, ReferenceSnapshot categorySnapshot, ReferenceItem remoteCategory, CancellationToken cancellationToken)
