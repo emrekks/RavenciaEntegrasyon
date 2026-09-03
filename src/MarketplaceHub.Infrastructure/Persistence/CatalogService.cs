@@ -234,6 +234,55 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, values));
     }
 
+    public async Task<ServiceResult<AttributeView>> UpdateAttributeValueAsync(Guid tenantId, Guid attributeId, Guid valueId, long expectedVersion, UpdateAttributeValueCommand command, CancellationToken cancellationToken)
+    {
+        var attribute = await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == attributeId && x.IsActive, cancellationToken);
+        if (attribute is null) return ServiceResult<AttributeView>.Fail("ATTRIBUTE_NOT_FOUND", "Özellik bulunamadı.", 404);
+        if (attribute.Version != expectedVersion) return Precondition<AttributeView>(attribute.Version);
+        var normalized = Normalize(command.Value);
+        if (string.IsNullOrWhiteSpace(normalized)) return Invalid<AttributeView>("value", "Değer boş olamaz.");
+        var value = await db.AttributeValues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == attributeId && x.Id == valueId && x.IsActive, cancellationToken);
+        if (value is null) return ServiceResult<AttributeView>.Fail("ATTRIBUTE_VALUE_NOT_FOUND", "Seçenek değeri bulunamadı.", 404);
+        if (await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.AttributeId == attributeId && x.IsActive && x.Id != valueId && x.NormalizedValue == normalized, cancellationToken))
+            return Conflict<AttributeView>("ATTRIBUTE_VALUE_DUPLICATE", "Bu özellikte aynı değer zaten var.");
+        value.Value = command.Value.Trim();
+        value.NormalizedValue = normalized;
+        value.SortOrder = command.SortOrder;
+        attribute.Version++;
+        attribute.UpdatedAt = timeProvider.GetUtcNow();
+        await db.SaveChangesAsync(cancellationToken);
+        var values = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && x.AttributeId == attributeId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);
+        return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, values));
+    }
+
+    public async Task<ServiceResult<AttributeView>> ReorderAttributeValuesAsync(Guid tenantId, Guid attributeId, long expectedVersion, ReorderAttributeValuesCommand command, CancellationToken cancellationToken)
+    {
+        var attribute = await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == attributeId && x.IsActive, cancellationToken);
+        if (attribute is null) return ServiceResult<AttributeView>.Fail("ATTRIBUTE_NOT_FOUND", "Özellik bulunamadı.", 404);
+        if (attribute.Version != expectedVersion) return Precondition<AttributeView>(attribute.Version);
+
+        var values = await db.AttributeValues
+            .Where(x => x.TenantId == tenantId && x.AttributeId == attributeId && x.IsActive)
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var requestedIds = command.ValueIds?.ToArray() ?? [];
+        if (requestedIds.Length != values.Count || requestedIds.Distinct().Count() != requestedIds.Length || values.Any(value => !requestedIds.Contains(value.Id)))
+            return Invalid<AttributeView>("valueIds", "Değer sıralaması bu özelliğin etkin değerlerinin tamamını içermelidir.");
+
+        var valuesById = values.ToDictionary(value => value.Id);
+        for (var index = 0; index < requestedIds.Length; index++) valuesById[requestedIds[index]].SortOrder = index;
+        attribute.Version++;
+        attribute.UpdatedAt = timeProvider.GetUtcNow();
+        await db.SaveChangesAsync(cancellationToken);
+        var result = await db.AttributeValues.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.AttributeId == attributeId)
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, result));
+    }
+
     public async Task<ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>> GetRequirementsAsync(Guid tenantId, Guid categoryId, CancellationToken cancellationToken)
     {
         if (!await db.Categories.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == categoryId, cancellationToken)) return NotFound<IReadOnlyList<CategoryAttributeRequirementView>>();

@@ -2100,3 +2100,53 @@
 @media (max-width: 900px) {
   .app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary { grid-template-columns: minmax(0, 1fr) minmax(145px, .5fr) auto auto auto !important; }
 }
+
+/* Final alignment pass for the orders workspace header. Keep the context
+   heading in the same full-width flow as its controls instead of the old
+   left-side rail, which made the selected area appear shifted. */
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto auto auto !important;
+  padding: 0 16px 14px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  min-height: 76px !important;
+  padding: 15px 2px 13px !important;
+  text-align: left !important;
+  border-right: 0 !important;
+  border-bottom: 1px solid #303550 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading > div:first-child {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  text-align: left !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading-meta {
+  display: flex !important;
+  width: auto !important;
+  justify-content: flex-end !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading-meta > span,
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading-meta > b {
+  width: auto !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-primary { grid-column: 1 !important; grid-row: 2 !important; }
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-advanced { grid-column: 1 !important; grid-row: 3 !important; }
+@media (max-width: 680px) {
+  .app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+  }
+  .app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading-meta {
+    width: 100% !important;
+    justify-content: flex-start !important;
+  }
+}

@@ -3898,3 +3898,61 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 @media (max-width: 560px) {
   .panel-attribute-category-list { grid-template-columns: 1fr; }
 }
+
+/* Final compact pass: make the single-platform mapping control read as a
+   conventional tab and keep value actions aligned with the add control. */
+.app-shell.stitch-shell .mapping-saved-tabs {
+  align-items: stretch;
+  gap: 16px;
+  border-bottom: 1px solid #30344f;
+}
+.app-shell.stitch-shell .mapping-saved-tabs > button {
+  min-height: 34px !important;
+  padding: 0 2px !important;
+  color: #949ab8 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.app-shell.stitch-shell .mapping-saved-tabs > button:hover {
+  color: #e2e4ff !important;
+  background: transparent !important;
+}
+.app-shell.stitch-shell .mapping-saved-tabs > button.active,
+.app-shell.stitch-shell .mapping-saved-tabs > button[aria-selected="true"] {
+  color: #fff !important;
+  border-bottom-color: #7b85ff !important;
+}
+.app-shell.stitch-shell .mapping-saved-tabs > button small { color: #bfc3ff; font-size: 10px; }
+.panel-attribute-category-hint {
+  margin: 0;
+  padding: 7px 9px;
+  color: #9293a3;
+  background: rgba(88, 101, 242, .07);
+  border: 1px solid rgba(104, 114, 232, .2);
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.panel-attribute-add-value {
+  grid-template-columns: minmax(0, 1fr) auto auto !important;
+  align-items: center;
+}
+.panel-attribute-sort-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #9293a3;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.panel-attribute-sort-hint > span { color: #bfc3ff; font-size: 16px; line-height: 1; }
+.panel-attribute-value-sort { display: flex !important; gap: 3px !important; }
+.panel-attribute-value-sort button { color: #aeb7ff !important; }
+.panel-attribute-value-sort button:disabled { opacity: .35; cursor: not-allowed; }
+@media (max-width: 760px) {
+  .panel-attribute-add-value { grid-template-columns: 1fr !important; }
+  .panel-attribute-sort-hint { justify-content: flex-start; }
+}

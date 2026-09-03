@@ -822,6 +822,7 @@ function productAttributePayload(requirement: CategoryRequirement, selectedIds: 
 
 function CategoryAttributeMappingPanel({
   categoryId,
+  categoryLabel,
   requirements,
   isLoading,
   isError,
@@ -831,6 +832,7 @@ function CategoryAttributeMappingPanel({
   onTextChange
 }: {
   categoryId: string
+  categoryLabel: string
   requirements: CategoryRequirement[]
   isLoading: boolean
   isError: boolean
@@ -853,7 +855,7 @@ function CategoryAttributeMappingPanel({
       <span>3</span>
       <div>
         <h2>Kategori özellikleri</h2>
-        <p>Eşleştirme ayarlarında oluşturulan başlıklara bu ürünün değerlerini atayın.</p>
+        <p>{categoryLabel ? `Seçili kategori: ${categoryLabel} · Bu kategoriye bağlanan özellik değerlerini atayın.` : 'Seçili kategoriye bağlanan özellik değerlerini atayın.'}</p>
       </div>
     </div>
     <p className="category-mapping-note"><span aria-hidden="true">↗</span> Yayınlama sırasında seçtiğiniz değerler ilgili pazaryerinin formatına dönüştürülür.</p>
@@ -1373,6 +1375,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     </div>
     <CategoryAttributeMappingPanel
       categoryId={form.categoryId}
+      categoryLabel={leafCategories.find(item => item.id === form.categoryId)?.path ?? ''}
       requirements={allRequirements}
       isLoading={requirements.isLoading}
       isError={requirements.isError}
