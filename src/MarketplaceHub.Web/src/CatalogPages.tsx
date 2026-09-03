@@ -869,7 +869,7 @@ function CategoryAttributeMappingPanel({
       <div className="category-attribute-mapping-list">
         {attributes.map(item => {
           const selectedValues = attributeSelections[item.attributeId] ?? []
-          return <article className={`category-attribute-field ${item.isRequired ? 'required' : ''}`} key={item.attributeId}>
+          return <article className={`category-attribute-field ${item.isRequired ? 'required' : ''} ${selectedValues.length ? 'has-selection' : ''}`} key={item.attributeId}>
             <div className="category-attribute-field-head">
               <div>
                 <strong>{item.attribute.name}{item.isRequired ? ' *' : ''}</strong>
@@ -879,7 +879,7 @@ function CategoryAttributeMappingPanel({
             </div>
             {item.attribute.values.length ? (
               <div className="category-attribute-values">
-                {item.attribute.values.map(value => <button type="button" key={value.id} className={`category-attribute-value ${selectedValues.includes(value.id) ? 'active' : ''}`} onClick={() => onToggleValue(item.attributeId, value.id)}>{value.value}</button>)}
+                {item.attribute.values.map(value => <button type="button" key={value.id} title={value.value} aria-pressed={selectedValues.includes(value.id)} className={`category-attribute-value ${selectedValues.includes(value.id) ? 'active' : ''}`} onClick={() => onToggleValue(item.attributeId, value.id)}>{value.value}</button>)}
               </div>
             ) : item.attribute.dataType === 'BOOLEAN' ? (
               <select aria-label={`${item.attribute.name} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)}>
