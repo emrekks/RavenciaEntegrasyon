@@ -2580,7 +2580,7 @@ body:has(.product-add-page),
 }
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-mapping-list {
   display: grid !important;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
   gap: 10px !important;
   align-items: start !important;
 }
@@ -2608,6 +2608,11 @@ body:has(.product-add-page),
   font-size: .57rem !important;
   white-space: nowrap;
 }
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-count.is-empty {
+  color: #aeb4d3 !important;
+  background: rgba(174, 180, 211, .08) !important;
+  border-color: rgba(174, 180, 211, .2) !important;
+}
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-values {
   max-height: 154px !important;
   padding-right: 3px !important;
@@ -2627,6 +2632,8 @@ body:has(.product-add-page),
   text-overflow: clip !important;
   white-space: normal !important;
   overflow-wrap: anywhere !important;
+  cursor: pointer !important;
+  user-select: none;
   transition: color .16s ease, background-color .16s ease, border-color .16s ease, transform .16s ease !important;
 }
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-value:hover {
@@ -2634,6 +2641,9 @@ body:has(.product-add-page),
   background: #27315a !important;
   border-color: #7380ef !important;
   transform: translateY(-1px);
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-value:active {
+  transform: translateY(0);
 }
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-value.active {
   color: #fff !important;

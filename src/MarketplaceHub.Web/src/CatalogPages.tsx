@@ -875,11 +875,11 @@ function CategoryAttributeMappingPanel({
                 <strong>{item.attribute.name}{item.isRequired ? ' *' : ''}</strong>
                 <small>{dataTypeLabels[item.attribute.dataType] ?? item.attribute.dataType}{item.isRequired ? ' · Zorunlu' : ' · İsteğe bağlı'}</small>
               </div>
-              {selectedValues.length > 0 && <span className="category-attribute-count">{selectedValues.length} seçildi</span>}
+              {item.attribute.values.length > 0 && <span className={`category-attribute-count ${selectedValues.length ? '' : 'is-empty'}`}>{selectedValues.length ? `${selectedValues.length} seçildi` : 'Değer seçin'}</span>}
             </div>
             {item.attribute.values.length ? (
               <div className="category-attribute-values">
-                {item.attribute.values.map(value => <button type="button" key={value.id} title={value.value} aria-pressed={selectedValues.includes(value.id)} className={`category-attribute-value ${selectedValues.includes(value.id) ? 'active' : ''}`} onClick={() => onToggleValue(item.attributeId, value.id)}>{value.value}</button>)}
+                {item.attribute.values.map(value => <button type="button" key={value.id} title={value.value} aria-label={`${item.attribute.name}: ${value.value}`} aria-pressed={selectedValues.includes(value.id)} className={`category-attribute-value ${selectedValues.includes(value.id) ? 'active' : ''}`} onClick={() => onToggleValue(item.attributeId, value.id)}>{value.value}</button>)}
               </div>
             ) : item.attribute.dataType === 'BOOLEAN' ? (
               <select aria-label={`${item.attribute.name} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)}>
