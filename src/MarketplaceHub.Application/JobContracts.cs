@@ -72,7 +72,11 @@ public sealed record JobSummaryView(
     int ProgressCurrent = 0,
     int? ProgressTotal = null,
     int? ProgressPercent = null,
-    string? ProgressLabel = null);
+    string? ProgressLabel = null,
+    int ProgressReceived = 0,
+    int ProgressProcessed = 0,
+    int ProgressSkipped = 0,
+    int ProgressFailed = 0);
 
 public sealed record JobOrderContextView(
     Guid OrderId,

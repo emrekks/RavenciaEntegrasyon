@@ -1648,6 +1648,18 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<int>("ProgressFailed")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProgressProcessed")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProgressReceived")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProgressSkipped")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("ProgressTotal")
                         .HasColumnType("integer");
 

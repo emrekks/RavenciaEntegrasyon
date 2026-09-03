@@ -35,6 +35,10 @@ public sealed class IntegrationJob
     public int? ProgressTotal { get; set; }
     public int? ProgressPercent { get; set; }
     public string? ProgressLabel { get; set; }
+    public int ProgressReceived { get; set; }
+    public int ProgressProcessed { get; set; }
+    public int ProgressSkipped { get; set; }
+    public int ProgressFailed { get; set; }
     public long Version { get; set; }
 }
 

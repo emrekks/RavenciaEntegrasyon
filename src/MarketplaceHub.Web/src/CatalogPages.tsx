@@ -70,9 +70,9 @@ type ImportSession = Versioned & { sourceType: string; status: string; totalRows
 type Candidate = Versioned & { matchRule: string; safeSummary: string; productId: string | null; variantId: string | null }
 type Inventory = Versioned & { variantId: string; sku: string; locationCode: string; onHand: number; reserved: number; available: number }
 type TrendyolConnection = { id: string; platformCode: string; displayName: string; externalStoreId: string; status: string }
-type ChannelPricingDraft = { listPrice: string; salePrice: string; currency: string }
+type ChannelPricingDraft = { listPrice: string; salePrice: string }
 type AcceptedJob = { jobId: string }
-type ProductSyncJob = { id: string; connectionId: string | null; jobType: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; createdAt: string; completedAt: string | null }
+type ProductSyncJob = { id: string; connectionId: string | null; jobType: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; progressReceived: number; progressProcessed: number; progressSkipped: number; progressFailed: number; createdAt: string; completedAt: string | null }
 type ProductImportMode = 'INCREMENTAL' | 'FULL'
 
 const key = () => crypto.randomUUID()
@@ -85,13 +85,30 @@ type ProductGroup = {
   variants: Array<{ product: Product; variant: Variant }>
 }
 
+function productFamilyKey(product: Product) {
+  const modelCode = product.modelCode?.trim() || product.variants.map(variant => variant.modelCode?.trim()).find(Boolean)
+  if (!modelCode) return `product:${product.id}`
+  return `model:${modelCode.toLocaleUpperCase('tr-TR')}`
+}
+
 function productRowsAsCards(products: Product[]): ProductGroup[] {
-  return products.map(product => ({
-    id: `product:${product.id}`,
-    primary: product,
-    products: [product],
-    variants: product.variants.map(variant => ({ product, variant }))
-  }))
+  const groups = new Map<string, ProductGroup>()
+  for (const product of products) {
+    const id = productFamilyKey(product)
+    const existing = groups.get(id)
+    if (existing) {
+      existing.products.push(product)
+      existing.variants.push(...product.variants.map(variant => ({ product, variant })))
+      continue
+    }
+    groups.set(id, {
+      id,
+      primary: product,
+      products: [product],
+      variants: product.variants.map(variant => ({ product, variant }))
+    })
+  }
+  return [...groups.values()]
 }
 
 async function fetchProductPage(limit: number, filters: ProductListFilters, after: string | null) {
@@ -146,6 +163,11 @@ function parseVariantOptionSignature(signature: string): ParsedVariantOption[] {
     const value = part.slice(separatorIndex).replace(/^\s*[:=]\s*/, '').trim()
     return name && value ? [{ name, value }] : []
   })
+}
+
+function isVariantOptionName(name: string) {
+  const normalized = name.replace(/\s+/g, '').toLocaleUpperCase('tr-TR')
+  return ['RENK', 'COLOR', 'COLOUR', 'WEBCOLOR', 'BEDEN', 'SIZE', 'SIZ', 'NUMARA', 'NUMBER'].includes(normalized)
 }
 
 function VariantImageIcon() {
@@ -633,7 +655,7 @@ export function ProductsPage() {
     )}
     {totalCount > 0 && <div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına ürün" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100].map(value => <option key={value} value={value}>{value}</option>)}</select> ürün</label><span>Toplam {totalCount.toLocaleString('tr-TR')} katalog kaydından {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)} arası gösteriliyor · Bu sayfada {pageProductGroups.length} ürün kartı</span><div className="product-pagination-controls"><button type="button" aria-label="Önceki sayfa" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>‹</button><b>Sayfa {currentPage} / {totalPages}</b><button type="button" aria-label="Sonraki sayfa" disabled={currentPage >= totalPages || !nextPageCursor} onClick={goToNextPage}>›</button></div></div>}
     {quickEdit && <ProductQuickEditModal products={selectedProducts} connections={connections} mode={quickEdit.mode} onChanged={refresh} onResult={showProductToast} onClose={() => setQuickEdit(null)} />}
-    {productImportOpen && <div className="workspace-modal-backdrop product-import-backdrop" role="presentation" onMouseDown={() => !productImporting && setProductImportOpen(false)}><section className="workspace-modal product-import-modal" role="dialog" aria-modal="true" aria-labelledby="product-import-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">PLATFORM KATALOĞU</p><h2 id="product-import-title">Ürünleri platformdan çek</h2><p>Seçtiğiniz aktif Trendyol bağlantılarındaki ürünleri yerel kataloğa salt-okunur olarak alın.</p></div><button type="button" className="modal-close" onClick={() => setProductImportOpen(false)} disabled={productImporting} aria-label="Pencereyi kapat">×</button></header><div className="product-import-body"><fieldset><legend>Platform bağlantıları</legend>{connections.length ? <div className="product-import-connections">{connections.map(connection => { const selected = productImportConnectionIds.includes(connection.id); return <label key={connection.id} className={`product-import-connection${selected ? ' selected' : ''}`}><input type="checkbox" checked={selected} onChange={() => setProductImportConnectionIds(ids => selected ? ids.filter(id => id !== connection.id) : [...ids, connection.id])} /><span><strong>{connection.displayName}</strong><small>{connection.externalStoreId} · {connection.status === 'VERIFIED' ? 'Doğrulanmış' : 'Aktif'}</small></span></label> })}</div> : <p className="product-import-empty">Ürün çekmeye uygun aktif veya doğrulanmış Trendyol bağlantısı bulunamadı.</p>}</fieldset><fieldset><legend>Tarama ayarı</legend><label className={`product-import-mode${productImportMode === 'INCREMENTAL' ? ' selected' : ''}`}><input type="radio" name="product-import-mode" value="INCREMENTAL" checked={productImportMode === 'INCREMENTAL'} onChange={() => setProductImportMode('INCREMENTAL')} /><span><strong>Yeni ve değişen ürünler</strong><small>Son başarılı watermark’tan güvenlik örtüşmesiyle devam eder.</small></span></label><label className={`product-import-mode${productImportMode === 'FULL' ? ' selected' : ''}`}><input type="radio" name="product-import-mode" value="FULL" checked={productImportMode === 'FULL'} onChange={() => setProductImportMode('FULL')} /><span><strong>Tüm katalog</strong><small>Erişilebilen tüm ürün ve varyantları baştan tarar.</small></span></label></fieldset>{activeProductSyncJobs.length > 0 && <section className="product-import-progress" aria-live="polite"><div className="product-import-progress-heading"><strong>Devam eden aktarmalar</strong><small>{activeProductSyncJobs.length} işlem</small></div>{activeProductSyncJobs.map(job => { const percent = job.progressPercent ?? 0; return <article key={job.id}><div className="product-import-progress-top"><span>{job.progressLabel ?? (job.status === 'PENDING' ? 'Kuyrukta bekliyor' : 'Aktarım çalışıyor')}</span><strong>{job.progressPercent == null ? '—' : `%${percent}`}</strong></div><div className={`product-import-progress-track${job.progressPercent == null ? ' indeterminate' : ''}`}><i style={job.progressPercent == null ? undefined : { width: `${percent}%` }} /></div><div className="product-import-progress-bottom"><small>{job.progressCurrent.toLocaleString('tr-TR')}{job.progressTotal != null ? ` / ${job.progressTotal.toLocaleString('tr-TR')}` : ' ürün'}</small><button type="button" className="secondary" disabled={cancelProductSync.isPending} onClick={() => cancelProductSync.mutate(job.id)}>Durdur</button></div></article> })}</section>}<p className="product-import-note">Bu işlem platforma veri göndermez; yalnızca seçilen bağlantılardan panel kataloğuna okuma yapar.</p></div><footer><button type="button" className="secondary" onClick={() => setProductImportOpen(false)} disabled={productImporting}>Vazgeç</button><button type="button" onClick={() => void importProductsFromPlatforms()} disabled={productImporting || !productImportConnectionIds.length}>{productImporting ? 'Kuyruğa alınıyor…' : 'Ürünleri panele çek'}</button></footer></section></div>}
+{productImportOpen && <div className="workspace-modal-backdrop product-import-backdrop" role="presentation" onMouseDown={() => !productImporting && setProductImportOpen(false)}><section className="workspace-modal product-import-modal" role="dialog" aria-modal="true" aria-labelledby="product-import-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">PLATFORM KATALOĞU</p><h2 id="product-import-title">Ürünleri platformdan çek</h2><p>Seçtiğiniz aktif Trendyol bağlantılarındaki ürünleri yerel kataloğa salt-okunur olarak alın.</p></div><button type="button" className="modal-close" onClick={() => setProductImportOpen(false)} disabled={productImporting} aria-label="Pencereyi kapat">×</button></header><div className="product-import-body"><fieldset><legend>Platform bağlantıları</legend>{connections.length ? <div className="product-import-connections">{connections.map(connection => { const selected = productImportConnectionIds.includes(connection.id); return <label key={connection.id} className={`product-import-connection${selected ? ' selected' : ''}`}><input type="checkbox" checked={selected} onChange={() => setProductImportConnectionIds(ids => selected ? ids.filter(id => id !== connection.id) : [...ids, connection.id])} /><span><strong>{connection.displayName}</strong><small>{connection.externalStoreId} · {connection.status === 'VERIFIED' ? 'Doğrulanmış' : 'Aktif'}</small></span></label> })}</div> : <p className="product-import-empty">Ürün çekmeye uygun aktif veya doğrulanmış Trendyol bağlantısı bulunamadı.</p>}</fieldset><fieldset><legend>Tarama ayarı</legend><label className={`product-import-mode${productImportMode === 'INCREMENTAL' ? ' selected' : ''}`}><input type="radio" name="product-import-mode" value="INCREMENTAL" checked={productImportMode === 'INCREMENTAL'} onChange={() => setProductImportMode('INCREMENTAL')} /><span><strong>Yeni ve değişen ürünler</strong><small>Son başarılı watermark’tan güvenlik örtüşmesiyle devam eder.</small></span></label><label className={`product-import-mode${productImportMode === 'FULL' ? ' selected' : ''}`}><input type="radio" name="product-import-mode" value="FULL" checked={productImportMode === 'FULL'} onChange={() => setProductImportMode('FULL')} /><span><strong>Tüm katalog</strong><small>Erişilebilen tüm ürün ve varyantları baştan tarar.</small></span></label></fieldset>{activeProductSyncJobs.length > 0 && <section className="product-import-progress" aria-live="polite"><div className="product-import-progress-heading"><strong>Devam eden aktarmalar</strong><small>{activeProductSyncJobs.length} işlem</small></div>{activeProductSyncJobs.map(job => { const percent = job.progressPercent ?? 0; return <article key={job.id}><div className="product-import-progress-top"><span>{job.progressLabel ?? (job.status === 'PENDING' ? 'Kuyrukta bekliyor' : 'Aktarım çalışıyor')}</span><strong>{job.progressPercent == null ? '—' : `%${percent}`}</strong></div><div className={`product-import-progress-track${job.progressPercent == null ? ' indeterminate' : ''}`}><i style={job.progressPercent == null ? undefined : { width: `${percent}%` }} /></div><div className="product-import-progress-bottom"><small className="product-import-progress-counters"><span>Alınan {job.progressReceived.toLocaleString('tr-TR')}</span><span>İşlenen {job.progressProcessed.toLocaleString('tr-TR')}</span><span>Atlanan {job.progressSkipped.toLocaleString('tr-TR')}</span><span>Hatalı {job.progressFailed.toLocaleString('tr-TR')}</span></small><button type="button" className="secondary" disabled={cancelProductSync.isPending} onClick={() => cancelProductSync.mutate(job.id)}>Durdur</button></div></article> })}</section>}<p className="product-import-note">Bu işlem platforma veri göndermez; yalnızca seçilen bağlantılardan panel kataloğuna okuma yapar.</p></div><footer><button type="button" className="secondary" onClick={() => setProductImportOpen(false)} disabled={productImporting}>Vazgeç</button><button type="button" onClick={() => void importProductsFromPlatforms()} disabled={productImporting || !productImportConnectionIds.length}>{productImporting ? 'Kuyruğa alınıyor…' : 'Ürünleri panele çek'}</button></footer></section></div>}
     {productToast && <div className={`product-operation-toast ${productToast.kind}`} role={productToast.kind === 'success' ? 'status' : 'alert'}><strong>{productToast.kind === 'success' ? 'Güncellendi' : 'Başarısız'}</strong><span>{productToast.message}</span></div>}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
   </Page>
@@ -786,7 +808,7 @@ function CategoryAttributeMappingPanel({
   onToggleValue: (attributeId: string, valueId: string) => void
   onTextChange: (attributeId: string, value: string) => void
 }) {
-  const attributes = requirements.filter(item => item.role === 'ATTRIBUTE')
+  const attributes = requirements.filter(item => item.role === 'ATTRIBUTE' && !isVariantOptionName(item.attribute.name))
   const dataTypeLabels: Record<string, string> = {
     SINGLE_SELECT: 'Tek seçim',
     MULTI_SELECT: 'Çoklu seçim',
@@ -850,6 +872,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '2', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const initializedEditProductKey = useRef<string | null>(null)
+  const initializedEditOptionsKey = useRef<string | null>(null)
   const [wizardStep, setWizardStep] = useState<1 | 2>(1)
   const [scheduledPublishOpen, setScheduledPublishOpen] = useState(false)
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
@@ -895,7 +918,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const mediaUrls = useMemo(() => form.mediaUrls.split(/\r?\n/).map(item => item.trim()).filter(Boolean), [form.mediaUrls])
 
   const allRequirements = useMemo(() => (requirements.data ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder), [requirements.data])
-  const optionRequirements = useMemo(() => allRequirements.filter(item => item.role === 'OPTION').slice(0, 2), [allRequirements])
+  const optionRequirements = useMemo(() => allRequirements.filter(item => item.role === 'OPTION' || isVariantOptionName(item.attribute.name)).slice(0, 2), [allRequirements])
   useEffect(() => {
     const optionIds = optionRequirements.map(item => item.attributeId)
     setVariantAttributeIds(current => current.filter(id => optionIds.includes(id)))
@@ -920,24 +943,21 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }, [productToEdit.data?.id, productToEdit.data?.version])
 
   useEffect(() => {
-    // Saved option groups describe the product's existing variants; they are
-    // not an active selection for the next variant-generation action. Keep
-    // option values available, but make the user opt in explicitly.
-    if (!allRequirements.length) return
-    const optionIds = new Set(allRequirements.filter(item => item.role === 'OPTION').map(item => item.attributeId))
-    setAttributeSelections(current => {
-      const next = { ...current }
-      let changed = false
-      for (const attributeId of optionIds) {
-        if (next[attributeId]?.length) {
-          delete next[attributeId]
-          changed = true
-        }
-      }
-      return changed ? next : current
-    })
-    setVariantAttributeIds(current => current.filter(id => !optionIds.has(id)))
-  }, [allRequirements])
+    if (!editProductId || !productToEdit.data || !allRequirements.length || requirements.isLoading) return
+    const productKey = `${productToEdit.data.id}:${productToEdit.data.version}`
+    if (initializedEditOptionsKey.current === productKey) return
+    initializedEditOptionsKey.current = productKey
+    const inferred: Record<string, string[]> = {}
+    for (const requirement of optionRequirements) {
+      const valuesInVariants = new Set(productToEdit.data.variants.flatMap(variant => parseVariantOptionSignature(variant.optionSignature)
+        .filter(option => option.name.trim().toLocaleLowerCase('tr-TR') === requirement.attribute.name.trim().toLocaleLowerCase('tr-TR'))
+        .map(option => option.value.trim().toLocaleLowerCase('tr-TR'))))
+      const ids = requirement.attribute.values.filter(value => valuesInVariants.has(value.value.trim().toLocaleLowerCase('tr-TR'))).map(value => value.id)
+      if (ids.length) inferred[requirement.attributeId] = ids
+    }
+    setAttributeSelections(current => ({ ...current, ...inferred }))
+    setVariantAttributeIds(Object.keys(inferred))
+  }, [allRequirements, editProductId, optionRequirements, productToEdit.data, requirements.isLoading])
 
   function updateField(name: keyof typeof form, value: string) { setForm(current => ({ ...current, [name]: value })) }
   function toggleAttributeValue(attributeId: string, valueId: string) {
@@ -1008,10 +1028,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     showFeedback(selected ? 'Yayın kanalı seçimden çıkarıldı.' : 'Yayın kanalı seçildi.', 'info')
   }
   function channelPriceDraft(connectionId: string): ChannelPricingDraft {
-    return channelPricing[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice, currency: form.currency }
+    return channelPricing[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice }
   }
   function updateChannelPrice(connectionId: string, field: keyof ChannelPricingDraft, value: string) {
-    setChannelPricing(current => ({ ...current, [connectionId]: { ...(current[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice, currency: form.currency }), [field]: value } }))
+    setChannelPricing(current => ({ ...current, [connectionId]: { ...(current[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice }), [field]: value } }))
   }
   function applyBulk() {
     const stock = bulkStock === '' ? null : Number(bulkStock); const sale = bulkSalePrice === '' ? null : Number(bulkSalePrice); const list = bulkListPrice === '' ? null : Number(bulkListPrice)
@@ -1171,7 +1191,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         if (stockDelta !== 0) await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: stockDelta, reason: productToEdit.data ? 'Ürün düzenleme stoğu' : 'İlk ürün stoğu', sourceEventId: key() }) })
         for (const connectionId of selectedChannelIds) {
           const pricing = channelPriceDraft(connectionId)
-          await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId, variantId: variant.id, listPrice: Number(pricing.listPrice), salePrice: Number(pricing.salePrice), currency: pricing.currency || 'TRY', vatRate: Number(form.vatRate || 0), vatInclusion: form.vatIncluded, roundingMode: 'HALF_EVEN', safetyStock: Number(form.safetyStock || 0), status: 'ACTIVE', reason: 'İlk ürün fiyatı' }) })
+          await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId, variantId: variant.id, listPrice: Number(pricing.listPrice), salePrice: Number(pricing.salePrice), currency: form.currency || 'TRY', vatRate: Number(form.vatRate || 0), vatInclusion: form.vatIncluded, roundingMode: 'HALF_EVEN', safetyStock: Number(form.safetyStock || 0), status: 'ACTIVE', reason: 'İlk ürün fiyatı' }) })
         }
       }
       if (rows.some(row => row.stock > 0)) completed.push('stok'); if (selectedChannelIds.length) completed.push('kanal fiyatları')
@@ -1303,7 +1323,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                   <legend><span className={`publish-platform-mark ${card.tone}`}>{card.initial}</span><span><strong>{card.name}</strong><small>{selected ? 'Yayınlanacak kanal' : 'Yayın için seçilmedi'}</small></span></legend>
                   <label>Liste fiyatı<input value={pricing.listPrice} onChange={event => updateChannelPrice(card.connection.id, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /></label>
                   <label>Satış fiyatı<input value={pricing.salePrice} onChange={event => updateChannelPrice(card.connection.id, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /></label>
-                  <label>Para birimi<select value={pricing.currency} onChange={event => updateChannelPrice(card.connection.id, 'currency', event.target.value)}><option>TRY</option><option>USD</option><option>EUR</option></select></label>
                   <button type="button" className={`secondary marketplace-pricing-toggle${selected ? ' selected' : ''}`} onClick={() => updateChannel(card.connection.id)}>{selected ? 'Kanaldan çıkar' : 'Yayın için seç'}</button>
                 </fieldset>
               })}
@@ -1334,7 +1353,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <span>5</span>
           <div>
             <h2>Ürün seçenekleri</h2>
-            <p>Seçenek grubu ve değerlerini burada seçin. Kayıtlı ürün değerleri otomatik işaretlenmez; seçimleriniz yalnızca “Ürünleri ekle” tıklanınca varyant satırlarına eklenir.</p>
+            <p>Seçenek grubu ve değerlerini burada seçin. Mevcut ürünlerde kayıtlı Renk ve Beden değerleri otomatik işaretlenir; yeni seçimler “Ürünleri ekle” ile varyant satırlarına eklenir.</p>
           </div>
         </div>
         <div className="attribute-variant-action">

@@ -8,6 +8,7 @@ using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -26,6 +27,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private int telemetryFailedCount;
     private int telemetryRetryCount;
     private int telemetryRateLimitCount;
+    private int telemetryImportProcessedCount;
+    private int telemetryImportSkippedCount;
+    private int telemetryImportFailedCount;
 
     public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken, Guid? jobId = null)
     {
@@ -186,6 +190,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         telemetryFailedCount = 0;
         telemetryRetryCount = 0;
         telemetryRateLimitCount = 0;
+        telemetryImportProcessedCount = 0;
+        telemetryImportSkippedCount = 0;
+        telemetryImportFailedCount = 0;
     }
 
     private void TrackRequest() => telemetryRequestCount++;
@@ -1385,7 +1392,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED")) return false;
 
         var fullScan = ReadBoolean(payloadJson, "full");
-        var processedProducts = 0;
+        var receivedProducts = 0;
         if (jobId is { } currentJob)
             await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, fullScan ? "Trendyol kataloğu taranıyor · İlk sayfa bekleniyor" : "Yeni ve değişen ürünler taranıyor · İlk sayfa bekleniyor", cancellationToken);
         int? totalProducts = null;
@@ -1424,12 +1431,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 await UpdateProductSyncProgressAsync(
                     tenantId,
                     readingJob,
-                    processedProducts,
+                    receivedProducts,
                     totalProducts,
                     totalProducts is { } knownTotal && knownTotal > 0
-                        ? Math.Clamp((int)Math.Floor(processedProducts * 100d / knownTotal), 0, 99)
+                        ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / knownTotal), 0, 99)
                         : null,
-                    $"{scanLabel} · {pageNumber}. sayfa okunuyor",
+                    $"{scanLabel} · {pageNumber}. sayfa okunuyor · Alınan {telemetryReceivedCount:N0} · İşlenen {telemetryImportProcessedCount:N0} · Atlanan {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0}",
                     cancellationToken);
             }
             TrackRequest();
@@ -1440,18 +1447,33 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 cancellationToken);
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
             foreach (var _ in result.Value!.Items) TrackReceived();
-            processedProducts += result.Value.Items.Count;
+            receivedProducts += result.Value.Items.Count;
             totalProducts ??= result.Value.TotalCount;
 
             if (jobId is { } receivedJob)
             {
                 var percent = totalProducts is { } total && total > 0
-                    ? Math.Clamp((int)Math.Floor(processedProducts * 100d / total), 0, 99)
+                    ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
                     : (int?)null;
-                var label = totalProducts is { } totalCount && totalCount > 0
-                    ? $"{processedProducts:N0} / {totalCount:N0} ürün alındı · {pageNumber}. sayfa"
-                    : $"{processedProducts:N0} ürün alındı · {pageNumber}. sayfa";
-                await UpdateProductSyncProgressAsync(tenantId, receivedJob, processedProducts, totalProducts, percent, label, cancellationToken);
+                await UpdateProductSyncProgressAsync(tenantId, receivedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "sayfa alındı"), cancellationToken);
+            }
+
+            foreach (var invalidSnapshot in result.Value.Items.Where(x => string.IsNullOrWhiteSpace(x.ExternalProductId)))
+            {
+                telemetryImportFailedCount++;
+                telemetryFailedCount++;
+                db.ChangeTracker.Clear();
+                categoryContexts.Clear();
+                try
+                {
+                    await RecordProductImportFailure(tenantId, connectionId, invalidSnapshot, new InvalidOperationException("Trendyol ürün kimliği boş döndü."), cancellationToken);
+                }
+                catch (Exception issueException) when (issueException is not OperationCanceledException)
+                {
+                    db.ChangeTracker.Clear();
+                }
+                if (jobId is { } invalidProgressJob)
+                    await UpdateProductSyncProgressAsync(tenantId, invalidProgressJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "geçersiz ürün atlandı"), cancellationToken);
             }
 
             foreach (var snapshot in result.Value!.Items
@@ -1459,40 +1481,75 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                          .GroupBy(x => x.ExternalProductId, StringComparer.OrdinalIgnoreCase)
                          .Select(MergeCatalogSnapshots))
             {
-                var categoryContext = categoryReferences is null
-                    ? null
-                    : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, categoryContexts, correlationId, cancellationToken);
-                await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, cancellationToken);
+                try
+                {
+                    var categoryContext = categoryReferences is null
+                        ? null
+                        : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, categoryContexts, correlationId, cancellationToken);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, cancellationToken);
+                    if (changed) telemetryImportProcessedCount++;
+                    else telemetryImportSkippedCount++;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    // Isolate a malformed product so it cannot poison the rest of the page.
+                    telemetryImportFailedCount++;
+                    telemetryFailedCount++;
+                    db.ChangeTracker.Clear();
+                    categoryContexts.Clear();
+                    try
+                    {
+                        await RecordProductImportFailure(tenantId, connectionId, snapshot, exception, cancellationToken);
+                    }
+                    catch (Exception issueException) when (issueException is not OperationCanceledException)
+                    {
+                        // Issue logging is best-effort; the import must continue.
+                        db.ChangeTracker.Clear();
+                    }
+                }
+
+                if (jobId is { } itemProgressJob)
+                {
+                    var percent = totalProducts is { } total && total > 0
+                        ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
+                        : (int?)null;
+                    await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "ürün işleniyor"), cancellationToken);
+                }
             }
 
             if (jobId is { } processedJob)
             {
                 var percent = totalProducts is { } total && total > 0
-                    ? Math.Clamp((int)Math.Floor(processedProducts * 100d / total), 0, 99)
+                    ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
                     : (int?)null;
-                var label = totalProducts is { } totalCount && totalCount > 0
-                    ? $"{processedProducts:N0} / {totalCount:N0} ürün işlendi · {pageNumber}. sayfa tamamlandı"
-                    : $"{processedProducts:N0} ürün işlendi · {pageNumber}. sayfa tamamlandı";
-                await UpdateProductSyncProgressAsync(tenantId, processedJob, processedProducts, totalProducts, percent, label, cancellationToken);
+                await UpdateProductSyncProgressAsync(tenantId, processedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "sayfa tamamlandı"), cancellationToken);
             }
 
             if (result.Value.HasMore)
             {
                 if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol ürün sayfası hasMore=true ancak nextPageToken boş döndü.");
                 nextCursor = result.Value.NextCursor;
-                cursor.OpaqueCursor = nextCursor;
-                cursor.Version++;
+                db.ChangeTracker.Clear();
+                var completedPageCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
+                completedPageCursor.OpaqueCursor = nextCursor;
+                completedPageCursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
             }
             else
             {
-                cursor.OpaqueCursor = null;
+                db.ChangeTracker.Clear();
+                var completedCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
+                completedCursor.OpaqueCursor = null;
                 // Approved-products supports a modified-date filter. Keep a short
                 // overlap so a variant changed while a page was being read is not lost.
-                cursor.LastModifiedWatermark = timeProvider.GetUtcNow().AddSeconds(-60);
-                cursor.Version++;
+                completedCursor.LastModifiedWatermark = timeProvider.GetUtcNow().AddSeconds(-60);
+                completedCursor.Version++;
                 if (jobId is { } completedJob)
-                    await UpdateProductSyncProgressAsync(tenantId, completedJob, processedProducts, null, 100, $"{processedProducts:N0} ürün aktarımı tamamlandı", cancellationToken, keepExistingTotal: true);
+                    await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(pageNumber, totalProducts, "aktarımı tamamlandı"), cancellationToken, keepExistingTotal: true);
                 await db.SaveChangesAsync(cancellationToken);
                 break;
             }
@@ -1504,8 +1561,30 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var query = db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.Id == jobId && x.JobType == MarketplaceJobTypes.ProductSync);
         return keepExistingTotal
-            ? query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label), cancellationToken)
-            : query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressTotal, total).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label), cancellationToken);
+            ? query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, telemetryReceivedCount).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken)
+            : query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressTotal, total).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, telemetryReceivedCount).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken);
+    }
+
+    private string ProductImportProgressLabel(int pageNumber, int? total, string suffix)
+    {
+        var received = telemetryReceivedCount;
+        var totalPart = total is > 0 ? $" / {total:N0}" : "";
+        return $"{received:N0}{totalPart} · Alınan {received:N0} · İşlenen {telemetryImportProcessedCount:N0} · Atlanan {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0} · {pageNumber}. sayfa {suffix}";
+    }
+
+    private async Task RecordProductImportFailure(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, Exception exception, CancellationToken cancellationToken)
+    {
+        var externalProductId = Short(snapshot.ExternalProductId, 256);
+        var issueIdentity = string.IsNullOrWhiteSpace(externalProductId)
+            ? $"missing:{Hash(JsonSerializer.Serialize(snapshot))[..16]}"
+            : externalProductId;
+        var root = exception.GetBaseException();
+        var constraint = root is PostgresException postgres
+            ? $"sqlState={postgres.SqlState}; constraint={postgres.ConstraintName ?? "—"}; table={postgres.TableName ?? "—"}; detail={postgres.Detail ?? postgres.MessageText}"
+            : $"exception={root.GetType().Name}; detail={root.Message}";
+        var summary = Short($"Trendyol ürünü '{(string.IsNullOrWhiteSpace(externalProductId) ? "kimlik yok" : externalProductId)}' aktarılmadı; sonraki ürünle devam edildi. Veritabanı ayrıntısı: {constraint}", 2_000);
+        await RecordIssue(tenantId, $"product-sync-import:{connectionId}:{issueIdentity}", "PRODUCT_IMPORT_FAILED", summary, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<ReferenceSnapshot?> EnsureReferenceSnapshot(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)
@@ -1663,14 +1742,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         var requirement = await db.CategoryAttributeRequirements.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == category.Id && x.AttributeId == attribute.Id, cancellationToken);
-        var role = requirement?.Role == "OPTION" ? "OPTION" : "ATTRIBUTE";
+        var role = requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
         if (requirement is null)
-            db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = category.Id, AttributeId = attribute.Id, IsRequired = remoteAttribute.IsRequired == true, AllowsCustomValue = remoteAttribute.AllowsCustomValue == true, DisplayOrder = remoteAttribute.SortOrder ?? 0, Version = 1 });
+            db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = category.Id, AttributeId = attribute.Id, IsRequired = remoteAttribute.IsRequired == true, AllowsCustomValue = remoteAttribute.AllowsCustomValue == true, DisplayOrder = remoteAttribute.SortOrder ?? 0, Role = role, Version = 1 });
         else
         {
             requirement.IsRequired = remoteAttribute.IsRequired == true;
             requirement.AllowsCustomValue = remoteAttribute.AllowsCustomValue == true;
             requirement.DisplayOrder = remoteAttribute.SortOrder ?? requirement.DisplayOrder;
+            requirement.Role = role;
             requirement.Version++;
         }
 
@@ -1727,7 +1807,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task UpsertProductAttributeAssignments(Guid tenantId, Product product, ProductVariant variant, IReadOnlyDictionary<string, string> options, CategoryAttributeContext categoryContext, CancellationToken cancellationToken)
     {
         var sortOrder = 0;
-        foreach (var pair in options.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
+        foreach (var pair in options)
         {
             var optionKey = NormalizeCatalogKey(pair.Key, 320);
             if (!categoryContext.Attributes.TryGetValue(optionKey, out var mapped))
@@ -1790,7 +1870,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
     }
 
-    private async Task UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, CancellationToken cancellationToken)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -1834,7 +1914,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (!isNewProduct && link is not null && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase) && await CatalogSnapshotAlreadyApplied(tenantId, product.Id, snapshot, cancellationToken))
         {
             telemetrySkippedCount++;
-            return;
+            return false;
         }
 
         var preserveLocal = link is not null && ProductImportMergePolicy.PreserveLocalChanges(product.Version, link.LastImportedProductVersion, link.DirtyFieldsJson);
@@ -1889,6 +1969,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         link.Version++;
         await db.SaveChangesAsync(cancellationToken);
+        return !preserveLocal;
     }
 
     private async Task<bool> CatalogSnapshotAlreadyApplied(Guid tenantId, Guid productId, RemoteCatalogProduct snapshot, CancellationToken cancellationToken)
@@ -2167,7 +2248,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         foreach (var pair in options)
         {
             var optionKey = NormalizeCatalogKey(pair.Key, 320);
-            if (!categoryContext.Attributes.TryGetValue(optionKey, out var mapped) || (mapped.Role != "OPTION" && !IsColorOptionKey(pair.Key))) continue;
+            if (!categoryContext.Attributes.TryGetValue(optionKey, out var mapped) || (mapped.Role != "OPTION" && !IsVariantOptionName(pair.Key))) continue;
             panelOptions[mapped.Definition.Name] = await PanelOptionValueAsync(tenantId, connectionId, categoryContext, mapped, pair.Value, cancellationToken);
         }
         return OptionSignature(panelOptions.Count > 0 ? panelOptions : options);
@@ -2177,6 +2258,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var normalized = NormalizeCatalogKey(value, 320).Replace(" ", "", StringComparison.Ordinal);
         return normalized is "RENK" or "COLOR" or "WEBCOLOR" or "COLOUR";
+    }
+
+    private static bool IsVariantOptionName(string value) => IsColorOptionKey(value) || IsSizeOptionKey(value);
+
+    private static bool IsSizeOptionKey(string value)
+    {
+        var normalized = NormalizeCatalogKey(value, 320).Replace(" ", "", StringComparison.Ordinal);
+        return normalized is "BEDEN" or "SIZE" or "SIZ" or "NUMARA" or "NUMBER";
     }
 
     private async Task<string> PanelOptionValueAsync(Guid tenantId, Guid connectionId, CategoryAttributeContext categoryContext, LocalCategoryAttribute mapped, string remoteValue, CancellationToken cancellationToken)
@@ -2204,7 +2293,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var optionKey = NormalizeCatalogKey(pair.Key, 160); var valueKey = NormalizeCatalogKey(pair.Value, 160);
             if (string.IsNullOrWhiteSpace(optionKey) || string.IsNullOrWhiteSpace(valueKey)) continue;
             LocalCategoryAttribute? mapped = null;
-            if (categoryContext is not null && (!categoryContext.Attributes.TryGetValue(optionKey, out mapped) || (mapped.Role != "OPTION" && !IsColorOptionKey(pair.Key)))) continue;
+            if (categoryContext is not null && (!categoryContext.Attributes.TryGetValue(optionKey, out mapped) || (mapped.Role != "OPTION" && !IsVariantOptionName(pair.Key)))) continue;
             var panelLabel = mapped?.Definition.Name ?? pair.Key;
             var panelValue = mapped is null ? pair.Value : await PanelOptionValueAsync(tenantId, connectionId, categoryContext!, mapped, pair.Value, cancellationToken);
             optionKey = NormalizeCatalogKey(panelLabel, 160);
@@ -2254,7 +2343,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     }
 
     private static string ProductTitle(string? title, string externalId) => Short(string.IsNullOrWhiteSpace(title) ? $"Trendyol ürün {externalId}" : title.Trim(), 320);
-    private static string OptionSignature(IReadOnlyDictionary<string, string> options) => string.Join(" | ", options.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase).Select(x => $"{Short(x.Key, 80)}: {Short(x.Value, 120)}"));
+    private static string OptionSignature(IReadOnlyDictionary<string, string> options) => string.Join(" | ", options.Select(x => $"{Short(x.Key, 80)}: {Short(x.Value, 120)}"));
     private TimeSpan ProductUpdatePollDelay(DateTimeOffset submittedAt)
     {
         var now = timeProvider.GetUtcNow();

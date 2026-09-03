@@ -332,12 +332,28 @@ public static class TrendyolJsonMapper
 
     private static IReadOnlyDictionary<string, string> Options(JsonElement value)
     {
-        if (!value.TryGetProperty("attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Array) return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        return attributes.EnumerateArray()
-            .Select(attribute => (Key: NullText(attribute, "attributeName", "name"), Value: NullText(attribute, "attributeValue", "value")))
-            .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Value))
-            .GroupBy(x => x.Key!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => x.Last().Value!, StringComparer.OrdinalIgnoreCase);
+        // Catalog responses have used both the approved-products names and the
+        // catalog names for the same fields. Keep the source order: it is the
+        // marketplace's variant order and is later used for the gallery.
+        var entries = new List<(string Key, string Value)>();
+        foreach (var propertyName in new[] { "attributes", "variantAttributes", "options", "optionValues" })
+        {
+            if (!value.TryGetProperty(propertyName, out var attributes) || attributes.ValueKind != JsonValueKind.Array) continue;
+            foreach (var attribute in attributes.EnumerateArray())
+            {
+                var key = attribute.ValueKind == JsonValueKind.Object
+                    ? NullText(attribute, "attributeName", "attribute_name", "optionName", "name", "label")
+                    : null;
+                var optionValue = attribute.ValueKind == JsonValueKind.Object
+                    ? NullText(attribute, "attributeValue", "attribute_value", "optionValue", "value", "text")
+                    : null;
+                if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(optionValue)) entries.Add((key.Trim(), optionValue.Trim()));
+            }
+        }
+
+        return entries
+            .GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.Last().Value, StringComparer.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyDictionary<string, string> MergeOptions(IReadOnlyDictionary<string, string> parent, IReadOnlyDictionary<string, string> variant)

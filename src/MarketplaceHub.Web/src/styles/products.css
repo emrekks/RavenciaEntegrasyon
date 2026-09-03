@@ -2703,6 +2703,8 @@ body:has(.product-add-page),
 .product-import-progress article { display: grid; gap: 6px; }
 .product-import-progress-top span { min-width: 0; overflow: hidden; color: #d9ddff; font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; }
 .product-import-progress-top strong { flex: 0 0 auto; color: #fff; font-size: .7rem; }
+.product-import-progress-counters { display: flex; flex-wrap: wrap; gap: 8px; }
+.product-import-progress-counters span { color: #cbd0ed; white-space: nowrap; }
 .product-import-progress-track { height: 7px; overflow: hidden; background: #292d49; border-radius: 999px; }
 .product-import-progress-track i { display: block; height: 100%; background: linear-gradient(90deg, #5964ef, #9d86ff); border-radius: inherit; transition: width .35s ease; }
 .product-import-progress-track.indeterminate i { width: 35%; animation: product-import-progress-slide 1.25s ease-in-out infinite; }

@@ -888,7 +888,14 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var offerByVariant = offers.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
         return products.Select(product =>
         {
-            var productVariants = variants.Where(x => x.ProductId == product.Id).OrderBy(x => x.Sku).ToList();
+            // Product variants are inserted in the marketplace response order.
+            // Sorting by SKU made the gallery jump between colours (for example
+            // black, green, black) even though Trendyol sent each colour as a
+            // contiguous block.
+            var productVariants = variants.Where(x => x.ProductId == product.Id)
+                .OrderBy(x => x.CreatedAt)
+                .ThenBy(x => x.Id)
+                .ToList();
             var variantViews = productVariants.Select(variant =>
             {
                 inventoryByVariant.TryGetValue(variant.Id, out var inventory); offerByVariant.TryGetValue(variant.Id, out var offer);
