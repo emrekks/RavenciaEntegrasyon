@@ -2575,6 +2575,9 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .product-add-page .product-media-card .product-media-link-button { margin-left: auto !important; flex: 0 0 auto !important; }
 .app-shell.stitch-shell .product-add-page .product-media-link-button::before { content: '↗' !important; font-size: 17px !important; }
 .app-shell.stitch-shell .product-add-page .product-media-link-button { width: 42px !important; height: 38px !important; border-radius: 9px !important; }
+.app-shell.stitch-shell .product-add-page .product-top-layout {
+  grid-template-columns: minmax(0, 1.8fr) minmax(300px, .72fr) !important;
+}
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-mapping-list {
   display: grid !important;
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
@@ -2604,12 +2607,30 @@ body:has(.product-add-page),
 .app-shell.stitch-shell .product-add-page .product-description-field .rich-text-editor-pro { min-width: 0 !important; width: 100% !important; }
 .app-shell.stitch-shell .product-add-page .product-description-field .rich-text-canvas,
 .app-shell.stitch-shell .product-add-page .product-description-field .rich-text-html-editor {
+  box-sizing: border-box !important;
   max-width: 100% !important;
   overflow-wrap: anywhere !important;
   word-break: break-word !important;
   line-height: 1.7 !important;
 }
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-canvas {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  white-space: normal !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-canvas > * {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  white-space: normal !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-canvas img {
+  max-width: 100% !important;
+  height: auto !important;
+}
 @media (max-width: 900px) {
+  .app-shell.stitch-shell .product-add-page .product-top-layout { grid-template-columns: 1fr !important; }
   .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-mapping-list { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
 @media (max-width: 600px) {
