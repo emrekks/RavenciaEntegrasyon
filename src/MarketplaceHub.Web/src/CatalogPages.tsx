@@ -85,21 +85,13 @@ type ProductGroup = {
   variants: Array<{ product: Product; variant: Variant }>
 }
 
-function groupProductRows(products: Product[]): ProductGroup[] {
-  const groups = new Map<string, ProductGroup>()
-  for (const product of products) {
-    const modelCode = product.modelCode?.trim().toLocaleLowerCase('tr-TR')
-    // Model code is the catalog's stable family key. Products without one stay
-    // independent so two unrelated same-name products are never merged.
-    const id = modelCode
-      ? `model:${modelCode}|brand:${product.brandId ?? ''}|category:${product.categoryId ?? ''}`
-      : `product:${product.id}`
-    const group = groups.get(id) ?? { id, primary: product, products: [], variants: [] }
-    group.products.push(product)
-    group.variants.push(...product.variants.map(variant => ({ product, variant })))
-    groups.set(id, group)
-  }
-  return [...groups.values()]
+function productRowsAsCards(products: Product[]): ProductGroup[] {
+  return products.map(product => ({
+    id: `product:${product.id}`,
+    primary: product,
+    products: [product],
+    variants: product.variants.map(variant => ({ product, variant }))
+  }))
 }
 
 async function fetchProductPage(limit: number, filters: ProductListFilters, after: string | null) {
@@ -410,7 +402,7 @@ export function ProductsPage() {
   const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<TrendyolConnection>('/connections') })
   const productSyncJobsQuery = useQuery({ queryKey: ['jobs', 'product-import'], queryFn: () => hubApi<ProductSyncJob[]>('/jobs', { cache: 'no-store' }), enabled: productImportOpen, refetchInterval: productImportOpen ? 1000 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
   const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(isProductPublicationConnection); const platforms = summaryQuery.data?.platforms ?? []
-  const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = currentPage === pageNumber ? products : []; const pageProductGroups = useMemo(() => groupProductRows(pageProducts), [pageProducts])
+  const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = currentPage === pageNumber ? products : []; const pageProductGroups = useMemo(() => productRowsAsCards(pageProducts), [pageProducts])
   const activeProductSyncJobs = useMemo(() => (productSyncJobsQuery.data ?? []).filter(job => job.jobType === 'TRENDYOL_PRODUCT_SYNC' && !['SUCCEEDED', 'CANCELLED', 'DEAD'].includes(job.status) && (!productImportConnectionIds.length || (job.connectionId && productImportConnectionIds.includes(job.connectionId)))), [productImportConnectionIds, productSyncJobsQuery.data])
   const cancelProductSync = useMutation({ mutationFn: (jobId: string) => hubApi(`/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': `cancel-product-import:${jobId}` } }), onSuccess: () => { void productSyncJobsQuery.refetch(); void client.invalidateQueries({ queryKey: ['jobs'] }) } })
   const selectedProducts = selectedProductIds.map(id => selectedProductCache[id]).filter((product): product is Product => Boolean(product))
