@@ -61,7 +61,6 @@ export function InvoicesPage() {
   const tabs = [['UNINVOICED', 'Faturalandırılmamışlar'], ['INVOICED', 'Faturalandırılmışlar'], ['DUE_SOON', 'Süresi Yaklaşanlar']] as const
   const counts = { unInvoiced: items.filter(x => x.canCreateInvoice).length, invoiced: items.filter(x => !x.canCreateInvoice).length, dueSoon: items.filter(x => x.isDueSoon).length }
   const activeTabLabel = tabs.find(([value]) => value === tab)?.[1] ?? 'Faturalar'
-  const clearFilters = () => { setSearch(''); setStatus('ALL'); setPageNumber(1) }
   return <section className="content f3 invoices-page reference-invoices-page">
     <div className="page-heading invoices-reference-heading">
       <div><p className="eyebrow">Mali belgeler</p><h1>Faturalar</h1><p className="lede">Faturaları paket, teslimat ve ödeme bilgileriyle tek çalışma alanında takip edin.</p></div>
@@ -79,7 +78,6 @@ export function InvoicesPage() {
       <section className="invoice-reference-filters" aria-label="Fatura filtreleri">
         <label className="invoice-reference-search"><span aria-hidden="true">⌕</span><input aria-label="Fatura ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></label>
         <label>Sipariş durumu<select value={status} onChange={event => setStatus(event.target.value)}><option value="ALL">Tümü</option><option value="NEW">Yeni</option><option value="PROCESSING">İşleme alınmış</option><option value="SHIPPED">Kargoya verilmiş</option><option value="DELIVERED">Teslim edilmiş</option><option value="CANCELLED">İptal edilmiş</option></select></label>
-        <div className="invoice-reference-filter-actions"><button type="button" className="secondary" onClick={clearFilters}>Temizle</button></div>
       </section>
     </div>
     <section className="invoice-reference-workspace">

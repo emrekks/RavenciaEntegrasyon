@@ -269,19 +269,41 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         var query = VisibleProducts(tenantId);
         ApplyProductFilters(ref query, tenantId, status, search, platform, stock);
-        var countKey = $"catalog:product-count:{tenantId:N}:{status?.Trim()}:{search?.Trim()}:{platform?.Trim()}:{stock?.Trim()}";
+        var countKey = $"catalog:product-family-count:v2:{tenantId:N}:{status?.Trim()}:{search?.Trim()}:{platform?.Trim()}:{stock?.Trim()}";
         var cachedCount = countCache.Get(countKey);
-        var totalCount = cachedCount is int count ? count : await query.CountAsync(cancellationToken);
-        if (cachedCount is not int)
-            countCache.Set(countKey, totalCount, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(15), Size = 1 });
         if (!cursors.TryDecodeProduct(after, out var afterUpdatedAt, out var afterId))
             throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(after));
-        if (afterId != Guid.Empty) query = query.Where(x => x.UpdatedAt < afterUpdatedAt || x.UpdatedAt == afterUpdatedAt && x.Id.CompareTo(afterId) < 0);
-        var rows = await query.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
-        var hasMore = rows.Count > limit; var products = rows.Take(limit).ToList(); var ids = products.Select(x => x.Id).ToArray();
-        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId)).ToListAsync(cancellationToken);
+        var allProducts = await query.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
+        var allProductIds = allProducts.Select(x => x.Id).ToArray();
+        var allVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && allProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
+        var variantsByProduct = allVariants.GroupBy(x => x.ProductId).ToDictionary(x => x.Key, x => x.ToList());
+        var families = allProducts
+            .GroupBy(product => ProductFamilyKey(product, variantsByProduct.GetValueOrDefault(product.Id) ?? []), StringComparer.Ordinal)
+            .Select(group => new ProductFamily(group.Key, group.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id).First(), group.ToList()))
+            .OrderByDescending(x => x.Primary.UpdatedAt).ThenByDescending(x => x.Primary.Id)
+            .ToList();
+        var totalCount = cachedCount is int count ? count : families.Count;
+        if (cachedCount is not int)
+            countCache.Set(countKey, totalCount, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(15), Size = 1 });
+        var pageFamilies = families
+            .Where(x => afterId == Guid.Empty || x.Primary.UpdatedAt < afterUpdatedAt || x.Primary.UpdatedAt == afterUpdatedAt && x.Primary.Id.CompareTo(afterId) < 0)
+            .Take(limit)
+            .ToList();
+        var products = pageFamilies.SelectMany(x => x.Products).ToList();
+        var ids = products.Select(x => x.Id).ToHashSet();
+        var variants = allVariants.Where(x => ids.Contains(x.ProductId)).ToList();
         var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken);
-        return new(views, hasMore ? cursors.EncodeProduct(rows[limit - 1].UpdatedAt, rows[limit - 1].Id) : null, hasMore, totalCount);
+        var lastFamily = pageFamilies.LastOrDefault();
+        var hasMore = lastFamily is not null && families.Any(x => x.Primary.UpdatedAt < lastFamily.Primary.UpdatedAt || x.Primary.UpdatedAt == lastFamily.Primary.UpdatedAt && x.Primary.Id.CompareTo(lastFamily.Primary.Id) < 0);
+        return new(views, hasMore ? cursors.EncodeProduct(lastFamily!.Primary.UpdatedAt, lastFamily.Primary.Id) : null, hasMore, totalCount);
+    }
+
+    private sealed record ProductFamily(string Key, Product Primary, IReadOnlyList<Product> Products);
+
+    private static string ProductFamilyKey(Product product, IReadOnlyList<ProductVariant> variants)
+    {
+        var modelCode = variants.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+        return string.IsNullOrWhiteSpace(modelCode) ? $"product:{product.Id:D}" : $"model:{modelCode.Trim().ToUpperInvariant()}";
     }
 
     public async Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken)

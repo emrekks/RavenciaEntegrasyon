@@ -1646,8 +1646,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Select(x => NormalizeCatalogKey(x, 320))
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .ToHashSet(StringComparer.Ordinal);
+        var observedOptionValues = snapshot.Variants
+            .SelectMany(x => x.Options)
+            .Select(pair => (Axis: ObservedVariantValueAxis(pair.Key), Value: NormalizeCatalogKey(pair.Value, 320)))
+            .Where(item => item.Axis is not null && !string.IsNullOrWhiteSpace(item.Value))
+            .GroupBy(item => item.Axis!, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Value).ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal);
         var valuesByAttribute = new Dictionary<string, IReadOnlyList<ReferenceItem>>(StringComparer.Ordinal);
-        foreach (var remoteAttribute in remoteAttributes.Where(x => x.IsRequired == true || observedNames.Contains(NormalizeCatalogKey(x.Name, 320))))
+        foreach (var remoteAttribute in remoteAttributes.Where(x => x.IsRequired == true || observedNames.Contains(NormalizeCatalogKey(x.Name, 320)) || VariantOptionAxis(x.Name) is not null))
         {
             var valueSnapshot = await EnsureReferenceSnapshot(tenantId, connectionId, "ATTRIBUTE_VALUES", $"{externalCategoryId}/{remoteAttribute.ExternalId}", correlationId, cancellationToken);
             if (valueSnapshot is null) continue;
@@ -1655,6 +1661,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .Where(x => x.TenantId == tenantId && x.SnapshotId == valueSnapshot.Id && x.ResourceType == "ATTRIBUTE_VALUES" && x.IsActive)
                 .OrderBy(x => x.SortOrder).ThenBy(x => x.Name)
                 .ToListAsync(cancellationToken);
+            if (ObservedVariantValueAxis(remoteAttribute.Name) is { } axis && observedOptionValues.TryGetValue(axis, out var usedValues))
+                values = values.Where(value => usedValues.Contains(NormalizeCatalogKey(value.Name, 320))).ToList();
             valuesByAttribute[remoteAttribute.ExternalId] = values;
         }
 
@@ -1720,20 +1728,36 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         IReadOnlyList<ReferenceItem> values,
         CancellationToken cancellationToken)
     {
+        var optionAxis = VariantOptionAxis(remoteAttribute.Name);
+        var canonicalName = optionAxis switch
+        {
+            "COLOR" => "Renk",
+            "SIZE" => "Beden",
+            _ => Short(remoteAttribute.Name, 160)
+        };
         var code = Short($"TRD_{remoteCategory.ExternalId}_{remoteAttribute.ExternalId}", 96);
         var dataType = values.Count > 0
             ? (remoteAttribute.AllowsMultipleValues == true ? AttributeDataType.MultiSelect : AttributeDataType.SingleSelect)
             : AttributeDataType.Text;
         var attribute = db.AttributeDefinitions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Code == code)
             ?? await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Code == code, cancellationToken);
+        if (attribute is null && optionAxis is not null)
+        {
+            var existingAttributes = await db.AttributeDefinitions
+                .Where(x => x.TenantId == tenantId && x.IsActive)
+                .OrderBy(x => x.CreatedAt)
+                .ToListAsync(cancellationToken);
+            attribute = db.AttributeDefinitions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.IsActive && VariantOptionAxis(x.Name) == optionAxis)
+                ?? existingAttributes.FirstOrDefault(x => VariantOptionAxis(x.Name) == optionAxis);
+        }
         if (attribute is null)
         {
-            attribute = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = tenantId, Code = code, Name = Short(remoteAttribute.Name, 160), DataType = dataType, SelectionMode = dataType == AttributeDataType.MultiSelect ? "MULTI" : dataType == AttributeDataType.SingleSelect ? "SINGLE" : null, IsActive = true, CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
+            attribute = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = tenantId, Code = code, Name = canonicalName, DataType = dataType, SelectionMode = dataType == AttributeDataType.MultiSelect ? "MULTI" : dataType == AttributeDataType.SingleSelect ? "SINGLE" : null, IsActive = true, CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
             db.AttributeDefinitions.Add(attribute);
         }
         else
         {
-            attribute.Name = Short(remoteAttribute.Name, 160);
+            attribute.Name = canonicalName;
             attribute.DataType = dataType;
             attribute.SelectionMode = dataType == AttributeDataType.MultiSelect ? "MULTI" : dataType == AttributeDataType.SingleSelect ? "SINGLE" : null;
             attribute.IsActive = true;
@@ -1742,7 +1766,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         var requirement = await db.CategoryAttributeRequirements.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == category.Id && x.AttributeId == attribute.Id, cancellationToken);
-        var role = requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
+        var role = IsWebColorOptionKey(remoteAttribute.Name)
+            ? "ATTRIBUTE"
+            : requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
         if (requirement is null)
             db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = category.Id, AttributeId = attribute.Id, IsRequired = remoteAttribute.IsRequired == true, AllowsCustomValue = remoteAttribute.AllowsCustomValue == true, DisplayOrder = remoteAttribute.SortOrder ?? 0, Role = role, Version = 1 });
         else
@@ -1770,7 +1796,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             var normalizedValue = NormalizeCatalogKey(remoteValue.Name, 320);
             var value = db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == attribute.Id && x.NormalizedValue == normalizedValue)
-                ?? await db.AttributeValues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == attribute.Id && x.NormalizedValue == normalizedValue, cancellationToken);
+                ?? await db.AttributeValues.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == attribute.Id && x.NormalizedValue == normalizedValue, cancellationToken);
             if (value is null)
             {
                 value = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenantId, AttributeId = attribute.Id, Value = Short(remoteValue.Name, 320), NormalizedValue = normalizedValue, SortOrder = remoteValue.SortOrder ?? 0, IsActive = true, Version = 1 };
@@ -1815,7 +1841,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 sortOrder++;
                 continue;
             }
-            if (mapped.Role == "OPTION" || IsColorOptionKey(pair.Key))
+            if (IsCatalogProductOption(mapped, pair.Key))
             {
                 sortOrder++;
                 continue;
@@ -2248,19 +2274,41 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         foreach (var pair in options)
         {
             var optionKey = NormalizeCatalogKey(pair.Key, 320);
-            if (!categoryContext.Attributes.TryGetValue(optionKey, out var mapped) || (mapped.Role != "OPTION" && !IsVariantOptionName(pair.Key))) continue;
+            if (!categoryContext.Attributes.TryGetValue(optionKey, out var mapped) || !IsCatalogProductOption(mapped, pair.Key)) continue;
             panelOptions[mapped.Definition.Name] = await PanelOptionValueAsync(tenantId, connectionId, categoryContext, mapped, pair.Value, cancellationToken);
         }
-        return OptionSignature(panelOptions.Count > 0 ? panelOptions : options);
+        if (panelOptions.Count > 0) return OptionSignature(panelOptions);
+        var fallbackOptions = options.Where(pair => !IsWebColorOptionKey(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        return OptionSignature(fallbackOptions);
     }
+
+    private static bool IsWebColorOptionKey(string value)
+    {
+        var normalized = NormalizeCatalogKey(value, 320).Replace("-", "", StringComparison.Ordinal);
+        return normalized is "WEBCOLOR" or "WEBCOLOUR" or "WEBRENK";
+    }
+
+    private static string? VariantOptionAxis(string value)
+    {
+        if (IsWebColorOptionKey(value)) return null;
+        if (IsColorOptionKey(value)) return "COLOR";
+        if (IsSizeOptionKey(value)) return "SIZE";
+        return null;
+    }
+
+    private static string? ObservedVariantValueAxis(string value) =>
+        IsWebColorOptionKey(value) ? "WEB_COLOR" : VariantOptionAxis(value);
 
     private static bool IsColorOptionKey(string value)
     {
         var normalized = NormalizeCatalogKey(value, 320).Replace(" ", "", StringComparison.Ordinal);
-        return normalized is "RENK" or "COLOR" or "WEBCOLOR" or "COLOUR";
+        return normalized is "RENK" or "COLOR" or "COLOUR";
     }
 
-    private static bool IsVariantOptionName(string value) => IsColorOptionKey(value) || IsSizeOptionKey(value);
+    private static bool IsVariantOptionName(string value) => VariantOptionAxis(value) is not null;
+
+    private static bool IsCatalogProductOption(LocalCategoryAttribute mapped, string remoteName) =>
+        !IsWebColorOptionKey(remoteName) && (mapped.Role == "OPTION" || IsVariantOptionName(remoteName));
 
     private static bool IsSizeOptionKey(string value)
     {
@@ -2292,6 +2340,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             var optionKey = NormalizeCatalogKey(pair.Key, 160); var valueKey = NormalizeCatalogKey(pair.Value, 160);
             if (string.IsNullOrWhiteSpace(optionKey) || string.IsNullOrWhiteSpace(valueKey)) continue;
+            if (IsWebColorOptionKey(pair.Key)) continue;
             LocalCategoryAttribute? mapped = null;
             if (categoryContext is not null && (!categoryContext.Attributes.TryGetValue(optionKey, out mapped) || (mapped.Role != "OPTION" && !IsVariantOptionName(pair.Key)))) continue;
             var panelLabel = mapped?.Definition.Name ?? pair.Key;
@@ -2299,10 +2348,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             optionKey = NormalizeCatalogKey(panelLabel, 160);
             valueKey = NormalizeCatalogKey(panelValue, 160);
             var option = db.ProductOptions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == productId && x.NormalizedKey == optionKey)
-                ?? await db.ProductOptions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.NormalizedKey == optionKey, cancellationToken);
+                ?? await db.ProductOptions.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.NormalizedKey == optionKey, cancellationToken);
             if (option is null) { option = new ProductOption { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = productId, Label = Short(panelLabel, 160), NormalizedKey = optionKey, SortOrder = order }; db.ProductOptions.Add(option); }
             var optionValue = db.ProductOptionValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.OptionId == option.Id && x.NormalizedKey == valueKey)
-                ?? await db.ProductOptionValues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OptionId == option.Id && x.NormalizedKey == valueKey, cancellationToken);
+                ?? await db.ProductOptionValues.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.OptionId == option.Id && x.NormalizedKey == valueKey, cancellationToken);
             if (optionValue is null) { optionValue = new ProductOptionValue { Id = Guid.CreateVersion7(), TenantId = tenantId, OptionId = option.Id, Label = Short(panelValue, 160), NormalizedKey = valueKey, SortOrder = order }; db.ProductOptionValues.Add(optionValue); }
             var assignment = db.VariantOptionValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.VariantId == variantId && x.OptionId == option.Id)
                 ?? await db.VariantOptionValues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.OptionId == option.Id, cancellationToken);
