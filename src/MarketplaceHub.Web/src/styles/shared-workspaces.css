@@ -3768,3 +3768,133 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   padding: 8px !important;
   border-width: 1px !important;
 }
+
+/* Panel değer modalı: sabit başlık/arama alanı, kontrollü iç liste ve taşmayan satırlar. */
+.app-shell.stitch-shell .panel-attribute-modal-card {
+  width: min(620px, calc(100vw - 32px)) !important;
+  height: min(680px, calc(100vh - 32px)) !important;
+  max-height: min(680px, calc(100vh - 32px)) !important;
+  min-height: 0 !important;
+  grid-template-rows: auto auto minmax(0, 1fr) !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+.app-shell.stitch-shell .panel-attribute-value-editor {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  align-content: start !important;
+  scrollbar-gutter: stable;
+}
+.app-shell.stitch-shell .panel-attribute-value-editor > div {
+  min-width: 0 !important;
+  min-height: 40px !important;
+  box-sizing: border-box !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+}
+.app-shell.stitch-shell .panel-attribute-value-editor > div > span,
+.app-shell.stitch-shell .panel-attribute-value-editor > div > input {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .panel-attribute-value-editor > div > div {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  gap: 4px !important;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .panel-attribute-record-actions .panel-attribute-category-button {
+  width: auto !important;
+  min-width: 76px !important;
+  padding: 0 8px !important;
+  font-size: 9px !important;
+}
+
+/* Özellik/seçenek kapsamı: kategori listesi modal içinde kendi kaydırma alanında kalır. */
+.app-shell.stitch-shell .panel-attribute-category-modal-card {
+  width: min(620px, calc(100vw - 32px)) !important;
+  height: min(680px, calc(100vh - 32px)) !important;
+  max-height: min(680px, calc(100vh - 32px)) !important;
+  min-height: 0 !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  gap: 12px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+.panel-attribute-category-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.panel-attribute-category-search input { min-width: 0; flex: 1 1 auto; min-height: 38px !important; }
+.panel-attribute-category-search span { flex: 0 0 auto; color: #a9abbd; font-size: 10px; white-space: nowrap; }
+.panel-attribute-category-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+.panel-attribute-category-list > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px !important;
+  color: #d9d8e3 !important;
+  text-align: left;
+  background: #20212a !important;
+  border: 1px solid #34343d !important;
+  border-radius: 4px !important;
+}
+.panel-attribute-category-list > button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel-attribute-category-list > button > i { flex: 0 0 auto; color: #bfc3ff; font-style: normal; }
+.panel-attribute-category-list > button.active { color: #fff !important; background: rgba(88, 101, 242, .2) !important; border-color: #6872e8 !important; box-shadow: inset 3px 0 #6872e8; }
+.panel-attribute-category-modal-card > footer { display: flex; justify-content: flex-end; gap: 8px; }
+.panel-attribute-category-modal-card > footer button { min-height: 36px !important; }
+
+/* Kayıtlı eşleştirmeler tek platformlu sekme düzeninde ve arama alanı sürekli görünür. */
+.app-shell.stitch-shell .mapping-saved-card > header > div.mapping-saved-header-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.mapping-saved-tabs { display: flex; align-items: stretch; gap: 4px; }
+.mapping-saved-tabs > button {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  width: auto !important;
+  min-width: 0 !important;
+  padding: 0 12px !important;
+  color: #fff !important;
+  background: rgba(88, 101, 242, .18) !important;
+  border-color: #6872e8 !important;
+}
+.mapping-saved-tabs > button small { color: #bfc3ff; font-size: 10px; }
+.mapping-saved-card > header > div.mapping-saved-header-tools > input { width: min(250px, 28vw); min-width: 160px; }
+@media (max-width: 760px) {
+  .mapping-saved-card > header > div.mapping-saved-header-tools { width: 100%; justify-content: stretch; }
+  .mapping-saved-card > header > div.mapping-saved-header-tools > input { width: auto; flex: 1 1 auto; }
+  .mapping-saved-tabs > button { padding-inline: 10px !important; }
+}
+@media (max-width: 560px) {
+  .panel-attribute-category-list { grid-template-columns: 1fr; }
+}
