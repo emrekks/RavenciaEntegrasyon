@@ -487,7 +487,7 @@
 .app-shell.stitch-shell .variant-table-header-with-action > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell .variant-header-action { flex: 0 0 auto; padding: 3px 6px; color: #aeb8e8; background: #202744; border: 1px solid #4d5a9a; border-radius: 5px; box-shadow: none; font-size: 9px; font-weight: 800; white-space: nowrap; }
 .app-shell.stitch-shell .variant-header-action:hover { color: #fff; background: #2a3357; border-color: #8490ff; transform: none; }
-.app-shell.stitch-shell .variant-header-action { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0 !important; color: #9da7d5 !important; background: transparent !important; border-color: transparent !important; border-radius: 4px; }
+.app-shell.stitch-shell .variant-header-action { display: inline-grid; place-items: center; width: 20px; height: 20px; min-height: 20px !important; padding: 0 !important; color: #9da7d5 !important; background: transparent !important; border-color: transparent !important; border-radius: 4px; }
 .app-shell.stitch-shell .variant-header-action:hover { color: #fff !important; background: transparent !important; border-color: transparent !important; }
 .app-shell.stitch-shell .variant-header-action-icon { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; }
 .app-shell.stitch-shell .variant-table-row.is-filter-match { border-color: #7786ff !important; box-shadow: inset 3px 0 #7786ff, 0 0 0 1px rgba(119, 134, 255, .22); }
