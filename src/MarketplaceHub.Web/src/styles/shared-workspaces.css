@@ -2948,6 +2948,12 @@ textarea {
 .brand-mapping-pair-grid .searchable-select-options > button[aria-selected="true"] { color: #fff !important; background: #292a35 !important; border-color: #6872e8 !important; }
 .brand-mapping-pair-grid .searchable-select-options > button > span { overflow: hidden; color: inherit !important; font-size: 11px !important; text-overflow: ellipsis; white-space: nowrap; }
 .brand-mapping-pair-grid .searchable-select-options > button > small { color: #9da3b8 !important; font-size: 9px !important; }
+.brand-mapping-pair-grid .mapping-side-head { display: flex !important; align-items: flex-start !important; justify-content: space-between !important; gap: 10px !important; }
+.brand-mapping-pair-grid .mapping-side-head-copy { display: grid !important; min-width: 0; gap: 3px !important; }
+.brand-mapping-pair-grid .mapping-reference-refresh { display: grid !important; flex: 0 0 26px; place-items: center; width: 26px !important; height: 26px !important; min-height: 26px !important; padding: 0 !important; color: #c6c5d7 !important; background: transparent !important; border: 1px solid #454655 !important; border-radius: 3px !important; box-shadow: none !important; font-size: 15px !important; line-height: 1 !important; }
+.brand-mapping-pair-grid .mapping-reference-refresh:hover:not(:disabled) { color: #fff !important; background: #292a35 !important; border-color: #6872e8 !important; }
+.brand-mapping-pair-grid .mapping-reference-refresh:disabled { cursor: wait; opacity: .58; }
+.brand-mapping-console > .brand-reference-action.has-error { color: #f2a4ad !important; }
 
 @media (max-width: 760px) {
   .brand-mapping-console { padding: 14px !important; }
