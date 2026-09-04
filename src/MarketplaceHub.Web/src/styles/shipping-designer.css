@@ -210,7 +210,7 @@
 .app-shell.stitch-shell .order-label-action.is-printed i{font-style:normal;color:#96efbd}
 .app-shell.stitch-shell .invoice-info-modal .invoice-address-sheet>p{margin:18px 0 0;padding:12px 14px;color:var(--rv-muted);background:rgba(113,104,245,.09);border:1px solid rgba(113,104,245,.25);border-radius:9px;line-height:1.5}
 .app-shell.stitch-shell .invoice-info-modal .invoice-address-sheet>p strong{color:#e9e7ff}
-.app-shell.stitch-shell .security-page .sessions li{grid-template-columns:32px minmax(0,1fr) auto;min-width:0;gap:14px}
+.app-shell.stitch-shell .security-page .sessions li{grid-template-columns:32px minmax(0,1fr) auto;min-width:0;gap:14px;padding-inline:14px}
 .app-shell.stitch-shell .security-page .sessions li>span:nth-child(2){min-width:0;overflow:hidden}
 .app-shell.stitch-shell .security-page .sessions li>span:nth-child(2) small{display:block;overflow-wrap:anywhere;line-height:1.45}
 .app-shell.stitch-shell .security-page .sessions li>b{white-space:nowrap;text-align:right}

@@ -1748,16 +1748,14 @@ body:has(.product-add-page),
 }
 .app-shell .product-add-page .product-add-progress {
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr) !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   align-items: center;
   flex: 1 1 auto !important;
   gap: 8px !important;
   min-width: 0;
 }
 .app-shell .product-add-page .product-add-progress > i {
-  width: 100% !important;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #626578, transparent);
+  display: none !important;
 }
 .app-shell .product-add-page .product-add-progress button {
   justify-content: center;
@@ -2072,7 +2070,7 @@ body:has(.product-add-page),
 }
 @media (max-width: 650px) {
   .app-shell .product-add-page .product-add-stepper { padding: 7px !important; }
-  .app-shell .product-add-page .product-add-progress { grid-template-columns: minmax(0, 1fr) 24px minmax(90px, .72fr); }
+  .app-shell .product-add-page .product-add-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .app-shell .product-add-page .product-add-progress button { justify-content: center; padding: 0 6px; }
   .app-shell .product-add-page .product-add-progress button strong { display: none; }
 }
@@ -2173,7 +2171,7 @@ body:has(.product-add-page),
   }
 
   .app-shell .product-add-page .product-add-progress {
-    grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
   .app-shell .product-add-page .product-add-progress button {

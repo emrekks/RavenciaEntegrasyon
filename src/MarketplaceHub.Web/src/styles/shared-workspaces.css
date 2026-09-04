@@ -1949,6 +1949,16 @@ textarea {
 }
 
 /* Category mapping workspace */
+.app-shell.stitch-shell > main:has(.stitch-reference-mapping) {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: auto !important;
+  scrollbar-gutter: stable;
+}
+.app-shell.stitch-shell > main:has(.stitch-reference-mapping) > .stitch-reference-mapping {
+  min-height: max-content !important;
+  overflow: visible !important;
+}
 .stitch-shell .content.stitch-reference-mapping {
   display: block !important;
   padding: 24px !important;

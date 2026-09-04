@@ -550,9 +550,26 @@
   top: auto;
   bottom: 24px;
 }
+.app-shell.stitch-shell .mapping-page > .notice {
+  position: fixed !important;
+  right: 24px;
+  bottom: 24px;
+  z-index: 2400;
+  width: min(390px, calc(100vw - 32px));
+  margin: 0 !important;
+  padding: 13px 16px !important;
+  color: #e7e8f4 !important;
+  background: #1a1c2a !important;
+  border: 1px solid rgba(124, 134, 255, .62) !important;
+  border-left: 3px solid #7c86ff !important;
+  border-radius: 10px !important;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, .46), 0 0 24px rgba(88, 101, 242, .14) !important;
+  animation: ravencia-operation-toast-in .2s ease-out;
+}
 @media (max-width: 720px) {
   .app-shell.stitch-shell .operation-feedback-toast { top: 66px; right: 12px; width: calc(100vw - 24px); }
   .app-shell.stitch-shell .integrations-reference-page .operation-feedback-toast { top: auto; bottom: 12px; }
+  .app-shell.stitch-shell .mapping-page > .notice { right: 12px; bottom: 12px; width: calc(100vw - 24px); }
 }
 
 /* Category attribute cards stay in the existing popup, two per row on desktop. */
@@ -1001,7 +1018,7 @@
 
 .app-shell.stitch-shell .database-reset-panel { max-width: 1100px; border-color: rgba(255, 154, 106, .24) !important; }
 .app-shell.stitch-shell .database-reset-intro p { max-width: 820px; color: #a2aac4 !important; line-height: 1.6; }
-.app-shell.stitch-shell .database-scope-group { padding: 18px 0 !important; }
+.app-shell.stitch-shell .database-scope-group { padding: 18px !important; }
 .app-shell.stitch-shell .database-scope-group h3 { color: #eef0ff !important; font-size: 14px !important; }
 .app-shell.stitch-shell .database-scope-group > div:first-child p { color: #8e97b5 !important; line-height: 1.45; }
 .app-shell.stitch-shell .database-scope-list { gap: 10px !important; }
@@ -1010,7 +1027,6 @@
 .app-shell.stitch-shell .database-scope-label { color: #e9ebff !important; }
 .app-shell.stitch-shell .database-scope-label strong { font-size: 12px !important; }
 .app-shell.stitch-shell .database-scope-label::after { content: attr(data-description); display: block; max-width: 360px; margin-top: 4px; color: #9099b7; font-size: 10px; line-height: 1.35; }
-.app-shell.stitch-shell .database-scope-help { display: inline-grid !important; place-items: center; width: 17px; height: 17px; margin-left: 6px; color: #ffb58d !important; background: rgba(255, 181, 141, .08); border-color: rgba(255, 181, 141, .5) !important; border-radius: 50%; font-size: 10px !important; }
 
 .app-shell.stitch-shell .jobs-reference-row { min-height: 72px; }
 .app-shell.stitch-shell .jobs-reference-time { gap: 3px !important; }

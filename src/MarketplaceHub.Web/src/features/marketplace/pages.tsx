@@ -1032,6 +1032,10 @@ export function ReturnDetailPage() {
 
 export function MappingPage() {
   const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const main = document.querySelector<HTMLElement>('.app-shell.stitch-shell > main')
+    if (main) main.scrollTop = 0
+  }, [])
   return searchParams.get('view') === 'brands' ? <BrandMappingPage /> : <CategoryMappingWorkspace />
 }
 
