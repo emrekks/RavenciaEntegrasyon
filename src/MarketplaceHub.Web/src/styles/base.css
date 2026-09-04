@@ -60,6 +60,35 @@ textarea,select { width:100%; padding:.8rem .9rem; border:1px solid #cfd5df; bor
 .data-table small { overflow:hidden; text-overflow:ellipsis; }
 .data-table .table-head { min-height:42px; font-size:.72rem; font-weight:800; letter-spacing:.07em; text-transform:uppercase; }
 .data-table.compact > * { grid-template-columns:minmax(220px,1.6fr) .5fr .7fr .6fr; }
+.product-catalog-head,
+.product-catalog-row { display:grid; align-items:center; }
+.product-catalog-row { position:relative; }
+.product-catalog-head > *,
+.product-catalog-row > * { min-width:0; }
+.order-filter-primary,
+.order-filter-advanced { display:grid; gap:.5rem; align-items:end; }
+.order-reference-head,
+.order-reference-grid { display:grid; align-items:stretch; }
+.order-reference-head > *,
+.order-reference-grid > * { min-width:0; }
+.order-select { display:grid; place-items:center; }
+.order-reference-meta,
+.order-reference-buyer,
+.order-reference-cargo,
+.order-reference-invoice,
+.order-reference-actions { display:flex; justify-content:center; flex-direction:column; min-width:0; }
+.order-reference-products { display:grid; padding:0 !important; }
+.order-reference-products > article { position:relative; display:grid; grid-template-columns:80px minmax(0,1fr); align-items:center; min-width:0; }
+.order-reference-products > article > div { display:flex; justify-content:center; flex-direction:column; min-width:0; }
+.order-reference-prices { display:grid; padding:0 !important; }
+.return-reference-tabs { display:flex; }
+.return-reference-filters { display:grid; }
+.return-filter-actions { display:flex; justify-content:flex-end; gap:.6rem; }
+.return-reference-head,
+.return-reference-row { display:grid; align-items:stretch; }
+.return-reference-head > *,
+.return-reference-row > span { min-width:0; }
+.return-reference-row > span { display:grid; align-content:center; }
 .unknown { padding:1.2rem; color:var(--rv-muted); background:var(--rv-surface-deep); border:1px dashed var(--rv-line-strong); border-radius:12px; }
 .unknown strong { color:var(--rv-ink); }
 .unknown p { margin:.35rem 0 1rem; }
