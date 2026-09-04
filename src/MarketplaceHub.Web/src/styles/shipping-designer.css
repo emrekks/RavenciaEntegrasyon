@@ -495,3 +495,36 @@
   .app-shell.stitch-shell .variant-filter-panel-summary { justify-content: space-between; width: 100%; }
   .app-shell.stitch-shell .variant-filter-grid { grid-template-columns: 1fr; }
 }
+
+/* Final product-workspace polish: the filter should feel like a compact field
+   group inside the existing panel, not a second competing card. */
+.app-shell.stitch-shell .variant-filter-panel {
+  gap: 8px !important;
+  padding: 10px !important;
+  background: rgba(14, 20, 38, .72) !important;
+  border: 1px solid rgba(88, 101, 242, .28) !important;
+  border-radius: 8px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025) !important;
+}
+.app-shell.stitch-shell .variant-filter-panel-head { align-items: center !important; gap: 10px !important; }
+.app-shell.stitch-shell .variant-filter-panel-head strong { font-size: 11px !important; }
+.app-shell.stitch-shell .variant-filter-panel-head span { font-size: 9px !important; }
+.app-shell.stitch-shell .variant-filter-panel-summary b { color: #9fa7c8 !important; font-size: 9px !important; }
+.app-shell.stitch-shell .variant-filter-clear { font-size: 9px !important; }
+.app-shell.stitch-shell .variant-filter-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important; gap: 6px !important; }
+.app-shell.stitch-shell .variant-filter-select-trigger {
+  min-height: 40px !important;
+  padding: 7px 9px !important;
+  background: #151a2c !important;
+  border-color: #303a61 !important;
+  border-radius: 7px !important;
+}
+.app-shell.stitch-shell .variant-filter-select-trigger:hover,
+.app-shell.stitch-shell .variant-filter-select-trigger.active { background: #1b2240 !important; border-color: #5966b8 !important; }
+.app-shell.stitch-shell .variant-filter-select-trigger small { font-size: 8px !important; }
+.app-shell.stitch-shell .variant-filter-select-trigger strong { font-size: 10px !important; }
+.app-shell.stitch-shell .variant-filter-help {
+  padding-top: 7px !important;
+  border-top: 1px solid rgba(151, 160, 207, .12) !important;
+  font-size: 9px !important;
+}

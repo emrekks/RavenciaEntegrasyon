@@ -2150,3 +2150,68 @@
     justify-content: flex-start !important;
   }
 }
+
+/* v10.45: keep the filter copy readable and align page size with navigation. */
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading {
+  align-items: flex-start !important;
+  gap: 24px !important;
+  padding: 16px 8px 14px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading > div:first-child {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading strong,
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading small {
+  display: block !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+  white-space: normal !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading strong { line-height: 1.25 !important; }
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading small { line-height: 1.45 !important; }
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading-meta {
+  flex: 0 0 auto !important;
+  max-width: 42% !important;
+  padding-top: 1px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-pagination {
+  align-items: center !important;
+  gap: 10px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-page-size-control {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 34px !important;
+  line-height: 1 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-page-size-control select {
+  align-self: center !important;
+  height: 34px !important;
+  margin: 0 4px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-page-navigation {
+  display: flex !important;
+  align-items: center !important;
+  align-self: center !important;
+  min-height: 34px !important;
+  height: 34px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-page-jump {
+  display: flex !important;
+  align-items: center !important;
+  height: 32px !important;
+  margin: 0 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-page-number-field {
+  display: flex !important;
+  align-items: center !important;
+  height: 30px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-page-number-field input { height: 30px !important; }
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-page-total { line-height: 1 !important; }
+@media (max-width: 680px) {
+  .app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading-meta { max-width: none !important; }
+  .app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-pagination { align-items: flex-start !important; }
+}

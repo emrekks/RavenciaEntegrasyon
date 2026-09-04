@@ -31,6 +31,7 @@ function Shell({ me }: { me: Me }) {
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') === 'true')
   const sidebarHoverTimer = useRef<number | null>(null)
+  const sidebarRef = useRef<HTMLElement>(null)
   async function logout() { await api('/logout', { method: 'POST' }); window.location.replace(`/?signedOut=${Date.now()}`) }
   const sidebarExpanded = sidebarPinned || sidebarHoverExpanded
   const menuCollapsed = !sidebarExpanded
@@ -49,6 +50,22 @@ function Shell({ me }: { me: Me }) {
     localStorage.setItem('ravencia.sidebarPinned', String(nextPinned))
     if (nextPinned) setSidebarHoverExpanded(true)
   }
+  useEffect(() => {
+    if (sidebarPinned) return
+    const collapseIfPointerIsOutside = (event: PointerEvent) => {
+      if (!sidebarHoverExpanded) return
+      const rect = sidebarRef.current?.getBoundingClientRect()
+      if (!rect) return
+      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) setSidebarHoverExpanded(false)
+    }
+    const collapseOnWindowBlur = () => setSidebarHoverExpanded(false)
+    window.addEventListener('pointermove', collapseIfPointerIsOutside)
+    window.addEventListener('blur', collapseOnWindowBlur)
+    return () => {
+      window.removeEventListener('pointermove', collapseIfPointerIsOutside)
+      window.removeEventListener('blur', collapseOnWindowBlur)
+    }
+  }, [sidebarHoverExpanded, sidebarPinned])
   const icons: Record<string, ReactNode> = {
     dashboard: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
     products: <><path d="M6 8h12l1 13H5L6 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></>,
@@ -64,9 +81,9 @@ function Shell({ me }: { me: Me }) {
 
   }
   const icon = (name: string) => <svg className="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{icons[name]}</svg>
-  const item = (to: string, iconName: string, label: string) => <NavLink to={to}>{icon(iconName)}<span className="nav-label">{label}</span></NavLink>
+  const item = (to: string, iconName: string, label: string) => <NavLink to={to} onClick={() => { if (!sidebarPinned) setSidebarHoverExpanded(false) }}>{icon(iconName)}<span className="nav-label">{label}</span></NavLink>
   return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarExpanded ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
-    <aside onPointerEnter={expandSidebarOnHover} onPointerLeave={collapseSidebarOnLeave} onFocus={expandSidebarOnHover} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) collapseSidebarOnLeave() }}>
+    <aside ref={sidebarRef} onPointerEnter={expandSidebarOnHover} onPointerLeave={collapseSidebarOnLeave} onFocus={expandSidebarOnHover} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) collapseSidebarOnLeave() }}>
       <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong><small>MarketplaceHub</small></div><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menü sabitlemesini kaldır' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menü sabitlendi' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3h8M9 3v5l-3 3v2h12v-2l-3-3V3M12 13v8" /></svg></button></div>
       <nav aria-label="Ana menü">{item('/dashboard', 'dashboard', 'Dashboard')}{item('/products', 'products', 'Ürünler')}{item('/orders', 'orders', 'Siparişler')}{item('/returns', 'returns', 'İadeler')}{item('/jobs', 'jobs', 'İşlem Takibi')}{item('/integrations', 'platforms', 'Platformlar')}{item('/mappings/categories', 'mappings', 'Eşleştirme Ayarları')}</nav>
       <div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları')}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Çıkış Yap</span></button></div>
