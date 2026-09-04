@@ -616,21 +616,32 @@ textarea {
   min-width: 0 !important;
 }
 
-/* Mapping yedeği seçimli ve geri alınabilir bir araç olarak aynı yüzeyde görünür. */
-.app-shell.stitch-shell .mapping-transfer-panel {
+/* Mapping yedeği işlemleri sayfa başlığında, içerik akışını bölmeden görünür. */
+.app-shell.stitch-shell .mapping-reference-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.app-shell.stitch-shell .mapping-reference-heading-actions {
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding-top: 3px;
+}
+.app-shell.stitch-shell .mapping-reference-heading-actions > span {
+  color: #a9adbd;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.app-shell.stitch-shell .mapping-transfer-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 14px 0;
-  padding: 14px 16px;
-  background: rgba(16, 18, 28, .84);
-  border: 1px solid var(--rv-border);
-  border-radius: 8px;
+  gap: 8px;
 }
-.app-shell.stitch-shell .mapping-transfer-panel > div:first-child { display: grid; gap: 4px; }
-.app-shell.stitch-shell .mapping-transfer-panel strong { color: #f1eff8; }
-.app-shell.stitch-shell .mapping-transfer-panel small { color: #a9adbd; }
 .app-shell.stitch-shell .mapping-transfer-upload {
   display: inline-flex;
   align-items: center;
@@ -686,8 +697,9 @@ textarea {
 .app-shell.stitch-shell .integration-settings-modal .integration-inline-workspace > .page-heading { display: none; }
 
 @media (max-width: 760px) {
-  .app-shell.stitch-shell .mapping-transfer-panel { align-items: stretch; flex-direction: column; }
-  .app-shell.stitch-shell .mapping-transfer-panel .button-row { justify-content: flex-start; }
+  .app-shell.stitch-shell .mapping-reference-heading { flex-direction: column; gap: 14px; }
+  .app-shell.stitch-shell .mapping-reference-heading-actions { justify-items: start; padding-top: 0; }
+  .app-shell.stitch-shell .mapping-transfer-actions { flex-wrap: wrap; }
   .app-shell.stitch-shell .integration-settings-modal-backdrop { padding: 10px; }
 .app-shell.stitch-shell .integration-settings-modal { max-height: calc(100vh - 20px); padding: 12px; }
 }
