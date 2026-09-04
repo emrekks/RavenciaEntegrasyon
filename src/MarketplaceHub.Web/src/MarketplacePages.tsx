@@ -78,7 +78,7 @@ type ReturnLine = { id: string; externalLineId: string; orderLineId: string; sku
 type LocalCategory = { id: string; name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean; version: number }
 type LocalBrand = { id: string; name: string; isActive: boolean; version: number }
 type LocalAttribute = { id: string; code: string; name: string; dataType: string; isActive: boolean; version: number; roles?: string[] | null; values: { id: string; value: string; sortOrder: number; isActive: boolean }[] }
-type ReferenceSyncAccepted = { value?: string; id?: string; Value?: string; Id?: string; error?: { message?: string; Message?: string } | null; Error?: { message?: string; Message?: string } | null }
+type ReferenceSyncAccepted = { value?: string; id?: string; jobId?: string; Value?: string; Id?: string; JobId?: string; error?: { message?: string; Message?: string } | null; Error?: { message?: string; Message?: string } | null }
 type ReferenceSyncJob = { job: { status: string; lastErrorCode?: string | null; lastErrorSummary?: string | null } }
 type ReferenceSyncJobSummary = { id: string; connectionId?: string | null; jobType: string; status: string; createdAt: string; lastErrorCode?: string | null; lastErrorSummary?: string | null }
 type CategoryRequirementView = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; attribute: LocalAttribute }
@@ -1587,9 +1587,9 @@ export function BrandMappingPage() {
       if (!connectionId) throw new Error('Aktif Trendyol bağlantısı bulunamadı.')
       const requestedAt = Date.now()
       const queued = await hubApi<ReferenceSyncAccepted | string>(`/connections/${connectionId}/reference-sync-jobs?resourceType=BRANDS`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' })
-      let jobId = typeof queued === 'string' ? queued : queued.value ?? queued.id ?? queued.Value ?? queued.Id
+      let jobId = typeof queued === 'string' ? queued : queued.value ?? queued.id ?? queued.jobId ?? queued.Value ?? queued.Id ?? queued.JobId
       const queuedError = typeof queued === 'string' ? null : queued.error?.message ?? queued.error?.Message ?? queued.Error?.message ?? queued.Error?.Message
-      for (let attempt = 0; attempt < 30; attempt++) {
+      for (let attempt = 0; attempt < 180; attempt++) {
         await wait(attempt === 0 ? 500 : 1000)
         if (!jobId) {
           const jobs = await hubApi<ReferenceSyncJobSummary[]>('/jobs')

@@ -18,6 +18,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     // applies exponential backoff, but this ceiling also keeps retry accounting from
     // becoming the earlier bound if the polling schedule is made more frequent later.
     private const int ProductApprovalReconcileMaxAttempts = (7 * 24 * 12) + 1;
+    private const int MaxReferenceItems = 500_000;
     private int telemetryRequestCount;
     private int telemetryReceivedCount;
     private int telemetryChangedCount;
@@ -1040,11 +1041,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         do
         {
             TrackRequest();
-            var result = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:{resourceType}:{parentExternalId}:{cursor}"), new(resourceType, parentExternalId), new(cursor, 1000), cancellationToken);
+            var pageSize = resourceType == "BRANDS" ? 2000 : 1000;
+            var result = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:{resourceType}:{parentExternalId}:{cursor}"), new(resourceType, parentExternalId), new(cursor, pageSize), cancellationToken);
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
             foreach (var _ in result.Value!.Items) TrackReceived();
             items.AddRange(result.Value!.Items);
-            if (items.Count > 100_000) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_RESULT_LIMIT_EXCEEDED", "Referans yanıtı güvenli işleme sınırını aştı."));
+            if (items.Count > MaxReferenceItems) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_RESULT_LIMIT_EXCEEDED", "Referans yanıtı güvenli işleme sınırını aştı."));
             cursor = result.Value.NextCursor;
             if (!result.Value.HasMore) break;
             if (string.IsNullOrWhiteSpace(cursor) || !visitedCursors.Add(cursor)) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CURSOR_INVALID", "Referans sayfalama imleci eksik veya yinelendi."));
