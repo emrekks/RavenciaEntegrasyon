@@ -96,6 +96,47 @@ textarea,select { width:100%; padding:.8rem .9rem; border:1px solid #cfd5df; bor
 .button-row { display:flex; flex-wrap:wrap; gap:.6rem; }
 button:disabled { cursor:not-allowed; opacity:.55; }
 @media (max-width:900px) { .split { grid-template-columns:1fr; } }
+
+/* Shared modal primitive: overlays must leave the document flow. */
+.workspace-modal-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(12px, 3vw, 24px);
+  background: rgba(3, 7, 15, .72);
+  backdrop-filter: blur(4px);
+}
+.workspace-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(680px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  color: var(--rv-ink, #eef0ff);
+  background: var(--rv-surface, #151722);
+  border: 1px solid var(--rv-line-strong, #4a4567);
+  border-radius: 12px;
+  box-shadow: 0 28px 72px rgba(0, 0, 0, .56);
+}
+.workspace-modal > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 24px 14px;
+}
+.workspace-modal > header h2 { margin: 0; font-size: 1.25rem; letter-spacing: -.025em; }
+.workspace-modal > header p:not(.eyebrow) { margin: 8px 0 0; color: var(--rv-muted, #aeb4d1); font-size: .78rem; line-height: 1.35; }
+.workspace-modal > footer { display: flex; justify-content: flex-end; gap: 12px; padding: 18px 24px 22px; }
+.workspace-modal > footer button { min-width: 145px; }
+@media (max-width:760px) {
+  .workspace-modal-backdrop { padding: 12px; }
+  .workspace-modal { max-height: calc(100vh - 24px); }
+  .workspace-modal > header, .workspace-modal > footer { padding-right: 16px; padding-left: 16px; }
+  .workspace-modal > footer button { min-width: 0; flex: 1; }
+}
 @media (max-width:760px) { .details { grid-template-columns:1fr; } .data-table > *,.data-table.compact > * { grid-template-columns:1fr 1fr; } .data-table .table-head { display:none; } }
 @media (max-width:900px) { .return-reference-filters { grid-template-columns:repeat(2,minmax(0,1fr)); } .return-filter-actions { grid-column:1 / -1; } }
 @media (max-width:560px) { .return-reference-filters { grid-template-columns:1fr; } .return-filter-actions { grid-column:auto; justify-content:stretch; } .return-filter-actions button { flex:1; } }

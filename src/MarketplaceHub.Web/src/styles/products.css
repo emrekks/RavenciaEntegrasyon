@@ -2837,7 +2837,7 @@ body:has(.product-add-page),
   }
 }
 
-.app-shell.stitch-shell .product-delete-backdrop { z-index: 110; background: rgba(5, 8, 18, .72); backdrop-filter: blur(6px); }
+.app-shell.stitch-shell .product-delete-backdrop { z-index: 1200; background: rgba(5, 8, 18, .72); backdrop-filter: blur(6px); }
 .app-shell.stitch-shell .product-delete-modal { width: min(520px, 100%); color: #eef0ff; background: #151722 !important; border-color: #4a4567 !important; }
 .app-shell.stitch-shell .product-delete-modal > header { padding-bottom: 16px; border-bottom: 1px solid rgba(142, 146, 185, .2); }
 .app-shell.stitch-shell .product-delete-modal > header h2 { color: #f2f3ff !important; }
