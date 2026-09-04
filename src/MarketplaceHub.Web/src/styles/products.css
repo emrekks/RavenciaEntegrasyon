@@ -641,12 +641,6 @@ body:has(.product-add-page),
   max-height: none !important;
   overflow: visible !important;
 }
-.app-shell .product-add-page .page-heading {
-  align-items: center;
-  margin-bottom: 3px;
-  padding-bottom: 0;
-  border-bottom: 0;
-}
 .app-shell .product-add-page .page-heading .eyebrow,
 .app-shell .product-add-page .page-lede {
   display: none !important;
@@ -801,10 +795,6 @@ body:has(.product-add-page),
   border-color: var(--st-outline) !important;
   border-radius: 5px !important;
 }
-.product-add-page .rich-text-editor-pro .rich-text-editor-head {
-  display: none;
-}
-.product-add-page .rich-text-editor-pro .rich-text-editor-head strong { color: var(--st-text) !important; font-size: 11px; }
 .product-add-page .rich-text-editor-pro .rich-text-editor-head > span { color: var(--st-muted) !important; background: transparent !important; border: 0; }
 .product-add-page .rich-text-editor-pro .rich-text-toolbar {
   flex-wrap: nowrap;
@@ -814,8 +804,6 @@ body:has(.product-add-page),
   background: var(--st-surface-low) !important;
   border-color: var(--st-surface-highest);
 }
-.product-add-page .rich-text-editor-pro .rich-text-toolbar .rich-text-tool-group:nth-child(3),
-.product-add-page .rich-text-editor-pro .rich-text-toolbar .rich-text-tool-group:nth-child(4) { display: none; }
 .product-add-page .rich-text-editor-pro .rich-text-toolbar button {
   min-width: 25px;
   min-height: 25px;
@@ -831,7 +819,6 @@ body:has(.product-add-page),
   font-size: 11px;
   resize: vertical;
 }
-.product-add-page .rich-text-editor-pro details { display: none; }
 .product-advanced-fields-card {
   display: grid;
   gap: 14px;

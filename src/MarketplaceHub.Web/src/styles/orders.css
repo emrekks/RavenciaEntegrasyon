@@ -530,9 +530,6 @@
   min-height: 43px !important;
   box-sizing: border-box !important;
 }
-.app-shell .orders-page .order-reference-invoice .row-menu {
-  width: 100% !important;
-}
 .app-shell .orders-page .order-reference-invoice .row-menu-trigger {
   display: flex !important;
   align-items: center !important;
@@ -573,15 +570,6 @@
   border-color: #454655 !important;
   box-shadow: 0 24px 70px rgba(0, 0, 0, .58) !important;
 }
-.app-shell .orders-page .single-order-sync-modal > header {
-  padding: 22px 24px 16px !important;
-  border-bottom: 1px solid #1e202f !important;
-}
-.app-shell .orders-page .single-order-sync-modal > header h2 { color: #fff !important; }
-.app-shell .orders-page .single-order-sync-modal > header p { color: #a8a8bb !important; }
-.app-shell .orders-page .single-order-sync-modal .modal-close { color: #c6c5d7 !important; }
-.app-shell .orders-page .single-order-sync-modal .modal-close:hover { color: #fff !important; background: #292932 !important; }
-.app-shell .orders-page .single-order-sync-modal form { padding: 18px 24px 20px !important; }
 .app-shell .orders-page .sync-source-fieldset {
   min-width: 0 !important;
   margin: 0 !important;
@@ -595,7 +583,7 @@
   font-size: .68rem !important;
   font-weight: 800 !important;
 }
-.app-shell .orders-page .sync-source-list { display: grid !important; gap: 8px !important; }
+.app-shell .orders-page .sync-source-list { display: grid !important; }
 .app-shell .orders-page .sync-source-option {
   display: flex !important;
   align-items: center !important;
@@ -636,8 +624,6 @@
   padding: 10px 0 0 !important;
   border-top: 1px solid #1e202f !important;
 }
-.app-shell .orders-page .single-order-sync-modal > form > footer button { min-height: 34px !important; }
-
 /* The synchronization dialog has two explicit, unambiguous modes. */
 .app-shell .orders-page .sync-mode-switch {
   display: grid !important;

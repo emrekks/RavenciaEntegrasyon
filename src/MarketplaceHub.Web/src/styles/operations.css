@@ -117,8 +117,6 @@
   font-weight: 800;
   line-height: 1;
 }
-.jobs-reference-tabs button.active .jobs-reference-tab-count,
-.jobs-reference-tabs button[aria-selected="true"] .jobs-reference-tab-count { color: #fff; background: rgba(255,255,255,.18); }
 .jobs-reference-toolbar {
   display: flex;
   align-items: center;
