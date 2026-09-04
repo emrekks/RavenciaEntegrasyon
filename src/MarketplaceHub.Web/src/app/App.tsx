@@ -1,32 +1,13 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { Suspense, useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
-import { api, ApiRequestError, hubApi, type Me, type TenantOption } from './api'
-import './styles/dashboard.css'
-import './styles/shipping-designer.css'
-import './styles/typography.css'
-const AttributesPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.AttributesPage })))
-const BrandsPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.BrandsPage })))
-const CategoriesPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.CategoriesPage })))
-const ImportDetailPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.ImportDetailPage })))
-const ImportsPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.ImportsPage })))
-const InventoryPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.InventoryPage })))
-const NewProductPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.NewProductPage })))
-const ProductDetailPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.ProductDetailPage })))
-const ProductsPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.ProductsPage })))
-const AttributeMappingPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.AttributeMappingPage })))
-const IntegrationDetailPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.IntegrationDetailPage })))
-const IntegrationsPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.IntegrationsPage })))
-const MappingPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.MappingPage })))
-const OrdersPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.OrdersPage })))
-const ReturnDetailPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.ReturnDetailPage })))
-const ReturnsPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.ReturnsPage })))
-const ShipmentDetailPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.ShipmentDetailPage })))
-const ShipmentsPage = lazy(() => import('./MarketplacePages').then(module => ({ default: module.ShipmentsPage })))
-const BillingSettingsPage = lazy(() => import('./InvoicingPages').then(module => ({ default: module.BillingSettingsPage })))
-const JobsPage = lazy(() => import('./OperationsPages').then(module => ({ default: module.JobsPage })))
-import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, loadShippingLabelSettings, saveShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from './shipping-label'
+import { api, ApiRequestError, hubApi, type Me, type TenantOption } from '../shared/api'
+import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, InventoryPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, BillingSettingsPage, JobsPage } from './route-components'
+import { useOperationsRealtime } from './hooks/useOperationsRealtime'
+import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, loadShippingLabelSettings, saveShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
+import '../styles/dashboard.css'
+import '../styles/shipping-designer.css'
+import '../styles/typography.css'
 
 function Shell({ me }: { me: Me }) {
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
@@ -95,67 +76,6 @@ function Shell({ me }: { me: Me }) {
       <Suspense fallback={<Status title="Ekran yükleniyor" />}><Routes><Route path="/dashboard" element={<Dashboard me={me} />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/inventory" element={<InventoryPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<AttributeMappingPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/invoices" element={<Navigate to="/orders" replace />} /><Route path="/invoices/:id" element={<Navigate to="/orders" replace />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/billing" element={<BillingSettingsPage />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense>
     </main>
   </div>
-}
-
-function useOperationsRealtime(enabled: boolean) {
-  const client = useQueryClient()
-  useEffect(() => {
-    if (!enabled) return
-    const connection = new HubConnectionBuilder()
-      .withUrl('/hubs/operations')
-      .withAutomaticReconnect([0, 1000, 3000, 10_000])
-      .configureLogging(LogLevel.Warning)
-      .build()
-    const seenEvents = new Set<string>()
-    const pendingResources = new Set<string>()
-    let flushTimer: number | null = null
-    const flush = () => {
-      flushTimer = null
-      const resources = [...pendingResources]
-      pendingResources.clear()
-      const queryKeysByResource: Record<string, string[][]> = {
-        orders: [['orders'], ['dashboard-bootstrap'], ['dashboard-revenue-series']],
-        returns: [['returns'], ['dashboard-bootstrap']],
-        products: [['products'], ['dashboard-bootstrap']],
-        inventory: [['inventory'], ['dashboard-bootstrap']],
-        invoices: [['invoices'], ['dashboard-bootstrap']],
-        connections: [['connections'], ['dashboard-bootstrap']],
-        jobs: [['jobs']]
-      }
-      for (const resource of resources) {
-        for (const queryKey of queryKeysByResource[resource.toLowerCase()] ?? []) void client.invalidateQueries({ queryKey })
-      }
-    }
-    connection.on('operationsChanged', ({ resources, events }: { resources?: string[]; events?: { eventId?: string }[] }) => {
-      for (const event of events ?? []) {
-        if (!event.eventId || seenEvents.has(event.eventId)) continue
-        seenEvents.add(event.eventId)
-      }
-      for (const resource of resources ?? []) pendingResources.add(resource)
-      if (flushTimer === null) flushTimer = window.setTimeout(flush, 250)
-    })
-    connection.onreconnected(() => {
-      void client.invalidateQueries({ queryKey: ['dashboard-bootstrap'] })
-      void client.invalidateQueries({ queryKey: ['dashboard-revenue-series'] })
-    })
-    let stopped = false
-    let retryTimer: number | null = null
-    const start = async () => {
-      if (stopped || connection.state !== 'Disconnected') return
-      try {
-        await connection.start()
-      } catch {
-        if (!stopped) retryTimer = window.setTimeout(() => void start(), 3000)
-      }
-    }
-    void start()
-    return () => {
-      stopped = true
-      if (retryTimer !== null) window.clearTimeout(retryTimer)
-      if (flushTimer !== null) window.clearTimeout(flushTimer)
-      void connection.stop()
-    }
-  }, [client, enabled])
 }
 
 export function App() {

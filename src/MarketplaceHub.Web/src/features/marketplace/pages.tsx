@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, loadAllPages } from './api'
-import './styles/orders.css'
-import './styles/returns.css'
-import './styles/typography.css'
-import { code128Bars, loadPrintedShippingLabels, loadShippingLabelSettings, markShippingLabelPrinted, printedShippingLabelKey, shippingLabelFields, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from './shipping-label'
+import { hubApi, loadAllPages } from '../../shared/api'
+import { Busy, ErrorBox } from '../../shared/components'
+import '../../styles/orders.css'
+import '../../styles/returns.css'
+import '../../styles/typography.css'
+import { code128Bars, loadPrintedShippingLabels, loadShippingLabelSettings, markShippingLabelPrinted, printedShippingLabelKey, shippingLabelFields, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from '../shipping'
 type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }
 type Connection = { id: string; publicId: string; platformCode: string; environment: string; displayName: string; externalStoreId: string; status: string; apiVersion: string; lastTestedAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null; hasCredential: boolean; externalWritesEnabled: boolean; version: number }
 type Capability = { code: string; supportLevel: string; sourceUrl: string | null; verifiedAt: string | null; constraintsJson: string | null; evidenceNote: string | null; version: number }
@@ -122,13 +123,11 @@ function MappingViewTabs({ active }: { active: 'category' | 'brand' | 'attribute
 function idempotency() { return crypto.randomUUID() }
 function wait(milliseconds: number) { return new Promise(resolve => window.setTimeout(resolve, milliseconds)) }
 function displayAttributeName(value: string) { return value.replace(/\[(?:A-)?TDG\][\s_-]*/gi, '').replace(/^\(?(?:A-)?TDG\)?[\s_-]*/gi, '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim() }
-function ErrorBox({ error }: { error: unknown }) { return <div role="alert" className="error">{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</div> }
 type IntegrationFeedback = { kind: 'success' | 'error'; message: string }
 function IntegrationFeedbackToast({ feedback, onClose }: { feedback: IntegrationFeedback | null; onClose: () => void }) {
   if (!feedback) return null
   return <div className={`operation-feedback-toast ${feedback.kind}`} role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live="polite"><span className="operation-feedback-icon" aria-hidden="true">{feedback.kind === 'success' ? '✓' : '!'}</span><div><strong>{feedback.kind === 'success' ? 'İşlem başarılı' : 'İşlem başarısız'}</strong><p>{feedback.message}</p></div><button type="button" onClick={onClose} aria-label="Bildirimi kapat">×</button></div>
 }
-function Busy({ text = 'Veriler yükleniyor…' }: { text?: string }) { return <div className="status inline" role="status"><div className="spinner" /><strong>{text}</strong></div> }
 function Empty({ children }: { children: string }) { return <div className="empty"><strong>Kayıt yok</strong><p>{children}</p></div> }
 const statusLabels: Record<string, string> = { APPROVED: 'Onaylandı', COMPLETED: 'Tamamlandı', REJECTED: 'Reddedildi', CANCELLED: 'İptal edildi', REQUESTED: 'Talep oluşturuldu', CREATED: 'Oluşturuldu', ACTION_REQUIRED: 'İşlem bekliyor', WAITING_FOR_SHIPMENT: 'Kargo bekliyor', IN_TRANSIT: 'Taşımada', RETURN_IN_TRANSIT: 'İade taşımada', SHIPPED: 'Kargoda', SUSPENDED: 'Askıya alındı', ON_HOLD: 'Beklemede', HEALTHY: 'Sağlıklı', DEGRADED: 'Yavaşlıyor', DELAYED: 'Gecikiyor', OFFLINE: 'Çevrim dışı' }
 function statusLabel(value: string) { return statusLabels[value.toUpperCase()] ?? value }

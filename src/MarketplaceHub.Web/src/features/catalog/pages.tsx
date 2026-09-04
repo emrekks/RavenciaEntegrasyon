@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from './api'
-import './styles/product-editor.css'
-import './styles/products.css'
-import './styles/typography.css'
+import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
+import '../../styles/product-editor.css'
+import '../../styles/products.css'
+import '../../styles/typography.css'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }

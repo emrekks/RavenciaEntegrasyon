@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, loadAllPages } from './api'
-import './styles/invoices.css'
-import './styles/typography.css'
+import { hubApi, loadAllPages } from '../../shared/api'
+import { Busy, ErrorBox } from '../../shared/components'
+import '../../styles/invoices.css'
+import '../../styles/typography.css'
 
 type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
 type InvoiceWorkspaceLine = { sku: string; barcode: string | null; description: string; quantity: number; unitPrice: number; vatRate: number; imageUrl: string | null }
@@ -13,8 +14,6 @@ type Connection = { id: string; platformCode: string; displayName: string; statu
 type Policy = { id: string; providerConnectionId: string; triggerState: string; packageScope: string; dueRule: string; roundingRule: string; adjustmentRule: string; autoSubmit: boolean; version: number }
 
 function idempotency() { return crypto.randomUUID() }
-function ErrorBox({ error }: { error: unknown }) { return <div role="alert" className="error">{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</div> }
-function Busy() { return <div className="status inline" role="status"><div className="spinner" /><strong>Veriler yükleniyor…</strong></div> }
 function statusLabel(value: string) {
   const normalized = value.trim().toUpperCase()
   return ({
