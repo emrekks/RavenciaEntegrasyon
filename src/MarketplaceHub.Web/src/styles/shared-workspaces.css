@@ -666,6 +666,7 @@ textarea {
   border-radius: 7px;
 }
 .app-shell.stitch-shell .mapping-transfer-options label:has(input:checked) { border-color: rgba(124, 134, 255, .72); background: rgba(104, 114, 232, .1); }
+.app-shell.stitch-shell .mapping-transfer-options .mapping-transfer-all-option { border-color: rgba(124, 134, 255, .55); background: rgba(104, 114, 232, .06); }
 .app-shell.stitch-shell .mapping-transfer-options span { display: grid; gap: 3px; }
 .app-shell.stitch-shell .mapping-transfer-options small,
 .app-shell.stitch-shell .mapping-transfer-warning { color: #a9adbd; }
