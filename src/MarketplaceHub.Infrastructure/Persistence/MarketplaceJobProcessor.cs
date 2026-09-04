@@ -1820,6 +1820,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     .FirstOrDefault(x => NormalizeCatalogKey(x.Name, 160) == attributeKey)
                 ?? db.AttributeDefinitions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Code == code)
                 ?? await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Code == code, cancellationToken);
+        if (values.Count == 0 && attribute is not null && (attribute.DataType is AttributeDataType.SingleSelect or AttributeDataType.MultiSelect))
+            dataType = attribute.DataType;
         if (attribute is null && optionAxis is not null)
         {
             var existingAttributes = await db.AttributeDefinitions
