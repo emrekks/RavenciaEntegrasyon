@@ -1419,6 +1419,19 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         IReadOnlyList<ReferenceItem> categoryItems = categoryReferences is null
             ? []
             : await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == categoryReferences.Id && x.ResourceType == "CATEGORIES" && x.IsActive).ToListAsync(cancellationToken);
+        // Keep one shared panel attribute for the same normalized name. This lets
+        // an attribute such as "Bel" collect every category where Trendyol uses it
+        // instead of creating a separate hidden definition for each category.
+        var importedAttributeLibrary = categoryReferences is null
+            ? new Dictionary<string, AttributeDefinition>(StringComparer.Ordinal)
+            : (await db.AttributeDefinitions
+                    .Where(x => x.TenantId == tenantId && x.IsActive)
+                    .OrderBy(x => x.CreatedAt)
+                    .ThenBy(x => x.Id)
+                    .ToListAsync(cancellationToken))
+                .Where(x => !string.IsNullOrWhiteSpace(NormalizeCatalogKey(x.Name, 160)))
+                .GroupBy(x => NormalizeCatalogKey(x.Name, 160), StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
         var categoryContexts = new Dictionary<string, CategoryAttributeContext>(StringComparer.Ordinal);
         var nextCursor = cursor.OpaqueCursor;
         var pageNumber = 0;
@@ -1468,6 +1481,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 telemetryFailedCount++;
                 db.ChangeTracker.Clear();
                 categoryContexts.Clear();
+                importedAttributeLibrary.Clear();
                 try
                 {
                     await RecordProductImportFailure(tenantId, connectionId, invalidSnapshot, new InvalidOperationException("Trendyol ürün kimliği boş döndü."), cancellationToken);
@@ -1489,7 +1503,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 {
                     var categoryContext = categoryReferences is null
                         ? null
-                        : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, categoryContexts, correlationId, cancellationToken);
+                        : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
                     var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, cancellationToken);
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
@@ -1505,6 +1519,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     telemetryFailedCount++;
                     db.ChangeTracker.Clear();
                     categoryContexts.Clear();
+                    importedAttributeLibrary.Clear();
                     try
                     {
                         await RecordProductImportFailure(tenantId, connectionId, snapshot, exception, cancellationToken);
@@ -1622,6 +1637,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         ReferenceSnapshot categorySnapshot,
         RemoteCatalogProduct snapshot,
         IReadOnlyList<ReferenceItem> categoryItems,
+        IDictionary<string, AttributeDefinition> importedAttributeLibrary,
         IDictionary<string, CategoryAttributeContext> cache,
         string correlationId,
         CancellationToken cancellationToken)
@@ -1678,7 +1694,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         foreach (var remoteAttribute in remoteAttributes)
         {
             var values = valuesByAttribute.TryGetValue(remoteAttribute.ExternalId, out var fetchedValues) ? fetchedValues : [];
-            var localAttribute = await EnsureMappedAttribute(tenantId, connectionId, localCategory, categoryItem, attributeSnapshot, remoteAttribute, values, cancellationToken);
+            var localAttribute = await EnsureMappedAttribute(tenantId, connectionId, localCategory, categoryItem, attributeSnapshot, remoteAttribute, values, importedAttributeLibrary, cancellationToken);
             attributes[NormalizeCatalogKey(remoteAttribute.Name, 320)] = localAttribute;
         }
 
@@ -1778,6 +1794,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         ReferenceSnapshot attributeSnapshot,
         ReferenceItem remoteAttribute,
         IReadOnlyList<ReferenceItem> values,
+        IDictionary<string, AttributeDefinition> importedAttributeLibrary,
         CancellationToken cancellationToken)
     {
         var optionAxis = VariantOptionAxis(remoteAttribute.Name);
@@ -1791,8 +1808,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var dataType = values.Count > 0
             ? (remoteAttribute.AllowsMultipleValues == true ? AttributeDataType.MultiSelect : AttributeDataType.SingleSelect)
             : AttributeDataType.Text;
-        var attribute = db.AttributeDefinitions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Code == code)
-            ?? await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Code == code, cancellationToken);
+        var attributeKey = NormalizeCatalogKey(canonicalName, 160);
+        var attribute = importedAttributeLibrary.TryGetValue(attributeKey, out var sharedAttribute)
+            ? sharedAttribute
+            : db.AttributeDefinitions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.IsActive && NormalizeCatalogKey(x.Name, 160) == attributeKey)
+                ?? (await db.AttributeDefinitions
+                    .Where(x => x.TenantId == tenantId && x.IsActive)
+                    .OrderBy(x => x.CreatedAt)
+                    .ThenBy(x => x.Id)
+                    .ToListAsync(cancellationToken))
+                    .FirstOrDefault(x => NormalizeCatalogKey(x.Name, 160) == attributeKey)
+                ?? db.AttributeDefinitions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Code == code)
+                ?? await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Code == code, cancellationToken);
         if (attribute is null && optionAxis is not null)
         {
             var existingAttributes = await db.AttributeDefinitions
@@ -1816,20 +1843,21 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             attribute.UpdatedAt = timeProvider.GetUtcNow();
             attribute.Version++;
         }
+        importedAttributeLibrary[attributeKey] = attribute;
 
         var requirement = await db.CategoryAttributeRequirements.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == category.Id && x.AttributeId == attribute.Id, cancellationToken);
         var role = IsWebColorOptionKey(remoteAttribute.Name)
             ? "ATTRIBUTE"
             : requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
-        if (requirement is null && role == "OPTION")
+        if (requirement is null)
             db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = category.Id, AttributeId = attribute.Id, IsRequired = remoteAttribute.IsRequired == true, AllowsCustomValue = remoteAttribute.AllowsCustomValue == true, IsPanelScoped = true, DisplayOrder = remoteAttribute.SortOrder ?? 0, Role = role, Version = 1 });
-        else if (requirement is not null)
+        else
         {
             requirement.IsRequired = remoteAttribute.IsRequired == true;
             requirement.AllowsCustomValue = remoteAttribute.AllowsCustomValue == true;
             requirement.DisplayOrder = remoteAttribute.SortOrder ?? requirement.DisplayOrder;
             requirement.Role = role;
-            if (role == "OPTION") requirement.IsPanelScoped = true;
+            requirement.IsPanelScoped = true;
             requirement.Version++;
         }
 
