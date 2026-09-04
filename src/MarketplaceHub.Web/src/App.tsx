@@ -42,7 +42,8 @@ function Shell({ me }: { me: Me }) {
   function collapseSidebarOnLeave() {
     if (sidebarPinned) return
     if (sidebarHoverTimer.current !== null) window.clearTimeout(sidebarHoverTimer.current)
-    sidebarHoverTimer.current = window.setTimeout(() => { sidebarHoverTimer.current = null; setSidebarHoverExpanded(false) }, 120)
+    sidebarHoverTimer.current = null
+    setSidebarHoverExpanded(false)
   }
   function toggleSidebarPinned() {
     const nextPinned = !sidebarPinned
@@ -64,6 +65,7 @@ function Shell({ me }: { me: Me }) {
     return () => {
       window.removeEventListener('pointermove', collapseIfPointerIsOutside)
       window.removeEventListener('blur', collapseOnWindowBlur)
+      if (sidebarHoverTimer.current !== null) window.clearTimeout(sidebarHoverTimer.current)
     }
   }, [sidebarHoverExpanded, sidebarPinned])
   const icons: Record<string, ReactNode> = {

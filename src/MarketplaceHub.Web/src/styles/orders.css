@@ -2197,6 +2197,7 @@
   align-self: center !important;
   min-height: 34px !important;
   height: 34px !important;
+  margin: 0 !important;
 }
 .app-shell.stitch-shell .orders-reference-filter-shell .orders-page-jump {
   display: flex !important;
