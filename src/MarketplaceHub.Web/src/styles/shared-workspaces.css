@@ -669,11 +669,21 @@ textarea {
   align-items: center;
   gap: 8px;
 }
+.app-shell.stitch-shell .mapping-transfer-actions > button,
 .app-shell.stitch-shell .mapping-transfer-upload {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 96px;
+  min-width: 96px;
+  height: 36px;
   min-height: 36px;
+  box-sizing: border-box;
   padding: 0 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .mapping-transfer-upload {
   color: #fff;
   background: #6872e8;
   border: 1px solid #858aff;
@@ -2865,7 +2875,25 @@ textarea {
 .brand-library-list > span > button:first-child { min-width: 0; overflow: hidden; padding: 0 8px !important; color: #dbe2f5 !important; background: transparent !important; border: 0 !important; text-align: left; text-overflow: ellipsis; white-space: nowrap; font-size: 10px !important; font-weight: 700; }
 .brand-library-list .category-chip-remove { width: 28px !important; height: 100% !important; min-height: 0 !important; color: #aebbd4 !important; background: transparent !important; border: 0 !important; border-left: 1px solid #344563 !important; border-radius: 0 !important; font-size: 15px !important; }
 .brand-library-list .category-chip-remove:hover { color: #ff91a1 !important; background: rgba(242, 107, 122, .1) !important; }
-.brand-mapping-pair-grid { grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr) !important; gap: 10px !important; }
+.brand-mapping-pair-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr) !important;
+  align-items: stretch !important;
+  gap: 10px !important;
+}
+.brand-mapping-pair-grid .mapping-side {
+  display: grid !important;
+  align-content: start !important;
+  gap: 12px !important;
+  min-width: 0 !important;
+}
+.brand-mapping-pair-grid .mapping-link-rail {
+  display: grid !important;
+  align-content: center !important;
+  justify-items: center !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
 .brand-mapping-pair-grid .mapping-side { padding: 14px !important; background: #131d2f !important; border-color: #2d3b57 !important; border-radius: 8px !important; }
 .brand-mapping-pair-grid .mapping-side.remote { background: #142038 !important; }
 .brand-mapping-pair-grid .mapping-side-head span { color: #8390ad !important; font-size: 9px !important; }
