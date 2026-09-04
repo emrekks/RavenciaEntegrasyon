@@ -867,7 +867,7 @@ body:has(.product-add-page),
 .product-publish-step { display: none; }
 .product-add-workspace[data-wizard-step="2"] > .product-publish-step { display: block; }
 
-/* Product add layout refinements: keep the primary data and pricing visible together. */
+/* Keep the primary product data and pricing visible together. */
 .product-add-page .product-top-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(280px, .82fr);
@@ -1240,7 +1240,7 @@ body:has(.product-add-page),
   .scheduled-publish-panel small { grid-column: 1; }
 }
 
-/* Product creation follow-up refinements. */
+/* Product creation layout. */
 .app-shell .product-add-page .page-heading h1 {
   display: flex;
   align-items: center;
@@ -2541,7 +2541,7 @@ body:has(.product-add-page),
   white-space: nowrap;
 }
 
-/* Product editor refinements: compact attributes, clear media action, and balanced copy. */
+/* Product editor layout: compact attributes, clear media action, and balanced copy. */
 .app-shell.stitch-shell .product-add-page .attribute-builder-card:not(.is-open) .attribute-builder-values { display: none !important; }
 .app-shell.stitch-shell .product-add-page .product-media-card .editor-section-title { display: flex !important; align-items: flex-start !important; }
 .app-shell.stitch-shell .product-add-page .product-media-card .editor-section-title > div { min-width: 0 !important; }

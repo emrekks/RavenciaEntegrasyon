@@ -2274,7 +2274,7 @@ textarea {
 .panel-value-token button { display: grid !important; place-items: center; width: 18px !important; min-width: 18px !important; height: 18px !important; min-height: 18px !important; padding: 0 !important; color: #c6c5ff !important; background: transparent !important; border: 0 !important; border-radius: 50% !important; font-size: 14px !important; line-height: 1 !important; }
 .panel-value-token button:hover { color: #fff !important; background: rgba(109, 119, 255, .3) !important; }
 
-/* Mapping library refinements: list-oriented, quiet, and consistent with the panel. */
+/* Mapping library layout: list-oriented, quiet, and consistent with the panel. */
 .mapping-local-manager-dialog .platform-category-create {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -3125,7 +3125,7 @@ textarea {
   }
 }
 
-/* Final interaction polish: keep editors local to their own surface. */
+/* Keep editors local to their own surface. */
 .panel-attribute-modal {
   overflow: hidden !important;
   overscroll-behavior: contain;
@@ -3974,26 +3974,26 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   .app-shell.stitch-shell .mapping-advanced-tools[open] > div > .mapping-popup-content { padding-inline: 18px !important; }
 }
 
-/* Platform tabs in the saved category mappings follow the same compact tab
-   language as the rest of the mapping workspace. Unconnected platforms stay
-   visible so the planned channel surface is discoverable without implying a
+/* Saved mapping platform tabs stay visible without introducing a horizontal
+   scrollbar. Unconnected platforms remain discoverable without implying a
    usable connection exists. */
 .app-shell.stitch-shell .mapping-platform-tabs {
   max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #4b568d transparent;
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+  scrollbar-width: none !important;
 }
 .app-shell.stitch-shell .mapping-platform-tabs > button {
-  flex: 0 0 auto;
+  flex: 0 0 auto !important;
   min-width: max-content !important;
   padding-inline: 9px !important;
+  white-space: nowrap;
 }
 .app-shell.stitch-shell .mapping-platform-tabs > button.is-unavailable { color: #6f7695 !important; }
 .app-shell.stitch-shell .mapping-platform-tabs > button.is-unavailable:hover { color: #a7acc8 !important; }
+.app-shell.stitch-shell .mapping-platform-tabs::-webkit-scrollbar { display: none; }
 
-/* Final compact pass: make the single-platform mapping control read as a
-   conventional tab and keep value actions aligned with the add control. */
+/* Keep the single-platform mapping control aligned with the add control. */
 .app-shell.stitch-shell .mapping-saved-tabs {
   align-items: stretch;
   gap: 16px;
@@ -4045,20 +4045,6 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   .panel-attribute-sort-hint { justify-content: flex-start; }
   .panel-attribute-sort-actions { justify-content: flex-start; }
 }
-
-/* Keep the multi-platform tabs usable after the compact tab pass above. */
-.app-shell.stitch-shell .mapping-platform-tabs > button {
-  flex: 0 0 auto !important;
-  min-width: max-content !important;
-  padding-inline: 9px !important;
-  white-space: nowrap;
-}
-.app-shell.stitch-shell .mapping-platform-tabs {
-  flex-wrap: wrap !important;
-  overflow: visible !important;
-  scrollbar-width: none !important;
-}
-.app-shell.stitch-shell .mapping-platform-tabs::-webkit-scrollbar { display: none; }
 
 /* Export scope picker: keep the native checkbox from inheriting the large
    text-field treatment and present the choices as a compact, calm selection

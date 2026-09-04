@@ -1,4 +1,4 @@
-/* Shared readability pass for the Stitch workspace. Keep hierarchy clear
+/* Shared readability rules. Keep hierarchy clear
    while removing the overly compressed, heavy feel from everyday UI text. */
 :root {
   --rv-type-body-size: 14px;

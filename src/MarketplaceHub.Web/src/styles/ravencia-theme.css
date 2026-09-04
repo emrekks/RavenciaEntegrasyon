@@ -1,5 +1,5 @@
 /* ===== ravencia-theme.css ===== */
-/* Final authenticated workspace theme shared by every route. */
+/* Authenticated workspace theme shared by every route. */
 :root {
   color-scheme: dark;
   --rv-bg: #080b11 !important;
@@ -340,7 +340,7 @@ html, body, #root {
   .app-shell > aside { background: var(--rv-sidebar); border-bottom-color: var(--rv-line); }
 }
 
-/* Cybernetic Obsidian — final normalization layer. Keep the interface quiet,
+/* Authenticated UI normalization layer. Keep the interface quiet,
    data-first and consistent even where older route styles use literal colors. */
 .app-shell,
 .app-shell > main,

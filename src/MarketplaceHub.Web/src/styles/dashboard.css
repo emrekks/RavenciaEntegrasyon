@@ -279,7 +279,7 @@
   .app-shell .dashboard-bottom-grid { grid-template-columns: 1fr !important; }
 }
 
-/* Dashboard follow-up refinements: keep the page scrollable and show data freshness. */
+/* Keep the dashboard scrollable and show data freshness. */
 html { overflow-y: auto !important; }
 .app-shell.stitch-shell,
 .app-shell.stitch-shell > main,

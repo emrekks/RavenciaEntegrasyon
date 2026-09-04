@@ -785,7 +785,7 @@
   .app-shell .orders-page .sync-mode-switch { grid-template-columns: 1fr; }
 }
 
-/* Final visual pass for the order sync dialog: match the compact dashboard cards. */
+/* Keep the order sync dialog aligned with dashboard cards. */
 .app-shell .orders-page .single-order-sync-modal {
   position: relative;
   width: min(620px, calc(100vw - 32px)) !important;
@@ -966,7 +966,7 @@
   .app-shell .orders-page .single-order-sync-modal form { padding-right: 16px !important; padding-left: 16px !important; }
 }
 
-/* Final sizing pass for order-row menus and the sync source legend. */
+/* Keep order-row menus and the sync source legend compact. */
 .app-shell .orders-page .sync-source-fieldset legend::before {
   display: none !important;
 }

@@ -1125,8 +1125,10 @@
   min-width: 240px;
 }
 .app-shell.stitch-shell .orders-bottom-pagination {
-  gap: 7px;
+  gap: 12px;
   margin-left: auto;
+  padding-left: 12px;
+  border-left: 1px solid #2b2f41;
 }
 .app-shell.stitch-shell .orders-bottom-pagination label {
   gap: 8px;
@@ -1168,11 +1170,6 @@
   border: 0 !important;
   border-radius: 6px !important;
   font-size: .68rem;
-}
-.app-shell.stitch-shell .orders-bottom-pagination {
-  gap: 12px;
-  padding-left: 12px;
-  border-left: 1px solid #2b2f41;
 }
 .app-shell.stitch-shell .orders-page-size-control {
   gap: 6px !important;
@@ -1700,7 +1697,7 @@
   text-transform: none !important;
 }
 
-/* Final mapping refinements: these rules complete the shared workspace treatment. */
+/* Shared mapping workspace treatment. */
 .app-shell.stitch-shell .mapping-view-tabs { overflow: visible !important; scrollbar-width: none !important; flex-wrap: nowrap !important; }
 .app-shell.stitch-shell .mapping-view-tabs::-webkit-scrollbar { display: none !important; }
 .app-shell.stitch-shell .mapping-advanced-tools .attribute-mapping-card.required { border: 1px solid rgba(124, 134, 255, .78) !important; box-shadow: inset 3px 0 0 #7068f5, 0 0 0 1px rgba(124, 134, 255, .14) !important; }
