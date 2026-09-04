@@ -1,5 +1,9 @@
 # Ravencia çalışma kuralları
 
+## Kullanıcı yayın sözleşmesi
+
+Kullanıcı bir değişiklik yapılmasını istediğinde, kullanıcı özellikle “pushlama”, “sunucuya aktarma”, “canlıya alma” veya benzeri bir istisna belirtmediği sürece değişiklik tamamlanmış sayılmaz: değişiklik doğrulanır, commit'lenir, uzak repository'ye gönderilir, sunucuda canlıya alınır ve sağlık kontrolü yapılır. Bu kural sonraki tüm geliştirme talepleri için varsayılandır; kullanıcı ayrıca söylemek zorunda değildir.
+
 Bu proje üzerinde kod, stil, yapılandırma, migration veya deployment dosyalarında değişiklik yapan her işlem aşağıdaki yayın akışıyla tamamlanır.
 
 ## Zorunlu yayın akışı
