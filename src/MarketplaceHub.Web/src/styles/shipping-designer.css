@@ -43,10 +43,10 @@
 .app-shell.stitch-shell .shipping-designer-stage { background: #0b0f1a; }
 .app-shell.stitch-shell .shipping-designer-stage-bar { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 9px; color: #e8eaff; font-size: 10px; font-weight: 800; }
 .app-shell.stitch-shell .shipping-designer-stage-bar small { color: #7f89a9; font-size: 9px; font-weight: 600; }
-.app-shell.stitch-shell .shipping-designer-paper { position: relative; width: min(100%, 560px); margin: 0 auto; overflow: hidden; background-color: #fff; background-image: linear-gradient(#e9edf4 1px, transparent 1px), linear-gradient(90deg, #e9edf4 1px, transparent 1px); background-size: 5% 5%; border: 1px solid #abb7cb; border-radius: 3px; box-shadow: 0 14px 26px rgba(0, 0, 0, .28); }
-.app-shell.stitch-shell .shipping-designer-block { position: absolute; display: grid; grid-template-columns: 18px minmax(0, 1fr); grid-template-rows: 18px minmax(0, 1fr); align-items: start; gap: 2px 5px; min-width: 28px; min-height: 24px; padding: 4px; overflow: hidden; color: #182541; background: rgba(255,255,255,.91); border: 1px solid #9eabc1; border-radius: 3px; cursor: grab; text-align: left; transition: border-color .14s ease, box-shadow .14s ease, background .14s ease; }
+.app-shell.stitch-shell .shipping-designer-paper { position: relative; width: min(100%, 560px); margin: 0 auto; overflow: hidden; background-color: #fff; background-image: linear-gradient(rgba(181,193,213,.42) 1px, transparent 1px), linear-gradient(90deg, rgba(181,193,213,.42) 1px, transparent 1px); background-size: 2.5% 2.5%; border: 1px solid #abb7cb; border-radius: 3px; box-shadow: 0 14px 26px rgba(0, 0, 0, .28); }
+.app-shell.stitch-shell .shipping-designer-block { position: absolute; display: grid; grid-template-columns: 18px minmax(0, 1fr); grid-template-rows: 18px minmax(0, 1fr); align-items: start; gap: 2px 5px; min-width: 28px; min-height: 24px; padding: 4px; overflow: hidden; color: #000!important; background: rgba(255,255,255,.91); border: 1px solid #9eabc1; border-radius: 3px; cursor: grab; touch-action: none; text-align: left; transition: border-color .14s ease, box-shadow .14s ease, background .14s ease; }
 .app-shell.stitch-shell .shipping-designer-block:hover { border-color: #6475f4; box-shadow: 0 0 0 2px rgba(88, 101, 242, .15); }
-.app-shell.stitch-shell .shipping-designer-block.is-selected { z-index: 3; border: 2px solid #5865f2; box-shadow: 0 0 0 3px rgba(88, 101, 242, .22); background: rgba(247,248,255,.96); }
+.app-shell.stitch-shell .shipping-designer-block.is-selected { z-index: 3; border: 1px solid #5865f2!important; outline: 2px solid rgba(88,101,242,.82); box-shadow: none!important; background: rgba(247,248,255,.96); }
 .app-shell.stitch-shell .shipping-designer-block-handle { grid-row: 1 / span 2; align-self: center; color: #707c9b; font-size: 13px; line-height: 1; letter-spacing: -3px; user-select: none; }
 .app-shell.stitch-shell .shipping-designer-block-index { display: grid; place-items: center; width: 17px; height: 17px; color: #fff; background: #5865f2; border-radius: 50%; font-size: 8px; font-weight: 900; }
 .app-shell.stitch-shell .shipping-designer-block-preview { grid-column: 2; min-width: 0; min-height: 0; overflow: hidden; }
@@ -57,7 +57,7 @@
 .app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-barcode { display: grid; gap: 2px; width: 100%; }
 .app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-bars { width: 100%; height: 18px; }
 .app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-barcode strong { display: block; overflow: hidden; color: #182541; font: 700 .8em/1 monospace; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell.stitch-shell .shipping-designer-block-label { display:none; }
+.app-shell.stitch-shell .shipping-designer-block-label { display:none; color:#000!important; }
 .app-shell.stitch-shell .shipping-designer-drop-empty { position: absolute; inset: 35% 15%; display: grid; place-content: center; gap: 5px; color: #60708e; text-align: center; }
 .app-shell.stitch-shell .shipping-designer-drop-empty strong { color: #34466d; font-size: 13px; }
 .app-shell.stitch-shell .shipping-designer-drop-empty span { font-size: 10px; }
@@ -115,8 +115,8 @@
 .app-shell .product-add-page .rich-text-editor-pro .alignment-center { background-position: center top, center 5px, center 10px; }
 .app-shell .product-add-page .rich-text-editor-pro .alignment-right { background-position: right top, right 5px, right 10px; }
 .app-shell.stitch-shell .product-media-card .editor-section-title { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; }
-.app-shell.stitch-shell .product-media-link-button { display:inline-grid; place-items:center; position:relative; width:38px; height:38px; padding:0; color:#e9ebff; background:rgba(124,134,255,.12); border:1px solid rgba(124,134,255,.65); border-radius:10px; box-shadow:none; font-size:1.15rem; }
-.app-shell.stitch-shell .product-media-link-button:hover { color:#fff; background:rgba(124,134,255,.24); transform:translateY(-1px); }
+.app-shell.stitch-shell .product-media-link-button { display:inline-grid; place-items:center; position:relative; width:38px; height:38px; padding:0; color:#bfc5ff; background:transparent; border:1px solid transparent; border-radius:10px; box-shadow:none; font-size:1.15rem; }
+.app-shell.stitch-shell .product-media-link-button:hover { color:#fff; background:rgba(124,134,255,.12); border-color:rgba(124,134,255,.28); transform:translateY(-1px); }
 .app-shell.stitch-shell .product-media-link-button b { position:absolute; top:-7px; right:-7px; display:grid; place-items:center; min-width:18px; height:18px; padding:0 4px; color:#fff; background:#626eff; border-radius:999px; font-size:10px; }
 .app-shell.stitch-shell .product-media-url-modal { width:min(680px,calc(100vw - 32px)); background:#171b2b; border-color:rgba(124,134,255,.35); }
 .app-shell.stitch-shell .product-media-url-modal>header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; }
@@ -127,10 +127,13 @@
 .app-shell.stitch-shell .product-media-url-modal>footer span { margin-right:auto; font-size:12px; }
 .app-shell.stitch-shell .variant-table-editor { overflow-x:auto; scrollbar-color:#626eff #111525; }
 .app-shell.stitch-shell .variant-table-head,.app-shell.stitch-shell .variant-table-row { min-width:1110px; grid-template-columns:58px minmax(150px,1.6fr) minmax(170px,1.35fr) minmax(130px,1.15fr) minmax(150px,1.25fr) .72fr .9fr .95fr auto; }
-.app-shell.stitch-shell .variant-row-lead { display:flex; align-items:center; gap:5px; min-width:0; }
-.app-shell.stitch-shell .variant-row-number { display:grid; place-items:center; min-width:25px; height:25px; color:#dfe2ff; background:rgba(124,134,255,.14); border:1px solid rgba(124,134,255,.38); border-radius:7px; font-size:11px; font-weight:800; }
-.app-shell.stitch-shell .variant-row-lead .variant-drag-handle { flex:1; }
-.app-shell.stitch-shell .variant-media-cell { display:grid; gap:4px; min-width:0; }
+.app-shell.stitch-shell .variant-row-lead { display:flex; align-items:center; gap:6px; min-width:0; background:transparent!important; border:0!important; }
+.app-shell.stitch-shell .variant-row-number { display:grid; place-items:center; min-width:25px; height:25px; color:#eef0ff; background:rgba(124,134,255,.14)!important; border:1px solid rgba(124,134,255,.38)!important; border-radius:7px!important; font-size:10px; font-weight:850; }
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle { display:grid; place-items:center; flex:0 0 24px; width:24px; height:28px; padding:0; color:#b6c0f0; background:transparent!important; border:0!important; border-radius:7px!important; cursor:grab; font-size:0; opacity:1; transition:color .14s ease,background .14s ease,border-color .14s ease,transform .14s ease; }
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle:hover { color:#fff; background:transparent!important; border-color:transparent!important; transform:translateY(-1px); }
+.app-shell.stitch-shell .variant-row-lead .variant-drag-handle:active { cursor:grabbing; transform:translateY(0); }
+.app-shell.stitch-shell .variant-drag-icon { display:block; width:16px; height:20px; color:#b6c0f0; fill:currentColor; opacity:1; }
+.app-shell.stitch-shell .variant-media-cell { display:grid; place-items:center; gap:4px; min-width:0; }
 .app-shell.stitch-shell .variant-media-cell select { min-width:0; }
 .app-shell.stitch-shell .variant-color-apply { justify-self:start; padding:2px 6px; color:#9da4ff; background:transparent; border:0; font-size:10px; font-weight:800; box-shadow:none; }
 .app-shell.stitch-shell .variant-color-apply:hover { text-decoration:underline; transform:none; }
@@ -156,13 +159,10 @@
 .app-shell.stitch-shell .variant-table-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; color:#8993b4; font-size:10px; }
 .app-shell.stitch-shell .variant-media-bulk-button { display:inline-flex; align-items:center; gap:7px; opacity:1; filter:none; cursor:pointer; }
 .app-shell.stitch-shell .variant-media-icon { width:15px; height:15px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }
-.app-shell.stitch-shell .variant-media-cell { display:grid; place-items:center; }
-.app-shell.stitch-shell .variant-media-button { position:relative; display:grid; place-items:center; width:34px; height:34px; padding:0; color:#cbd0ff; background:#202744; border:1px solid #555fa7; border-radius:8px; box-shadow:none; font-size:16px; }
-.app-shell.stitch-shell .variant-media-button:hover,
+.app-shell.stitch-shell .variant-media-button { position:relative; display:grid; place-items:center; width:34px; height:34px; padding:0; color:#bfc7f2; background:#1a2035; border:1px solid #354064; border-radius:7px; box-shadow:none; font-size:16px; }
+.app-shell.stitch-shell .variant-media-button:hover { color:#fff; background:#252e4c; border-color:#6876d8; transform:translateY(-1px); }
 .app-shell.stitch-shell .variant-media-button.has-media { color:#fff; background:#626eff; border-color:#8f97ff; }
 .app-shell.stitch-shell .variant-media-button i { position:absolute; right:-5px; bottom:-5px; display:grid; place-items:center; width:15px; height:15px; color:#091021; background:#71e0b0; border:2px solid #111525; border-radius:999px; font-size:9px; font-style:normal; font-weight:900; }
-.app-shell.stitch-shell .product-media-link-button { color:#bfc5ff; background:transparent; border-color:transparent; }
-.app-shell.stitch-shell .product-media-link-button:hover { color:#fff; background:rgba(124,134,255,.12); border-color:rgba(124,134,255,.28); }
 .app-shell.stitch-shell .variant-media-picker-modal { width:min(920px,calc(100vw - 24px)); max-height:min(860px,calc(100vh - 24px)); overflow:auto; background:#171b2b; border-color:rgba(124,134,255,.35); }
 .app-shell.stitch-shell .variant-media-picker-modal > header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; }
 .app-shell.stitch-shell .variant-media-picker-modal > header p { color:#9ba4ca; }
@@ -172,21 +172,13 @@
 .app-shell.stitch-shell .variant-media-bulk-match-summary strong { color:#fff; }
 .app-shell.stitch-shell .variant-media-bulk-match-summary.is-empty { color:#ffb5bc; background:rgba(255,111,125,.08); border-color:rgba(255,111,125,.3); }
 .app-shell.stitch-shell .variant-media-picker-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:8px; padding:10px; background:#111525; border:1px solid rgba(151,160,207,.2); border-radius:10px; }
-.app-shell.stitch-shell .variant-media-option { position:relative; display:grid; grid-template-rows:minmax(0,1fr) auto; gap:6px; min-width:0; aspect-ratio:1; padding:6px; color:#cfd4ff; text-align:left; background:#1d2236; border:1px solid #323b63; border-radius:8px; box-shadow:none; }
-.app-shell.stitch-shell .variant-media-option:hover { background:#242b49; border-color:#747eff; transform:translateY(-1px); }
-.app-shell.stitch-shell .variant-media-option.selected { background:#282e56; border-color:#8c94ff; box-shadow:0 0 0 2px rgba(124,134,255,.2); }
-.app-shell.stitch-shell .variant-media-option-image { display:grid; place-items:center; justify-self:center; width:auto; height:100%; aspect-ratio:2 / 3; min-height:0; overflow:hidden; color:#8f99c5; background:#0c1020; border-radius:5px; }
+.app-shell.stitch-shell .variant-media-option { position:relative; display:grid; place-items:center; grid-template-rows:minmax(0,1fr) auto; gap:6px; min-width:0; aspect-ratio:1; padding:0; overflow:hidden; color:#cfd4ff; text-align:left; background:transparent!important; border:0!important; border-radius:0!important; box-shadow:none!important; }
+.app-shell.stitch-shell .variant-media-option:hover,
+.app-shell.stitch-shell .variant-media-option.selected { background:transparent!important; border:0!important; box-shadow:none!important; transform:none; }
+.app-shell.stitch-shell .variant-media-option-image { display:grid; place-items:center; justify-self:center; width:100%; height:100%; aspect-ratio:1; min-height:0; overflow:hidden; color:#8f99c5; background:transparent; border-radius:0; }
 .app-shell.stitch-shell .variant-media-option-image img { display:block; width:100%; height:100%; object-fit:cover; }
 .app-shell.stitch-shell .variant-media-option-label { overflow:hidden; color:#bec5e8; font-size:9px; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
-.app-shell.stitch-shell .variant-media-option > i { position:absolute; top:9px; right:9px; display:grid; place-items:center; width:18px; height:18px; color:#0e1523; background:#71e0b0; border-radius:999px; font-size:11px; font-style:normal; font-weight:900; }
-.app-shell.stitch-shell .variant-row-lead { background:transparent!important; border:0!important; gap:6px; }
-.app-shell.stitch-shell .variant-row-number { min-width:25px; height:25px; color:#eef0ff; background:rgba(124,134,255,.14)!important; border:1px solid rgba(124,134,255,.38)!important; border-radius:7px!important; font-size:10px; font-weight:850; }
-.app-shell.stitch-shell .variant-row-lead .variant-drag-handle { display:grid; place-items:center; flex:0 0 28px; width:28px; height:28px; padding:0; color:#aeb8e8; background:#1a2035; border:1px solid #354064!important; border-radius:7px!important; cursor:grab; font-size:0; opacity:1; transition:color .14s ease,background .14s ease,border-color .14s ease,transform .14s ease; }
-.app-shell.stitch-shell .variant-row-lead .variant-drag-handle:hover { color:#fff; background:#252e4c; border-color:#6876d8!important; transform:translateY(-1px); }
-.app-shell.stitch-shell .variant-row-lead .variant-drag-handle:active { cursor:grabbing; transform:translateY(0); }
-.app-shell.stitch-shell .variant-drag-icon { width:13px; height:17px; fill:currentColor; opacity:.92; }
-.app-shell.stitch-shell .variant-media-button { color:#bfc7f2; background:#1a2035; border-color:#354064; border-radius:7px; }
-.app-shell.stitch-shell .variant-media-button:hover { color:#fff; background:#252e4c; border-color:#6876d8; transform:translateY(-1px); }
+.app-shell.stitch-shell .variant-media-option > i { position:absolute; top:7px; right:7px; display:grid; place-items:center; width:18px; height:18px; color:#0e1523; background:#71e0b0; border:0; border-radius:999px; font-size:11px; font-style:normal; font-weight:900; }
 .app-shell.stitch-shell .variant-media-picker-modal > footer { display:flex; align-items:center; justify-content:flex-end; gap:9px; margin-top:16px; padding-top:14px; border-top:1px solid rgba(151,160,207,.2); }
 .app-shell.stitch-shell .variant-media-picker-modal > footer .secondary:first-child { margin-right:auto; }
 @media (max-width:680px) {
@@ -196,7 +188,7 @@
   .app-shell.stitch-shell .variant-media-picker-modal > footer button { flex:1 1 130px; }
 }
 
-/* Orders and settings polish: keep action cells aligned, readable and theme-consistent. */
+/* Orders and settings alignment. */
 .app-shell.stitch-shell .order-reference-actions{align-items:flex-start;justify-content:flex-end;min-width:0;gap:8px;padding:12px 10px}
 .app-shell.stitch-shell .order-status-column{min-width:0;width:100%;align-items:flex-start;gap:6px}
 .app-shell.stitch-shell .order-status-column small{white-space:normal;line-height:1.35}
@@ -218,39 +210,15 @@
 .app-shell.stitch-shell aside nav a.active:hover{border-left-color:transparent!important}
 @media(max-width:700px){.app-shell.stitch-shell .security-page .sessions li{grid-template-columns:32px minmax(0,1fr)}.app-shell.stitch-shell .security-page .sessions li>b{grid-column:2;text-align:left}}
 
-/* Keep status, label and action boxes centered inside every order action cell. */
-.app-shell.stitch-shell .orders-page .order-reference-actions { align-items:center !important; justify-content:center !important; }
-.app-shell.stitch-shell .orders-page .order-reference-actions > .order-status-column { align-items:center !important; text-align:center; }
+/* Center status, label and action controls inside every order action cell. */
+.app-shell.stitch-shell .orders-page .order-reference-actions { align-items:center !important; justify-content:center !important; gap:7px !important; }
+.app-shell.stitch-shell .orders-page .order-reference-actions > .order-status-column { align-items:center !important; align-self:center !important; text-align:center; }
 .app-shell.stitch-shell .orders-page .order-reference-actions > .order-label-actions,
 .app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu { align-self:center !important; }
 
-/* Product option/media polish. */
-.app-shell.stitch-shell .variant-media-option {
-  display:grid; place-items:center; padding:0; aspect-ratio:1; overflow:hidden;
-  background:transparent!important; border:0!important; border-radius:0!important; box-shadow:none!important;
-}
-.app-shell.stitch-shell .variant-media-option:hover,
-.app-shell.stitch-shell .variant-media-option.selected {
-  background:transparent!important; border:0!important; box-shadow:none!important; transform:none;
-}
-.app-shell.stitch-shell .variant-media-option-image {
-  width:100%; height:100%; aspect-ratio:1;
-  background:transparent; border-radius:0;
-}
-.app-shell.stitch-shell .variant-media-option-image img { object-fit:cover; }
-.app-shell.stitch-shell .variant-media-option > i { top:7px; right:7px; width:18px; height:18px; border:0; }
-.app-shell.stitch-shell .variant-table-toolbar { align-items:center; }
 .app-shell.stitch-shell .variant-table-toolbar-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-left:auto; }
 .app-shell.stitch-shell .variant-clear-button { color:#ff9ca4!important; background:transparent!important; border-color:rgba(241,112,124,.48)!important; }
 .app-shell.stitch-shell .variant-clear-button:hover { color:#fff!important; background:rgba(241,112,124,.14)!important; border-color:#f1707c!important; }
-.app-shell.stitch-shell .variant-row-lead .variant-drag-handle {
-  display:grid; place-items:center; flex:0 0 24px; width:24px; height:28px;
-  background:transparent!important; border:0!important; font-size:0;
-}
-.app-shell.stitch-shell .variant-row-lead .variant-drag-handle::after {
-  display:none;
-}
-.app-shell.stitch-shell .variant-row-lead .variant-drag-icon { display:block; width:16px; height:20px; color:#b6c0f0; opacity:1; }
 .app-shell.stitch-shell .product-add-page .product-top-sidebar > .product-category-mapping-card { height:auto!important; align-self:start; }
 .app-shell.stitch-shell .product-description-field > .rich-text-editor { background:#171b2b!important; }
 .app-shell.stitch-shell .rich-text-editor-head { background:linear-gradient(100deg,#20253f,#1b2035)!important; }
@@ -263,12 +231,8 @@
 .app-shell.stitch-shell .rich-text-html-editor { background:#15192a!important; }
 .app-shell.stitch-shell .rich-text-editor-foot { background:#171b2b!important; }
 
-/* Orders: keep bulk menus above the table and action controls centered. */
+/* Order bulk menus and action controls. */
 .app-shell.stitch-shell .orders-page .orders-reference-filter-shell { overflow: visible !important; }
-.app-shell.stitch-shell .orders-page .order-reference-actions { align-items:center!important; justify-content:center!important; gap:7px!important; }
-.app-shell.stitch-shell .orders-page .order-reference-actions > .order-status-column,
-.app-shell.stitch-shell .orders-page .order-reference-actions > .order-label-actions,
-.app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu { align-self:center!important; }
 .app-shell.stitch-shell .orders-page .order-action-menu { display:inline-flex!important; align-items:center!important; justify-content:center!important; gap:7px!important; height:30px!important; }
 .app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-menu-shell { z-index:2200; }
 .app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu {
@@ -329,7 +293,7 @@
   .app-shell.stitch-shell .shipping-label-batch-preview > .shipping-label-print-surface { margin:0!important; break-inside:avoid; page-break-inside:avoid; }
 }
 
-/* Shipping designer: dense snap grid, non-colliding selection outline and true drag feedback. */
+/* Shipping designer controls and interaction states. */
 .app-shell.stitch-shell .shipping-settings-check { display:flex!important; align-items:center; gap:9px!important; }
 .app-shell.stitch-shell .shipping-settings-check input { width:16px; min-width:16px; min-height:16px; margin:0; cursor:pointer; }
 .app-shell.stitch-shell .shipping-settings-check span { cursor:default; user-select:none; }
@@ -342,16 +306,8 @@
 .app-shell.stitch-shell .shipping-template-save-dialog > div { display:flex; gap:6px; }
 .app-shell.stitch-shell .shipping-template-save-dialog button { min-height:32px; padding:7px 10px; white-space:nowrap; }
 .app-shell.stitch-shell .shipping-template-status { margin:-5px 0 12px; color:#9fe6c0; font-size:10px; font-weight:700; }
-.app-shell.stitch-shell .shipping-designer-paper {
-  background-image: linear-gradient(rgba(181,193,213,.42) 1px, transparent 1px), linear-gradient(90deg, rgba(181,193,213,.42) 1px, transparent 1px)!important;
-  background-size:2.5% 2.5%!important;
-}
-.app-shell.stitch-shell .shipping-designer-block { touch-action:none; color:#000!important; }
-.app-shell.stitch-shell .shipping-designer-block.is-selected { border:1px solid #5865f2!important; outline:2px solid rgba(88,101,242,.82); box-shadow:none!important; }
 .app-shell.stitch-shell .shipping-designer-block-preview,
 .app-shell.stitch-shell .shipping-designer-block-preview * { color:#000!important; }
-.app-shell.stitch-shell .shipping-designer-block-label { color:#000!important; }
-.app-shell.stitch-shell .shipping-designer-block-handle { cursor:grab; }
 .app-shell.stitch-shell .shipping-designer-block:active,
 .app-shell.stitch-shell .shipping-designer-block:active .shipping-designer-block-handle { cursor:grabbing; }
 @media (max-width:900px) {
@@ -400,23 +356,24 @@
 /* Variant bulk filters: select a compact set of option values and keep matching rows visible at a glance. */
 .app-shell.stitch-shell .variant-filter-panel {
   display: grid;
-  gap: 10px;
-  padding: 12px;
-  background: #111525;
-  border: 1px solid #354064;
-  border-radius: 10px;
+  gap: 8px !important;
+  padding: 10px !important;
+  background: rgba(14, 20, 38, .72) !important;
+  border: 1px solid rgba(88, 101, 242, .28) !important;
+  border-radius: 8px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025) !important;
 }
 .app-shell.stitch-shell .variant-filter-panel-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center !important;
   justify-content: space-between;
-  gap: 14px;
+  gap: 10px !important;
 }
 .app-shell.stitch-shell .variant-filter-panel-head > div:first-child { display: grid; gap: 3px; min-width: 0; }
-.app-shell.stitch-shell .variant-filter-panel-head strong { color: #eef0ff; font-size: 12px; }
-.app-shell.stitch-shell .variant-filter-panel-head span { color: #8993b4; font-size: 10px; line-height: 1.4; }
+.app-shell.stitch-shell .variant-filter-panel-head strong { color: #eef0ff; font-size: 11px !important; }
+.app-shell.stitch-shell .variant-filter-panel-head span { color: #8993b4; font-size: 9px !important; line-height: 1.4; }
 .app-shell.stitch-shell .variant-filter-panel-summary { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
-.app-shell.stitch-shell .variant-filter-panel-summary b { color: #aeb8e8; font-size: 10px; white-space: nowrap; }
+.app-shell.stitch-shell .variant-filter-panel-summary b { color: #9fa7c8 !important; font-size: 9px !important; white-space: nowrap; }
 .app-shell.stitch-shell .variant-filter-clear,
 .app-shell.stitch-shell .variant-filter-clear-selection {
   padding: 0;
@@ -428,9 +385,10 @@
   font-weight: 800;
   cursor: pointer;
 }
+.app-shell.stitch-shell .variant-filter-clear { font-size: 9px !important; }
 .app-shell.stitch-shell .variant-filter-clear:hover,
 .app-shell.stitch-shell .variant-filter-clear-selection:hover { color: #fff; text-decoration: underline; transform: none; }
-.app-shell.stitch-shell .variant-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+.app-shell.stitch-shell .variant-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important; gap: 6px !important; }
 .app-shell.stitch-shell .variant-filter-field { position: relative; min-width: 0; }
 .app-shell.stitch-shell .variant-filter-select-trigger {
   display: flex;
@@ -438,20 +396,21 @@
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  min-height: 48px;
-  padding: 8px 10px;
+  min-height: 40px !important;
+  padding: 7px 9px !important;
   color: #e9ebff;
   text-align: left;
-  background: #171d33;
+  background: #151a2c !important;
   border: 1px solid #354064;
-  border-radius: 8px;
+  border-color: #303a61 !important;
+  border-radius: 7px !important;
   box-shadow: none;
 }
 .app-shell.stitch-shell .variant-filter-select-trigger:hover,
-.app-shell.stitch-shell .variant-filter-select-trigger.active { background: #1c2440; border-color: #6876d8; }
+.app-shell.stitch-shell .variant-filter-select-trigger.active { background: #1b2240 !important; border-color: #5966b8 !important; }
 .app-shell.stitch-shell .variant-filter-select-trigger > span { display: grid; gap: 3px; min-width: 0; }
-.app-shell.stitch-shell .variant-filter-select-trigger small { overflow: hidden; color: #8993b4; font-size: 9px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell.stitch-shell .variant-filter-select-trigger strong { overflow: hidden; color: #f1f2ff; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .variant-filter-select-trigger small { overflow: hidden; color: #8993b4; font-size: 8px !important; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .variant-filter-select-trigger strong { overflow: hidden; color: #f1f2ff; font-size: 10px !important; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell .variant-filter-select-trigger > i { flex: 0 0 auto; color: #aeb8e8; font-size: 15px; font-style: normal; transition: transform .16s ease; }
 .app-shell.stitch-shell .variant-filter-select-trigger[aria-expanded="true"] > i { transform: rotate(180deg); }
 .app-shell.stitch-shell .variant-filter-dropdown-menu {
@@ -481,14 +440,12 @@
 .app-shell.stitch-shell .variant-filter-dropdown-options button i { flex: 0 0 auto; min-width: 14px; color: #71e0b0; font-size: 12px; font-style: normal; font-weight: 900; text-align: center; }
 .app-shell.stitch-shell .variant-filter-dropdown-empty,
 .app-shell.stitch-shell .variant-filter-empty { padding: 7px 8px; color: #8993b4; font-size: 10px; }
-.app-shell.stitch-shell .variant-filter-help { margin: 0; color: #8993b4; font-size: 10px; line-height: 1.45; }
+.app-shell.stitch-shell .variant-filter-help { margin: 0; padding-top: 7px !important; color: #8993b4; border-top: 1px solid rgba(151, 160, 207, .12) !important; font-size: 9px !important; line-height: 1.45; }
 .app-shell.stitch-shell .variant-filter-help strong { color: #cfd4ff; }
 .app-shell.stitch-shell .variant-table-header-with-action { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
 .app-shell.stitch-shell .variant-table-header-with-action > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell.stitch-shell .variant-header-action { flex: 0 0 auto; padding: 3px 6px; color: #aeb8e8; background: #202744; border: 1px solid #4d5a9a; border-radius: 5px; box-shadow: none; font-size: 9px; font-weight: 800; white-space: nowrap; }
-.app-shell.stitch-shell .variant-header-action:hover { color: #fff; background: #2a3357; border-color: #8490ff; transform: none; }
-.app-shell.stitch-shell .variant-header-action { display: inline-grid; place-items: center; width: 20px; height: 20px; min-height: 20px !important; padding: 0 !important; color: #9da7d5 !important; background: transparent !important; border-color: transparent !important; border-radius: 4px; }
-.app-shell.stitch-shell .variant-header-action:hover { color: #fff !important; background: transparent !important; border-color: transparent !important; }
+.app-shell.stitch-shell .variant-header-action { display: inline-grid; place-items: center; flex: 0 0 auto; width: 20px; height: 20px; min-height: 20px !important; padding: 0 !important; color: #9da7d5 !important; background: transparent !important; border: 1px solid #4d5a9a; border-color: transparent !important; border-radius: 4px; box-shadow: none; font-size: 9px; font-weight: 800; white-space: nowrap; }
+.app-shell.stitch-shell .variant-header-action:hover { color: #fff !important; background: transparent !important; border-color: transparent !important; transform: none; }
 .app-shell.stitch-shell .variant-header-action-icon { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; }
 .app-shell.stitch-shell .variant-header-action-shell { position: relative; display: inline-flex; flex: 0 0 auto; }
 .app-shell.stitch-shell .variant-header-action-menu { position: absolute; z-index: 60; top: calc(100% + 7px); right: 0; display: grid; gap: 4px; width: min(286px, calc(100vw - 32px)); padding: 7px; color: #e8ebff; background: #171b2b; border: 1px solid #4d5a9a; border-radius: 8px; box-shadow: 0 16px 34px rgba(0, 0, 0, .42); }
@@ -507,37 +464,4 @@
   .app-shell.stitch-shell .variant-filter-panel-head { flex-direction: column; }
   .app-shell.stitch-shell .variant-filter-panel-summary { justify-content: space-between; width: 100%; }
   .app-shell.stitch-shell .variant-filter-grid { grid-template-columns: 1fr; }
-}
-
-/* Final product-workspace polish: the filter should feel like a compact field
-   group inside the existing panel, not a second competing card. */
-.app-shell.stitch-shell .variant-filter-panel {
-  gap: 8px !important;
-  padding: 10px !important;
-  background: rgba(14, 20, 38, .72) !important;
-  border: 1px solid rgba(88, 101, 242, .28) !important;
-  border-radius: 8px !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .025) !important;
-}
-.app-shell.stitch-shell .variant-filter-panel-head { align-items: center !important; gap: 10px !important; }
-.app-shell.stitch-shell .variant-filter-panel-head strong { font-size: 11px !important; }
-.app-shell.stitch-shell .variant-filter-panel-head span { font-size: 9px !important; }
-.app-shell.stitch-shell .variant-filter-panel-summary b { color: #9fa7c8 !important; font-size: 9px !important; }
-.app-shell.stitch-shell .variant-filter-clear { font-size: 9px !important; }
-.app-shell.stitch-shell .variant-filter-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important; gap: 6px !important; }
-.app-shell.stitch-shell .variant-filter-select-trigger {
-  min-height: 40px !important;
-  padding: 7px 9px !important;
-  background: #151a2c !important;
-  border-color: #303a61 !important;
-  border-radius: 7px !important;
-}
-.app-shell.stitch-shell .variant-filter-select-trigger:hover,
-.app-shell.stitch-shell .variant-filter-select-trigger.active { background: #1b2240 !important; border-color: #5966b8 !important; }
-.app-shell.stitch-shell .variant-filter-select-trigger small { font-size: 8px !important; }
-.app-shell.stitch-shell .variant-filter-select-trigger strong { font-size: 10px !important; }
-.app-shell.stitch-shell .variant-filter-help {
-  padding-top: 7px !important;
-  border-top: 1px solid rgba(151, 160, 207, .12) !important;
-  font-size: 9px !important;
 }
