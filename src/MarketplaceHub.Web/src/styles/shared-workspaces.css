@@ -4022,3 +4022,9 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   padding-inline: 9px !important;
   white-space: nowrap;
 }
+.app-shell.stitch-shell .mapping-platform-tabs {
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+  scrollbar-width: none !important;
+}
+.app-shell.stitch-shell .mapping-platform-tabs::-webkit-scrollbar { display: none; }

@@ -2212,6 +2212,26 @@
 }
 .app-shell.stitch-shell .orders-reference-filter-shell .orders-page-number-field input { height: 30px !important; }
 .app-shell.stitch-shell .orders-reference-filter-shell .orders-page-total { line-height: 1 !important; }
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-filter-group {
+  align-items: flex-start !important;
+  gap: 12px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-select {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto 34px !important;
+  align-content: center !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-select > span {
+  display: block !important;
+  line-height: 1 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-select select {
+  width: 100% !important;
+  height: 34px !important;
+}
 @media (max-width: 680px) {
   .app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading-meta { max-width: none !important; }
   .app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-pagination { align-items: flex-start !important; }

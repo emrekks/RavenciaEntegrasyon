@@ -1199,7 +1199,7 @@ function CategoryMappingWorkspace() {
           <div className="mapping-saved-tabs mapping-platform-tabs" role="tablist" aria-label="Kayıtlı eşleştirme platformları">
             {mappingPlatformDefinitions.map(platform => {
               const available = activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code)
-              return <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active' : ''}${available ? '' : ' is-unavailable'}`} title={available ? `${platform.label} eşleştirmelerini göster` : `${platform.label} için aktif bağlantı yok`} onClick={() => { setSelectedPlatformCode(platform.code); setLocalId(''); setExternalId(''); setExternalSearch(''); setNotice('') }}>{platform.label} <small>{selectedPlatformCode === platform.code ? savedMappings.length.toLocaleString('tr-TR') : '—'}</small></button>
+              return <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active' : ''}${available ? '' : ' is-unavailable'}`} title={available ? `${platform.label} eşleştirmelerini göster` : `${platform.label} için aktif bağlantı yok`} onClick={() => { setSelectedPlatformCode(platform.code); setLocalId(''); setExternalId(''); setExternalSearch(''); setNotice('') }}>{platform.label}</button>
             })}
           </div>
           <input aria-label="Kayıtlı eşleştirmelerde ara" value={savedSearch} onChange={event => setSavedSearch(event.target.value)} placeholder="Eşleştirme ara..." />
