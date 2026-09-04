@@ -1,5 +1,5 @@
 /* ===== ravencia-theme.css ===== */
-/* Final authenticated workspace theme. Loaded after legacy page styles so every route shares one visual language. */
+/* Final authenticated workspace theme shared by every route. */
 :root {
   color-scheme: dark;
   --rv-bg: #080b11 !important;
