@@ -1734,6 +1734,18 @@ body:has(.product-add-page),
   margin: 0 !important;
   line-height: 1 !important;
 }
+.app-shell.stitch-shell .product-add-page .page-heading.product-page-heading { align-items: flex-end !important; gap: 18px !important; }
+.app-shell.stitch-shell .product-add-page .product-page-heading-copy { display: flex !important; align-items: center !important; gap: 12px !important; min-width: 0 !important; }
+.app-shell.stitch-shell .product-add-page .product-page-heading-title { display: grid !important; gap: 4px !important; min-width: 0 !important; }
+.app-shell.stitch-shell .product-add-page .product-page-heading .eyebrow { display: block !important; margin: 0 !important; color: var(--st-muted) !important; font-size: 9px !important; font-weight: 800 !important; letter-spacing: .14em !important; line-height: 1 !important; text-transform: uppercase !important; }
+.app-shell.stitch-shell .product-add-page .product-page-heading h1 { display: block !important; margin: 0 !important; font-size: 28px !important; line-height: 1.08 !important; letter-spacing: -.04em !important; }
+.app-shell.stitch-shell .product-add-page .product-page-heading .product-heading-back { width: 36px !important; height: 36px !important; flex-basis: 36px !important; border-radius: 10px !important; }
+.app-shell.stitch-shell .product-add-page .product-page-heading .product-heading-back span { display: block; line-height: 1; transform: translateY(-1px); }
+@media (max-width: 650px) {
+  .app-shell.stitch-shell .product-add-page .page-heading.product-page-heading { align-items: flex-start !important; }
+  .app-shell.stitch-shell .product-add-page .product-page-heading-copy { gap: 9px !important; }
+  .app-shell.stitch-shell .product-add-page .product-page-heading h1 { font-size: 24px !important; }
+}
 .app-shell .product-add-page .product-add-wizardbar {
   display: flex !important;
   align-items: center !important;
