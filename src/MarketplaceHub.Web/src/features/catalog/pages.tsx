@@ -997,7 +997,9 @@ function CategoryAttributeMappingPanel({
   onToggleValue: (attributeId: string, valueId: string) => void
   onTextChange: (attributeId: string, value: string) => void
 }) {
-  const attributes = requirements.filter(item => item.role === 'ATTRIBUTE' && !isVariantOptionName(item.attribute.name))
+  const attributes = requirements
+    .filter(item => item.role === 'ATTRIBUTE' && !isVariantOptionName(item.attribute.name))
+    .sort((left, right) => Number(right.isRequired) - Number(left.isRequired) || left.attribute.name.localeCompare(right.attribute.name, 'tr-TR', { sensitivity: 'base' }))
   const dataTypeLabels: Record<string, string> = {
     SINGLE_SELECT: 'Tek seçim',
     MULTI_SELECT: 'Çoklu seçim',

@@ -2527,12 +2527,12 @@ body:has(.product-add-page),
 }
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.required { border-color: rgba(113, 104, 245, .75) !important; }
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.required.is-missing {
-  background: linear-gradient(180deg, rgba(255, 126, 122, .11), rgba(21, 26, 43, .96)) !important;
-  border-color: rgba(255, 126, 122, .9) !important;
-  box-shadow: inset 3px 0 #ff7f78, 0 0 0 1px rgba(255, 126, 122, .22), 0 8px 18px rgba(43, 10, 18, .18) !important;
+  background: #151a2b !important;
+  border-color: rgba(230, 183, 95, .62) !important;
+  box-shadow: inset 3px 0 #e6b75f !important;
 }
-.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.required.is-missing .category-attribute-field-head strong { color: #ffc0ba !important; }
-.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.required.is-missing .category-attribute-select-trigger { border-color: rgba(255, 126, 122, .72) !important; }
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.required.is-missing .category-attribute-field-head strong { color: var(--st-text) !important; }
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.required.is-missing .category-attribute-select-trigger { border-color: rgba(230, 183, 95, .58) !important; }
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.has-selection {
   background: linear-gradient(180deg, rgba(88, 101, 242, .11), rgba(21, 26, 43, .96)) !important;
   border-color: rgba(122, 135, 255, .72) !important;
