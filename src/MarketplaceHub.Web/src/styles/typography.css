@@ -1,0 +1,115 @@
+/* Shared readability pass for the Stitch workspace. Keep hierarchy clear
+   while removing the overly compressed, heavy feel from everyday UI text. */
+:root {
+  --rv-type-body-size: 14px;
+  --rv-type-helper-size: 11px;
+  --rv-type-label-size: 12px;
+  --rv-type-action-size: 12px;
+  --rv-type-regular: 400;
+  --rv-type-medium: 500;
+  --rv-type-action-weight: 600;
+  --rv-type-heading-weight: 650;
+}
+
+.app-shell.stitch-shell {
+  font-size: var(--rv-type-body-size);
+  font-weight: var(--rv-type-regular);
+  line-height: 1.45;
+}
+
+.app-shell.stitch-shell h1,
+.app-shell.stitch-shell h2,
+.app-shell.stitch-shell h3,
+.app-shell.stitch-shell h4 {
+  font-weight: var(--rv-type-heading-weight) !important;
+}
+
+.app-shell.stitch-shell h1 {
+  font-size: clamp(28px, 2.35vw, 34px) !important;
+  line-height: 1.15 !important;
+}
+
+.app-shell.stitch-shell h2 {
+  font-size: 19px !important;
+  line-height: 1.3 !important;
+}
+
+.app-shell.stitch-shell h3 {
+  font-size: 15px !important;
+  line-height: 1.35 !important;
+}
+
+.app-shell.stitch-shell h4 {
+  font-size: 14px !important;
+  line-height: 1.35 !important;
+}
+
+.app-shell.stitch-shell p {
+  font-size: 13px !important;
+  font-weight: var(--rv-type-regular) !important;
+  line-height: 1.55 !important;
+}
+
+.app-shell.stitch-shell small {
+  font-size: var(--rv-type-helper-size) !important;
+  font-weight: var(--rv-type-regular) !important;
+  line-height: 1.45 !important;
+}
+
+.app-shell.stitch-shell label {
+  font-size: var(--rv-type-label-size) !important;
+  font-weight: var(--rv-type-medium) !important;
+  line-height: 1.35 !important;
+}
+
+.app-shell.stitch-shell input,
+.app-shell.stitch-shell select,
+.app-shell.stitch-shell textarea {
+  font-size: 13px !important;
+  font-weight: var(--rv-type-regular) !important;
+  line-height: 1.4 !important;
+}
+
+.app-shell.stitch-shell button,
+.app-shell.stitch-shell .button,
+.app-shell.stitch-shell a.button {
+  font-size: var(--rv-type-action-size) !important;
+  font-weight: var(--rv-type-action-weight) !important;
+  line-height: 1.3 !important;
+}
+
+.app-shell.stitch-shell aside nav a,
+.app-shell.stitch-shell .settings-nav > a,
+.app-shell.stitch-shell .logout-link {
+  font-size: 13px !important;
+  font-weight: var(--rv-type-medium) !important;
+}
+
+.app-shell.stitch-shell th {
+  font-size: 10px !important;
+  font-weight: var(--rv-type-action-weight) !important;
+  line-height: 1.3 !important;
+}
+
+.app-shell.stitch-shell td {
+  font-size: 12px !important;
+  font-weight: var(--rv-type-regular) !important;
+  line-height: 1.45 !important;
+}
+
+.app-shell.stitch-shell strong,
+.app-shell.stitch-shell b {
+  font-weight: var(--rv-type-action-weight) !important;
+}
+
+.app-shell.stitch-shell .eyebrow {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+}
+
+.app-shell.stitch-shell .metrics article strong,
+.app-shell.stitch-shell .dashboard-metrics article strong,
+.app-shell.stitch-shell .product-metrics article strong {
+  font-weight: var(--rv-type-heading-weight) !important;
+}

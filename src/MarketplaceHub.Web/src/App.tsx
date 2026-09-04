@@ -5,6 +5,7 @@ import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
 import { api, ApiRequestError, hubApi, type Me, type TenantOption } from './api'
 import './styles/dashboard.css'
 import './styles/shipping-designer.css'
+import './styles/typography.css'
 const AttributesPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.AttributesPage })))
 const BrandsPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.BrandsPage })))
 const CategoriesPage = lazy(() => import('./CatalogPages').then(module => ({ default: module.CategoriesPage })))

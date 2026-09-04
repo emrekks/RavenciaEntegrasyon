@@ -4,6 +4,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from './api'
 import './styles/product-editor.css'
 import './styles/products.css'
+import './styles/typography.css'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
