@@ -77,13 +77,16 @@
   align-items: stretch !important;
   gap: 0 !important;
   min-height: 43px !important;
-  margin: 0 !important;
+  margin: 0 0 10px !important;
   padding: 0 7px !important;
   overflow-x: auto !important;
   background: #0d0e16 !important;
   border: 0 !important;
   border-bottom: 1px solid #1e202f !important;
   border-radius: 0 !important;
+}
+.returns-reference-filter-shell .return-reference-filters {
+  margin-top: 0 !important;
 }
 .returns-reference-filter-shell .return-reference-tabs button {
   display: inline-flex !important;

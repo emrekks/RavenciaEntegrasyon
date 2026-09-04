@@ -1632,3 +1632,97 @@
     flex-direction: column !important;
   }
 }
+
+/* Keep the order workspace on the neutral dark surface palette. Accent blue
+   is reserved for actions and active states, so the filter shell no longer
+   reads as a separate navy panel. */
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel {
+  background: #15161e !important;
+  border-color: #292b36 !important;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, .24), inset 0 1px 0 rgba(255, 255, 255, .025) !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-heading {
+  border-bottom-color: #292b36 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-primary {
+  background: #181920 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary .order-search input,
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary select {
+  color: #eeeef2 !important;
+  background: #101116 !important;
+  border-color: #30323d !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary .filter-toggle {
+  color: #d8d8df !important;
+  background: #22232b !important;
+  border-color: #3a3b45 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary .filter-toggle:hover {
+  background: #2b2c35 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-primary .filter-clear {
+  color: #b9bac4 !important;
+  border-color: #3a3b45 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell > .order-filter-panel .order-filter-advanced {
+  border-top-color: #30313a !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-advanced input,
+.app-shell.stitch-shell .orders-reference-filter-shell .order-filter-advanced select {
+  background: #101116 !important;
+  border-color: #30323d !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-reference-bottom-toolbar {
+  background: #15161e !important;
+  border-color: #292b36 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-reference-bottom-toolbar .orders-bottom-select select,
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-reference-bottom-toolbar .bulk-action,
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-page-size-control select,
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-page-navigation {
+  color: #dedee5 !important;
+  background: #202128 !important;
+  border-color: #393a45 !important;
+}
+.app-shell.stitch-shell .orders-reference-filter-shell .orders-bottom-filter-group::before {
+  border-right-color: #30313a !important;
+}
+
+/* The table keeps the header, order metadata, and unit prices on one vertical
+   axis even when a row contains several product lines. */
+.app-shell.stitch-shell .orders-page .order-reference-head > * {
+  display: flex !important;
+  align-items: center !important;
+  align-content: center !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-grid > .order-reference-meta,
+.app-shell.stitch-shell .orders-page .order-reference-grid > .order-reference-buyer,
+.app-shell.stitch-shell .orders-page .order-reference-grid > .order-reference-cargo,
+.app-shell.stitch-shell .orders-page .order-reference-grid > .order-reference-invoice,
+.app-shell.stitch-shell .orders-page .order-reference-grid > .order-reference-actions {
+  align-self: stretch !important;
+  justify-content: center !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-grid > .order-reference-products {
+  align-self: stretch !important;
+  align-content: center !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-grid > .order-reference-prices {
+  align-self: stretch !important;
+  align-content: center !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-prices > strong {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  padding: 10px !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-meta > span {
+  font-size: .58rem !important;
+  line-height: 1.25 !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-meta > span b {
+  font-size: .6rem !important;
+}

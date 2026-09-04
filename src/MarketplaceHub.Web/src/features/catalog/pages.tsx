@@ -744,7 +744,6 @@ export function ProductsPage() {
 }
 
 type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; attribute: Attribute }
-const CATEGORY_ATTRIBUTE_DROPDOWN_THRESHOLD = 8
 type VariantDraft = {
   key: string
   optionSignature: string
@@ -1034,12 +1033,8 @@ function CategoryAttributeMappingPanel({
               </div>
               {item.attribute.values.length > 0 && <span className={`category-attribute-count ${selectedValues.length ? '' : 'is-empty'}`}>{selectedValues.length ? `${selectedValues.length} seçildi` : 'Değer seçin'}</span>}
             </div>
-            {item.attribute.values.length ? item.attribute.values.length > CATEGORY_ATTRIBUTE_DROPDOWN_THRESHOLD ? (
+            {item.attribute.values.length ? (
               <CategoryAttributeValueDropdown attributeName={item.attribute.name} dataType={item.attribute.dataType} values={item.attribute.values} selectedValues={selectedValues} onToggleValue={valueId => onToggleValue(item.attributeId, valueId)} />
-            ) : (
-              <div className="category-attribute-values">
-                {item.attribute.values.map(value => <button type="button" key={value.id} title={value.value} aria-label={`${item.attribute.name}: ${value.value}`} aria-pressed={selectedValues.includes(value.id)} className={`category-attribute-value ${selectedValues.includes(value.id) ? 'active' : ''}`} onClick={() => onToggleValue(item.attributeId, value.id)}>{value.value}</button>)}
-              </div>
             ) : item.attribute.dataType === 'BOOLEAN' ? (
               <select aria-label={`${item.attribute.name} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)}>
                 <option value="">Değer seçin</option>

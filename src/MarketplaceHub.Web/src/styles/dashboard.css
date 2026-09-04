@@ -255,11 +255,40 @@
 .app-shell .dashboard-platform-orbit span:nth-child(3) { right: 7px; bottom: 1px; }
 .app-shell .dashboard-platform-orbit i { top: 19px; left: 24px; width: 16px; height: 16px; border-color: #5865f2; background: #5865f2; }
 .app-shell .dashboard-stock-panel .dashboard-product-list { max-height: 170px; overflow: auto; padding-top: 6px; }
-.app-shell .dashboard-stock-panel .dashboard-product-list a { min-height: 37px; padding: 4px; background: #141f32 !important; border-color: #29344d !important; border-radius: 5px; }
-.app-shell .dashboard-stock-panel .dashboard-product-list img,
-.app-shell .dashboard-stock-panel .dashboard-product-list a > span { width: 28px; height: 28px; }
-.app-shell .dashboard-stock-panel .dashboard-product-list strong { font-size: 9px; }
-.app-shell .dashboard-stock-panel .dashboard-product-list b { font-size: 11px; }
+.app-shell .dashboard-stock-panel .dashboard-product-list a {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 37px;
+  padding: 4px 6px;
+  background: #141f32 !important;
+  border-color: #29344d !important;
+  border-radius: 5px;
+  text-decoration: none;
+}
+.app-shell .dashboard-stock-panel .dashboard-product-list a > img,
+.app-shell .dashboard-stock-panel .dashboard-product-list a > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  object-fit: cover;
+}
+.app-shell .dashboard-stock-panel .dashboard-product-list strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 9px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell .dashboard-stock-panel .dashboard-product-list b {
+  justify-self: end;
+  font-size: 11px;
+  white-space: nowrap;
+}
 
 @media (max-width: 1080px) and (min-width: 761px) {
   .app-shell .dashboard-report-grid { grid-template-columns: minmax(0, 1.6fr) minmax(220px, .85fr) !important; }
