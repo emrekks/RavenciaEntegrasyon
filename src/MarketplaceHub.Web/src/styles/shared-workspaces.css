@@ -1,4 +1,4 @@
-/* ===== stitch-theme.css ===== */
+/* ===== Shared authenticated workspace theme ===== */
 :root {
   --st-obsidian: #05060b;
   --st-surface-lowest: #0d0e16;
@@ -323,9 +323,8 @@ textarea {
 .notice { color: var(--st-primary-soft) !important; background: rgba(88, 101, 242, .09) !important; border-color: rgba(88, 101, 242, .28) !important; }
 .error { color: #ff9aae !important; background: rgba(255, 46, 151, .07) !important; border-color: rgba(255, 46, 151, .28) !important; }
 
-/* Shared transient notifications */
-.notice { position: fixed !important; right: 24px; bottom: 24px; z-index: 2200; display: flex; align-items: center; width: min(380px, calc(100vw - 40px)); min-height: 50px; margin: 0 !important; padding: 13px 16px !important; color: #dfe2ff !important; background: #20213a !important; border: 1px solid rgba(109, 119, 255, .58) !important; box-shadow: 0 16px 38px rgba(0, 0, 0, .45), 0 0 22px rgba(88, 101, 242, .12) !important; font-size: 12px; animation: ravencia-toast 5s ease forwards; pointer-events: none; }
-@keyframes ravencia-toast { 0% { opacity: 0; transform: translateY(14px); } 10%, 82% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(8px); visibility: hidden; } }
+/* Inline notices stay in the page flow. Transient feedback uses its dedicated toast component. */
+.notice { position: static !important; display: block; width: auto; min-height: 0; margin: 0 0 16px !important; padding: 12px 14px !important; pointer-events: auto; }
 
 .metrics, .dashboard-metrics, .product-metrics {
   display: grid !important;
@@ -1926,7 +1925,7 @@ textarea {
   }
 }
 
-/* Stitch reference: category mapping workspace */
+/* Category mapping workspace */
 .stitch-shell .content.stitch-reference-mapping {
   display: block !important;
   padding: 24px !important;
@@ -3420,7 +3419,7 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .integrations-reference-page .reference-menu-popover a:hover,
 .integrations-reference-page .reference-menu-popover button:hover { background: #2a2b33 !important; }
 
-/* Replace the legacy blue category-attribute workspace with neutral Obsidian surfaces. */
+/* Keep the category-attribute workspace on the shared neutral surfaces. */
 .mapping-advanced-tools[open] {
   --mapping-modal-bg: #171820;
   --mapping-modal-surface: #1d1f28;

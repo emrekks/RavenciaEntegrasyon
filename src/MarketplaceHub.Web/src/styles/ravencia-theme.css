@@ -118,8 +118,8 @@ html, body, #root {
 .app-shell .modal-close { color: #b8ccef; background: transparent; box-shadow: none; }
 .app-shell .modal-close:hover { color: #fff; background: rgba(24, 186, 255, .14); box-shadow: none; transform: none; }
 
-/* Route workspaces: legacy pages use highly-specific local surfaces, so they are
-   deliberately normalized here after the original stylesheet. */
+/* Route workspaces use highly-specific local surfaces, so they are deliberately
+   normalized here after the shared foundation. */
 .app-shell .order-filter-panel, .app-shell .order-filter-advanced, .app-shell .order-filter-primary, .app-shell .return-reference-filters, .app-shell .return-reference-workspace, .app-shell .invoice-draft-head, .app-shell .invoice-draft-customer, .app-shell .invoice-address-sheet, .app-shell .invoice-viewer-summary, .app-shell .invoice-viewer-lines, .app-shell .invoice-viewer-documents, .app-shell .invoice-document-upload, .app-shell .operation-details, .app-shell .detail-grid > *, .app-shell .cards > article, .app-shell .card-list > *, .app-shell .capability-list > *, .app-shell .calculated-field, .app-shell .attribute-builder-card, .app-shell .attribute-mapping-card, .app-shell .embedded-attribute-grid > *, .app-shell .rich-text-editor, .app-shell .quick-edit-color, .app-shell .quick-edit-fields fieldset, .app-shell .return-detail-summary, .app-shell .platform-category-create, .app-shell .upload-ghost-box {
   color: var(--rv-ink);
   background: rgba(9, 29, 60, .88);
@@ -477,7 +477,7 @@ html, body, #root {
 }
 
 /* Auth workspace — deliberately calmer and structurally distinct from the
-   legacy marketplace-logo splash screen. */
+   marketplace-logo splash screen. */
 .cyber-login-page {
   position: relative;
   isolation: isolate;

@@ -306,6 +306,47 @@
   border-radius: 8px;
 }
 
+/* Route-neutral catalog surfaces must use the authenticated workspace palette too. */
+.app-shell.stitch-shell .tree-list article,
+.app-shell.stitch-shell .candidate {
+  color: #e6e8f4;
+  background: var(--rv-surface-raised);
+  border: 1px solid var(--rv-border);
+  border-radius: 9px;
+  box-shadow: none;
+}
+
+.app-shell.stitch-shell .tree-list article:hover,
+.app-shell.stitch-shell .candidate:hover {
+  background: rgba(88, 101, 242, .08);
+  border-color: var(--rv-border-strong);
+}
+
+.app-shell.stitch-shell .tree-list article strong,
+.app-shell.stitch-shell .candidate strong {
+  color: #f0f1fb;
+}
+
+.app-shell.stitch-shell .tree-list article small,
+.app-shell.stitch-shell .candidate code {
+  color: #9298b3;
+}
+
+.app-shell.stitch-shell .details dt,
+.app-shell.stitch-shell .plain-list li {
+  color: #9298b3;
+}
+
+.app-shell.stitch-shell .details dd,
+.app-shell.stitch-shell .plain-list li strong,
+.app-shell.stitch-shell .plain-list li span {
+  color: #e0e2ee;
+}
+
+.app-shell.stitch-shell .plain-list li {
+  border-top-color: rgba(137, 145, 205, .16);
+}
+
 .app-shell.stitch-shell .status,
 .app-shell.stitch-shell .badge,
 .app-shell.stitch-shell .tag,
@@ -1659,7 +1700,7 @@
   text-transform: none !important;
 }
 
-/* Final mapping refinements: these rules intentionally follow the legacy theme overrides. */
+/* Final mapping refinements: these rules complete the shared workspace treatment. */
 .app-shell.stitch-shell .mapping-view-tabs { overflow: visible !important; scrollbar-width: none !important; flex-wrap: nowrap !important; }
 .app-shell.stitch-shell .mapping-view-tabs::-webkit-scrollbar { display: none !important; }
 .app-shell.stitch-shell .mapping-advanced-tools .attribute-mapping-card.required { border: 1px solid rgba(124, 134, 255, .78) !important; box-shadow: inset 3px 0 0 #7068f5, 0 0 0 1px rgba(124, 134, 255, .14) !important; }
