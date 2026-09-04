@@ -2502,7 +2502,7 @@ textarea {
   .panel-attribute-add-value { grid-template-columns: 1fr; }
 }
 
-/* Final alignment pass for the compact platform cards. */
+/* Compact platform cards. */
 .integrations-reference-page .reference-integration-body {
   grid-template-columns: 1fr !important;
   gap: 14px !important;

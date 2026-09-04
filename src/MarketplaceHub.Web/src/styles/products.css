@@ -2228,45 +2228,6 @@ body:has(.product-add-page),
   }
 }
 
-/* v10.41: keep route scrolling in the workspace and remove nested settings frames. */
-@media (min-width: 761px) {
-  html,
-  body,
-  #root {
-    height: 100%;
-    min-height: 100%;
-    overflow: hidden !important;
-  }
-
-  .app-shell.stitch-shell {
-    height: 100vh !important;
-    min-height: 0 !important;
-    max-height: 100vh !important;
-    overflow: hidden !important;
-  }
-
-  .app-shell.stitch-shell > aside {
-    position: sticky !important;
-    top: 0;
-    height: 100vh !important;
-    min-height: 0 !important;
-    max-height: 100vh !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-  }
-
-  .app-shell.stitch-shell > main {
-    min-width: 0 !important;
-    min-height: 0 !important;
-    height: 100vh !important;
-    max-height: 100vh !important;
-    overflow-x: hidden !important;
-    overflow-y: scroll !important;
-    overscroll-behavior-y: contain;
-    scrollbar-gutter: stable;
-  }
-}
-
 /* The wrapper owns the field frame; the native input stays transparent so
    autofill and focus cannot create a second box inside it. */
 .cyber-login-input input,
