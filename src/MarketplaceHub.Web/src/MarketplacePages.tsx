@@ -84,6 +84,7 @@ type ReferenceItem = { externalId: string; parentExternalId: string | null; name
 type ReferenceData = { snapshotId: string; resourceType: string; fetchedAt: string; items: ReferenceItem[] }
 type CatalogMapping = { id: string; connectionId: string; snapshotId: string; localId: string; scopeExternalId: string; externalId: string; status: string; verifiedAt: string | null; version: number }
 type MappingTransferBundle = { format: 'RAVENCIA_MAPPING_BUNDLE'; version: 1; exportedAt: string; categories: LocalCategory[]; attributes: LocalAttribute[]; categoryMappings: CatalogMapping[]; attributeMappings: CatalogMapping[]; attributeValueMappings: CatalogMapping[] }
+type BrandMappingTransferBundle = { format: 'RAVENCIA_BRAND_MAPPING_BUNDLE'; version: 1; exportedAt: string; brands: LocalBrand[]; mappings: CatalogMapping[] }
 type MappingTransferScope = 'categories' | 'options' | 'attributes' | 'mappings'
 type SearchOption = { value: string; label: string; description?: string }
 const mappingPlatformDefinitions = [
@@ -1566,7 +1567,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
 }
 
 export function BrandMappingPage() {
-  const client = useQueryClient(); const [connectionId, setConnectionId] = useState(''); const [localId, setLocalId] = useState(''); const [externalId, setExternalId] = useState(''); const [notice, setNotice] = useState(''); const [brandName, setBrandName] = useState(''); const [brandEditOpen, setBrandEditOpen] = useState(false); const [editingBrandMappingId, setEditingBrandMappingId] = useState('')
+  const client = useQueryClient(); const [connectionId, setConnectionId] = useState(''); const [localId, setLocalId] = useState(''); const [externalId, setExternalId] = useState(''); const [notice, setNotice] = useState(''); const [brandName, setBrandName] = useState(''); const [brandEditOpen, setBrandEditOpen] = useState(false); const [editingBrandMappingId, setEditingBrandMappingId] = useState(''); const [brandTransferBusy, setBrandTransferBusy] = useState(false); const [brandTransferBundle, setBrandTransferBundle] = useState<BrandMappingTransferBundle | null>(null); const [brandTransferOpen, setBrandTransferOpen] = useState(false); const [brandTransferSelection, setBrandTransferSelection] = useState({ brands: true, mappings: true })
   const connections = useQuery({ queryKey: ['connections', 'brand-mapping'], queryFn: () => loadAllPages<Connection>('/connections') })
   const localBrands = useQuery({ queryKey: ['brands', 'mapping'], queryFn: () => loadAllPages<LocalBrand>('/catalog/brands') })
   const references = useQuery({ queryKey: ['reference-brands', connectionId], queryFn: () => hubApi<ReferenceData>(`/reference-data/brands?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!connectionId, retry: false })
@@ -1584,7 +1585,72 @@ export function BrandMappingPage() {
   const externalBrandById = new Map(externalBrands.map(item => [item.externalId, item]))
   const archiveBrand = useMutation({ mutationFn: (brand: LocalBrand) => hubApi<LocalBrand>(`/catalog/brands/${brand.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${brand.version}"` }, body: JSON.stringify({ name: brand.name, isActive: false }) }), onSuccess: async (_, brand) => { if (localId === brand.id) { setLocalId(''); setExternalId('') }; await client.invalidateQueries({ queryKey: ['brands', 'mapping'] }); setNotice(`“${brand.name}” panel markalarından kaldırıldı.`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka kaldırılamadı.') })
   const removeMapping = useMutation({ mutationFn: (item: CatalogMapping) => hubApi(`/mappings/brands/${item.localId}?connectionId=${encodeURIComponent(connectionId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async (_, item) => { if (localId === item.localId) setExternalId(''); await Promise.all([client.invalidateQueries({ queryKey: ['brand-mapping', item.localId, connectionId] }), client.invalidateQueries({ queryKey: ['brand-mappings', connectionId] })]); setNotice('Marka eşleştirmesi kaldırıldı.') }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka eşleştirmesi kaldırılamadı.') })
-  return <section className="content f3 mapping-page mapping-workspace stitch-reference-mapping"><header className="mapping-reference-heading"><h1>Eşleştirme Ayarları</h1><p>Lokal kategorilerinizi pazar yeri kategorileriyle eşleştirin.</p></header><MappingViewTabs active="brand" />{notice && <div role="status" className="notice">{notice}</div>}
+  async function exportBrandMappings() {
+    if (!connectionId) { setNotice('Aktarım için önce Trendyol bağlantısı seçin.'); return }
+    setBrandTransferBusy(true)
+    try {
+      const bundle: BrandMappingTransferBundle = { format: 'RAVENCIA_BRAND_MAPPING_BUNDLE', version: 1, exportedAt: new Date().toISOString(), brands: activeLocalBrands, mappings: savedBrandMappings }
+      const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json;charset=utf-8' }))
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = 'ravencia-marka-eslestirme-yedegi.json'
+      anchor.rel = 'noopener'
+      document.body.appendChild(anchor)
+      anchor.click()
+      window.setTimeout(() => { anchor.remove(); URL.revokeObjectURL(url) }, 1000)
+      setNotice(`${bundle.brands.length} marka ve ${bundle.mappings.length} marka eşleştirmesi dışa aktarıldı.`)
+    } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Marka eşleştirme aktarımı oluşturulamadı.') } finally { setBrandTransferBusy(false) }
+  }
+  async function importBrandMappings() {
+    if (!brandTransferBundle || !connectionId) return
+    if (!Object.values(brandTransferSelection).some(Boolean)) { setNotice('En az bir marka aktarım alanı seçin.'); return }
+    if (brandTransferSelection.mappings && !references.data) { setNotice('Marka eşlemelerini aktarmak için güncel Trendyol marka listesini eşitleyin.'); return }
+    setBrandTransferBusy(true)
+    try {
+      const allLocalBrands = localBrands.data?.items ?? []
+      const brandIdMap = new Map<string, string>()
+      let created = 0
+      let mapped = 0
+      let skipped = 0
+      for (const source of brandTransferBundle.brands) {
+        const normalizedName = source.name.trim().toLocaleLowerCase('tr-TR')
+        const existing = allLocalBrands.find(item => item.id === source.id || item.name.trim().toLocaleLowerCase('tr-TR') === normalizedName)
+        let target = existing
+        if (brandTransferSelection.brands) {
+          if (target && !target.isActive) {
+            target = await hubApi<LocalBrand>(`/catalog/brands/${target.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.version}"` }, body: JSON.stringify({ name: target.name, isActive: true }) })
+          } else if (!target) {
+            target = await hubApi<LocalBrand>('/catalog/brands', { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ name: source.name.trim() }) })
+            created++
+          }
+        }
+        if (target) brandIdMap.set(source.id, target.id)
+      }
+      if (brandTransferSelection.mappings) {
+        const externalIds = new Set(externalBrands.map(brand => brand.externalId))
+        for (const item of brandTransferBundle.mappings) {
+          const targetLocalId = brandIdMap.get(item.localId) ?? allLocalBrands.find(brand => brand.id === item.localId)?.id
+          if (!targetLocalId || !externalIds.has(item.externalId)) { skipped++; continue }
+          await hubApi<CatalogMapping>(`/mappings/brands/${targetLocalId}`, { method: 'PUT', body: JSON.stringify({ connectionId, snapshotId: references.data?.snapshotId, externalId: item.externalId, status: 'VERIFIED' }) })
+          mapped++
+        }
+      }
+      setBrandTransferOpen(false); setBrandTransferBundle(null); setNotice(`${created} marka ve ${mapped} marka eşleştirmesi içe aktarıldı.${skipped ? ` ${skipped} eşleştirme güncel referansta bulunamadığı için atlandı.` : ''}`); await Promise.all([client.invalidateQueries({ queryKey: ['brands', 'mapping'] }), client.invalidateQueries({ queryKey: ['brand-mapping', localId, connectionId] }), client.invalidateQueries({ queryKey: ['brand-mappings', connectionId] })])
+    } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Marka eşleştirme aktarımı uygulanamadı.') } finally { setBrandTransferBusy(false) }
+  }
+  function readBrandMappingBundle(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (!file) return
+    void file.text().then(text => {
+      const parsed = JSON.parse(text) as Partial<BrandMappingTransferBundle>
+      if (parsed.format !== 'RAVENCIA_BRAND_MAPPING_BUNDLE' || parsed.version !== 1 || !Array.isArray(parsed.brands) || !Array.isArray(parsed.mappings)) throw new Error('Geçerli bir Ravencia marka eşleştirme yedeği seçin.')
+      setBrandTransferSelection({ brands: true, mappings: true })
+      setBrandTransferBundle({ format: 'RAVENCIA_BRAND_MAPPING_BUNDLE', version: 1, exportedAt: parsed.exportedAt ?? new Date().toISOString(), brands: parsed.brands, mappings: parsed.mappings })
+      setBrandTransferOpen(true)
+    }).catch(reason => setNotice(reason instanceof Error ? reason.message : 'Marka eşleştirme yedeği okunamadı.'))
+  }
+  return <section className="content f3 mapping-page mapping-workspace stitch-reference-mapping"><header className="mapping-reference-heading"><div><h1>Eşleştirme Ayarları</h1><p>Lokal markalarınızı pazar yeri markalarıyla eşleştirin.</p></div><div className="mapping-reference-heading-actions" aria-label="Marka eşleştirme yedeği işlemleri"><span>Marka yedeği</span><div className="mapping-transfer-actions"><button type="button" className="secondary" title="Marka eşleştirme yedeğini JSON olarak dışa aktar" onClick={() => void exportBrandMappings()} disabled={brandTransferBusy || !connectionId}>{brandTransferBusy ? 'Hazırlanıyor…' : 'Dışa aktar'}</button><label className="mapping-transfer-upload" title="JSON marka eşleştirme yedeğini içe aktar">İçe aktar<input type="file" accept="application/json,.json" onChange={readBrandMappingBundle} disabled={brandTransferBusy} /></label></div></div></header><MappingViewTabs active="brand" />{notice && <div role="status" className="notice">{notice}</div>}
     <article className="mapping-reference-card brand-mapping-console">
       <h2><span aria-hidden="true">⌘</span>1. Marka Eşleme</h2><p className="brand-mapping-intro">Panel markalarınızı Trendyol’un güncel marka referanslarıyla eşleyin. Değişiklikler yalnız yerel eşleme kaydına yazılır.</p>
       <section className="brand-library-panel"><div className="brand-library-heading"><div><strong>Panel markaları</strong><small>Mevcut markayı seçin veya yeni bir marka oluşturun.</small></div><span>{activeLocalBrands.length} kayıt</span></div><form className="platform-category-create brand-library-create" onSubmit={event => { event.preventDefault(); createBrand.mutate() }}><label>Yeni panel markası<input aria-label="Yeni panel markası adı" maxLength={160} value={brandName} onChange={event => setBrandName(event.target.value)} placeholder="Örn. Ravencia" required /></label><button disabled={createBrand.isPending}>{createBrand.isPending ? 'Ekleniyor…' : '+ Marka ekle'}</button></form><div className="category-chip-list brand-library-list" aria-label="Eklenen panel markaları">{activeLocalBrands.length ? activeLocalBrands.map(brand => <span key={brand.id} className={brand.id === localId ? 'active' : ''}><button type="button" onClick={() => { setLocalId(brand.id); setExternalId(''); setNotice('') }}>{brand.name}</button><button type="button" className="category-chip-remove" aria-label={`${brand.name} markasını kaldır`} onClick={() => archiveBrand.mutate(brand)} disabled={archiveBrand.isPending}>×</button></span>) : <small>Henüz panel markası eklenmedi.</small>}</div></section>
@@ -1592,6 +1658,7 @@ export function BrandMappingPage() {
       {connections.isError || localBrands.isError ? <ErrorBox error={connections.error ?? localBrands.error} /> : references.isError ? <div className="unknown"><strong>Güncel marka listesi yok</strong><p>Bağlantı ekranından “Markaları eşitle” işlemini çalıştırın.</p><Link className="button-link" to={`/integrations/${connectionId}`}>Bağlantıya git</Link></div> : connectionId && references.data ? <div className="mapping-action"><span><strong>{externalBrands.length.toLocaleString('tr-TR')}</strong> marka · {new Date(references.data.fetchedAt).toLocaleString('tr-TR')}{mapping.data ? ` · Kayıt v${mapping.data.version}` : ''}</span><button type="button" disabled={!localId || !externalId || save.isPending || mapping.isLoading} onClick={() => save.mutate()}>{save.isPending ? 'Kaydediliyor…' : mapping.data ? 'Eşleştirmeyi güncelle' : 'Eşleştirmeyi kaydet'}</button></div> : null}
     </article>
     {connectionId && <article className="mapping-reference-card mapping-saved-card brand-mapping-saved-card"><header><h2>2. Kayıtlı Marka Eşleştirmeleri</h2><div><span className="mapping-record-count">{savedBrandMappings.length.toLocaleString('tr-TR')} kayıt</span></div></header><div className="mapping-saved-table"><table><thead><tr><th>Panel Markası</th><th>Platform</th><th>Trendyol Markası</th><th>Durum</th><th>İşlemler</th></tr></thead><tbody>{brandMappings.isLoading ? <tr><td colSpan={5}>Kayıtlı marka eşleştirmeleri yükleniyor…</td></tr> : brandMappings.isError ? <tr><td colSpan={5}>Kayıtlı marka eşleştirmeleri alınamadı.</td></tr> : savedBrandMappings.length ? savedBrandMappings.map(item => <tr key={item.id} className={editingBrandMappingId === item.id ? 'is-editing' : ''}><td>{localBrandById.get(item.localId)?.name ?? item.localId}</td><td><span className="trendyol-badge">Trendyol</span></td><td className="brand-mapping-inline-editor">{editingBrandMappingId === item.id ? <SearchableSelect label="" value={externalId} options={externalBrands.map(brand => ({ value: brand.externalId, label: brand.name, description: `Trendyol marka no: ${brand.externalId}` }))} placeholder="Trendyol markası ara" disabled={references.isLoading || references.isError} onChange={setExternalId} /> : externalBrandById.get(item.externalId)?.name ?? item.externalId}</td><td><span className={`mapping-table-status ${item.status === 'VERIFIED' || item.status === 'ACTIVE' ? 'active' : 'error'}`}><i />{item.status === 'VERIFIED' || item.status === 'ACTIVE' ? 'Aktif' : item.status}</span></td><td><div className="mapping-row-actions">{editingBrandMappingId === item.id ? <><button type="button" className="mapping-icon-button" aria-label="Marka eşleştirmesini kaydet" disabled={!externalId || save.isPending} onClick={() => save.mutate()}><span aria-hidden="true">✓</span></button><button type="button" className="mapping-icon-button" aria-label="Marka düzenlemeyi iptal et" onClick={() => { setEditingBrandMappingId(''); setExternalId(item.externalId) }}>×</button></> : <><button type="button" className="mapping-icon-button" aria-label="Marka eşleştirmesini düzenle" onClick={() => { setLocalId(item.localId); setExternalId(item.externalId); setEditingBrandMappingId(item.id); setBrandEditOpen(false); setNotice('') }}><span aria-hidden="true">✎</span></button><button type="button" aria-label="Eşleştirmeyi sil" disabled={removeMapping.isPending} onClick={() => { if (window.confirm('Bu marka eşleştirmesi kaldırılsın mı?')) removeMapping.mutate(item) }}>♜</button></>}</div></td></tr>) : <tr><td colSpan={5}>Henüz kaydedilmiş marka eşleştirmesi bulunmuyor.</td></tr>}</tbody></table></div><footer><span>Toplam {savedBrandMappings.length.toLocaleString('tr-TR')} eşleştirme</span></footer></article>}
+    {brandTransferOpen && brandTransferBundle && <div className="workspace-modal-backdrop mapping-transfer-backdrop" role="presentation" onMouseDown={() => { if (!brandTransferBusy) { setBrandTransferOpen(false); setBrandTransferBundle(null) } }}><section className="workspace-modal mapping-transfer-modal" role="dialog" aria-modal="true" aria-labelledby="brand-transfer-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">MARKA YEDEĞİ</p><h2 id="brand-transfer-title">İçe aktarma alanlarını seçin</h2><p>{brandTransferBundle.brands.length} marka · {brandTransferBundle.mappings.length} eşleştirme</p></div><button type="button" className="modal-close" onClick={() => { setBrandTransferOpen(false); setBrandTransferBundle(null) }} disabled={brandTransferBusy} aria-label="Marka içe aktarmayı kapat">×</button></header><div className="mapping-transfer-options"><label><input type="checkbox" checked={brandTransferSelection.brands} onChange={event => setBrandTransferSelection(current => ({ ...current, brands: event.target.checked }))} /><span><strong>Panel markaları</strong><small>Eksik markaları ekler, pasif markaları yeniden etkinleştirir.</small></span></label><label><input type="checkbox" checked={brandTransferSelection.mappings} onChange={event => setBrandTransferSelection(current => ({ ...current, mappings: event.target.checked }))} /><span><strong>Marka eşleştirmeleri</strong><small>Mevcut Trendyol marka referanslarıyla eşleştirmeleri günceller.</small></span></label></div><p className="mapping-transfer-warning">Mevcut kayıtlar silinmez; aynı marka adları güncellenir, eksik olanlar eklenir. Güncel Trendyol marka referansında bulunmayan eşleştirmeler atlanır.</p><footer><button type="button" className="secondary" onClick={() => { setBrandTransferOpen(false); setBrandTransferBundle(null) }} disabled={brandTransferBusy}>Vazgeç</button><button type="button" onClick={() => void importBrandMappings()} disabled={brandTransferBusy}>{brandTransferBusy ? 'İçe aktarılıyor…' : 'Seçilenleri güncelle'}</button></footer></section></div>}
     {brandEditOpen && <div className="brand-mapping-modal-backdrop" role="presentation" onMouseDown={() => setBrandEditOpen(false)}><section className="brand-mapping-modal" role="dialog" aria-modal="true" aria-labelledby="brand-mapping-edit-title" onMouseDown={event => event.stopPropagation()}><header><div><small>Marka eşleme</small><h2 id="brand-mapping-edit-title">Marka eşleştirmesini düzenle</h2><p>Panel markası için Trendyol karşılığını güncelleyin.</p></div><button type="button" className="modal-close" aria-label="Marka eşleme penceresini kapat" onClick={() => setBrandEditOpen(false)}>×</button></header><div className="brand-mapping-modal-body"><div className="brand-mapping-selected-local"><small>Panel markası</small><strong>{localBrandById.get(localId)?.name ?? localId}</strong></div><SearchableSelect label="Trendyol markası" value={externalId} options={externalBrands.map(item => ({ value: item.externalId, label: item.name, description: `Trendyol marka no: ${item.externalId}` }))} placeholder={references.isLoading ? 'Markalar yükleniyor…' : 'Marka adı veya marka no ara'} disabled={references.isLoading || references.isError} onChange={setExternalId} /></div><footer><button type="button" className="secondary" onClick={() => setBrandEditOpen(false)}>Vazgeç</button><button type="button" disabled={!localId || !externalId || save.isPending || mapping.isLoading} onClick={() => save.mutate()}>{save.isPending ? 'Kaydediliyor…' : 'Değişikliği kaydet'}</button></footer></section></div>}
   </section>
 }
