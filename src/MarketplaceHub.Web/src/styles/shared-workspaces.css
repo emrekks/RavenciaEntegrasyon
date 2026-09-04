@@ -4045,3 +4045,131 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   scrollbar-width: none !important;
 }
 .app-shell.stitch-shell .mapping-platform-tabs::-webkit-scrollbar { display: none; }
+
+/* Export scope picker: keep the native checkbox from inheriting the large
+   text-field treatment and present the choices as a compact, calm selection
+   surface. */
+.app-shell.stitch-shell .mapping-export-modal {
+  width: min(680px, calc(100vw - 32px));
+  overflow: hidden;
+  border-color: rgba(128, 141, 255, .5);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .52), 0 0 0 1px rgba(91, 105, 234, .12);
+}
+.app-shell.stitch-shell .mapping-export-modal > header {
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid rgba(151, 160, 207, .2);
+}
+.app-shell.stitch-shell .mapping-export-modal > header .eyebrow {
+  margin: 0 0 6px;
+  color: #9da6ff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+.app-shell.stitch-shell .mapping-export-modal > header h2 { letter-spacing: -.02em; }
+.app-shell.stitch-shell .mapping-export-options {
+  display: grid !important;
+  gap: 12px !important;
+  margin: 0 !important;
+  padding: 18px 24px 20px !important;
+}
+.app-shell.stitch-shell .mapping-export-options label {
+  display: grid !important;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px !important;
+  min-width: 0;
+  min-height: 66px;
+  box-sizing: border-box;
+  padding: 12px 14px !important;
+  color: #dfe3ff !important;
+  background: rgba(24, 31, 58, .7) !important;
+  border: 1px solid rgba(119, 132, 196, .32) !important;
+  border-radius: 10px !important;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, transform .16s ease;
+}
+.app-shell.stitch-shell .mapping-export-options label:hover {
+  background: rgba(37, 46, 82, .86) !important;
+  border-color: rgba(137, 149, 255, .7) !important;
+  transform: translateY(-1px);
+}
+.app-shell.stitch-shell .mapping-export-options label:has(input:checked) {
+  background: rgba(79, 91, 190, .2) !important;
+  border-color: rgba(131, 143, 255, .84) !important;
+}
+.app-shell.stitch-shell .mapping-export-options input[type="checkbox"] {
+  appearance: auto !important;
+  inline-size: 18px !important;
+  block-size: 18px !important;
+  min-inline-size: 18px !important;
+  min-block-size: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  flex: 0 0 18px !important;
+  accent-color: #8490ff !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 4px !important;
+  cursor: pointer;
+}
+.app-shell.stitch-shell .mapping-export-options label > span {
+  display: grid !important;
+  gap: 4px !important;
+  min-width: 0;
+}
+.app-shell.stitch-shell .mapping-export-options label strong {
+  color: #f0f1ff !important;
+  font-size: 13px !important;
+  font-weight: 750 !important;
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+.app-shell.stitch-shell .mapping-export-options label small {
+  overflow: hidden;
+  color: #aeb5d5 !important;
+  font-size: 11px !important;
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .mapping-export-options .mapping-transfer-all-option {
+  min-height: 58px;
+  background: rgba(104, 114, 232, .12) !important;
+  border-color: rgba(124, 134, 255, .6) !important;
+}
+.app-shell.stitch-shell .mapping-export-options .mapping-transfer-all-option em {
+  color: #bfc5ff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .mapping-export-scope-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.app-shell.stitch-shell .mapping-export-scope-grid label { min-height: 76px; }
+.app-shell.stitch-shell .mapping-export-modal > footer {
+  align-items: center;
+  margin: 0;
+  padding: 14px 24px 20px;
+  border-top: 1px solid rgba(151, 160, 207, .2);
+}
+.app-shell.stitch-shell .mapping-export-footer-hint {
+  margin-right: auto;
+  color: #929bbd;
+  font-size: 11px;
+}
+.app-shell.stitch-shell .mapping-export-modal > footer button { min-width: 132px; }
+@media (max-width: 620px) {
+  .app-shell.stitch-shell .mapping-export-modal > header,
+  .app-shell.stitch-shell .mapping-export-options,
+  .app-shell.stitch-shell .mapping-export-modal > footer { padding-right: 16px !important; padding-left: 16px !important; }
+  .app-shell.stitch-shell .mapping-export-scope-grid { grid-template-columns: 1fr; }
+  .app-shell.stitch-shell .mapping-export-modal > footer { flex-wrap: wrap; }
+  .app-shell.stitch-shell .mapping-export-footer-hint { flex: 1 0 100%; margin: 0 0 2px; }
+  .app-shell.stitch-shell .mapping-export-modal > footer button { min-width: 0; flex: 1; }
+}
