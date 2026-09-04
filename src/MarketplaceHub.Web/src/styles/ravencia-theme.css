@@ -80,7 +80,6 @@ html, body, #root {
   border-color: var(--rv-line);
   box-shadow: var(--rv-shadow);
 }
-.app-shell .integration-card { background: linear-gradient(145deg, rgba(14, 40, 80, .96), rgba(8, 27, 57, .96)) !important; }
 .app-shell .panel-title { border-bottom-color: var(--rv-line); }
 .app-shell .panel-title h2, .app-shell .integration-card h2 { color: var(--rv-ink); }
 .app-shell .panel-title p, .app-shell .integration-card p { color: var(--rv-muted); }
@@ -138,14 +137,6 @@ html, body, #root {
 .app-shell .mapping-workspace label,
 .app-shell .quick-edit-fields label,
 .app-shell .security-page label { color: #b9cbe3; }
-.app-shell .filter-toggle,
-.app-shell .bulk-action,
-.app-shell .filter-clear { color: #b9d8f8 !important; background: rgba(14, 40, 80, .72) !important; border-color: var(--rv-line-strong) !important; box-shadow: none; }
-.app-shell .filter-toggle:hover,
-.app-shell .bulk-action:hover,
-.app-shell .filter-clear:hover { color: #fff !important; background: rgba(24, 186, 255, .16) !important; border-color: var(--rv-primary) !important; }
-.app-shell .filter-apply { color: #031426 !important; background: linear-gradient(110deg, var(--rv-primary), var(--rv-primary-strong)) !important; border-color: transparent !important; }
-
 /* Reference order and return tables. */
 .app-shell .order-reference-head,
 .app-shell .return-reference-head,
