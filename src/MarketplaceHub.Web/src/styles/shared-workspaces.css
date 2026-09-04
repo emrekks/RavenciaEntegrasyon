@@ -2594,7 +2594,7 @@ textarea {
   }
 }
 
-/* Category mapping modal v11: a self-contained Obsidian workspace. */
+/* Category mapping workspace modal: a self-contained Obsidian surface. */
 .mapping-advanced-tools[open] {
   --mapping-modal-bg: #0b1220;
   --mapping-modal-surface: #121b2c;

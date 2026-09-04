@@ -568,7 +568,7 @@
   }
 }
 
-/* Ravencia workspace refresh: final interaction and visual hierarchy overrides. */
+/* Workspace interaction and visual hierarchy. */
 .app-shell.stitch-shell > aside {
   width: 272px !important;
   padding: 22px 16px 18px !important;
