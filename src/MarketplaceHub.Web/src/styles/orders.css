@@ -485,14 +485,16 @@
   position: relative !important;
   display: block !important;
   width: 54px !important;
-  height: 74px !important;
+  height: 81px !important;
+  aspect-ratio: 2 / 3 !important;
   min-width: 54px !important;
 }
 .app-shell .orders-page .reference-product-media .product-image-button {
   display: block !important;
   width: 54px !important;
-  height: 74px !important;
-  min-height: 74px !important;
+  height: 81px !important;
+  min-height: 81px !important;
+  aspect-ratio: 2 / 3 !important;
   padding: 0 !important;
   border: 0 !important;
   background: transparent !important;
@@ -502,7 +504,8 @@
 .app-shell .orders-page .reference-product-media > .reference-product-placeholder {
   display: block !important;
   width: 54px !important;
-  height: 74px !important;
+  height: 81px !important;
+  aspect-ratio: 2 / 3 !important;
 }
 .app-shell .orders-page .reference-product-media .quantity-bubble {
   top: -10px !important;
