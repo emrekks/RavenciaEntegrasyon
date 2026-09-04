@@ -1726,3 +1726,15 @@
 .app-shell.stitch-shell .orders-page .order-reference-meta > span b {
   font-size: .6rem !important;
 }
+
+/* Keep compact row copy aligned with the cargo tracking text. */
+.app-shell.stitch-shell .orders-page .order-reference-meta > small,
+.app-shell.stitch-shell .orders-page .order-reference-buyer > strong,
+.app-shell.stitch-shell .orders-page .order-reference-products article strong,
+.app-shell.stitch-shell .orders-page .order-reference-products article small,
+.app-shell.stitch-shell .orders-page .order-reference-prices > strong,
+.app-shell.stitch-shell .orders-page .order-reference-invoice > small,
+.app-shell.stitch-shell .orders-page .order-reference-invoice > strong,
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action {
+  font-size: .63rem !important;
+}
