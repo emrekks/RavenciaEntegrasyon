@@ -1666,15 +1666,19 @@
 .app-shell.stitch-shell .mapping-advanced-tools .attribute-mapping-card.required.unmapped { border-color: rgba(230, 183, 95, .82) !important; box-shadow: inset 3px 0 0 #e6b75f, 0 0 0 1px rgba(230, 183, 95, .14) !important; }
 .app-shell.stitch-shell .mapping-popup-content .editor-section-title { display: block !important; padding: 0 0 13px !important; margin: 0 0 14px !important; border: 0 !important; border-bottom: 1px solid var(--mapping-modal-line-soft) !important; text-align: left !important; }
 .app-shell.stitch-shell .mapping-popup-content .editor-section-title > div { display: grid !important; gap: 4px !important; min-width: 0 !important; }
-.app-shell.stitch-shell .integration-settings-modal-backdrop { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 24px; background: rgba(5, 7, 13, .78); backdrop-filter: blur(4px); }
+.app-shell.stitch-shell .integration-settings-modal-backdrop { position: fixed; inset: 0 0 0 74px; z-index: 6000; display: grid; place-items: center; padding: 24px; background: rgba(5, 7, 13, .78); backdrop-filter: blur(4px); }
 .app-shell.stitch-shell .integration-settings-modal { width: min(1040px, 100%); max-height: min(880px, calc(100vh - 48px)); overflow: auto; padding: 18px; background: #12141b; border: 1px solid #4a4c5b; border-radius: 10px; box-shadow: 0 24px 80px rgba(0, 0, 0, .5); }
 .app-shell.stitch-shell .integration-settings-modal > header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
 .app-shell.stitch-shell .integration-settings-modal .integration-inline-workspace { padding: 0 !important; }
 .app-shell.stitch-shell .integration-settings-modal .integration-inline-workspace > .page-heading { display: none; }
 @media (max-width: 760px) {
   .app-shell.stitch-shell .mapping-view-tabs { overflow: visible !important; }
-  .app-shell.stitch-shell .integration-settings-modal-backdrop { padding: 10px; }
+  .app-shell.stitch-shell .integration-settings-modal-backdrop { inset: 0 0 0 62px; padding: 10px; }
   .app-shell.stitch-shell .integration-settings-modal { max-height: calc(100vh - 20px); padding: 12px; }
+}
+
+@media (min-width: 761px) and (max-width: 900px) {
+  .app-shell.stitch-shell .integration-settings-modal-backdrop { inset: 0 0 0 84px; }
 }
 
 /* Job details explain the effect first, then show the technical trace. */

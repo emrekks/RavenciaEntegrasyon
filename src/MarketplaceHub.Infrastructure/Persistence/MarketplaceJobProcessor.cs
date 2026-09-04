@@ -1436,7 +1436,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     totalProducts is { } knownTotal && knownTotal > 0
                         ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / knownTotal), 0, 99)
                         : null,
-                    $"{scanLabel} · {pageNumber}. sayfa okunuyor · Alınan {telemetryReceivedCount:N0} · İşlenen {telemetryImportProcessedCount:N0} · Atlanan {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0}",
+                    $"{scanLabel} · {pageNumber}. sayfa okunuyor · Alınan {receivedProducts:N0} · İşlenen {telemetryImportProcessedCount:N0} · Atlanan {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0}",
                     cancellationToken);
             }
             TrackRequest();
@@ -1449,13 +1449,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             foreach (var _ in result.Value!.Items) TrackReceived();
             receivedProducts += result.Value.Items.Count;
             totalProducts ??= result.Value.TotalCount;
+            // Trendyol can change the catalog while a long scan is running. If
+            // its reported total falls behind the pages actually returned, do
+            // not publish an impossible "received / total" progress state.
+            if (totalProducts is > 0 && receivedProducts > totalProducts.Value) totalProducts = null;
 
             if (jobId is { } receivedJob)
             {
                 var percent = totalProducts is { } total && total > 0
                     ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
                     : (int?)null;
-                await UpdateProductSyncProgressAsync(tenantId, receivedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "sayfa alındı"), cancellationToken);
+                await UpdateProductSyncProgressAsync(tenantId, receivedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "sayfa alındı", receivedProducts), cancellationToken);
             }
 
             foreach (var invalidSnapshot in result.Value.Items.Where(x => string.IsNullOrWhiteSpace(x.ExternalProductId)))
@@ -1473,7 +1477,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     db.ChangeTracker.Clear();
                 }
                 if (jobId is { } invalidProgressJob)
-                    await UpdateProductSyncProgressAsync(tenantId, invalidProgressJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "geçersiz ürün atlandı"), cancellationToken);
+                    await UpdateProductSyncProgressAsync(tenantId, invalidProgressJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "geçersiz ürün atlandı", receivedProducts), cancellationToken);
             }
 
             foreach (var snapshot in result.Value!.Items
@@ -1517,7 +1521,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     var percent = totalProducts is { } total && total > 0
                         ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
                         : (int?)null;
-                    await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "ürün işleniyor"), cancellationToken);
+                    await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "ürün işleniyor", receivedProducts), cancellationToken);
                 }
             }
 
@@ -1526,7 +1530,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 var percent = totalProducts is { } total && total > 0
                     ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
                     : (int?)null;
-                await UpdateProductSyncProgressAsync(tenantId, processedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "sayfa tamamlandı"), cancellationToken);
+                await UpdateProductSyncProgressAsync(tenantId, processedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "sayfa tamamlandı", receivedProducts), cancellationToken);
             }
 
             if (result.Value.HasMore)
@@ -1549,7 +1553,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 completedCursor.LastModifiedWatermark = timeProvider.GetUtcNow().AddSeconds(-60);
                 completedCursor.Version++;
                 if (jobId is { } completedJob)
-                    await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(pageNumber, totalProducts, "aktarımı tamamlandı"), cancellationToken, keepExistingTotal: true);
+                    await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(pageNumber, totalProducts, "aktarımı tamamlandı", receivedProducts), cancellationToken, keepExistingTotal: true);
                 await db.SaveChangesAsync(cancellationToken);
                 break;
             }
@@ -1561,13 +1565,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var query = db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.Id == jobId && x.JobType == MarketplaceJobTypes.ProductSync);
         return keepExistingTotal
-            ? query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, telemetryReceivedCount).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken)
-            : query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressTotal, total).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, telemetryReceivedCount).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken);
+            ? query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken)
+            : query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressTotal, total).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken);
     }
 
-    private string ProductImportProgressLabel(int pageNumber, int? total, string suffix)
+    private string ProductImportProgressLabel(int pageNumber, int? total, string suffix, int received)
     {
-        var received = telemetryReceivedCount;
         var totalPart = total is > 0 ? $" / {total:N0}" : "";
         return $"{received:N0}{totalPart} · Alınan {received:N0} · İşlenen {telemetryImportProcessedCount:N0} · Atlanan {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0} · {pageNumber}. sayfa {suffix}";
     }

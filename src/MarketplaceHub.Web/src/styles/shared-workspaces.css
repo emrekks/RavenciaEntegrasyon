@@ -675,8 +675,8 @@ textarea {
 /* Entegrasyon ayrıntıları karttan ayrılmadan modal içinde açılır. */
 .app-shell.stitch-shell .integration-settings-modal-backdrop {
   position: fixed;
-  inset: 0;
-  z-index: 90;
+  inset: 0 0 0 74px;
+  z-index: 6000;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -701,8 +701,12 @@ textarea {
   .app-shell.stitch-shell .mapping-reference-heading { flex-direction: column; gap: 14px; }
   .app-shell.stitch-shell .mapping-reference-heading-actions { justify-items: start; padding-top: 0; }
   .app-shell.stitch-shell .mapping-transfer-actions { flex-wrap: wrap; }
-  .app-shell.stitch-shell .integration-settings-modal-backdrop { padding: 10px; }
-.app-shell.stitch-shell .integration-settings-modal { max-height: calc(100vh - 20px); padding: 12px; }
+  .app-shell.stitch-shell .integration-settings-modal-backdrop { inset: 0 0 0 62px; padding: 10px; }
+  .app-shell.stitch-shell .integration-settings-modal { max-height: calc(100vh - 20px); padding: 12px; }
+}
+
+@media (min-width: 761px) and (max-width: 900px) {
+  .app-shell.stitch-shell .integration-settings-modal-backdrop { inset: 0 0 0 84px; }
 }
 
 /* Orders toolbar: one aligned control surface with a single visual hierarchy. */
