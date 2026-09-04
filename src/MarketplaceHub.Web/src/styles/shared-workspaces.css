@@ -3943,6 +3943,24 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   .app-shell.stitch-shell .mapping-advanced-tools[open] > div > .mapping-popup-content { padding-inline: 18px !important; }
 }
 
+/* Platform tabs in the saved category mappings follow the same compact tab
+   language as the rest of the mapping workspace. Unconnected platforms stay
+   visible so the planned channel surface is discoverable without implying a
+   usable connection exists. */
+.app-shell.stitch-shell .mapping-platform-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #4b568d transparent;
+}
+.app-shell.stitch-shell .mapping-platform-tabs > button {
+  flex: 0 0 auto;
+  min-width: max-content !important;
+  padding-inline: 9px !important;
+}
+.app-shell.stitch-shell .mapping-platform-tabs > button.is-unavailable { color: #6f7695 !important; }
+.app-shell.stitch-shell .mapping-platform-tabs > button.is-unavailable:hover { color: #a7acc8 !important; }
+
 /* Final compact pass: make the single-platform mapping control read as a
    conventional tab and keep value actions aligned with the add control. */
 .app-shell.stitch-shell .mapping-saved-tabs {
@@ -3995,4 +4013,12 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   .panel-attribute-add-value { grid-template-columns: 1fr !important; }
   .panel-attribute-sort-hint { justify-content: flex-start; }
   .panel-attribute-sort-actions { justify-content: flex-start; }
+}
+
+/* Keep the multi-platform tabs usable after the compact tab pass above. */
+.app-shell.stitch-shell .mapping-platform-tabs > button {
+  flex: 0 0 auto !important;
+  min-width: max-content !important;
+  padding-inline: 9px !important;
+  white-space: nowrap;
 }
