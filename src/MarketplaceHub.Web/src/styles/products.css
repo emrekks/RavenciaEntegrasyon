@@ -113,12 +113,16 @@
   cursor: default;
 }
 .app-shell .products-page .product-toolbar .bulk-action-menu {
+  position: absolute;
   top: calc(100% + 6px);
   right: auto;
   bottom: auto;
   left: 0;
   z-index: 100;
   width: 280px;
+  max-height: min(420px, calc(100vh - 32px));
+  box-sizing: border-box;
+  overflow-y: auto;
   padding: 6px;
   color: #e3e1ed !important;
   background: #1f202a !important;
@@ -864,6 +868,7 @@ body:has(.product-add-page),
 .product-add-page .product-pricing-card .editor-section-title { margin-bottom: 12px; }
 .product-add-page .product-pricing-card .editor-section-title p { max-width: 220px; }
 .product-add-page .product-pricing-card .product-step-grid {
+  display: grid !important;
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   gap: 11px 10px !important;
 }
@@ -2629,6 +2634,7 @@ body:has(.product-add-page),
   top: calc(100% + 6px);
   right: 0;
   left: 0;
+  z-index: 1001;
   display: grid;
   gap: 7px;
   min-width: 220px;
@@ -2637,6 +2643,13 @@ body:has(.product-add-page),
   border: 1px solid #5865b8;
   border-radius: 8px;
   box-shadow: 0 16px 32px rgba(3, 6, 18, .42);
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field:has(.category-attribute-select-trigger[aria-expanded="true"]) {
+  position: relative;
+  z-index: 1000 !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown:has(.category-attribute-select-trigger[aria-expanded="true"]) {
+  z-index: 1001 !important;
 }
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-dropdown-tools {
   display: flex;
@@ -2790,6 +2803,7 @@ body:has(.product-add-page),
 }
 @media (max-width: 600px) {
   .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-mapping-list { grid-template-columns: 1fr !important; }
+  .app-shell.stitch-shell .product-add-page .product-pricing-card .product-step-grid { grid-template-columns: 1fr !important; }
 }
 .app-shell.stitch-shell .product-add-page .product-submit-sticky {
   max-width: 100% !important;
