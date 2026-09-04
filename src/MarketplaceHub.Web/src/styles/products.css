@@ -2906,6 +2906,23 @@ body:has(.product-add-page),
   }
 }
 
+.app-shell.stitch-shell .product-delete-backdrop { z-index: 110; background: rgba(5, 8, 18, .72); backdrop-filter: blur(6px); }
+.app-shell.stitch-shell .product-delete-modal { width: min(520px, 100%); color: #eef0ff; background: #151722 !important; border-color: #4a4567 !important; }
+.app-shell.stitch-shell .product-delete-modal > header { padding-bottom: 16px; border-bottom: 1px solid rgba(142, 146, 185, .2); }
+.app-shell.stitch-shell .product-delete-modal > header h2 { color: #f2f3ff !important; }
+.app-shell.stitch-shell .product-delete-modal > header p:not(.eyebrow) { color: #aeb4d1 !important; }
+.app-shell.stitch-shell .product-delete-body { display: grid; gap: 13px; padding: 18px 24px 2px; }
+.app-shell.stitch-shell .product-delete-summary { display: flex; align-items: flex-start; gap: 11px; padding: 13px; color: #f3e7eb; background: rgba(113, 44, 66, .22); border: 1px solid rgba(229, 103, 135, .35); border-radius: 9px; }
+.app-shell.stitch-shell .product-delete-summary > span { display: grid; place-items: center; flex: 0 0 auto; width: 23px; height: 23px; color: #ffd2dc; background: rgba(229, 103, 135, .28); border-radius: 50%; font-weight: 900; }
+.app-shell.stitch-shell .product-delete-summary > div { display: grid; gap: 4px; min-width: 0; }
+.app-shell.stitch-shell .product-delete-summary strong { overflow: hidden; color: #fff1f4; font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell .product-delete-summary p, .app-shell.stitch-shell .product-delete-warning { margin: 0; color: #c9b8c0; font-size: .7rem; line-height: 1.45; }
+.app-shell.stitch-shell .product-delete-warning { padding: 0 2px; }
+.app-shell.stitch-shell .product-delete-modal > footer { padding-top: 18px; }
+.app-shell.stitch-shell .product-delete-modal > footer .destructive { color: #fff !important; background: #b6405c !important; border-color: #cf5871 !important; }
+.app-shell.stitch-shell .product-delete-modal > footer .destructive:hover:not(:disabled) { background: #cf4e6d !important; border-color: #e87891 !important; }
+.app-shell.stitch-shell .product-delete-modal > footer .destructive:disabled { opacity: .58; cursor: wait; }
+
 .app-shell.stitch-shell .products-page .products-page-actions {
   display: flex;
   align-items: center;

@@ -490,6 +490,16 @@
 .app-shell.stitch-shell .variant-header-action { display: inline-grid; place-items: center; width: 20px; height: 20px; min-height: 20px !important; padding: 0 !important; color: #9da7d5 !important; background: transparent !important; border-color: transparent !important; border-radius: 4px; }
 .app-shell.stitch-shell .variant-header-action:hover { color: #fff !important; background: transparent !important; border-color: transparent !important; }
 .app-shell.stitch-shell .variant-header-action-icon { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; }
+.app-shell.stitch-shell .variant-header-action-shell { position: relative; display: inline-flex; flex: 0 0 auto; }
+.app-shell.stitch-shell .variant-header-action-menu { position: absolute; z-index: 60; top: calc(100% + 7px); right: 0; display: grid; gap: 4px; width: min(286px, calc(100vw - 32px)); padding: 7px; color: #e8ebff; background: #171b2b; border: 1px solid #4d5a9a; border-radius: 8px; box-shadow: 0 16px 34px rgba(0, 0, 0, .42); }
+.app-shell.stitch-shell .variant-header-action-menu > button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 45px; padding: 8px 9px; color: #e8ebff; background: transparent; border: 0; border-radius: 5px; box-shadow: none; text-align: left; }
+.app-shell.stitch-shell .variant-header-action-menu > button:hover:not(:disabled), .app-shell.stitch-shell .variant-header-action-menu > button:focus-visible { color: #fff; background: rgba(105, 117, 255, .18); box-shadow: none; transform: none; }
+.app-shell.stitch-shell .variant-header-action-menu > button:disabled { opacity: .45; cursor: not-allowed; }
+.app-shell.stitch-shell .variant-header-action-menu > button > span { display: grid; gap: 3px; min-width: 0; }
+.app-shell.stitch-shell .variant-header-action-menu > button strong { color: inherit; font-size: 10px; line-height: 1.25; }
+.app-shell.stitch-shell .variant-header-action-menu > button small { color: #aeb8e8; font-size: 9px; line-height: 1.25; }
+.app-shell.stitch-shell .variant-header-action-menu > button > i { flex: 0 0 auto; color: #aeb8e8; font-size: 13px; font-style: normal; }
+.app-shell.stitch-shell .variant-header-action-menu > p { margin: 3px 4px 2px; padding-top: 7px; color: #8993b4; border-top: 1px solid rgba(138, 149, 201, .2); font-size: 9px; line-height: 1.4; }
 .app-shell.stitch-shell .variant-table-row.is-filter-match { border-color: #7786ff !important; box-shadow: inset 3px 0 #7786ff, 0 0 0 1px rgba(119, 134, 255, .22); }
 .app-shell.stitch-shell .variant-table-row.is-filter-dimmed { opacity: .58; }
 .app-shell.stitch-shell .variant-bulk-editor button:disabled { opacity: .45; cursor: not-allowed; }

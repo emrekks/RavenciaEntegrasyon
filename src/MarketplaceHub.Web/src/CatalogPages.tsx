@@ -469,8 +469,32 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
     </article>
 }
 
+type ProductDeleteRequest = {
+  productIds: string[]
+  product?: Product
+  title: string
+  description: string
+}
+
+function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { request: ProductDeleteRequest; deleting: boolean; onClose: () => void; onConfirm: () => void }) {
+  const isGroup = request.productIds.length > 1
+  return <div className="workspace-modal-backdrop product-delete-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !deleting) onClose() }}>
+    <section className="workspace-modal product-delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="product-delete-title" aria-describedby="product-delete-description" onMouseDown={event => event.stopPropagation()}>
+      <header>
+        <div><p className="eyebrow">KATALOG KAYDINI SİL</p><h2 id="product-delete-title">{isGroup ? 'Ürün grubunu sil' : 'Ürünü sil'}</h2><p id="product-delete-description">Bu işlem yerel katalog kaydını kalıcı olarak kaldırır. Sipariş geçmişi korunur; marketplace ilanı otomatik olarak silinmez.</p></div>
+        <button type="button" className="modal-close" onClick={onClose} disabled={deleting} aria-label="Silme penceresini kapat">×</button>
+      </header>
+      <div className="product-delete-body">
+        <div className="product-delete-summary"><span aria-hidden="true">!</span><div><strong>{request.title}</strong><p>{request.description}</p></div></div>
+        <p className="product-delete-warning">Devam ederseniz bu kayıtların varyant, stok, fiyat ve platform eşleşmeleri silinir.</p>
+      </div>
+      <footer><button type="button" className="secondary" onClick={onClose} disabled={deleting}>Vazgeç</button><button type="button" className="destructive" onClick={onConfirm} disabled={deleting}>{deleting ? 'Siliniyor…' : isGroup ? `${request.productIds.length} kaydı sil` : 'Kalıcı olarak sil'}</button></footer>
+    </section>
+  </div>
+}
+
 export function ProductsPage() {
-  const client = useQueryClient(); const [search, setSearch] = useState(''); const [searchFilter, setSearchFilter] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('INCREMENTAL'); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>({})
+  const client = useQueryClient(); const [search, setSearch] = useState(''); const [searchFilter, setSearchFilter] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('INCREMENTAL'); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>({})
   const productFilters = useMemo<ProductListFilters>(() => ({ search: searchFilter, status, platform, stock }), [searchFilter, status, platform, stock])
   const productFilterKey = JSON.stringify(productFilters)
   const pageCursor = pageCursors[productFilterKey]?.[pageNumber] ?? null
@@ -489,6 +513,7 @@ export function ProductsPage() {
   const activeProductSyncJobs = useMemo(() => (productSyncJobsQuery.data ?? []).filter(job => job.jobType === 'TRENDYOL_PRODUCT_SYNC' && !['SUCCEEDED', 'CANCELLED', 'DEAD'].includes(job.status) && (!productImportConnectionIds.length || (job.connectionId && productImportConnectionIds.includes(job.connectionId)))), [productImportConnectionIds, productSyncJobsQuery.data])
   const cancelProductSync = useMutation({ mutationFn: (jobId: string) => hubApi(`/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': `cancel-product-import:${jobId}` } }), onSuccess: () => { void productSyncJobsQuery.refetch(); void client.invalidateQueries({ queryKey: ['jobs'] }) } })
   const selectedProducts = selectedProductIds.map(id => selectedProductCache[id]).filter((product): product is Product => Boolean(product))
+  const selectedProductCardCount = useMemo(() => productRowsAsCards(Object.values(selectedProductCache)).length, [selectedProductCache])
   const nextPageCursor = query.data?.nextCursor ?? null
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
   useEffect(() => { setPageNumber(1); setPageCursors({}); setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false); setBulkOpen(false) }, [productFilterKey, pageSize])
@@ -512,7 +537,7 @@ export function ProductsPage() {
     })
   }, [products, selectedProductIds])
   const allVisibleSelected = pageProductGroups.length > 0 && pageProductGroups.every(group => group.products.every(product => selectedProductIds.includes(product.id)))
-  const hasMoreProductsToSelect = totalCount > pageProducts.length
+  const hasMoreProductsToSelect = totalCount > pageProductGroups.length
   const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
   function showProductToast(message: string, kind: 'success' | 'error') { setProductToast({ message, kind }); window.setTimeout(() => setProductToast(current => current?.message === message ? null : current), 4000) }
   function openProductImport() {
@@ -579,7 +604,7 @@ export function ProductsPage() {
       setSelectedProductIds(ids)
       setSelectedProductCache(Object.fromEntries(all.items.map(product => [product.id, product])))
       setAllProductsSelected(true)
-      showProductToast(`${ids.length} katalog kaydı tüm sayfalardan seçildi.`, 'success')
+      showProductToast(`${productRowsAsCards(all.items).length} ürün kartı · ${ids.length} katalog kaydı tüm sayfalardan seçildi.`, 'success')
     } catch (err) {
       showProductToast(err instanceof Error ? err.message : 'Tüm sayfalardaki ürünler seçilemedi.', 'error')
     } finally {
@@ -612,54 +637,48 @@ export function ProductsPage() {
     }
   }
 
-  async function deleteProduct(product: Product) {
-    if (!window.confirm(`“${product.title}” ürünü yerel katalogdan kalıcı olarak silinsin mi?\n\nBu işlem geri alınamaz. Sipariş geçmişi korunur; ürünün yerel varyant, stok, fiyat ve platform eşleşme kayıtları silinir. Marketplace üzerindeki ilan otomatik olarak silinmez.`)) return
-    try {
-      await hubApi(`/products/${product.id}`, { method: 'DELETE', headers: { 'If-Match': `\"v${product.version}\"`, 'Idempotency-Key': key() } })
-      showProductToast('Ürün yerel katalogdan silindi.', 'success')
-      setSelectedProductIds(ids => ids.filter(id => id !== product.id))
-      setSelectedProductCache(current => { const next = { ...current }; delete next[product.id]; return next })
-      setAllProductsSelected(false)
-      await refresh()
-    } catch (err) {
-      showProductToast(err instanceof Error ? err.message : 'Ürün silme başarısız.', 'error')
-    }
+  function requestDeleteProduct(product: Product) {
+    setDeleteRequest({ productIds: [product.id], product, title: product.title, description: 'Tek bir katalog kaydı ve ona bağlı varyantlar silinecek.' })
   }
 
-  async function deleteProductGroup(group: ProductGroup) {
-    if (group.products.length === 1) return deleteProduct(group.primary)
+  function requestDeleteProductGroup(group: ProductGroup) {
+    if (group.products.length === 1) return requestDeleteProduct(group.primary)
     const ids = group.products.map(product => product.id)
-    if (!window.confirm(`“${group.primary.title}” ürün grubundaki ${ids.length} katalog kaydı kalıcı olarak silinsin mi?\n\nBu işlem geri alınamaz. Sipariş geçmişi korunur; kayıtların yerel varyant, stok, fiyat ve platform eşleşmeleri silinir. Marketplace üzerindeki ilanlar otomatik olarak silinmez.`)) return
+    setDeleteRequest({ productIds: ids, title: group.primary.title, description: `${ids.length} katalog kaydı aynı ürün kartında gruplanmış durumda; grubun tamamı silinecek.` })
+  }
+
+  async function confirmProductDelete() {
+    const request = deleteRequest
+    if (!request || deletingProducts) return
+    setDeletingProducts(true)
     try {
-      await hubApi('/products/bulk-delete', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productIds: ids }) })
-      const targetIds = new Set(ids)
+      if (request.product && request.productIds.length === 1) {
+        await hubApi(`/products/${request.product.id}`, { method: 'DELETE', headers: { 'If-Match': `\"v${request.product.version}\"`, 'Idempotency-Key': key() } })
+      } else {
+        for (let index = 0; index < request.productIds.length; index += 500) {
+          const productIds = request.productIds.slice(index, index + 500)
+          await hubApi('/products/bulk-delete', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productIds }) })
+        }
+      }
+      const targetIds = new Set(request.productIds)
       setSelectedProductIds(current => current.filter(id => !targetIds.has(id)))
       setSelectedProductCache(current => { const next = { ...current }; targetIds.forEach(id => delete next[id]); return next })
       setAllProductsSelected(false)
-      showProductToast(`${ids.length} katalog kaydı silindi.`, 'success')
+      setDeleteRequest(null)
+      showProductToast(request.productIds.length === 1 ? 'Ürün yerel katalogdan silindi.' : `${request.productIds.length} katalog kaydı silindi.`, 'success')
       await refresh()
     } catch (err) {
-      showProductToast(err instanceof Error ? err.message : 'Ürün grubu silme başarısız.', 'error')
+      showProductToast(err instanceof Error ? err.message : 'Ürün silme başarısız.', 'error')
+    } finally {
+      setDeletingProducts(false)
     }
   }
 
-  async function bulkDeleteProducts() {
+  function bulkDeleteProducts() {
     setBulkOpen(false)
-    const targetCount = selectedProductIds.length
-    if (!targetCount || !window.confirm(`${targetCount} ürün yerel katalogdan kalıcı olarak silinsin mi?\n\nBu işlem geri alınamaz. Sipariş geçmişi korunur; seçili ürünlerin yerel varyant, stok, fiyat ve platform eşleşme kayıtları silinir. Marketplace üzerindeki ilanlar otomatik olarak silinmez.`)) return
-    try {
-      for (let index = 0; index < selectedProductIds.length; index += 500) {
-        const productIds = selectedProductIds.slice(index, index + 500)
-        await hubApi('/products/bulk-delete', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productIds }) })
-      }
-      showProductToast(`${targetCount} ürün yerel katalogdan silindi.`, 'success')
-      setSelectedProductIds([])
-      setSelectedProductCache({})
-      setAllProductsSelected(false)
-      await refresh()
-    } catch (err) {
-      showProductToast(err instanceof Error ? err.message : 'Toplu ürün silme başarısız.', 'error')
-    }
+    const ids = [...selectedProductIds]
+    if (!ids.length) return
+    setDeleteRequest({ productIds: ids, title: `${selectedProductCardCount} ürün kartı`, description: `${ids.length} katalog kaydı seçildi. Sipariş geçmişi korunur; yalnızca yerel katalog verileri silinir.` })
   }
 
   return <Page className="products-page" title="Ürünler" eyebrow="Katalog" action={<div className="products-page-actions"><button type="button" className="button-link product-import-trigger" onClick={openProductImport}><span aria-hidden="true">↧</span> Platformdan Ürün Çek</button><Link className="button-link" to="/products/new"><span aria-hidden="true">＋</span> Yeni Ürün Ekle</Link></div>}>
@@ -667,7 +686,7 @@ export function ProductsPage() {
     <div className="product-toolbar">
       <div className="bulk-menu-shell">
         <button type="button" className="bulk-action" aria-expanded={bulkOpen} aria-controls="products-bulk-action-menu" onClick={() => setBulkOpen(v => !v)}>
-          Toplu işlemler {selectedProductIds.length > 0 ? `(${selectedProductIds.length})` : ''} ⌄
+          Toplu işlemler {selectedProductIds.length > 0 ? `(${selectedProductCardCount} kart)` : ''} ⌄
         </button>
         {bulkOpen && (
           <div id="products-bulk-action-menu" className="bulk-action-menu" role="menu">
@@ -699,23 +718,24 @@ export function ProductsPage() {
       <select aria-label="Stok filtresi" value={stock} onChange={event => setStock(event.target.value)}><option value="">Stok Durumu</option><option value="OUT">Stoksuz</option><option value="LOW">Düşük stok</option><option value="OK">Yeterli stok</option></select>
     </div>
     {selectedProductIds.length > 0 && hasMoreProductsToSelect && <div className={`product-selection-banner${allProductsSelected ? ' is-all' : ''}`} role="status">
-      <div><strong>{allProductsSelected ? `Tüm ${selectedProductIds.length.toLocaleString('tr-TR')} katalog kaydı seçildi.` : `${selectedProductIds.length.toLocaleString('tr-TR')} kayıt bu sayfadan seçildi.`}</strong><span>{allProductsSelected ? 'Toplu işlemler tüm filtrelenmiş sayfalara uygulanacak.' : `Bu sayfada ${pageProductGroups.length} ürün kartı gösteriliyor; diğer sayfaları da seçebilirsiniz.`}</span></div>
+      <div><strong>{allProductsSelected ? `Tüm ${selectedProductCardCount.toLocaleString('tr-TR')} ürün kartı seçildi.` : `${selectedProductCardCount.toLocaleString('tr-TR')} ürün kartı seçildi.`}</strong><span>{allProductsSelected ? `${selectedProductIds.length.toLocaleString('tr-TR')} katalog kaydı toplu işlemlere dahil.` : `Bu sayfada ${pageProductGroups.length} kart gösteriliyor; seçilen kartlar toplam ${selectedProductIds.length.toLocaleString('tr-TR')} katalog kaydını kapsıyor.`}</span></div>
       {allProductsSelected ? <button type="button" className="secondary" onClick={() => { setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) }}>Seçimi temizle</button> : <button type="button" onClick={() => void selectAllFilteredProducts()} disabled={selectingAllProducts}>{selectingAllProducts ? 'Tüm sayfalar seçiliyor…' : `Tüm ${totalCount.toLocaleString('tr-TR')} kaydı seç`}</button>}
     </div>}
     <ErrorBox error={query.error ?? summaryQuery.error ?? connectionsQuery.error} />
     {query.isLoading && !pageProducts.length ? <p>Yükleniyor…</p> : !pageProducts.length ? <div className="empty">Filtrelerle eşleşen ürün yok.</div> : (
       <div className="product-catalog-table preferred-product-catalog">
         <div className="product-catalog-head">
-          <label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} /><span>Ürün Detayı</span></label>
+          <label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label={`${pageProductGroups.length} ürün kartının tümünü seç`} title={`Yalnızca bu sayfadaki ${pageProductGroups.length} kartı seçer`} /><span>Ürün Detayı</span></label>
           <span>Varyant</span><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
         </div>
         {pageProductGroups.map(group => (
-          <ProductColorRows key={group.id} group={group} selected={group.products.every(product => selectedProductIds.includes(product.id))} onSelect={() => toggleProductGroup(group)} onQuickEdit={mode => setQuickEdit({ productIds: group.products.map(product => product.id), mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} onDelete={() => void deleteProductGroup(group)} />
+          <ProductColorRows key={group.id} group={group} selected={group.products.every(product => selectedProductIds.includes(product.id))} onSelect={() => toggleProductGroup(group)} onQuickEdit={mode => setQuickEdit({ productIds: group.products.map(product => product.id), mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} onDelete={() => requestDeleteProductGroup(group)} />
         ))}
       </div>
     )}
     {totalCount > 0 && <div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına ürün kartı" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100].map(value => <option key={value} value={value}>{value}</option>)}</select> kart</label><span>Toplam {totalCount.toLocaleString('tr-TR')} ürün kartından {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)} arası gösteriliyor · Bu sayfada {pageProductGroups.length} kart</span><div className="product-pagination-controls"><button type="button" aria-label="Önceki sayfa" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>‹</button><b>Sayfa {currentPage} / {totalPages}</b><button type="button" aria-label="Sonraki sayfa" disabled={currentPage >= totalPages || !nextPageCursor} onClick={goToNextPage}>›</button></div></div>}
     {quickEdit && <ProductQuickEditModal products={selectedProducts} connections={connections} mode={quickEdit.mode} onChanged={refresh} onResult={showProductToast} onClose={() => setQuickEdit(null)} />}
+    {deleteRequest && <ProductDeleteConfirmModal request={deleteRequest} deleting={deletingProducts} onClose={() => setDeleteRequest(null)} onConfirm={() => void confirmProductDelete()} />}
 {productImportOpen && <div className="workspace-modal-backdrop product-import-backdrop" role="presentation" onMouseDown={() => !productImporting && setProductImportOpen(false)}><section className="workspace-modal product-import-modal" role="dialog" aria-modal="true" aria-labelledby="product-import-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">PLATFORM KATALOĞU</p><h2 id="product-import-title">Ürünleri platformdan çek</h2><p>Seçtiğiniz aktif Trendyol bağlantılarındaki ürünleri yerel kataloğa salt-okunur olarak alın.</p></div><button type="button" className="modal-close" onClick={() => setProductImportOpen(false)} disabled={productImporting} aria-label="Pencereyi kapat">×</button></header><div className="product-import-body"><fieldset><legend>Platform bağlantıları</legend>{connections.length ? <div className="product-import-connections">{connections.map(connection => { const selected = productImportConnectionIds.includes(connection.id); return <label key={connection.id} className={`product-import-connection${selected ? ' selected' : ''}`}><input type="checkbox" checked={selected} onChange={() => setProductImportConnectionIds(ids => selected ? ids.filter(id => id !== connection.id) : [...ids, connection.id])} /><span><strong>{connection.displayName}</strong><small>{connection.externalStoreId} · {connection.status === 'VERIFIED' ? 'Doğrulanmış' : 'Aktif'}</small></span></label> })}</div> : <p className="product-import-empty">Ürün çekmeye uygun aktif veya doğrulanmış Trendyol bağlantısı bulunamadı.</p>}</fieldset><fieldset><legend>Tarama ayarı</legend><label className={`product-import-mode${productImportMode === 'INCREMENTAL' ? ' selected' : ''}`}><input type="radio" name="product-import-mode" value="INCREMENTAL" checked={productImportMode === 'INCREMENTAL'} onChange={() => setProductImportMode('INCREMENTAL')} /><span><strong>Yeni ve değişen ürünler</strong><small>Son başarılı watermark’tan güvenlik örtüşmesiyle devam eder.</small></span></label><label className={`product-import-mode${productImportMode === 'FULL' ? ' selected' : ''}`}><input type="radio" name="product-import-mode" value="FULL" checked={productImportMode === 'FULL'} onChange={() => setProductImportMode('FULL')} /><span><strong>Tüm katalog</strong><small>Erişilebilen tüm ürün ve varyantları baştan tarar.</small></span></label></fieldset>{activeProductSyncJobs.length > 0 && <section className="product-import-progress" aria-live="polite"><div className="product-import-progress-heading"><strong>Devam eden aktarmalar</strong><small>{activeProductSyncJobs.length} işlem</small></div>{activeProductSyncJobs.map(job => { const received = Math.max(0, job.progressReceived); const total = job.progressTotal != null && job.progressTotal >= received ? job.progressTotal : null; const percent = total != null && total > 0 ? Math.min(100, Math.max(0, Math.floor(received * 100 / total))) : null; const fallbackLabel = job.status === 'PENDING' ? 'Kuyrukta bekliyor' : 'Aktarım çalışıyor'; const progressLabel = job.progressLabel && job.progressTotal != null && job.progressReceived > job.progressTotal ? job.progressLabel.replace(/^[^·]+·\s*/, `${received.toLocaleString('tr-TR')} · `) : (job.progressLabel ?? fallbackLabel); return <article key={job.id}><div className="product-import-progress-top"><span>{progressLabel}</span><strong>{percent == null ? '—' : `%${percent}`}</strong></div><div className={`product-import-progress-track${percent == null ? ' indeterminate' : ''}`}><i style={percent == null ? undefined : { width: `${percent}%` }} /></div><div className="product-import-progress-bottom"><small className="product-import-progress-counters"><span>Alınan {received.toLocaleString('tr-TR')}</span><span>İşlenen {job.progressProcessed.toLocaleString('tr-TR')}</span><span>Atlanan {job.progressSkipped.toLocaleString('tr-TR')}</span><span>Hatalı {job.progressFailed.toLocaleString('tr-TR')}</span></small><button type="button" className="secondary" disabled={cancelProductSync.isPending} onClick={() => cancelProductSync.mutate(job.id)}>Durdur</button></div></article> })}</section>}<p className="product-import-note">Bu işlem platforma veri göndermez; yalnızca seçilen bağlantılardan panel kataloğuna okuma yapar.</p></div><footer><button type="button" className="secondary" onClick={() => setProductImportOpen(false)} disabled={productImporting}>Vazgeç</button><button type="button" onClick={() => void importProductsFromPlatforms()} disabled={productImporting || !productImportConnectionIds.length}>{productImporting ? 'Kuyruğa alınıyor…' : 'Ürünleri panele çek'}</button></footer></section></div>}
     {productToast && <div className={`product-operation-toast ${productToast.kind}`} role={productToast.kind === 'success' ? 'status' : 'alert'}><strong>{productToast.kind === 'success' ? 'Güncellendi' : 'Başarısız'}</strong><span>{productToast.message}</span></div>}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
@@ -1048,6 +1068,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [scheduledPublishOpen, setScheduledPublishOpen] = useState(false)
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
   const [variantMediaModal, setVariantMediaModal] = useState<{ mode: 'variant' | 'bulk'; rowKey?: string; draftRefs: string[]; groupId: string; valueId: string } | null>(null)
+  const [barcodeSkuMenuOpen, setBarcodeSkuMenuOpen] = useState(false)
+  const barcodeSkuActionRef = useRef<HTMLDivElement>(null)
   const [expandedOptionGroupIds, setExpandedOptionGroupIds] = useState<Record<string, boolean>>({})
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
@@ -1055,6 +1077,18 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [mediaUrlSettingsOpen, setMediaUrlSettingsOpen] = useState(false)
   const feedbackTimer = useRef<number | null>(null)
   const initialEditMediaUrl = useRef('')
+  useEffect(() => {
+    if (!barcodeSkuMenuOpen) return
+    function closeBarcodeSkuMenu(event: PointerEvent) {
+      if (!barcodeSkuActionRef.current?.contains(event.target as Node)) setBarcodeSkuMenuOpen(false)
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setBarcodeSkuMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', closeBarcodeSkuMenu)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => { document.removeEventListener('pointerdown', closeBarcodeSkuMenu); document.removeEventListener('keydown', closeOnEscape) }
+  }, [barcodeSkuMenuOpen])
   function showFeedback(message: string, kind: OperationFeedback['kind']) {
     if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current)
     setFeedback({ message, kind })
@@ -1216,15 +1250,38 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const message = hasVariantFilters ? `Toplu stok ve fiyat değerleri ${matchingKeys.size} seçili varyanta uygulandı.` : 'Toplu stok ve fiyat değerleri tüm varyantlara uygulandı.'; setNotice(message); showFeedback(message, 'success')
   }
 
-  function applyBarcodeToSku() {
+  function applyBarcodeToSku(mode: 'missing' | 'all') {
     const rowsWithBarcode = variantRows.filter(row => row.barcode.trim())
     if (!rowsWithBarcode.length) {
-      const message = 'Stok kodu oluşturmak için önce en az bir barkod girin.'; setNotice(message); showFeedback(message, 'error')
+      const message = 'Stok kodu oluşturmak için önce en az bir barkod girin.'; setNotice(message); showFeedback(message, 'error'); setBarcodeSkuMenuOpen(false)
       return
     }
-    const rowsWithBarcodeKeys = new Set(rowsWithBarcode.map(row => row.key))
-    setVariantRows(rows => rows.map(row => rowsWithBarcodeKeys.has(row.key) ? { ...row, sku: row.barcode.trim() } : row))
-    const message = `${rowsWithBarcode.length} varyantın stok kodu barkoddan dolduruldu.`; setNotice(message); showFeedback(message, 'success')
+    const rowsToUpdate = rowsWithBarcode.filter(row => mode === 'all' || !row.sku.trim())
+    if (!rowsToUpdate.length) {
+      const message = 'Boş stok kodu bulunamadı; mevcut kodlar korunuyor.'; setNotice(message); showFeedback(message, 'info'); setBarcodeSkuMenuOpen(false)
+      return
+    }
+    const targetKeys = new Set(rowsToUpdate.map(row => row.key))
+    const finalSkuByKey = new Map(variantRows.map(row => [row.key, targetKeys.has(row.key) ? row.barcode.trim() : row.sku.trim()]))
+    const skuOwners = new Map<string, string[]>()
+    for (const [rowKey, sku] of finalSkuByKey) {
+      if (!sku) continue
+      const normalized = sku.toLocaleUpperCase('tr-TR')
+      skuOwners.set(normalized, [...(skuOwners.get(normalized) ?? []), rowKey])
+    }
+    const conflictingKeys = new Set([...skuOwners.values()].filter(keys => keys.length > 1).flat())
+    const safeRows = rowsToUpdate.filter(row => !conflictingKeys.has(row.key))
+    if (!safeRows.length) {
+      const message = 'Barkodlar uygulanamadı; stok kodlarında çakışma var. Önce tekrar eden barkodları düzeltin.'; setNotice(message); showFeedback(message, 'error'); setBarcodeSkuMenuOpen(false)
+      return
+    }
+    const safeKeys = new Set(safeRows.map(row => row.key))
+    setVariantRows(rows => rows.map(row => safeKeys.has(row.key) ? { ...row, sku: row.barcode.trim() } : row))
+    const skippedCount = rowsToUpdate.length - safeRows.length
+    const message = skippedCount
+      ? `${safeRows.length} varyanta uygulandı; ${skippedCount} satır çakışma nedeniyle korunuyor.`
+      : `${safeRows.length} varyantın stok kodu barkoddan güncellendi.`
+    setNotice(message); showFeedback(message, skippedCount ? 'info' : 'success'); setBarcodeSkuMenuOpen(false)
   }
 
   function toggleVariantFilter(groupId: string, valueId: string) {
@@ -1482,6 +1539,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const activeVariantFilterEntries = variantFilterGroups.map(group => ({ group, valueIds: variantFilterSelections[group.id] ?? [] })).filter(entry => entry.valueIds.length > 0)
   const hasVariantFilters = activeVariantFilterEntries.length > 0
   const matchingVariantCount = variantRows.filter(row => rowMatchesVariantFilters(row)).length
+  const barcodeRowCount = variantRows.filter(row => row.barcode.trim()).length
+  const emptySkuBarcodeRowCount = variantRows.filter(row => row.barcode.trim() && !row.sku.trim()).length
   const selectedBulkMediaGroup = variantMediaModal?.mode === 'bulk' ? bulkMediaGroups.find(group => group.id === variantMediaModal.groupId) : undefined
   const selectedBulkMediaValue = selectedBulkMediaGroup?.values.find(value => value.id === variantMediaModal?.valueId)
   const selectedBulkMediaMatchCount = selectedBulkMediaGroup && selectedBulkMediaValue ? variantRows.filter(row => rowMatchesVariantMediaValue(row, selectedBulkMediaGroup, selectedBulkMediaValue)).length : 0
@@ -1648,7 +1707,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <div className="variant-bulk-editor"><input value={bulkStock} onChange={event => setBulkStock(event.target.value)} type="number" min="0" placeholder="Tüm stoklar" /><input value={bulkSalePrice} onChange={event => setBulkSalePrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm satış fiyatları" /><input value={bulkListPrice} onChange={event => setBulkListPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm liste fiyatları" /><button type="button" className="secondary" onClick={applyBulk} disabled={hasVariantFilters && matchingVariantCount === 0}>{hasVariantFilters ? `${matchingVariantCount} seçilene uygula` : 'Tümüne uygula'}</button></div>
             <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary variant-clear-button" onClick={clearVariants}>Oluşan varyantları temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere görsel ata</button></div></div>
         </>}
-            <div className="variant-table-editor"><div className="variant-table-head"><span>#</span><span>Seçenek</span><span>Barkod</span><span className="variant-table-header-with-action"><span>Stok kodu</span><button type="button" className="variant-header-action" onClick={applyBarcodeToSku} aria-label="Barkoddan doldur" title="Her satırın barkodunu stok kodu yap"><BarcodeFillIcon /></button></span><span>Stok</span><span>Fiyat</span><span>Liste fiyatı</span><span>Varyant görseli</span><span>İşlem</span></div>{variantRows.length ? variantRows.map((row, index) => { const matchesFilter = rowMatchesVariantFilters(row); return <div className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key} onDragOver={event => event.preventDefault()} onDragEnter={() => { if (!draggedVariantKey || draggedVariantKey === row.key || dragOverVariantKey === row.key) return; swapVariants(draggedVariantKey, row.key); setDragOverVariantKey(row.key) }}><div className="variant-row-lead"><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle" draggable title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; setDraggedVariantKey(row.key); setDragOverVariantKey(null) }} onDragEnd={() => { setDraggedVariantKey(null); setDragOverVariantKey(null) }}><VariantDragHandleIcon /></span></div><input value={row.optionSignature} readOnly /><input className="technical-field barcode-value" value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" /><input className="technical-field sku-value" value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" /><input value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" /><input value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /><input value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /><div className="variant-media-cell"><button type="button" className={`variant-media-button ${row.mediaRefs.length ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç`} title="Varyant görsellerini seç"><VariantImageIcon />{row.mediaRefs.length > 0 && <i aria-hidden="true">{row.mediaRefs.length}</i>}</button></div><button type="button" className="secondary" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))}>Sil</button></div> }) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}</div>
+            <div className="variant-table-editor"><div className="variant-table-head"><span>#</span><span>Seçenek</span><span>Barkod</span><span className="variant-table-header-with-action"><span>Stok kodu</span><div className="variant-header-action-shell" ref={barcodeSkuActionRef}><button type="button" className="variant-header-action" onClick={() => setBarcodeSkuMenuOpen(current => !current)} aria-label="Barkoddan doldurma seçenekleri" aria-haspopup="menu" aria-expanded={barcodeSkuMenuOpen} title="Barkoddan stok kodu doldurma seçenekleri"><BarcodeFillIcon /></button>{barcodeSkuMenuOpen && <div className="variant-header-action-menu" role="menu"><button type="button" role="menuitem" disabled={!emptySkuBarcodeRowCount} onClick={() => applyBarcodeToSku('missing')}><span><strong>Eksik stok kodlarını doldur</strong><small>Sadece boş satırlar · {emptySkuBarcodeRowCount} aday</small></span><i aria-hidden="true">↗</i></button><button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları stok koduna uygula</strong><small>Barkodu olan {barcodeRowCount} satırı güncelle</small></span><i aria-hidden="true">!</i></button><p>Çakışan barkodlar otomatik olarak atlanır; mevcut kodlar ilk seçenekte korunur.</p></div>}</div></span><span>Stok</span><span>Fiyat</span><span>Liste fiyatı</span><span>Varyant görseli</span><span>İşlem</span></div>{variantRows.length ? variantRows.map((row, index) => { const matchesFilter = rowMatchesVariantFilters(row); return <div className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key} onDragOver={event => event.preventDefault()} onDragEnter={() => { if (!draggedVariantKey || draggedVariantKey === row.key || dragOverVariantKey === row.key) return; swapVariants(draggedVariantKey, row.key); setDragOverVariantKey(row.key) }}><div className="variant-row-lead"><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle" draggable title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; setDraggedVariantKey(row.key); setDragOverVariantKey(null) }} onDragEnd={() => { setDraggedVariantKey(null); setDragOverVariantKey(null) }}><VariantDragHandleIcon /></span></div><input value={row.optionSignature} readOnly /><input className="technical-field barcode-value" value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" /><input className="technical-field sku-value" value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" /><input value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" /><input value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /><input value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /><div className="variant-media-cell"><button type="button" className={`variant-media-button ${row.mediaRefs.length ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç`} title="Varyant görsellerini seç"><VariantImageIcon />{row.mediaRefs.length > 0 && <i aria-hidden="true">{row.mediaRefs.length}</i>}</button></div><button type="button" className="secondary" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))}>Sil</button></div> }) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}</div>
       </section>
     </div></div>
 
