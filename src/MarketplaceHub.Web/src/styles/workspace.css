@@ -22,6 +22,12 @@
     var(--st-surface-lowest, #0d0e16);
 }
 
+/* Keep the workspace itself as the stable scroll container after client-side route changes. */
+.app-shell.stitch-shell {
+  height: 100vh;
+  overflow: hidden;
+}
+
 .app-shell.stitch-shell .top-actions {
   min-width: 0;
   flex: 0 1 auto;
@@ -383,7 +389,8 @@
 }
 
 .app-shell.stitch-shell > main {
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -1550,6 +1557,12 @@
 }
 
 @media (max-width: 760px) {
+  .app-shell.stitch-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
   .app-shell.stitch-shell > aside {
     z-index: 5000 !important;
   }

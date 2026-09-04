@@ -2973,7 +2973,7 @@ textarea {
 .brand-mapping-pair-grid .mapping-reference-refresh { display: grid !important; flex: 0 0 26px; place-items: center; width: 26px !important; height: 26px !important; min-height: 26px !important; padding: 0 !important; color: #c6c5d7 !important; background: transparent !important; border: 1px solid #454655 !important; border-radius: 3px !important; box-shadow: none !important; font-size: 15px !important; line-height: 1 !important; }
 .brand-mapping-pair-grid .mapping-reference-refresh:hover:not(:disabled) { color: #fff !important; background: #292a35 !important; border-color: #6872e8 !important; }
 .brand-mapping-pair-grid .mapping-reference-refresh:disabled { cursor: wait; opacity: .58; }
-.brand-mapping-target-controls { padding: 8px; background: #14192a; border: 1px solid rgba(124, 134, 255, .24); border-radius: 8px; }
+.brand-mapping-target-controls { display: grid; grid-template-columns: minmax(140px, .38fr) minmax(0, 1fr); gap: 10px; padding: 0; background: transparent; border: 0; border-radius: 0; }
 .brand-mapping-target-controls > select,
 .brand-mapping-target-controls .panel-category-picker-trigger { min-height: 42px !important; color: #dce0f5 !important; background: #1d2337 !important; border-color: rgba(151, 160, 207, .25) !important; border-radius: 8px !important; }
 .brand-mapping-target-controls .panel-category-picker-trigger { padding-right: 10px !important; }
@@ -2991,6 +2991,7 @@ textarea {
   .brand-mapping-pair-grid .mapping-link-rail span { transform: rotate(90deg); }
   .brand-mapping-console > .mapping-action { align-items: stretch !important; flex-direction: column !important; }
   .brand-mapping-console > .mapping-action button { width: 100% !important; }
+  .brand-mapping-target-controls { grid-template-columns: 1fr; }
 }
 
 /* The category library is part of the mapping form, not a modal workflow. */
