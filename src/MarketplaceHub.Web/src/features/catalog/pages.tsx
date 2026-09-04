@@ -1014,7 +1014,6 @@ function CategoryAttributeMappingPanel({
         <p>{categoryLabel ? `Seçili kategori: ${categoryLabel} · Bu kategoriye bağlanan özellik değerlerini atayın.` : 'Seçili kategoriye bağlanan özellik değerlerini atayın.'}</p>
       </div>
     </div>
-    <p className="category-mapping-note"><span aria-hidden="true">↗</span> Yayınlama sırasında seçtiğiniz değerler ilgili pazaryerinin formatına dönüştürülür.</p>
     {!categoryId ? (
       <div className="unknown"><strong>Önce kategori seçin</strong><p>Kategori seçildiğinde eşlenmiş özellik başlıkları burada görünür.</p></div>
     ) : isLoading ? (
@@ -1025,13 +1024,15 @@ function CategoryAttributeMappingPanel({
       <div className="category-attribute-mapping-list">
         {attributes.map(item => {
           const selectedValues = attributeSelections[item.attributeId] ?? []
-          return <article className={`category-attribute-field ${item.isRequired ? 'required' : ''} ${selectedValues.length ? 'has-selection' : ''}`} key={item.attributeId}>
+          const typedValue = attributeTextValues[item.attributeId] ?? ''
+          const hasValue = item.attribute.values.length > 0 ? selectedValues.length > 0 : typedValue.trim().length > 0
+          return <article className={`category-attribute-field ${item.isRequired ? 'required' : ''} ${selectedValues.length ? 'has-selection' : ''} ${item.isRequired && !hasValue ? 'is-missing' : ''}`} key={item.attributeId}>
             <div className="category-attribute-field-head">
               <div>
                 <strong>{item.attribute.name}{item.isRequired ? ' *' : ''}</strong>
                 <small>{dataTypeLabels[item.attribute.dataType] ?? item.attribute.dataType}{item.isRequired ? ' · Zorunlu' : ' · İsteğe bağlı'}</small>
               </div>
-              {item.attribute.values.length > 0 && <span className={`category-attribute-count ${selectedValues.length ? '' : 'is-empty'}`}>{selectedValues.length ? `${selectedValues.length} seçildi` : 'Değer seçin'}</span>}
+              {item.attribute.values.length > 0 && selectedValues.length > 0 && <span className="category-attribute-count">{selectedValues.length} seçildi</span>}
             </div>
             {item.attribute.values.length ? (
               <CategoryAttributeValueDropdown attributeName={item.attribute.name} dataType={item.attribute.dataType} values={item.attribute.values} selectedValues={selectedValues} onToggleValue={valueId => onToggleValue(item.attributeId, valueId)} />

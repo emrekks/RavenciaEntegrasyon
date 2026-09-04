@@ -1960,25 +1960,6 @@ body:has(.product-add-page),
   margin-bottom: 11px;
   padding-bottom: 11px;
 }
-.app-shell .product-add-page .category-mapping-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  margin: 0 0 12px;
-  padding: 8px 9px;
-  color: var(--st-muted);
-  background: rgba(88, 101, 242, .08);
-  border: 1px solid rgba(88, 101, 242, .2);
-  border-radius: 5px;
-  font-size: 10px;
-  line-height: 1.45;
-}
-.app-shell .product-add-page .category-mapping-note span {
-  flex: 0 0 auto;
-  color: var(--st-primary-soft);
-  font-size: 13px;
-  line-height: 1;
-}
 .app-shell .product-add-page .category-attribute-mapping-list {
   display: grid;
   gap: 9px;
@@ -2545,6 +2526,13 @@ body:has(.product-add-page),
   transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease !important;
 }
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.required { border-color: rgba(113, 104, 245, .75) !important; }
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.required.is-missing {
+  background: linear-gradient(180deg, rgba(255, 126, 122, .11), rgba(21, 26, 43, .96)) !important;
+  border-color: rgba(255, 126, 122, .9) !important;
+  box-shadow: inset 3px 0 #ff7f78, 0 0 0 1px rgba(255, 126, 122, .22), 0 8px 18px rgba(43, 10, 18, .18) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.required.is-missing .category-attribute-field-head strong { color: #ffc0ba !important; }
+.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.required.is-missing .category-attribute-select-trigger { border-color: rgba(255, 126, 122, .72) !important; }
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-field.has-selection {
   background: linear-gradient(180deg, rgba(88, 101, 242, .11), rgba(21, 26, 43, .96)) !important;
   border-color: rgba(122, 135, 255, .72) !important;
@@ -2558,11 +2546,6 @@ body:has(.product-add-page),
   border-radius: 999px !important;
   font-size: .57rem !important;
   white-space: nowrap;
-}
-.app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-count.is-empty {
-  color: #aeb4d3 !important;
-  background: rgba(174, 180, 211, .08) !important;
-  border-color: rgba(174, 180, 211, .2) !important;
 }
 .app-shell.stitch-shell .product-add-page .product-category-mapping-card .category-attribute-values {
   max-height: 154px !important;
