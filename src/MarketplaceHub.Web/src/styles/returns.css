@@ -317,13 +317,6 @@
   width: 54px !important;
   height: 81px !important;
 }
-.app-shell .reference-returns-page .reference-product-media .quantity-bubble {
-  top: -10px !important;
-  right: -10px !important;
-  left: auto !important;
-  transform: none !important;
-  z-index: 2 !important;
-}
 .app-shell .reference-returns-page .order-reference-prices,
 .app-shell .reference-returns-page .order-reference-cargo,
 .app-shell .reference-returns-page .order-reference-invoice { text-align: left !important; }

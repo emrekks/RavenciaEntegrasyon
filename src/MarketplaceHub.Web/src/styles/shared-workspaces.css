@@ -394,6 +394,34 @@ textarea {
   border-color: var(--st-surface-highest) !important;
 }
 
+/* Keep product quantities attached to their image in every reference list. */
+.app-shell .reference-product-media {
+  position: relative !important;
+  overflow: visible !important;
+}
+
+.app-shell .reference-product-media .quantity-bubble {
+  position: absolute !important;
+  top: -8px !important;
+  right: -8px !important;
+  left: auto !important;
+  z-index: 2 !important;
+  display: grid !important;
+  place-items: center !important;
+  min-width: 20px !important;
+  height: 20px !important;
+  padding: 0 5px !important;
+  color: #fff !important;
+  background: var(--st-primary) !important;
+  border: 2px solid var(--st-surface) !important;
+  border-radius: 999px !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .35) !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
 .product-catalog-head { color: #9493a5 !important; background: var(--st-surface-container) !important; }
 .product-catalog-row:hover { background: rgba(88, 101, 242, .04) !important; }
 .product-image { border-radius: 4px !important; border-color: var(--st-outline) !important; }

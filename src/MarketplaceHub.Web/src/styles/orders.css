@@ -337,16 +337,6 @@
   font-size: .58rem !important;
   line-height: 1.35 !important;
 }
-.app-shell .orders-page .quantity-bubble {
-  width: 20px !important;
-  height: 20px !important;
-  top: 7px !important;
-  right: auto !important;
-  left: 48px !important;
-  color: #000569 !important;
-  background: #bec2ff !important;
-  font-size: .56rem !important;
-}
 .app-shell .orders-page .order-reference-prices > strong {
   min-height: 194px !important;
   padding: 10px !important;
@@ -507,14 +497,6 @@
   height: 81px !important;
   aspect-ratio: 2 / 3 !important;
 }
-.app-shell .orders-page .reference-product-media .quantity-bubble {
-  top: -10px !important;
-  right: -10px !important;
-  left: auto !important;
-  transform: none !important;
-  z-index: 2 !important;
-}
-
 /* Align order controls and keep row menus tied to their trigger width. */
 .app-shell .orders-page .orders-reference-filter-shell .order-filter-primary > .bulk-menu-shell,
 .app-shell .orders-page .orders-reference-filter-shell .filter-toggle,
