@@ -1122,7 +1122,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const mediaUrls = useMemo(() => form.mediaUrls.split(/\r?\n/).map(item => item.trim()).filter(Boolean), [form.mediaUrls])
 
   const allRequirements = useMemo(() => (requirements.data ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder), [requirements.data])
-  const optionRequirements = useMemo(() => allRequirements.filter(item => !isWebColorName(item.attribute.name) && (item.role === 'OPTION' || isVariantOptionName(item.attribute.name))).slice(0, 2), [allRequirements])
+  // A category requirement is usable in the product editor only when its
+  // mapped local attribute has active values. Empty definitions are kept in
+  // the mapping workspace for maintenance, but must not become empty product
+  // fields or validation requirements.
+  const mappedRequirements = useMemo(() => allRequirements.filter(item => item.attribute.values.length > 0), [allRequirements])
+  const optionRequirements = useMemo(() => mappedRequirements.filter(item => !isWebColorName(item.attribute.name) && (item.role === 'OPTION' || isVariantOptionName(item.attribute.name))).slice(0, 2), [mappedRequirements])
   useEffect(() => {
     const optionIds = optionRequirements.map(item => item.attributeId)
     setVariantAttributeIds(current => current.filter(id => optionIds.includes(id)))
@@ -1166,7 +1171,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
 
   function updateField(name: keyof typeof form, value: string) { setForm(current => ({ ...current, [name]: value })) }
   function toggleAttributeValue(attributeId: string, valueId: string) {
-    const requirement = allRequirements.find(item => item.attributeId === attributeId)
+    const requirement = mappedRequirements.find(item => item.attributeId === attributeId)
     const alreadySelected = (attributeSelections[attributeId] ?? []).includes(valueId)
     if (!alreadySelected && requirement?.role === 'OPTION' && !variantAttributeIds.includes(attributeId) && variantAttributeIds.length >= 2) {
       const message = 'Bir ürün en fazla 2 seçenek grubuyla varyantlanabilir.'; setNotice(message); showFeedback(message, 'error'); return
@@ -1178,14 +1183,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         setVariantAttributeIds(currentAxes => nextValues.length ? currentAxes.includes(attributeId) ? currentAxes : [...currentAxes, attributeId] : currentAxes.filter(id => id !== attributeId))
       }
       if (values.includes(valueId)) return { ...current, [attributeId]: nextValues }
-      const selectedOptionalAttributeCount = allRequirements.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && (current[item.attributeId]?.length ?? 0) > 0).length
+      const selectedOptionalAttributeCount = mappedRequirements.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && (current[item.attributeId]?.length ?? 0) > 0).length
       if (requirement?.role === 'ATTRIBUTE' && !requirement.isRequired && values.length === 0 && selectedOptionalAttributeCount >= MAX_PRODUCT_ATTRIBUTES) { const message = `Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`; setNotice(message); showFeedback(message, 'error'); return current }
       return { ...current, [attributeId]: nextValues }
     })
   }
   function generateVariants() {
     try {
-      const generated = buildVariantMatrix(requirements.data ?? [], variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, initialStock)
+      const generated = buildVariantMatrix(mappedRequirements, variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, initialStock)
       if (!generated.length) {
         const message = 'Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.'; setNotice(message); showFeedback(message, 'error')
         return
@@ -1352,7 +1357,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     return variantRows.length ? variantRows : [{ key: crypto.randomUUID(), optionSignature: 'Tek Ürün', options: {}, attributeValueIds: {}, sku: (form.baseSku || form.modelCode || form.title || 'URUN').trim().replace(/\s+/g, '-').toLocaleUpperCase('tr-TR'), barcode: form.barcode, stock: initialStock, salePrice: fallbackSalePrice, listPrice: fallbackListPrice, mediaRefs: [] }]
   }
   function validate(rows: VariantDraft[], requireCompleteCatalog = true) {
-    const issues: string[] = []; const requirementList = requirements.data ?? []
+    const issues: string[] = []; const requirementList = mappedRequirements
     if (requireCompleteCatalog && (variantAttributeIds.length > 2 || variantAttributeIds.some(id => requirementList.find(item => item.attributeId === id)?.role !== 'OPTION'))) issues.push('Varyant için en fazla 2 Seçenek Eşitleme başlığı kullanılabilir.')
     const selectedOptionalProductAttributes = requirementList.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && ((attributeSelections[item.attributeId]?.length ?? 0) > 0 || Boolean((attributeTextValues[item.attributeId] ?? '').trim()))).length
     if (requireCompleteCatalog && selectedOptionalProductAttributes > MAX_PRODUCT_ATTRIBUTES) issues.push(`Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`)
@@ -1413,7 +1418,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     try {
       if (requireCompleteCatalog && form.categoryId && requirements.isLoading) throw new Error('Kategori özellikleri yükleniyor. Kaydetmeden önce kısa süre bekleyin.')
       if (requireCompleteCatalog && form.categoryId && requirements.isError) throw new Error('Kategori özellikleri alınamadı. Önce kategori eşleştirmesini kontrol edin.')
-      const requirementList = requirements.data ?? []; const rows = rowsForSubmit(requireCompleteCatalog); validate(rows, requireCompleteCatalog)
+      const requirementList = mappedRequirements; const rows = rowsForSubmit(requireCompleteCatalog); validate(rows, requireCompleteCatalog)
       const globalAttributes = requirementList.filter(item => !variantAttributeIds.includes(item.attributeId)).flatMap((item, index) => productAttributePayload(item, attributeSelections[item.attributeId] ?? [], attributeTextValues[item.attributeId] ?? '', index))
       // Do not overwrite existing assignments while a newly selected category's
       // requirements are still loading (or failed). The edit form may be saved
@@ -1555,11 +1560,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const canAddVariantCombinations = useMemo(() => {
     if (!variantAttributeIds.length) return false
     try {
-      const generated = buildVariantMatrix(requirements.data ?? [], variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, initialStock)
+      const generated = buildVariantMatrix(mappedRequirements, variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, initialStock)
       const existing = new Set(variantRows.map(row => variantSignatureKey(row.optionSignature)))
       return generated.some(row => !existing.has(variantSignatureKey(row.optionSignature)))
     } catch { return false }
-  }, [attributeSelections, fallbackListPrice, fallbackSalePrice, form.baseSku, form.modelCode, form.title, initialStock, requirements.data, variantAttributeIds, variantRows])
+  }, [attributeSelections, fallbackListPrice, fallbackSalePrice, form.baseSku, form.modelCode, form.title, initialStock, mappedRequirements, variantAttributeIds, variantRows])
 
   return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog"><p className="lede page-lede">Ürün bilgilerini ve varyantları hazırlayın; yayınlama adımında kanalları seçip gönderim kuyruğunu başlatın.</p><div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün bilgileri ve varyantlar</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div><form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid} noValidate>
     <div className="product-top-layout">
@@ -1609,7 +1614,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     {wizardStep === 1 && <CategoryAttributeMappingPanel
       categoryId={form.categoryId}
       categoryLabel={leafCategories.find(item => item.id === form.categoryId)?.path ?? ''}
-      requirements={allRequirements}
+      requirements={mappedRequirements}
       isLoading={requirements.isLoading}
       isError={requirements.isError}
       attributeSelections={attributeSelections}

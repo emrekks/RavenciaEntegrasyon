@@ -969,6 +969,44 @@
 .app-shell .orders-page .order-reference-actions .order-action-menu b {
   line-height: 1 !important;
 }
+.app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu {
+  position: relative !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu > .action-popover {
+  position: absolute !important;
+  top: calc(100% + 6px) !important;
+  right: 0 !important;
+  left: auto !important;
+  bottom: auto !important;
+  z-index: 40 !important;
+  display: grid !important;
+  width: max-content !important;
+  min-width: 230px !important;
+  max-width: min(280px, calc(100vw - 24px)) !important;
+  padding: 5px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu > .action-popover.opens-up {
+  top: auto !important;
+  bottom: calc(100% + 6px) !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu > .action-popover > button {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 38px !important;
+  padding: 9px 11px !important;
+  line-height: 1.25 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  text-align: left !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu > .action-popover > button:disabled {
+  color: #777c9a !important;
+  background: transparent !important;
+  cursor: not-allowed !important;
+  opacity: .72 !important;
+}
 .app-shell .orders-page .order-reference-actions .order-label-action small {
   color: #c7cbff !important;
   font-size: .58rem !important;
