@@ -4349,57 +4349,10 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   }
 }
 
-/* Keep marketplace attributes and variant options visually separate. The
-   heading spans the same content width as both two-column grids below it. */
-.app-shell.stitch-shell .mapping-popup-content .mapping-subsection-heading {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 12px !important;
-  min-width: 0 !important;
-  margin: 18px 0 10px !important;
-  padding: 13px 2px 9px !important;
-  border-top: 1px solid var(--mapping-modal-line-soft) !important;
-}
-.app-shell.stitch-shell .mapping-popup-content .mapping-subsection-heading > div {
-  display: grid !important;
-  gap: 3px !important;
-  min-width: 0 !important;
-}
-.app-shell.stitch-shell .mapping-popup-content .mapping-subsection-heading h3 {
-  margin: 0 !important;
-  color: var(--mapping-modal-text) !important;
-  font-size: 14px !important;
-  line-height: 1.25 !important;
-}
-.app-shell.stitch-shell .mapping-popup-content .mapping-subsection-heading p {
-  margin: 0 !important;
-  color: var(--mapping-modal-muted) !important;
-  font-size: 10px !important;
-  line-height: 1.35 !important;
-}
-.app-shell.stitch-shell .mapping-popup-content .mapping-subsection-heading > span {
-  flex: 0 0 auto !important;
-  padding: 4px 8px !important;
-  color: #cfd4ff !important;
-  background: rgba(113, 104, 245, .14) !important;
-  border: 1px solid rgba(113, 104, 245, .35) !important;
-  border-radius: 999px !important;
-  font-size: 10px !important;
-  font-weight: 800 !important;
-  white-space: nowrap !important;
-}
-.app-shell.stitch-shell .mapping-popup-content .mapping-attributes-grid,
-.app-shell.stitch-shell .mapping-popup-content .mapping-options-grid {
+.app-shell.stitch-shell .mapping-popup-content .mapping-attributes-grid {
   width: 100% !important;
   min-width: 0 !important;
   overflow: visible !important;
-}
-@media (max-width: 560px) {
-  .app-shell.stitch-shell .mapping-popup-content .mapping-subsection-heading {
-    align-items: flex-start !important;
-    flex-direction: column !important;
-  }
 }
 
 /* Panel values are managed as a compact two-column list; ordering is handled
