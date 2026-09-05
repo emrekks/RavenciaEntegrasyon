@@ -104,7 +104,9 @@ internal sealed class ProductArchiveComposer(AppDbContext db)
 
 internal sealed class PriceInventoryComposer(AppDbContext db)
 {
-    public async Task<ServiceResult<PriceInventoryDraft>> BuildAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    private const int MaximumBatchSize = 1000;
+
+    public async Task<ServiceResult<PriceInventoryDraft>> BuildAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId = null)
     {
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
@@ -113,10 +115,10 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                           join listingVariant in db.ChannelListingVariants.AsNoTracking() on new { profile.TenantId, ProfileId = profile.Id, VariantId = variant.Id } equals new { listingVariant.TenantId, listingVariant.ProfileId, listingVariant.VariantId }
                           join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId }
                           where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE" && listingState.ActualStatus == "LIVE" && listingVariant.ExternalBarcode != null
+                              && (variantId == null || offer.VariantId == variantId)
                           orderby variant.Id
                           select new { Offer = offer, Variant = variant, Inventory = inventory, Barcode = listingVariant.ExternalBarcode! }).ToListAsync(cancellationToken);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Fiyat-stok gönderimi için LIVE eşleşmiş varyant ve ACTIVE teklif gerekir.", 422);
-        if (rows.Count > 1000) return ServiceResult<PriceInventoryDraft>.Fail("PRICE_INVENTORY_BATCH_LIMIT_EXCEEDED", "Tek fiyat-stok isteğinde en fazla 1000 varyant gönderilebilir.", 422);
 
         var lines = new List<PriceInventoryPushLine>();
         foreach (var row in rows)
@@ -130,6 +132,10 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             lines.Add(new(row.Variant.Id, row.Offer.Id, row.Barcode.Trim(), quantity, row.Offer.ListPrice, row.Offer.SalePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash));
         }
         if (lines.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("NO_EXTERNAL_CHANGES", "Trendyol'a gönderilecek yeni fiyat veya stok değişikliği yok.", 409);
+        // Dirty filtering must happen before the provider batch limit. A large
+        // catalog with only a few changed offers is a valid request, while a
+        // larger dirty set is drained deterministically in follow-up passes.
+        lines = lines.Take(MaximumBatchSize).ToList();
         var payload = JsonSerializer.Serialize(new { items = lines.Select(x => new { barcode = x.Barcode, quantity = checked((int)Math.Min((decimal)int.MaxValue, x.Quantity)), salePrice = x.SalePrice, listPrice = x.ListPrice }).ToArray() });
         return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines));
     }

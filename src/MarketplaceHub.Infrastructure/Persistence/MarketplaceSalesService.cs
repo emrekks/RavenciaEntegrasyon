@@ -1,3 +1,4 @@
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -123,6 +124,41 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     private void ApplyOrderFilters(ref IQueryable<Order> query, OrderListQuery options)
     {
+        var invoice = options.Invoice?.Trim().ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(invoice) && invoice != "ALL")
+        {
+            query = invoice switch
+            {
+                "FATURA_KESILDI" => query.Where(x =>
+                    db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null && i.Status == InvoiceStatus.Completed)
+                    || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced)),
+                "FATURA_KONTROLDE" => query.Where(x =>
+                    db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null && (i.Status == InvoiceStatus.Submitted || i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending))
+                    || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received)),
+                "FATURA_REDDEDILDI" => query.Where(x =>
+                    db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null && (i.Status == InvoiceStatus.Rejected || i.Status == InvoiceStatus.ValidationFailed || i.Status == InvoiceStatus.ManualReview))
+                    || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Rejected)),
+                "FATURA_IPTAL" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null && (i.Status == InvoiceStatus.Cancelled || i.Status == InvoiceStatus.CancelledLocal))),
+                "FATURA_BEKLIYOR" => query.Where(x =>
+                    db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced)
+                    || x.CustomerSnapshotJson.Contains("NOTINVOICED") || x.CustomerSnapshotJson.Contains("NOT_INVOICED")),
+                "FATURA_ISLENIYOR" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null && i.Status != InvoiceStatus.Completed && i.Status != InvoiceStatus.Cancelled && i.Status != InvoiceStatus.CancelledLocal && i.Status != InvoiceStatus.Rejected && i.Status != InvoiceStatus.ValidationFailed && i.Status != InvoiceStatus.ManualReview)),
+                _ => query.Where(_ => false)
+            };
+        }
+
+        var invoiceType = options.InvoiceType?.Trim().ToUpperInvariant();
+        if (invoiceType == "KURUMSAL")
+            query = query.Where(x => x.CustomerSnapshotJson.Contains("\"commercial\":true") || x.CustomerSnapshotJson.Contains("\"commercial\": true") || x.InvoiceAddressSnapshotJson.Contains("\"company\"") || x.InvoiceAddressSnapshotJson.Contains("\"companyName\""));
+        else if (invoiceType == "BIREYSEL")
+            query = query.Where(x => !x.CustomerSnapshotJson.Contains("\"commercial\":true") && !x.CustomerSnapshotJson.Contains("\"commercial\": true") && !x.InvoiceAddressSnapshotJson.Contains("\"company\"") && !x.InvoiceAddressSnapshotJson.Contains("\"companyName\""));
+
+        var invoiceRegion = options.InvoiceRegion?.Trim().ToUpperInvariant();
+        if (invoiceRegion == "MICRO_EXPORT")
+            query = query.Where(x => x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true") || x.CustomerSnapshotJson.Contains("\"microExport\":true") || x.CustomerSnapshotJson.Contains("\"microExport\": true") || x.CustomerSnapshotJson.Contains("\"3pByTrendyol\":true") || x.CustomerSnapshotJson.Contains("MICRO") || x.CustomerSnapshotJson.Contains("İHRAC") || x.CustomerSnapshotJson.Contains("IHRAC"));
+        else if (invoiceRegion == "TR")
+            query = query.Where(x => !x.CustomerSnapshotJson.Contains("\"micro\":true") && !x.CustomerSnapshotJson.Contains("\"micro\": true") && !x.CustomerSnapshotJson.Contains("\"microExport\":true") && !x.CustomerSnapshotJson.Contains("\"microExport\": true") && !x.CustomerSnapshotJson.Contains("\"3pByTrendyol\":true") && !x.CustomerSnapshotJson.Contains("MICRO") && !x.CustomerSnapshotJson.Contains("İHRAC") && !x.CustomerSnapshotJson.Contains("IHRAC"));
+
         var status = options.Status?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(status) && status != "ALL")
         {
@@ -561,7 +597,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return ServiceResult<Guid>.Ok(jobId);
     }
 
-    public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, string? status, bool latest, CancellationToken cancellationToken)
+    public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, ReturnListQuery options, bool latest, CancellationToken cancellationToken)
     {
         var hasOperationalTrendyol = await db.PlatformConnections.AsNoTracking()
             .AnyAsync(x => x.TenantId == tenantId
@@ -569,11 +605,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
         if (!hasOperationalTrendyol) return new([], null, false);
 
-        var afterId = latest ? Guid.Empty : Decode(after);
         var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"));
+        ApplyReturnFilters(ref query, options);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var afterId = latest ? Guid.Empty : Decode(after);
         if (!latest && afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
-        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ReturnClaimStatus>(status, true, out var parsed)) query = query.Where(x => x.Status == parsed);
         var claims = latest
             ? await query.OrderByDescending(x => x.LastRemoteModifiedAt).ThenByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken)
             : await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
@@ -607,7 +644,46 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : InvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus]), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport);
         }).ToList();
-        return latest ? new(rows.Take(limit).ToList(), null, rows.Count > limit) : Page(rows, limit, x => x.Id);
+        var hasMore = rows.Count > limit;
+        var pageRows = rows.Take(limit).ToList();
+        var next = !latest && hasMore && pageRows.Count > 0 ? cursors.Encode(pageRows[^1].Id) : null;
+        return new(pageRows, next, hasMore, totalCount);
+    }
+
+    private void ApplyReturnFilters(ref IQueryable<ReturnClaim> query, ReturnListQuery options)
+    {
+        var status = options.Status?.Trim().ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(status) && status != "ALL")
+        {
+            query = status switch
+            {
+                "REQUESTED" => query.Where(x => x.Status == ReturnClaimStatus.Requested),
+                "SHIPPING" => query.Where(x => x.Status == ReturnClaimStatus.AwaitingShipment || x.Status == ReturnClaimStatus.InTransit),
+                "ACTION_REQUIRED" => query.Where(x => x.Status == ReturnClaimStatus.ActionRequired),
+                "APPROVED" => query.Where(x => x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed),
+                "REJECTED" => query.Where(x => x.Status == ReturnClaimStatus.Rejected || x.Status == ReturnClaimStatus.Cancelled),
+                "DISPUTED" => query.Where(x => x.Status == ReturnClaimStatus.Disputed),
+                "REVIEW" => query.Where(x => x.Status == ReturnClaimStatus.ActionRequired),
+                "SUSPENDED" => query.Where(_ => false),
+                _ => query.Where(_ => false)
+            };
+        }
+
+        var customer = options.Customer?.Trim();
+        if (!string.IsNullOrWhiteSpace(customer))
+            query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && (order.CustomerSnapshotJson.Contains(customer) || order.OrderNumber.Contains(customer))));
+        var orderNumber = options.OrderNumber?.Trim();
+        if (!string.IsNullOrWhiteSpace(orderNumber))
+            query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderNumber.Contains(orderNumber)));
+        var claimCode = options.ClaimCode?.Trim();
+        if (!string.IsNullOrWhiteSpace(claimCode)) query = query.Where(x => x.ExternalClaimId.Contains(claimCode));
+        var barcode = options.Barcode?.Trim();
+        if (!string.IsNullOrWhiteSpace(barcode))
+            query = query.Where(x => db.ReturnLines.Any(returnLine => returnLine.TenantId == x.TenantId && returnLine.ClaimId == x.Id && db.OrderLines.Any(line => line.TenantId == x.TenantId && line.Id == returnLine.OrderLineId && ((line.Barcode != null && line.Barcode.Contains(barcode)) || line.Sku.Contains(barcode)))));
+        var reason = options.Reason?.Trim();
+        if (!string.IsNullOrWhiteSpace(reason)) query = query.Where(x => x.ReasonText != null && x.ReasonText.Contains(reason));
+        if (options.DateFrom is { } dateFrom) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderedAt >= dateFrom));
+        if (options.DateTo is { } dateTo) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderedAt <= dateTo));
     }
 
     public async Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -682,14 +758,51 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     public async Task<ServiceResult<ReturnDetailView>> ApplyDispositionAsync(Guid tenantId, Guid userId, Guid claimId, ReturnDispositionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
-        var existing = await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken); if (existing) return await ReturnAsync(tenantId, claimId, cancellationToken);
-        if (!Enum.TryParse<ReturnStockDispositionKind>(command.Disposition, true, out var disposition)) return Invalid<ReturnDetailView>("disposition", "Disposition PASS, QUARANTINE, DAMAGED veya NOT_RECEIVED olmalıdır."); if (command.Quantity <= 0 || string.IsNullOrWhiteSpace(command.Reason)) return Invalid<ReturnDetailView>("quantity", "Pozitif quantity ve açıklama zorunludur.");
-        var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId, cancellationToken); if (claim is null) return NotFound<ReturnDetailView>(); if (claim.Status is not (ReturnClaimStatus.Approved or ReturnClaimStatus.Completed)) return ServiceResult<ReturnDetailView>.Fail("RETURN_DISPOSITION_NOT_ALLOWED", "Stok disposition yalnız onaylanmış veya tamamlanmış iade için uygulanabilir.", 409);
-        var line = await db.ReturnLines.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claimId && x.Id == command.ReturnLineId, cancellationToken); if (line is null) return NotFound<ReturnDetailView>(); var already = await db.ReturnStockDispositions.Where(x => x.TenantId == tenantId && x.ReturnLineId == line.Id).SumAsync(x => x.Quantity, cancellationToken); if (already + command.Quantity > line.Quantity) return ServiceResult<ReturnDetailView>.Fail("RETURN_QUANTITY_EXCEEDED", "Disposition toplamı iade satırı miktarını aşamaz.", 409);
-        var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == line.OrderLineId).Select(x => x.VariantId).SingleAsync(cancellationToken); if (variantId is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "İade satırı yerel varyantla eşleşmiyor.", 422); var item = await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken); if (item is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "MAIN inventory item bulunamadı.", 422);
-        var now = timeProvider.GetUtcNow(); db.ReturnStockDispositions.Add(new ReturnStockDisposition { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, ReturnLineId = line.Id, InventoryItemId = item.Id, Disposition = disposition, Quantity = command.Quantity, IdempotencyKey = idempotencyKey, Reason = command.Reason.Trim(), ActorUserId = userId, CreatedAt = now });
-        if (disposition == ReturnStockDispositionKind.Pass) { item.OnHand += command.Quantity; item.Available = Math.Max(0, item.OnHand - item.Reserved); item.ProjectionVersion++; item.Version++; db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = "RETURN_PASS", QuantityDelta = command.Quantity, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = idempotencyKey, IdempotencyKey = idempotencyKey, OccurredAt = now, RecordedAt = now, ActorUserId = userId, CorrelationId = correlationId }); }
-        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "RETURN_STOCK_DISPOSITION", TargetType = "ReturnClaim", TargetId = claimId.ToString("D"), Reason = command.Reason.Trim(), CorrelationId = correlationId, CreatedAt = now }); await db.SaveChangesAsync(cancellationToken); return await ReturnAsync(tenantId, claimId, cancellationToken);
+        if (!Enum.TryParse<ReturnStockDispositionKind>(command.Disposition, true, out var disposition)) return Invalid<ReturnDetailView>("disposition", "Disposition PASS, QUARANTINE, DAMAGED veya NOT_RECEIVED olmalıdır.");
+        if (command.Quantity <= 0 || string.IsNullOrWhiteSpace(command.Reason)) return Invalid<ReturnDetailView>("quantity", "Pozitif quantity ve açıklama zorunludur.");
+
+        // Idempotency and quantity reservation must share one serializable
+        // transaction. Otherwise two concurrent operators can both observe
+        // the same remaining quantity and increase inventory twice.
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        try
+        {
+            var existing = await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
+            if (existing)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return await ReturnAsync(tenantId, claimId, cancellationToken);
+            }
+
+            var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId, cancellationToken);
+            if (claim is null) return NotFound<ReturnDetailView>();
+            if (claim.Status is not (ReturnClaimStatus.Approved or ReturnClaimStatus.Completed)) return ServiceResult<ReturnDetailView>.Fail("RETURN_DISPOSITION_NOT_ALLOWED", "Stok disposition yalnız onaylanmış veya tamamlanmış iade için uygulanabilir.", 409);
+            var line = await db.ReturnLines.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claimId && x.Id == command.ReturnLineId, cancellationToken);
+            if (line is null) return NotFound<ReturnDetailView>();
+            var already = await db.ReturnStockDispositions.Where(x => x.TenantId == tenantId && x.ReturnLineId == line.Id).SumAsync(x => x.Quantity, cancellationToken);
+            if (already + command.Quantity > line.Quantity) return ServiceResult<ReturnDetailView>.Fail("RETURN_QUANTITY_EXCEEDED", "Disposition toplamı iade satırı miktarını aşamaz.", 409);
+            var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == line.OrderLineId).Select(x => x.VariantId).SingleAsync(cancellationToken);
+            if (variantId is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "İade satırı yerel varyantla eşleşmiyor.", 422);
+            var item = await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
+            if (item is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "MAIN inventory item bulunamadı.", 422);
+            var now = timeProvider.GetUtcNow();
+            db.ReturnStockDispositions.Add(new ReturnStockDisposition { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, ReturnLineId = line.Id, InventoryItemId = item.Id, Disposition = disposition, Quantity = command.Quantity, IdempotencyKey = idempotencyKey, Reason = command.Reason.Trim(), ActorUserId = userId, CreatedAt = now });
+            if (disposition == ReturnStockDispositionKind.Pass)
+            {
+                item.OnHand += command.Quantity; item.Available = Math.Max(0, item.OnHand - item.Reserved); item.ProjectionVersion++; item.Version++;
+                db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = "RETURN_PASS", QuantityDelta = command.Quantity, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = idempotencyKey, IdempotencyKey = idempotencyKey, OccurredAt = now, RecordedAt = now, ActorUserId = userId, CorrelationId = correlationId });
+            }
+            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "RETURN_STOCK_DISPOSITION", TargetType = "ReturnClaim", TargetId = claimId.ToString("D"), Reason = command.Reason.Trim(), CorrelationId = correlationId, CreatedAt = now });
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            if (await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken)) return await ReturnAsync(tenantId, claimId, cancellationToken);
+            throw;
+        }
+        return await ReturnAsync(tenantId, claimId, cancellationToken);
     }
 
     private static readonly IReadOnlyList<string> ShipmentActions = ["PICKING", "INVOICED", "TRACKING_NUMBER", "CANCEL_ITEMS", "SPLIT", "MULTI_SPLIT", "CHANGE_CARGO_PROVIDER", "ALTERNATIVE_DELIVERY", "MANUAL_DELIVER", "MANUAL_RETURN"];

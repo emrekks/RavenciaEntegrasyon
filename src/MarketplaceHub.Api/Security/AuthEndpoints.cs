@@ -137,7 +137,23 @@ public static class AuthEndpoints
         var session = RequireRecentActive(context, time); if (session is null) return Forbidden();
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
         var secret = totp.NewSecret(); var base32 = Base32(secret); var expires = time.GetUtcNow().AddMinutes(10);
-        security.TotpState = TotpState.Pending; security.ProtectedTotpSecret = protection.CreateProtector("MarketplaceHub.Totp.v1").Protect(Convert.ToBase64String(secret)); security.EnrollmentExpiresAt = expires; security.LastAcceptedTimeStep = null;
+        var protectedSecret = protection.CreateProtector("MarketplaceHub.Totp.v1").Protect(Convert.ToBase64String(secret));
+        if (security.TotpState == TotpState.Enabled)
+        {
+            // Keep the currently enforced factor active while a replacement is
+            // being scanned. Abandoning setup must never downgrade MFA.
+            security.PendingProtectedTotpSecret = protectedSecret;
+            security.PendingEnrollmentExpiresAt = expires;
+        }
+        else
+        {
+            security.TotpState = TotpState.Pending;
+            security.ProtectedTotpSecret = null;
+            security.EnrollmentExpiresAt = null;
+            security.PendingProtectedTotpSecret = protectedSecret;
+            security.PendingEnrollmentExpiresAt = expires;
+        }
+        security.Version++;
         await db.SaveChangesAsync(context.RequestAborted);
         var user = await db.Users.AsNoTracking().SingleAsync(x => x.Id == session.UserId, context.RequestAborted);
         var uri = $"otpauth://totp/MarketplaceHub:{Uri.EscapeDataString(user.Email ?? user.Id.ToString())}?secret={base32}&issuer=MarketplaceHub&digits=6&period=30";
@@ -149,11 +165,13 @@ public static class AuthEndpoints
     {
         var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden();
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
-        if (security.TotpState != TotpState.Pending || security.EnrollmentExpiresAt <= time.GetUtcNow() || security.ProtectedTotpSecret is null) return Results.Problem(statusCode: 409, title: "MFA enrollment is not pending");
-        var secret = Convert.FromBase64String(protection.CreateProtector("MarketplaceHub.Totp.v1").Unprotect(security.ProtectedTotpSecret));
+        var pendingSecret = security.PendingProtectedTotpSecret ?? (security.TotpState == TotpState.Pending ? security.ProtectedTotpSecret : null);
+        var pendingExpiresAt = security.PendingEnrollmentExpiresAt ?? (security.TotpState == TotpState.Pending ? security.EnrollmentExpiresAt : null);
+        if (pendingExpiresAt <= time.GetUtcNow() || pendingSecret is null) return Results.Problem(statusCode: 409, title: "MFA enrollment is not pending");
+        var secret = Convert.FromBase64String(protection.CreateProtector("MarketplaceHub.Totp.v1").Unprotect(pendingSecret));
         if (!totp.TryValidate(secret, request.Code, null, out var step)) return Results.Problem(statusCode: 400, title: "Invalid verification code");
         await using var transaction = await db.Database.BeginTransactionAsync(context.RequestAborted);
-        security.TotpState = TotpState.Enabled; security.EnrollmentExpiresAt = null; security.LastAcceptedTimeStep = step; security.Version++;
+        security.TotpState = TotpState.Enabled; security.ProtectedTotpSecret = pendingSecret; security.EnrollmentExpiresAt = null; security.PendingProtectedTotpSecret = null; security.PendingEnrollmentExpiresAt = null; security.LastAcceptedTimeStep = step; security.Version++;
         session.ReauthenticatedAt = time.GetUtcNow();
         var codes = ReplaceRecoveryCodes(db, security, hasher, time.GetUtcNow()); await db.SaveChangesAsync(context.RequestAborted); await transaction.CommitAsync(context.RequestAborted);
         return Results.Ok(new { recoveryCodes = codes });
@@ -200,7 +218,7 @@ public static class AuthEndpoints
         if (security.TotpState == TotpState.Enabled && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
             return Results.Problem(statusCode: 401, title: "Second factor verification failed");
         session.ReauthenticatedAt = time.GetUtcNow();
-        security.TotpState = TotpState.Disabled; security.ProtectedTotpSecret = null; security.LastAcceptedTimeStep = null; security.RecoveryBatchId = null;
+        security.TotpState = TotpState.Disabled; security.ProtectedTotpSecret = null; security.EnrollmentExpiresAt = null; security.PendingProtectedTotpSecret = null; security.PendingEnrollmentExpiresAt = null; security.LastAcceptedTimeStep = null; security.RecoveryBatchId = null; security.Version++;
         await db.RecoveryCodes.Where(x => x.UserId == user.Id && x.InvalidatedAt == null).ExecuteUpdateAsync(x => x.SetProperty(c => c.InvalidatedAt, time.GetUtcNow()), context.RequestAborted);
         user.SessionVersion++; session.SessionVersion = user.SessionVersion;
         await db.UserSessions.Where(x => x.UserId == user.Id && x.Id != session.Id && x.State != SessionState.Revoked).ExecuteUpdateAsync(x => x.SetProperty(s => s.State, SessionState.Revoked).SetProperty(s => s.RevokedAt, time.GetUtcNow()), context.RequestAborted);

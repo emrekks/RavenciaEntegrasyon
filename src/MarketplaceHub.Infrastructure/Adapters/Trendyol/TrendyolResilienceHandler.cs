@@ -21,9 +21,10 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
     {
         await state.Concurrency.WaitAsync(cancellationToken);
         var halfOpen = false;
+        var circuitKey = CircuitKeyFor(request);
         try
         {
-            if (!TryEnterCircuit(out halfOpen)) return CircuitOpenResponse();
+            if (!TryEnterCircuit(circuitKey, out halfOpen)) return CircuitOpenResponse();
             await WaitForRateWindowAsync("global", options.RequestsPerInterval, options.RequestInterval, cancellationToken);
             if (RateBucketFor(request) is { } bucket)
                 await WaitForRateWindowAsync(bucket, options.OrderRequestsPerInterval, options.OrderRequestInterval, cancellationToken);
@@ -32,53 +33,55 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                 var response = await base.SendAsync(request, cancellationToken);
                 var statusCode = (int)response.StatusCode;
                 var circuitSucceeded = statusCode < 500 && statusCode is not (408 or 429);
-                RecordResult(circuitSucceeded, halfOpen);
+                RecordResult(circuitKey, circuitSucceeded, halfOpen);
                 return response;
             }
             catch (HttpRequestException)
             {
-                RecordResult(false, halfOpen);
+                RecordResult(circuitKey, false, halfOpen);
                 throw;
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                RecordResult(false, halfOpen);
+                RecordResult(circuitKey, false, halfOpen);
                 throw;
             }
         }
         finally { state.Concurrency.Release(); }
     }
 
-    private bool TryEnterCircuit(out bool halfOpen)
+    private bool TryEnterCircuit(string circuitKey, out bool halfOpen)
     {
         lock (state.SyncRoot)
         {
+            var circuit = state.CircuitFor(circuitKey);
             halfOpen = false;
-            if (state.CircuitOpenUntil is null) return true;
-            if (timeProvider.GetUtcNow() < state.CircuitOpenUntil) return false;
-            if (state.HalfOpenRequestActive) return false;
-            state.HalfOpenRequestActive = true;
+            if (circuit.OpenUntil is null) return true;
+            if (timeProvider.GetUtcNow() < circuit.OpenUntil) return false;
+            if (circuit.HalfOpenRequestActive) return false;
+            circuit.HalfOpenRequestActive = true;
             halfOpen = true;
             return true;
         }
     }
 
-    private void RecordResult(bool succeeded, bool halfOpen)
+    private void RecordResult(string circuitKey, bool succeeded, bool halfOpen)
     {
         lock (state.SyncRoot)
         {
+            var circuit = state.CircuitFor(circuitKey);
             if (succeeded)
             {
-                state.ConsecutiveFailures = 0;
-                state.CircuitOpenUntil = null;
-                state.HalfOpenRequestActive = false;
+                circuit.ConsecutiveFailures = 0;
+                circuit.OpenUntil = null;
+                circuit.HalfOpenRequestActive = false;
                 return;
             }
 
-            state.HalfOpenRequestActive = false;
-            state.ConsecutiveFailures++;
-            if (halfOpen || state.ConsecutiveFailures >= Math.Clamp(options.CircuitFailureThreshold, 2, 50))
-                state.CircuitOpenUntil = timeProvider.GetUtcNow().Add(options.CircuitBreakDuration <= TimeSpan.Zero ? TimeSpan.FromSeconds(30) : options.CircuitBreakDuration);
+            circuit.HalfOpenRequestActive = false;
+            circuit.ConsecutiveFailures++;
+            if (halfOpen || circuit.ConsecutiveFailures >= Math.Clamp(options.CircuitFailureThreshold, 2, 50))
+                circuit.OpenUntil = timeProvider.GetUtcNow().Add(options.CircuitBreakDuration <= TimeSpan.Zero ? TimeSpan.FromSeconds(30) : options.CircuitBreakDuration);
         }
     }
 
@@ -124,6 +127,23 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         return string.IsNullOrWhiteSpace(sellerId) ? null : $"orders:{sellerId}";
     }
 
+    internal static string CircuitKeyFor(HttpRequestMessage request)
+    {
+        var uri = request.RequestUri;
+        if (uri is null) return "unknown:global";
+        const string marker = "/sellers/";
+        var sellerStart = uri.AbsolutePath.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (sellerStart >= 0)
+        {
+            sellerStart += marker.Length;
+            var sellerEnd = uri.AbsolutePath.IndexOf('/', sellerStart);
+            if (sellerEnd < 0) sellerEnd = uri.AbsolutePath.Length;
+            if (sellerEnd > sellerStart)
+                return $"{uri.Host}:seller:{uri.AbsolutePath[sellerStart..sellerEnd]}";
+        }
+        return $"{uri.Host}:global";
+    }
+
     private static HttpResponseMessage CircuitOpenResponse()
     {
         var response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
@@ -147,7 +167,22 @@ public sealed class TrendyolResilienceState
     public SemaphoreSlim Concurrency { get; }
     public object SyncRoot { get; } = new();
     public Dictionary<string, Queue<DateTimeOffset>> RequestStarts { get; } = new(StringComparer.Ordinal);
+    public Dictionary<string, TrendyolCircuitState> Circuits { get; } = new(StringComparer.Ordinal);
+
+    public TrendyolCircuitState CircuitFor(string key)
+    {
+        if (!Circuits.TryGetValue(key, out var circuit))
+        {
+            circuit = new TrendyolCircuitState();
+            Circuits[key] = circuit;
+        }
+        return circuit;
+    }
+}
+
+public sealed class TrendyolCircuitState
+{
     public int ConsecutiveFailures { get; set; }
-    public DateTimeOffset? CircuitOpenUntil { get; set; }
+    public DateTimeOffset? OpenUntil { get; set; }
     public bool HalfOpenRequestActive { get; set; }
 }

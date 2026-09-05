@@ -818,7 +818,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var phase = payload.Phase.Trim().ToUpperInvariant();
         if (phase == "SUBMIT")
         {
-            var current = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken);
+            var current = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId);
             if (!current.Succeeded)
             {
                 if (current.Error!.Code == "NO_EXTERNAL_CHANGES") return JobExecutionResult.Success();
@@ -3137,13 +3137,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         try { using var payload = JsonDocument.Parse(payloadJson); variantId = payload.RootElement.GetProperty("variantId").GetGuid(); }
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or FormatException) { return JobExecutionResult.Blocked("STOCK_PROJECTION_PAYLOAD_INVALID", "Stok projection işi geçersiz payload içeriyor."); }
         if (!await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId && x.Status == "ACTIVE", cancellationToken)) return JobExecutionResult.Success();
-        var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken);
+        var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, variantId);
         if (!build.Succeeded) return JobExecutionResult.Blocked(build.Error!.Code, build.Error.Message);
         var draft = build.Value!;
         var dedup = $"price-inventory:{connectionId:N}:{draft.PayloadHash}";
         if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken)) return JobExecutionResult.Success();
         var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
-        var jobPayload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null));
+        var jobPayload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId));
         db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = jobPayload, PayloadVersion = 1, PayloadHash = Hash(jobPayload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = 1, Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken);
         return JobExecutionResult.Success();

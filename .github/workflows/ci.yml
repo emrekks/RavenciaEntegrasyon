@@ -1,8 +1,9 @@
 name: Validate
 
-# Geçici olarak otomatik çalıştırma durduruldu. Gerektiğinde Actions ekranından
-# manuel olarak başlatılabilir.
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

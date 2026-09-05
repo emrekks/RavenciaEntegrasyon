@@ -15,7 +15,7 @@ public sealed class BreakGlassService(AppDbContext db, TimeProvider timeProvider
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, cancellationToken);
         var now = timeProvider.GetUtcNow();
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        security.TotpState = TotpState.Disabled; security.ProtectedTotpSecret = null; security.EnrollmentExpiresAt = null; security.LastAcceptedTimeStep = null; security.RecoveryBatchId = null;
+        security.TotpState = TotpState.Disabled; security.ProtectedTotpSecret = null; security.EnrollmentExpiresAt = null; security.PendingProtectedTotpSecret = null; security.PendingEnrollmentExpiresAt = null; security.LastAcceptedTimeStep = null; security.RecoveryBatchId = null; security.Version++;
         await db.RecoveryCodes.Where(x => x.UserId == user.Id && x.InvalidatedAt == null).ExecuteUpdateAsync(x => x.SetProperty(c => c.InvalidatedAt, now), cancellationToken);
         user.SessionVersion++;
         await db.UserSessions.Where(x => x.UserId == user.Id && x.State != SessionState.Revoked).ExecuteUpdateAsync(x => x.SetProperty(s => s.State, SessionState.Revoked).SetProperty(s => s.RevokedAt, now), cancellationToken);

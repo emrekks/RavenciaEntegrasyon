@@ -35,6 +35,10 @@ public sealed class UserSecurity
     public TotpState TotpState { get; set; }
     public string? ProtectedTotpSecret { get; set; }
     public DateTimeOffset? EnrollmentExpiresAt { get; set; }
+    // A replacement enrollment must not overwrite an already enabled factor
+    // until the new code is confirmed. These fields hold only the candidate.
+    public string? PendingProtectedTotpSecret { get; set; }
+    public DateTimeOffset? PendingEnrollmentExpiresAt { get; set; }
     public long? LastAcceptedTimeStep { get; set; }
     public Guid? RecoveryBatchId { get; set; }
     public long Version { get; set; }

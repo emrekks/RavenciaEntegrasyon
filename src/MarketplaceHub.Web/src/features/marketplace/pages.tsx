@@ -36,6 +36,9 @@ async function loadOrderPage(filters: OrderFilters, limit: number, after: string
   if (filters.platform !== 'ALL') params.set('platform', filters.platform)
   if (filters.listing !== 'ALL') params.set('listing', filters.listing)
   if (filters.cargo !== 'ALL') params.set('cargo', filters.cargo)
+  if (filters.invoice !== 'ALL') params.set('invoice', filters.invoice)
+  if (filters.invoiceType !== 'ALL') params.set('invoiceType', filters.invoiceType)
+  if (filters.invoiceRegion !== 'ALL') params.set('invoiceRegion', filters.invoiceRegion)
   if (filters.dateFrom) params.set('dateFrom', `${filters.dateFrom}T00:00:00.000Z`)
   if (filters.dateTo) params.set('dateTo', `${filters.dateTo}T23:59:59.999Z`)
   params.set('sort', filters.sort)
@@ -83,8 +86,18 @@ type InvoiceOperation = CreatedInvoice & { status: string; invoiceNumber: string
 type Shipment = { id: string; orderId: string; orderNumber: string; externalPackageId: string; status: string; rawStatus: string; cargoTrackingNumber: string | null; cargoProviderName: string | null; statusOccurredAt: string; version: number; isResend: boolean }
 type ShipmentDetail = { package: Shipment; allowedActions: string[]; supportedLabelFormats: string[]; isStageConnection: boolean; documents: Array<{ id: string; documentKind: string; format: string; source: string; documentVersion: number; createdAt: string; expiresAt: string | null }> }
 type ReturnClaim = { id: string; externalClaimId: string; orderNumber: string; status: string; rawStatus: string; reasonText: string | null; actionDueAt: string | null; approvedAt?: string | null; systemNote?: string | null; sellerDescription?: string | null; platformApprovalReason?: string | null; platformDescription?: string | null; version: number; customerName: string; orderedAt: string | null; orderAmount: number; currency: string; cargoProviderName: string | null; cargoTrackingNumber: string | null; primaryImageUrl: string | null; productCount: number; primaryBarcode: string | null; lines: OrderLine[] | null; packageNumber: string | null; invoiceStatus: string; grossAmount: number; discountAmount: number; isMicroExport: boolean }
-async function loadAllReturns(): Promise<Page<ReturnClaim>> {
-  return loadAllPages<ReturnClaim>('/returns')
+type ReturnFilters = { status: string; customer: string; orderNumber: string; claimCode: string; barcode: string; reason: string; from: string; to: string }
+async function loadAllReturns(filters: ReturnFilters): Promise<Page<ReturnClaim>> {
+  const params = new URLSearchParams()
+  if (filters.status !== 'ALL') params.set('status', filters.status)
+  if (filters.customer.trim()) params.set('customer', filters.customer.trim())
+  if (filters.orderNumber.trim()) params.set('orderNumber', filters.orderNumber.trim())
+  if (filters.claimCode.trim()) params.set('claimCode', filters.claimCode.trim())
+  if (filters.barcode.trim()) params.set('barcode', filters.barcode.trim())
+  if (filters.reason.trim()) params.set('reason', filters.reason.trim())
+  if (filters.from) params.set('dateFrom', `${filters.from}T00:00:00.000Z`)
+  if (filters.to) params.set('dateTo', `${filters.to}T23:59:59.999Z`)
+  return loadAllPages<ReturnClaim>(`/returns?${params.toString()}`)
 }
 type ReturnLine = { id: string; externalLineId: string; orderLineId: string; sku: string; barcode: string | null; title: string; quantity: number; disposedQuantity: number; remainingQuantity: number; unitPrice: number; imageUrl: string | null; hasInventoryMapping: boolean; color?: string | null; size?: string | null; approvedAt?: string | null; systemNote?: string | null; reasonText?: string | null; sellerDescription?: string | null; platformApprovalReason?: string | null; platformDescription?: string | null }; type ReturnDetail = Omit<ReturnClaim, 'lines'> & { reasonCode: string | null; allowedActions: string[]; lines: ReturnLine[] | null; stockDispositionAvailable: boolean }; type ReturnIssueReason = { id: string; name: string; evidenceRequired: boolean }
 type LocalCategory = { id: string; name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean; version: number }
@@ -772,7 +785,7 @@ export function OrdersPage() {
 
 
   const [pageCursors, setPageCursors] = useState<Record<number, string | null>>({ 1: null })
-  const hasLocalFilters = filters.invoice !== 'ALL' || filters.invoiceType !== 'ALL' || filters.invoiceRegion !== 'ALL' || filters.label !== 'ALL'
+  const hasLocalFilters = filters.label !== 'ALL'
   const orderCursor = pageCursors[page] ?? null
   const ordersQuery = useQuery({ queryKey: hasLocalFilters ? ['orders', 'filtered-all', filters] : ['orders', 'page', filters, pageSize, page, orderCursor], queryFn: () => hasLocalFilters ? loadAllOrderPages(filters) : loadOrderPage(filters, pageSize, orderCursor, page), placeholderData: keepPreviousData, staleTime: 30_000, refetchOnWindowFocus: true })
   const summary = useQuery({ queryKey: ['orders', 'summary', filters.platform], queryFn: () => hubApi<OrderSummary>(filters.platform === 'ALL' ? '/orders/summary' : `/orders/summary?platform=${encodeURIComponent(filters.platform)}`) })
@@ -800,8 +813,6 @@ export function OrdersPage() {
   const platforms = Array.from(new Set(all.map(item => item.platformCode).filter(Boolean)))
   const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura bekliyor'], ['FATURA_ISLENIYOR', 'Fatura işleniyor'], ['FATURA_KONTROLDE', 'Kontrolde'], ['FATURA_KESILDI', 'Fatura kesildi'], ['FATURA_REDDEDILDI', 'Reddedildi'], ['FATURA_IPTAL', 'İptal edildi']] as const
   const sortOptions = [['DATE_DESC', 'Sipariş Tarihi (Yeniden Eskiye)'], ['DATE_ASC', 'Sipariş Tarihi (Eskiden Yeniye)'], ['DUE_DESC', 'Kargoya Vermek İçin Kalan Süre (Yeniden Eskiye)'], ['DUE_ASC', 'Kargoya Vermek İçin Kalan Süre (Eskiden Yeniye)']] as const
-  const getInvoiceType = (item: Order) => item.orderType.toUpperCase() === 'KURUMSAL' ? 'KURUMSAL' : 'BIREYSEL'
-  const getInvoiceRegion = (item: Order) => item.isMicroExport ? 'MICRO_EXPORT' : 'TR'
   const isLabelPrinted = (item: Order) => Array.from(printedLabels).some(key => key.startsWith(`${item.id}:`))
   const updateFilter = <K extends keyof OrderFilters>(key: K, value: OrderFilters[K]) => setFilterForm(current => ({ ...current, [key]: value }))
   const applyFilterValue = <K extends keyof OrderFilters>(key: K, value: OrderFilters[K]) => { const next = { ...filterForm, [key]: value }; setFilterForm(next); setFilters(next); setPage(1) }
@@ -821,7 +832,7 @@ export function OrdersPage() {
   }
   // Status, search, platform, cargo, listing, date range, sort and pagination
   // are applied by the API. Only local presentation filters remain here.
-  const items = all.filter(item => (filters.invoice === 'ALL' || item.invoiceStatus === filters.invoice) && (filters.invoiceType === 'ALL' || getInvoiceType(item) === filters.invoiceType) && (filters.invoiceRegion === 'ALL' || getInvoiceRegion(item) === filters.invoiceRegion) && (filters.label === 'ALL' || (filters.label === 'PRINTED' ? isLabelPrinted(item) : !isLabelPrinted(item))))
+  const items = all.filter(item => filters.label === 'ALL' || (filters.label === 'PRINTED' ? isLabelPrinted(item) : !isLabelPrinted(item)))
   function exportOrders() {
     const escapeCsv = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`
     const rows = [
@@ -1001,21 +1012,17 @@ function ReturnReferenceRow({ item, order }: { item: ReturnClaim; order: Order |
 export function ReturnsPage() {
   const [status, setStatus] = useState('ALL'); const [customer, setCustomer] = useState(''); const [orderNumber, setOrderNumber] = useState(''); const [claimCode, setClaimCode] = useState(''); const [barcode, setBarcode] = useState(''); const [reason, setReason] = useState(''); const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [draft, setDraft] = useState(true); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1)
   const client = useQueryClient(); const [notice, setNotice] = useState('')
-  const query = useQuery({ queryKey: ['returns'], queryFn: loadAllReturns })
+  const returnFilters: ReturnFilters = { status, customer, orderNumber, claimCode, barcode, reason, from, to }
+  const query = useQuery({ queryKey: ['returns', returnFilters], queryFn: () => loadAllReturns(returnFilters) })
   const connections = useQuery({ queryKey: ['connections', 'returns'], queryFn: () => loadAllPages<Connection>('/connections') })
   const trendyolConnection = connections.data?.items.find(item => item.platformCode === 'TRENDYOL' && (item.status === 'ACTIVE' || item.status === 'VERIFIED'))
   const sync = useMutation({ mutationFn: () => { if (!trendyolConnection) throw new Error('Aktif Trendyol bağlantısı bulunamadı.'); return hubApi(`/connections/${trendyolConnection.id}/return-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() } }) }, onSuccess: async () => { setNotice('İade eşitlemesi kuyruğa alındı. İş tamamlandığında kayıtlar otomatik yenilenir.'); await client.invalidateQueries({ queryKey: ['returns'] }) }, onError: value => setNotice(value instanceof Error ? value.message : 'İade eşitlemesi başlatılamadı.') })
   const items = query.data?.items ?? []
   const tabs = [['ALL', 'Tüm İadeler'], ['REQUESTED', 'Talep Oluşturulan'], ['SHIPPING', 'Kargoya Verilen'], ['ACTION_REQUIRED', 'Aksiyon Bekleyen'], ['APPROVED', 'Onaylanan'], ['REJECTED', 'Reddedilen'], ['REVIEW', 'Analiz'], ['DISPUTED', 'İhtilaflı'], ['SUSPENDED', 'Askıda İadeler']] as const
-  const norm = (value: string | null) => (value ?? '').toLocaleLowerCase('tr-TR')
-  const reasons = Array.from(new Set(items.map(item => item.reasonText).filter((value): value is string => Boolean(value))))
-  const visible = items.filter(item => {
-    const date = item.orderedAt?.slice(0, 10) ?? ''
-    return (status === 'ALL' || returnGroup(item.status) === status) && (!draft || (!customer || norm(item.customerName).includes(norm(customer))) && (!orderNumber || item.orderNumber.includes(orderNumber)) && (!claimCode || norm(item.externalClaimId).includes(norm(claimCode))) && (!barcode || [item.primaryBarcode ?? '', ...(item.lines ?? []).map(line => line.barcode ?? '')].some(value => norm(value).includes(norm(barcode)))) && (!reason || item.reasonText === reason) && (!from || date >= from) && (!to || date <= to))
-  })
+  const visible = items
   useEffect(() => { setPageNumber(1) }, [status, customer, orderNumber, claimCode, barcode, reason, from, to, draft, pageSize])
   const totalPages = Math.max(1, Math.ceil(visible.length / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const visibleItems = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-  function clearFilters() { setCustomer(''); setOrderNumber(''); setClaimCode(''); setBarcode(''); setReason(''); setFrom(''); setTo(''); setDraft(true); setPageNumber(1) }
+  function clearFilters() { setStatus('ALL'); setCustomer(''); setOrderNumber(''); setClaimCode(''); setBarcode(''); setReason(''); setFrom(''); setTo(''); setDraft(true); setPageNumber(1) }
   return <section className="content f3 returns-page reference-returns-page">
     <div className="page-heading returns-reference-heading">
       <div><h1>İade Yönetimi</h1><p className="lede">Pazaryerlerinden gelen iade taleplerini tek merkezden izleyin ve yönetin.</p></div>
@@ -1023,7 +1030,7 @@ export function ReturnsPage() {
     </div>
     <div className="returns-reference-filter-shell">
       <div className="return-reference-tabs" role="tablist" aria-label="İade durumları">{tabs.map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={status === value} className={status === value ? 'active' : ''} onClick={() => setStatus(value)}><span>{label}</span><b>{value === 'ALL' ? items.length : items.filter(item => returnGroup(item.status) === value).length}</b></button>)}</div>
-      <section className="return-reference-filters" aria-label="İade filtreleri"><input aria-label="Müşteri adı" placeholder="Müşteri adı" value={customer} onChange={event => setCustomer(event.target.value)} /><input aria-label="Sipariş no" placeholder="Sipariş no" value={orderNumber} onChange={event => setOrderNumber(event.target.value)} /><input aria-label="İade kodu" placeholder="İade kodu" value={claimCode} onChange={event => setClaimCode(event.target.value)} /><input aria-label="Barkod" placeholder="Barkod" value={barcode} onChange={event => setBarcode(event.target.value)} /><select aria-label="İade sebebi" value={reason} onChange={event => setReason(event.target.value)}><option value="">İade sebebi</option>{reasons.map(value => <option key={value}>{value}</option>)}</select><input aria-label="İade talep başlangıç tarihi" type="date" value={from} onChange={event => setFrom(event.target.value)} /><input aria-label="İade talep bitiş tarihi" type="date" value={to} onChange={event => setTo(event.target.value)} /><div className="return-filter-actions"><button type="button" className="secondary" onClick={clearFilters}>Temizle</button><button type="button" onClick={() => setDraft(true)}>Filtrele</button></div></section>
+      <section className="return-reference-filters" aria-label="İade filtreleri"><input aria-label="Müşteri adı" placeholder="Müşteri adı" value={customer} onChange={event => setCustomer(event.target.value)} /><input aria-label="Sipariş no" placeholder="Sipariş no" value={orderNumber} onChange={event => setOrderNumber(event.target.value)} /><input aria-label="İade kodu" placeholder="İade kodu" value={claimCode} onChange={event => setClaimCode(event.target.value)} /><input aria-label="Barkod" placeholder="Barkod" value={barcode} onChange={event => setBarcode(event.target.value)} /><input aria-label="İade sebebi" placeholder="İade sebebi" value={reason} onChange={event => setReason(event.target.value)} /><input aria-label="İade talep başlangıç tarihi" type="date" value={from} onChange={event => setFrom(event.target.value)} /><input aria-label="İade talep bitiş tarihi" type="date" value={to} onChange={event => setTo(event.target.value)} /><div className="return-filter-actions"><button type="button" className="secondary" onClick={clearFilters}>Temizle</button><button type="button" onClick={() => setDraft(true)}>Filtrele</button></div></section>
     </div>
     {notice && <div role="status" className="notice">{notice}</div>}
     <section className="return-reference-workspace"><header><div><h2>{tabs.find(tab => tab[0] === status)?.[1]}</h2><p>Filtreleme sonuçları: Toplam {visible.length} iade bilgisi · Sayfa {currentPage}/{totalPages}</p></div><div className="return-reference-header-actions"><label>Sayfa başına<select aria-label="Sayfa başına iade" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label></div></header>{query.isLoading ? <Busy /> : query.isError ? <ErrorBox error={query.error} /> : !visible.length ? <Empty>{items.length ? 'Seçili filtreyle eşleşen iade yok.' : 'İadeleri eşitle düğmesiyle güncel talepleri çekin.'}</Empty> : <><div className="return-reference-table" role="table"><div className="return-reference-head" role="row"><strong>Sipariş Bilgileri</strong><strong>Alıcı</strong><strong>Bilgiler</strong><strong>Birim Fiyat</strong><strong>Kargo</strong><strong>Fatura</strong><strong>İade Sebebi</strong><strong>Durum</strong></div>{visibleItems.map(item => <ReturnReferenceRow key={item.id} item={item} order={null} />)}</div><nav className="return-pagination order-pagination" aria-label="İade sayfaları"><span>{(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, visible.length)} / {visible.length}</span><div><button type="button" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}>Önceki</button><strong>Sayfa {currentPage} / {totalPages}</strong><button type="button" disabled={currentPage >= totalPages} onClick={() => setPageNumber(value => Math.min(totalPages, value + 1))}>Sonraki</button></div></nav></>}</section>

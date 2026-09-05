@@ -24,6 +24,15 @@ public sealed class TrendyolResilienceHandlerTests
     }
 
     [Fact]
+    public void Circuit_IsolatedBySeller()
+    {
+        using var first = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-1/orders/stream");
+        using var second = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-2/orders/stream");
+
+        Assert.NotEqual(TrendyolResilienceHandler.CircuitKeyFor(first), TrendyolResilienceHandler.CircuitKeyFor(second));
+    }
+
+    [Fact]
     public async Task TooManyRequests_OpensCircuitAfterConfiguredFailures()
     {
         using var downstream = new SequenceHandler(HttpStatusCode.TooManyRequests, HttpStatusCode.TooManyRequests, HttpStatusCode.OK);

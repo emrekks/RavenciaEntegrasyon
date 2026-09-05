@@ -1,6 +1,6 @@
+using System.Text.Json;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
-using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -231,7 +231,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.Entity<UserSecurity>(entity =>
         {
             entity.ToTable("user_security", "iam"); entity.HasKey(x => x.UserId);
-            entity.Property(x => x.TotpState).HasConversion(TotpStateConverter).HasMaxLength(24); entity.Property(x => x.ProtectedTotpSecret).HasMaxLength(2048);
+            entity.Property(x => x.TotpState).HasConversion(TotpStateConverter).HasMaxLength(24); entity.Property(x => x.ProtectedTotpSecret).HasMaxLength(2048); entity.Property(x => x.PendingProtectedTotpSecret).HasMaxLength(2048);
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasOne<ApplicationUser>().WithOne().HasForeignKey<UserSecurity>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });

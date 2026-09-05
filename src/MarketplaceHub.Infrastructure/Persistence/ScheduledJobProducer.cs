@@ -65,7 +65,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
             var hasOrderSnapshots = definition.Value.JobType != MarketplaceJobTypes.OrderSync
                 || await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken);
-            if (hasOrderSnapshots && latest is not null && latest.Value.AddSeconds(interval) > now) continue;
+            var jitterSeconds = StableJitterSeconds(row.Connection.Id, row.Policy.ResourceType, row.Policy.JitterSeconds);
+            if (hasOrderSnapshots && latest is not null && latest.Value.AddSeconds(interval + jitterSeconds) > now) continue;
 
             var bucket = now.ToUnixTimeSeconds() / interval;
             var dedup = $"{definition.Value.DedupPrefix}:{bucket}";
@@ -186,27 +187,48 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     private IReadOnlyList<PolicyDefaults> DefaultPolicies() =>
     [
-        new("ORDERS", configuration.GetValue("MarketplaceSync:Orders:IntervalSeconds", 60), configuration.GetValue("MarketplaceSync:Orders:SafetyWindowSeconds", 600), 0),
-        new("ORDER_RECOVERY", configuration.GetValue("MarketplaceSync:OrderRecovery:IntervalSeconds", 900), configuration.GetValue("MarketplaceSync:OrderRecovery:SafetyWindowSeconds", 600), 0),
-        new("ORDER_LIFECYCLE", configuration.GetValue("MarketplaceSync:OrderLifecycle:IntervalSeconds", 180), 0, 0),
-        new("ORDER_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:OrderReconciliation:ShortIntervalSeconds", 900), 0, 0),
-        new("ORDER_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:OrderReconciliation:MediumIntervalSeconds", 3600), 0, 0),
-        new("ORDER_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:OrderReconciliation:DailyIntervalSeconds", 86_400), 0, 0),
-        new("ORDER_INVOICE_RECONCILIATION", configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:IntervalSeconds", 900), 0, 0),
-        new("RETURNS", configuration.GetValue("MarketplaceSync:Returns:IntervalSeconds", 180), configuration.GetValue("MarketplaceSync:Returns:SafetyWindowSeconds", 900), 0),
-        new("RETURN_LIFECYCLE", configuration.GetValue("MarketplaceSync:ReturnLifecycle:IntervalSeconds", 180), 0, 0),
-        new("RETURN_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:ReturnReconciliation:ShortIntervalSeconds", 900), 0, 0),
-        new("RETURN_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:ReturnReconciliation:MediumIntervalSeconds", 3600), 0, 0),
-        new("RETURN_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyIntervalSeconds", 86_400), 0, 0),
-        new("STOCK_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:StockReconciliation:ShortIntervalSeconds", 900), 0, 0),
-        new("STOCK_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:StockReconciliation:MediumIntervalSeconds", 3600), 0, 0),
-        new("STOCK_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:StockReconciliation:DailyIntervalSeconds", 86_400), 0, 0)
+        new("ORDERS", configuration.GetValue("MarketplaceSync:Orders:IntervalSeconds", 60), configuration.GetValue("MarketplaceSync:Orders:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:Orders:JitterSeconds", 5)),
+        new("ORDER_RECOVERY", configuration.GetValue("MarketplaceSync:OrderRecovery:IntervalSeconds", 900), configuration.GetValue("MarketplaceSync:OrderRecovery:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:OrderRecovery:JitterSeconds", 30)),
+        new("ORDER_LIFECYCLE", configuration.GetValue("MarketplaceSync:OrderLifecycle:IntervalSeconds", 180), 0, configuration.GetValue("MarketplaceSync:OrderLifecycle:JitterSeconds", 10)),
+        new("ORDER_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:OrderReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:OrderReconciliation:ShortJitterSeconds", 30)),
+        new("ORDER_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:OrderReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:OrderReconciliation:MediumJitterSeconds", 120)),
+        new("ORDER_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:OrderReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:OrderReconciliation:DailyJitterSeconds", 900)),
+        new("ORDER_INVOICE_RECONCILIATION", configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:IntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:JitterSeconds", 30)),
+        new("RETURNS", configuration.GetValue("MarketplaceSync:Returns:IntervalSeconds", 180), configuration.GetValue("MarketplaceSync:Returns:SafetyWindowSeconds", 900), configuration.GetValue("MarketplaceSync:Returns:JitterSeconds", 10)),
+        new("RETURN_LIFECYCLE", configuration.GetValue("MarketplaceSync:ReturnLifecycle:IntervalSeconds", 180), 0, configuration.GetValue("MarketplaceSync:ReturnLifecycle:JitterSeconds", 10)),
+        new("RETURN_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:ReturnReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:ShortJitterSeconds", 30)),
+        new("RETURN_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:ReturnReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:MediumJitterSeconds", 120)),
+        new("RETURN_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyJitterSeconds", 900)),
+        new("STOCK_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:StockReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:ShortJitterSeconds", 30)),
+        new("STOCK_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:StockReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:MediumJitterSeconds", 120)),
+        new("STOCK_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:StockReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:DailyJitterSeconds", 900))
     ];
 
-    private static bool IsKnownDefault(ConnectionSyncPolicy current) =>
-        current.IntervalSeconds == 300 && current.OverlapSeconds is 60 or 120 && current.JitterSeconds == 15
-        || current.ResourceType == "ORDERS" && current.IntervalSeconds == 30 && current.OverlapSeconds == 600 && current.JitterSeconds == 2
-        || current.ResourceType == "RETURNS" && current.IntervalSeconds == 60 && current.OverlapSeconds == 900 && current.JitterSeconds == 5;
+    private static bool IsKnownDefault(ConnectionSyncPolicy current)
+    {
+        if (current.IntervalSeconds == 300 && (current.OverlapSeconds == 60 || current.OverlapSeconds == 120) && current.JitterSeconds == 15) return true;
+        return current.ResourceType switch
+        {
+            "ORDERS" => current.IntervalSeconds == 30 && current.OverlapSeconds == 600 && current.JitterSeconds == 2
+                || current.IntervalSeconds == 60 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 5),
+            "ORDER_RECOVERY" => current.IntervalSeconds == 900 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
+            "RETURNS" => current.IntervalSeconds == 60 && current.OverlapSeconds == 900 && current.JitterSeconds == 5
+                || current.IntervalSeconds == 180 && current.OverlapSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
+            "ORDER_LIFECYCLE" or "RETURN_LIFECYCLE" => current.IntervalSeconds == 180 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
+            "ORDER_RECONCILE_SHORT" or "RETURN_RECONCILE_SHORT" or "STOCK_RECONCILE_SHORT" => current.IntervalSeconds == 900 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
+            "ORDER_RECONCILE_MEDIUM" or "RETURN_RECONCILE_MEDIUM" or "STOCK_RECONCILE_MEDIUM" => current.IntervalSeconds == 3600 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 120),
+            "ORDER_RECONCILE_DAILY" or "RETURN_RECONCILE_DAILY" or "STOCK_RECONCILE_DAILY" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
+            "ORDER_INVOICE_RECONCILIATION" => current.IntervalSeconds == 900 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
+            _ => false
+        };
+    }
+
+    private static int StableJitterSeconds(Guid connectionId, string resourceType, int maximum)
+    {
+        if (maximum <= 0) return 0;
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes($"{connectionId:N}:{resourceType}"));
+        return (int)(BitConverter.ToUInt32(digest, 0) % (uint)(maximum + 1));
+    }
 
     private static bool IsOrderBackgroundJob(string jobType) =>
         jobType is MarketplaceJobTypes.OrderRecoverySync
