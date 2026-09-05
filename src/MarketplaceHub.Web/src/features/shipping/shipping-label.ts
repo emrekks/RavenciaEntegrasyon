@@ -199,8 +199,15 @@ export function loadShippingLabelSettings(): ShippingLabelSettings {
   }
 }
 
-export function saveShippingLabelSettings(settings: ShippingLabelSettings) {
-  try { localStorage.setItem(storageKey, JSON.stringify(settings)) } catch { /* Private browsing may disallow local storage. */ }
+export function saveShippingLabelSettings(settings: ShippingLabelSettings): boolean {
+  try {
+    const serialized = JSON.stringify(settings)
+    localStorage.setItem(storageKey, serialized)
+    return localStorage.getItem(storageKey) === serialized
+  } catch {
+    // Private browsing or storage quota/security policies may disallow local storage.
+    return false
+  }
 }
 
 const printedLabelsStorageKey = 'ravencia.printedShippingLabels'
