@@ -2998,10 +2998,7 @@ body:has(.product-add-page),
   grid-template-columns: max-content minmax(0, 1fr);
   gap: 8px;
   align-items: start;
-  padding-bottom: 5px;
-  border-bottom: 1px solid rgba(169, 177, 255, .16);
 }
-.app-shell.stitch-shell .product-variant-tooltip-row:last-child { padding-bottom: 0; border-bottom: 0; }
 .app-shell.stitch-shell .product-variant-tooltip-row > strong { color: #fff; font-size: 10px; white-space: nowrap; }
 .app-shell.stitch-shell .product-variant-tooltip-row > span { color: #d2d7ff; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
 .product-import-progress { display: grid; gap: 11px; padding: 14px; background: rgba(88,101,242,.08); border: 1px solid rgba(105,117,255,.45); border-radius: 8px; }
