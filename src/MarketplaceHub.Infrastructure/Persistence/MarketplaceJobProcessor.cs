@@ -1677,8 +1677,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Where(item => item.Axis is not null && !string.IsNullOrWhiteSpace(item.Value))
             .GroupBy(item => item.Axis!, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Select(item => item.Value).ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal);
+        var candidateRemoteAttributes = remoteAttributes
+            .Where(x => x.IsRequired == true || observedNames.Contains(NormalizeCatalogKey(x.Name, 320)) || VariantOptionAxis(x.Name) is not null)
+            .ToList();
         var valuesByAttribute = new Dictionary<string, IReadOnlyList<ReferenceItem>>(StringComparer.Ordinal);
-        foreach (var remoteAttribute in remoteAttributes.Where(x => x.IsRequired == true || observedNames.Contains(NormalizeCatalogKey(x.Name, 320)) || VariantOptionAxis(x.Name) is not null))
+        foreach (var remoteAttribute in candidateRemoteAttributes)
         {
             var valueSnapshot = await EnsureReferenceSnapshot(tenantId, connectionId, "ATTRIBUTE_VALUES", $"{externalCategoryId}/{remoteAttribute.ExternalId}", correlationId, cancellationToken);
             if (valueSnapshot is null) continue;
@@ -1688,16 +1691,45 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .ToListAsync(cancellationToken);
             if (ObservedVariantValueAxis(remoteAttribute.Name) is { } axis && observedOptionValues.TryGetValue(axis, out var usedValues))
                 values = values.Where(value => usedValues.Contains(NormalizeCatalogKey(value.Name, 320))).ToList();
-            valuesByAttribute[remoteAttribute.ExternalId] = values;
+            // A category definition without active values is not a usable
+            // product attribute. Do not create a text fallback for it: that
+            // is what previously filled imported products with empty fields.
+            if (values.Count > 0)
+                valuesByAttribute[remoteAttribute.ExternalId] = values;
         }
 
         var localCategory = await EnsureMappedCategory(tenantId, connectionId, categorySnapshot, categoryItem, cancellationToken);
         var attributes = new Dictionary<string, LocalCategoryAttribute>(StringComparer.Ordinal);
-        foreach (var remoteAttribute in remoteAttributes)
+        foreach (var remoteAttribute in candidateRemoteAttributes.Where(x => valuesByAttribute.ContainsKey(x.ExternalId)))
         {
-            var values = valuesByAttribute.TryGetValue(remoteAttribute.ExternalId, out var fetchedValues) ? fetchedValues : [];
+            var values = valuesByAttribute[remoteAttribute.ExternalId];
             var localAttribute = await EnsureMappedAttribute(tenantId, connectionId, localCategory, categoryItem, attributeSnapshot, remoteAttribute, values, importedAttributeLibrary, cancellationToken);
             attributes[NormalizeCatalogKey(remoteAttribute.Name, 320)] = localAttribute;
+        }
+
+        // Hide stale requirements created by older importer versions when the
+        // marketplace no longer provides any values for the mapped attribute.
+        // Keep the row for audit/recovery, but remove it from the product
+        // editor and required-attribute validation until values return.
+        var importedAttributeIds = await db.AttributeMappings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == externalCategoryId && x.Status == "VERIFIED")
+            .Select(x => x.LocalId)
+            .ToListAsync(cancellationToken);
+        var visibleAttributeIds = attributes.Values.Select(x => x.Definition.Id).ToHashSet();
+        if (importedAttributeIds.Count > 0)
+        {
+            var staleRequirements = await db.CategoryAttributeRequirements
+                .Where(x => x.TenantId == tenantId && x.CategoryId == localCategory.Id && importedAttributeIds.Contains(x.AttributeId) && !visibleAttributeIds.Contains(x.AttributeId))
+                .ToListAsync(cancellationToken);
+            foreach (var stale in staleRequirements)
+            {
+                if (!stale.IsPanelScoped && stale.Role == "ATTRIBUTE") continue;
+                stale.IsPanelScoped = false;
+                stale.Role = "ATTRIBUTE";
+                stale.IsRequired = false;
+                stale.AllowsCustomValue = false;
+                stale.Version++;
+            }
         }
 
         var result = new CategoryAttributeContext(localCategory, externalCategoryId, attributes);
