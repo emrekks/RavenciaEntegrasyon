@@ -59,8 +59,8 @@ function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[
 
 function variantColorKey(variant: Variant) {
   const color = parseVariantOptionSignature(variant.optionSignature).find(option => {
-    const name = option.name.replace(/\s+/g, '').toLocaleUpperCase('tr-TR')
-    return name === 'RENK' || name === 'COLOR' || name === 'COLOUR' || name === 'WEBCOLOR'
+    const name = option.name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')
+    return name === 'RENK' || name === 'COLOR' || name === 'COLOUR' || name === 'WEBCOLOR' || name === 'WEBCOLOUR' || name === 'WEBRENK'
   })
   return color?.value.trim().toLocaleLowerCase('tr-TR') || null
 }
@@ -192,7 +192,7 @@ function productVariantDisplayGroups(variants: Variant[]) {
   }
   for (const variant of variants) {
     const options = parseVariantOptionSignature(variant.optionSignature)
-    const color = options.find(option => ['RENK', 'COLOR', 'COLOUR', 'WEBCOLOR'].includes(option.name.replace(/\s+/g, '').toLocaleUpperCase('tr-TR')))
+    const color = options.find(option => ['RENK', 'COLOR', 'COLOUR', 'WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(option.name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')))
     const size = options.find(option => ['BEDEN', 'SIZE', 'SIZ', 'NUMARA', 'NUMBER'].includes(option.name.replace(/\s+/g, '').toLocaleUpperCase('tr-TR')))
     if (color) {
       add(`color:${color.value.toLocaleLowerCase('tr-TR')}`, color.value, size?.value ?? (options.filter(option => option !== color).map(option => `${option.name}: ${option.value}`).join(' · ') || variant.sku))
@@ -250,7 +250,7 @@ function variantSignatureKey(signature: string) {
 }
 
 function isVariantOptionName(name: string) {
-  const normalized = name.replace(/\s+/g, '').toLocaleUpperCase('tr-TR')
+  const normalized = name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')
   return ['RENK', 'COLOR', 'COLOUR', 'WEBCOLOR', 'WEBCOLOUR', 'WEBRENK', 'BEDEN', 'SIZE', 'SIZ', 'NUMARA', 'NUMBER'].includes(normalized)
 }
 
@@ -1154,7 +1154,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   // the mapping workspace for maintenance, but must not become empty product
   // fields or validation requirements.
   const mappedRequirements = useMemo(() => allRequirements.filter(item => item.attribute.values.length > 0), [allRequirements])
-  const optionRequirements = useMemo(() => mappedRequirements.filter(item => item.role === 'OPTION' || isVariantOptionName(item.attribute.name)).slice(0, 2), [mappedRequirements])
+  const optionRequirements = useMemo(() => mappedRequirements.filter(item => !['WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(item.attribute.name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')) && (item.role === 'OPTION' || isVariantOptionName(item.attribute.name))).slice(0, 2), [mappedRequirements])
   useEffect(() => {
     const optionIds = optionRequirements.map(item => item.attributeId)
     setVariantAttributeIds(current => current.filter(id => optionIds.includes(id)))
@@ -1533,10 +1533,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const groups: VariantMediaGroup[] = []
     const names = new Set<string>()
     const addGroup = (group: VariantMediaGroup) => {
-      const name = group.name.trim().toLocaleLowerCase('tr-TR')
+      const canonicalName = ['WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(group.name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')) ? 'Renk' : group.name.trim()
+      const name = canonicalName.toLocaleLowerCase('tr-TR')
       if (!group.values.length || names.has(name)) return
       names.add(name)
-      groups.push(group)
+      groups.push({ ...group, name: canonicalName })
     }
     // Existing products expose their persisted option groups separately from
     // category requirements. Prefer these IDs/values so imported variants such
@@ -1733,7 +1734,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <div className="variant-filter-panel">
             <div className="variant-filter-panel-head"><div><strong>Varyantları filtrele</strong><span>Renk, beden gibi seçenekleri seçin; eşleşen satırlar aşağıda vurgulansın.</span></div><div className="variant-filter-panel-summary"><b>{hasVariantFilters ? `${matchingVariantCount} varyant seçildi` : 'Tüm varyantlar seçili'}</b>{hasVariantFilters && <button type="button" className="variant-filter-clear" onClick={clearVariantFilters}>Filtreleri temizle</button>}</div></div>
             {variantFilterGroups.length ? <div className="variant-filter-grid">{variantFilterGroups.map(group => <VariantFilterDropdown key={group.id} group={group} selectedValueIds={variantFilterSelections[group.id] ?? []} onToggle={valueId => toggleVariantFilter(group.id, valueId)} onClear={() => setVariantFilterSelections(current => ({ ...current, [group.id]: [] }))} />)}</div> : <p className="variant-filter-empty">Filtrelemek için seçenek grubu bulunamadı.</p>}
-            <p className="variant-filter-help">Aynı grupta birden fazla değer seçildiğinde <strong>veya</strong>, farklı gruplarda seçim yapıldığında <strong>ve</strong> mantığı uygulanır. Örneğin 2 renk + 2 beden, 4 eşleşen varyantı seçer.</p>
           </div>
           <div className="variant-bulk-editor"><input value={bulkStock} onChange={event => setBulkStock(event.target.value)} type="number" min="0" placeholder="Tüm stoklar" /><input value={bulkSalePrice} onChange={event => setBulkSalePrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm satış fiyatları" /><input value={bulkListPrice} onChange={event => setBulkListPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm liste fiyatları" /><button type="button" className="secondary" onClick={applyBulk} disabled={hasVariantFilters && matchingVariantCount === 0}>{hasVariantFilters ? `${matchingVariantCount} seçilene uygula` : 'Tümüne uygula'}</button></div>
             <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary variant-clear-button" onClick={clearVariants}>Oluşan varyantları temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere görsel ata</button></div></div>

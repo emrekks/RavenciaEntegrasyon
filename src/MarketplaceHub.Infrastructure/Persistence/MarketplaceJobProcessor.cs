@@ -1908,6 +1908,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             attributeMapping.Version++;
         }
 
+        // Web Color is a marketplace presentation field, not a second local
+        // option group. Its many-to-one value mapping is maintained explicitly
+        // in the mapping workspace (for example Mürdüm -> Mor), so importing
+        // the remote list must not create marketplace-named values under the
+        // panel's Renk attribute or overwrite those custom mappings.
+        if (IsWebColorOptionKey(remoteAttribute.Name))
+            return new LocalCategoryAttribute(attribute, remoteAttribute, values, role);
+
         foreach (var remoteValue in values)
         {
             var normalizedValue = NormalizeCatalogKey(remoteValue.Name, 320);
@@ -2108,7 +2116,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (remoteValue is not null)
         {
             var mapping = db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId && x.Status == "VERIFIED")
-                ?? await db.AttributeValueMappings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId && x.Status == "VERIFIED", cancellationToken);
+                ?? await db.AttributeValueMappings.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId && x.Status == "VERIFIED", cancellationToken);
             if (mapping is not null)
             {
                 var mappedValue = db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Id == mapping.LocalId && x.AttributeId == mapped.Definition.Id && x.IsActive)
@@ -2134,7 +2142,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             Snapshot = snapshot,
             // Reprocess existing catalog products after changing mapped
             // attribute assignment semantics, not only newly fetched rows.
-            OptionRoleVersion = "catalog-options-v4-color-option"
+            OptionRoleVersion = "catalog-options-v5-web-color-mapping"
         }));
         var isNewProduct = false;
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
@@ -2197,6 +2205,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         if (!preserveLocal)
         {
+            await NormalizeLegacyWebColorOptions(tenantId, product.Id, cancellationToken);
             var importedVariants = new List<ProductVariant>(snapshot.Variants.Count);
             foreach (var remote in snapshot.Variants)
             {
@@ -2230,6 +2239,40 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         link.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return !preserveLocal;
+    }
+
+    private async Task NormalizeLegacyWebColorOptions(Guid tenantId, Guid productId, CancellationToken cancellationToken)
+    {
+        var options = await db.ProductOptions
+            .Where(x => x.TenantId == tenantId && x.ProductId == productId)
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var legacy = options.Where(x => IsWebColorOptionKey(x.Label) || IsWebColorOptionKey(x.NormalizedKey)).ToList();
+        if (legacy.Count == 0) return;
+
+        var canonical = options.FirstOrDefault(x => IsColorOptionKey(x.Label) && !IsWebColorOptionKey(x.Label))
+            ?? options.FirstOrDefault(x => string.Equals(x.NormalizedKey, NormalizeCatalogKey("Renk", 160), StringComparison.Ordinal));
+        if (canonical is null)
+        {
+            canonical = legacy[0];
+            canonical.Label = "Renk";
+            canonical.NormalizedKey = NormalizeCatalogKey("Renk", 160);
+            legacy.RemoveAt(0);
+        }
+
+        foreach (var duplicate in legacy)
+        {
+            var assignments = await db.VariantOptionValues
+                .Where(x => x.TenantId == tenantId && x.OptionId == duplicate.Id)
+                .ToListAsync(cancellationToken);
+            db.VariantOptionValues.RemoveRange(assignments);
+            var values = await db.ProductOptionValues
+                .Where(x => x.TenantId == tenantId && x.OptionId == duplicate.Id)
+                .ToListAsync(cancellationToken);
+            db.ProductOptionValues.RemoveRange(values);
+            db.ProductOptions.Remove(duplicate);
+        }
     }
 
     private async Task<bool> CatalogSnapshotAlreadyApplied(Guid tenantId, Guid productId, RemoteCatalogProduct snapshot, CancellationToken cancellationToken)
