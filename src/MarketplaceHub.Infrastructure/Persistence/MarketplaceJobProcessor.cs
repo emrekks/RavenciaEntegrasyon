@@ -2134,7 +2134,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var remoteHash = Hash(JsonSerializer.Serialize(new
         {
             Snapshot = snapshot,
-            OptionRoleVersion = "catalog-options-v2-color"
+            // Reprocess existing catalog products after changing mapped
+            // attribute assignment semantics, not only newly fetched rows.
+            OptionRoleVersion = "catalog-options-v3-mapped-attributes"
         }));
         var isNewProduct = false;
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
