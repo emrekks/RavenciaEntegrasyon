@@ -103,9 +103,6 @@ type ReturnLine = { id: string; externalLineId: string; orderLineId: string; sku
 type LocalCategory = { id: string; name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean; version: number }
 type LocalBrand = { id: string; name: string; isActive: boolean; version: number }
 type LocalAttribute = { id: string; code: string; name: string; dataType: string; isActive: boolean; version: number; roles?: string[] | null; values: { id: string; value: string; sortOrder: number; isActive: boolean }[] }
-type ReferenceSyncAccepted = { value?: string; id?: string; jobId?: string; Value?: string; Id?: string; JobId?: string; error?: { message?: string; Message?: string } | null; Error?: { message?: string; Message?: string } | null }
-type ReferenceSyncJob = { job: { status: string; lastErrorCode?: string | null; lastErrorSummary?: string | null } }
-type ReferenceSyncJobSummary = { id: string; connectionId?: string | null; jobType: string; status: string; createdAt: string; lastErrorCode?: string | null; lastErrorSummary?: string | null }
 type CategoryRequirementView = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; attribute: LocalAttribute }
 type AttributeRequirementCommand = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION' }
 type ReferenceItem = { externalId: string; parentExternalId: string | null; name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean; isRequired: boolean | null; allowsCustomValue: boolean | null; allowsMultipleValues: boolean | null }
@@ -1635,29 +1632,12 @@ export function BrandMappingPage() {
   const mapping = useQuery({ queryKey: ['brand-mapping', localId, connectionId], queryFn: () => hubApi<CatalogMapping | null>(`/mappings/brands/${localId}?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!localId && !!connectionId, retry: false })
   const brandMappings = useQuery({ queryKey: ['brand-mappings', connectionId], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/brands?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!connectionId, retry: false })
   const syncBrands = useMutation({
-    mutationFn: async () => {
+    mutationFn: () => {
       if (!connectionId) throw new Error('Aktif Trendyol bağlantısı bulunamadı.')
-      const requestedAt = Date.now()
-      const queued = await hubApi<ReferenceSyncAccepted | string>(`/connections/${connectionId}/reference-sync-jobs?resourceType=BRANDS`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' })
-      let jobId = typeof queued === 'string' ? queued : queued.value ?? queued.id ?? queued.jobId ?? queued.Value ?? queued.Id ?? queued.JobId
-      const queuedError = typeof queued === 'string' ? null : queued.error?.message ?? queued.error?.Message ?? queued.Error?.message ?? queued.Error?.Message
-      for (let attempt = 0; attempt < 180; attempt++) {
-        await wait(attempt === 0 ? 500 : 1000)
-        if (!jobId) {
-          const jobs = await hubApi<ReferenceSyncJobSummary[]>('/jobs')
-          const candidate = jobs.find(item => item.connectionId === connectionId && item.jobType === 'REFERENCE_SYNC' && new Date(item.createdAt).getTime() >= requestedAt - 5000)
-          if (candidate) jobId = candidate.id
-        }
-        if (!jobId) continue
-        const job = await hubApi<ReferenceSyncJob>(`/jobs/${jobId}`)
-        const status = job.job.status.toUpperCase()
-        if (status === 'SUCCEEDED') return hubApi<ReferenceData>(`/reference-data/brands?connectionId=${encodeURIComponent(connectionId)}`)
-        if (['BLOCKED', 'DEAD', 'CANCELLED', 'MANUAL_REVIEW'].includes(status)) throw new Error(job.job.lastErrorSummary ?? job.job.lastErrorCode ?? 'Marka listesi güncellenemedi.')
-      }
-      throw new Error(queuedError ?? 'Marka listesi güncelleniyor. Birkaç saniye sonra yeniden deneyin.')
+      return hubApi(`/connections/${connectionId}/reference-sync-jobs?resourceType=BRANDS`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' })
     },
     onMutate: () => setNotice(''),
-    onSuccess: async data => { client.setQueryData(['reference-brands', connectionId], data); setNotice(`${data.items.filter(item => item.isActive).length.toLocaleString('tr-TR')} marka güncel olarak yüklendi.`); await client.invalidateQueries({ queryKey: ['reference-brands', connectionId] }) },
+    onSuccess: async () => { setNotice('Marka listesi salt-okunur eşitleme kuyruğuna alındı.'); for (const delay of [500, 1000, 2000, 4000]) { await wait(delay); await client.invalidateQueries({ queryKey: ['reference-brands', connectionId] }) } },
     onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka listesi güncellenemedi.')
   })
   const save = useMutation({ mutationFn: () => { if (!references.data || !localId || !externalId) throw new Error('Bağlantı, panel markası ve Trendyol markası zorunludur.'); return hubApi<CatalogMapping>(`/mappings/brands/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, externalId, status: 'VERIFIED' }) }) }, onSuccess: async value => { setNotice('Marka eşlemesi doğrulandı ve kaydedildi.'); setExternalId(value.externalId); setBrandEditOpen(false); setEditingBrandMappingId(''); client.setQueryData(['brand-mapping', localId, connectionId], value); client.setQueryData<CatalogMapping[]>(['brand-mappings', connectionId], current => current ? [...current.filter(item => item.localId !== value.localId), value] : [value]); await Promise.all([client.invalidateQueries({ queryKey: ['brand-mapping', localId, connectionId] }), client.invalidateQueries({ queryKey: ['brand-mappings', connectionId] })]) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Eşleme kaydedilemedi.') })

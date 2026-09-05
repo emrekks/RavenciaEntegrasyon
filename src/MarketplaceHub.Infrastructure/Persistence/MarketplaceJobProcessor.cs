@@ -19,6 +19,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     // becoming the earlier bound if the polling schedule is made more frequent later.
     private const int ProductApprovalReconcileMaxAttempts = (7 * 24 * 12) + 1;
     private const int MaxReferenceItems = 500_000;
+    private const int MaxBrandReferenceItems = 2_000_000;
     private int telemetryRequestCount;
     private int telemetryReceivedCount;
     private int telemetryChangedCount;
@@ -1035,6 +1036,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var (resourceType, parentExternalId) = ReferenceResource(payloadJson);
         if (!await IsValidReferenceScope(tenantId, connectionId, resourceType, parentExternalId, cancellationToken)) return false;
+        if (resourceType == "BRANDS") return await SyncBrandReferences(tenantId, connectionId, correlationId, cancellationToken);
         var items = new List<RemoteReferenceItem>();
         var visitedCursors = new HashSet<string>(StringComparer.Ordinal);
         string? cursor = null;
@@ -1092,6 +1094,135 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;
+    }
+
+    private async Task<bool> SyncBrandReferences(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var sourceVersion = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == MarketplaceCapabilities.ReferenceRead).Select(x => x.SourceVersion).SingleOrDefaultAsync(cancellationToken)
+            ?? await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.ApiVersion).SingleAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var staging = new ReferenceSnapshot
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ConnectionId = connectionId,
+            ResourceType = "BRANDS",
+            SourceVersion = sourceVersion,
+            ContentHash = $"PENDING-{Guid.CreateVersion7():N}",
+            FetchedAt = now,
+            IsCurrent = false,
+            ItemCount = 0
+        };
+        db.ReferenceSnapshots.Add(staging);
+        await db.SaveChangesAsync(cancellationToken);
+        db.ChangeTracker.Clear();
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        string? cursor = null;
+        var itemCount = 0;
+        try
+        {
+            do
+            {
+                TrackRequest();
+                const int pageSize = 2000;
+                var result = await references.ReadAsync(Context(tenantId, connectionId, correlationId, $"reference-sync:BRANDS::{cursor}"), new("BRANDS", null), new(cursor, pageSize), cancellationToken);
+                if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+                var pageItems = result.Value!.Items;
+                if (itemCount > MaxBrandReferenceItems - pageItems.Count) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_RESULT_LIMIT_EXCEEDED", "Trendyol marka referansı güvenli işleme sınırını aştı."));
+                foreach (var item in pageItems)
+                {
+                    TrackReceived();
+                    if (!string.Equals(item.ResourceType, "BRANDS", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(item.ExternalId) || string.IsNullOrWhiteSpace(item.Name) || item.ParentExternalId is not null)
+                        throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Marka referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
+                    if (!seen.Add(item.ExternalId)) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_IDENTIFIERS_DUPLICATE", "Marka referans yanıtı yinelenen uzak kimlik içeriyor."));
+                }
+                for (var index = 0; index < pageItems.Count; index++)
+                {
+                    var item = pageItems[index];
+                    db.ReferenceItems.Add(new ReferenceItem
+                    {
+                        Id = Guid.CreateVersion7(),
+                        TenantId = tenantId,
+                        ConnectionId = connectionId,
+                        SnapshotId = staging.Id,
+                        ResourceType = "BRANDS",
+                        ExternalId = item.ExternalId,
+                        ParentExternalId = null,
+                        Name = item.Name,
+                        NormalizedName = item.Name.Trim().ToUpperInvariant(),
+                        Path = item.Path,
+                        Depth = item.Depth,
+                        IsLeaf = item.IsLeaf,
+                        IsActive = item.IsActive,
+                        IsRequired = item.IsRequired,
+                        AllowsCustomValue = item.AllowsCustomValue,
+                        AllowsMultipleValues = item.AllowsMultipleValues,
+                        PayloadHash = Hash(item.RawJson),
+                        SortOrder = itemCount + index
+                    });
+                }
+                itemCount += pageItems.Count;
+                await db.SaveChangesAsync(cancellationToken);
+                db.ChangeTracker.Clear();
+                cursor = result.Value.NextCursor;
+                if (!result.Value.HasMore) break;
+                if (string.IsNullOrWhiteSpace(cursor)) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CURSOR_INVALID", "Marka referans sayfalama imleci eksik döndü."));
+            } while (!cancellationToken.IsCancellationRequested);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (itemCount == 0) throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", "Trendyol BRANDS salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
+            var contentHash = await HashReferenceItemsAsync(tenantId, staging.Id, cancellationToken);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            var snapshots = await db.ReferenceSnapshots.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS" && x.ScopeExternalId == "").ToListAsync(cancellationToken);
+            var existing = snapshots.SingleOrDefault(x => x.Id != staging.Id && x.ContentHash == contentHash);
+            var current = existing ?? snapshots.Single(x => x.Id == staging.Id);
+            foreach (var snapshot in snapshots.Where(x => x.IsCurrent && x.Id != current.Id)) snapshot.IsCurrent = false;
+            current.ContentHash = contentHash;
+            current.SourceVersion = sourceVersion;
+            current.FetchedAt = now;
+            current.ItemCount = itemCount;
+            current.IsCurrent = true;
+            if (existing is not null) db.ReferenceSnapshots.Remove(snapshots.Single(x => x.Id == staging.Id));
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+        catch
+        {
+            db.ChangeTracker.Clear();
+            try
+            {
+                var orphan = await db.ReferenceSnapshots.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == staging.Id && !x.IsCurrent, CancellationToken.None);
+                if (orphan is not null)
+                {
+                    db.ReferenceSnapshots.Remove(orphan);
+                    await db.SaveChangesAsync(CancellationToken.None);
+                }
+            }
+            catch { db.ChangeTracker.Clear(); }
+            throw;
+        }
+    }
+
+    private async Task<string> HashReferenceItemsAsync(Guid tenantId, Guid snapshotId, CancellationToken cancellationToken)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        hash.AppendData(Encoding.UTF8.GetBytes("["));
+        var first = true;
+        await foreach (var item in db.ReferenceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.SnapshotId == snapshotId && x.ResourceType == "BRANDS")
+            .OrderBy(x => x.ExternalId)
+            .Select(x => new { x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive, x.IsRequired, x.AllowsCustomValue, x.AllowsMultipleValues })
+            .AsAsyncEnumerable()
+            .WithCancellation(cancellationToken))
+        {
+            if (!first) hash.AppendData(Encoding.UTF8.GetBytes(","));
+            hash.AppendData(JsonSerializer.SerializeToUtf8Bytes(item));
+            first = false;
+        }
+        hash.AppendData(Encoding.UTF8.GetBytes("]"));
+        return Convert.ToHexString(hash.GetHashAndReset());
     }
 
     private static (string ResourceType, string? ParentExternalId) ReferenceResource(string payloadJson)
