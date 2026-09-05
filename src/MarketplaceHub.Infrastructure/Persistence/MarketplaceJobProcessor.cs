@@ -1882,6 +1882,19 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         importedAttributeLibrary[attributeKey] = attribute;
 
+        if (IsWebColorOptionKey(remoteAttribute.Name))
+        {
+            var legacyColorAttributes = await db.AttributeDefinitions
+                .Where(x => x.TenantId == tenantId && x.IsActive && x.Id != attribute.Id)
+                .ToListAsync(cancellationToken);
+            foreach (var legacyColorAttribute in legacyColorAttributes.Where(x => IsWebColorOptionKey(x.Name)))
+            {
+                legacyColorAttribute.IsActive = false;
+                legacyColorAttribute.UpdatedAt = timeProvider.GetUtcNow();
+                legacyColorAttribute.Version++;
+            }
+        }
+
         var requirement = await db.CategoryAttributeRequirements.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == category.Id && x.AttributeId == attribute.Id, cancellationToken);
         var role = requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
         if (requirement is null)

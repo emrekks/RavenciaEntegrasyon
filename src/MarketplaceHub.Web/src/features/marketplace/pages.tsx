@@ -1337,7 +1337,7 @@ function PanelAttributeLibraryBuilder({ role, attributes, onNotice }: { role: 'A
   const client = useQueryClient()
   const [title, setTitle] = useState(''); const [values, setValues] = useState<string[]>([]); const [valueDraft, setValueDraft] = useState(''); const [editingId, setEditingId] = useState(''); const [newValues, setNewValues] = useState(''); const [editingValue, setEditingValue] = useState<{ id: string; value: string } | null>(null); const [categoryAssignmentId, setCategoryAssignmentId] = useState(''); const [feedback, setFeedback] = useState(''); const [feedbackTone, setFeedbackTone] = useState<'success' | 'error'>('success')
   const isOption = role === 'OPTION'
-  const records = attributes.filter(attribute => isOption ? isOptionAttribute(attribute) : !isOptionAttribute(attribute))
+  const records = attributes.filter(attribute => !isWebColorAttributeName(attribute.name) && (isOption ? isOptionAttribute(attribute) : !isOptionAttribute(attribute)))
   const editingAttribute = records.find(attribute => attribute.id === editingId) ?? null
   const categoryAssignmentAttribute = records.find(attribute => attribute.id === categoryAssignmentId) ?? null
   const categories = useQuery({ queryKey: ['categories', 'mapping-builder-assignment'], queryFn: () => loadAllPages<LocalCategory>('/catalog/categories'), enabled: !!categoryAssignmentAttribute })
@@ -1473,7 +1473,7 @@ function CategoryAttributeWorkspace({ connectionId, localCategoryId, localCatego
   // existing records whose code predates the role prefix convention.
   const optionAttributes = localAttributes
     .filter(attribute => requirementOptionIds.has(attribute.id) || isOptionAttribute(attribute))
-    .filter(attribute => !(webColorRemote && panelColorAttribute?.id === attribute.id))
+    .filter(attribute => !(webColorRemote && (panelColorAttribute?.id === attribute.id || isWebColorAttributeName(attribute.name))))
     .filter((item, index, items) => items.findIndex(candidate => candidate.id === item.id) === index)
   const specialColorOption = webColorRemote && panelColorAttribute ? { attribute: panelColorAttribute, remote: webColorRemote } : null
   const optionAttributeIds = new Set([...optionAttributes.map(item => item.id), ...(specialColorOption ? [specialColorOption.attribute.id] : [])])
