@@ -2772,10 +2772,17 @@ textarea {
 .mapping-advanced-tools .attribute-mapping-card-head strong { overflow: hidden; color: var(--mapping-modal-text) !important; font-size: 12px !important; text-overflow: ellipsis; white-space: nowrap; }
 .mapping-advanced-tools .attribute-mapping-card-head small { color: var(--mapping-modal-muted) !important; font-size: 10px !important; }
 .mapping-advanced-tools .attr-source { width: 28px !important; height: 28px !important; flex: 0 0 28px; color: #111827 !important; background: #f5a63a !important; border-radius: 7px !important; font-size: 9px !important; font-weight: 900 !important; }
+.mapping-advanced-tools .mapping-platform-logo { display: block !important; width: 28px !important; height: 28px !important; flex: 0 0 28px !important; border-radius: 7px !important; overflow: hidden !important; }
 .mapping-advanced-tools .mapping-fields.compact { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; align-items: end !important; gap: 8px !important; }
 .mapping-advanced-tools .mapping-fields.compact label { display: grid !important; gap: 5px !important; min-width: 0 !important; color: var(--mapping-modal-muted) !important; font-size: 9px !important; font-weight: 800 !important; }
 .mapping-advanced-tools .mapping-fields.compact select { width: 100% !important; min-height: 38px !important; color: var(--mapping-modal-text) !important; background-color: #101827 !important; border-color: #3a4967 !important; border-radius: 6px !important; font-size: 11px !important; }
 .mapping-advanced-tools .mapping-fields.compact > button { min-height: 38px !important; padding: 0 12px !important; color: #d8dcf0 !important; background: #1d2940 !important; border-color: #3a4967 !important; border-radius: 6px !important; box-shadow: none !important; font-size: 10px !important; white-space: nowrap; }
+.mapping-advanced-tools .attribute-mapping-card { grid-template-rows: minmax(38px, auto) minmax(67px, auto) auto !important; align-content: start !important; }
+.mapping-advanced-tools .attribute-mapping-card-head { min-height: 38px !important; align-self: start !important; }
+.mapping-advanced-tools .mapping-fields.compact { min-height: 67px !important; align-items: stretch !important; }
+.mapping-advanced-tools .mapping-fields.compact label { grid-template-rows: minmax(14px, auto) 38px !important; align-content: end !important; }
+.mapping-advanced-tools .mapping-fields.compact select,
+.mapping-advanced-tools .mapping-fields.compact > button { height: 38px !important; box-sizing: border-box !important; }
 .mapping-advanced-tools .mapping-fields.compact > button:hover { color: #fff !important; background: #283653 !important; border-color: var(--mapping-modal-primary) !important; }
 .mapping-advanced-tools .value-mapping-toggle { min-height: 32px !important; justify-self: start !important; padding: 0 10px !important; color: #d9dcff !important; background: var(--mapping-modal-primary-soft) !important; border: 1px solid rgba(113, 104, 245, .55) !important; border-radius: 6px !important; box-shadow: none !important; font-size: 10px !important; }
 .mapping-advanced-tools .value-mapping-toggle:hover { color: #fff !important; background: rgba(113, 104, 245, .28) !important; }
