@@ -113,3 +113,182 @@
 .app-shell.stitch-shell .product-metrics article strong {
   font-weight: var(--rv-type-heading-weight) !important;
 }
+
+.ui-icon {
+  display: block;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+/* Legacy glyph fallbacks: keep older, compact JSX controls crisp until their
+   surrounding layout is migrated to the shared UiIcon component. */
+:root {
+  --ui-mask-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 2.8 20h18.4L12 3Z'/%3E%3Cpath d='M12 9v5m0 3h.01'/%3E%3C/svg%3E");
+  --ui-mask-arrow-left: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m15 18-6-6 6-6'/%3E%3C/svg%3E");
+  --ui-mask-arrow-right: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
+  --ui-mask-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 4 4L19 6'/%3E%3C/svg%3E");
+  --ui-mask-close: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6 6 18'/%3E%3C/svg%3E");
+  --ui-mask-external: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 5h5v5m0-5-8 8'/%3E%3Cpath d='M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4'/%3E%3C/svg%3E");
+  --ui-mask-grid: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='4' width='6' height='6' rx='1'/%3E%3Crect x='14' y='4' width='6' height='6' rx='1'/%3E%3Crect x='4' y='14' width='6' height='6' rx='1'/%3E%3Crect x='14' y='14' width='6' height='6' rx='1'/%3E%3C/svg%3E");
+  --ui-mask-more: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Ccircle cx='12' cy='5' r='1.5'/%3E%3Ccircle cx='12' cy='12' r='1.5'/%3E%3Ccircle cx='12' cy='19' r='1.5'/%3E%3C/svg%3E");
+  --ui-mask-plus: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E");
+  --ui-mask-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='10.8' cy='10.8' r='6.5'/%3E%3Cpath d='m16 16 4.5 4.5'/%3E%3C/svg%3E");
+  --ui-mask-sync: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 11a8 8 0 0 0-13.7-4.9L4 8.5'/%3E%3Cpath d='M4 4v4.5h4.5M4 13a8 8 0 0 0 13.7 4.9L20 15.5'/%3E%3Cpath d='M20 20v-4.5h-4.5'/%3E%3C/svg%3E");
+  --ui-mask-upload: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 16V4m0 0L7 9m5-5 5 5'/%3E%3Cpath d='M5 14v5h14v-5'/%3E%3C/svg%3E");
+}
+
+.app-shell.stitch-shell .modal-close:not(:has(.ui-icon)),
+.app-shell.stitch-shell .panel-attribute-modal-card > header > button:not(:has(.ui-icon)),
+.app-shell.stitch-shell .panel-attribute-category-modal-card > header > button:not(:has(.ui-icon)) {
+  font-size: 0 !important;
+}
+
+.app-shell.stitch-shell .modal-close:not(:has(.ui-icon))::before,
+.app-shell.stitch-shell .panel-attribute-modal-card > header > button:not(:has(.ui-icon))::before,
+.app-shell.stitch-shell .panel-attribute-category-modal-card > header > button:not(:has(.ui-icon))::before,
+.app-shell.stitch-shell .panel-category-picker > div > button[aria-label*='kapat']::before,
+.app-shell.stitch-shell .category-chip-remove::before,
+.app-shell.stitch-shell .panel-value-token button::before {
+  content: '';
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: auto;
+  background: currentColor;
+  -webkit-mask: var(--ui-mask-close) center / contain no-repeat;
+  mask: var(--ui-mask-close) center / contain no-repeat;
+}
+
+.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='kaydet']::before,
+.app-shell.stitch-shell .mapping-icon-button[aria-label*='kaydet'] > span[aria-hidden='true']::before {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  font-size: 0;
+  background: currentColor;
+  -webkit-mask: var(--ui-mask-check) center / contain no-repeat;
+  mask: var(--ui-mask-check) center / contain no-repeat;
+}
+
+.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='kaydet'],
+.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='iptal'],
+.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='düzenle'],
+.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='sil'],
+.app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='düzenle'],
+.app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='sil'],
+.app-shell.stitch-shell .mapping-icon-button[aria-label*='iptal et'],
+.app-shell.stitch-shell .mapping-icon-button[aria-label*='düzenle'] {
+  font-size: 0 !important;
+}
+
+.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='iptal']::before,
+.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='sil']::before,
+.app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='sil']::before,
+.app-shell.stitch-shell .mapping-icon-button[aria-label*='iptal et']::before {
+  content: '';
+  display: block;
+  width: 15px;
+  height: 15px;
+  margin: auto;
+  background: currentColor;
+  -webkit-mask: var(--ui-mask-close) center / contain no-repeat;
+  mask: var(--ui-mask-close) center / contain no-repeat;
+}
+
+.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='düzenle']::before,
+.app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='düzenle']::before,
+.app-shell.stitch-shell .mapping-icon-button[aria-label*='düzenle']::before {
+  content: '';
+  display: block;
+  width: 15px;
+  height: 15px;
+  margin: auto;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 16-.7 4.7L8 20l11.5-11.5a2.1 2.1 0 0 0-3-3L5 17Z'/%3E%3Cpath d='m14.5 7.5 2 2'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 16-.7 4.7L8 20l11.5-11.5a2.1 2.1 0 0 0-3-3L5 17Z'/%3E%3Cpath d='m14.5 7.5 2 2'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.app-shell.stitch-shell .reference-menu-trigger::before,
+.app-shell.stitch-shell .integration-reference-page .reference-menu-trigger::before {
+  content: '';
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: auto;
+  background: currentColor;
+  -webkit-mask: var(--ui-mask-more) center / contain no-repeat;
+  mask: var(--ui-mask-more) center / contain no-repeat;
+}
+
+.app-shell.stitch-shell .reference-menu-trigger,
+.app-shell.stitch-shell .integration-reference-page .reference-menu-trigger {
+  font-size: 0 !important;
+}
+
+.app-shell.stitch-shell .integration-filter-button > span[aria-hidden='true'],
+.app-shell.stitch-shell .integration-add-button > span[aria-hidden='true'],
+.app-shell.stitch-shell .mapping-reference-refresh > span[aria-hidden='true'],
+.app-shell.stitch-shell .mapping-category-builder .mapping-action button > span[aria-hidden='true'],
+.app-shell.stitch-shell .return-detail-trigger > span[aria-hidden='true'] {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  font-size: 0 !important;
+  background: currentColor;
+}
+
+.app-shell.stitch-shell .integration-filter-button > span[aria-hidden='true'] { -webkit-mask: var(--ui-mask-grid) center / contain no-repeat; mask: var(--ui-mask-grid) center / contain no-repeat; }
+.app-shell.stitch-shell .integration-add-button > span[aria-hidden='true'] { -webkit-mask: var(--ui-mask-plus) center / contain no-repeat; mask: var(--ui-mask-plus) center / contain no-repeat; }
+.app-shell.stitch-shell .mapping-reference-refresh > span[aria-hidden='true'] { -webkit-mask: var(--ui-mask-sync) center / contain no-repeat; mask: var(--ui-mask-sync) center / contain no-repeat; }
+.app-shell.stitch-shell .mapping-category-builder .mapping-action button > span[aria-hidden='true'],
+.app-shell.stitch-shell .return-detail-trigger > span[aria-hidden='true'] { -webkit-mask: var(--ui-mask-external) center / contain no-repeat; mask: var(--ui-mask-external) center / contain no-repeat; }
+
+.app-shell.stitch-shell .row-menu-trigger > b[aria-hidden='true'],
+.app-shell.stitch-shell .panel-category-picker-trigger > i[aria-hidden='true'],
+.app-shell.stitch-shell .scheduled-publish-panel summary > strong[aria-hidden='true'] {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  font-size: 0 !important;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 9 7 7 7-7'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 9 7 7 7-7'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.app-shell.stitch-shell .variant-header-action-menu > button > i,
+.app-shell.stitch-shell .order-label-action > i[aria-label='Yazdırıldı'] {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  font-size: 0 !important;
+  background: currentColor;
+  -webkit-mask: var(--ui-mask-check) center / contain no-repeat;
+  mask: var(--ui-mask-check) center / contain no-repeat;
+}
+
+.app-shell.stitch-shell .variant-header-action-menu > button:first-child > i {
+  -webkit-mask: var(--ui-mask-external) center / contain no-repeat;
+  mask: var(--ui-mask-external) center / contain no-repeat;
+}
+
+.app-shell.stitch-shell .variant-header-action-menu > button:nth-child(2) > i {
+  -webkit-mask: var(--ui-mask-alert) center / contain no-repeat;
+  mask: var(--ui-mask-alert) center / contain no-repeat;
+}
+
+.app-shell.stitch-shell .scheduled-publish-panel summary b[aria-hidden='true'],
+.app-shell.stitch-shell .publish-checklist-heading > span[aria-hidden='true'] {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  font-size: 0 !important;
+  background: currentColor;
+  -webkit-mask: var(--ui-mask-grid) center / contain no-repeat;
+  mask: var(--ui-mask-grid) center / contain no-repeat;
+}
+
+.app-shell.stitch-shell .security-check .ui-icon,
+.app-shell.stitch-shell .shipping-designer-block-handle .ui-icon,
+.app-shell.stitch-shell .reference-product-placeholder .ui-icon,
+.app-shell.stitch-shell .invoice-upload-icon .ui-icon,
+.app-shell.stitch-shell .publish-checklist-items article > span .ui-icon { width: 16px; height: 16px; }

@@ -532,6 +532,7 @@
   font-size: 13px;
   font-weight: 800;
 }
+.operation-feedback-toast .operation-feedback-icon .ui-icon { width: 18px; height: 18px; }
 .operation-feedback-toast.success .operation-feedback-icon { color: #43d39e; }
 .operation-feedback-toast.error .operation-feedback-icon { color: #ff8ea0; }
 .operation-feedback-toast.info .operation-feedback-icon { color: #7c86ff; }

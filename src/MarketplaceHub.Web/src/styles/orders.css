@@ -808,19 +808,8 @@
   font-size: 1.02rem !important;
   letter-spacing: -.015em;
 }
-.app-shell .orders-page .single-order-sync-modal > header h2::before {
-  content: "↻";
-  display: grid;
-  place-items: center;
-  width: 27px;
-  height: 27px;
-  color: #c4c8ff;
-  background: rgba(88, 101, 242, .17);
-  border: 1px solid rgba(141, 135, 255, .45);
-  border-radius: 6px;
-  font-size: 1rem;
-  font-weight: 800;
-}
+.app-shell .orders-page .single-order-sync-modal > header h2::before { content: none; }
+.app-shell .orders-page .single-order-sync-modal > header h2 > .ui-icon { width: 27px; height: 27px; padding: 5px; color: #c4c8ff; background: rgba(88, 101, 242, .17); border: 1px solid rgba(141, 135, 255, .45); border-radius: 6px; }
 .app-shell .orders-page .single-order-sync-modal > header p {
   margin: 0 !important;
   color: #9496ac !important;
@@ -901,15 +890,9 @@
   color: #9295ab !important;
   font-size: .64rem !important;
 }
-.app-shell .orders-page .sync-mode-switch button::before {
-  color: #9295ab;
-  font-size: .85rem;
-  font-weight: 800;
-}
-.app-shell .orders-page .sync-mode-switch button:first-child::before { content: "↻"; }
-.app-shell .orders-page .sync-mode-switch button:last-child::before { content: "1"; }
+.app-shell .orders-page .sync-mode-switch button > .ui-icon { width: 15px; height: 15px; color: #9295ab; }
 .app-shell .orders-page .sync-mode-switch button.active,
-.app-shell .orders-page .sync-mode-switch button.active::before {
+.app-shell .orders-page .sync-mode-switch button.active > .ui-icon {
   color: #fff !important;
 }
 .app-shell .orders-page .sync-mode-switch button.active { background: #5865f2 !important; }

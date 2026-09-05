@@ -28,7 +28,8 @@
 .app-shell.stitch-shell .shipping-designer-palette-list strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell .shipping-designer-palette-list small { overflow: hidden; color: #838eaf; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell .shipping-designer-palette-list i { color: #8994ff; font-size: 17px; font-style: normal; text-align: center; }
-.app-shell.stitch-shell .shipping-designer-palette-icon { display: grid; place-items: center; width: 28px; height: 28px; color: #b9c0ff; background: #252d59; border-radius: 5px; font-size: 15px; }
+.app-shell.stitch-shell .shipping-designer-palette-icon { display: grid; place-items: center; width: 28px; height: 28px; color: #b9c0ff; background: #252d59; border-radius: 5px; }
+.app-shell.stitch-shell .shipping-designer-palette-icon > .ui-icon { width: 16px; height: 16px; }
 .app-shell.stitch-shell .shipping-designer-custom-fields { display: grid; gap: 9px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #2d3554; }
 .app-shell.stitch-shell .shipping-designer-custom-fields label,
 .app-shell.stitch-shell .shipping-designer-inspector-body > label,
@@ -180,9 +181,9 @@
 .app-shell.stitch-shell .attribute-builder-disclosure-copy strong { color:#f1f2ff; font-size:13px; }
 .app-shell.stitch-shell .attribute-builder-disclosure-copy small { color:#8993b4; font-size:10px; }
 .app-shell.stitch-shell .attribute-builder-disclosure-meta { display:flex; align-items:center; gap:9px; flex:0 0 auto; }
-.app-shell.stitch-shell .attribute-builder-disclosure-meta > i { display:grid; place-items:center; width:24px; height:24px; color:#aeb8e8; background:#202744; border:1px solid #354064; border-radius:7px; font-size:14px; font-style:normal; line-height:1; transition:transform .16s ease,background .16s ease; }
-.app-shell.stitch-shell .attribute-builder-disclosure:hover .attribute-builder-disclosure-meta > i { background:#2a3357; }
-.app-shell.stitch-shell .attribute-builder-card:not(.is-open) .attribute-builder-disclosure-meta > i { transform:rotate(-90deg); }
+.app-shell.stitch-shell .attribute-builder-disclosure-meta > .ui-icon { display:block; width:24px; height:24px; padding:4px; color:#aeb8e8; background:#202744; border:1px solid #354064; border-radius:7px; transition:transform .16s ease,background .16s ease; }
+.app-shell.stitch-shell .attribute-builder-disclosure:hover .attribute-builder-disclosure-meta > .ui-icon { background:#2a3357; }
+.app-shell.stitch-shell .attribute-builder-card:not(.is-open) .attribute-builder-disclosure-meta > .ui-icon { transform:rotate(-90deg); }
 .app-shell.stitch-shell .attribute-builder-values { display:grid; gap:10px; margin-top:13px; padding-top:13px; border-top:1px solid rgba(151,160,207,.16); }
 .app-shell.stitch-shell .variant-table-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; color:#8993b4; font-size:10px; }
 .app-shell.stitch-shell .variant-media-bulk-button { display:inline-flex; align-items:center; gap:7px; opacity:1; filter:none; cursor:pointer; }
@@ -459,8 +460,8 @@
 .app-shell.stitch-shell .variant-filter-select-trigger > span { display: grid; gap: 3px; min-width: 0; }
 .app-shell.stitch-shell .variant-filter-select-trigger small { overflow: hidden; color: #8993b4; font-size: 8px !important; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell .variant-filter-select-trigger strong { overflow: hidden; color: #f1f2ff; font-size: 10px !important; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell.stitch-shell .variant-filter-select-trigger > i { flex: 0 0 auto; color: #aeb8e8; font-size: 15px; font-style: normal; transition: transform .16s ease; }
-.app-shell.stitch-shell .variant-filter-select-trigger[aria-expanded="true"] > i { transform: rotate(180deg); }
+.app-shell.stitch-shell .variant-filter-select-trigger > .ui-icon { flex: 0 0 auto; color: #aeb8e8; width: 15px; height: 15px; transition: transform .16s ease; }
+.app-shell.stitch-shell .variant-filter-select-trigger[aria-expanded="true"] > .ui-icon { transform: rotate(180deg); }
 .app-shell.stitch-shell .variant-filter-dropdown-menu {
   position: absolute;
   z-index: 30;

@@ -161,12 +161,13 @@
   display: flex !important;
   align-items: center !important;
 }
-.invoice-reference-search > span {
+.invoice-reference-search > .ui-icon {
   position: absolute !important;
   left: 10px !important;
   z-index: 1 !important;
   color: #9294aa !important;
-  font-size: .9rem !important;
+  width: 15px !important;
+  height: 15px !important;
   pointer-events: none !important;
 }
 .invoice-reference-filters input,
