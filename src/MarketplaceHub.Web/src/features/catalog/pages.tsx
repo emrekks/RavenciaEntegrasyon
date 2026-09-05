@@ -263,7 +263,7 @@ function VariantDragHandleIcon() {
 }
 
 function BarcodeFillIcon() {
-  return <svg className="variant-header-action-icon" viewBox="0 0 16 16" focusable="false" aria-hidden="true"><path d="M2 3v10M4 3v10M6 3v10M9 3v10M11 3v10M14 3v10M7.5 3v5M12.5 3v5" /></svg>
+  return <svg className="variant-header-action-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M3.5 5v14M6.5 5v14M9.5 5v14M12.5 5v14" /><path d="M15.5 8.5 19 12l-3.5 3.5M14.5 12H21" /></svg>
 }
 
 function MediaOptionThumb({ option, selected, onClick }: { option: ProductMediaOption; selected: boolean; onClick: () => void }) {
