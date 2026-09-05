@@ -1925,19 +1925,23 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var mapping = await db.CategoryMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == categorySnapshot.ScopeExternalId && x.ExternalId == remoteCategory.ExternalId, cancellationToken);
         Category? category = mapping is null ? null : await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == mapping.LocalId, cancellationToken);
-        var normalized = NormalizeCatalogKey(remoteCategory.Name, 160);
-        category ??= db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId is null && x.NormalizedName == normalized)
-            ?? await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ParentId == null && x.NormalizedName == normalized, cancellationToken);
+        var leafName = CategoryLeafName(remoteCategory.Name, remoteCategory.Path);
+        var normalized = NormalizeCatalogKey(remoteCategory.Path, 160);
+        var legacyNormalized = NormalizeCatalogKey(remoteCategory.Name, 160);
+        if (string.IsNullOrWhiteSpace(normalized)) normalized = NormalizeCatalogKey(leafName, 160);
+        category ??= db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId is null && (x.NormalizedName == normalized || x.NormalizedName == legacyNormalized))
+            ?? await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ParentId == null && (x.NormalizedName == normalized || x.NormalizedName == legacyNormalized), cancellationToken);
         if (category is null)
         {
             var now = timeProvider.GetUtcNow();
-            category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(remoteCategory.Name, 160), NormalizedName = normalized, Path = Short(remoteCategory.Path, 1024), Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
+            category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = leafName, NormalizedName = normalized, Path = leafName, Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
             db.Categories.Add(category);
         }
         else
         {
-            category.Name = Short(remoteCategory.Name, 160);
-            category.Path = Short(remoteCategory.Path, 1024);
+            category.Name = leafName;
+            category.NormalizedName = normalized;
+            category.Path = leafName;
             category.IsLeaf = true;
             category.IsActive = true;
             category.UpdatedAt = timeProvider.GetUtcNow();
@@ -2597,20 +2601,21 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<Category?> UpsertCatalogCategory(Guid tenantId, string? name, CancellationToken cancellationToken)
     {
-        var normalized = NormalizeCatalogKey(name, 160);
+        var leafName = CategoryLeafName(name, name);
+        var normalized = NormalizeCatalogKey(leafName, 160);
         if (string.IsNullOrWhiteSpace(normalized)) return null;
-        var category = db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId == null && x.NormalizedName == normalized)
-            ?? await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ParentId == null && x.NormalizedName == normalized, cancellationToken);
+        var legacyNormalized = NormalizeCatalogKey(name, 160);
+        var category = db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId == null && (x.NormalizedName == normalized || x.NormalizedName == legacyNormalized))
+            ?? await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ParentId == null && (x.NormalizedName == normalized || x.NormalizedName == legacyNormalized), cancellationToken);
         if (category is not null)
         {
-            var nextName = Short(name!.Trim(), 160);
-            if (category.Name != nextName || category.Path != nextName || !category.IsActive || !category.IsLeaf)
+            if (category.Name != leafName || category.NormalizedName != normalized || category.Path != leafName || !category.IsActive || !category.IsLeaf)
             {
-                category.Name = nextName; category.Path = nextName; category.IsActive = true; category.IsLeaf = true; category.UpdatedAt = timeProvider.GetUtcNow(); category.Version++;
+                category.Name = leafName; category.NormalizedName = normalized; category.Path = leafName; category.IsActive = true; category.IsLeaf = true; category.UpdatedAt = timeProvider.GetUtcNow(); category.Version++;
             }
             return category;
         }
-        category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(name!.Trim(), 160), NormalizedName = normalized, Path = Short(name!.Trim(), 1024), Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
+        category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = leafName, NormalizedName = normalized, Path = leafName, Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
         db.Categories.Add(category);
         return category;
     }
@@ -2987,6 +2992,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:ProductUpdate:ThirdDelaySeconds", 900), 1, 7_200)),
             TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:ProductUpdate:FinalDelaySeconds", 1_800), 1, 14_400)));
     }
+    private static string CategoryLeafName(string? name, string? path)
+    {
+        var source = string.IsNullOrWhiteSpace(path) ? name : path;
+        var segments = source?.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+        return Short(segments.Length > 0 ? segments[^1] : name, 160);
+    }
+
     private static string Short(string? value, int maximum) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Length <= maximum ? value.Trim() : value.Trim()[..maximum];
     private static string NormalizeCatalogKey(string? value, int maximum)
     {

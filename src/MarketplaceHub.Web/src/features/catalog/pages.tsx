@@ -1083,7 +1083,13 @@ function CategoryAttributeMappingPanel({
   attributeSelections,
   attributeTextValues,
   onToggleValue,
-  onTextChange
+  onTextChange,
+  webColorRequirement,
+  webColorAutoEnabled,
+  manualWebColorValueId,
+  variantAttributeIds,
+  onToggleWebColorAuto,
+  onManualWebColorValueChange
 }: {
   categoryId: string
   categoryLabel: string
@@ -1094,9 +1100,15 @@ function CategoryAttributeMappingPanel({
   attributeTextValues: Record<string, string>
   onToggleValue: (attributeId: string, valueId: string) => void
   onTextChange: (attributeId: string, value: string) => void
+  webColorRequirement?: CategoryRequirement
+  webColorAutoEnabled: boolean
+  manualWebColorValueId: string
+  variantAttributeIds: string[]
+  onToggleWebColorAuto: (enabled: boolean) => void
+  onManualWebColorValueChange: (valueId: string) => void
 }) {
   const attributes = requirements
-    .filter(item => item.role === 'ATTRIBUTE')
+    .filter(item => item.role === 'ATTRIBUTE' && item.attributeId !== webColorRequirement?.attributeId)
     .sort((left, right) => Number(right.isRequired) - Number(left.isRequired) || left.attribute.name.localeCompare(right.attribute.name, 'tr-TR', { sensitivity: 'base' }))
   const dataTypeLabels: Record<string, string> = {
     SINGLE_SELECT: 'Tek seçim',
@@ -1120,8 +1132,28 @@ function CategoryAttributeMappingPanel({
       <p>Kategori özellikleri yükleniyor…</p>
     ) : isError ? (
       <div className="unknown"><strong>Kategori özellikleri alınamadı</strong><p>Özellik başlıklarını Kategori Eşleştirme ekranında hazırlayın.</p></div>
-    ) : attributes.length ? (
+    ) : attributes.length || webColorRequirement ? (
       <div className="category-attribute-mapping-list">
+        {webColorRequirement && <article className="category-attribute-field required has-selection">
+          <div className="category-attribute-field-head">
+            <div>
+              <strong>Web Color</strong>
+              <small>Varyant renk aktarımı · Zorunlu</small>
+            </div>
+            <span className="category-attribute-count">{webColorAutoEnabled ? 'Otomatik' : 'Manuel'}</span>
+          </div>
+          <div className={`attribute-builder-web-color-mode${webColorAutoEnabled ? ' is-auto' : ' is-manual'}`}>
+            <label className="attribute-builder-web-color-toggle">
+              <input type="checkbox" checked={webColorAutoEnabled} onChange={event => onToggleWebColorAuto(event.target.checked)} />
+              <span><strong>Varyant renklerini otomatik aktar</strong><small>{webColorAutoEnabled ? 'Açık · Renk eşleşmelerinden dönüştürülmüş Web Color gönderilir.' : 'Kapalı · Web Color panel değeri aşağıdan seçilir.'}</small></span>
+            </label>
+            {webColorAutoEnabled ? (
+              <div className="attribute-builder-web-color-status"><strong>Otomatik aktarım aktif</strong><small>{variantAttributeIds.includes(webColorRequirement.attributeId) ? 'Seçilen Renk varyantlarının eşleşmiş Web Color karşılıkları gönderilecek.' : 'Otomatik aktarım için Ürün seçenekleri bölümünde Renk varyantını seçin.'}</small></div>
+            ) : (
+              <label className="attribute-builder-web-color-manual">Manuel panel rengi<select aria-label="Manuel Web Color panel değeri" value={manualWebColorValueId} onChange={event => onManualWebColorValueChange(event.target.value)}><option value="">Panel rengi seçin</option>{sortOptionValues('Renk', webColorRequirement.attribute.values).map(value => <option key={value.id} value={value.id}>{cleanOptionValue(value.value)}</option>)}</select></label>
+            )}
+          </div>
+        </article>}
         {attributes.map(item => {
           const selectedValues = attributeSelections[item.attributeId] ?? []
           const typedValue = attributeTextValues[item.attributeId] ?? ''
@@ -1757,6 +1789,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       attributeTextValues={attributeTextValues}
       onToggleValue={toggleAttributeValue}
       onTextChange={(attributeId, value) => setAttributeTextValues(current => ({ ...current, [attributeId]: value }))}
+      webColorRequirement={webColorRequirement}
+      webColorAutoEnabled={webColorAutoEnabled}
+      manualWebColorValueId={manualWebColorValueId}
+      variantAttributeIds={variantAttributeIds}
+      onToggleWebColorAuto={toggleWebColorAuto}
+      onManualWebColorValueChange={setManualWebColorValueId}
     />}
     {desiCalculatorOpen && <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => setDesiCalculatorOpen(false)}><section className="workspace-modal desi-calculator-modal" role="dialog" aria-modal="true" aria-labelledby="desi-calculator-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="desi-calculator-title">Desi hesapla</h2><p>En × Boy × Yükseklik / 3000 formülü kullanılır.</p></div><button type="button" className="modal-close" onClick={() => setDesiCalculatorOpen(false)} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><div className="desi-calculator-body"><div className="product-step-grid"><label>Ağırlık (kg)<input value={form.weight} onChange={event => updateField('weight', event.target.value)} type="number" min="0" step="0.01" /></label><label>En (cm)<input value={form.width} onChange={event => updateField('width', event.target.value)} type="number" min="0" step="0.1" /></label><label>Boy (cm)<input value={form.length} onChange={event => updateField('length', event.target.value)} type="number" min="0" step="0.1" /></label><label>Yükseklik (cm)<input value={form.height} onChange={event => updateField('height', event.target.value)} type="number" min="0" step="0.1" /></label></div><div className="calculated-field"><small>Hesaplanan desi</small><strong>{desi ? desi.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : 'Ölçüleri girin'}</strong></div></div><footer><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(false)}>İptal</button><button type="button" disabled={!desi} onClick={() => { updateField('desi', String(Number(desi.toFixed(2)))); setCalculateDesi(true); setDesiCalculatorOpen(false) }}>Uygula</button></footer></section></div>}
 
@@ -1793,24 +1831,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             {visibleOptionRequirements.map(item => {
               const expandable = item.attribute.values.length > 0
               const expanded = !expandable || (expandedOptionGroupIds[item.attributeId] ?? false)
-              const isWebColorOption = item.attributeId === webColorRequirement?.attributeId
               return (
               <article className={`attribute-builder-card ${expanded ? 'is-open' : ''}`} key={item.attributeId}>
                 <button type="button" className="attribute-builder-disclosure" aria-expanded={expanded} aria-controls={`option-values-${item.attributeId}`} disabled={!expandable} onClick={() => setExpandedOptionGroupIds(current => ({ ...current, [item.attributeId]: !expanded }))}>
                   <span className="attribute-builder-disclosure-copy"><strong>{item.attribute.name}</strong><small>{item.attribute.values.length} değer · seçenek grubu</small></span>
                   <span className="attribute-builder-disclosure-meta"><small className={variantAttributeIds.includes(item.attributeId) ? 'attribute-builder-selected' : ''}>{(attributeSelections[item.attributeId]?.length ?? 0) > 0 ? `${attributeSelections[item.attributeId].length} değer seçildi` : 'Değer seçin'}</small>{expandable && <UiIcon name="chevronDown" />}</span>
                 </button>
-                {isWebColorOption && <div className={`attribute-builder-web-color-mode${webColorAutoEnabled ? ' is-auto' : ' is-manual'}`}>
-                  <label className="attribute-builder-web-color-toggle">
-                    <input type="checkbox" checked={webColorAutoEnabled} onChange={event => toggleWebColorAuto(event.target.checked)} />
-                    <span><strong>Varyant renklerini otomatik aktar</strong><small>{webColorAutoEnabled ? 'Açık · Renk eşleşmelerinden dönüştürülmüş Web Color gönderilir.' : 'Kapalı · Web Color panel değeri aşağıdan seçilir.'}</small></span>
-                  </label>
-                  {webColorAutoEnabled ? (
-                    <div className="attribute-builder-web-color-status"><strong>Otomatik aktarım aktif</strong><small>{variantAttributeIds.includes(item.attributeId) ? 'Seçilen Renk varyantlarının eşleşmiş Web Color karşılıkları gönderilecek.' : 'Otomatik aktarım için aşağıdaki Renk değerlerinden varyant seçin.'}</small></div>
-                  ) : (
-                    <label className="attribute-builder-web-color-manual">Manuel panel rengi<select aria-label="Manuel Web Color panel değeri" value={manualWebColorValueId} onChange={event => setManualWebColorValueId(event.target.value)}><option value="">Panel rengi seçin</option>{sortOptionValues('Renk', webColorValues).map(value => <option key={value.id} value={value.id}>{cleanOptionValue(value.value)}</option>)}</select></label>
-                  )}
-                </div>}
                 {expanded && <div id={`option-values-${item.attributeId}`} className="attribute-builder-values">
                 {item.attribute.values.length ? (
                   <div className="option-chip-list">
