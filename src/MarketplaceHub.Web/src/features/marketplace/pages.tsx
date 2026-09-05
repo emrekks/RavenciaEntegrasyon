@@ -4,7 +4,6 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { hubApi, loadAllPages } from '../../shared/api'
 import { Busy, ErrorBox, UiIcon } from '../../shared/components'
 import '../../styles/orders.css'
-import '../../styles/returns.css'
 import '../../styles/typography.css'
 import { code128Bars, loadPrintedShippingLabels, loadShippingLabelSettings, markShippingLabelPrinted, printedShippingLabelKey, shippingLabelFields, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from '../shipping'
 type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }

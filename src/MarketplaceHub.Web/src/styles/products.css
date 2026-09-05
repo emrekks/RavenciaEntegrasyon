@@ -3276,3 +3276,47 @@ body:has(.product-add-page),
   .app-shell.stitch-shell .product-add-page .product-basics-grid > label:nth-child(9) { grid-column: 1 !important; }
   .app-shell.stitch-shell .product-add-page .media-preview-strip .image-preview-card { flex-basis: 104px !important; width: 104px !important; }
 }
+
+/* Keep the full description toolbar readable in two deliberate rows. */
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar {
+  display: grid !important;
+  grid-template-columns: max-content max-content;
+  grid-auto-rows: minmax(27px, auto);
+  align-items: center !important;
+  justify-content: start;
+  column-gap: 8px;
+  row-gap: 4px;
+  overflow: hidden !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-tool-group {
+  flex-wrap: nowrap !important;
+  max-width: none !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar .rich-text-tool,
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar select {
+  gap: 3px;
+  min-width: 25px;
+  min-height: 26px;
+  padding: 3px 4px;
+  font-size: 8px;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar .rich-text-tool-icon {
+  min-width: 11px;
+  font-size: 11px;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar select {
+  padding-right: 18px;
+}
+
+/* The two sticky actions use one shared control height and never wrap their labels. */
+.app-shell.stitch-shell .product-add-page .product-submit-sticky .product-submit-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  height: 42px;
+  min-height: 42px;
+  white-space: nowrap;
+  line-height: 1;
+}

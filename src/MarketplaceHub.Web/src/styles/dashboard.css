@@ -484,6 +484,41 @@ html { overflow-y: auto !important; }
   font-size: 9px !important;
   color-scheme: dark;
 }
+
+/* Dashboard controls and action links stay visually anchored to their headings. */
+.app-shell .dashboard-revenue-panel .panel-title {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start !important;
+}
+.app-shell .dashboard-revenue-controls {
+  align-self: start;
+  justify-content: flex-end;
+}
+.app-shell .dashboard .panel-title > a,
+.app-shell .dashboard-active-platform > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.2;
+}
+.app-shell .dashboard .panel-title > a svg,
+.app-shell .dashboard-active-platform > a svg {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+}
+@media (max-width: 760px) {
+  .app-shell .dashboard-revenue-panel .panel-title {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .app-shell .dashboard-revenue-controls {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+}
 @media (max-width: 760px) {
   .app-shell .dashboard-custom-range {
     width: 100%;

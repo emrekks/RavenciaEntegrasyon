@@ -4410,3 +4410,8 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
     grid-template-columns: 1fr !important;
   }
 }
+
+/* The saved mappings header uses the tabs as its separator; remove the extra lower frame. */
+.app-shell.stitch-shell .stitch-reference-mapping .mapping-saved-card > header {
+  border-bottom: 0 !important;
+}

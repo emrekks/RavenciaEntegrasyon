@@ -1777,3 +1777,64 @@
 .app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action {
   font-size: .63rem !important;
 }
+
+/* Invoice actions open above the row layer so expanding them never changes row height. */
+.app-shell.stitch-shell .orders-page .order-reference-invoice {
+  position: relative !important;
+  overflow: visible !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-invoice .row-menu {
+  position: relative !important;
+  z-index: 50 !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-invoice .invoice-popover {
+  position: absolute !important;
+  top: calc(100% + 6px) !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: 0 !important;
+  z-index: 60 !important;
+  width: max-content !important;
+  min-width: 148px !important;
+  max-width: min(240px, calc(100vw - 24px)) !important;
+  padding: 5px !important;
+  box-sizing: border-box !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-invoice .invoice-popover.opens-up {
+  top: auto !important;
+  bottom: calc(100% + 6px) !important;
+}
+
+/* The product lightbox sits over arbitrary imagery; give its close affordance a strong frame. */
+.app-shell.stitch-shell .orders-page .product-image-modal > .product-image-modal-close,
+.app-shell.stitch-shell .product-image-modal > .product-image-modal-close {
+  z-index: 3 !important;
+  width: 42px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  color: #fff !important;
+  background: rgba(7, 10, 20, .9) !important;
+  border: 2px solid rgba(255, 255, 255, .95) !important;
+  border-radius: 7px !important;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, .55) !important;
+}
+.app-shell.stitch-shell .orders-page .product-image-modal > .product-image-modal-close svg,
+.app-shell.stitch-shell .product-image-modal > .product-image-modal-close svg {
+  width: 21px !important;
+  height: 21px !important;
+  stroke: currentColor !important;
+  stroke-width: 2.6 !important;
+}
+
+/* Printed state is communicated by the label fading; the extra check and format suffix add noise. */
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action small,
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action svg {
+  display: none !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action.is-printed {
+  opacity: 1 !important;
+  filter: none !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action.is-printed > span {
+  opacity: .45;
+}

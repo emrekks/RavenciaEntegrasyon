@@ -718,3 +718,10 @@
 @media (max-width: 700px) {
   .jobs-reference-scan-content { grid-template-columns: 1fr; }
 }
+
+/* Keep duration units together instead of allowing the minute suffix to jump. */
+.jobs-reference-scan-facts strong {
+  display: block;
+  white-space: nowrap;
+  word-break: keep-all;
+}

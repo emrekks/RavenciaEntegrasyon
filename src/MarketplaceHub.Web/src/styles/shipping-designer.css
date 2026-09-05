@@ -516,3 +516,19 @@
   .app-shell.stitch-shell .variant-filter-panel-summary { justify-content: space-between; width: 100%; }
   .app-shell.stitch-shell .variant-filter-grid { grid-template-columns: 1fr; }
 }
+
+/* Shipping output is intentionally monochrome and keeps sticker barcodes compact. */
+.app-shell.stitch-shell .shipping-label-print-surface {
+  color: #000 !important;
+  background: #fff !important;
+}
+.app-shell.stitch-shell .shipping-label-print-surface :where(*) {
+  color: #000 !important;
+}
+.app-shell.stitch-shell .shipping-label-print-surface :where(.shipping-label-address-box, .shipping-label-custom-content) {
+  border-color: #000 !important;
+}
+.app-shell.stitch-shell .shipping-label-print-surface.shipping-label-sticker .shipping-label-barcode.compact {
+  width: 56% !important;
+  max-width: 56% !important;
+}
