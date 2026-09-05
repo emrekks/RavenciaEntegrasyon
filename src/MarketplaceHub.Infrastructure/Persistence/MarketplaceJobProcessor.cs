@@ -1947,7 +1947,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return new LocalCategoryAttribute(attribute, remoteAttribute, values, role);
     }
 
-    private async Task UpsertProductAttributeAssignments(Guid tenantId, Product product, ProductVariant variant, IReadOnlyDictionary<string, string> options, CategoryAttributeContext categoryContext, CancellationToken cancellationToken)
+    private async Task UpsertProductAttributeAssignments(Guid tenantId, Guid connectionId, Product product, ProductVariant variant, IReadOnlyDictionary<string, string> options, CategoryAttributeContext categoryContext, CancellationToken cancellationToken)
     {
         var sortOrder = 0;
         foreach (var pair in options)
@@ -1970,9 +1970,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             string? textValue = null;
             decimal? numberValue = null;
             bool? booleanValue = null;
-            if (remoteValue is not null)
+            var localValue = await ResolveMappedAttributeValue(tenantId, connectionId, categoryContext, mapped, remoteValue, pair.Value, cancellationToken);
+            if (localValue is not null)
             {
-                valueId = await db.AttributeValues.Where(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.NormalizedValue == valueKey).Select(x => (Guid?)x.Id).SingleOrDefaultAsync(cancellationToken);
+                valueId = localValue.Id;
             }
             else if (mapped.Remote.AllowsCustomValue == true)
             {
@@ -2011,6 +2012,116 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             sortOrder++;
         }
+    }
+
+    private async Task PromoteCommonImportedAttributes(Guid tenantId, Product product, IReadOnlyList<ProductVariant> importedVariants, CategoryAttributeContext categoryContext, CancellationToken cancellationToken)
+    {
+        var variantIds = importedVariants.Select(x => x.Id).Distinct().ToArray();
+        if (variantIds.Length == 0) return;
+
+        var importedAttributeIds = categoryContext.Attributes.Values
+            .Where(x => x.Role != "OPTION")
+            .Select(x => x.Definition.Id)
+            .ToHashSet();
+        if (importedAttributeIds.Count == 0) return;
+
+        var trackedAssignments = db.ProductAttributeAssignments.Local
+            .Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId.HasValue && variantIds.Contains(x.VariantId.Value))
+            .ToList();
+        var storedAssignments = await db.ProductAttributeAssignments
+            .Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId.HasValue && variantIds.Contains(x.VariantId.Value))
+            .ToListAsync(cancellationToken);
+        var assignments = trackedAssignments
+            .Concat(storedAssignments)
+            .GroupBy(x => x.Id)
+            .Select(x => x.First())
+            .Where(x => importedAttributeIds.Contains(x.AttributeId))
+            .ToList();
+
+        foreach (var attributeId in importedAttributeIds)
+        {
+            var byVariant = assignments
+                .Where(x => x.AttributeId == attributeId && x.VariantId is not null)
+                .GroupBy(x => x.VariantId!.Value)
+                .ToDictionary(x => x.Key, x => x.ToList());
+            var common = byVariant.Count == variantIds.Length && byVariant.Values.All(x => x.Count == 1)
+                ? byVariant.Values.Select(x => x[0]).ToList()
+                : [];
+            var first = common.FirstOrDefault();
+            var isCommon = first is not null && common.Skip(1).All(x => SameImportedAttributeValue(first, x));
+            var global = db.ProductAttributeAssignments.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId == null && x.AttributeId == attributeId)
+                ?? await db.ProductAttributeAssignments.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId == null && x.AttributeId == attributeId, cancellationToken);
+
+            if (!isCommon)
+            {
+                if (global is not null) db.ProductAttributeAssignments.Remove(global);
+                continue;
+            }
+
+            var mapped = categoryContext.Attributes.Values.Single(x => x.Definition.Id == attributeId);
+            if (global is null)
+            {
+                global = new ProductAttributeAssignment
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    ProductId = product.Id,
+                    VariantId = null,
+                    AttributeId = attributeId,
+                    ValueId = first!.ValueId,
+                    TextValue = first.TextValue,
+                    NumberValue = first.NumberValue,
+                    BooleanValue = first.BooleanValue,
+                    SortOrder = mapped.Remote.SortOrder ?? first.SortOrder,
+                    Version = 1
+                };
+                db.ProductAttributeAssignments.Add(global);
+            }
+            else
+            {
+                global.ValueId = first!.ValueId;
+                global.TextValue = first.TextValue;
+                global.NumberValue = first.NumberValue;
+                global.BooleanValue = first.BooleanValue;
+                global.SortOrder = mapped.Remote.SortOrder ?? first.SortOrder;
+                global.Version++;
+            }
+
+            db.ProductAttributeAssignments.RemoveRange(common);
+        }
+    }
+
+    private static bool SameImportedAttributeValue(ProductAttributeAssignment left, ProductAttributeAssignment right) =>
+        left.ValueId == right.ValueId
+        && string.Equals(left.TextValue, right.TextValue, StringComparison.Ordinal)
+        && left.NumberValue == right.NumberValue
+        && left.BooleanValue == right.BooleanValue;
+
+    private async Task<AttributeValue?> ResolveMappedAttributeValue(
+        Guid tenantId,
+        Guid connectionId,
+        CategoryAttributeContext categoryContext,
+        LocalCategoryAttribute mapped,
+        ReferenceItem? remoteValue,
+        string remoteValueText,
+        CancellationToken cancellationToken)
+    {
+        var valueScope = $"{categoryContext.ExternalCategoryId}/{mapped.Remote.ExternalId}";
+        if (remoteValue is not null)
+        {
+            var mapping = db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId && x.Status == "VERIFIED")
+                ?? await db.AttributeValueMappings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId && x.Status == "VERIFIED", cancellationToken);
+            if (mapping is not null)
+            {
+                var mappedValue = db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Id == mapping.LocalId && x.AttributeId == mapped.Definition.Id && x.IsActive)
+                    ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == mapping.LocalId && x.AttributeId == mapped.Definition.Id && x.IsActive, cancellationToken);
+                if (mappedValue is not null) return mappedValue;
+            }
+        }
+
+        var normalized = NormalizeCatalogKey(remoteValueText, 320);
+        return db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized)
+            ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized, cancellationToken);
     }
 
     private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, CancellationToken cancellationToken)
@@ -2086,8 +2197,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         if (!preserveLocal)
         {
+            var importedVariants = new List<ProductVariant>(snapshot.Variants.Count);
             foreach (var remote in snapshot.Variants)
-                await UpsertCatalogVariant(tenantId, connectionId, product, remote, categoryContext, now, cancellationToken);
+            {
+                var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, categoryContext, now, cancellationToken);
+                if (importedVariant is not null) importedVariants.Add(importedVariant);
+            }
+            if (categoryContext is not null && importedVariants.Count > 0)
+                await PromoteCommonImportedAttributes(tenantId, product, importedVariants, categoryContext, cancellationToken);
 
             var productImageUrls = snapshot.ImageUrls
                 .Concat(snapshot.Variants.SelectMany(variant => variant.ImageUrls ?? []))
@@ -2164,11 +2281,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return category;
     }
 
-    private async Task UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, CategoryAttributeContext? categoryContext, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<ProductVariant?> UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, CategoryAttributeContext? categoryContext, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var sku = Short(string.IsNullOrWhiteSpace(remote.Sku) ? remote.Barcode ?? remote.ExternalVariantId : remote.Sku, 160);
         var skuNormalized = NormalizeCatalogKey(sku, 160);
-        if (string.IsNullOrWhiteSpace(skuNormalized)) return;
+        if (string.IsNullOrWhiteSpace(skuNormalized)) return null;
         var barcode = string.IsNullOrWhiteSpace(remote.Barcode) ? null : Short(remote.Barcode.Trim(), 160);
         var barcodeNormalized = NormalizeCatalogKey(barcode, 160);
         var externalVariantId = Short(remote.ExternalVariantId, 256);
@@ -2180,7 +2297,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (variant is not null && variant.ProductId != product.Id)
         {
             await RecordIssue(tenantId, $"product-sync-variant-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_CONFLICT", "Trendyol varyantı başka bir yerel üründe kullanılan stok koduyla eşleşti; mevcut kayıt korunarak atlandı.", cancellationToken);
-            return;
+            return null;
         }
         if (variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
             variant = await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized, cancellationToken);
@@ -2212,15 +2329,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             else if (!string.Equals(existingVariantLink.ExternalId, externalVariantId, StringComparison.Ordinal))
             {
                 await RecordIssue(tenantId, $"product-sync-variant-link-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_LINK_CONFLICT", "Aynı yerel varyantın başka bir Trendyol varyant linki zaten var; ikinci link güvenli biçimde atlandı.", cancellationToken);
-                return;
+                return null;
             }
         }
         await UpsertCatalogOptions(tenantId, connectionId, product.Id, variant.Id, remote.Options, categoryContext, cancellationToken);
         if (categoryContext is not null)
-            await UpsertProductAttributeAssignments(tenantId, product, variant, remote.Options, categoryContext, cancellationToken);
+            await UpsertProductAttributeAssignments(tenantId, connectionId, product, variant, remote.Options, categoryContext, cancellationToken);
         await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, now, cancellationToken);
         if (remote.ImageUrls is not null)
             await UpsertCatalogMedia(tenantId, product, variant.Id, remote.ImageUrls, $"{product.Title} · {optionSignature}", cancellationToken);
+        return variant;
     }
 
     private static RemoteCatalogProduct MergeCatalogSnapshots(IEnumerable<RemoteCatalogProduct> source)
@@ -2437,18 +2555,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var cleanedRemoteValue = CleanCatalogOptionValue(remoteValue);
         var remote = mapped.Values.FirstOrDefault(value => NormalizeCatalogKey(value.Name, 320) == NormalizeCatalogKey(cleanedRemoteValue, 320));
-        if (remote is not null)
-        {
-            var scope = $"{categoryContext.ExternalCategoryId}/{mapped.Remote.ExternalId}";
-            var mapping = await db.AttributeValueMappings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == scope && x.ExternalId == remote.ExternalId && x.Status == "VERIFIED", cancellationToken);
-            if (mapping is not null)
-            {
-                var localValue = await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == mapping.LocalId && x.AttributeId == mapped.Definition.Id && x.IsActive, cancellationToken);
-                if (localValue is not null) return localValue.Value;
-            }
-        }
-        var direct = await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == NormalizeCatalogKey(cleanedRemoteValue, 320), cancellationToken);
-        return direct?.Value ?? cleanedRemoteValue;
+        var localValue = await ResolveMappedAttributeValue(tenantId, connectionId, categoryContext, mapped, remote, cleanedRemoteValue, cancellationToken);
+        return localValue?.Value ?? cleanedRemoteValue;
     }
 
     private async Task UpsertCatalogOptions(Guid tenantId, Guid connectionId, Guid productId, Guid variantId, IReadOnlyDictionary<string, string> options, CategoryAttributeContext? categoryContext, CancellationToken cancellationToken)
