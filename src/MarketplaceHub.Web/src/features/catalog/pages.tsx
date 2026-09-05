@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
+import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
 import '../../styles/product-editor.css'
@@ -469,6 +470,71 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect }:
   return <div className="quick-edit-variant-controls" onClick={event => event.stopPropagation()}><label><small>Stok</small><input aria-label={`${variant.sku} stok`} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStock(Number(event.target.value || 0)) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label><label><small>Fiyat</small><input aria-label={`${variant.sku} fiyat`} value={price} onFocus={onSelect} onChange={event => { onSelect(); setPrice(event.target.value === '' ? '' : Number(event.target.value)) }} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /></label></div>
 }
 
+type VariantDisplayGroup = { label: string; values: string[] }
+
+function ProductVariantHover({ count, groups }: { count: number; groups: VariantDisplayGroup[] }) {
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const hideTimer = useRef<number | null>(null)
+  const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState({ left: 16, top: 16 })
+
+  function clearHideTimer() {
+    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current)
+    hideTimer.current = null
+  }
+
+  function updatePosition() {
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const width = Math.min(280, Math.max(160, window.innerWidth - 32))
+    const estimatedHeight = Math.min(240, Math.max(48, groups.length * 30 + 16))
+    const belowTop = rect.bottom + 8
+    const spaceBelow = window.innerHeight - belowTop - 12
+    const top = spaceBelow >= estimatedHeight || rect.top <= estimatedHeight + 20
+      ? belowTop
+      : Math.max(12, rect.top - estimatedHeight - 8)
+    const left = Math.min(Math.max(16, rect.left), Math.max(16, window.innerWidth - width - 16))
+    setPosition({ left, top })
+  }
+
+  function showTooltip() {
+    clearHideTimer()
+    setOpen(true)
+    window.requestAnimationFrame(updatePosition)
+  }
+
+  function hideTooltip() {
+    clearHideTimer()
+    hideTimer.current = window.setTimeout(() => setOpen(false), 120)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    updatePosition()
+    const handleViewportChange = () => updatePosition()
+    window.addEventListener('resize', handleViewportChange)
+    window.addEventListener('scroll', handleViewportChange, true)
+    return () => {
+      window.removeEventListener('resize', handleViewportChange)
+      window.removeEventListener('scroll', handleViewportChange, true)
+    }
+  }, [groups.length, open])
+
+  useEffect(() => () => clearHideTimer(), [])
+
+  return <>
+    <div ref={triggerRef} className="product-list-variants product-variant-hover" tabIndex={0} aria-label={`${count} varyant`} onMouseEnter={showTooltip} onMouseLeave={hideTooltip} onFocus={showTooltip} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) hideTooltip() }}>
+      <strong>{count} varyant</strong>
+    </div>
+    {open && createPortal(
+      <span className="product-variant-tooltip product-variant-tooltip-portal" role="tooltip" style={{ left: position.left, top: position.top }} onMouseEnter={clearHideTimer} onMouseLeave={hideTooltip}>
+        {groups.map(group => <span className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span>{group.values.join(', ')}</span></span>)}
+      </span>,
+      document.body
+    )}
+  </>
+}
+
 function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick, onDelete }: { group: ProductGroup; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void; onDelete: () => void }) {
   const product = group.primary
   const platformActive = group.products.some(item => Boolean(item.activePlatforms?.length))
@@ -486,7 +552,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
         <input className="product-row-select" type="checkbox" aria-label={`${product.title} ürün grubunu seç`} checked={selected} onChange={onSelect} />
         {product.primaryImageUrl ? <img src={product.primaryImageUrl} alt={product.title} className="product-list-thumb clickable-thumb" onClick={() => onImageClick(product.primaryImageUrl!, product.title)} title="Görseli büyütmek için tıklayın" /> : <span className="product-list-placeholder">Görsel yok</span>}
         <div className="product-list-identity"><strong>{product.title}</strong><small>Model Kodu: <code className="technical-text model-code-value">{modelCode}</code></small>{group.products.length > 1 && <small className="product-list-group-note">{group.products.length} katalog kaydı tek kartta</small>}</div>
-        <div className="product-list-variants product-variant-hover" tabIndex={0} aria-label={`${group.variants.length} varyant`}><strong>{group.variants.length} varyant</strong><span className="product-variant-tooltip" role="tooltip">{variantDisplayGroups.map(group => <span className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span>{group.values.join(', ')}</span></span>)}</span></div>
+        <ProductVariantHover count={group.variants.length} groups={variantDisplayGroups} />
         <div className="product-list-price clickable-cell" title="Fiyatı hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('price')}><strong>{money(startingPrice, product.currency)}</strong></div>
         <div className="product-list-stock clickable-cell" title="Stoğu hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('stock')}><strong>{totalStock}</strong></div>
         <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ''}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'}>TY<i /></span><small>{platformActive ? 'Eşleşti' : 'Eşleşmedi'}</small></div>

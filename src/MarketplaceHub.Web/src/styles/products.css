@@ -3001,6 +3001,25 @@ body:has(.product-add-page),
 }
 .app-shell.stitch-shell .product-variant-tooltip-row > strong { color: #fff; font-size: 10px; white-space: nowrap; }
 .app-shell.stitch-shell .product-variant-tooltip-row > span { color: #d2d7ff; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.product-variant-tooltip-portal {
+  position: fixed !important;
+  z-index: 2000;
+  display: grid !important;
+  gap: 6px;
+  width: min(280px, calc(100vw - 32px)) !important;
+  max-width: min(280px, calc(100vw - 32px)) !important;
+  max-height: min(240px, calc(100vh - 24px));
+  overflow: auto;
+  pointer-events: auto;
+}
+.product-variant-tooltip-portal .product-variant-tooltip-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.product-variant-tooltip-portal .product-variant-tooltip-row > strong { color: #fff; font-size: 10px; white-space: nowrap; }
+.product-variant-tooltip-portal .product-variant-tooltip-row > span { color: #d2d7ff; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
 .product-import-progress { display: grid; gap: 11px; padding: 14px; background: rgba(88,101,242,.08); border: 1px solid rgba(105,117,255,.45); border-radius: 8px; }
 .product-import-progress-heading, .product-import-progress-top, .product-import-progress-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .product-import-progress-heading strong { color: #f1f2ff; font-size: .72rem; }
