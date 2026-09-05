@@ -239,7 +239,7 @@
 }
 .app-shell .products-page .product-catalog-head,
 .app-shell .products-page .product-catalog-row {
-  grid-template-columns: 34% 11% 13% 9% 14% 10% 9% !important;
+  grid-template-columns: 36% 9% 13% 9% 14% 10% 9% !important;
   gap: 0 !important;
   min-width: 900px !important;
 }
@@ -2983,8 +2983,8 @@ body:has(.product-add-page),
 .product-variant-tooltip { position: absolute; z-index: 5; left: 0; top: calc(100% - 2px); display: none; width: max-content; max-width: min(360px, 30vw); padding: 9px 11px; color: #f4f5ff; background: #242943; border: 1px solid #6975ff; border-radius: 6px; box-shadow: 0 12px 28px rgba(0,0,0,.35); font-size: 10px; line-height: 1.45; white-space: normal; }
 .product-variant-hover:hover .product-variant-tooltip, .product-variant-hover:focus-within .product-variant-tooltip { display: block; }
 .app-shell.stitch-shell .product-variant-hover .product-variant-tooltip {
-  width: min(280px, calc(100vw - 32px));
-  max-width: min(280px, calc(100vw - 32px));
+  width: min(240px, calc(100vw - 32px));
+  max-width: min(240px, calc(100vw - 32px));
   padding: 8px 10px;
   text-align: left;
 }
@@ -3006,8 +3006,8 @@ body:has(.product-add-page),
   z-index: 2000;
   display: grid !important;
   gap: 6px;
-  width: min(280px, calc(100vw - 32px)) !important;
-  max-width: min(280px, calc(100vw - 32px)) !important;
+  width: min(240px, calc(100vw - 32px)) !important;
+  max-width: min(240px, calc(100vw - 32px)) !important;
   max-height: min(240px, calc(100vh - 24px));
   overflow: auto;
   pointer-events: auto;
@@ -3099,6 +3099,75 @@ body:has(.product-add-page),
   margin-left: auto !important;
   flex: 0 0 auto !important;
 }
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-mode {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 9px;
+  background: #111827;
+  border: 1px solid rgba(105, 117, 255, .28);
+  border-radius: 8px;
+}
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-mode.is-auto {
+  border-color: rgba(64, 214, 190, .38);
+}
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-toggle {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 !important;
+  color: #eef0ff;
+  cursor: pointer;
+}
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-toggle input[type="checkbox"] {
+  flex: 0 0 16px;
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+  margin: 1px 0 0 !important;
+  padding: 0 !important;
+  accent-color: #7168f5;
+}
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-toggle > span,
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-manual {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-toggle strong,
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-status strong {
+  color: #f1f2ff;
+  font-size: 10px;
+  line-height: 1.25;
+}
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-toggle small,
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-status small {
+  color: #aeb5d5;
+  font-size: 9px;
+  line-height: 1.35;
+}
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-status {
+  display: grid;
+  gap: 3px;
+  padding: 7px 8px;
+  color: #d7fff3;
+  background: rgba(64, 214, 190, .09);
+  border-radius: 5px;
+}
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-status strong { color: #8df0d0; }
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-manual {
+  color: #cdd3f2;
+  font-size: 9px !important;
+}
+.app-shell.stitch-shell .product-add-page .attribute-builder-web-color-manual select {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 1px;
+  color: #eef2ff;
+  background: #0d1422;
+  border-color: #3a4967;
+}
 @media (max-width: 900px) {
   .app-shell.stitch-shell .product-add-page .product-basics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .app-shell.stitch-shell .product-add-page .product-top-layout { grid-template-columns: 1fr !important; }
@@ -3110,54 +3179,4 @@ body:has(.product-add-page),
   .app-shell.stitch-shell .product-add-page .product-basics-grid > label:nth-child(4),
   .app-shell.stitch-shell .product-add-page .product-basics-grid > label:nth-child(9) { grid-column: 1 !important; }
   .app-shell.stitch-shell .product-add-page .media-preview-strip .image-preview-card { flex-basis: 104px !important; width: 104px !important; }
-}
-
-/* Web Color is a publication rule for the product, while local colour
-   variants remain available for stock and media management. */
-.app-shell.stitch-shell .product-add-page .web-color-mode-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px 18px;
-  margin: 0 0 14px;
-  padding: 13px 14px;
-  color: #cbd1e6;
-  background: #111827;
-  border: 1px solid #33415e;
-  border-radius: 8px;
-}
-.app-shell.stitch-shell .product-add-page .web-color-mode-card.is-single {
-  border-color: rgba(113, 104, 245, .78);
-  box-shadow: inset 3px 0 0 #7168f5;
-}
-.app-shell.stitch-shell .product-add-page .web-color-mode-copy {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-.app-shell.stitch-shell .product-add-page .web-color-mode-copy strong { color: #eef2ff; font-size: 12px; }
-.app-shell.stitch-shell .product-add-page .web-color-mode-copy small { color: #91a0b9; font-size: 10px; line-height: 1.45; }
-.app-shell.stitch-shell .product-add-page .web-color-mode-toggle {
-  display: inline-flex !important;
-  grid-template-columns: none !important;
-  align-items: center;
-  gap: 8px;
-  margin: 0 !important;
-  color: #eef2ff !important;
-  font-size: 11px !important;
-  white-space: nowrap;
-}
-.app-shell.stitch-shell .product-add-page .web-color-mode-toggle input { width: 16px; min-height: 16px; accent-color: #7168f5; }
-.app-shell.stitch-shell .product-add-page .web-color-single-value {
-  display: grid !important;
-  grid-column: 1 / -1;
-  gap: 5px;
-  margin: 0 !important;
-  color: #91a0b9 !important;
-  font-size: 10px !important;
-}
-.app-shell.stitch-shell .product-add-page .web-color-single-value select { width: 100%; min-height: 38px; color: #eef2ff; background: #0d1422; border-color: #3a4967; }
-@media (max-width: 600px) {
-  .app-shell.stitch-shell .product-add-page .web-color-mode-card { grid-template-columns: 1fr; }
-  .app-shell.stitch-shell .product-add-page .web-color-mode-toggle { justify-self: start; }
 }

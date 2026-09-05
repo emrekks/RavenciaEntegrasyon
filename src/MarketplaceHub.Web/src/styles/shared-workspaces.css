@@ -2772,7 +2772,7 @@ textarea {
 .mapping-advanced-tools .attribute-mapping-card-head strong { overflow: hidden; color: var(--mapping-modal-text) !important; font-size: 12px !important; text-overflow: ellipsis; white-space: nowrap; }
 .mapping-advanced-tools .attribute-mapping-card-head small { color: var(--mapping-modal-muted) !important; font-size: 10px !important; }
 .mapping-advanced-tools .attr-source { width: 28px !important; height: 28px !important; flex: 0 0 28px; color: #111827 !important; background: #f5a63a !important; border-radius: 7px !important; font-size: 9px !important; font-weight: 900 !important; }
-.mapping-advanced-tools .mapping-platform-logo { display: block !important; width: 28px !important; height: 28px !important; flex: 0 0 28px !important; border-radius: 7px !important; overflow: hidden !important; }
+.mapping-advanced-tools .mapping-platform-logo { display: block !important; width: 32px !important; height: 32px !important; flex: 0 0 32px !important; border-radius: 7px !important; overflow: hidden !important; }
 .mapping-advanced-tools .mapping-fields.compact { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; align-items: end !important; gap: 8px !important; }
 .mapping-advanced-tools .mapping-fields.compact label { display: grid !important; gap: 5px !important; min-width: 0 !important; color: var(--mapping-modal-muted) !important; font-size: 9px !important; font-weight: 800 !important; }
 .mapping-advanced-tools .mapping-fields.compact select { width: 100% !important; min-height: 38px !important; color: var(--mapping-modal-text) !important; background-color: #101827 !important; border-color: #3a4967 !important; border-radius: 6px !important; font-size: 11px !important; }
@@ -4367,6 +4367,28 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   width: 100% !important;
   min-width: 0 !important;
   overflow: visible !important;
+}
+
+.app-shell.stitch-shell .mapping-popup-content .mapping-category-options-section,
+.app-shell.stitch-shell .mapping-popup-content .mapping-category-attributes-section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(151, 160, 207, .2);
+}
+.app-shell.stitch-shell .mapping-popup-content .mapping-section-heading {
+  margin: 0 0 10px;
+}
+.app-shell.stitch-shell .mapping-popup-content .mapping-section-heading h3 {
+  margin: 0;
+  color: #eef0ff;
+  font-size: 14px;
+  line-height: 1.25;
+}
+.app-shell.stitch-shell .mapping-popup-content .mapping-section-heading p {
+  margin: 4px 0 0;
+  color: #929bbd;
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 /* Panel values are managed as a compact two-column list; ordering is handled

@@ -1095,10 +1095,7 @@ function CategoryAttributeMappingPanel({
   onTextChange: (attributeId: string, value: string) => void
 }) {
   const attributes = requirements
-    // Web Color is a marketplace attribute even when its panel source is the
-    // Renk option axis. Keep it visible here so a product can carry the
-    // selected Web Color value outside the variant builder as well.
-    .filter(item => item.role === 'ATTRIBUTE' || (item.role === 'OPTION' && isColorAttributeName(item.attribute.name)))
+    .filter(item => item.role === 'ATTRIBUTE')
     .sort((left, right) => Number(right.isRequired) - Number(left.isRequired) || left.attribute.name.localeCompare(right.attribute.name, 'tr-TR', { sensitivity: 'base' }))
   const dataTypeLabels: Record<string, string> = {
     SINGLE_SELECT: 'Tek seçim',
@@ -1128,8 +1125,8 @@ function CategoryAttributeMappingPanel({
           const selectedValues = attributeSelections[item.attributeId] ?? []
           const typedValue = attributeTextValues[item.attributeId] ?? ''
           const hasValue = item.attribute.values.length > 0 ? selectedValues.length > 0 : typedValue.trim().length > 0
-          const displayName = item.role === 'OPTION' && isColorAttributeName(item.attribute.name) ? 'Web Color' : item.attribute.name
-          return <article className={`category-attribute-field ${item.isRequired ? 'required' : ''} ${selectedValues.length ? 'has-selection' : ''} ${item.isRequired && !hasValue ? 'is-missing' : ''}`} key={item.attributeId}>
+          const displayName = item.attribute.name
+          return <article className={`category-attribute-field ${item.isRequired ? 'required' : ''} ${hasValue ? 'has-selection' : ''} ${item.isRequired && !hasValue ? 'is-missing' : ''}`} key={item.attributeId}>
             <div className="category-attribute-field-head">
               <div>
                 <strong>{displayName}{item.isRequired ? ' *' : ''}</strong>
@@ -1229,11 +1226,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   // the mapping workspace for maintenance, but must not become empty product
   // fields or validation requirements.
   const mappedRequirements = useMemo(() => allRequirements.filter(item => item.attribute.values.length > 0), [allRequirements])
-  const optionRequirements = useMemo(() => mappedRequirements.filter(item => !['WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(item.attribute.name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')) && (item.role === 'OPTION' || isVariantOptionName(item.attribute.name))).slice(0, 2), [mappedRequirements])
   const webColorRequirement = useMemo(() => mappedRequirements.find(item => isColorAttributeName(item.attribute.name) && item.attribute.values.length > 0), [mappedRequirements])
   const webColorValues = webColorRequirement?.attribute.values ?? []
-  const [singleWebColorEnabled, setSingleWebColorEnabled] = useState(false)
-  const [singleWebColorValueId, setSingleWebColorValueId] = useState('')
+  const optionRequirements = useMemo(() => mappedRequirements.filter(item => (item.attributeId === webColorRequirement?.attributeId && webColorRequirement?.role === 'OPTION') || (!['WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(item.attribute.name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')) && (item.role === 'OPTION' || isVariantOptionName(item.attribute.name)))).slice(0, 2), [mappedRequirements, webColorRequirement])
+  const [webColorAutoEnabled, setWebColorAutoEnabled] = useState(true)
+  const [manualWebColorValueId, setManualWebColorValueId] = useState('')
   useEffect(() => {
     const optionIds = optionRequirements.map(item => item.attributeId)
     setVariantAttributeIds(current => current.filter(id => optionIds.includes(id)))
@@ -1263,9 +1260,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const productKey = `${productToEdit.data.id}:${productToEdit.data.version}`
     if (initializedEditWebColorKey.current === productKey) return
     initializedEditWebColorKey.current = productKey
-    const savedSingleColor = productToEdit.data.attributes?.find(item => item.attributeId === webColorRequirement.attributeId && item.valueId)
-    setSingleWebColorEnabled(Boolean(savedSingleColor))
-    setSingleWebColorValueId(savedSingleColor?.valueId ?? '')
+    const savedManualColor = productToEdit.data.attributes?.find(item => item.attributeId === webColorRequirement.attributeId && item.valueId)
+    setWebColorAutoEnabled(!savedManualColor)
+    setManualWebColorValueId(savedManualColor?.valueId ?? '')
   }, [editProductId, productToEdit.data, requirements.isLoading, webColorRequirement])
 
   useEffect(() => {
@@ -1305,14 +1302,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     })
   }
 
-  function toggleSingleWebColor(enabled: boolean) {
-    setSingleWebColorEnabled(enabled)
-    if (!enabled) {
-      setSingleWebColorValueId('')
+  function toggleWebColorAuto(enabled: boolean) {
+    setWebColorAutoEnabled(enabled)
+    if (enabled) {
+      setManualWebColorValueId('')
       return
     }
     const selected = webColorRequirement ? attributeSelections[webColorRequirement.attributeId] ?? [] : []
-    setSingleWebColorValueId(current => current || selected[0] || webColorValues[0]?.id || '')
+    setManualWebColorValueId(current => current || selected[0] || webColorValues[0]?.id || '')
   }
   function generateVariants() {
     try {
@@ -1487,8 +1484,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (requireCompleteCatalog && (variantAttributeIds.length > 2 || variantAttributeIds.some(id => requirementList.find(item => item.attributeId === id)?.role !== 'OPTION'))) issues.push('Varyant için en fazla 2 Seçenek Eşitleme başlığı kullanılabilir.')
     const selectedOptionalProductAttributes = requirementList.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && ((attributeSelections[item.attributeId]?.length ?? 0) > 0 || Boolean((attributeTextValues[item.attributeId] ?? '').trim()))).length
     if (requireCompleteCatalog && selectedOptionalProductAttributes > MAX_PRODUCT_ATTRIBUTES) issues.push(`Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`)
-    if (requireCompleteCatalog && singleWebColorEnabled && (!webColorRequirement || !singleWebColorValueId)) issues.push('Tek Renk aktarımı için gönderilecek panel renk değerini seçin.')
-    if (singleWebColorEnabled && webColorRequirement && singleWebColorValueId && !webColorRequirement.attribute.values.some(value => value.id === singleWebColorValueId)) issues.push('Tek Renk için seçilen değer geçerli değil.')
+    if (requireCompleteCatalog && !webColorAutoEnabled && (!webColorRequirement || !manualWebColorValueId)) issues.push('Manuel Web Color aktarımı için gönderilecek panel renk değerini seçin.')
+    if (!webColorAutoEnabled && webColorRequirement && manualWebColorValueId && !webColorRequirement.attribute.values.some(value => value.id === manualWebColorValueId)) issues.push('Manuel Web Color için seçilen değer geçerli değil.')
+    if (requireCompleteCatalog && webColorAutoEnabled && webColorRequirement && !variantAttributeIds.includes(webColorRequirement.attributeId) && !(attributeSelections[webColorRequirement.attributeId]?.length)) issues.push('Web Color otomatik aktarımı için Renk varyantını seçin veya otomatik aktarımı kapatıp bir değer seçin.')
     if (!form.title.trim()) issues.push('Ürün adı zorunludur.')
     if (requireCompleteCatalog && !form.description.trim()) issues.push('Açıklama zorunludur.')
     if (requireCompleteCatalog) {
@@ -1550,8 +1548,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const regularGlobalAttributes = requirementList
         .filter(item => item.attributeId !== webColorRequirement?.attributeId && !variantAttributeIds.includes(item.attributeId))
         .flatMap((item, index) => productAttributePayload(item, attributeSelections[item.attributeId] ?? [], attributeTextValues[item.attributeId] ?? '', index))
-      const colorGlobalAttributes = webColorRequirement && singleWebColorEnabled && singleWebColorValueId
-        ? [{ attributeId: webColorRequirement.attributeId, valueId: singleWebColorValueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: regularGlobalAttributes.length }]
+      const colorGlobalAttributes = webColorRequirement && !webColorAutoEnabled && manualWebColorValueId
+        ? [{ attributeId: webColorRequirement.attributeId, valueId: manualWebColorValueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: regularGlobalAttributes.length }]
         : webColorRequirement && !variantAttributeIds.includes(webColorRequirement.attributeId)
           ? productAttributePayload(webColorRequirement, attributeSelections[webColorRequirement.attributeId] ?? [], attributeTextValues[webColorRequirement.attributeId] ?? '', regularGlobalAttributes.length)
           : []
@@ -1711,7 +1709,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <label className="product-title-field">Ürün adı<input value={form.title} onChange={event => updateField('title', event.target.value)} required maxLength={320} /></label>
           <label>Satış durumu<select value={form.status} onChange={event => updateField('status', event.target.value)}><option value="ACTIVE">Satışa Açık</option><option value="ARCHIVED">Satışa Kapalı</option><option value="DRAFT">Taslak</option></select></label>
           <label className="product-brand-field">Marka<select value={form.brandId} onChange={event => updateField('brandId', event.target.value)}><option value="">Marka seçin</option>{activeBrands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setSingleWebColorEnabled(false); setSingleWebColorValueId(''); if (!editProductId) setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label>
+          <label>Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setWebColorAutoEnabled(true); setManualWebColorValueId(''); if (!editProductId) setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label>
           <label>Model kodu<input className="technical-field model-code-value" value={form.modelCode} onChange={event => updateField('modelCode', event.target.value)} /></label>
           <label>Stok Kodu<input className="technical-field sku-value" value={form.baseSku} onChange={event => updateField('baseSku', event.target.value)} placeholder="RAV-BLUZ" /></label>
           <label>Barkod<input className="technical-field barcode-value" value={form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder="Varyantsız üründe kullanılır" /></label>
@@ -1783,11 +1781,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             <button type="button" onClick={generateVariants} disabled={!canAddVariantCombinations}>{canAddVariantCombinations ? 'Ürünleri ekle' : 'Seçenekler güncel'}</button>
           </div>
         </div>
-        {webColorRequirement && <section className={`web-color-mode-card${singleWebColorEnabled ? ' is-single' : ''}`} aria-label="Web Color aktarım ayarı">
-          <div className="web-color-mode-copy"><strong>Web Color aktarımı</strong><small>{singleWebColorEnabled ? 'Tüm varyantlarda yalnızca seçtiğiniz panel rengi gönderilir.' : 'Tek Renk kapalıyken her varyant kendi Renk → Web Color eşleşmesini kullanır.'}</small></div>
-          <label className="web-color-mode-toggle"><input type="checkbox" checked={singleWebColorEnabled} onChange={event => toggleSingleWebColor(event.target.checked)} /><span>Tek Renk</span></label>
-          {singleWebColorEnabled && <label className="web-color-single-value">Gönderilecek panel rengi<select aria-label="Tek Renk panel değeri" value={singleWebColorValueId} onChange={event => setSingleWebColorValueId(event.target.value)}><option value="">Panel rengi seçin</option>{sortOptionValues('Renk', webColorValues).map(value => <option key={value.id} value={value.id}>{cleanOptionValue(value.value)}</option>)}</select></label>}
-        </section>}
         {!form.categoryId ? (
           <div className="unknown"><strong>Önce kategori seçin</strong><p>Kategori seçildiğinde o kategoriye bağlanan özellikler burada görünür.</p></div>
         ) : requirements.isLoading ? (
@@ -1799,12 +1792,24 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             {visibleOptionRequirements.map(item => {
               const expandable = item.attribute.values.length > 0
               const expanded = !expandable || (expandedOptionGroupIds[item.attributeId] ?? false)
+              const isWebColorOption = item.attributeId === webColorRequirement?.attributeId
               return (
               <article className={`attribute-builder-card ${expanded ? 'is-open' : ''}`} key={item.attributeId}>
                 <button type="button" className="attribute-builder-disclosure" aria-expanded={expanded} aria-controls={`option-values-${item.attributeId}`} disabled={!expandable} onClick={() => setExpandedOptionGroupIds(current => ({ ...current, [item.attributeId]: !expanded }))}>
                   <span className="attribute-builder-disclosure-copy"><strong>{item.attribute.name}</strong><small>{item.attribute.values.length} değer · seçenek grubu</small></span>
                   <span className="attribute-builder-disclosure-meta"><small className={variantAttributeIds.includes(item.attributeId) ? 'attribute-builder-selected' : ''}>{(attributeSelections[item.attributeId]?.length ?? 0) > 0 ? `${attributeSelections[item.attributeId].length} değer seçildi` : 'Değer seçin'}</small>{expandable && <i aria-hidden="true">⌄</i>}</span>
                 </button>
+                {isWebColorOption && <div className={`attribute-builder-web-color-mode${webColorAutoEnabled ? ' is-auto' : ' is-manual'}`}>
+                  <label className="attribute-builder-web-color-toggle">
+                    <input type="checkbox" checked={webColorAutoEnabled} onChange={event => toggleWebColorAuto(event.target.checked)} />
+                    <span><strong>Varyant renklerini otomatik aktar</strong><small>{webColorAutoEnabled ? 'Açık · Renk eşleşmelerinden dönüştürülmüş Web Color gönderilir.' : 'Kapalı · Web Color panel değeri aşağıdan seçilir.'}</small></span>
+                  </label>
+                  {webColorAutoEnabled ? (
+                    <div className="attribute-builder-web-color-status"><strong>Otomatik aktarım aktif</strong><small>{variantAttributeIds.includes(item.attributeId) ? 'Seçilen Renk varyantlarının eşleşmiş Web Color karşılıkları gönderilecek.' : 'Otomatik aktarım için aşağıdaki Renk değerlerinden varyant seçin.'}</small></div>
+                  ) : (
+                    <label className="attribute-builder-web-color-manual">Manuel panel rengi<select aria-label="Manuel Web Color panel değeri" value={manualWebColorValueId} onChange={event => setManualWebColorValueId(event.target.value)}><option value="">Panel rengi seçin</option>{sortOptionValues('Renk', webColorValues).map(value => <option key={value.id} value={value.id}>{cleanOptionValue(value.value)}</option>)}</select></label>
+                  )}
+                </div>}
                 {expanded && <div id={`option-values-${item.attributeId}`} className="attribute-builder-values">
                 {item.attribute.values.length ? (
                   <div className="option-chip-list">
