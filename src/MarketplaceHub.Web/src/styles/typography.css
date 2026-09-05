@@ -195,6 +195,12 @@
   mask: var(--ui-mask-close) center / contain no-repeat;
 }
 
+/* Record delete buttons already render the shared inline SVG icon. Do not
+   paint the legacy mask as well; it creates two stacked close marks. */
+.app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='sil']::before {
+  display: none !important;
+}
+
 .app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='düzenle']::before,
 .app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='düzenle']::before,
 .app-shell.stitch-shell .mapping-icon-button[aria-label*='düzenle']::before {
