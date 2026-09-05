@@ -2140,9 +2140,12 @@ textarea {
 .mapping-table-status i { width: 7px; height: 7px; background: #ff9e9e; border-radius: 50%; box-shadow: 0 0 8px rgba(255, 158, 158, .5); }
 .mapping-table-status.active i { background: #20d5a0; box-shadow: 0 0 8px rgba(32, 213, 160, .5); }
 .mapping-row-actions { display: flex; justify-content: flex-end; gap: 3px; }
+.mapping-row-actions { align-items: center; min-width: max-content; }
 .mapping-row-actions button { width: 28px !important; min-width: 28px !important; height: 28px !important; min-height: 28px !important; border-color: transparent !important; }
-.mapping-row-actions button[aria-label="Eşleştirmeyi sil"] { font-size: 0; }
-.mapping-row-actions button[aria-label="Eşleştirmeyi sil"]::before { content: "×"; font-size: 20px; line-height: 1; }
+.mapping-row-actions .mapping-feature-button { flex: 0 1 122px; min-width: 118px !important; min-height: 34px !important; line-height: 1.2 !important; text-align: center; white-space: normal; }
+.mapping-row-actions .mapping-delete-button { flex: 0 0 28px; font-size: 0 !important; }
+.mapping-row-actions .mapping-delete-button::before { content: none !important; }
+.mapping-delete-icon { display: block; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 2.25; }
 .mapping-row-actions button:last-child:hover { color: #ffb4ab !important; background: rgba(147, 0, 10, .15) !important; }
 
 .mapping-saved-card > footer { display: flex; align-items: center; justify-content: space-between; min-height: 58px; padding: 10px 16px; color: #c6c5d7; font-size: 12px; background: #12131b; border-top: 1px solid #34343d; }
@@ -2915,7 +2918,8 @@ textarea {
 .brand-mapping-console > .mapping-action button { min-height: 36px !important; padding: 0 14px !important; color: #fff !important; background: var(--st-primary) !important; border-color: #8a83ff !important; border-radius: 6px !important; box-shadow: none !important; font-size: 10px !important; }
 
 .brand-mapping-saved-card .mapping-icon-button { font-size: 0 !important; }
-.brand-mapping-saved-card .mapping-icon-button::before { content: "✎"; color: #c6c5d7; font-size: 16px; line-height: 1; }
+.brand-mapping-saved-card .mapping-icon-button[aria-label="Marka eşleştirmesini düzenle"]::before { content: "✎"; color: #c6c5d7; font-size: 16px; line-height: 1; }
+.brand-mapping-saved-card .mapping-delete-button::before { content: none !important; }
 .brand-mapping-saved-card .mapping-icon-button:hover { color: #fff !important; background: rgba(104, 114, 232, .14) !important; border-color: #6872e8 !important; }
 .brand-mapping-modal-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(7, 8, 13, .76); }
 .brand-mapping-modal { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(560px, calc(100vw - 40px)); max-height: min(620px, calc(100vh - 48px)); overflow: hidden; color: #e3e1ed; background: #1a1b23; border: 1px solid #454655; border-radius: 6px; box-shadow: 0 24px 70px rgba(0, 0, 0, .55); }
@@ -2983,6 +2987,56 @@ textarea {
 .brand-mapping-target-controls .brand-reference-picker [role="option"] > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brand-mapping-target-controls .brand-reference-picker [role="option"] > small { color: #9293a3; font-size: 9px; }
 .brand-mapping-console > .brand-reference-action.has-error { color: #f2a4ad !important; }
+
+/* Brand sides use the same two-level layout: heading first, controls below. */
+.brand-mapping-pair-grid .mapping-side {
+  grid-template-rows: auto auto !important;
+  min-height: 126px !important;
+  background: #1a1b23 !important;
+  border: 1px solid #454655 !important;
+  border-radius: 3px !important;
+}
+.brand-mapping-pair-grid .mapping-side-head {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: start !important;
+  gap: 4px 10px !important;
+}
+.brand-mapping-pair-grid .mapping-side-head > span,
+.brand-mapping-pair-grid .mapping-side-head > small,
+.brand-mapping-pair-grid .mapping-side-head-copy { grid-column: 1 !important; min-width: 0 !important; }
+.brand-mapping-pair-grid .mapping-side-head-copy { grid-row: 1 / span 2 !important; }
+.brand-mapping-pair-grid .mapping-reference-refresh { grid-column: 2 !important; grid-row: 1 / span 2 !important; }
+.brand-mapping-pair-grid .mapping-side-field { display: grid !important; gap: 12px !important; min-width: 0 !important; }
+.brand-mapping-pair-grid .mapping-side-field > span { color: #c6c5d7 !important; font-size: 9px !important; font-weight: 600 !important; letter-spacing: .02em; }
+.brand-mapping-target-controls > select,
+.brand-mapping-target-controls .panel-category-picker-trigger {
+  min-height: 44px !important;
+  color: #e3e1ed !important;
+  background: #1a1b23 !important;
+  border: 1px solid #454655 !important;
+  border-radius: 3px !important;
+}
+.brand-mapping-target-controls .panel-category-picker-trigger:hover:not(:disabled),
+.brand-mapping-target-controls > select:focus {
+  background: #22232c !important;
+  border-color: #6872e8 !important;
+}
+.brand-mapping-console .brand-library-heading > span {
+  padding: 0 !important;
+  color: var(--st-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+}
+.brand-mapping-saved-card .mapping-empty-table-cell {
+  min-height: 88px;
+  padding: 34px 16px !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+}
 
 @media (max-width: 760px) {
   .brand-mapping-console { padding: 14px !important; }
