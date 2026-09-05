@@ -2782,7 +2782,7 @@ textarea {
 .mapping-advanced-tools .mapping-fields.compact { min-height: 67px !important; align-items: stretch !important; }
 .mapping-advanced-tools .mapping-fields.compact label { grid-template-rows: minmax(14px, auto) 38px !important; align-content: end !important; }
 .mapping-advanced-tools .mapping-fields.compact select,
-.mapping-advanced-tools .mapping-fields.compact > button { height: 38px !important; box-sizing: border-box !important; }
+.mapping-advanced-tools .mapping-fields.compact > button { height: 38px !important; box-sizing: border-box !important; align-self: end !important; }
 .mapping-advanced-tools .mapping-fields.compact > button:hover { color: #fff !important; background: #283653 !important; border-color: var(--mapping-modal-primary) !important; }
 .mapping-advanced-tools .value-mapping-toggle { min-height: 32px !important; justify-self: start !important; padding: 0 10px !important; color: #d9dcff !important; background: var(--mapping-modal-primary-soft) !important; border: 1px solid rgba(113, 104, 245, .55) !important; border-radius: 6px !important; box-shadow: none !important; font-size: 10px !important; }
 .mapping-advanced-tools .value-mapping-toggle:hover { color: #fff !important; background: rgba(113, 104, 245, .28) !important; }
@@ -2834,19 +2834,24 @@ textarea {
 }
 .mapping-advanced-tools .web-color-assignment-picker {
   display: grid !important;
-  grid-template-columns: minmax(0, 1.3fr) minmax(180px, .7fr) !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   gap: 8px !important;
-  align-items: end !important;
+  align-items: stretch !important;
 }
 .mapping-advanced-tools .web-color-assignment-picker label {
   display: grid !important;
+  grid-template-rows: 14px minmax(38px, 1fr) !important;
   gap: 5px !important;
+  min-height: 62px !important;
+  height: 62px !important;
+  box-sizing: border-box !important;
   color: var(--mapping-modal-muted) !important;
   font-size: 9px !important;
   font-weight: 800 !important;
 }
 .mapping-advanced-tools .web-color-assignment-picker select {
   width: 100% !important;
+  height: 38px !important;
   min-height: 38px !important;
   color: var(--mapping-modal-text) !important;
   background-color: #101827 !important;
@@ -2857,7 +2862,9 @@ textarea {
 .mapping-advanced-tools .web-color-assignment-current {
   display: grid !important;
   gap: 3px !important;
-  min-height: 38px !important;
+  min-height: 62px !important;
+  height: 62px !important;
+  box-sizing: border-box !important;
   padding: 7px 9px !important;
   background: #182235 !important;
   border: 1px solid #30405d !important;
