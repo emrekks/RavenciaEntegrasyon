@@ -255,6 +255,11 @@ function isVariantOptionName(name: string) {
   return ['RENK', 'COLOR', 'COLOUR', 'WEBCOLOR', 'WEBCOLOUR', 'WEBRENK', 'BEDEN', 'SIZE', 'SIZ', 'NUMARA', 'NUMBER'].includes(normalized)
 }
 
+function isColorAttributeName(name: string) {
+  const normalized = name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')
+  return ['RENK', 'COLOR', 'COLOUR', 'WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(normalized)
+}
+
 function VariantImageIcon() {
   return <svg className="variant-media-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 5-5 3 3 2-2 6 6" /></svg>
 }
@@ -1155,6 +1160,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const initializedEditProductKey = useRef<string | null>(null)
   const initializedEditOptionsKey = useRef<string | null>(null)
+  const initializedEditWebColorKey = useRef<string | null>(null)
   const [wizardStep, setWizardStep] = useState<1 | 2>(1)
   const [scheduledPublishOpen, setScheduledPublishOpen] = useState(false)
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
@@ -1220,6 +1226,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   // fields or validation requirements.
   const mappedRequirements = useMemo(() => allRequirements.filter(item => item.attribute.values.length > 0), [allRequirements])
   const optionRequirements = useMemo(() => mappedRequirements.filter(item => !['WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(item.attribute.name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')) && (item.role === 'OPTION' || isVariantOptionName(item.attribute.name))).slice(0, 2), [mappedRequirements])
+  const webColorRequirement = useMemo(() => mappedRequirements.find(item => isColorAttributeName(item.attribute.name) && item.attribute.values.length > 0), [mappedRequirements])
+  const webColorValues = webColorRequirement?.attribute.values ?? []
+  const [singleWebColorEnabled, setSingleWebColorEnabled] = useState(false)
+  const [singleWebColorValueId, setSingleWebColorValueId] = useState('')
   useEffect(() => {
     const optionIds = optionRequirements.map(item => item.attributeId)
     setVariantAttributeIds(current => current.filter(id => optionIds.includes(id)))
@@ -1243,6 +1253,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
   }, [productToEdit.data?.id, productToEdit.data?.version])
+
+  useEffect(() => {
+    if (!editProductId || !productToEdit.data || !webColorRequirement || requirements.isLoading) return
+    const productKey = `${productToEdit.data.id}:${productToEdit.data.version}`
+    if (initializedEditWebColorKey.current === productKey) return
+    initializedEditWebColorKey.current = productKey
+    const savedSingleColor = productToEdit.data.attributes?.find(item => item.attributeId === webColorRequirement.attributeId && item.valueId)
+    setSingleWebColorEnabled(Boolean(savedSingleColor))
+    setSingleWebColorValueId(savedSingleColor?.valueId ?? '')
+  }, [editProductId, productToEdit.data, requirements.isLoading, webColorRequirement])
 
   useEffect(() => {
     if (!editProductId || !productToEdit.data || !allRequirements.length || requirements.isLoading) return
@@ -1279,6 +1299,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (requirement?.role === 'ATTRIBUTE' && !requirement.isRequired && values.length === 0 && selectedOptionalAttributeCount >= MAX_PRODUCT_ATTRIBUTES) { const message = `Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`; setNotice(message); showFeedback(message, 'error'); return current }
       return { ...current, [attributeId]: nextValues }
     })
+  }
+
+  function toggleSingleWebColor(enabled: boolean) {
+    setSingleWebColorEnabled(enabled)
+    if (!enabled) {
+      setSingleWebColorValueId('')
+      return
+    }
+    const selected = webColorRequirement ? attributeSelections[webColorRequirement.attributeId] ?? [] : []
+    setSingleWebColorValueId(current => current || selected[0] || webColorValues[0]?.id || '')
   }
   function generateVariants() {
     try {
@@ -1453,6 +1483,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (requireCompleteCatalog && (variantAttributeIds.length > 2 || variantAttributeIds.some(id => requirementList.find(item => item.attributeId === id)?.role !== 'OPTION'))) issues.push('Varyant için en fazla 2 Seçenek Eşitleme başlığı kullanılabilir.')
     const selectedOptionalProductAttributes = requirementList.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && ((attributeSelections[item.attributeId]?.length ?? 0) > 0 || Boolean((attributeTextValues[item.attributeId] ?? '').trim()))).length
     if (requireCompleteCatalog && selectedOptionalProductAttributes > MAX_PRODUCT_ATTRIBUTES) issues.push(`Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`)
+    if (requireCompleteCatalog && singleWebColorEnabled && (!webColorRequirement || !singleWebColorValueId)) issues.push('Tek Renk aktarımı için gönderilecek panel renk değerini seçin.')
+    if (singleWebColorEnabled && webColorRequirement && singleWebColorValueId && !webColorRequirement.attribute.values.some(value => value.id === singleWebColorValueId)) issues.push('Tek Renk için seçilen değer geçerli değil.')
     if (!form.title.trim()) issues.push('Ürün adı zorunludur.')
     if (requireCompleteCatalog && !form.description.trim()) issues.push('Açıklama zorunludur.')
     if (requireCompleteCatalog) {
@@ -1511,7 +1543,15 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (requireCompleteCatalog && form.categoryId && requirements.isLoading) throw new Error('Kategori özellikleri yükleniyor. Kaydetmeden önce kısa süre bekleyin.')
       if (requireCompleteCatalog && form.categoryId && requirements.isError) throw new Error('Kategori özellikleri alınamadı. Önce kategori eşleştirmesini kontrol edin.')
       const requirementList = mappedRequirements; const rows = rowsForSubmit(requireCompleteCatalog); validate(rows, requireCompleteCatalog)
-      const globalAttributes = requirementList.filter(item => !variantAttributeIds.includes(item.attributeId)).flatMap((item, index) => productAttributePayload(item, attributeSelections[item.attributeId] ?? [], attributeTextValues[item.attributeId] ?? '', index))
+      const regularGlobalAttributes = requirementList
+        .filter(item => item.attributeId !== webColorRequirement?.attributeId && !variantAttributeIds.includes(item.attributeId))
+        .flatMap((item, index) => productAttributePayload(item, attributeSelections[item.attributeId] ?? [], attributeTextValues[item.attributeId] ?? '', index))
+      const colorGlobalAttributes = webColorRequirement && singleWebColorEnabled && singleWebColorValueId
+        ? [{ attributeId: webColorRequirement.attributeId, valueId: singleWebColorValueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: regularGlobalAttributes.length }]
+        : webColorRequirement && !variantAttributeIds.includes(webColorRequirement.attributeId)
+          ? productAttributePayload(webColorRequirement, attributeSelections[webColorRequirement.attributeId] ?? [], attributeTextValues[webColorRequirement.attributeId] ?? '', regularGlobalAttributes.length)
+          : []
+      const globalAttributes = [...regularGlobalAttributes, ...colorGlobalAttributes]
       // Do not overwrite existing assignments while a newly selected category's
       // requirements are still loading (or failed). The edit form may be saved
       // without optional mapping data.
@@ -1667,7 +1707,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <label className="product-title-field">Ürün adı<input value={form.title} onChange={event => updateField('title', event.target.value)} required maxLength={320} /></label>
           <label>Satış durumu<select value={form.status} onChange={event => updateField('status', event.target.value)}><option value="ACTIVE">Satışa Açık</option><option value="ARCHIVED">Satışa Kapalı</option><option value="DRAFT">Taslak</option></select></label>
           <label className="product-brand-field">Marka<select value={form.brandId} onChange={event => updateField('brandId', event.target.value)}><option value="">Marka seçin</option>{activeBrands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); if (!editProductId) setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label>
+          <label>Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setSingleWebColorEnabled(false); setSingleWebColorValueId(''); if (!editProductId) setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label>
           <label>Model kodu<input className="technical-field model-code-value" value={form.modelCode} onChange={event => updateField('modelCode', event.target.value)} /></label>
           <label>Stok Kodu<input className="technical-field sku-value" value={form.baseSku} onChange={event => updateField('baseSku', event.target.value)} placeholder="RAV-BLUZ" /></label>
           <label>Barkod<input className="technical-field barcode-value" value={form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder="Varyantsız üründe kullanılır" /></label>
@@ -1739,6 +1779,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             <button type="button" onClick={generateVariants} disabled={!canAddVariantCombinations}>{canAddVariantCombinations ? 'Ürünleri ekle' : 'Seçenekler güncel'}</button>
           </div>
         </div>
+        {webColorRequirement && <section className={`web-color-mode-card${singleWebColorEnabled ? ' is-single' : ''}`} aria-label="Web Color aktarım ayarı">
+          <div className="web-color-mode-copy"><strong>Web Color aktarımı</strong><small>{singleWebColorEnabled ? 'Tüm varyantlarda yalnızca seçtiğiniz panel rengi gönderilir.' : 'Tek Renk kapalıyken her varyant kendi Renk → Web Color eşleşmesini kullanır.'}</small></div>
+          <label className="web-color-mode-toggle"><input type="checkbox" checked={singleWebColorEnabled} onChange={event => toggleSingleWebColor(event.target.checked)} /><span>Tek Renk</span></label>
+          {singleWebColorEnabled && <label className="web-color-single-value">Gönderilecek panel rengi<select aria-label="Tek Renk panel değeri" value={singleWebColorValueId} onChange={event => setSingleWebColorValueId(event.target.value)}><option value="">Panel rengi seçin</option>{sortOptionValues('Renk', webColorValues).map(value => <option key={value.id} value={value.id}>{cleanOptionValue(value.value)}</option>)}</select></label>}
+        </section>}
         {!form.categoryId ? (
           <div className="unknown"><strong>Önce kategori seçin</strong><p>Kategori seçildiğinde o kategoriye bağlanan özellikler burada görünür.</p></div>
         ) : requirements.isLoading ? (

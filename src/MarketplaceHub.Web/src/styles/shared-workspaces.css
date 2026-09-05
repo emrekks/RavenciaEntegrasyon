@@ -2617,8 +2617,10 @@ textarea {
   --mapping-modal-primary-soft: rgba(113, 104, 245, .16);
   --mapping-modal-success: #35d3a1;
   --mapping-modal-warning: #e6b75f;
-  inset: 32px auto 32px 50% !important;
-  width: min(1040px, calc(100vw - 64px)) !important;
+  /* Center within the content area instead of the viewport; the 74px rail
+     otherwise makes this workspace look visibly shifted to the left. */
+  inset: 32px auto 32px calc(50% + 37px) !important;
+  width: min(1040px, calc(100vw - 106px)) !important;
   height: calc(100vh - 64px) !important;
   max-height: none !important;
   transform: translateX(-50%);

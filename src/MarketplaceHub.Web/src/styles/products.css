@@ -3111,3 +3111,53 @@ body:has(.product-add-page),
   .app-shell.stitch-shell .product-add-page .product-basics-grid > label:nth-child(9) { grid-column: 1 !important; }
   .app-shell.stitch-shell .product-add-page .media-preview-strip .image-preview-card { flex-basis: 104px !important; width: 104px !important; }
 }
+
+/* Web Color is a publication rule for the product, while local colour
+   variants remain available for stock and media management. */
+.app-shell.stitch-shell .product-add-page .web-color-mode-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 18px;
+  margin: 0 0 14px;
+  padding: 13px 14px;
+  color: #cbd1e6;
+  background: #111827;
+  border: 1px solid #33415e;
+  border-radius: 8px;
+}
+.app-shell.stitch-shell .product-add-page .web-color-mode-card.is-single {
+  border-color: rgba(113, 104, 245, .78);
+  box-shadow: inset 3px 0 0 #7168f5;
+}
+.app-shell.stitch-shell .product-add-page .web-color-mode-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.app-shell.stitch-shell .product-add-page .web-color-mode-copy strong { color: #eef2ff; font-size: 12px; }
+.app-shell.stitch-shell .product-add-page .web-color-mode-copy small { color: #91a0b9; font-size: 10px; line-height: 1.45; }
+.app-shell.stitch-shell .product-add-page .web-color-mode-toggle {
+  display: inline-flex !important;
+  grid-template-columns: none !important;
+  align-items: center;
+  gap: 8px;
+  margin: 0 !important;
+  color: #eef2ff !important;
+  font-size: 11px !important;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .product-add-page .web-color-mode-toggle input { width: 16px; min-height: 16px; accent-color: #7168f5; }
+.app-shell.stitch-shell .product-add-page .web-color-single-value {
+  display: grid !important;
+  grid-column: 1 / -1;
+  gap: 5px;
+  margin: 0 !important;
+  color: #91a0b9 !important;
+  font-size: 10px !important;
+}
+.app-shell.stitch-shell .product-add-page .web-color-single-value select { width: 100%; min-height: 38px; color: #eef2ff; background: #0d1422; border-color: #3a4967; }
+@media (max-width: 600px) {
+  .app-shell.stitch-shell .product-add-page .web-color-mode-card { grid-template-columns: 1fr; }
+  .app-shell.stitch-shell .product-add-page .web-color-mode-toggle { justify-self: start; }
+}
