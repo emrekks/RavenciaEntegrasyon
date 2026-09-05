@@ -479,7 +479,6 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
   const status = statuses.size === 1 ? product.status : 'MIXED'
   const statusLabel = status === 'ACTIVE' ? 'Satışta' : status === 'ARCHIVED' ? 'Kapalı' : status === 'MIXED' ? 'Karışık' : 'Taslak'
   const statusHint = status === 'ACTIVE' ? 'Aktif' : status === 'ARCHIVED' ? 'Pasif' : status === 'MIXED' ? 'Kayıtlar farklı durumda' : 'Taslak'
-  const variantLabels = [...new Set(group.variants.map(item => item.variant.optionSignature || item.variant.sku))]
   const variantDisplayGroups = productVariantDisplayGroups(group.variants.map(item => item.variant))
   const modelCode = group.products.map(item => item.modelCode).find(value => value?.trim()) ?? '—'
   return <article className="product-catalog-item color-variant-item product-group-card">
@@ -487,7 +486,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
         <input className="product-row-select" type="checkbox" aria-label={`${product.title} ürün grubunu seç`} checked={selected} onChange={onSelect} />
         {product.primaryImageUrl ? <img src={product.primaryImageUrl} alt={product.title} className="product-list-thumb clickable-thumb" onClick={() => onImageClick(product.primaryImageUrl!, product.title)} title="Görseli büyütmek için tıklayın" /> : <span className="product-list-placeholder">Görsel yok</span>}
         <div className="product-list-identity"><strong>{product.title}</strong><small>Model Kodu: <code className="technical-text model-code-value">{modelCode}</code></small>{group.products.length > 1 && <small className="product-list-group-note">{group.products.length} katalog kaydı tek kartta</small>}</div>
-        <div className="product-list-variants product-variant-hover" title={variantLabels.join(' · ')} aria-label={`${group.variants.length} varyant: ${variantLabels.join(', ')}`}><strong>{group.variants.length} varyant</strong><span className="product-variant-tooltip" role="tooltip">{variantDisplayGroups.map(group => <span className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span>{group.values.join(', ')}</span></span>)}</span></div>
+        <div className="product-list-variants product-variant-hover" tabIndex={0} aria-label={`${group.variants.length} varyant`}><strong>{group.variants.length} varyant</strong><span className="product-variant-tooltip" role="tooltip">{variantDisplayGroups.map(group => <span className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span>{group.values.join(', ')}</span></span>)}</span></div>
         <div className="product-list-price clickable-cell" title="Fiyatı hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('price')}><strong>{money(startingPrice, product.currency)}</strong></div>
         <div className="product-list-stock clickable-cell" title="Stoğu hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('stock')}><strong>{totalStock}</strong></div>
         <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ''}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'}>TY<i /></span><small>{platformActive ? 'Eşleşti' : 'Eşleşmedi'}</small></div>

@@ -2977,7 +2977,9 @@ body:has(.product-add-page),
 .product-import-empty,
 .product-import-note { margin: 0; color: #aeb4d1; font-size: .7rem; line-height: 1.4; }
 .product-import-note { padding: 10px 12px; color: #9fe2ce; background: rgba(43, 193, 148, .08); border: 1px solid rgba(43, 193, 148, .3); border-radius: 7px; }
-.product-variant-hover { position: relative; cursor: help; }
+.product-variant-hover { position: relative; cursor: pointer; text-decoration: none !important; }
+.product-variant-hover:hover > strong,
+.product-variant-hover:focus-visible > strong { text-decoration: none !important; }
 .product-variant-tooltip { position: absolute; z-index: 5; left: 0; top: calc(100% - 2px); display: none; width: max-content; max-width: min(360px, 30vw); padding: 9px 11px; color: #f4f5ff; background: #242943; border: 1px solid #6975ff; border-radius: 6px; box-shadow: 0 12px 28px rgba(0,0,0,.35); font-size: 10px; line-height: 1.45; white-space: normal; }
 .product-variant-hover:hover .product-variant-tooltip, .product-variant-hover:focus-within .product-variant-tooltip { display: block; }
 .app-shell.stitch-shell .product-variant-hover .product-variant-tooltip {
