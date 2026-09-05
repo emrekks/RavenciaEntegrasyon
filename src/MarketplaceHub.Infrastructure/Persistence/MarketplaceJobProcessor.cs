@@ -1549,6 +1549,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await db.SaveChangesAsync(cancellationToken);
         }
         DateTimeOffset? modifiedAfter = !fullScan && hasSnapshots && cursor.LastModifiedWatermark is not null ? cursor.LastModifiedWatermark.Value.AddMinutes(-2) : null;
+        // Product imports carry Trendyol's brand id, so keep the current brand
+        // reference available for an automatic panel-brand mapping while the
+        // catalog rows are being materialized.
+        var brandReferences = await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
         var categoryReferences = await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
         IReadOnlyList<ReferenceItem> categoryItems = categoryReferences is null
             ? []
@@ -1638,7 +1642,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, cancellationToken);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, cancellationToken);
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
                 }
@@ -2351,19 +2355,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized, cancellationToken);
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, CancellationToken cancellationToken)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
         // Keep the import contract version in the hash. This invalidates older
-        // snapshots after changing option-role interpretation, so existing
-        // catalog records receive the corrected color option on the next scan.
+        // snapshots after changing option-role or brand-mapping interpretation,
+        // so catalog records receive the corrected local relationships on the
+        // next scan.
         var remoteHash = Hash(JsonSerializer.Serialize(new
         {
             Snapshot = snapshot,
             // Reprocess existing catalog products after changing mapped
             // attribute assignment semantics, not only newly fetched rows.
-            OptionRoleVersion = "catalog-options-v5-web-color-mapping"
+            OptionRoleVersion = "catalog-options-v6-web-color-and-brand-mapping"
         }));
         var isNewProduct = false;
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
@@ -2417,6 +2422,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         var brand = await UpsertCatalogBrand(tenantId, snapshot.BrandName, cancellationToken);
+        await EnsureImportedBrandMapping(tenantId, connectionId, brand, snapshot.BrandExternalId, brandReferenceSnapshotId, now, cancellationToken);
         var category = categoryContext?.LocalCategory ?? await UpsertCatalogCategory(tenantId, snapshot.CategoryName, cancellationToken);
         if (!preserveLocal)
         {
@@ -2523,6 +2529,70 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(name!.Trim(), 160), NormalizedName = normalized, IsActive = true, CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
         db.Brands.Add(brand);
         return brand;
+    }
+
+    private async Task EnsureImportedBrandMapping(
+        Guid tenantId,
+        Guid connectionId,
+        Brand? brand,
+        string? externalBrandId,
+        Guid? brandReferenceSnapshotId,
+        DateTimeOffset verifiedAt,
+        CancellationToken cancellationToken)
+    {
+        if (brand is null || brandReferenceSnapshotId is null || string.IsNullOrWhiteSpace(externalBrandId)) return;
+
+        var externalId = Short(externalBrandId.Trim(), 256);
+        var referenceExists = await db.ReferenceItems.AsNoTracking().AnyAsync(
+            x => x.TenantId == tenantId
+                && x.ConnectionId == connectionId
+                && x.SnapshotId == brandReferenceSnapshotId.Value
+                && x.ResourceType == "BRANDS"
+                && x.ExternalId == externalId
+                && x.IsActive,
+            cancellationToken);
+        if (!referenceExists) return;
+
+        var mapping = db.BrandMappings.Local.FirstOrDefault(x =>
+                x.TenantId == tenantId
+                && x.ConnectionId == connectionId
+                && x.LocalId == brand.Id
+                && x.ScopeExternalId == "")
+            ?? await db.BrandMappings.SingleOrDefaultAsync(x =>
+                x.TenantId == tenantId
+                && x.ConnectionId == connectionId
+                && x.LocalId == brand.Id
+                && x.ScopeExternalId == "",
+                cancellationToken);
+
+        if (mapping is null)
+        {
+            db.BrandMappings.Add(new BrandMapping
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ConnectionId = connectionId,
+                SnapshotId = brandReferenceSnapshotId.Value,
+                LocalId = brand.Id,
+                ScopeExternalId = "",
+                ExternalId = externalId,
+                Status = "VERIFIED",
+                VerifiedAt = verifiedAt,
+                Version = 1
+            });
+            return;
+        }
+
+        if (mapping.SnapshotId == brandReferenceSnapshotId.Value
+            && string.Equals(mapping.ExternalId, externalId, StringComparison.Ordinal)
+            && string.Equals(mapping.Status, "VERIFIED", StringComparison.Ordinal))
+            return;
+
+        mapping.SnapshotId = brandReferenceSnapshotId.Value;
+        mapping.ExternalId = externalId;
+        mapping.Status = "VERIFIED";
+        mapping.VerifiedAt = verifiedAt;
+        mapping.Version++;
     }
 
     private async Task<Category?> UpsertCatalogCategory(Guid tenantId, string? name, CancellationToken cancellationToken)
