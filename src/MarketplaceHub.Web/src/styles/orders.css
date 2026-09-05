@@ -71,6 +71,24 @@
   border-color: #5865f2 !important;
   box-shadow: 0 0 18px rgba(45, 59, 255, .34) !important;
 }
+.orders-reference-heading-actions .orders-sync-action .orders-sync-icon {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  align-items: center;
+  justify-content: center;
+}
+.orders-reference-heading-actions .orders-sync-action .orders-sync-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .orders-reference-filter-shell {
   margin: 0 0 18px !important;
   overflow: hidden !important;
