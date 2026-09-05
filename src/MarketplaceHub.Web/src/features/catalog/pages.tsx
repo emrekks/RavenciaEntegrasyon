@@ -211,6 +211,37 @@ function cleanOptionValue(value: string) {
   return value.replace(/^["“”]+|["“”]+$/g, '').trim()
 }
 
+const standardSizeOrder = new Map([
+  ['XXXS', 0], ['3XS', 0], ['XXS', 1], ['2XS', 1], ['XS', 2], ['S', 3], ['M', 4], ['L', 5], ['XL', 6],
+  ['2XL', 7], ['3XL', 8], ['4XL', 9], ['5XL', 10], ['6XL', 11], ['7XL', 12], ['8XL', 13], ['9XL', 14]
+])
+
+function optionValueSortRank(attributeName: string, rawValue: string) {
+  const name = attributeName.replace(/[\s-]+/g, '').toLocaleUpperCase('tr-TR')
+  const value = cleanOptionValue(rawValue).toLocaleUpperCase('tr-TR').replace(/\s+/g, ' ').trim()
+  const compactValue = value.replace(/\s+/g, '')
+  if (!['BEDEN', 'SIZE', 'SIZ', 'NUMARA', 'NUMBER'].includes(name)) return { bucket: 0, primary: 0, secondary: 0, text: value }
+
+  const ageRange = value.match(/^(\d+(?:[.,]\d+)?)\s*[-–]\s*(\d+(?:[.,]\d+)?)\s*AY$/)
+  if (ageRange) return { bucket: 0, primary: Number(ageRange[1].replace(',', '.')), secondary: Number(ageRange[2].replace(',', '.')), text: value }
+  const numericValue = value.match(/^\d+(?:[.,]\d+)?$/)
+  if (numericValue) return { bucket: 1, primary: Number(value.replace(',', '.')), secondary: 0, text: value }
+  const standardRank = standardSizeOrder.get(compactValue)
+  if (standardRank !== undefined) return { bucket: 2, primary: standardRank, secondary: 0, text: value }
+  return { bucket: 3, primary: 0, secondary: 0, text: value }
+}
+
+function sortOptionValues<T extends { id: string; value: string }>(attributeName: string, values: T[]) {
+  return values
+    .map((value, index) => ({ value, index, rank: optionValueSortRank(attributeName, value.value) }))
+    .sort((left, right) => left.rank.bucket - right.rank.bucket
+      || left.rank.primary - right.rank.primary
+      || left.rank.secondary - right.rank.secondary
+      || left.rank.text.localeCompare(right.rank.text, 'tr', { numeric: true, sensitivity: 'base' })
+      || left.index - right.index)
+    .map(item => item.value)
+}
+
 function variantSignatureKey(signature: string) {
   return parseVariantOptionSignature(signature)
     .map(option => `${option.name.replace(/\s+/g, '').toLocaleLowerCase('tr-TR')}:${cleanOptionValue(option.value).toLocaleLowerCase('tr-TR')}`)
@@ -220,11 +251,7 @@ function variantSignatureKey(signature: string) {
 
 function isVariantOptionName(name: string) {
   const normalized = name.replace(/\s+/g, '').toLocaleUpperCase('tr-TR')
-  return ['RENK', 'COLOR', 'COLOUR', 'BEDEN', 'SIZE', 'SIZ', 'NUMARA', 'NUMBER'].includes(normalized)
-}
-
-function isWebColorName(name: string) {
-  return ['WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(name.replace(/[\s-]+/g, '').toLocaleUpperCase('tr-TR'))
+  return ['RENK', 'COLOR', 'COLOUR', 'WEBCOLOR', 'WEBCOLOUR', 'WEBRENK', 'BEDEN', 'SIZE', 'SIZ', 'NUMARA', 'NUMBER'].includes(normalized)
 }
 
 function VariantImageIcon() {
@@ -1127,7 +1154,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   // the mapping workspace for maintenance, but must not become empty product
   // fields or validation requirements.
   const mappedRequirements = useMemo(() => allRequirements.filter(item => item.attribute.values.length > 0), [allRequirements])
-  const optionRequirements = useMemo(() => mappedRequirements.filter(item => !isWebColorName(item.attribute.name) && (item.role === 'OPTION' || isVariantOptionName(item.attribute.name))).slice(0, 2), [mappedRequirements])
+  const optionRequirements = useMemo(() => mappedRequirements.filter(item => item.role === 'OPTION' || isVariantOptionName(item.attribute.name)).slice(0, 2), [mappedRequirements])
   useEffect(() => {
     const optionIds = optionRequirements.map(item => item.attributeId)
     setVariantAttributeIds(current => current.filter(id => optionIds.includes(id)))
@@ -1666,7 +1693,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                 {expanded && <div id={`option-values-${item.attributeId}`} className="attribute-builder-values">
                 {item.attribute.values.length ? (
                   <div className="option-chip-list">
-                    {item.attribute.values.map(value => {
+                    {sortOptionValues(item.attribute.name, item.attribute.values).map(value => {
                       const isSelected = (attributeSelections[item.attributeId] ?? []).includes(value.id)
                       return (
                         <button

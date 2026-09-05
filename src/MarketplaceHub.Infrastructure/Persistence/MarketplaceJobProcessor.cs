@@ -1705,6 +1705,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var values = valuesByAttribute[remoteAttribute.ExternalId];
             var localAttribute = await EnsureMappedAttribute(tenantId, connectionId, localCategory, categoryItem, attributeSnapshot, remoteAttribute, values, importedAttributeLibrary, cancellationToken);
             attributes[NormalizeCatalogKey(remoteAttribute.Name, 320)] = localAttribute;
+            attributes.TryAdd(NormalizeCatalogKey(localAttribute.Definition.Name, 320), localAttribute);
         }
 
         // Hide stale requirements created by older importer versions when the
@@ -1882,9 +1883,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         importedAttributeLibrary[attributeKey] = attribute;
 
         var requirement = await db.CategoryAttributeRequirements.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == category.Id && x.AttributeId == attribute.Id, cancellationToken);
-        var role = IsWebColorOptionKey(remoteAttribute.Name)
-            ? "ATTRIBUTE"
-            : requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
+        var role = requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
         if (requirement is null)
             db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = category.Id, AttributeId = attribute.Id, IsRequired = remoteAttribute.IsRequired == true, AllowsCustomValue = remoteAttribute.AllowsCustomValue == true, IsPanelScoped = true, DisplayOrder = remoteAttribute.SortOrder ?? 0, Role = role, Version = 1 });
         else
@@ -1952,8 +1951,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var sortOrder = 0;
         foreach (var pair in options)
         {
-            var optionKey = NormalizeCatalogKey(pair.Key, 320);
-            if (!categoryContext.Attributes.TryGetValue(optionKey, out var mapped))
+            if (!TryGetMappedAttribute(categoryContext.Attributes, pair.Key, out var mapped))
             {
                 sortOrder++;
                 continue;
@@ -2136,7 +2134,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             Snapshot = snapshot,
             // Reprocess existing catalog products after changing mapped
             // attribute assignment semantics, not only newly fetched rows.
-            OptionRoleVersion = "catalog-options-v3-mapped-attributes"
+            OptionRoleVersion = "catalog-options-v4-color-option"
         }));
         var isNewProduct = false;
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
@@ -2510,12 +2508,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var panelOptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in options)
         {
-            var optionKey = NormalizeCatalogKey(pair.Key, 320);
-            if (!categoryContext.Attributes.TryGetValue(optionKey, out var mapped) || !IsCatalogProductOption(mapped, pair.Key)) continue;
+            if (!TryGetMappedAttribute(categoryContext.Attributes, pair.Key, out var mapped) || !IsCatalogProductOption(mapped, pair.Key)) continue;
             panelOptions[mapped.Definition.Name] = await PanelOptionValueAsync(tenantId, connectionId, categoryContext, mapped, pair.Value, cancellationToken);
         }
         if (panelOptions.Count > 0) return OptionSignature(panelOptions);
-        var fallbackOptions = options.Where(pair => !IsWebColorOptionKey(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        var fallbackOptions = options.Where(pair => IsVariantOptionName(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
         return OptionSignature(fallbackOptions);
     }
 
@@ -2527,14 +2524,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private static string? VariantOptionAxis(string value)
     {
-        if (IsWebColorOptionKey(value)) return null;
+        if (IsWebColorOptionKey(value)) return "COLOR";
         if (IsColorOptionKey(value)) return "COLOR";
         if (IsSizeOptionKey(value)) return "SIZE";
         return null;
     }
 
-    private static string? ObservedVariantValueAxis(string value) =>
-        IsWebColorOptionKey(value) ? "WEB_COLOR" : VariantOptionAxis(value);
+    private static string? ObservedVariantValueAxis(string value) => VariantOptionAxis(value);
 
     private static bool IsColorOptionKey(string value)
     {
@@ -2545,7 +2541,29 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private static bool IsVariantOptionName(string value) => VariantOptionAxis(value) is not null;
 
     private static bool IsCatalogProductOption(LocalCategoryAttribute mapped, string remoteName) =>
-        !IsWebColorOptionKey(remoteName) && (mapped.Role == "OPTION" || IsVariantOptionName(remoteName));
+        mapped.Role == "OPTION" || IsVariantOptionName(remoteName);
+
+    private static bool TryGetMappedAttribute(IReadOnlyDictionary<string, LocalCategoryAttribute> attributes, string remoteName, out LocalCategoryAttribute mapped)
+    {
+        if (attributes.TryGetValue(NormalizeCatalogKey(remoteName, 320), out var direct))
+        {
+            mapped = direct;
+            return true;
+        }
+
+        var axis = VariantOptionAxis(remoteName);
+        if (axis is null)
+        {
+            mapped = null!;
+            return false;
+        }
+
+        mapped = attributes.Values
+            .Where(item => VariantOptionAxis(item.Remote.Name) == axis || VariantOptionAxis(item.Definition.Name) == axis)
+            .OrderByDescending(item => item.Role == "OPTION")
+            .FirstOrDefault()!;
+        return mapped is not null;
+    }
 
     private static bool IsSizeOptionKey(string value)
     {
@@ -2568,9 +2586,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             var optionKey = NormalizeCatalogKey(pair.Key, 160); var valueKey = NormalizeCatalogKey(pair.Value, 160);
             if (string.IsNullOrWhiteSpace(optionKey) || string.IsNullOrWhiteSpace(valueKey)) continue;
-            if (IsWebColorOptionKey(pair.Key)) continue;
             LocalCategoryAttribute? mapped = null;
-            if (categoryContext is not null && (!categoryContext.Attributes.TryGetValue(optionKey, out mapped) || (mapped.Role != "OPTION" && !IsVariantOptionName(pair.Key)))) continue;
+            if (categoryContext is not null && (!TryGetMappedAttribute(categoryContext.Attributes, pair.Key, out mapped) || (mapped.Role != "OPTION" && !IsVariantOptionName(pair.Key)))) continue;
             var panelLabel = mapped?.Definition.Name ?? pair.Key;
             var panelValue = mapped is null ? pair.Value : await PanelOptionValueAsync(tenantId, connectionId, categoryContext!, mapped, pair.Value, cancellationToken);
             optionKey = NormalizeCatalogKey(panelLabel, 160);
