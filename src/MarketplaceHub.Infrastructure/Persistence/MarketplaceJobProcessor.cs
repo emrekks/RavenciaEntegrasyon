@@ -1781,6 +1781,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (cache.TryGetValue(externalCategoryId, out var cached))
         {
             await EnsureObservedVariantAttributeValues(tenantId, cached, snapshot, cancellationToken);
+            await EnsureExactWebColorValueMappings(tenantId, connectionId, cached, cancellationToken);
             return cached;
         }
 
@@ -1867,6 +1868,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         var result = new CategoryAttributeContext(localCategory, externalCategoryId, attributes);
         await EnsureObservedVariantAttributeValues(tenantId, result, snapshot, cancellationToken);
+        await EnsureExactWebColorValueMappings(tenantId, connectionId, result, cancellationToken);
         cache[externalCategoryId] = result;
         return result;
     }
@@ -2097,6 +2099,80 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
         }
         return new LocalCategoryAttribute(attribute, remoteAttribute, values, role);
+    }
+
+    private async Task EnsureExactWebColorValueMappings(
+        Guid tenantId,
+        Guid connectionId,
+        string categoryExternalId,
+        AttributeDefinition localAttribute,
+        ReferenceItem remoteAttribute,
+        IReadOnlyList<ReferenceItem> remoteValues,
+        CancellationToken cancellationToken)
+    {
+        var valueScope = $"{categoryExternalId}/{remoteAttribute.ExternalId}";
+        var valueSnapshot = await db.ReferenceSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ATTRIBUTE_VALUES" && x.ScopeExternalId == valueScope && x.IsCurrent)
+            .OrderByDescending(x => x.FetchedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (valueSnapshot is null) return;
+
+        var trackedLocalValues = db.AttributeValues.Local
+            .Where(x => x.TenantId == tenantId && x.AttributeId == localAttribute.Id && x.IsActive)
+            .ToList();
+        var trackedLocalValueIds = trackedLocalValues.Select(x => x.Id).ToHashSet();
+        var localValues = trackedLocalValues
+            .Concat(await db.AttributeValues
+                .Where(x => x.TenantId == tenantId && x.AttributeId == localAttribute.Id && x.IsActive && !trackedLocalValueIds.Contains(x.Id))
+                .ToListAsync(cancellationToken))
+            .ToList();
+        var remoteByValue = remoteValues
+            .GroupBy(x => NormalizeCatalogKey(x.Name, 320), StringComparer.Ordinal)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
+
+        foreach (var localValue in localValues)
+        {
+            if (!remoteByValue.TryGetValue(localValue.NormalizedValue, out var remoteValue)) continue;
+
+            var existing = db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValue.Id && x.ScopeExternalId == valueScope)
+                ?? await db.AttributeValueMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValue.Id && x.ScopeExternalId == valueScope, cancellationToken);
+            // A saved custom mapping takes precedence over the exact-name
+            // default and is intentionally never overwritten by a sync.
+            if (existing is not null) continue;
+
+            db.AttributeValueMappings.Add(new AttributeValueMapping
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ConnectionId = connectionId,
+                SnapshotId = valueSnapshot.Id,
+                LocalId = localValue.Id,
+                ScopeExternalId = valueScope,
+                ExternalId = remoteValue.ExternalId,
+                Status = "VERIFIED",
+                VerifiedAt = timeProvider.GetUtcNow(),
+                Version = 1
+            });
+        }
+    }
+
+    private async Task EnsureExactWebColorValueMappings(
+        Guid tenantId,
+        Guid connectionId,
+        CategoryAttributeContext categoryContext,
+        CancellationToken cancellationToken)
+    {
+        foreach (var mapped in categoryContext.Attributes.Values
+            .Where(x => IsWebColorOptionKey(x.Remote.Name))
+            .GroupBy(x => x.Definition.Id)
+            .Select(x => x.First()))
+        {
+            // Exact matches are safe defaults for the special mapping. They
+            // make values such as “Çok Renkli” publishable immediately while
+            // leaving non-identical, user-defined mappings (for example
+            // Mürdüm -> Mor) untouched.
+            await EnsureExactWebColorValueMappings(tenantId, connectionId, categoryContext.ExternalCategoryId, mapped.Definition, mapped.Remote, mapped.Values, cancellationToken);
+        }
     }
 
     private async Task UpsertProductAttributeAssignments(Guid tenantId, Guid connectionId, Product product, ProductVariant variant, IReadOnlyDictionary<string, string> options, CategoryAttributeContext categoryContext, CancellationToken cancellationToken)
