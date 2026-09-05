@@ -3009,6 +3009,13 @@ textarea {
 .brand-mapping-pair-grid .mapping-reference-refresh { grid-column: 2 !important; grid-row: 1 / span 2 !important; }
 .brand-mapping-pair-grid .mapping-side-field { display: grid !important; gap: 12px !important; min-width: 0 !important; }
 .brand-mapping-pair-grid .mapping-side-field > span { color: #c6c5d7 !important; font-size: 9px !important; font-weight: 600 !important; letter-spacing: .02em; }
+.app-shell.stitch-shell .brand-mapping-pair-grid .brand-mapping-target-controls {
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
 .brand-mapping-target-controls > select,
 .brand-mapping-target-controls .panel-category-picker-trigger {
   min-height: 44px !important;
