@@ -1130,16 +1130,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
                 var pageItems = result.Value!.Items;
                 if (itemCount > MaxBrandReferenceItems - pageItems.Count) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_RESULT_LIMIT_EXCEEDED", "Trendyol marka referansı güvenli işleme sınırını aştı."));
+                var uniquePageItems = new List<RemoteReferenceItem>(pageItems.Count);
                 foreach (var item in pageItems)
                 {
                     TrackReceived();
                     if (!string.Equals(item.ResourceType, "BRANDS", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(item.ExternalId) || string.IsNullOrWhiteSpace(item.Name) || item.ParentExternalId is not null)
                         throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Marka referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
-                    if (!seen.Add(item.ExternalId)) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_IDENTIFIERS_DUPLICATE", "Marka referans yanıtı yinelenen uzak kimlik içeriyor."));
+                    if (seen.Add(item.ExternalId)) uniquePageItems.Add(item);
                 }
-                for (var index = 0; index < pageItems.Count; index++)
+                for (var index = 0; index < uniquePageItems.Count; index++)
                 {
-                    var item = pageItems[index];
+                    var item = uniquePageItems[index];
                     db.ReferenceItems.Add(new ReferenceItem
                     {
                         Id = Guid.CreateVersion7(),
@@ -1162,7 +1163,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                         SortOrder = itemCount + index
                     });
                 }
-                itemCount += pageItems.Count;
+                itemCount += uniquePageItems.Count;
                 await db.SaveChangesAsync(cancellationToken);
                 db.ChangeTracker.Clear();
                 cursor = result.Value.NextCursor;
