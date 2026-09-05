@@ -1537,7 +1537,7 @@ function CategoryAttributeCard({ connectionId, categoryScope, snapshotId, localA
   const client = useQueryClient(); const [localId, setLocalId] = useState(existingMapping?.localId ?? ''); const [showValues, setShowValues] = useState(false)
   useEffect(() => { setLocalId(existingMapping?.localId ?? '') }, [existingMapping?.localId])
   const selectedAttribute = localAttributes.find(item => item.id === localId)
-  const selectableAttributes = localAttributes.filter(item => item.id === localId || !usedLocalIds.has(item.id))
+  const selectableAttributes = localAttributes.filter(item => item.id === localId || isOptionAttribute(item) || !usedLocalIds.has(item.id))
   const categoryOptions = selectableAttributes.filter(item => categoryOptionIds.has(item.id) || isOptionAttribute(item))
   const panelAttributes = selectableAttributes.filter(item => !categoryOptions.some(option => option.id === item.id))
   async function save() {
