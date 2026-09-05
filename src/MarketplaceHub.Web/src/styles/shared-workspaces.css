@@ -2814,6 +2814,92 @@ textarea {
 .mapping-advanced-tools .value-mapping-row:has(select:not([value=""])) > small { color: var(--mapping-modal-success) !important; }
 .mapping-advanced-tools .value-mapping-editor [role="status"] { margin: 0 !important; padding: 8px 10px !important; color: #cbd2ea !important; background: rgba(113, 104, 245, .12) !important; border: 1px solid rgba(113, 104, 245, .35) !important; border-radius: 6px !important; font-size: 10px !important; }
 
+/* Web Color is edited from the target value outward: choose one marketplace
+   value, then attach every matching panel colour to that target. */
+.mapping-advanced-tools .web-color-value-editor {
+  display: grid !important;
+  gap: 10px !important;
+  padding: 12px !important;
+  margin-top: 0 !important;
+  background: var(--mapping-modal-surface-deep) !important;
+  border: 1px solid #30405d !important;
+  border-radius: 8px !important;
+}
+.mapping-advanced-tools .web-color-assignment-picker {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.3fr) minmax(180px, .7fr) !important;
+  gap: 8px !important;
+  align-items: end !important;
+}
+.mapping-advanced-tools .web-color-assignment-picker label {
+  display: grid !important;
+  gap: 5px !important;
+  color: var(--mapping-modal-muted) !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+}
+.mapping-advanced-tools .web-color-assignment-picker select {
+  width: 100% !important;
+  min-height: 38px !important;
+  color: var(--mapping-modal-text) !important;
+  background-color: #101827 !important;
+  border-color: #3a4967 !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+}
+.mapping-advanced-tools .web-color-assignment-current {
+  display: grid !important;
+  gap: 3px !important;
+  min-height: 38px !important;
+  padding: 7px 9px !important;
+  background: #182235 !important;
+  border: 1px solid #30405d !important;
+  border-radius: 6px !important;
+}
+.mapping-advanced-tools .web-color-assignment-current span,
+.mapping-advanced-tools .web-color-assignment-current small {
+  color: var(--mapping-modal-muted) !important;
+  font-size: 9px !important;
+}
+.mapping-advanced-tools .web-color-assignment-current strong { color: var(--mapping-modal-text) !important; font-size: 11px !important; }
+.mapping-advanced-tools .web-color-panel-value-picker {
+  display: grid !important;
+  gap: 7px !important;
+  padding: 10px !important;
+  background: #121b2b !important;
+  border: 1px solid #30405d !important;
+  border-radius: 7px !important;
+}
+.mapping-advanced-tools .web-color-panel-value-picker-head { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 8px !important; }
+.mapping-advanced-tools .web-color-panel-value-picker-head strong { color: var(--mapping-modal-text) !important; font-size: 11px !important; }
+.mapping-advanced-tools .web-color-panel-value-picker-head span { color: var(--mapping-modal-success) !important; font-size: 9px !important; font-weight: 800 !important; }
+.mapping-advanced-tools .web-color-panel-value-grid { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 6px !important; }
+.mapping-advanced-tools .web-color-panel-value {
+  display: grid !important;
+  grid-template-columns: 16px minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  align-items: center !important;
+  column-gap: 7px !important;
+  min-height: 38px !important;
+  padding: 6px 8px !important;
+  color: #d9def0 !important;
+  background: #182235 !important;
+  border: 1px solid #30405d !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+}
+.mapping-advanced-tools .web-color-panel-value:hover { border-color: var(--mapping-modal-primary) !important; }
+.mapping-advanced-tools .web-color-panel-value.selected { background: rgba(113, 104, 245, .2) !important; border-color: rgba(113, 104, 245, .75) !important; }
+.mapping-advanced-tools .web-color-panel-value input { grid-row: 1 / span 2 !important; width: 15px !important; height: 15px !important; min-height: 15px !important; margin: 0 !important; accent-color: var(--mapping-modal-primary) !important; }
+.mapping-advanced-tools .web-color-panel-value > span { overflow: hidden; font-size: 10px !important; font-weight: 750 !important; text-overflow: ellipsis; white-space: nowrap; }
+.mapping-advanced-tools .web-color-panel-value > small { overflow: hidden; color: var(--mapping-modal-warning) !important; font-size: 8px !important; text-overflow: ellipsis; white-space: nowrap; }
+.mapping-advanced-tools .web-color-assignment-groups { display: grid !important; gap: 6px !important; }
+.mapping-advanced-tools .web-color-assignment-groups > strong { color: var(--mapping-modal-muted) !important; font-size: 10px !important; }
+.mapping-advanced-tools .web-color-assignment-groups > div { display: grid !important; gap: 5px !important; }
+.mapping-advanced-tools .web-color-assignment-groups p { display: grid !important; grid-template-columns: minmax(90px, .5fr) minmax(0, 1fr) !important; gap: 8px !important; margin: 0 !important; padding: 6px 8px !important; background: #182235 !important; border: 1px solid #30405d !important; border-radius: 5px !important; }
+.mapping-advanced-tools .web-color-assignment-groups p span { color: #e3e8f7 !important; font-size: 10px !important; font-weight: 750 !important; }
+.mapping-advanced-tools .web-color-assignment-groups p small { overflow: hidden; color: var(--mapping-modal-muted) !important; font-size: 9px !important; text-overflow: ellipsis; white-space: nowrap; }
+
 @media (max-width: 760px) {
   .mapping-advanced-tools[open] { inset: 12px !important; width: auto !important; height: calc(100vh - 24px) !important; transform: none; }
   .mapping-advanced-tools[open] > div > .mapping-popup-content { padding: 16px 14px 22px !important; }
@@ -2825,6 +2911,9 @@ textarea {
   .mapping-advanced-tools .value-mapping-heading { align-items: stretch !important; flex-direction: column !important; }
   .mapping-advanced-tools .value-mapping-heading button { width: 100% !important; }
   .mapping-advanced-tools .value-mapping-row { grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1.3fr) auto !important; }
+  .mapping-advanced-tools .web-color-assignment-picker,
+  .mapping-advanced-tools .web-color-panel-value-grid { grid-template-columns: 1fr !important; }
+  .mapping-advanced-tools .web-color-assignment-groups p { grid-template-columns: 1fr !important; gap: 3px !important; }
 }
 
 /* Brand mapping uses the same card hierarchy as category attribute mapping. */
@@ -4111,9 +4200,6 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .panel-attribute-sort-actions > button { min-width: 42px !important; min-height: 30px !important; padding: 0 8px !important; color: #d9dcff !important; background: rgba(113, 104, 245, .16) !important; border: 1px solid rgba(134, 142, 255, .48) !important; border-radius: 4px !important; font-size: 10px !important; font-weight: 750; }
 .panel-attribute-sort-actions > button:hover { color: #fff !important; background: #7168f5 !important; border-color: #8f94ff !important; }
 .panel-attribute-sort-actions > button:focus-visible { outline: 2px solid #9ea7ff !important; outline-offset: 2px; }
-.panel-attribute-value-sort { display: flex !important; gap: 3px !important; }
-.panel-attribute-value-sort button { color: #aeb7ff !important; }
-.panel-attribute-value-sort button:disabled { opacity: .35; cursor: not-allowed; }
 @media (max-width: 760px) {
   .panel-attribute-add-value { grid-template-columns: 1fr !important; }
   .panel-attribute-sort-hint { justify-content: flex-start; }
@@ -4246,4 +4332,38 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
   .app-shell.stitch-shell .mapping-export-modal > footer { flex-wrap: wrap; }
   .app-shell.stitch-shell .mapping-export-footer-hint { flex: 1 0 100%; margin: 0 0 2px; }
   .app-shell.stitch-shell .mapping-export-modal > footer button { min-width: 0; flex: 1; }
+}
+
+/* The category workspace is one continuous mapping surface. Keep its cards
+   aligned even when a card has a longer label or an optional action. */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell .mapping-popup-content .embedded-attribute-grid.mapping-unified-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .app-shell.stitch-shell .mapping-popup-content .mapping-unified-grid > .attribute-mapping-card {
+    min-width: 0 !important;
+    align-self: stretch !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* Panel values are managed as a compact two-column list; ordering is handled
+   by the A–Z / Z–A actions above the list. */
+.app-shell.stitch-shell .panel-attribute-value-editor {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+}
+.app-shell.stitch-shell .panel-attribute-value-editor > div {
+  min-width: 0 !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+}
+.app-shell.stitch-shell .panel-attribute-value-editor > .panel-value-empty {
+  grid-column: 1 / -1 !important;
+}
+@media (max-width: 560px) {
+  .app-shell.stitch-shell .panel-attribute-value-editor {
+    grid-template-columns: 1fr !important;
+  }
 }

@@ -1095,7 +1095,10 @@ function CategoryAttributeMappingPanel({
   onTextChange: (attributeId: string, value: string) => void
 }) {
   const attributes = requirements
-    .filter(item => item.role === 'ATTRIBUTE' && !isVariantOptionName(item.attribute.name))
+    // Web Color is a marketplace attribute even when its panel source is the
+    // Renk option axis. Keep it visible here so a product can carry the
+    // selected Web Color value outside the variant builder as well.
+    .filter(item => item.role === 'ATTRIBUTE' || (item.role === 'OPTION' && isColorAttributeName(item.attribute.name)))
     .sort((left, right) => Number(right.isRequired) - Number(left.isRequired) || left.attribute.name.localeCompare(right.attribute.name, 'tr-TR', { sensitivity: 'base' }))
   const dataTypeLabels: Record<string, string> = {
     SINGLE_SELECT: 'Tek seçim',
@@ -1125,24 +1128,25 @@ function CategoryAttributeMappingPanel({
           const selectedValues = attributeSelections[item.attributeId] ?? []
           const typedValue = attributeTextValues[item.attributeId] ?? ''
           const hasValue = item.attribute.values.length > 0 ? selectedValues.length > 0 : typedValue.trim().length > 0
+          const displayName = item.role === 'OPTION' && isColorAttributeName(item.attribute.name) ? 'Web Color' : item.attribute.name
           return <article className={`category-attribute-field ${item.isRequired ? 'required' : ''} ${selectedValues.length ? 'has-selection' : ''} ${item.isRequired && !hasValue ? 'is-missing' : ''}`} key={item.attributeId}>
             <div className="category-attribute-field-head">
               <div>
-                <strong>{item.attribute.name}{item.isRequired ? ' *' : ''}</strong>
+                <strong>{displayName}{item.isRequired ? ' *' : ''}</strong>
                 <small>{dataTypeLabels[item.attribute.dataType] ?? item.attribute.dataType}{item.isRequired ? ' · Zorunlu' : ' · İsteğe bağlı'}</small>
               </div>
               {item.attribute.values.length > 0 && selectedValues.length > 0 && <span className="category-attribute-count">{selectedValues.length} seçildi</span>}
             </div>
             {item.attribute.values.length ? (
-              <CategoryAttributeValueDropdown attributeName={item.attribute.name} dataType={item.attribute.dataType} values={item.attribute.values} selectedValues={selectedValues} onToggleValue={valueId => onToggleValue(item.attributeId, valueId)} />
+              <CategoryAttributeValueDropdown attributeName={displayName} dataType={item.attribute.dataType} values={item.attribute.values} selectedValues={selectedValues} onToggleValue={valueId => onToggleValue(item.attributeId, valueId)} />
             ) : item.attribute.dataType === 'BOOLEAN' ? (
-              <select aria-label={`${item.attribute.name} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)}>
+              <select aria-label={`${displayName} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)}>
                 <option value="">Değer seçin</option>
                 <option value="evet">Evet</option>
                 <option value="hayır">Hayır</option>
               </select>
             ) : (
-              <input aria-label={`${item.attribute.name} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)} type={item.attribute.dataType === 'NUMBER' ? 'number' : 'text'} placeholder={item.allowsCustomValue ? 'Değer girin' : 'Özellik değerini girin'} />
+              <input aria-label={`${displayName} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)} type={item.attribute.dataType === 'NUMBER' ? 'number' : 'text'} placeholder={item.allowsCustomValue ? 'Değer girin' : 'Özellik değerini girin'} />
             )}
           </article>
         })}
