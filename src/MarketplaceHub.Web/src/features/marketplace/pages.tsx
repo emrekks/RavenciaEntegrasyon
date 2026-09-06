@@ -866,7 +866,10 @@ export function OrdersPage() {
       if (!event.target.closest('.row-menu')) setMenu(null)
     }
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') setColumnFilterOpen(null)
+      if (event.key === 'Escape') {
+        setColumnFilterOpen(null)
+        setMenu(null)
+      }
     }
     document.addEventListener('pointerdown', closeColumnFilter)
     document.addEventListener('keydown', closeOnEscape)
