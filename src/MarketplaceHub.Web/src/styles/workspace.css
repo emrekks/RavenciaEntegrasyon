@@ -1920,3 +1920,81 @@
   .app-shell.stitch-shell .reference-integration-write-control { align-items: flex-start; flex-direction: column; }
   .app-shell.stitch-shell .reference-integration-write-control em { margin-left: 27px; }
 }
+
+/* External write is managed in the connection details workspace. */
+.app-shell.stitch-shell .reference-integration-write-control { display: none !important; }
+.app-shell.stitch-shell .integration-detail-write-panel {
+  display: grid !important;
+  gap: 14px;
+  margin: 0 !important;
+  padding: 16px !important;
+  border-color: rgba(124, 134, 255, .28) !important;
+  background: linear-gradient(135deg, rgba(27, 32, 55, .9), rgba(18, 22, 38, .92)) !important;
+}
+.app-shell.stitch-shell .integration-detail-write-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.app-shell.stitch-shell .integration-detail-write-heading h2 { margin: 0 !important; color: #f2f3ff !important; }
+.app-shell.stitch-shell .integration-detail-write-heading p { max-width: 760px; margin: 5px 0 0 !important; color: #a4accb !important; line-height: 1.5; }
+.app-shell.stitch-shell .integration-detail-write-status {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  color: #c6cbe5;
+  background: rgba(151, 160, 207, .12);
+  border: 1px solid rgba(151, 160, 207, .24);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell .integration-detail-write-status.is-enabled {
+  color: #b7f8dc;
+  background: rgba(35, 174, 123, .14);
+  border-color: rgba(113, 235, 190, .28);
+}
+.app-shell.stitch-shell .integration-detail-write-panel .integration-write-toggle {
+  margin-top: 0;
+  background: rgba(98, 110, 255, .08);
+}
+.app-shell.stitch-shell .integration-settings-modal .integration-detail-write-panel .integration-write-toggle { display: flex !important; }
+
+/* Give each sync policy a stable identity, controls, and action column. */
+.app-shell.stitch-shell .sync-policy-panel { display: grid !important; gap: 16px; }
+.app-shell.stitch-shell .sync-policy-panel > h2 { margin: 0 !important; }
+.app-shell.stitch-shell .sync-policy-panel > p { max-width: 980px; margin: 0 !important; color: #a4accb; line-height: 1.55; }
+.app-shell.stitch-shell .sync-policy-list { display: grid; gap: 10px; }
+.app-shell.stitch-shell .sync-policy-row {
+  display: grid;
+  grid-template-columns: minmax(250px, 1.65fr) minmax(145px, .7fr) minmax(145px, .7fr) minmax(76px, .35fr) minmax(92px, auto);
+  align-items: end;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  background: rgba(8, 10, 19, .28);
+  border: 1px solid rgba(151, 160, 207, .18);
+  border-radius: 8px;
+}
+.app-shell.stitch-shell .sync-policy-identity { display: grid; gap: 5px; min-width: 0; align-content: start; }
+.app-shell.stitch-shell .sync-policy-identity > strong { color: #eef0ff; font-size: 12px; line-height: 1.35; }
+.app-shell.stitch-shell .sync-policy-identity > .badge { justify-self: start; }
+.app-shell.stitch-shell .sync-policy-identity > small { color: #9ca5c7; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.app-shell.stitch-shell .sync-policy-row > label { display: grid; gap: 6px; min-width: 0; color: #cbd0e8; font-size: 10px; font-weight: 700; }
+.app-shell.stitch-shell .sync-policy-row > label select { width: 100%; min-height: 38px; }
+.app-shell.stitch-shell .sync-policy-row > .sync-policy-toggle { display: flex !important; align-items: center; gap: 7px; min-height: 38px; white-space: nowrap; }
+.app-shell.stitch-shell .sync-policy-row > .sync-policy-toggle input { flex: 0 0 auto; width: 16px; height: 16px; accent-color: #6f7aff; }
+.app-shell.stitch-shell .sync-policy-row > button { min-height: 38px; margin: 0; white-space: nowrap; }
+.app-shell.stitch-shell .sync-policy-gap { color: #f0c67a !important; }
+@media (max-width: 860px) {
+  .app-shell.stitch-shell .sync-policy-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .app-shell.stitch-shell .sync-policy-identity { grid-column: 1 / -1; }
+  .app-shell.stitch-shell .sync-policy-row > button { align-self: end; }
+}
+@media (max-width: 560px) {
+  .app-shell.stitch-shell .integration-detail-write-heading { flex-direction: column; }
+  .app-shell.stitch-shell .sync-policy-row { grid-template-columns: 1fr; }
+  .app-shell.stitch-shell .sync-policy-identity { grid-column: auto; }
+  .app-shell.stitch-shell .sync-policy-row > button { width: 100%; }
+}
