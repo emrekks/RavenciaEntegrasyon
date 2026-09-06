@@ -367,8 +367,15 @@ public static class TrendyolJsonMapper
 
     private static string? ColorOptionValue(IReadOnlyDictionary<string, string> options) => options
         .Where(pair => IsColorOptionKey(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
+        .OrderBy(pair => IsWebColorOptionKey(pair.Key) ? 1 : 0)
         .Select(pair => pair.Value.Trim().ToUpperInvariant())
         .FirstOrDefault();
+
+    private static bool IsWebColorOptionKey(string value)
+    {
+        var normalized = value.Replace(" ", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
+        return normalized is "WEBCOLOR" or "WEBCOLOUR" or "WEBRENK";
+    }
 
     private static bool IsColorOptionKey(string value)
     {

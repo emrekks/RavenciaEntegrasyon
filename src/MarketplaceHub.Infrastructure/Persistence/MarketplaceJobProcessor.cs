@@ -2845,10 +2845,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task<string> PanelOptionSignatureAsync(Guid tenantId, Guid connectionId, CategoryAttributeContext categoryContext, IReadOnlyDictionary<string, string> options, CancellationToken cancellationToken)
     {
         var panelOptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var panelOptionSources = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in options)
         {
             if (!TryGetMappedAttribute(categoryContext.Attributes, pair.Key, out var mapped) || !IsCatalogProductOption(mapped, pair.Key)) continue;
-            panelOptions[mapped.Definition.Name] = await PanelOptionValueAsync(tenantId, connectionId, categoryContext, mapped, pair.Value, cancellationToken);
+            var panelLabel = mapped.Definition.Name;
+            var isWebColorSource = IsWebColorOptionKey(pair.Key) || IsWebColorOptionKey(mapped.Remote.Name);
+            // Trendyol can expose both the slicer value (Renk: Tavşanlı) and
+            // the marketplace display value (Web Color: Çok Renkli). They
+            // map to the same panel option, so the real Renk value must win.
+            if (panelOptions.ContainsKey(panelLabel) && (!panelOptionSources[panelLabel] || isWebColorSource)) continue;
+            panelOptions[panelLabel] = await PanelOptionValueAsync(tenantId, connectionId, categoryContext, mapped, pair.Value, cancellationToken);
+            panelOptionSources[panelLabel] = isWebColorSource;
         }
         if (panelOptions.Count > 0) return OptionSignature(panelOptions);
         var fallbackOptions = options.Where(pair => IsVariantOptionName(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
@@ -2921,7 +2929,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task UpsertCatalogOptions(Guid tenantId, Guid connectionId, Guid productId, Guid variantId, IReadOnlyDictionary<string, string> options, CategoryAttributeContext? categoryContext, CancellationToken cancellationToken)
     {
         var order = 0;
-        foreach (var pair in options.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
+        var processedPanelOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in options.OrderBy(x => IsWebColorOptionKey(x.Key) ? 1 : 0).ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
         {
             var optionKey = NormalizeCatalogKey(pair.Key, 160); var valueKey = NormalizeCatalogKey(pair.Value, 160);
             if (string.IsNullOrWhiteSpace(optionKey) || string.IsNullOrWhiteSpace(valueKey)) continue;
@@ -2930,6 +2939,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var panelLabel = mapped?.Definition.Name ?? pair.Key;
             var panelValue = mapped is null ? pair.Value : await PanelOptionValueAsync(tenantId, connectionId, categoryContext!, mapped, pair.Value, cancellationToken);
             optionKey = NormalizeCatalogKey(panelLabel, 160);
+            if (categoryContext is not null && !processedPanelOptions.Add(optionKey)) continue;
             valueKey = NormalizeCatalogKey(panelValue, 160);
             var option = db.ProductOptions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == productId && x.NormalizedKey == optionKey)
                 ?? await db.ProductOptions.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.NormalizedKey == optionKey, cancellationToken);

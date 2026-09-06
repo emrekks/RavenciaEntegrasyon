@@ -178,6 +178,13 @@
   transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
 }
 
+/* Inline UI icons use the same centering contract in every button. */
+.app-shell.stitch-shell button:has(> .ui-icon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .app-shell.stitch-shell button:hover:not(:disabled),
 .app-shell.stitch-shell .button-link:hover {
   transform: translateY(-1px);
