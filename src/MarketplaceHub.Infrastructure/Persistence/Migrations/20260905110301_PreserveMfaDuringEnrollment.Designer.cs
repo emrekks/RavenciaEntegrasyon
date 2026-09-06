@@ -3386,6 +3386,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<int>("SortOrder")
+                        .HasDefaultValue(0)
                         .HasColumnType("integer");
 
                     b.Property<string>("Sku")
