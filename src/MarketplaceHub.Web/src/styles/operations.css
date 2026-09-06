@@ -479,7 +479,6 @@
   transform: translateY(2px) rotate(225deg);
 }
 
-.settings-tabs,
 .mapping-popup-content .mapping-section-tabs {
   display: flex !important;
   align-items: flex-end !important;
@@ -491,7 +490,6 @@
   border-radius: 0 !important;
   box-shadow: none !important;
 }
-.settings-tabs button,
 .mapping-popup-content .mapping-section-tabs > button {
   position: relative;
   display: inline-flex !important;
@@ -508,13 +506,10 @@
   font-size: 10px !important;
   font-weight: 800 !important;
 }
-.settings-tabs button:hover,
 .mapping-popup-content .mapping-section-tabs > button:hover {
   color: var(--st-text) !important;
   background: rgba(255,255,255,.035) !important;
 }
-.settings-tabs button.active,
-.settings-tabs button[aria-selected="true"],
 .mapping-popup-content .mapping-section-tabs > button.active,
 .mapping-popup-content .mapping-section-tabs > button[aria-selected="true"] {
   color: var(--st-primary-soft) !important;
@@ -522,8 +517,6 @@
   border-color: transparent !important;
   box-shadow: none !important;
 }
-.settings-tabs button.active::after,
-.settings-tabs button[aria-selected="true"]::after,
 .mapping-popup-content .mapping-section-tabs > button.active::after,
 .mapping-popup-content .mapping-section-tabs > button[aria-selected="true"]::after {
   position: absolute;
@@ -579,7 +572,6 @@
 
 @media (max-width: 760px) {
   .jobs-reference-status-summary { gap: 7px 10px; }
-  .settings-tabs button,
   .mapping-popup-content .mapping-section-tabs > button { min-height: 38px !important; padding: 0 10px !important; }
 }
 

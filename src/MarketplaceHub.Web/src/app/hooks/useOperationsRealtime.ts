@@ -40,8 +40,7 @@ export function useOperationsRealtime(enabled: boolean) {
       if (flushTimer === null) flushTimer = window.setTimeout(flush, 250)
     })
     connection.onreconnected(() => {
-      void client.invalidateQueries({ queryKey: ['dashboard-bootstrap'] })
-      void client.invalidateQueries({ queryKey: ['dashboard-revenue-series'] })
+      for (const queryKey of [['orders'], ['returns'], ['products'], ['inventory'], ['invoices'], ['connections'], ['jobs'], ['dashboard-bootstrap'], ['dashboard-revenue-series']]) void client.invalidateQueries({ queryKey })
     })
     let stopped = false
     let retryTimer: number | null = null
@@ -50,9 +49,12 @@ export function useOperationsRealtime(enabled: boolean) {
       try {
         await connection.start()
       } catch {
-        if (!stopped) retryTimer = window.setTimeout(() => void start(), 3000)
+        if (!stopped) retryTimer = window.setTimeout(() => { retryTimer = null; void start() }, 3000)
       }
     }
+    connection.onclose(() => {
+      if (!stopped && retryTimer === null) retryTimer = window.setTimeout(() => { retryTimer = null; void start() }, 3000)
+    })
     void start()
     return () => {
       stopped = true

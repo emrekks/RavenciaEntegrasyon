@@ -3284,8 +3284,8 @@
   gap: 8px;
   align-items: start;
 }
-.product-variant-tooltip-portal .product-variant-tooltip-row > strong { color: #fff; font-size: 10px; white-space: nowrap; }
-.product-variant-tooltip-portal .product-variant-tooltip-row > span { color: #d2d7ff; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.product-variant-tooltip-portal .product-variant-tooltip-row > strong { color: #fff; font-size: calc(10px * var(--rv-font-scale, 1)); white-space: nowrap; }
+.product-variant-tooltip-portal .product-variant-tooltip-row > span { color: #d2d7ff; font-size: calc(10px * var(--rv-font-scale, 1)); line-height: 1.4; overflow-wrap: anywhere; }
 .product-import-progress { display: grid; gap: 11px; padding: 14px; background: rgba(88,101,242,.08); border: 1px solid rgba(105,117,255,.45); border-radius: 8px; }
 .product-import-progress-heading, .product-import-progress-top, .product-import-progress-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .product-import-progress-heading strong { color: #f1f2ff; font-size: .72rem; }

@@ -306,6 +306,7 @@ html { font-size: calc(16px * var(--rv-font-scale)); }
 .app-shell.stitch-shell h1 { font-size: clamp(calc(28px * var(--rv-font-scale)), calc(2.35vw * var(--rv-font-scale)), calc(34px * var(--rv-font-scale))) !important; }
 .app-shell.stitch-shell h2 { font-size: calc(19px * var(--rv-font-scale)) !important; }
 .app-shell.stitch-shell h3 { font-size: calc(15px * var(--rv-font-scale)) !important; }
+.app-shell.stitch-shell h4 { font-size: calc(14px * var(--rv-font-scale)) !important; }
 .app-shell.stitch-shell p { font-size: calc(13px * var(--rv-font-scale)) !important; }
 .app-shell.stitch-shell small { font-size: calc(var(--rv-type-helper-size) * var(--rv-font-scale)) !important; }
 .app-shell.stitch-shell label { font-size: calc(var(--rv-type-label-size) * var(--rv-font-scale)) !important; }
@@ -313,6 +314,8 @@ html { font-size: calc(16px * var(--rv-font-scale)); }
 .app-shell.stitch-shell input,
 .app-shell.stitch-shell select,
 .app-shell.stitch-shell textarea { font-size: calc(var(--rv-type-action-size) * var(--rv-font-scale)) !important; }
+.app-shell.stitch-shell th { font-size: calc(10px * var(--rv-font-scale)) !important; }
+.app-shell.stitch-shell td { font-size: calc(12px * var(--rv-font-scale)) !important; }
 
 /* A few compact route styles intentionally use px values. Keep those text
    nodes connected to the account scale as well, instead of leaving them at
