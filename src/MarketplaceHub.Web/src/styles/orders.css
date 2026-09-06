@@ -1917,6 +1917,8 @@
 .app-shell.stitch-shell .orders-page .order-reference-products > article,
 .app-shell.stitch-shell .orders-page .order-reference-prices > strong {
   border-color: var(--rv-line) !important;
+  border-top-color: var(--rv-line) !important;
+  border-bottom-color: var(--rv-line) !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-meta > span {
   font-size: .58rem !important;
