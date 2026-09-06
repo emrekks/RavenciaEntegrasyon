@@ -1185,28 +1185,3 @@
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-prices > strong:last-child {
   border-bottom: 0 !important;
 }
-
-/* ── Ravencia Obsidian Returns Theme ── */
-.app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell {
-  background: var(--rv-surface-lowest) !important;
-  border: 1px solid var(--rv-border) !important;
-  border-radius: var(--rv-radius) !important;
-}
-
-.app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-tabs button.active {
-  color: var(--rv-primary-text) !important;
-  border-bottom-color: var(--rv-primary) !important;
-  text-shadow: 0 0 12px rgba(139, 92, 246, 0.4) !important;
-}
-
-.app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row {
-  background: var(--rv-surface) !important;
-  border: 1px solid var(--rv-border) !important;
-  border-radius: var(--rv-radius) !important;
-  transition: background var(--rv-transition), border-color var(--rv-transition) !important;
-}
-
-.app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row:hover {
-  background: var(--rv-surface-raised) !important;
-  border-color: var(--rv-border-strong) !important;
-}

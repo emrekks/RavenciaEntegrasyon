@@ -1,25 +1,25 @@
 /* ===== Shared authenticated workspace theme ===== */
 :root {
-  --st-obsidian: #08090e;
-  --st-surface-lowest: #0c0d14;
+  --st-obsidian: #05060b;
+  --st-surface-lowest: #0d0e16;
   --st-surface: #12131b;
-  --st-surface-low: #1a1b24;
-  --st-surface-container: #222330;
-  --st-surface-high: #262838;
-  --st-surface-highest: #2e3042;
-  --st-text: #f0f0f5;
-  --st-muted: #8b8fa3;
-  --st-outline: rgba(255, 255, 255, 0.12);
-  --st-primary-soft: #c4b5fd;
-  --st-primary: #8b5cf6;
-  --st-cyan: #38bdf8;
-  --st-orange: #fbbf24;
-  --st-pink: #f43f5e;
-  --st-violet: #8b5cf6;
-  --st-green: #34d399;
-  --st-red: #f43f5e;
-  --st-radius: 12px;
-  --st-control-radius: 8px;
+  --st-surface-low: #1a1b23;
+  --st-surface-container: #1f1f27;
+  --st-surface-high: #292932;
+  --st-surface-highest: #34343d;
+  --st-text: #e3e1ed;
+  --st-muted: #a5a4b5;
+  --st-outline: #454655;
+  --st-primary-soft: #bec2ff;
+  --st-primary: #5865f2;
+  --st-cyan: #00eefc;
+  --st-orange: #ffb689;
+  --st-pink: #ff2e97;
+  --st-violet: #9d59ff;
+  --st-green: #45e6b0;
+  --st-red: #ff647c;
+  --st-radius: 8px;
+  --st-control-radius: 4px;
   color-scheme: dark;
 }
 html,
@@ -34,8 +34,8 @@ body,
 body {
   margin: 0;
   background-image:
-    radial-gradient(circle at 65% -20%, rgba(139, 92, 246, .07), transparent 36rem),
-    linear-gradient(180deg, var(--st-obsidian), #0c0d15 55%, var(--st-obsidian)) !important;
+    radial-gradient(circle at 65% -20%, rgba(88, 101, 242, .08), transparent 36rem),
+    linear-gradient(180deg, var(--st-obsidian), #080910 55%, var(--st-obsidian)) !important;
 }
 
 body,
@@ -53,7 +53,7 @@ textarea {
 }
 
 ::selection {
-  background: rgba(139, 92, 246, .45);
+  background: rgba(88, 101, 242, .55);
   color: #fff;
 }
 
@@ -64,8 +64,8 @@ textarea {
 .stitch-shell > aside {
   display: flex !important;
   flex-direction: column;
-  background: #08090e !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
+  background: var(--st-surface-lowest) !important;
+  border-right: 1px solid var(--st-surface-highest) !important;
   box-shadow: none !important;
 }
 
@@ -73,23 +73,23 @@ textarea {
   display: flex;
   align-items: center;
   gap: 11px;
-  min-height: 52px;
-  padding: 0 10px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  min-height: 48px;
+  padding: 0 7px 14px;
+  border-bottom: 1px solid var(--st-surface-highest);
 }
 
 .stitch-brand-mark {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   color: #fff;
-  font: 800 17px/1 var(--rv-font-ui);
-  background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
-  border: 1px solid rgba(196, 181, 253, .4);
-  border-radius: 8px;
-  box-shadow: 0 0 20px rgba(139, 92, 246, .35);
+  font: 800 16px/1 var(--rv-font-ui);
+  background: linear-gradient(145deg, var(--st-primary), #3744d8);
+  border: 1px solid rgba(190, 194, 255, .4);
+  border-radius: 6px;
+  box-shadow: 0 0 20px rgba(88, 101, 242, .22);
 }
 
 .stitch-shell .brand.wordmark {
@@ -117,9 +117,9 @@ textarea {
 
 .stitch-shell aside nav {
   display: grid !important;
-  gap: 6px !important;
+  gap: 4px !important;
   margin: 0 !important;
-  padding: 12px 0 0 !important;
+  padding: 0 !important;
 }
 
 .stitch-shell aside nav a,
@@ -127,26 +127,25 @@ textarea {
 .stitch-shell .logout-link {
   display: flex !important;
   align-items: center;
-  gap: 12px !important;
+  gap: 11px !important;
   min-height: 42px !important;
   margin: 0 !important;
-  padding: 0 14px !important;
-  color: #9496a8 !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
+  padding: 0 12px !important;
+  color: #a9a8b8 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
   text-decoration: none !important;
   background: transparent !important;
   border: 1px solid transparent !important;
-  border-radius: 8px !important;
+  border-radius: var(--st-control-radius) !important;
   box-shadow: none !important;
-  transition: all 150ms ease !important;
 }
 
 .stitch-shell aside nav a:hover,
 .stitch-shell .settings-nav > a:hover,
 .stitch-shell .logout-link:hover {
-  color: #f0f0f5 !important;
-  background: rgba(255, 255, 255, .05) !important;
+  color: var(--st-text) !important;
+  background: rgba(255, 255, 255, .035) !important;
   border-color: transparent !important;
   transform: none !important;
 }
@@ -154,22 +153,16 @@ textarea {
 .stitch-shell aside nav a.active,
 .stitch-shell .settings-nav > a.active {
   color: #fff !important;
-  font-weight: 600 !important;
-  background: #8b5cf6 !important;
-  border-color: rgba(196, 181, 253, .3) !important;
-  box-shadow: 0 0 16px rgba(139, 92, 246, .35) !important;
+  background: var(--st-primary) !important;
+  border-color: rgba(190, 194, 255, .24) !important;
+  box-shadow: 0 0 18px rgba(88, 101, 242, .12) !important;
 }
 
 .nav-icon {
-  width: 18px !important;
-  height: 18px !important;
-  flex: 0 0 18px;
-  color: #a78bfa;
-  transition: color 150ms ease;
-}
-
-.stitch-shell aside nav a:hover .nav-icon {
-  color: #c4b5fd !important;
+  width: 17px !important;
+  height: 17px !important;
+  flex: 0 0 17px;
+  color: #777def;
 }
 
 .stitch-shell aside nav a.active .nav-icon,
@@ -177,7 +170,7 @@ textarea {
 
 .settings-nav {
   display: grid !important;
-  gap: 6px !important;
+  gap: 4px !important;
   margin-top: auto !important;
   padding-top: 14px !important;
   border-top: 1px solid var(--st-surface-highest) !important;
@@ -259,60 +252,51 @@ textarea {
 
 .stitch-shell .panel, .stitch-shell article.panel, .stitch-shell .dashboard-metrics > article, .stitch-shell .product-metrics > article {
   color: var(--st-text) !important;
-  background: #12131b !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-radius: 12px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25) !important;
+  background: var(--st-surface-low) !important;
+  border: 1px solid var(--st-surface-highest) !important;
+  border-radius: var(--st-radius) !important;
+  box-shadow: none !important;
 }
 
 .stitch-shell button,
 .stitch-shell .button,
 .stitch-shell a.button {
-  border-radius: 8px !important;
-  font-family: var(--rv-font-ui) !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
+  border-radius: var(--st-control-radius) !important;
   box-shadow: none !important;
-  transition: all 150ms ease !important;
 }
 
-.stitch-shell a.button.primary,
-.stitch-shell button.primary,
-.stitch-shell button[type="submit"]:not(.cyber-password-toggle) {
-  background: #8b5cf6 !important;
-  color: #fff !important;
-  border: 1px solid #9d6ff8 !important;
-  font-weight: 600 !important;
+.stitch-shell a.button.primary {
+  background-color: var(--st-primary);
+  border-color: #727cff;
 }
 
 .stitch-shell button:hover,
-.stitch-shell .button:hover { transform: none !important; filter: brightness(1.12); }
+.stitch-shell .button:hover { transform: none !important; filter: brightness(1.07); }
 .stitch-shell button:disabled { opacity: .44 !important; filter: saturate(.65); }
 
 .stitch-shell input,
 .stitch-shell select,
 .stitch-shell textarea {
   color: var(--st-text) !important;
-  background-color: #0c0d14 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 8px !important;
+  background-color: var(--st-surface-lowest) !important;
+  border: 1px solid var(--st-surface-highest) !important;
+  border-radius: var(--st-control-radius) !important;
   box-shadow: none !important;
-  font-size: 13px !important;
 }
 
 .stitch-shell input:focus,
 .stitch-shell select:focus,
 .stitch-shell textarea:focus {
-  border-color: #8b5cf6 !important;
+  border-color: var(--st-primary) !important;
   outline: 0 !important;
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, .2) !important;
+  box-shadow: 0 0 0 2px rgba(88, 101, 242, .14) !important;
 }
 
-.stitch-shell label { color: #8b8fa3 !important; font-size: 12px !important; }
-.stitch-shell table { color: var(--st-text) !important; background: #12131b !important; border-collapse: collapse !important; border-radius: 10px !important; }
-.stitch-shell th { color: #8b8fa3 !important; font-size: 11px !important; font-weight: 700 !important; letter-spacing: .06em !important; text-transform: uppercase !important; background: #1a1b24 !important; border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important; padding: 10px 12px !important; }
-.stitch-shell td { color: #e2e4ef !important; font-size: 13px !important; border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important; padding: 12px !important; }
-.stitch-shell tbody tr:hover { background: rgba(139, 92, 246, .05) !important; }
+.stitch-shell label { color: #bbbaca !important; font-size: 11px !important; }
+.stitch-shell table { color: var(--st-text) !important; background: var(--st-surface-low) !important; border-collapse: collapse !important; }
+.stitch-shell th { color: #9493a5 !important; font-size: 9px !important; font-weight: 800 !important; letter-spacing: .07em !important; text-transform: uppercase !important; background: var(--st-surface-container) !important; border-bottom: 1px solid var(--st-outline) !important; }
+.stitch-shell td { color: #d7d5e0 !important; font-size: 11px !important; border-bottom: 1px solid var(--st-surface-highest) !important; }
+.stitch-shell tbody tr:hover { background: rgba(88, 101, 242, .045) !important; }
 
 .notice,
 .error,

@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router'
+import { Link, Navigate, NavLink, Route, Routes, useNavigate, useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiRequestError, hubApi, type Me, type TenantOption } from '../shared/api'
 import { UiIcon } from '../shared/components'
@@ -11,17 +11,14 @@ import '../styles/dashboard.css'
 import '../styles/typography.css'
 
 function Shell({ me }: { me: Me }) {
-  const location = useLocation()
   const appearanceSettings = useAppearanceSettings()
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') === 'true')
-  const [mobileOpen, setMobileOpen] = useState(false)
   const sidebarHoverTimer = useRef<number | null>(null)
   const sidebarRef = useRef<HTMLElement>(null)
   async function logout() { await api('/logout', { method: 'POST' }); window.location.replace(`/?signedOut=${Date.now()}`) }
   const sidebarExpanded = sidebarPinned || sidebarHoverExpanded
   const menuCollapsed = !sidebarExpanded
-  useEffect(() => { setMobileOpen(false) }, [location.pathname])
   useEffect(() => {
     document.documentElement.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[appearanceSettings.settings.fontFamily])
     document.documentElement.style.setProperty('--rv-font-scale', String(appearanceFontScale[appearanceSettings.settings.fontSize]))
@@ -76,34 +73,12 @@ function Shell({ me }: { me: Me }) {
   const icon = (name: string) => <svg className="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{icons[name]}</svg>
   const item = (to: string, iconName: string, label: string, end = false) => <NavLink to={to} end={end}>{icon(iconName)}<span className="nav-label">{label}</span></NavLink>
   return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarExpanded ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
-    {mobileOpen && <div className="mobile-menu-backdrop" onClick={() => setMobileOpen(false)} aria-hidden="true" />}
-    <aside ref={sidebarRef} className={mobileOpen ? 'is-mobile-open' : ''} onPointerEnter={expandSidebarOnHover} onPointerLeave={collapseSidebarOnLeave} onFocus={expandSidebarOnHover} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) collapseSidebarOnLeave() }}>
+    <aside ref={sidebarRef} onPointerEnter={expandSidebarOnHover} onPointerLeave={collapseSidebarOnLeave} onFocus={expandSidebarOnHover} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) collapseSidebarOnLeave() }}>
       <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong><small>MarketplaceHub</small></div><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menü sabitlemesini kaldır' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menü sabitlendi' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3h8M9 3v5l-3 3v2h12v-2l-3-3V3M12 13v8" /></svg></button></div>
-      <nav aria-label="Ana menü">
-        {item('/dashboard', 'dashboard', 'Dashboard')}
-        {item('/orders', 'orders', 'Siparişler')}
-        {item('/returns', 'returns', 'İadeler')}
-        {item('/products', 'products', 'Ürünler')}
-        {item('/jobs', 'jobs', 'İşlem Takibi')}
-        {item('/integrations', 'platforms', 'Platformlar')}
-        {item('/mappings/categories', 'mappings', 'Eşleştirme Ayarları')}
-      </nav>
+      <nav aria-label="Ana menü">{item('/dashboard', 'dashboard', 'Dashboard')}{item('/products', 'products', 'Ürünler')}{item('/orders', 'orders', 'Siparişler')}{item('/returns', 'returns', 'İadeler')}{item('/jobs', 'jobs', 'İşlem Takibi')}{item('/integrations', 'platforms', 'Platformlar')}{item('/mappings/categories', 'mappings', 'Eşleştirme Ayarları')}</nav>
       <div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Çıkış Yap</span></button></div>
     </aside>
     <main>
-      <div className="mobile-top-bar">
-        <button type="button" className="mobile-hamburger-btn" onClick={() => setMobileOpen(prev => !prev)} aria-label="Menüyü aç">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="6" x2="21" y2="6"/>
-            <line x1="3" y1="12" x2="21" y2="12"/>
-            <line x1="3" y1="18" x2="21" y2="18"/>
-          </svg>
-        </button>
-        <div className="mobile-top-brand">
-          <span className="mobile-top-logo">R</span>
-          <span className="mobile-top-title">Ravencia</span>
-        </div>
-      </div>
       <Suspense fallback={<Status title="Ekran yükleniyor" />}><Routes><Route path="/dashboard" element={<Dashboard me={me} />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/inventory" element={<InventoryPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<AttributeMappingPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/invoices" element={<Navigate to="/orders" replace />} /><Route path="/invoices/:id" element={<Navigate to="/orders" replace />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/billing" element={<BillingSettingsPage />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings/appearance" element={<AppearanceSettingsPage />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense>
     </main>
   </div>
@@ -314,302 +289,12 @@ function Dashboard({ me }: { me: Me }) {
   const latestSync = [...syncRows].sort((a, b) => new Date(b.lastSuccessAt ?? 0).getTime() - new Date(a.lastSuccessAt ?? 0).getTime())[0]
   const lowStock = bootstrap.data?.lowStock ?? []
   const errors = [bootstrap.error, revenueQuery.error].filter(Boolean)
-  return (
-    <section className="modern-dashboard-page">
-      <div className="modern-dashboard-header">
-        <div className="modern-dashboard-title-area">
-          <div className="modern-dashboard-eyebrow">Operasyon Merkezi</div>
-          <h1>Genel Bakış</h1>
-          <p>Merhaba {me.displayName}. Günlük operasyonun önemli sinyalleri tek ekranda.</p>
-        </div>
-        <div className="modern-dashboard-header-actions">
-          <span className="modern-dashboard-badge is-live">
-            <span className="modern-dashboard-pulse" />
-            Canlı Akış
-          </span>
-          <span className="modern-dashboard-badge">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            {now.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
-          </span>
-        </div>
-      </div>
-
-      {errors.length > 0 && (
-        <div role="alert" className="modern-dashboard-alert">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span>Bazı operasyon verileri alınamadı; görünen metrikler kısmi olabilir.</span>
-        </div>
-      )}
-
-      <div className="modern-kpi-grid">
-        <Link to="/orders" className="modern-kpi-card is-primary">
-          <div className="modern-kpi-top">
-            <div className="modern-kpi-icon-box"><DashboardMetricIcon kind="pending" /></div>
-            <span className="modern-kpi-arrow">↗</span>
-          </div>
-          <div className="modern-kpi-bottom">
-            <span className="modern-kpi-label">Bekleyen Sipariş</span>
-            <strong className="modern-kpi-value">{loading ? '—' : metrics?.pendingOrders ?? 0}</strong>
-          </div>
-        </Link>
-        <Link to="/orders" className={`modern-kpi-card ${(metrics?.lateOrders ?? 0) > 0 ? 'is-danger' : ''}`}>
-          <div className="modern-kpi-top">
-            <div className="modern-kpi-icon-box"><DashboardMetricIcon kind="late" /></div>
-            <span className="modern-kpi-arrow">↗</span>
-          </div>
-          <div className="modern-kpi-bottom">
-            <span className="modern-kpi-label">Geciken Sipariş</span>
-            <strong className="modern-kpi-value">{loading ? '—' : metrics?.lateOrders ?? 0}</strong>
-          </div>
-        </Link>
-        <Link to="/orders" className="modern-kpi-card is-info">
-          <div className="modern-kpi-top">
-            <div className="modern-kpi-icon-box"><DashboardMetricIcon kind="today" /></div>
-            <span className="modern-kpi-arrow">↗</span>
-          </div>
-          <div className="modern-kpi-bottom">
-            <span className="modern-kpi-label">Bugünkü Sipariş</span>
-            <strong className="modern-kpi-value">{loading ? '—' : metrics?.todayOrders ?? 0}</strong>
-          </div>
-        </Link>
-        <Link to="/orders" className="modern-kpi-card is-success">
-          <div className="modern-kpi-top">
-            <div className="modern-kpi-icon-box"><DashboardMetricIcon kind="month" /></div>
-            <span className="modern-kpi-arrow">↗</span>
-          </div>
-          <div className="modern-kpi-bottom">
-            <span className="modern-kpi-label">Bu Ayki Sipariş</span>
-            <strong className="modern-kpi-value">{loading ? '—' : metrics?.monthOrders ?? 0}</strong>
-          </div>
-        </Link>
-        <Link to="/returns" className="modern-kpi-card is-primary">
-          <div className="modern-kpi-top">
-            <div className="modern-kpi-icon-box"><DashboardMetricIcon kind="return" /></div>
-            <span className="modern-kpi-arrow">↗</span>
-          </div>
-          <div className="modern-kpi-bottom">
-            <span className="modern-kpi-label">Aksiyon Bekleyen İade</span>
-            <strong className="modern-kpi-value">{loading ? '—' : metrics?.pendingReturns ?? 0}</strong>
-          </div>
-        </Link>
-        <Link to="/orders" className={`modern-kpi-card ${(metrics?.dueSoonInvoices ?? 0) > 0 ? 'is-warning' : ''}`}>
-          <div className="modern-kpi-top">
-            <div className="modern-kpi-icon-box"><DashboardMetricIcon kind="invoice" /></div>
-            <span className="modern-kpi-arrow">↗</span>
-          </div>
-          <div className="modern-kpi-bottom">
-            <span className="modern-kpi-label">Süresi Yaklaşan Fatura</span>
-            <strong className="modern-kpi-value">{loading ? '—' : metrics?.dueSoonInvoices ?? 0}</strong>
-          </div>
-        </Link>
-        <Link to="/orders" className="modern-kpi-card">
-          <div className="modern-kpi-top">
-            <div className="modern-kpi-icon-box"><DashboardMetricIcon kind="uninvoiced" /></div>
-            <span className="modern-kpi-arrow">↗</span>
-          </div>
-          <div className="modern-kpi-bottom">
-            <span className="modern-kpi-label">Fatura Bekliyor</span>
-            <strong className="modern-kpi-value">{loading ? '—' : metrics?.uninvoicedInvoices ?? 0}</strong>
-          </div>
-        </Link>
-        <Link to="/products" className={`modern-kpi-card ${(metrics?.lowStockProducts ?? 0) > 0 ? 'is-warning' : ''}`}>
-          <div className="modern-kpi-top">
-            <div className="modern-kpi-icon-box"><DashboardMetricIcon kind="stock" /></div>
-            <span className="modern-kpi-arrow">↗</span>
-          </div>
-          <div className="modern-kpi-bottom">
-            <span className="modern-kpi-label">Düşük / Yok Stok</span>
-            <strong className="modern-kpi-value">{loading ? '—' : metrics?.lowStockProducts ?? 0}</strong>
-          </div>
-        </Link>
-      </div>
-
-      <div className="modern-dashboard-analytics-grid">
-        <article className="modern-panel">
-          <div className="modern-panel-header">
-            <div className="modern-panel-title">
-              <h2>Satış Cirosu</h2>
-              <p>Seçilen dönemde gerçekleşen sipariş toplamı</p>
-            </div>
-            <div className="modern-revenue-controls">
-              <div className="modern-select-wrap">
-                <select aria-label="Ciro dönemi" value={revenueRange} onChange={event => setRevenueRange(event.target.value as DashboardRevenueRange)}>
-                  <option value="1">Günlük</option>
-                  <option value="3">Son 3 gün</option>
-                  <option value="7">Son 7 gün</option>
-                  <option value="14">Son 14 gün</option>
-                  <option value="30">Son 30 gün</option>
-                  <option value="month">Bu ay</option>
-                  <option value="custom">Özel tarih</option>
-                </select>
-              </div>
-              <div className="modern-select-wrap">
-                <select aria-label="Ciro platformu" value={revenuePlatform} onChange={event => setRevenuePlatform(event.target.value)}>
-                  <option value="ALL">Tüm platformlar</option>
-                  {revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}
-                </select>
-              </div>
-            </div>
-          </div>
-          {revenueRange === 'custom' && (
-            <div className="modern-custom-dates">
-              <input type="date" value={revenueFrom} max={revenueTo} onChange={event => setRevenueFrom(event.target.value)} />
-              <span style={{ color: '#8b8fa3' }}>–</span>
-              <input type="date" value={revenueTo} min={revenueFrom} onChange={event => setRevenueTo(event.target.value)} />
-            </div>
-          )}
-          <div className="modern-revenue-summary">
-            <span className="modern-revenue-total">{dashboardMoney(revenueTotal, revenueCurrency)}</span>
-            <span className="modern-revenue-orders-badge">{revenueOrderCount} sipariş</span>
-          </div>
-          <div className="modern-revenue-chart" aria-label="Günlük satış cirosu">
-            <div className="modern-revenue-y-axis" aria-hidden="true">
-              {revenueAxisTicks.map(tick => (
-                <span key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }}>
-                  {tick.major ? dashboardAxisMoney(tick.amount, revenueCurrency) : ''}
-                </span>
-              ))}
-            </div>
-            <div className="modern-revenue-plot-area">
-              <div className="modern-revenue-gridlines" aria-hidden="true">
-                {revenueAxisTicks.map(tick => (
-                  <i className={tick.major ? 'is-major' : 'is-minor'} key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }} />
-                ))}
-              </div>
-              <div className="modern-revenue-bars-container" style={{ gridTemplateColumns: `repeat(${Math.max(revenueSeries.length, 1)}, minmax(0, 1fr))` }}>
-                {revenueSeries.map(point => (
-                  <div className="modern-revenue-bar-column" key={point.key}>
-                    <div className="modern-revenue-bar-wrap">
-                      <span
-                        className="modern-revenue-bar"
-                        style={{ height: `${Math.max(point.amount ? 7 : 3, (point.amount / revenueAxisMax) * 100)}%` }}
-                        aria-label={`${point.fullLabel}: ${dashboardMoney(point.amount, point.currency)}, ${point.orderCount} sipariş`}
-                        tabIndex={0}
-                      >
-                        <span className="modern-revenue-tooltip">
-                          <strong>{point.fullLabel}</strong>
-                          <span>{dashboardMoney(point.amount, point.currency)} · {point.orderCount} sipariş</span>
-                        </span>
-                      </span>
-                    </div>
-                    <span className="modern-revenue-x-label">{point.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article className="modern-panel">
-          <div className="modern-panel-header">
-            <div className="modern-panel-title">
-              <h2>Son Senkronizasyonlar</h2>
-              <p>Sipariş, iade ve stok kayıtlarının güncel zamanı</p>
-            </div>
-            <Link to="/jobs" className="modern-panel-header-link">İşlem takibi <UiIcon name="arrowRight" /></Link>
-          </div>
-          <div className="modern-sync-list">
-            {syncRows.map(row => (
-              <Link to="/jobs" className="modern-sync-item" key={row.resourceType}>
-                <div className="modern-sync-left">
-                  <span className={`modern-sync-icon-box ${row.kind}`} aria-hidden="true">
-                    <UiIcon name="sync" />
-                  </span>
-                  <div className="modern-sync-info">
-                    <span className="modern-sync-title">{row.label}</span>
-                    <span className="modern-sync-status">
-                      {row.status === 'SUCCEEDED' ? 'Başarılı senkronizasyon' : 'Henüz kayıt yok'}
-                    </span>
-                  </div>
-                </div>
-                <span className="modern-sync-time">{dashboardSyncTime(row)}</span>
-              </Link>
-            ))}
-          </div>
-          <div className="modern-sync-footer">
-            <span className="modern-sync-footer-pulse" />
-            <span>{latestSync ? `Son veri senkronizasyonu: ${dashboardSyncTime(latestSync)}` : 'Senkronizasyon kaydı yok'}</span>
-          </div>
-        </article>
-      </div>
-
-      <div className="modern-dashboard-bottom-grid">
-        <article className="modern-panel">
-          <div className="modern-panel-header">
-            <div className="modern-panel-title">
-              <h2>Sipariş Akışı</h2>
-              <p>Operasyon kayıtlarının anlık özeti</p>
-            </div>
-            <Link to="/orders" className="modern-panel-header-link">Detaylar <UiIcon name="arrowRight" /></Link>
-          </div>
-          <div className="modern-flow-list">
-            <Link to="/orders" className="modern-flow-item">
-              <div className="modern-flow-left">
-                <span className="modern-flow-dot pending" />
-                <span className="modern-flow-label">Bekleyen sipariş</span>
-              </div>
-              <span className="modern-flow-count">{loading ? '—' : metrics?.pendingOrders ?? 0}</span>
-            </Link>
-            <Link to="/orders" className={`modern-flow-item ${(metrics?.lateOrders ?? 0) > 0 ? 'is-danger' : ''}`}>
-              <div className="modern-flow-left">
-                <span className="modern-flow-dot late" />
-                <span className="modern-flow-label">Geciken sipariş</span>
-              </div>
-              <span className="modern-flow-count">{loading ? '—' : metrics?.lateOrders ?? 0}</span>
-            </Link>
-            <Link to="/orders" className="modern-flow-item">
-              <div className="modern-flow-left">
-                <span className="modern-flow-dot invoice" />
-                <span className="modern-flow-label">Fatura bekliyor</span>
-              </div>
-              <span className="modern-flow-count">{loading ? '—' : metrics?.uninvoicedInvoices ?? 0}</span>
-            </Link>
-            <Link to="/orders" className="modern-flow-item">
-              <div className="modern-flow-left">
-                <span className="modern-flow-dot return" />
-                <span className="modern-flow-label">Aksiyon bekleyen iade</span>
-              </div>
-              <span className="modern-flow-count">{loading ? '—' : metrics?.pendingReturns ?? 0}</span>
-            </Link>
-          </div>
-        </article>
-
-        <article className="modern-panel modern-platform-panel">
-          <div className="modern-platform-orbit" aria-hidden="true">
-            <div className="modern-platform-orbit-center">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
-            </div>
-          </div>
-          <span className="modern-kpi-label" style={{ marginBottom: 4 }}>Aktif Platform</span>
-          <span className="modern-platform-number">{loading ? '—' : activeConnections.length}</span>
-          <span className="modern-platform-name">{syncConnection?.name ?? 'Bağlantı bekleniyor'}</span>
-          <Link to="/integrations" className="modern-platform-btn">
-            Platformları yönet <UiIcon name="arrowRight" />
-          </Link>
-        </article>
-
-        <article className="modern-panel">
-          <div className="modern-panel-header">
-            <div className="modern-panel-title">
-              <h2>Stok Durumu</h2>
-              <p>En düşük stoklu ürünler</p>
-            </div>
-            <Link to="/products" className="modern-panel-header-link">Ürünler <UiIcon name="arrowRight" /></Link>
-          </div>
-          <div className="modern-stock-list">
-            {[...lowStock].sort((a, b) => a.totalStock - b.totalStock).slice(0, 4).map(item => (
-              <Link to={`/products/${item.id}`} className="modern-stock-item" key={item.id}>
-                {item.primaryImageUrl ? <img className="modern-stock-img" src={item.primaryImageUrl} alt="" /> : <div className="modern-stock-img"><UiIcon name="image" /></div>}
-                <span className="modern-stock-title">{item.title}</span>
-                <span className={`modern-stock-count ${item.totalStock <= 5 ? 'is-warning' : ''}`}>{item.totalStock} adet</span>
-              </Link>
-            ))}
-            {!lowStock.length && <p style={{ color: '#8b8fa3', fontSize: 13, margin: '16px 0' }}>Düşük stoklu ürün yok.</p>}
-          </div>
-        </article>
-      </div>
-    </section>
-  )
+  return <section className="content dashboard"><div className="page-heading"><div><p className="eyebrow">Operasyon merkezi</p><h1>Genel Bakış</h1><p className="lede">Merhaba {me.displayName}. Günlük operasyonun önemli sinyalleri tek ekranda.</p></div><div className="dashboard-heading-actions"><span className="dashboard-date">{now.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div></div>
+    {errors.length > 0 && <div role="alert" className="error">Bazı operasyon verileri alınamadı; görünen metrikler kısmi olabilir.</div>}
+     <div className="metrics dashboard-metrics operational-metrics"><article><DashboardMetricIcon kind="pending" /><small>Bekleyen Sipariş</small><strong>{loading ? '—' : metrics?.pendingOrders ?? 0}</strong></article><article className={(metrics?.lateOrders ?? 0) ? 'danger-metric' : ''}><DashboardMetricIcon kind="late" /><small>Geciken Sipariş</small><strong>{loading ? '—' : metrics?.lateOrders ?? 0}</strong></article><article><DashboardMetricIcon kind="today" /><small>Bugünkü Sipariş</small><strong>{loading ? '—' : metrics?.todayOrders ?? 0}</strong></article><article><DashboardMetricIcon kind="month" /><small>Bu Ayki Sipariş</small><strong>{loading ? '—' : metrics?.monthOrders ?? 0}</strong></article><article><DashboardMetricIcon kind="return" /><small>Aksiyon Bekleyen İade</small><strong>{loading ? '—' : metrics?.pendingReturns ?? 0}</strong></article><article className={(metrics?.dueSoonInvoices ?? 0) ? 'warning-metric' : ''}><DashboardMetricIcon kind="invoice" /><small>Süresi Yaklaşan Fatura</small><strong>{loading ? '—' : metrics?.dueSoonInvoices ?? 0}</strong></article><article><DashboardMetricIcon kind="uninvoiced" /><small>Fatura bekliyor</small><strong>{loading ? '—' : metrics?.uninvoicedInvoices ?? 0}</strong></article><article><DashboardMetricIcon kind="stock" /><small>Düşük / Yok Stok</small><strong>{loading ? '—' : metrics?.lowStockProducts ?? 0}</strong></article></div>
+    <div className="dashboard-report-grid"><article className="panel dashboard-revenue-panel"><div className="panel-title"><div><h2>Satış Cirosu</h2><p>Seçilen dönemde gerçekleşen sipariş toplamı</p></div><div className="dashboard-revenue-controls"><label className="dashboard-period-select"><span>Ciro dönemi</span><select aria-label="Ciro dönemi" value={revenueRange} onChange={event => setRevenueRange(event.target.value as DashboardRevenueRange)}><option value="1">Günlük</option><option value="3">Son 3 gün</option><option value="7">Son 7 gün</option><option value="14">Son 14 gün</option><option value="30">Son 30 gün</option><option value="month">Bu ay</option><option value="custom">Özel tarih</option></select></label><label><span>Platform</span><select aria-label="Ciro platformu" value={revenuePlatform} onChange={event => setRevenuePlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div></div>{revenueRange === 'custom' && <div className="dashboard-custom-range"><label><span>Başlangıç</span><input type="date" value={revenueFrom} max={revenueTo} onChange={event => setRevenueFrom(event.target.value)} /></label><label><span>Bitiş</span><input type="date" value={revenueTo} min={revenueFrom} onChange={event => setRevenueTo(event.target.value)} /></label></div>}<div className="dashboard-revenue-summary"><strong>{dashboardMoney(revenueTotal, revenueCurrency)}</strong><span>{revenueOrderCount} sipariş</span></div><div className="dashboard-revenue-chart" aria-label="Günlük satış cirosu"><div className="dashboard-revenue-axis" aria-hidden="true">{revenueAxisTicks.map(tick => <span key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }}>{tick.major ? dashboardAxisMoney(tick.amount, revenueCurrency) : ''}</span>)}</div><div className="dashboard-revenue-plot"><div className="dashboard-revenue-plot-inner"><div className="dashboard-revenue-gridlines" aria-hidden="true">{revenueAxisTicks.map(tick => <i className={tick.major ? 'is-major' : 'is-minor'} key={tick.ratio} style={{ bottom: `${18 + tick.ratio * 132}px` }} />)}</div><div className="dashboard-revenue-columns" style={{ gridTemplateColumns: `repeat(${Math.max(revenueSeries.length, 1)}, minmax(0, 1fr))` }}>{revenueSeries.map(point => <div className="dashboard-revenue-column" key={point.key}><div className="dashboard-revenue-bar-wrap"><span className="dashboard-revenue-bar" style={{ height: `${Math.max(point.amount ? 7 : 3, point.amount / revenueAxisMax * 100)}%` }} aria-label={`${point.fullLabel}: ${dashboardMoney(point.amount, point.currency)}, ${point.orderCount} sipariş`} tabIndex={0}><span className="dashboard-revenue-hover"><strong>{point.fullLabel}</strong><span>{dashboardMoney(point.amount, point.currency)} · {point.orderCount} sipariş</span></span></span></div><span>{point.label}</span></div>)}</div></div></div></div></article><article className="panel dashboard-api-panel"><div className="panel-title"><div><h2>Son senkronizasyonlar</h2><p>Sipariş, iade ve stok kayıtlarının güncel zamanı</p></div><Link to="/jobs">İşlem takibi <UiIcon name="arrowRight" /></Link></div><div className="dashboard-api-list dashboard-sync-list">{syncRows.map(row => <Link to="/jobs" key={row.resourceType}><span className={`dashboard-sync-icon ${row.kind}`} aria-hidden="true"><UiIcon name="sync" /></span><span><strong>{row.label}</strong><small>{row.status === 'SUCCEEDED' ? 'Başarılı senkronizasyon' : 'Henüz kayıt yok'}</small></span><b>{dashboardSyncTime(row)}</b></Link>)}</div><div className="dashboard-sync-meta"><UiIcon name="sync" /><span className="dashboard-sync-meta-copy"><strong>{latestSync ? `Son veri senkronizasyonu: ${dashboardSyncTime(latestSync)}` : 'Senkronizasyon kaydı yok'}</strong><small>Projection güncellemesi: {latestSync ? dashboardSyncTime(latestSync) : 'Kayıt yok'}</small></span></div></article></div>
+    <div className="dashboard-bottom-grid"><article className="panel dashboard-flow-panel"><div className="panel-title"><div><h2>Sipariş akışı</h2><p>Operasyon kayıtlarının anlık özeti</p></div><Link to="/orders">Detaylar <UiIcon name="arrowRight" /></Link></div><div className="dashboard-flow-list"><Link to="/orders"><span><i className="flow-dot new" /><strong>Bekleyen sipariş</strong></span><b>{loading ? '—' : metrics?.pendingOrders ?? 0}</b></Link><Link to="/orders"><span><i className="flow-dot late" /><strong>Geciken sipariş</strong></span><b>{loading ? '—' : metrics?.lateOrders ?? 0}</b></Link><Link to="/orders"><span><i className="flow-dot invoice" /><strong>Fatura bekliyor</strong></span><b>{loading ? '—' : metrics?.uninvoicedInvoices ?? 0}</b></Link><Link to="/orders"><span><i className="flow-dot return" /><strong>Aksiyon bekleyen iade</strong></span><b>{loading ? '—' : metrics?.pendingReturns ?? 0}</b></Link></div></article><article className="panel dashboard-active-platform"><div className="dashboard-platform-orbit" aria-hidden="true"><span /><span /><span /><i /></div><small>Aktif Platform</small><strong>{loading ? '—' : activeConnections.length}</strong><p>{syncConnection?.name ?? 'Bağlantı bekleniyor'}</p><Link to="/integrations">Platformları yönet <UiIcon name="arrowRight" /></Link></article><article className="panel dashboard-stock-panel"><div className="panel-title"><div><h2>Stok durumu</h2><p>En düşük stoklu ürünler</p></div><Link to="/products">Ürünler <UiIcon name="arrowRight" /></Link></div><div className="dashboard-product-list">{[...lowStock].sort((a, b) => a.totalStock - b.totalStock).slice(0, 4).map(item => <Link to={`/products/${item.id}`} key={item.id}>{item.primaryImageUrl ? <img src={item.primaryImageUrl} alt="" /> : <UiIcon name="image" />}<strong>{item.title}</strong><b>{item.totalStock}</b></Link>)}{!lowStock.length && <p>Düşük stoklu ürün yok.</p>}</div></article></div>
+  </section>
 }
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
 type SecuritySession = { id: string; state: string; current: boolean; issuedAt: string; lastSeenAt: string; expiresAt: string }
