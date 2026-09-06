@@ -834,6 +834,18 @@
   border-bottom: 0 !important;
 }
 
+/* Keep returns on the same single surface as the page background and frame. */
+.app-shell.stitch-shell .reference-returns-page,
+.app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell,
+.app-shell.stitch-shell .reference-returns-page .return-reference-filters,
+.app-shell.stitch-shell .reference-returns-page .return-reference-workspace,
+.app-shell.stitch-shell .reference-returns-page .return-reference-table,
+.app-shell.stitch-shell .reference-returns-page .return-reference-head,
+.app-shell.stitch-shell .reference-returns-page .return-reference-row,
+.app-shell.stitch-shell .reference-returns-page .return-reference-row > span {
+  background: var(--rv-bg, #0d0e16) !important;
+}
+
 /* Keep the returns shell on the same page rhythm as Orders after the shared
    heading and filter wrapper are rendered. */
 .app-shell.stitch-shell .reference-returns-page > .returns-reference-heading {

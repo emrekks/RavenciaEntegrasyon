@@ -2082,3 +2082,18 @@
   min-width: 0 !important;
   padding-inline: 7px !important;
 }
+
+/* Keep the page background and the inner reference frame on one surface. */
+.app-shell.stitch-shell .orders-page,
+.app-shell.stitch-shell .orders-page .orders-reference-filter-shell,
+.app-shell.stitch-shell .orders-page .order-filter-primary,
+.app-shell.stitch-shell .orders-page .order-filter-advanced,
+.app-shell.stitch-shell .orders-page .order-reference-table,
+.app-shell.stitch-shell .orders-page .order-reference-head,
+.app-shell.stitch-shell .orders-page .order-reference-row,
+.app-shell.stitch-shell .orders-page .order-reference-grid > *,
+.app-shell.stitch-shell .orders-page .order-reference-products > article,
+.app-shell.stitch-shell .orders-page .order-reference-prices > strong,
+.app-shell.stitch-shell .orders-page .order-pagination {
+  background: var(--rv-bg, #0d0e16) !important;
+}
