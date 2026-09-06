@@ -695,7 +695,8 @@
 }
 .app-shell .reference-returns-page .return-reference-table,
 .app-shell .reference-returns-page .return-reference-head > *,
-.app-shell .reference-returns-page .return-reference-row > span {
+.app-shell .reference-returns-page .return-reference-row > span,
+.app-shell .reference-returns-page .return-reference-row {
   border-color: #34445c !important;
 }
 .app-shell .reference-returns-page .order-reference-prices > strong:not(:last-child) {
