@@ -1,17 +1,16 @@
 import { Suspense, useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import { Link, Navigate, NavLink, Route, Routes, useNavigate, useSearchParams } from 'react-router'
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiRequestError, hubApi, type Me, type TenantOption } from '../shared/api'
 import { UiIcon } from '../shared/components'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, InventoryPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, BillingSettingsPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
-import { appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, useAppearanceSettings, type AppearanceSettings } from '../features/settings/appearance-settings'
-import '../styles/dashboard.css'
-import '../styles/typography.css'
+import { appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, appearanceThemeModeOptions, useAppearanceSettings, type AppearanceSettings } from '../features/settings/appearance-settings'
 
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
+  const location = useLocation()
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') === 'true')
   const sidebarHoverTimer = useRef<number | null>(null)
@@ -22,7 +21,23 @@ function Shell({ me }: { me: Me }) {
   useEffect(() => {
     document.documentElement.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[appearanceSettings.settings.fontFamily])
     document.documentElement.style.setProperty('--rv-font-scale', String(appearanceFontScale[appearanceSettings.settings.fontSize]))
-  }, [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize])
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const applyTheme = () => {
+      const resolvedTheme = appearanceSettings.settings.themeMode === 'system' ? (media.matches ? 'dark' : 'light') : appearanceSettings.settings.themeMode
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeMode = appearanceSettings.settings.themeMode
+    }
+    applyTheme()
+    media.addEventListener('change', applyTheme)
+    return () => media.removeEventListener('change', applyTheme)
+  }, [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize, appearanceSettings.settings.themeMode])
+  const pageNames: Record<string, string> = { '/dashboard': 'Dashboard', '/products': 'Ürünler', '/products/new': 'Yeni ürün', '/orders': 'Siparişler', '/returns': 'İadeler', '/jobs': 'İşlem takibi', '/integrations': 'Platformlar', '/mappings/categories': 'Eşleştirme ayarları', '/settings': 'Sistem ayarları', '/settings/appearance': 'Görünüm ayarları' }
+  const pageName = pageNames[location.pathname] ?? (location.pathname.startsWith('/products/') ? 'Ürün detayları' : location.pathname.startsWith('/returns/') ? 'İade detayları' : 'Ravencia')
+  async function toggleTheme() {
+    const current = appearanceSettings.settings.themeMode === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : appearanceSettings.settings.themeMode
+    const next = current === 'dark' ? 'light' : 'dark'
+    try { await appearanceSettings.save({ ...appearanceSettings.settings, themeMode: next }) } catch { /* Settings screen exposes save errors. */ }
+  }
   function expandSidebarOnHover() {
     if (sidebarHoverTimer.current !== null) window.clearTimeout(sidebarHoverTimer.current)
     setSidebarHoverExpanded(true)
@@ -79,6 +94,7 @@ function Shell({ me }: { me: Me }) {
       <div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Çıkış Yap</span></button></div>
     </aside>
     <main>
+      <header className="rv-topbar"><div className="rv-topbar-context"><small>Ravencia / Operasyon Merkezi</small><strong>{pageName}</strong></div><div className="rv-topbar-actions"><button type="button" className="rv-button rv-button-ghost rv-button-sm" onClick={() => void toggleTheme()} aria-label="Temayı değiştir" title="Temayı değiştir">{appearanceSettings.settings.themeMode === 'dark' ? '☀ Açık tema' : '☾ Koyu tema'}</button><span className="rv-user-chip"><small>Çalışma alanı</small><strong>{me.displayName || me.email}</strong></span></div></header>
       <Suspense fallback={<Status title="Ekran yükleniyor" />}><Routes><Route path="/dashboard" element={<Dashboard me={me} />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/inventory" element={<InventoryPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<AttributeMappingPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/invoices" element={<Navigate to="/orders" replace />} /><Route path="/invoices/:id" element={<Navigate to="/orders" replace />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/billing" element={<BillingSettingsPage />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings/appearance" element={<AppearanceSettingsPage />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense>
     </main>
   </div>
@@ -308,10 +324,6 @@ function Security() {
   function setSettingsTab(tab: 'security' | 'database' | 'shipping' | 'appearance') {
     setSearchParams(tab === 'security' ? {} : { tab })
   }
-  useEffect(() => {
-    if (settingsTab !== 'shipping') return
-    void import('../styles/shipping-designer.css').catch(() => undefined)
-  }, [settingsTab])
   const shippingSettings = useShippingLabelSettings()
   const labelSettings = shippingSettings.settings
   const [resetScopes, setResetScopes] = useState<string[]>([])
@@ -436,7 +448,7 @@ function AppearanceSettingsPage() {
 
   return <section className="content security-page">
     <div className="page-heading"><div><p className="eyebrow">Ayarlar</p><h1>Sistem ayarları</h1><p className="lede">Güvenlik ve yerel operasyon verilerini tek ekranda yönetin.</p></div></div>
-    <div className="settings-tabs" role="tablist">
+<div className="rv-tabs" role="tablist">
       <button type="button" role="tab" aria-selected={false} onClick={() => navigate('/settings')}>Güvenlik ve oturumlar</button>
       <button type="button" role="tab" aria-selected={false} onClick={() => navigate('/settings?tab=database')}>Veritabanı temizliği</button>
       <button type="button" role="tab" aria-selected={false} onClick={() => navigate('/settings?tab=shipping')}>Kargo ayarları</button>
@@ -449,6 +461,7 @@ function AppearanceSettingsPage() {
       <div className="appearance-settings-grid">
         <label><span>Font tipi</span><select value={appearance.draft.fontFamily} onChange={event => appearance.setDraft({ ...appearance.draft, fontFamily: event.target.value as AppearanceSettings['fontFamily'] })}>{appearanceFontFamilyOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
         <label><span>Yazı boyutu</span><select value={appearance.draft.fontSize} onChange={event => appearance.setDraft({ ...appearance.draft, fontSize: event.target.value as AppearanceSettings['fontSize'] })}>{appearanceFontSizeOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></label>
+        <label><span>Tema</span><select value={appearance.draft.themeMode} onChange={event => appearance.setDraft({ ...appearance.draft, themeMode: event.target.value as AppearanceSettings['themeMode'] })}>{appearanceThemeModeOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></label>
       </div>
       <div className="appearance-preview" style={previewStyle}><small>Önizleme</small><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p></div>
       <button type="button" onClick={() => void save()} disabled={busy}>{busy ? 'Kaydediliyor…' : 'Görünüm ayarlarını kaydet'}</button>

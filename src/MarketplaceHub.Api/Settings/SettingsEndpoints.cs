@@ -13,6 +13,7 @@ public static class SettingsEndpoints
     private const int MaximumJsonCharacters = 262_144;
     private static readonly HashSet<string> AppearanceFontFamilies = new(StringComparer.OrdinalIgnoreCase) { "inter", "system", "segoe", "arial" };
     private static readonly HashSet<string> AppearanceFontSizes = new(StringComparer.OrdinalIgnoreCase) { "small", "normal", "large", "extra-large" };
+    private static readonly HashSet<string> AppearanceThemeModes = new(StringComparer.OrdinalIgnoreCase) { "system", "light", "dark" };
 
     public static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -68,7 +69,7 @@ public static class SettingsEndpoints
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (settings.ValueKind != JsonValueKind.Object) return Problem(http, new("APPEARANCE_SETTINGS_INVALID", "Görünüm ayarları JSON nesnesi olmalıdır.", 400));
-        if (!TryNormalizeAppearance(settings, out var normalized)) return Problem(http, new("APPEARANCE_SETTINGS_INVALID", "Geçerli bir font tipi ve yazı boyutu seçin.", 400));
+        if (!TryNormalizeAppearance(settings, out var normalized)) return Problem(http, new("APPEARANCE_SETTINGS_INVALID", "Geçerli bir font tipi, yazı boyutu ve tema seçin.", 400));
 
         var valueJson = JsonSerializer.Serialize(normalized);
         var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == AppearanceKey, http.RequestAborted);
@@ -92,10 +93,12 @@ public static class SettingsEndpoints
     {
         var fontFamily = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "fontFamily") : null;
         var fontSize = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "fontSize") : null;
+        var themeMode = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "themeMode") : null;
         return new
         {
             fontFamily = AppearanceFontFamilies.Contains(fontFamily ?? string.Empty) ? fontFamily!.ToLowerInvariant() : "inter",
-            fontSize = AppearanceFontSizes.Contains(fontSize ?? string.Empty) ? fontSize!.ToLowerInvariant() : "normal"
+            fontSize = AppearanceFontSizes.Contains(fontSize ?? string.Empty) ? fontSize!.ToLowerInvariant() : "normal",
+            themeMode = AppearanceThemeModes.Contains(themeMode ?? string.Empty) ? themeMode!.ToLowerInvariant() : "system"
         };
     }
 
@@ -103,13 +106,14 @@ public static class SettingsEndpoints
     {
         var fontFamily = ReadString(value, "fontFamily");
         var fontSize = ReadString(value, "fontSize");
-        if (fontFamily is null || fontSize is null || !AppearanceFontFamilies.Contains(fontFamily) || !AppearanceFontSizes.Contains(fontSize))
+        var themeMode = ReadString(value, "themeMode") ?? "system";
+        if (fontFamily is null || fontSize is null || !AppearanceFontFamilies.Contains(fontFamily) || !AppearanceFontSizes.Contains(fontSize) || !AppearanceThemeModes.Contains(themeMode))
         {
             normalized = new { };
             return false;
         }
 
-        normalized = new { fontFamily = fontFamily.ToLowerInvariant(), fontSize = fontSize.ToLowerInvariant() };
+        normalized = new { fontFamily = fontFamily.ToLowerInvariant(), fontSize = fontSize.ToLowerInvariant(), themeMode = themeMode.ToLowerInvariant() };
         return true;
     }
 

@@ -4,10 +4,12 @@ import { hubApi } from '../../shared/api'
 
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
 export type AppearanceFontSize = 'small' | 'normal' | 'large' | 'extra-large'
+export type AppearanceThemeMode = 'system' | 'light' | 'dark'
 
 export type AppearanceSettings = {
   fontFamily: AppearanceFontFamily
   fontSize: AppearanceFontSize
+  themeMode: AppearanceThemeMode
 }
 
 export type AppearanceSettingsEnvelope = {
@@ -17,7 +19,8 @@ export type AppearanceSettingsEnvelope = {
 
 export const defaultAppearanceSettings: AppearanceSettings = {
   fontFamily: 'inter',
-  fontSize: 'normal'
+  fontSize: 'normal',
+  themeMode: 'system'
 }
 
 export const appearanceFontFamilyOptions: Array<{ value: AppearanceFontFamily; label: string }> = [
@@ -32,6 +35,12 @@ export const appearanceFontSizeOptions: Array<{ value: AppearanceFontSize; label
   { value: 'normal', label: 'Normal', description: 'Önerilen, okunabilirliği artırılmış görünüm' },
   { value: 'large', label: 'Büyük', description: 'Yoğun tablolarda daha rahat okuma' },
   { value: 'extra-large', label: 'Çok büyük', description: 'En yüksek okunabilirlik' }
+]
+
+export const appearanceThemeModeOptions: Array<{ value: AppearanceThemeMode; label: string; description: string }> = [
+  { value: 'system', label: 'Sistem', description: 'Cihazınızın açık/koyu tercihine uyar' },
+  { value: 'light', label: 'Açık', description: 'Açık soğuk gri arayüzü kullanır' },
+  { value: 'dark', label: 'Koyu', description: 'Koyu slate arayüzü kullanır' }
 ]
 
 export const appearanceFontFamilyCss: Record<AppearanceFontFamily, string> = {
@@ -50,13 +59,15 @@ export const appearanceFontScale: Record<AppearanceFontSize, number> = {
 
 const fontFamilies = new Set<AppearanceFontFamily>(appearanceFontFamilyOptions.map(option => option.value))
 const fontSizes = new Set<AppearanceFontSize>(appearanceFontSizeOptions.map(option => option.value))
+const themeModes = new Set<AppearanceThemeMode>(appearanceThemeModeOptions.map(option => option.value))
 
 export function normalizeAppearanceSettings(value: unknown): AppearanceSettings {
   if (!value || typeof value !== 'object') return defaultAppearanceSettings
   const candidate = value as Partial<AppearanceSettings>
   return {
     fontFamily: typeof candidate.fontFamily === 'string' && fontFamilies.has(candidate.fontFamily as AppearanceFontFamily) ? candidate.fontFamily as AppearanceFontFamily : defaultAppearanceSettings.fontFamily,
-    fontSize: typeof candidate.fontSize === 'string' && fontSizes.has(candidate.fontSize as AppearanceFontSize) ? candidate.fontSize as AppearanceFontSize : defaultAppearanceSettings.fontSize
+    fontSize: typeof candidate.fontSize === 'string' && fontSizes.has(candidate.fontSize as AppearanceFontSize) ? candidate.fontSize as AppearanceFontSize : defaultAppearanceSettings.fontSize,
+    themeMode: typeof candidate.themeMode === 'string' && themeModes.has(candidate.themeMode as AppearanceThemeMode) ? candidate.themeMode as AppearanceThemeMode : defaultAppearanceSettings.themeMode
   }
 }
 
@@ -73,7 +84,7 @@ export function useAppearanceSettings() {
   const settings = normalizeAppearanceSettings(query.data?.settings)
   const [draft, setDraft] = useState<AppearanceSettings>(settings)
 
-  useEffect(() => setDraft(settings), [settings.fontFamily, settings.fontSize])
+  useEffect(() => setDraft(settings), [settings.fontFamily, settings.fontSize, settings.themeMode])
 
   async function save(next: AppearanceSettings) {
     const normalized = normalizeAppearanceSettings(next)
