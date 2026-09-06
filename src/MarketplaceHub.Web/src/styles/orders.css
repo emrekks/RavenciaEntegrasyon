@@ -2100,12 +2100,12 @@
   box-shadow: none !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-head {
-  border: 1px solid #1e202f !important;
+  border: 1px solid var(--rv-line-strong) !important;
   border-radius: 8px !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row {
   margin: 0 !important;
-  border: 1px solid #1e202f !important;
+  border: 1px solid var(--rv-line-strong) !important;
   border-radius: 8px !important;
   overflow: visible !important;
 }
@@ -2113,5 +2113,11 @@
   margin-top: 0 !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row:last-child {
-  border-bottom: 1px solid #1e202f !important;
+  border-bottom: 1px solid var(--rv-line-strong) !important;
+}
+
+/* Match the returns table: the group frame is visible, while the column
+   dividers stay subtle and the entire group keeps one shared background. */
+.app-shell.stitch-shell .orders-page .order-reference-grid > * {
+  border-right-color: var(--rv-line) !important;
 }
