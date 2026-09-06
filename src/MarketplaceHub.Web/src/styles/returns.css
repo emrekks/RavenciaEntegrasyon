@@ -673,17 +673,18 @@
 }
 .app-shell .reference-returns-page .order-reference-products,
 .app-shell .reference-returns-page .order-reference-prices {
+  padding: 0 !important;
   grid-auto-rows: minmax(145px, auto) !important;
   align-content: stretch !important;
 }
 .app-shell .reference-returns-page .order-reference-products > article {
   box-sizing: border-box !important;
-  border: 1px solid #34445c !important;
+  border-block: 1px solid #34445c !important;
+  border-inline: 0 !important;
 }
 .app-shell .reference-returns-page .order-reference-prices > strong {
-  border: 1px solid #34445c !important;
-  border-left: 0 !important;
-  border-right: 0 !important;
+  border-block: 1px solid #34445c !important;
+  border-inline: 0 !important;
 }
 .app-shell .reference-returns-page .order-reference-products > article + article,
 .app-shell .reference-returns-page .order-reference-prices > strong + strong {

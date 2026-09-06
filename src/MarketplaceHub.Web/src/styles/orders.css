@@ -1855,11 +1855,11 @@
 }
 .app-shell.stitch-shell .orders-page .order-reference-grid > .order-reference-products {
   align-self: stretch !important;
-  align-content: center !important;
+  align-content: stretch !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-grid > .order-reference-prices {
   align-self: stretch !important;
-  align-content: center !important;
+  align-content: stretch !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-prices > strong {
   display: flex !important;
@@ -1873,17 +1873,18 @@
 }
 .app-shell.stitch-shell .orders-page .order-reference-products,
 .app-shell.stitch-shell .orders-page .order-reference-prices {
+  padding: 0 !important;
   grid-auto-rows: minmax(194px, auto) !important;
   align-content: stretch !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-products > article {
   box-sizing: border-box !important;
-  border: 1px solid #34445c !important;
+  border-block: 1px solid #34445c !important;
+  border-inline: 0 !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-prices > strong {
-  border: 1px solid #34445c !important;
-  border-left: 0 !important;
-  border-right: 0 !important;
+  border-block: 1px solid #34445c !important;
+  border-inline: 0 !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-products > article + article,
 .app-shell.stitch-shell .orders-page .order-reference-prices > strong + strong {
