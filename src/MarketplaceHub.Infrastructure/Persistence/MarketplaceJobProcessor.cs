@@ -1833,9 +1833,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (ObservedVariantValueAxis(remoteAttribute.Name) is { } axis && observedOptionValues.TryGetValue(axis, out var usedValues))
                 values = values.Where(value => usedValues.Contains(NormalizeCatalogKey(value.Name, 320))).ToList();
             // A category definition without active values is not a usable
-            // product attribute. Do not create a text fallback for it: that
-            // is what previously filled imported products with empty fields.
-            if (values.Count > 0)
+            // product attribute. The exception is the real Renk slicer: it
+            // can legitimately contain seller-defined values even when
+            // Trendyol's category value endpoint returns an empty list.
+            // Keep that field in the context so observed variant values can
+            // populate the local Renk option instead of falling back to Web
+            // Color.
+            if (values.Count > 0 || IsRealColorOptionKey(remoteAttribute.Name))
                 valuesByAttribute[remoteAttribute.ExternalId] = values;
         }
 
@@ -2859,14 +2863,28 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<string> PanelOptionSignatureAsync(Guid tenantId, Guid connectionId, CategoryAttributeContext categoryContext, IReadOnlyDictionary<string, string> options, CancellationToken cancellationToken)
     {
+        var hasRealColorSource = options.Keys.Any(IsRealColorOptionKey);
         var candidates = new List<(string PanelLabel, bool IsWebColorSource, LocalCategoryAttribute? Mapped, string RemoteValue, int Order)>();
         var order = 0;
         foreach (var pair in options)
         {
+            // Web Color is a marketplace presentation value. It must never
+            // become the local Renk option, even when the real Renk field is
+            // not mapped in the category workspace.
+            if (IsWebColorOptionKey(pair.Key))
+            {
+                order++;
+                continue;
+            }
             if (TryGetMappedAttribute(categoryContext.Attributes, pair.Key, out var mapped) && IsCatalogProductOption(mapped, pair.Key))
             {
                 var panelLabel = mapped.Definition.Name;
                 var isWebColorSource = IsWebColorOptionKey(pair.Key) || IsWebColorOptionKey(mapped.Remote.Name);
+                if (isWebColorSource && hasRealColorSource)
+                {
+                    order++;
+                    continue;
+                }
                 candidates.Add((panelLabel, isWebColorSource, mapped, pair.Value, order));
             }
             else if (IsVariantOptionName(pair.Key) && !IsWebColorOptionKey(pair.Key))
@@ -2895,7 +2913,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 : await PanelOptionValueAsync(tenantId, connectionId, categoryContext, selected.Mapped, selected.RemoteValue, cancellationToken);
         }
         if (panelOptions.Count > 0) return OptionSignature(panelOptions);
-        var fallbackOptions = options.Where(pair => IsVariantOptionName(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        var fallbackOptions = options.Where(pair => IsVariantOptionName(pair.Key) && !IsWebColorOptionKey(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
         return OptionSignature(fallbackOptions);
     }
 
@@ -2920,6 +2938,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var normalized = NormalizeCatalogKey(value, 320).Replace(" ", "", StringComparison.Ordinal);
         return normalized is "RENK" or "COLOR" or "COLOUR";
     }
+
+    private static bool IsRealColorOptionKey(string value) => IsColorOptionKey(value) && !IsWebColorOptionKey(value);
 
     private static bool IsVariantOptionName(string value) => VariantOptionAxis(value) is not null;
 
@@ -2980,6 +3000,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var processedPanelOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in options.OrderBy(x => IsWebColorOptionKey(x.Key) ? 1 : 0).ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
         {
+            if (IsWebColorOptionKey(pair.Key)) continue;
             var optionKey = NormalizeCatalogKey(pair.Key, 160); var valueKey = NormalizeCatalogKey(pair.Value, 160);
             if (string.IsNullOrWhiteSpace(optionKey) || string.IsNullOrWhiteSpace(valueKey)) continue;
             LocalCategoryAttribute? mapped = null;
