@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
-export type AppearanceFontSize = 'normal' | 'large' | 'extra-large'
+export type AppearanceFontSize = 'small' | 'normal' | 'large' | 'extra-large'
 
 export type AppearanceSettings = {
   fontFamily: AppearanceFontFamily
@@ -28,6 +28,7 @@ export const appearanceFontFamilyOptions: Array<{ value: AppearanceFontFamily; l
 ]
 
 export const appearanceFontSizeOptions: Array<{ value: AppearanceFontSize; label: string; description: string }> = [
+  { value: 'small', label: 'Küçük', description: 'Daha fazla içerik için daha sıkı görünüm' },
   { value: 'normal', label: 'Normal', description: 'Önerilen, okunabilirliği artırılmış görünüm' },
   { value: 'large', label: 'Büyük', description: 'Yoğun tablolarda daha rahat okuma' },
   { value: 'extra-large', label: 'Çok büyük', description: 'En yüksek okunabilirlik' }
@@ -41,6 +42,7 @@ export const appearanceFontFamilyCss: Record<AppearanceFontFamily, string> = {
 }
 
 export const appearanceFontScale: Record<AppearanceFontSize, number> = {
+  small: 1.18,
   normal: 1.32,
   large: 1.48,
   'extra-large': 1.68

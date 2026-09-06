@@ -12,7 +12,7 @@ public static class SettingsEndpoints
     private const string AppearanceKey = "appearance";
     private const int MaximumJsonCharacters = 262_144;
     private static readonly HashSet<string> AppearanceFontFamilies = new(StringComparer.OrdinalIgnoreCase) { "inter", "system", "segoe", "arial" };
-    private static readonly HashSet<string> AppearanceFontSizes = new(StringComparer.OrdinalIgnoreCase) { "normal", "large", "extra-large" };
+    private static readonly HashSet<string> AppearanceFontSizes = new(StringComparer.OrdinalIgnoreCase) { "small", "normal", "large", "extra-large" };
 
     public static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder endpoints)
     {
