@@ -298,3 +298,18 @@
 .app-shell.stitch-shell .reference-product-placeholder .ui-icon,
 .app-shell.stitch-shell .invoice-upload-icon .ui-icon,
 .app-shell.stitch-shell .publish-checklist-items article > span .ui-icon { width: 16px; height: 16px; }
+
+/* Account-controlled readability scale. Normal is intentionally larger than the legacy compact UI. */
+:root { --rv-font-scale: 1.18; }
+html { font-size: calc(16px * var(--rv-font-scale)); }
+.app-shell.stitch-shell { font-size: calc(var(--rv-type-body-size) * var(--rv-font-scale)); }
+.app-shell.stitch-shell h1 { font-size: clamp(calc(28px * var(--rv-font-scale)), calc(2.35vw * var(--rv-font-scale)), calc(34px * var(--rv-font-scale))) !important; }
+.app-shell.stitch-shell h2 { font-size: calc(19px * var(--rv-font-scale)) !important; }
+.app-shell.stitch-shell h3 { font-size: calc(15px * var(--rv-font-scale)) !important; }
+.app-shell.stitch-shell p { font-size: calc(13px * var(--rv-font-scale)) !important; }
+.app-shell.stitch-shell small { font-size: calc(var(--rv-type-helper-size) * var(--rv-font-scale)) !important; }
+.app-shell.stitch-shell label { font-size: calc(var(--rv-type-label-size) * var(--rv-font-scale)) !important; }
+.app-shell.stitch-shell button,
+.app-shell.stitch-shell input,
+.app-shell.stitch-shell select,
+.app-shell.stitch-shell textarea { font-size: calc(var(--rv-type-action-size) * var(--rv-font-scale)) !important; }

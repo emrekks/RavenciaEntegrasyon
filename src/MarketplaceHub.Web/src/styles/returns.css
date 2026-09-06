@@ -1011,3 +1011,8 @@
   margin: 0 !important;
   text-align: center !important;
 }
+
+/* Match orders: every return group keeps its own visible gutter instead of merging into the next group. */
+.app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row + .return-reference-row {
+  margin-top: 10px !important;
+}
