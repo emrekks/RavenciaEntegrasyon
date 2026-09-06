@@ -703,6 +703,17 @@
 .app-shell .reference-returns-page .order-reference-prices > strong:not(:last-child) {
   border-bottom: 1px solid #34445c !important;
 }
+.app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row + .return-reference-row {
+  margin-top: 10px !important;
+}
+.app-shell.stitch-shell .reference-returns-page .return-reference-table,
+.app-shell.stitch-shell .reference-returns-page .return-reference-head > *,
+.app-shell.stitch-shell .reference-returns-page .return-reference-row > span,
+.app-shell.stitch-shell .reference-returns-page .return-reference-row,
+.app-shell.stitch-shell .reference-returns-page .order-reference-products > article,
+.app-shell.stitch-shell .reference-returns-page .order-reference-prices > strong {
+  border-color: var(--rv-line) !important;
+}
 .app-shell.stitch-shell .reference-returns-page .return-reference-status {
   display: grid !important;
   align-content: center !important;

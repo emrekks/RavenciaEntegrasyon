@@ -1903,6 +1903,21 @@
 .app-shell.stitch-shell .orders-page .order-reference-prices > strong:not(:last-child) {
   border-bottom: 1px solid #34445c !important;
 }
+
+/* Separate order groups visually; their internal product/price rows stay aligned. */
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row + .order-reference-row {
+  margin-top: 10px !important;
+}
+
+/* Keep the frame visible without the heavy, high-contrast separator treatment. */
+.app-shell.stitch-shell .orders-page .order-reference-table,
+.app-shell.stitch-shell .orders-page .order-reference-head > *,
+.app-shell.stitch-shell .orders-page .order-reference-grid > *,
+.app-shell.stitch-shell .orders-page .order-reference-row,
+.app-shell.stitch-shell .orders-page .order-reference-products > article,
+.app-shell.stitch-shell .orders-page .order-reference-prices > strong {
+  border-color: var(--rv-line) !important;
+}
 .app-shell.stitch-shell .orders-page .order-reference-meta > span {
   font-size: .58rem !important;
   line-height: 1.25 !important;
