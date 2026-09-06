@@ -2,28 +2,28 @@
 /* Authenticated workspace theme shared by every route. */
 :root {
   color-scheme: dark;
-  --rv-bg: #080b11 !important;
-  --rv-bg-raised: #090c12 !important;
-  --rv-sidebar: #0b1018 !important;
-  --rv-surface: #111722 !important;
-  --rv-surface-raised: #161e2b !important;
-  --rv-surface-deep: #0e1420 !important;
-  --rv-line: rgba(148, 163, 184, .16) !important;
-  --rv-line-strong: #263247 !important;
-  --rv-ink: #f3f6fa !important;
-  --rv-muted: #a7b2c5 !important;
-  --rv-muted-2: #748198 !important;
-  --rv-primary: #7168f5 !important;
-  --rv-primary-hover: #8078ff !important;
-  --rv-primary-strong: #6258de !important;
-  --rv-cyan: #39bfd1 !important;
-  --rv-success: #2fcb9b !important;
-  --rv-warning: #e5b75b !important;
-  --rv-danger: #f26b7a !important;
-  --rv-info: #5ba7f7 !important;
-  --rv-radius: 12px !important;
-  --rv-radius-sm: 8px !important;
-  --rv-shadow: 0 18px 44px rgba(0, 0, 0, .28) !important;
+  --rv-bg: #08090e !important;
+  --rv-bg-raised: #0d0f17 !important;
+  --rv-sidebar: #0b0c13 !important;
+  --rv-surface: #12131c !important;
+  --rv-surface-raised: #181a26 !important;
+  --rv-surface-deep: #0e1017 !important;
+  --rv-line: rgba(255, 255, 255, 0.08) !important;
+  --rv-line-strong: rgba(255, 255, 255, 0.15) !important;
+  --rv-ink: #f0f0f5 !important;
+  --rv-muted: #8b8fa3 !important;
+  --rv-muted-2: #5c5f73 !important;
+  --rv-primary: #8b5cf6 !important;
+  --rv-primary-hover: #a78bfa !important;
+  --rv-primary-strong: #7c3aed !important;
+  --rv-cyan: #38bdf8 !important;
+  --rv-success: #34d399 !important;
+  --rv-warning: #fbbf24 !important;
+  --rv-danger: #f43f5e !important;
+  --rv-info: #38bdf8 !important;
+  --rv-radius: 10px !important;
+  --rv-radius-sm: 6px !important;
+  --rv-shadow: 0 12px 36px rgba(0, 0, 0, 0.35) !important;
 }
 
 html, body, #root {
@@ -34,77 +34,109 @@ html, body, #root {
 
 .app-shell {
   color: var(--rv-ink);
-  background: radial-gradient(circle at 82% -16%, rgba(113, 104, 245, .08), transparent 34%), var(--rv-bg);
+  background: radial-gradient(circle at 82% -16%, rgba(139, 92, 246, 0.06), transparent 34%), var(--rv-bg);
   font-family: var(--rv-font-ui);
 }
 .app-shell > aside {
   color: var(--rv-ink);
-  background: linear-gradient(180deg, #0c111a 0%, var(--rv-sidebar) 100%);
+  background: linear-gradient(180deg, #10121a 0%, var(--rv-sidebar) 100%);
   border-right-color: var(--rv-line);
-  box-shadow: 10px 0 34px rgba(0, 0, 0, .18);
+  box-shadow: 10px 0 34px rgba(0, 0, 0, .28);
 }
 .app-shell > main {
-  background: radial-gradient(circle at 78% -12%, rgba(113, 104, 245, .07), transparent 30%), var(--rv-bg);
+  background: radial-gradient(circle at 78% -12%, rgba(139, 92, 246, 0.05), transparent 30%), var(--rv-bg);
 }
 .brand.wordmark { border-bottom-color: var(--rv-line); }
-.brand.wordmark strong { color: #f8fbff; font-family: var(--rv-font-ui); text-shadow: 0 0 14px rgba(114, 207, 255, .28); }
-.app-shell aside nav a, .logout-link { color: #9fb2cf; border-color: transparent; }
-.app-shell aside nav a.active { color: #fff; background: linear-gradient(90deg, rgba(24, 186, 255, .2), rgba(53, 91, 255, .18)); border-color: rgba(78, 185, 255, .38); box-shadow: inset 3px 0 0 var(--rv-primary), 0 8px 22px rgba(24, 115, 255, .13); }
+.brand.wordmark strong { color: #f8fbff; font-family: var(--rv-font-ui); text-shadow: 0 0 14px rgba(139, 92, 246, .28); }
+.app-shell aside nav a, .logout-link { color: #8b8fa3; border-color: transparent; }
+.app-shell aside nav a.active {
+  color: #fff;
+  background: rgba(139, 92, 246, 0.16);
+  border-color: rgba(139, 92, 246, 0.35);
+  box-shadow: inset 3px 0 0 var(--rv-primary), 0 4px 16px rgba(139, 92, 246, 0.15);
+}
 .settings-nav { border-top-color: var(--rv-line); }
 
 .app-shell .content { color: var(--rv-ink); }
 .app-shell .content h1, .app-shell .content h2, .app-shell .content h3 { color: var(--rv-ink); font-family: var(--rv-font-ui); }
 .app-shell .content p, .app-shell .content small { color: var(--rv-muted); }
-.app-shell .page-heading { background: linear-gradient(110deg, rgba(10, 29, 59, .96), rgba(7, 22, 46, .82)); border-color: var(--rv-line); box-shadow: var(--rv-shadow); }
+.app-shell .page-heading { background: linear-gradient(145deg, #13151f, #0d0f16); border: 1px solid var(--rv-line); box-shadow: var(--rv-shadow); }
 .app-shell .dashboard .page-heading { background: transparent; border: 0; box-shadow: none; }
 .app-shell .content .eyebrow { color: var(--rv-primary); }
-.app-shell .dashboard-metrics article > small { color: #83a1c7; }
+.app-shell .dashboard-metrics article > small { color: #8b8fa3; }
 .app-shell .dashboard-metrics article > strong { color: var(--rv-ink); }
 .app-shell .dashboard-metrics article > p { color: var(--rv-muted); }
 .app-shell .dashboard .panel-title { border-bottom-color: var(--rv-line); }
 .app-shell .dashboard .panel-title h2 { color: var(--rv-ink); }
 .app-shell .dashboard .panel-title p, .app-shell .dashboard .panel p { color: var(--rv-muted); }
-.app-shell .dashboard .panel-title a { color: #83ddff; }
-.app-shell .dashboard-product-list a { color: #dcecff; background: rgba(8, 24, 49, .84); border-color: var(--rv-line); }
+.app-shell .dashboard .panel-title a { color: #a78bfa; }
+.app-shell .dashboard-product-list a { color: #e2e8f0; background: #141620; border-color: var(--rv-line); }
 .app-shell .dashboard-product-list a:hover { background: var(--rv-surface-raised); border-color: var(--rv-line-strong); }
 
 .app-shell .panel, .app-shell .grid article, .app-shell .metrics article, .app-shell .record-card, .app-shell .integration-card, .app-shell .table-wrap, .app-shell .data-table, .app-shell .product-catalog-table {
   color: var(--rv-ink);
-  background: linear-gradient(145deg, rgba(14, 40, 80, .96), rgba(8, 27, 57, .96));
+  background: linear-gradient(145deg, #13151f 0%, #0e1017 100%);
   border-color: var(--rv-line);
   box-shadow: var(--rv-shadow);
 }
 .app-shell .panel-title { border-bottom-color: var(--rv-line); }
 .app-shell .panel-title h2, .app-shell .integration-card h2 { color: var(--rv-ink); }
 .app-shell .panel-title p, .app-shell .integration-card p { color: var(--rv-muted); }
-.app-shell .data-table > *, .app-shell .product-catalog-head, .app-shell .product-catalog-row { color: #dcecff; background: rgba(8, 24, 49, .84); border-color: var(--rv-line); }
-.app-shell .data-table .table-head, .app-shell .product-catalog-head { color: #9db5d3; background: rgba(14, 40, 80, .88); }
+.app-shell .data-table > *, .app-shell .product-catalog-head, .app-shell .product-catalog-row { color: #e2e8f0; background: #141620; border-color: var(--rv-line); }
+.app-shell .data-table .table-head, .app-shell .product-catalog-head { color: #94a3b8; background: #181a24; }
 .app-shell .data-table > a:hover, .app-shell .product-catalog-item:hover, .app-shell .product-catalog-row:hover { background: var(--rv-surface-raised); }
 .app-shell .data-table small, .app-shell .product-list-identity small, .app-shell .product-list-platforms small, .app-shell .product-list-status small { color: var(--rv-muted); }
 
-.app-shell .product-toolbar, .app-shell .order-filter-panel, .app-shell .return-reference-tabs { color: var(--rv-ink); background: rgba(8, 24, 49, .9); border-color: var(--rv-line); }
-.app-shell .platform-category-create { color: var(--rv-ink); background: rgba(14, 40, 80, .7); border-color: var(--rv-line); }
+.app-shell .product-toolbar, .app-shell .order-filter-panel, .app-shell .return-reference-tabs { color: var(--rv-ink); background: #12131b; border-color: var(--rv-line); }
+.app-shell .platform-category-create { color: var(--rv-ink); background: #151722; border-color: var(--rv-line); }
 .app-shell .return-reference-tabs button.active { color: var(--rv-primary); border-bottom-color: var(--rv-primary); }
 
 .app-shell .empty strong { color: var(--rv-ink); }
 
-.app-shell .button-link, .app-shell button:not([class]), .app-shell .connection-button, .app-shell .integration-card-actions button { color: #031426; background: linear-gradient(110deg, var(--rv-primary), #2585ff 58%, var(--rv-primary-strong)); border-color: transparent; box-shadow: 0 8px 20px rgba(24, 137, 255, .2); }
-.app-shell .button-link:hover, .app-shell button:not([class]):hover, .app-shell .connection-button:hover, .app-shell .integration-card-actions button:hover { color: #fff; background: linear-gradient(110deg, #4ed1ff, #3f72ff 58%, #5269ff); box-shadow: 0 11px 26px rgba(24, 137, 255, .3); transform: translateY(-1px); }
-.app-shell .button-link.secondary, .app-shell button.secondary { color: #b9d8f8; background: rgba(14, 40, 80, .72); border: 1px solid var(--rv-line-strong); box-shadow: none; }
-.app-shell .button-link.secondary:hover, .app-shell button.secondary:hover { color: #fff; background: var(--rv-surface-raised); border-color: var(--rv-primary); }
-.app-shell button:focus-visible, .app-shell a:focus-visible, .app-shell input:focus-visible, .app-shell select:focus-visible, .app-shell textarea:focus-visible { outline: 2px solid var(--rv-primary); outline-offset: 2px; }
+.app-shell .button-link, .app-shell button:not([class]), .app-shell .connection-button, .app-shell .integration-card-actions button {
+  color: #fff;
+  background: linear-gradient(110deg, #8b5cf6, #7c3aed);
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgba(139, 92, 246, .25);
+}
+.app-shell .button-link:hover, .app-shell button:not([class]):hover, .app-shell .connection-button:hover, .app-shell .integration-card-actions button:hover {
+  color: #fff;
+  background: linear-gradient(110deg, #a78bfa, #8b5cf6);
+  box-shadow: 0 6px 20px rgba(139, 92, 246, .35);
+  transform: translateY(-1px);
+}
+.app-shell .button-link.secondary, .app-shell button.secondary {
+  color: #c4b5fd;
+  background: #181a24;
+  border: 1px solid var(--rv-line-strong);
+  box-shadow: none;
+}
+.app-shell .button-link.secondary:hover, .app-shell button.secondary:hover {
+  color: #fff;
+  background: var(--rv-surface-raised);
+  border-color: var(--rv-primary);
+}
+.app-shell button:focus-visible, .app-shell a:focus-visible, .app-shell input:focus-visible, .app-shell select:focus-visible, .app-shell textarea:focus-visible {
+  outline: 2px solid var(--rv-primary);
+  outline-offset: 2px;
+}
 
-.app-shell .workspace-modal, .app-shell .integration-modal { color: var(--rv-ink); background: linear-gradient(145deg, #0e2850, #081b39); border-color: var(--rv-line-strong); box-shadow: 0 24px 70px rgba(0, 0, 0, .45); }
+.app-shell .workspace-modal, .app-shell .integration-modal {
+  color: var(--rv-ink);
+  background: linear-gradient(145deg, #141620, #0d0f16);
+  border-color: var(--rv-line-strong);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .6);
+}
 .app-shell .workspace-modal header h2, .app-shell .integration-modal h2 { color: var(--rv-ink); }
 .app-shell .workspace-modal header p, .app-shell .integration-modal p { color: var(--rv-muted); }
-.app-shell .modal-close { color: #b8ccef; background: transparent; box-shadow: none; }
-.app-shell .modal-close:hover { color: #fff; background: rgba(24, 186, 255, .14); box-shadow: none; transform: none; }
+.app-shell .modal-close { color: #8b8fa3; background: transparent; box-shadow: none; }
+.app-shell .modal-close:hover { color: #fff; background: rgba(139, 92, 246, .16); box-shadow: none; transform: none; }
 
 /* Route workspaces use highly-specific local surfaces, so they are deliberately
    normalized here after the shared foundation. */
 .app-shell .order-filter-panel, .app-shell .order-filter-advanced, .app-shell .order-filter-primary, .app-shell .return-reference-filters, .app-shell .return-reference-workspace, .app-shell .invoice-draft-head, .app-shell .invoice-draft-customer, .app-shell .invoice-address-sheet, .app-shell .invoice-viewer-summary, .app-shell .invoice-viewer-lines, .app-shell .invoice-viewer-documents, .app-shell .invoice-document-upload, .app-shell .operation-details, .app-shell .detail-grid > *, .app-shell .cards > article, .app-shell .card-list > *, .app-shell .capability-list > *, .app-shell .calculated-field, .app-shell .attribute-builder-card, .app-shell .attribute-mapping-card, .app-shell .embedded-attribute-grid > *, .app-shell .rich-text-editor, .app-shell .quick-edit-color, .app-shell .quick-edit-fields fieldset, .app-shell .return-detail-summary, .app-shell .platform-category-create, .app-shell .upload-ghost-box {
   color: var(--rv-ink);
-  background: rgba(9, 29, 60, .88);
+  background: #12141d;
   border-color: var(--rv-line);
 }
 
@@ -124,39 +156,39 @@ html, body, #root {
 .app-shell .order-reference-head,
 .app-shell .return-reference-head,
 .app-shell .invoice-viewer-line-head {
-  color: #a9bdd8;
-  background: rgba(16, 49, 95, .96);
+  color: #94a3b8;
+  background: #161822;
   border-color: var(--rv-line-strong);
   box-shadow: none;
 }
-.app-shell .orders-page .order-reference-head { background: rgba(16, 49, 95, .96); box-shadow: 0 1px 0 var(--rv-line-strong); }
+.app-shell .orders-page .order-reference-head { background: #161822; box-shadow: 0 1px 0 var(--rv-line-strong); }
 .app-shell .order-reference-head strong,
-.app-shell .return-reference-head strong { color: #a9bdd8; border-color: var(--rv-line); }
+.app-shell .return-reference-head strong { color: #94a3b8; border-color: var(--rv-line); }
 .app-shell .order-reference-row, .app-shell .return-reference-row, .app-shell .invoice-viewer-line, .app-shell .quick-edit-variant {
-  color: #dbeaff;
-  background: rgba(7, 24, 50, .9);
+  color: #e2e8f0;
+  background: #12131b;
   border-color: var(--rv-line);
 }
 .app-shell .order-reference-row:hover,
-.app-shell .return-reference-row:hover { background: rgba(18, 54, 102, .72); }
+.app-shell .return-reference-row:hover { background: #181a26; }
 .app-shell .order-reference-row > span, .app-shell .return-reference-row > span, .app-shell .invoice-viewer-line > * { border-color: var(--rv-line); }
 .app-shell .order-reference-row strong, .app-shell .order-reference-row b, .app-shell .return-reference-row strong, .app-shell .return-reference-row b, .app-shell .return-detail-summary strong { color: var(--rv-ink); }
 .app-shell .order-reference-row small, .app-shell .return-reference-row small, .app-shell .return-detail-summary small { color: var(--rv-muted); }
-.app-shell .return-reference-tabs { background: rgba(7, 22, 46, .94); border-color: var(--rv-line); }
+.app-shell .return-reference-tabs { background: #11121a; border-color: var(--rv-line); }
 .app-shell .return-reference-tabs button { color: var(--rv-muted); background: transparent; border-color: var(--rv-line); }
 .app-shell .return-reference-tabs button:hover,
-.app-shell .return-reference-tabs button.active { color: var(--rv-primary); background: rgba(24, 186, 255, .08); border-bottom-color: var(--rv-primary); }
+.app-shell .return-reference-tabs button.active { color: var(--rv-primary); background: rgba(139, 92, 246, 0.12); border-bottom-color: var(--rv-primary); }
 .app-shell .row-menu-trigger,
 .app-shell .orders-page .invoice-menu-view,
 .app-shell .return-cargo-track,
 .app-shell .return-detail-trigger,
-.app-shell .order-action-menu { color: #bce4ff !important; background: rgba(12, 40, 80, .92) !important; border-color: var(--rv-line-strong) !important; box-shadow: none !important; }
+.app-shell .order-action-menu { color: #c4b5fd !important; background: #161824 !important; border-color: var(--rv-line-strong) !important; box-shadow: none !important; }
 .app-shell .row-menu-trigger:hover,
 .app-shell .orders-page .invoice-menu-view:hover,
 .app-shell .return-cargo-track:hover,
-.app-shell .return-detail-trigger:hover { color: #fff !important; background: rgba(24, 186, 255, .16) !important; border-color: var(--rv-primary) !important; }
-.app-shell .order-reference-invoice .micro-invoice-chip { color: #a9d9ff; background: rgba(53, 91, 255, .18); }
-.app-shell .order-reference-actions .cargo-track-action { color: #031426 !important; background: linear-gradient(110deg, var(--rv-primary), var(--rv-primary-strong)) !important; border-color: transparent !important; }
+.app-shell .return-detail-trigger:hover { color: #fff !important; background: rgba(139, 92, 246, 0.16) !important; border-color: var(--rv-primary) !important; }
+.app-shell .order-reference-invoice .micro-invoice-chip { color: #c4b5fd; background: rgba(139, 92, 246, 0.18); }
+.app-shell .order-reference-actions .cargo-track-action { color: #fff !important; background: linear-gradient(110deg, var(--rv-primary), var(--rv-primary-strong)) !important; border-color: transparent !important; }
 
 /* Integrations and category / attribute mapping. */
 .app-shell .integration-fields label, .app-shell .integration-card p { color: var(--rv-muted); }
