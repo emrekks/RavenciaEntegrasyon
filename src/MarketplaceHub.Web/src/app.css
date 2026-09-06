@@ -1,24 +1,8 @@
-/*
- * Ravencia stylesheet entrypoint.
- * Legacy route styles are kept in one low-priority layer while the new
- * tokens/components/layouts are loaded once for every route.
- */
-@import './styles/base.css' layer(legacy);
-@import './styles/splash.css' layer(legacy);
-@import './styles/ravencia-theme.css' layer(legacy);
-@import './styles/shared-workspaces.css' layer(legacy);
-@import './styles/workspace.css' layer(legacy);
-@import './styles/dashboard.css' layer(legacy);
-@import './styles/typography.css' layer(legacy);
-@import './styles/products.css' layer(legacy);
-@import './styles/product-editor.css' layer(legacy);
-@import './styles/orders.css' layer(legacy);
-@import './styles/returns.css' layer(legacy);
-@import './styles/operations.css' layer(legacy);
-@import './styles/invoices.css' layer(legacy);
-@import './styles/shipping-designer.css' layer(legacy);
+/* Single stylesheet entrypoint. Route CSS is intentionally not imported here. */
 @import './styles/tokens.css' layer(tokens);
 @import './styles/design-components.css' layer(design-components);
 @import './styles/design-layouts.css' layer(design-layouts);
+@import './styles/design-features.css' layer(features);
+@import './styles/design-system.css';
 
-@layer reset, legacy, tokens, base, design-components, design-layouts, features, utilities;
+@layer reset, tokens, base, components, layouts, features, utilities;
