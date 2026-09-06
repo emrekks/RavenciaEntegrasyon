@@ -64,6 +64,24 @@
   opacity: .55 !important;
   cursor: not-allowed !important;
 }
+.returns-reference-heading-actions .returns-sync-icon {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  align-items: center;
+  justify-content: center;
+}
+.returns-reference-heading-actions .returns-sync-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .returns-reference-filter-shell {
   margin: 0 0 18px !important;
   overflow: hidden !important;
