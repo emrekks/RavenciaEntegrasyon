@@ -678,10 +678,26 @@
 }
 .app-shell .reference-returns-page .order-reference-products > article {
   box-sizing: border-box !important;
-  border-bottom: 1px solid #1e202f !important;
+  border: 1px solid #34445c !important;
+}
+.app-shell .reference-returns-page .order-reference-prices > strong {
+  border: 1px solid #34445c !important;
+}
+.app-shell .reference-returns-page .order-reference-products > article + article,
+.app-shell .reference-returns-page .order-reference-prices > strong + strong {
+  border-top: 0 !important;
+}
+.app-shell .reference-returns-page .order-reference-products > article:last-child,
+.app-shell .reference-returns-page .order-reference-prices > strong:last-child {
+  border-bottom: 1px solid #34445c !important;
+}
+.app-shell .reference-returns-page .return-reference-table,
+.app-shell .reference-returns-page .return-reference-head > *,
+.app-shell .reference-returns-page .return-reference-row > span {
+  border-color: #34445c !important;
 }
 .app-shell .reference-returns-page .order-reference-prices > strong:not(:last-child) {
-  border-bottom: 1px solid #1e202f !important;
+  border-bottom: 1px solid #34445c !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-status {
   display: grid !important;
