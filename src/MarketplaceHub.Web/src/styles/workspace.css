@@ -2168,3 +2168,48 @@
   .app-shell.stitch-shell .appearance-page .appearance-settings-tabs { flex-direction: column; }
   .app-shell.stitch-shell .appearance-page .appearance-settings-tabs .button-link { width: 100%; justify-content: center; }
 }
+
+/* Keep the appearance tab on the same stable settings layout as its sibling
+   pages; only the active section changes, not the navigation geometry. */
+.app-shell.stitch-shell .appearance-page .appearance-settings-tabs {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+  gap: 3px !important;
+  margin: 18px 0 16px !important;
+  padding: 4px !important;
+  overflow-x: auto !important;
+  background: var(--rv-surface-quiet) !important;
+  border: 1px solid var(--rv-border) !important;
+  border-radius: 8px !important;
+}
+.app-shell.stitch-shell .appearance-page .appearance-settings-tabs .button-link {
+  position: relative !important;
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 34px !important;
+  padding: 0 13px !important;
+  color: var(--rv-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  font-size: var(--rv-type-action-size) !important;
+  text-decoration: none !important;
+}
+.app-shell.stitch-shell .appearance-page .appearance-settings-tabs .button-link:hover,
+.app-shell.stitch-shell .appearance-page .appearance-settings-tabs .button-link.active {
+  color: #fff !important;
+  background: rgba(88, 101, 242, .20) !important;
+  border: 0 !important;
+  box-shadow: inset 0 -2px 0 #6470ff !important;
+}
+.app-shell.stitch-shell .appearance-settings-panel {
+  width: 100% !important;
+  max-width: none !important;
+}
+@media (max-width: 700px) {
+  .app-shell.stitch-shell .appearance-page .appearance-settings-tabs { flex-direction: row !important; }
+  .app-shell.stitch-shell .appearance-page .appearance-settings-tabs .button-link { width: auto !important; justify-content: center !important; }
+}

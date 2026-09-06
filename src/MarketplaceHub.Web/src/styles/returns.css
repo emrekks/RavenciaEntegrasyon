@@ -834,6 +834,103 @@
   border-bottom: 0 !important;
 }
 
+/* Keep the returns shell on the same page rhythm as Orders after the shared
+   heading and filter wrapper are rendered. */
+.app-shell.stitch-shell .reference-returns-page > .returns-reference-heading {
+  align-items: flex-end !important;
+  margin-bottom: 28px !important;
+}
+.app-shell.stitch-shell .reference-returns-page > .returns-reference-heading .eyebrow {
+  display: none !important;
+}
+.app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell {
+  margin: 0 0 18px !important;
+  overflow: hidden !important;
+  background: #12131b !important;
+  border: 1px solid #1e202f !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .2) !important;
+}
+.app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-tabs {
+  display: flex !important;
+  align-items: stretch !important;
+  gap: 0 !important;
+  min-height: 43px !important;
+  margin: 0 !important;
+  padding: 0 7px !important;
+  overflow-x: auto !important;
+  background: #0d0e16 !important;
+  border: 0 !important;
+  border-bottom: 1px solid #1e202f !important;
+  border-radius: 0 !important;
+}
+.app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-tabs button {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  min-height: 43px !important;
+  min-width: 0 !important;
+  padding: 0 13px !important;
+  color: #c6c5d7 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: .67rem !important;
+  font-weight: 650 !important;
+  white-space: nowrap !important;
+  transform: none !important;
+}
+.app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-tabs button:hover {
+  color: #e3e1ed !important;
+  background: #1a1b23 !important;
+}
+.app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-tabs button.active {
+  color: #bec2ff !important;
+  background: transparent !important;
+  border-bottom-color: #5865f2 !important;
+  text-shadow: 0 0 8px rgba(88, 101, 242, .42) !important;
+}
+.app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-tabs button small {
+  display: none !important;
+}
+.app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-filters {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  align-items: end !important;
+  margin: 0 !important;
+  padding: 22px 24px !important;
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface-deep) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-filters input,
+.app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-filters select {
+  width: 100% !important;
+  min-height: 34px !important;
+  min-width: 0 !important;
+  padding: 7px 12px !important;
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  border-radius: 4px !important;
+  font-size: .8rem !important;
+}
+.app-shell.stitch-shell .reference-returns-page .return-reference-workspace {
+  margin-top: 18px !important;
+  padding: 0 !important;
+}
+
+/* Orders and returns share the same outer spacing and heading treatment. */
+.app-shell.stitch-shell .reference-returns-page {
+  max-width: none !important;
+  padding: 28px clamp(18px, 2.6vw, 44px) 42px !important;
+}
+
 /* Products and prices share the same parent tracks so every internal separator joins cleanly. */
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row {
   grid-template-rows: repeat(var(--return-line-count, 1), minmax(145px, auto)) !important;
