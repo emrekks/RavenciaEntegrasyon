@@ -33,6 +33,7 @@ export type UiIconName =
   | 'moreVertical'
   | 'paragraph'
   | 'plus'
+  | 'print'
   | 'redo'
   | 'search'
   | 'sparkle'
@@ -82,6 +83,7 @@ const paths: Record<UiIconName, ReactNode> = {
   moreVertical: <><circle cx="12" cy="5" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none" /></>,
   paragraph: <><path d="M5 5h10a4 4 0 0 1 0 8H9" /><path d="M9 5v14M13 5v14" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
+  print: <><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" rx="1" /></>,
   redo: <><path d="M19 8v5h-5" /><path d="M19 13a7 7 0 1 0-2 4" /></>,
   search: <><circle cx="10.8" cy="10.8" r="6.3" /><path d="m16 16 4 4" /></>,
   sparkle: <path d="m12 3 1.5 6.5L20 12l-6.5 1.5L12 20l-1.5-6.5L4 12l6.5-2.5L12 3Z" />,

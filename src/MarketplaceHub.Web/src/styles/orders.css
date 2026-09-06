@@ -2124,5 +2124,272 @@
 /* Match the returns table: the group frame is visible, while the column
    dividers stay subtle and the entire group keeps one shared background. */
 .app-shell.stitch-shell .orders-page .order-reference-grid > * {
-  border-right-color: var(--rv-line) !important;
+  border-right-color: var(--rv-border, rgba(255,255,255,0.08)) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Ravencia Obsidian — Orders Toolbar & Card Refinements
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Status Tabs Bar ── */
+.app-shell.stitch-shell .orders-reference-filter-shell {
+  background: var(--rv-surface-lowest) !important;
+  border: 1px solid var(--rv-border) !important;
+  border-radius: var(--rv-radius) !important;
+  overflow: hidden !important;
+  margin-bottom: 16px !important;
+}
+
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs {
+  background: var(--rv-surface-lowest) !important;
+  border-bottom: 1px solid var(--rv-border) !important;
+}
+
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs button.active {
+  color: var(--rv-primary-text) !important;
+  border-bottom-color: var(--rv-primary) !important;
+  text-shadow: 0 0 12px rgba(139, 92, 246, 0.45) !important;
+}
+
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs button:nth-child(2) b {
+  color: var(--rv-danger-text) !important;
+  background: var(--rv-danger-muted) !important;
+  border-color: rgba(244, 63, 94, 0.28) !important;
+}
+
+/* ── Subtab Filter Toolbar (Right Below Tabs) ── */
+.orders-subtab-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--rv-surface);
+  border-top: 1px solid var(--rv-border-subtle);
+  flex-wrap: wrap;
+}
+
+.orders-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 240px;
+  min-width: 200px;
+  max-width: 380px;
+}
+
+.orders-search-box svg {
+  position: absolute;
+  left: 10px;
+  width: 15px;
+  height: 15px;
+  color: var(--rv-text-tertiary);
+  pointer-events: none;
+}
+
+.orders-search-box input {
+  width: 100%;
+  height: 34px;
+  padding: 0 30px 0 34px !important;
+  background: var(--rv-surface-raised) !important;
+  border: 1px solid var(--rv-border) !important;
+  border-radius: var(--rv-radius-sm) !important;
+  color: var(--rv-text) !important;
+  font-size: var(--rv-type-xs) !important;
+  outline: none !important;
+  transition: border-color var(--rv-transition), background var(--rv-transition) !important;
+}
+
+.orders-search-box input:focus {
+  border-color: var(--rv-primary) !important;
+  background: var(--rv-surface-lowest) !important;
+}
+
+.orders-search-box input::placeholder {
+  color: var(--rv-text-tertiary) !important;
+}
+
+.orders-search-clear {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--rv-text-tertiary);
+  cursor: pointer;
+}
+.orders-search-clear:hover { color: var(--rv-text); }
+
+.orders-filter-dropdowns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.orders-filter-dropdowns select {
+  height: 34px;
+  padding: 0 28px 0 12px;
+  background: var(--rv-surface-raised) !important;
+  border: 1px solid var(--rv-border) !important;
+  border-radius: 100px !important;
+  color: var(--rv-text-secondary) !important;
+  font-size: var(--rv-type-xs) !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+  outline: none;
+  transition: all var(--rv-transition);
+}
+
+.orders-filter-dropdowns select:hover {
+  border-color: var(--rv-border-strong) !important;
+  color: var(--rv-text) !important;
+}
+
+.orders-filter-dropdowns select.has-active-filter {
+  border-color: var(--rv-primary) !important;
+  color: var(--rv-primary-text) !important;
+  background: var(--rv-primary-muted) !important;
+}
+
+.orders-filter-reset-btn {
+  height: 34px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px dashed var(--rv-border-strong);
+  border-radius: 100px;
+  color: var(--rv-text-secondary);
+  font-size: var(--rv-type-xs);
+  cursor: pointer;
+  transition: all var(--rv-transition);
+}
+.orders-filter-reset-btn:hover {
+  border-color: var(--rv-danger);
+  color: var(--rv-danger-text);
+  background: var(--rv-danger-muted);
+}
+
+/* ── Floating Bulk Actions Bar ── */
+.orders-floating-bulk-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 18px;
+  background: var(--rv-surface-overlay);
+  border: 1px solid var(--rv-border-strong);
+  border-radius: 100px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  z-index: var(--rv-z-popover);
+  animation: rv-slide-up 200ms ease;
+}
+
+.orders-bulk-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--rv-type-xs);
+  color: var(--rv-text);
+  white-space: nowrap;
+}
+
+.orders-bulk-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 100px;
+  background: var(--rv-primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.orders-bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.orders-bulk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 100px;
+  font-size: var(--rv-type-xs);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--rv-transition);
+  border: none;
+}
+
+.orders-bulk-btn svg { width: 14px; height: 14px; }
+
+.orders-bulk-primary {
+  background: var(--rv-primary);
+  color: #fff;
+}
+.orders-bulk-primary:hover { background: var(--rv-primary-hover); }
+
+.orders-bulk-secondary {
+  background: var(--rv-surface-raised);
+  color: var(--rv-text);
+  border: 1px solid var(--rv-border);
+}
+.orders-bulk-secondary:hover {
+  background: var(--rv-surface-highest);
+  border-color: var(--rv-border-strong);
+}
+
+.orders-bulk-clear {
+  background: transparent;
+  color: var(--rv-text-secondary);
+}
+.orders-bulk-clear:hover {
+  color: var(--rv-danger-text);
+  background: var(--rv-danger-muted);
+}
+
+/* ── Order Reference Row Obsidian Polish ── */
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row {
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-border) !important;
+  border-radius: var(--rv-radius) !important;
+  box-shadow: var(--rv-shadow-sm) !important;
+  transition: background var(--rv-transition), border-color var(--rv-transition), box-shadow var(--rv-transition) !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row:hover {
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-border-strong) !important;
+  box-shadow: var(--rv-shadow) !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-reference-meta .order-number strong {
+  color: var(--rv-primary-text) !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-package-mark {
+  background: var(--rv-warning) !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-label-action.is-printed {
+  color: var(--rv-success-text) !important;
+  background: var(--rv-success-muted) !important;
+  border-color: rgba(52, 211, 153, 0.25) !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-label-action.is-printed svg {
+  color: var(--rv-success) !important;
 }

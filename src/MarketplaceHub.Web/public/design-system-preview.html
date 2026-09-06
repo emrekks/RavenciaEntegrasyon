@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ravencia Obsidian — Design System Preview (Violet)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
+<style>
+/* â”€â”€ Tokens â”€â”€ */
+:root {
+  --rv-bg: #08090e;
+  --rv-surface-lowest: #0c0d14;
+  --rv-surface: #12131b;
+  --rv-surface-raised: #1a1b24;
+  --rv-surface-highest: #222330;
+  --rv-surface-overlay: #2a2b38;
+  --rv-border: rgba(255,255,255,0.08);
+  --rv-border-subtle: rgba(255,255,255,0.04);
+  --rv-border-strong: rgba(255,255,255,0.14);
+  --rv-text: #f0f0f5;
+  --rv-text-secondary: #8b8fa3;
+  --rv-text-tertiary: #5c5f73;
+  --rv-primary: #8b5cf6;
+  --rv-primary-hover: #a78bfa;
+  --rv-primary-active: #7c3aed;
+  --rv-primary-muted: rgba(139,92,246,0.12);
+  --rv-primary-text: #c4b5fd;
+  --rv-success: #34d399;
+  --rv-success-muted: rgba(52,211,153,0.10);
+  --rv-success-text: #6ee7b7;
+  --rv-warning: #fbbf24;
+  --rv-warning-muted: rgba(251,191,36,0.10);
+  --rv-warning-text: #fde68a;
+  --rv-danger: #f43f5e;
+  --rv-danger-muted: rgba(244,63,94,0.10);
+  --rv-danger-text: #fda4af;
+  --rv-info: #38bdf8;
+  --rv-info-muted: rgba(56,189,248,0.10);
+  --rv-info-text: #7dd3fc;
+  --rv-radius: 8px;
+  --rv-radius-sm: 6px;
+  --rv-radius-lg: 12px;
+  --rv-control-height: 36px;
+  --rv-control-height-sm: 30px;
+  --rv-control-height-lg: 44px;
+  --rv-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  --rv-shadow-sm: 0 2px 8px rgba(0,0,0,0.2);
+  --rv-shadow-lg: 0 16px 40px rgba(0,0,0,0.4);
+  --rv-transition: 150ms ease;
+  --rv-transition-slow: 250ms ease;
+  --rv-font-ui: 'DM Sans', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --rv-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --rv-type-xs: 11px; --rv-type-sm: 12px; --rv-type-base: 14px;
+  --rv-type-md: 15px; --rv-type-lg: 18px; --rv-type-xl: 22px; --rv-type-2xl: 28px;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{font-family:var(--rv-font-ui);font-size:var(--rv-type-base);color:var(--rv-text);background:var(--rv-bg);padding:40px;line-height:1.5}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:none}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
+
+/* â”€â”€ Layout â”€â”€ */
+.showcase{max-width:1100px;margin:0 auto}
+.showcase h1{font-size:32px;font-weight:800;margin-bottom:8px;background:linear-gradient(135deg,var(--rv-primary),#c084fc,var(--rv-info));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-0.03em}
+.showcase .subtitle{color:var(--rv-text-secondary);font-size:var(--rv-type-md);margin-bottom:48px}
+.section{margin-bottom:48px}
+.section-title{font-size:var(--rv-type-lg);font-weight:700;color:var(--rv-text);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.section-title::before{content:'';width:3px;height:18px;border-radius:2px;background:var(--rv-primary);flex-shrink:0}
+.section-desc{font-size:var(--rv-type-sm);color:var(--rv-text-tertiary);margin-bottom:20px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.col{display:flex;flex-direction:column;gap:8px}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.grid-6{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.spacer{height:24px}
+.label{font-size:var(--rv-type-xs);color:var(--rv-text-tertiary);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;margin-bottom:4px}
+
+/* â”€â”€ Color Swatch â”€â”€ */
+.swatch-group{display:flex;flex-direction:column;gap:6px}
+.swatch{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:var(--rv-radius-sm);border:1px solid var(--rv-border)}
+.swatch-color{width:36px;height:36px;border-radius:var(--rv-radius-sm);flex-shrink:0;border:1px solid rgba(255,255,255,0.06)}
+.swatch-info{display:flex;flex-direction:column}
+.swatch-name{font-size:var(--rv-type-sm);font-weight:600;color:var(--rv-text)}
+.swatch-hex{font-size:var(--rv-type-xs);color:var(--rv-text-tertiary);font-family:var(--rv-font-mono)}
+
+/* Big swatch row */
+.swatch-big{display:flex;flex-direction:column;align-items:center;gap:6px}
+.swatch-big .color-circle{width:56px;height:56px;border-radius:50%;border:2px solid rgba(255,255,255,0.06);box-shadow:var(--rv-shadow-sm)}
+.swatch-big .swatch-label{font-size:var(--rv-type-xs);font-weight:600;color:var(--rv-text-secondary);text-align:center}
+.swatch-big .swatch-val{font-size:10px;font-family:var(--rv-font-mono);color:var(--rv-text-tertiary);text-align:center}
+
+/* Surface strip */
+.surface-strip{display:flex;border-radius:var(--rv-radius);overflow:hidden;border:1px solid var(--rv-border)}
+.surface-cell{flex:1;height:80px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:8px 4px}
+.surface-cell span{font-size:9px;font-family:var(--rv-font-mono);color:var(--rv-text-tertiary);text-align:center;line-height:1.3}
+
+/* â”€â”€ Buttons â”€â”€ */
+.rv-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:var(--rv-radius-sm);font-weight:500;white-space:nowrap;transition:background var(--rv-transition),color var(--rv-transition),box-shadow var(--rv-transition);user-select:none;position:relative}
+.rv-btn:disabled{opacity:0.4;cursor:not-allowed}
+.rv-btn--sm{height:var(--rv-control-height-sm);padding:0 12px;font-size:var(--rv-type-sm)}
+.rv-btn--md{height:var(--rv-control-height);padding:0 18px;font-size:var(--rv-type-sm)}
+.rv-btn--lg{height:var(--rv-control-height-lg);padding:0 24px;font-size:var(--rv-type-base)}
+.rv-btn--primary{background:var(--rv-primary);color:#fff}
+.rv-btn--primary:hover{background:var(--rv-primary-hover)}
+.rv-btn--ghost{background:transparent;color:var(--rv-text-secondary)}
+.rv-btn--ghost:hover{background:var(--rv-surface-raised);color:var(--rv-text)}
+.rv-btn--outline{background:transparent;color:var(--rv-text);box-shadow:inset 0 0 0 1px var(--rv-border-strong)}
+.rv-btn--outline:hover{background:var(--rv-surface-raised);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.2)}
+.rv-btn--danger{background:var(--rv-danger-muted);color:var(--rv-danger-text)}
+.rv-btn--danger:hover{background:var(--rv-danger);color:#fff}
+.rv-btn--success{background:var(--rv-success-muted);color:var(--rv-success-text)}
+.rv-btn--success:hover{background:var(--rv-success);color:#fff}
+.rv-btn--warning{background:var(--rv-warning-muted);color:var(--rv-warning-text)}
+.rv-btn--warning:hover{background:var(--rv-warning);color:#000}
+
+/* Icon button */
+.rv-icon-btn{display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:var(--rv-radius-sm);cursor:pointer;transition:background var(--rv-transition),color var(--rv-transition);color:var(--rv-text-secondary);flex-shrink:0}
+.rv-icon-btn--sm{width:var(--rv-control-height-sm);height:var(--rv-control-height-sm)}
+.rv-icon-btn--md{width:var(--rv-control-height);height:var(--rv-control-height)}
+.rv-icon-btn--ghost{background:transparent}
+.rv-icon-btn--ghost:hover{background:var(--rv-surface-raised);color:var(--rv-text)}
+.rv-icon-btn--outline{background:transparent;box-shadow:inset 0 0 0 1px var(--rv-border)}
+.rv-icon-btn--outline:hover{background:var(--rv-surface-raised);box-shadow:inset 0 0 0 1px var(--rv-border-strong);color:var(--rv-text)}
+.rv-icon-btn--danger{background:transparent}
+.rv-icon-btn--danger:hover{background:var(--rv-danger-muted);color:var(--rv-danger)}
+
+/* â”€â”€ Badge â”€â”€ */
+.rv-badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:100px;font-size:var(--rv-type-xs);font-weight:500;white-space:nowrap;line-height:1}
+.rv-badge__dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.rv-badge--success{color:var(--rv-success-text);background:var(--rv-success-muted)}
+.rv-badge--warning{color:var(--rv-warning-text);background:var(--rv-warning-muted)}
+.rv-badge--danger{color:var(--rv-danger-text);background:var(--rv-danger-muted)}
+.rv-badge--info{color:var(--rv-info-text);background:var(--rv-info-muted)}
+.rv-badge--primary{color:var(--rv-primary-text);background:var(--rv-primary-muted)}
+.rv-badge--neutral{color:var(--rv-text-secondary);background:var(--rv-surface-raised)}
+
+/* â”€â”€ Status Dot â”€â”€ */
+.rv-status-dot{display:inline-flex;align-items:center;gap:6px;font-size:var(--rv-type-sm)}
+.rv-status-dot i{width:7px;height:7px;border-radius:50%;flex-shrink:0;display:inline-block}
+.rv-status-dot--success i{background:var(--rv-success)}.rv-status-dot--success span{color:var(--rv-success-text)}
+.rv-status-dot--warning i{background:var(--rv-warning)}.rv-status-dot--warning span{color:var(--rv-warning-text)}
+.rv-status-dot--danger i{background:var(--rv-danger)}.rv-status-dot--danger span{color:var(--rv-danger-text)}
+.rv-status-dot--info i{background:var(--rv-info)}.rv-status-dot--info span{color:var(--rv-info-text)}
+.rv-status-dot--neutral i{background:var(--rv-text-tertiary)}.rv-status-dot--neutral span{color:var(--rv-text-secondary)}
+.rv-status-dot--pulse i{animation:rv-pulse 1.8s ease-in-out infinite}
+@keyframes rv-pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+/* â”€â”€ Input â”€â”€ */
+.rv-input{width:100%;height:var(--rv-control-height);padding:0 12px;background:var(--rv-surface);border:1px solid var(--rv-border);border-radius:var(--rv-radius-sm);color:var(--rv-text);font-size:var(--rv-type-base);transition:border-color var(--rv-transition);outline:none}
+.rv-input:hover{border-color:var(--rv-border-strong)}
+.rv-input:focus{border-color:var(--rv-primary);background:var(--rv-surface-lowest)}
+.rv-input::placeholder{color:var(--rv-text-tertiary)}
+.rv-input--has-icon{padding-left:36px}
+
+.rv-select{width:100%;height:var(--rv-control-height);padding:0 32px 0 12px;background:var(--rv-surface);border:1px solid var(--rv-border);border-radius:var(--rv-radius-sm);color:var(--rv-text);font-size:var(--rv-type-base);cursor:pointer;appearance:none;outline:none;transition:border-color var(--rv-transition)}
+.rv-select:hover{border-color:var(--rv-border-strong)}
+.rv-select:focus{border-color:var(--rv-primary)}
+.rv-select option{background:var(--rv-surface-overlay);color:var(--rv-text)}
+.rv-select--pill{height:var(--rv-control-height-sm);padding:0 28px 0 12px;border-radius:100px;font-size:var(--rv-type-sm);background:var(--rv-surface-raised)}
+
+/* â”€â”€ Metric Card â”€â”€ */
+.rv-metric{display:flex;align-items:center;gap:12px;padding:16px;background:var(--rv-surface);border:1px solid var(--rv-border);border-radius:var(--rv-radius);position:relative;overflow:hidden;transition:background var(--rv-transition),border-color var(--rv-transition);cursor:pointer}
+.rv-metric:hover{background:var(--rv-surface-raised);border-color:var(--rv-border-strong)}
+.rv-metric::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.rv-metric--primary::before{background:var(--rv-primary)}
+.rv-metric--success::before{background:var(--rv-success)}
+.rv-metric--warning::before{background:var(--rv-warning)}
+.rv-metric--danger::before{background:var(--rv-danger)}
+.rv-metric--info::before{background:var(--rv-info)}
+.rv-metric__icon{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:var(--rv-radius-sm);flex-shrink:0}
+.rv-metric--primary .rv-metric__icon{background:var(--rv-primary-muted);color:var(--rv-primary)}
+.rv-metric--success .rv-metric__icon{background:var(--rv-success-muted);color:var(--rv-success)}
+.rv-metric--warning .rv-metric__icon{background:var(--rv-warning-muted);color:var(--rv-warning)}
+.rv-metric--danger .rv-metric__icon{background:var(--rv-danger-muted);color:var(--rv-danger)}
+.rv-metric--info .rv-metric__icon{background:var(--rv-info-muted);color:var(--rv-info)}
+.rv-metric__body{display:flex;flex-direction:column;gap:2px}
+.rv-metric__label{font-size:var(--rv-type-xs);color:var(--rv-text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.03em}
+.rv-metric__value{font-size:22px;font-weight:700;color:var(--rv-text);line-height:1.15;letter-spacing:-0.01em}
+
+/* â”€â”€ Tabs â”€â”€ */
+.rv-tabs{display:flex;gap:2px;overflow-x:auto}
+.rv-tab{display:inline-flex;align-items:center;gap:6px;border:none;cursor:pointer;white-space:nowrap;font-weight:500;transition:color var(--rv-transition),background var(--rv-transition);flex-shrink:0}
+.rv-tab__count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:100px;font-size:10px;font-weight:600;line-height:1}
+.rv-tabs--pill{padding:3px;background:var(--rv-surface);border-radius:var(--rv-radius);border:1px solid var(--rv-border-subtle)}
+.rv-tabs--pill .rv-tab{padding:6px 14px;border-radius:5px;font-size:var(--rv-type-sm);color:var(--rv-text-secondary);background:transparent}
+.rv-tabs--pill .rv-tab:hover{color:var(--rv-text);background:var(--rv-surface-raised)}
+.rv-tabs--pill .rv-tab--active{color:var(--rv-text);background:var(--rv-surface-raised);box-shadow:var(--rv-shadow-sm)}
+.rv-tabs--pill .rv-tab__count{background:var(--rv-surface-highest);color:var(--rv-text-secondary)}
+.rv-tabs--pill .rv-tab--active .rv-tab__count{background:var(--rv-primary-muted);color:var(--rv-primary-text)}
+.rv-tabs--underline{border-bottom:1px solid var(--rv-border);gap:0}
+.rv-tabs--underline .rv-tab{padding:10px 16px;font-size:var(--rv-type-sm);color:var(--rv-text-secondary);background:transparent;border-bottom:2px solid transparent;margin-bottom:-1px}
+.rv-tabs--underline .rv-tab:hover{color:var(--rv-text)}
+.rv-tabs--underline .rv-tab--active{color:var(--rv-primary-text);border-bottom-color:var(--rv-primary)}
+.rv-tab__count--danger{background:var(--rv-danger-muted);color:var(--rv-danger-text)}
+
+/* â”€â”€ Card â”€â”€ */
+.rv-card{background:var(--rv-surface);border:1px solid var(--rv-border);border-radius:var(--rv-radius);padding:20px}
+
+/* â”€â”€ Data Table â”€â”€ */
+.rv-data-table{background:var(--rv-surface);border:1px solid var(--rv-border);border-radius:var(--rv-radius);overflow:hidden}
+.rv-data-table__head{display:grid;padding:0 16px;height:40px;align-items:center;background:var(--rv-surface-lowest);border-bottom:1px solid var(--rv-border);font-size:var(--rv-type-xs);font-weight:600;color:var(--rv-text-secondary);text-transform:uppercase;letter-spacing:0.04em}
+.rv-data-table__row{display:grid;padding:0 16px;min-height:52px;align-items:center;border-bottom:1px solid var(--rv-border-subtle);font-size:var(--rv-type-sm);transition:background var(--rv-transition)}
+.rv-data-table__row:last-child{border-bottom:none}
+.rv-data-table__row:hover{background:var(--rv-surface-raised)}
+
+/* â”€â”€ Toast â”€â”€ */
+.rv-toast{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--rv-radius);font-size:var(--rv-type-sm);font-weight:500;max-width:400px;position:relative}
+.rv-toast--success{background:#0d3320;color:var(--rv-success-text);border:1px solid rgba(52,211,153,0.2)}
+.rv-toast--danger{background:#3b0e14;color:var(--rv-danger-text);border:1px solid rgba(244,63,94,0.2)}
+.rv-toast--warning{background:#362c0a;color:var(--rv-warning-text);border:1px solid rgba(251,191,36,0.2)}
+.rv-toast--info{background:#0c2a3e;color:var(--rv-info-text);border:1px solid rgba(56,189,248,0.2)}
+
+/* â”€â”€ Sidebar Preview â”€â”€ */
+.sidebar-preview{width:240px;background:var(--rv-surface-lowest);border:1px solid var(--rv-border);border-radius:var(--rv-radius);overflow:hidden;flex-shrink:0}
+.sidebar-preview .brand{display:flex;align-items:center;gap:12px;padding:16px;height:60px;border-bottom:1px solid var(--rv-border)}
+.sidebar-preview .logo{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:var(--rv-radius-sm);background:linear-gradient(135deg,var(--rv-primary),#c084fc);color:#fff;font-weight:800;font-size:16px;flex-shrink:0}
+.sidebar-preview .brand-text .name{font-size:var(--rv-type-md);font-weight:700;color:var(--rv-text);line-height:1.2}
+.sidebar-preview .brand-text .sub{font-size:var(--rv-type-xs);color:var(--rv-text-tertiary)}
+.sidebar-preview .nav{display:flex;flex-direction:column;gap:2px;padding:8px}
+.nav-link{display:flex;align-items:center;gap:12px;height:40px;padding:0 12px;border-radius:var(--rv-radius-sm);color:var(--rv-text-secondary);font-size:var(--rv-type-sm);font-weight:500;transition:all var(--rv-transition);position:relative;text-decoration:none}
+.nav-link:hover{color:var(--rv-text);background:var(--rv-surface-raised)}
+.nav-link--active{color:var(--rv-primary-text);background:var(--rv-primary-muted)}
+.nav-link--active::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:3px;background:var(--rv-primary);border-radius:0 2px 2px 0}
+.nav-link svg{width:18px;height:18px;flex-shrink:0;opacity:0.7}
+.nav-link--active svg{opacity:1}
+.nav-divider{height:1px;background:var(--rv-border);margin:6px 12px}
+.nav-badge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:100px;font-size:10px;font-weight:600;background:var(--rv-danger-muted);color:var(--rv-danger-text);display:inline-flex;align-items:center;justify-content:center}
+
+/* â”€â”€ Misc â”€â”€ */
+.preview-box{background:var(--rv-surface);border:1px solid var(--rv-border);border-radius:var(--rv-radius);padding:24px;display:flex;flex-direction:column;gap:16px}
+.inline{display:inline-flex;align-items:center;gap:6px}
+</style>
+</head>
+<body>
+
+<div class="showcase">
+
+  <h1>Ravencia Obsidian</h1>
+  <p class="subtitle">Design System Preview â€” Renk Paleti, Butonlar, BileÅŸenler</p>
+
+  <!-- â•â•â• SURFACES â•â•â• -->
+  <div class="section">
+    <h2 class="section-title">YÃ¼zeyler (Surfaces)</h2>
+    <p class="section-desc">KatmanlÄ± derinlik sistemi â€” en koyu arka plandan en aÃ§Ä±k overlay'e</p>
+    <div class="surface-strip">
+      <div class="surface-cell" style="background:#08090e"><span>bg<br>#08090e</span></div>
+      <div class="surface-cell" style="background:#0c0d14"><span>lowest<br>#0c0d14</span></div>
+      <div class="surface-cell" style="background:#12131b"><span>surface<br>#12131b</span></div>
+      <div class="surface-cell" style="background:#1a1b24"><span>raised<br>#1a1b24</span></div>
+      <div class="surface-cell" style="background:#222330"><span>highest<br>#222330</span></div>
+      <div class="surface-cell" style="background:#2a2b38"><span>overlay<br>#2a2b38</span></div>
+    </div>
+  </div>
+
+  <!-- â•â•â• ACCENT COLORS â•â•â• -->
+  <div class="section">
+    <h2 class="section-title">Ana Renkler</h2>
+    <p class="section-desc">Primary accent + semantik durum renkleri</p>
+    <div style="display:flex;gap:40px;flex-wrap:wrap">
+      <!-- Primary -->
+      <div class="swatch-big">
+        <div class="color-circle" style="background:#8b5cf6"></div>
+        <div class="swatch-label">Primary</div>
+        <div class="swatch-val">#8b5cf6</div>
+      </div>
+      <div class="swatch-big">
+        <div class="color-circle" style="background:#a78bfa"></div>
+        <div class="swatch-label">Primary Hover</div>
+        <div class="swatch-val">#a78bfa</div>
+      </div>
+      <div class="swatch-big">
+        <div class="color-circle" style="background:#c4b5fd"></div>
+        <div class="swatch-label">Primary Text</div>
+        <div class="swatch-val">#c4b5fd</div>
+      </div>
+      <!-- Semantic -->
+      <div class="swatch-big">
+        <div class="color-circle" style="background:#34d399"></div>
+        <div class="swatch-label">Success</div>
+        <div class="swatch-val">#34d399</div>
+      </div>
+      <div class="swatch-big">
+        <div class="color-circle" style="background:#fbbf24"></div>
+        <div class="swatch-label">Warning</div>
+        <div class="swatch-val">#fbbf24</div>
+      </div>
+      <div class="swatch-big">
+        <div class="color-circle" style="background:#f43f5e"></div>
+        <div class="swatch-label">Danger</div>
+        <div class="swatch-val">#f43f5e</div>
+      </div>
+      <div class="swatch-big">
+        <div class="color-circle" style="background:#38bdf8"></div>
+        <div class="swatch-label">Info</div>
+        <div class="swatch-val">#38bdf8</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="label">Semantik Renk VaryantlarÄ±</div>
+    <div class="grid-4" style="margin-top:8px">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div style="height:36px;border-radius:6px;background:var(--rv-success-muted);display:flex;align-items:center;justify-content:center;color:var(--rv-success-text);font-size:11px;font-weight:600">Success Muted</div>
+        <div style="height:36px;border-radius:6px;background:var(--rv-success);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600">Success Base</div>
+        <div style="height:36px;border-radius:6px;background:#0d3320;display:flex;align-items:center;justify-content:center;color:var(--rv-success-text);font-size:11px;font-weight:600">Success Deep</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div style="height:36px;border-radius:6px;background:var(--rv-warning-muted);display:flex;align-items:center;justify-content:center;color:var(--rv-warning-text);font-size:11px;font-weight:600">Warning Muted</div>
+        <div style="height:36px;border-radius:6px;background:var(--rv-warning);display:flex;align-items:center;justify-content:center;color:#000;font-size:11px;font-weight:600">Warning Base</div>
+        <div style="height:36px;border-radius:6px;background:#362c0a;display:flex;align-items:center;justify-content:center;color:var(--rv-warning-text);font-size:11px;font-weight:600">Warning Deep</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div style="height:36px;border-radius:6px;background:var(--rv-danger-muted);display:flex;align-items:center;justify-content:center;color:var(--rv-danger-text);font-size:11px;font-weight:600">Danger Muted</div>
+        <div style="height:36px;border-radius:6px;background:var(--rv-danger);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600">Danger Base</div>
+        <div style="height:36px;border-radius:6px;background:#3b0e14;display:flex;align-items:center;justify-content:center;color:var(--rv-danger-text);font-size:11px;font-weight:600">Danger Deep</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div style="height:36px;border-radius:6px;background:var(--rv-info-muted);display:flex;align-items:center;justify-content:center;color:var(--rv-info-text);font-size:11px;font-weight:600">Info Muted</div>
+        <div style="height:36px;border-radius:6px;background:var(--rv-info);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600">Info Base</div>
+        <div style="height:36px;border-radius:6px;background:#0c2a3e;display:flex;align-items:center;justify-content:center;color:var(--rv-info-text);font-size:11px;font-weight:600">Info Deep</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- â•â•â• TEXT â•â•â• -->
+  <div class="section">
+    <h2 class="section-title">Metin Renkleri & Tipografi</h2>
+    <div class="preview-box">
+      <div style="font-size:28px;font-weight:700;color:var(--rv-text);letter-spacing:-0.02em">Ana BaÅŸlÄ±k â€” #f0f0f5</div>
+      <div style="font-size:18px;font-weight:600;color:var(--rv-text)">Alt BaÅŸlÄ±k â€” #f0f0f5</div>
+      <div style="font-size:14px;color:var(--rv-text)">Ana metin iÃ§eriÄŸi â€” gÃ¼nlÃ¼k okunabilir metin. ÃœrÃ¼n aÃ§Ä±klamalarÄ± ve sipariÅŸ bilgileri burada gÃ¶rÃ¼nÃ¼r.</div>
+      <div style="font-size:14px;color:var(--rv-text-secondary)">Ä°kincil metin â€” #8b8fa3 â€” Meta bilgiler, yardÄ±mcÄ± aÃ§Ä±klamalar</div>
+      <div style="font-size:12px;color:var(--rv-text-tertiary)">ÃœÃ§Ã¼ncÃ¼l metin â€” #5c5f73 â€” Placeholder, disabled, zaman damgalarÄ±</div>
+      <div style="font-size:14px;color:var(--rv-primary-text)">BaÄŸlantÄ± / Vurgulu metin â€” #c4b5fd â€” SipariÅŸ numaralarÄ±, tÄ±klanabilir Ã¶ÄŸeler</div>
+      <div style="font-size:12px;font-family:var(--rv-font-mono);color:var(--rv-text-secondary)">Monospace: SKU-2024-001 | Barkod: 8680000123456</div>
+    </div>
+  </div>
+
+  <!-- â•â•â• BUTTONS â•â•â• -->
+  <div class="section">
+    <h2 class="section-title">Butonlar</h2>
+    <p class="section-desc">4 variant Ã— 3 boyut + disabled durumlar</p>
+
+    <div class="label">Primary</div>
+    <div class="row">
+      <button class="rv-btn rv-btn--primary rv-btn--sm">KÃ¼Ã§Ã¼k</button>
+      <button class="rv-btn rv-btn--primary rv-btn--md">SipariÅŸ OluÅŸtur</button>
+      <button class="rv-btn rv-btn--primary rv-btn--lg">ÃœrÃ¼n Ekle</button>
+      <button class="rv-btn rv-btn--primary rv-btn--md" disabled>Disabled</button>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="label">Ghost</div>
+    <div class="row">
+      <button class="rv-btn rv-btn--ghost rv-btn--sm">Ä°ptal</button>
+      <button class="rv-btn rv-btn--ghost rv-btn--md">Filtreleri Temizle</button>
+      <button class="rv-btn rv-btn--ghost rv-btn--lg">Geri DÃ¶n</button>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="label">Outline</div>
+    <div class="row">
+      <button class="rv-btn rv-btn--outline rv-btn--sm">DÃ¼zenle</button>
+      <button class="rv-btn rv-btn--outline rv-btn--md">Platformdan ÃœrÃ¼n Ã‡ek</button>
+      <button class="rv-btn rv-btn--outline rv-btn--lg">Toplu Ä°ÅŸlem</button>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="label">Danger</div>
+    <div class="row">
+      <button class="rv-btn rv-btn--danger rv-btn--sm">Sil</button>
+      <button class="rv-btn rv-btn--danger rv-btn--md">SipariÅŸi Ä°ptal Et</button>
+      <button class="rv-btn rv-btn--danger rv-btn--lg">Verileri Temizle</button>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="label">Ek Varyantlar (Success, Warning)</div>
+    <div class="row">
+      <button class="rv-btn rv-btn--success rv-btn--md">YayÄ±nla</button>
+      <button class="rv-btn rv-btn--warning rv-btn--md">UyarÄ±yÄ± Onayla</button>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="label">Icon Butonlar</div>
+    <div class="row">
+      <button class="rv-icon-btn rv-icon-btn--ghost rv-icon-btn--md" title="DÃ¼zenle">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+      </button>
+      <button class="rv-icon-btn rv-icon-btn--outline rv-icon-btn--md" title="Kopyala">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      </button>
+      <button class="rv-icon-btn rv-icon-btn--danger rv-icon-btn--md" title="Sil">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+      <button class="rv-icon-btn rv-icon-btn--ghost rv-icon-btn--sm" title="Ara">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      </button>
+      <button class="rv-icon-btn rv-icon-btn--ghost rv-icon-btn--sm" title="Yenile">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- â•â•â• BADGES â•â•â• -->
+  <div class="section">
+    <h2 class="section-title">Badge & Status Dot</h2>
+    <div class="label">Badge TonlarÄ±</div>
+    <div class="row">
+      <span class="rv-badge rv-badge--primary"><i class="rv-badge__dot"></i>Primary</span>
+      <span class="rv-badge rv-badge--success"><i class="rv-badge__dot"></i>BaÅŸarÄ±lÄ±</span>
+      <span class="rv-badge rv-badge--warning"><i class="rv-badge__dot"></i>Bekliyor</span>
+      <span class="rv-badge rv-badge--danger"><i class="rv-badge__dot"></i>Hata</span>
+      <span class="rv-badge rv-badge--info"><i class="rv-badge__dot"></i>Bilgi</span>
+      <span class="rv-badge rv-badge--neutral">NÃ¶tr</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="label">Dot'suz Badge'ler</div>
+    <div class="row">
+      <span class="rv-badge rv-badge--primary">EÅŸleÅŸti</span>
+      <span class="rv-badge rv-badge--success">SatÄ±ÅŸta</span>
+      <span class="rv-badge rv-badge--warning">DÃ¼ÅŸÃ¼k Stok</span>
+      <span class="rv-badge rv-badge--danger">Stoksuz</span>
+      <span class="rv-badge rv-badge--info">TY</span>
+      <span class="rv-badge rv-badge--neutral">Taslak</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="label">Status Dot (Animasyonlu)</div>
+    <div class="row">
+      <span class="rv-status-dot rv-status-dot--success rv-status-dot--pulse"><i></i><span>Aktif</span></span>
+      <span class="rv-status-dot rv-status-dot--warning"><i></i><span>Bekliyor</span></span>
+      <span class="rv-status-dot rv-status-dot--danger"><i></i><span>Hata</span></span>
+      <span class="rv-status-dot rv-status-dot--info rv-status-dot--pulse"><i></i><span>Ã‡alÄ±ÅŸÄ±yor</span></span>
+      <span class="rv-status-dot rv-status-dot--neutral"><i></i><span>Pasif</span></span>
+    </div>
+  </div>
+
+  <!-- â•â•â• INPUTS â•â•â• -->
+  <div class="section">
+    <h2 class="section-title">Form Kontrolleri</h2>
+    <div class="grid-3">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <label style="font-size:12px;font-weight:500;color:var(--rv-text-secondary)">Arama</label>
+        <input class="rv-input" type="text" placeholder="SKU veya barkod ara...">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <label style="font-size:12px;font-weight:500;color:var(--rv-text-secondary)">ÃœrÃ¼n AdÄ±</label>
+        <input class="rv-input" type="text" value="Erkek Slim Fit T-Shirt">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <label style="font-size:12px;font-weight:500;color:var(--rv-text-secondary)">Durum Filtresi</label>
+        <select class="rv-select">
+          <option>TÃ¼m Durumlar</option>
+          <option>Aktif</option>
+          <option>Taslak</option>
+          <option>ArÅŸiv</option>
+        </select>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="label">Pill Select (Filtre BarÄ±)</div>
+    <div class="row">
+      <select class="rv-select rv-select--pill"><option>TÃ¼m Durumlar</option><option>Aktif</option></select>
+      <select class="rv-select rv-select--pill"><option>TÃ¼m Platformlar</option><option>Trendyol</option></select>
+      <select class="rv-select rv-select--pill"><option>Stok Durumu</option><option>Stoksuz</option></select>
+    </div>
+  </div>
+
+  <!-- â•â•â• TABS â•â•â• -->
+  <div class="section">
+    <h2 class="section-title">Tab BileÅŸenleri</h2>
+    <div class="label">Pill Tabs</div>
+    <nav class="rv-tabs rv-tabs--pill">
+      <button class="rv-tab rv-tab--active"><span>TÃ¼mÃ¼</span><span class="rv-tab__count">142</span></button>
+      <button class="rv-tab"><span>Yeni</span><span class="rv-tab__count rv-tab__count--danger">5</span></button>
+      <button class="rv-tab"><span>Ä°ÅŸlemde</span><span class="rv-tab__count">23</span></button>
+      <button class="rv-tab"><span>Kargoda</span><span class="rv-tab__count">89</span></button>
+      <button class="rv-tab"><span>Teslim Edildi</span></button>
+      <button class="rv-tab"><span>Ä°ptal</span></button>
+    </nav>
+
+    <div class="spacer"></div>
+    <div class="label">Underline Tabs</div>
+    <nav class="rv-tabs rv-tabs--underline">
+      <button class="rv-tab rv-tab--active"><span>TÃ¼m Ä°ÅŸlemler</span><span class="rv-tab__count">48</span></button>
+      <button class="rv-tab"><span>SipariÅŸ/Kargo</span><span class="rv-tab__count">12</span></button>
+      <button class="rv-tab"><span>Fiyat/Stok</span><span class="rv-tab__count">8</span></button>
+      <button class="rv-tab"><span>ÃœrÃ¼n/YayÄ±n</span><span class="rv-tab__count">15</span></button>
+      <button class="rv-tab"><span>Faturalar</span></button>
+      <button class="rv-tab"><span>Ä°adeler</span><span class="rv-tab__count rv-tab__count--danger">3</span></button>
+    </nav>
+  </div>
+
+  <!-- â•â•â• METRIC CARDS â•â•â• -->
+  <div class="section">
+    <h2 class="section-title">Metrik KartlarÄ±</h2>
+    <div class="grid-4">
+      <div class="rv-metric rv-metric--primary">
+        <div class="rv-metric__icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        </div>
+        <div class="rv-metric__body">
+          <span class="rv-metric__label">Bekleyen SipariÅŸ</span>
+          <strong class="rv-metric__value">24</strong>
+        </div>
+      </div>
+      <div class="rv-metric rv-metric--danger">
+        <div class="rv-metric__icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        </div>
+        <div class="rv-metric__body">
+          <span class="rv-metric__label">Geciken SipariÅŸ</span>
+          <strong class="rv-metric__value">3</strong>
+        </div>
+      </div>
+      <div class="rv-metric rv-metric--success">
+        <div class="rv-metric__icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+        </div>
+        <div class="rv-metric__body">
+          <span class="rv-metric__label">Bu Ay SipariÅŸ</span>
+          <strong class="rv-metric__value">847</strong>
+        </div>
+      </div>
+      <div class="rv-metric rv-metric--warning">
+        <div class="rv-metric__icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        </div>
+        <div class="rv-metric__body">
+          <span class="rv-metric__label">DÃ¼ÅŸÃ¼k Stok</span>
+          <strong class="rv-metric__value">16</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- â•â•â• SIDEBAR â•â•â• -->
+  <div class="section">
+    <h2 class="section-title">Sidebar Navigasyon</h2>
+    <div style="display:flex;gap:24px">
+      <div class="sidebar-preview">
+        <div class="brand">
+          <div class="logo">R</div>
+          <div class="brand-text">
+            <div class="name">Ravencia</div>
+            <div class="sub">MarketplaceHub</div>
+          </div>
+        </div>
+        <div class="nav">
+          <a class="nav-link" href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            Dashboard
+          </a>
+          <a class="nav-link nav-link--active" href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            SipariÅŸler
+            <span class="nav-badge">5</span>
+          </a>
+          <a class="nav-link" href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 14 4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+            Ä°adeler
+          </a>
+          <a class="nav-link" href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+            ÃœrÃ¼nler
+          </a>
+          <a class="nav-link" href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 22v-2"/><path d="m17 20.66-1-1.73"/><path d="M11 10.27 7 3.34"/><path d="m20.66 17-1.73-1"/><path d="m3.34 7 1.73 1"/><path d="M14 12h8"/><path d="M2 12h2"/><path d="m20.66 7-1.73 1"/><path d="m3.34 17 1.73-1"/><path d="m17 3.34-1 1.73"/><path d="m11 13.73-4 6.93"/></svg>
+            Ä°ÅŸlem Takibi
+          </a>
+          <div class="nav-divider"></div>
+          <a class="nav-link" href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            Ayarlar
+          </a>
+        </div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:16px">
+        <div class="label">Sidebar Ã–zellikleri</div>
+        <div class="preview-box" style="font-size:13px;line-height:1.8;color:var(--rv-text-secondary)">
+          <div><span style="color:var(--rv-text)">Collapsed:</span> 64px â€” Sadece ikonlar</div>
+          <div><span style="color:var(--rv-text)">Expanded:</span> 240px â€” Hover veya pin ile</div>
+          <div><span style="color:var(--rv-text)">Aktif Ã¶ÄŸe:</span> <span style="color:var(--rv-primary-text)">Indigo pill arka planÄ±</span> + sol kenarda <span style="color:var(--rv-primary)">3px accent bar</span></div>
+          <div><span style="color:var(--rv-text)">Badge:</span> Yeni sipariÅŸ sayÄ±sÄ± <span class="nav-badge" style="display:inline-flex">5</span></div>
+          <div><span style="color:var(--rv-text)">Logo:</span> Gradient indigo logomark + brand text</div>
+          <div><span style="color:var(--rv-text)">GeÃ§iÅŸ:</span> 250ms ease animasyon</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- â•â•â• TOASTS â•â•â• -->
+  <div class="section">
+    <h2 class="section-title">Toast Bildirimleri</h2>
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:400px">
+      <div class="rv-toast rv-toast--success">âœ“ ÃœrÃ¼n baÅŸarÄ±yla yayÄ±nlandÄ±</div>
+      <div class="rv-toast rv-toast--danger">âœ• SipariÅŸ iÅŸlenirken hata oluÅŸtu</div>
+      <div class="rv-toast rv-toast--warning">âš  Stok seviyesi kritik dÃ¼zeyde</div>
+      <div class="rv-toast rv-toast--info">â„¹ Senkronizasyon devam ediyorâ€¦</div>
+    </div>
+  </div>
+
+  <!-- â•â•â• DATA TABLE â•â•â• -->
+  <div class="section">
+    <h2 class="section-title">Veri Tablosu (SipariÅŸ Ã–rneÄŸi)</h2>
+    <div class="rv-data-table">
+      <div class="rv-data-table__head" style="grid-template-columns: 40px 1fr 0.7fr 0.6fr 0.6fr 0.7fr 120px">
+        <span>â˜</span><span>SipariÅŸ</span><span>AlÄ±cÄ±</span><span>Tutar</span><span>Kargo</span><span>Fatura</span><span>Ä°ÅŸlem</span>
+      </div>
+      <div class="rv-data-table__row" style="grid-template-columns: 40px 1fr 0.7fr 0.6fr 0.6fr 0.7fr 120px">
+        <span><input type="checkbox" style="accent-color:var(--rv-primary)"></span>
+        <span style="display:flex;flex-direction:column;gap:2px">
+          <span style="color:var(--rv-primary-text);font-weight:600">#2024-4821</span>
+          <span style="font-size:11px;color:var(--rv-text-tertiary)">07 Eyl 2026, 14:30</span>
+        </span>
+        <span>Ahmet YÄ±lmaz</span>
+        <span style="font-weight:600">â‚º1.249,90</span>
+        <span class="inline"><span class="rv-badge rv-badge--info">Trendyol Express</span></span>
+        <span class="inline"><span class="rv-status-dot rv-status-dot--success"><i></i><span>Kesildi</span></span></span>
+        <span class="row" style="gap:4px">
+          <button class="rv-icon-btn rv-icon-btn--ghost rv-icon-btn--sm" title="YazdÄ±r"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg></button>
+          <button class="rv-icon-btn rv-icon-btn--ghost rv-icon-btn--sm" title="Takip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+          <button class="rv-icon-btn rv-icon-btn--ghost rv-icon-btn--sm" title="Daha fazla"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+        </span>
+      </div>
+      <div class="rv-data-table__row" style="grid-template-columns: 40px 1fr 0.7fr 0.6fr 0.6fr 0.7fr 120px">
+        <span><input type="checkbox" style="accent-color:var(--rv-primary)"></span>
+        <span style="display:flex;flex-direction:column;gap:2px">
+          <span style="color:var(--rv-primary-text);font-weight:600">#2024-4820</span>
+          <span style="font-size:11px;color:var(--rv-text-tertiary)">07 Eyl 2026, 13:15</span>
+        </span>
+        <span>Fatma Kaya</span>
+        <span style="font-weight:600">â‚º349,00</span>
+        <span class="inline"><span class="rv-badge rv-badge--neutral">YurtiÃ§i</span></span>
+        <span class="inline"><span class="rv-status-dot rv-status-dot--warning"><i></i><span>Bekliyor</span></span></span>
+        <span class="row" style="gap:4px">
+          <button class="rv-icon-btn rv-icon-btn--ghost rv-icon-btn--sm" title="YazdÄ±r"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg></button>
+          <button class="rv-icon-btn rv-icon-btn--ghost rv-icon-btn--sm" title="Takip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+          <button class="rv-icon-btn rv-icon-btn--ghost rv-icon-btn--sm" title="Daha fazla"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+        </span>
+      </div>
+      <div class="rv-data-table__row" style="grid-template-columns: 40px 1fr 0.7fr 0.6fr 0.6fr 0.7fr 120px">
+        <span><input type="checkbox" style="accent-color:var(--rv-primary)"></span>
+        <span style="display:flex;flex-direction:column;gap:2px">
+          <span style="color:var(--rv-primary-text);font-weight:600">#2024-4819</span>
+          <span style="font-size:11px;color:var(--rv-text-tertiary)">07 Eyl 2026, 11:42</span>
+        </span>
+        <span>Mehmet Demir</span>
+        <span style="font-weight:600">â‚º2.890,00</span>
+        <span class="inline"><span class="rv-badge rv-badge--info">Aras Kargo</span></span>
+        <span class="inline"><span class="rv-status-dot rv-status-dot--danger"><i></i><span>Reddedildi</span></span></span>
+        <span class="row" style="gap:4px">
+          <button class="rv-icon-btn rv-icon-btn--ghost rv-icon-btn--sm" title="YazdÄ±r"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg></button>
+          <button class="rv-icon-btn rv-icon-btn--ghost rv-icon-btn--sm" title="Takip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+          <button class="rv-icon-btn rv-icon-btn--ghost rv-icon-btn--sm" title="Daha fazla"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- â•â•â• BORDERS â•â•â• -->
+  <div class="section">
+    <h2 class="section-title">KenarlÄ±klar & Kartlar</h2>
+    <div class="grid-3">
+      <div style="padding:20px;border:1px solid var(--rv-border-subtle);border-radius:var(--rv-radius);background:var(--rv-surface);text-align:center">
+        <div style="font-size:var(--rv-type-sm);color:var(--rv-text-secondary);margin-bottom:4px">border-subtle</div>
+        <div style="font-size:10px;font-family:var(--rv-font-mono);color:var(--rv-text-tertiary)">rgba(255,255,255,0.04)</div>
+      </div>
+      <div style="padding:20px;border:1px solid var(--rv-border);border-radius:var(--rv-radius);background:var(--rv-surface);text-align:center">
+        <div style="font-size:var(--rv-type-sm);color:var(--rv-text-secondary);margin-bottom:4px">border (varsayÄ±lan)</div>
+        <div style="font-size:10px;font-family:var(--rv-font-mono);color:var(--rv-text-tertiary)">rgba(255,255,255,0.08)</div>
+      </div>
+      <div style="padding:20px;border:1px solid var(--rv-border-strong);border-radius:var(--rv-radius);background:var(--rv-surface);text-align:center">
+        <div style="font-size:var(--rv-type-sm);color:var(--rv-text-secondary);margin-bottom:4px">border-strong</div>
+        <div style="font-size:10px;font-family:var(--rv-font-mono);color:var(--rv-text-tertiary)">rgba(255,255,255,0.14)</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

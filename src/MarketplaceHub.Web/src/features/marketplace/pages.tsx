@@ -925,8 +925,107 @@ export function OrdersPage() {
 
   return <section className="content f3 orders-page"><div className="page-heading"><div><p className="eyebrow">Sipariş yönetimi</p><h1>Sipariş Yönetimi</h1><p className="lede">Tüm pazar yeri siparişlerinizi tek merkezden yönetin ve takip edin.</p></div><div className="page-heading-actions orders-reference-heading-actions"><button type="button" className="secondary orders-export-action" disabled={!items.length || exporting} onClick={() => void exportOrders()}><span className="orders-export-icon" aria-hidden="true" />{exporting ? 'Dışa aktarılıyor…' : 'Dışa Aktar'}</button><button type="button" className="orders-sync-action" onClick={() => setSingleSyncOpen(true)}><span className="orders-sync-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M20 11a8 8 0 0 0-14.9-4L3 9" /><path d="M3 4v5h5" /><path d="M4 13a8 8 0 0 0 14.9 4L21 15" /><path d="M21 20v-5h-5" /></svg></span> Sipariş Senkronizasyonu</button></div></div>
       {bulkNotice && <div key={bulkNoticeVersion} className="notice order-bulk-notice" role="status">{bulkNotice}<button type="button" aria-label="Bildirimi kapat" onClick={() => setBulkNotice('')}><UiIcon name="close" /></button></div>}
-    <div className="orders-reference-filter-shell"><div className="order-tabs" role="tablist" aria-label="Sipariş durumları">{statuses.map(([value,label]) => <button type="button" role="tab" aria-selected={filters.status === value} className={filters.status === value ? 'active' : ''} key={value} onClick={() => selectStatus(value)}><span>{label}</span><b>{summary.isLoading ? '…' : summary.isError ? '—' : tabCount(value)}</b><small>Paket</small></button>)}</div></div>
+    <div className="orders-reference-filter-shell">
+      <div className="order-tabs" role="tablist" aria-label="Sipariş durumları">{statuses.map(([value,label]) => <button type="button" role="tab" aria-selected={filters.status === value} className={filters.status === value ? 'active' : ''} key={value} onClick={() => selectStatus(value)}><span>{label}</span><b>{summary.isLoading ? '…' : summary.isError ? '—' : tabCount(value)}</b><small>Paket</small></button>)}</div>
+      <div className="orders-subtab-toolbar">
+        <div className="orders-search-box">
+          <UiIcon name="search" />
+          <input
+            type="text"
+            placeholder="Sipariş no, alıcı veya barkod ara..."
+            value={filterForm.search}
+            onChange={event => applyFilterValue('search', event.target.value)}
+          />
+          {filterForm.search && (
+            <button type="button" className="orders-search-clear" onClick={() => applyFilterValue('search', '')} aria-label="Aramayı temizle">
+              <UiIcon name="close" />
+            </button>
+          )}
+        </div>
+        <div className="orders-filter-dropdowns">
+          <select
+            aria-label="Kargo filtresi"
+            value={filterForm.cargo}
+            onChange={event => applyFilterValue('cargo', event.target.value)}
+            className={filterForm.cargo !== 'ALL' ? 'has-active-filter' : ''}
+          >
+            <option value="ALL">Tüm Kargolar</option>
+            {cargos.map(value => <option key={value} value={value}>{cargoLabel(value)}</option>)}
+          </select>
+          <select
+            aria-label="Fatura filtresi"
+            value={filterForm.invoice}
+            onChange={event => applyFilterValue('invoice', event.target.value)}
+            className={filterForm.invoice !== 'ALL' ? 'has-active-filter' : ''}
+          >
+            <option value="ALL">Tüm Faturalar</option>
+            {invoiceStatuses.map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)}
+          </select>
+          <select
+            aria-label="Etiket filtresi"
+            value={filterForm.label}
+            onChange={event => applyFilterValue('label', event.target.value)}
+            className={filterForm.label !== 'ALL' ? 'has-active-filter' : ''}
+          >
+            <option value="ALL">Tüm Etiketler</option>
+            <option value="PRINTED">Etiketi Yazdırılanlar</option>
+            <option value="NOT_PRINTED">Etiketi Yazdırılmayanlar</option>
+          </select>
+          {(filterForm.search || filterForm.cargo !== 'ALL' || filterForm.invoice !== 'ALL' || filterForm.label !== 'ALL') && (
+            <button
+              type="button"
+              className="orders-filter-reset-btn"
+              onClick={() => {
+                const reset = { ...filterForm, search: '', cargo: 'ALL', invoice: 'ALL', label: 'ALL' }
+                setFilterForm(reset); setFilters(reset); setPage(1)
+              }}
+            >
+              Filtreleri Temizle
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
     {ordersLoading && !all.length ? <Busy text="Yerel sipariş kayıtları yükleniyor…" /> : ordersError && !all.length ? <ErrorBox error={ordersError} /> : !all.length ? <Empty>Aktif ve kanıtlanmış bağlantıdan sipariş eşitlemesi çalıştırıldığında kayıtlar burada görünür.</Empty> : !items.length ? <Empty>Seçili durum ve filtrelerle eşleşen sipariş yok.</Empty> : <><div className="order-reference-table"><div className="order-reference-head"><label className="order-select"><input type="checkbox" checked={allPageSelected} disabled={!selectablePageItems.length} onChange={event => togglePageSelection(event.target.checked)} aria-label="Sayfadaki siparişleri seç" /></label><strong>Sipariş Bilgileri</strong><strong>Alıcı</strong><strong>Bilgiler</strong><strong>Birim Fiyat</strong><div className={filters.cargo !== 'ALL' ? 'order-column-filter has-filter' : 'order-column-filter'}><button type="button" className="order-column-filter-trigger" aria-label="Kargo filtresini aç" aria-expanded={columnFilterOpen === 'cargo'} aria-controls="orders-cargo-filter" onClick={() => setColumnFilterOpen(current => current === 'cargo' ? null : 'cargo')}><span>Kargo</span><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>{columnFilterOpen === 'cargo' && <div id="orders-cargo-filter" className="order-column-filter-popover" role="dialog" aria-label="Kargo filtreleri"><label>Kargo firması<select aria-label="Kargo firmasına göre filtrele" value={filterForm.cargo} onChange={event => applyFilterValue('cargo', event.target.value)}><option value="ALL">Tüm kargolar</option>{cargos.map(value => <option key={value} value={value}>{cargoLabel(value)}</option>)}</select></label>{filterForm.cargo !== 'ALL' && <button type="button" className="order-column-filter-reset" onClick={() => { applyFilterValue('cargo', 'ALL'); setColumnFilterOpen(null) }}>Filtreyi temizle</button>}</div>}</div><div className={filters.invoice !== 'ALL' || filters.invoiceType !== 'ALL' || filters.invoiceRegion !== 'ALL' ? 'order-column-filter order-invoice-column-filter has-filter' : 'order-column-filter order-invoice-column-filter'}><button type="button" className="order-column-filter-trigger" aria-label="Fatura filtresini aç" aria-expanded={columnFilterOpen === 'invoice'} aria-controls="orders-invoice-filter" onClick={() => setColumnFilterOpen(current => current === 'invoice' ? null : 'invoice')}><span>Fatura</span><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>{columnFilterOpen === 'invoice' && <div id="orders-invoice-filter" className="order-column-filter-popover invoice-filter-popover" role="dialog" aria-label="Fatura filtreleri"><label>Fatura durumu<select aria-label="Fatura durumuna göre filtrele" value={filterForm.invoice} onChange={event => applyFilterValue('invoice', event.target.value)}><option value="ALL">Durum: Tümü</option>{invoiceStatuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Fatura türü<select aria-label="Fatura türüne göre filtrele" value={filterForm.invoiceType} onChange={event => applyFilterValue('invoiceType', event.target.value)}><option value="ALL">Tür: Tümü</option><option value="BIREYSEL">Bireysel</option><option value="KURUMSAL">Kurumsal</option></select></label><label>Fatura bölgesi<select aria-label="Fatura bölgesine göre filtrele" value={filterForm.invoiceRegion} onChange={event => applyFilterValue('invoiceRegion', event.target.value)}><option value="ALL">Bölge: Tümü</option><option value="TR">Türkiye</option><option value="MICRO_EXPORT">Mikro ihracat</option></select></label>{(filterForm.invoice !== 'ALL' || filterForm.invoiceType !== 'ALL' || filterForm.invoiceRegion !== 'ALL') && <button type="button" className="order-column-filter-reset" onClick={() => { clearInvoiceFilters(); setColumnFilterOpen(null) }}>Filtreleri temizle</button>}</div>}</div><div className={filters.label !== 'ALL' ? 'order-column-filter has-filter order-label-column-filter' : 'order-column-filter order-label-column-filter'}><button type="button" className="order-column-filter-trigger" aria-label="Etiket filtresini aç" aria-expanded={columnFilterOpen === 'label'} aria-controls="orders-label-filter" onClick={() => setColumnFilterOpen(current => current === 'label' ? null : 'label')}><span>Durum</span><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>{columnFilterOpen === 'label' && <div id="orders-label-filter" className="order-column-filter-popover" role="dialog" aria-label="Etiket filtreleri"><label>Etiket durumu<select aria-label="Etiket yazdırma durumuna göre filtrele" value={filterForm.label} onChange={event => applyFilterValue('label', event.target.value)}><option value="ALL">Tüm etiketler</option><option value="PRINTED">Etiketi yazdırılanlar</option><option value="NOT_PRINTED">Etiketi yazdırılmayanlar</option></select></label>{filterForm.label !== 'ALL' && <button type="button" className="order-column-filter-reset" onClick={() => { applyFilterValue('label', 'ALL'); setColumnFilterOpen(null) }}>Filtreyi temizle</button>}</div>}</div></div>{pageItems.map(item => <OrderReferenceRow item={item} key={item.id} selected={selectedIds.includes(item.id)} processing={processingOrderId === item.id} onSelect={checked => updateSelection(item.id, checked)} openMenu={menu?.orderId === item.id ? menu.kind : null} onMenuChange={kind => setMenu(kind ? { orderId: item.id, kind } : null)} onInvoiceCreate={() => { setMenu(null); setInvoiceDraftOrder(item) }} onInvoiceDetails={() => { setMenu(null); setInvoiceInfoOrder(item) }} onInvoiceUpload={() => { setMenu(null); setInvoiceUploadOrder(item) }} onCourierChange={() => { setMenu(null); setCourierOrder({ item, items: [item] }) }} onProcessOrder={() => void processSingleOrder(item)} onPrintLabel={format => { setMenu(null); setShippingLabel({ item, format }) }} onPreviewImage={setPreviewImage} labelSettings={labelSettings} printedLabels={printedLabels} />)}</div><nav className="order-pagination" aria-label="Sipariş sayfaları"><span>{pageItems.length ? (page - 1) * pageSize + 1 : 0}–{(page - 1) * pageSize + pageItems.length} / {totalOrderCount}</span><div><button type="button" disabled={page <= 1 || ordersQuery.isFetching} onClick={goToPreviousPage}>Önceki</button><strong>Sayfa {page} / {totalPages}</strong><button type="button" disabled={!hasNextPage || ordersQuery.isFetching} onClick={goToNextPage}>Sonraki</button></div></nav></>}
+    {selectedIds.length > 0 && (
+      <aside className="orders-floating-bulk-bar" role="toolbar" aria-label="Toplu işlem çubuğu">
+        <div className="orders-bulk-info">
+          <span className="orders-bulk-badge">{selectedIds.length}</span>
+          <span>sipariş seçildi</span>
+        </div>
+        <div className="orders-bulk-actions">
+          <button
+            type="button"
+            className="orders-bulk-btn orders-bulk-primary"
+            onClick={() => {
+              const selectedOrders = all.filter(item => selectedIds.includes(item.id))
+              setShippingLabelBatch({ items: selectedOrders, format: 'a4' })
+            }}
+          >
+            <UiIcon name="print" />
+            <span>Toplu A4 Yazdır</span>
+          </button>
+          <button
+            type="button"
+            className="orders-bulk-btn orders-bulk-secondary"
+            onClick={() => {
+              const selectedOrders = all.filter(item => selectedIds.includes(item.id))
+              setShippingLabelBatch({ items: selectedOrders, format: 'sticker' })
+            }}
+          >
+            <UiIcon name="barcode" />
+            <span>Toplu Sticker Yazdır</span>
+          </button>
+          <button
+            type="button"
+            className="orders-bulk-btn orders-bulk-clear"
+            onClick={() => setSelectedIds([])}
+          >
+            Seçimi Temizle
+          </button>
+        </div>
+      </aside>
+    )}
     {invoiceInfoOrder && <InvoiceInfoModal item={invoiceInfoOrder} onClose={() => setInvoiceInfoOrder(null)} />}{invoiceViewerOrder && <InvoiceViewerModal item={invoiceViewerOrder} onClose={() => setInvoiceViewerOrder(null)} />}{invoiceDraftOrder && <InvoiceDraftModal item={invoiceDraftOrder} provider={provider} onClose={() => setInvoiceDraftOrder(null)} />}{invoiceUploadOrder && <InvoiceUploadModal item={invoiceUploadOrder} provider={provider} onClose={() => setInvoiceUploadOrder(null)} />}{courierOrder && <CourierChangeModal item={courierOrder.item} items={courierOrder.items} onClose={() => setCourierOrder(null)} onConfirmed={updatedShipments => { client.setQueriesData<Page<Order>>({ queryKey: ['orders', 'page'] }, current => current ? { ...current, items: current.items.map(order => updatedShipments.reduce((updated, shipment) => updated.id === shipment.orderId ? patchOrderShipment(updated, shipment) : updated, order)) } : current); showBulkNotice(`${updatedShipments.length} paket kargo firması “${cargoLabel(updatedShipments[0]?.cargoProviderName)}” olarak güncellendi ve panelde doğrulandı.`) }} />}{shippingLabel && <ShippingLabelModal item={shippingLabel.item} settings={labelSettings} format={shippingLabel.format} onClose={() => setShippingLabel(null)} onPrinted={() => setPrintedLabels(new Set(loadPrintedShippingLabels()))} />}{shippingLabelBatch && <ShippingLabelBatchModal items={shippingLabelBatch.items} settings={labelSettings} format={shippingLabelBatch.format} onClose={() => setShippingLabelBatch(null)} onPrinted={() => setPrintedLabels(new Set(loadPrintedShippingLabels()))} />}{singleSyncOpen && <SingleOrderSyncModal activeConnection={trendyolConnection} onClose={() => setSingleSyncOpen(false)} onSuccess={(connectionCount, orderNo) => { showBulkNotice(orderNo ? `${connectionCount} bağlantıdan #${orderNo} sipariş senkronizasyonu başlatıldı.` : `${connectionCount} bağlantıdan yeni sipariş senkronizasyonu başlatıldı.`); void client.invalidateQueries({ queryKey: ['orders'] }); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 1500); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 3500) }} />}{previewImage && <ProductImagePreviewModal preview={previewImage} onClose={() => setPreviewImage(null)} />}
   </section>
 }
