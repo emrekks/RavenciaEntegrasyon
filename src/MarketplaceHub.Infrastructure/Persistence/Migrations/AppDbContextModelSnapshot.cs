@@ -3382,11 +3382,6 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("SortOrder")
-                        .ValueGeneratedOnAdd()
-                        .HasDefaultValue(0)
-                        .HasColumnType("integer");
-
                     b.Property<string>("Sku")
                         .IsRequired()
                         .HasMaxLength(160)
@@ -3396,6 +3391,11 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
+
+                    b.Property<int>("SortOrder")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -3425,12 +3425,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "BarcodeNormalized")
                         .IsUnique();
 
-                    b.HasIndex("TenantId", "ProductId");
-
-                    b.HasIndex("TenantId", "ProductId", "SortOrder");
-
                     b.HasIndex("TenantId", "SkuNormalized")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "ProductId", "SortOrder");
 
                     b.ToTable("product_variants", "catalog");
                 });
