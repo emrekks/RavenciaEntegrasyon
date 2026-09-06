@@ -819,6 +819,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var phase = payload.Phase.Trim().ToUpperInvariant();
         if (phase == "SUBMIT")
         {
+            var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
+            if (connection is null) return JobExecutionResult.Blocked("CONNECTION_NOT_FOUND", "Bağlantı bulunamadı.");
+            if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson))
+                return JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalı olduğu için fiyat-stok gönderimi çalıştırılmadı.");
             var current = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId);
             if (!current.Succeeded)
             {
@@ -1883,17 +1887,28 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         RemoteCatalogProduct snapshot,
         CancellationToken cancellationToken)
     {
-        var observedValues = snapshot.Variants
-            .SelectMany(x => x.Options)
-            .Select(pair => (Axis: VariantOptionAxis(pair.Key), Value: pair.Value.Trim()))
-            .Where(item => item.Axis is not null && !string.IsNullOrWhiteSpace(item.Value))
-            .GroupBy(item => item.Axis!, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Select(item => item.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList(), StringComparer.Ordinal);
-
-        foreach (var mapped in categoryContext.Attributes.Values)
+        foreach (var mapped in categoryContext.Attributes.Values
+            .GroupBy(item => item.Definition.Id)
+            .Select(group => group
+                .OrderBy(item => IsWebColorOptionKey(item.Remote.Name) ? 1 : 0)
+                .First()))
         {
-            var axis = VariantOptionAxis(mapped.Definition.Name);
-            if (axis is null || !observedValues.TryGetValue(axis, out var values)) continue;
+            // Web Color is a presentation field. It may map to the same local
+            // Renk attribute, but its marketplace values must never be added as
+            // local option values. Only collect values from the real slicer
+            // field (normally Trendyol's Renk/Color field).
+            if (IsWebColorOptionKey(mapped.Remote.Name)) continue;
+            var remoteName = NormalizeCatalogKey(mapped.Remote.Name, 320);
+            var axis = VariantOptionAxis(mapped.Remote.Name);
+            var values = snapshot.Variants
+                .SelectMany(x => x.Options)
+                .Where(pair => NormalizeCatalogKey(pair.Key, 320) == remoteName
+                    || (axis is not null && VariantOptionAxis(pair.Key) == axis && !IsWebColorOptionKey(pair.Key)))
+                .Select(pair => pair.Value.Trim())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (values.Count == 0) continue;
             mapped.Definition.DataType = AttributeDataType.SingleSelect;
             mapped.Definition.SelectionMode = "SINGLE";
             foreach (var valueText in values)
@@ -2372,7 +2387,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             Snapshot = snapshot,
             // Reprocess existing catalog products after changing mapped
             // attribute assignment semantics, not only newly fetched rows.
-            OptionRoleVersion = "catalog-options-v7-prefer-local-color-source"
+            OptionRoleVersion = "catalog-options-v8-preserve-local-color-source"
         }));
         var isNewProduct = false;
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
@@ -2844,18 +2859,23 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<string> PanelOptionSignatureAsync(Guid tenantId, Guid connectionId, CategoryAttributeContext categoryContext, IReadOnlyDictionary<string, string> options, CancellationToken cancellationToken)
     {
-        var candidates = new List<(string PanelLabel, bool IsWebColorSource, LocalCategoryAttribute Mapped, string RemoteValue, int Order)>();
+        var candidates = new List<(string PanelLabel, bool IsWebColorSource, LocalCategoryAttribute? Mapped, string RemoteValue, int Order)>();
         var order = 0;
         foreach (var pair in options)
         {
-            if (!TryGetMappedAttribute(categoryContext.Attributes, pair.Key, out var mapped) || !IsCatalogProductOption(mapped, pair.Key))
+            if (TryGetMappedAttribute(categoryContext.Attributes, pair.Key, out var mapped) && IsCatalogProductOption(mapped, pair.Key))
             {
-                order++;
-                continue;
+                var panelLabel = mapped.Definition.Name;
+                var isWebColorSource = IsWebColorOptionKey(pair.Key) || IsWebColorOptionKey(mapped.Remote.Name);
+                candidates.Add((panelLabel, isWebColorSource, mapped, pair.Value, order));
             }
-            var panelLabel = mapped.Definition.Name;
-            var isWebColorSource = IsWebColorOptionKey(pair.Key) || IsWebColorOptionKey(mapped.Remote.Name);
-            candidates.Add((panelLabel, isWebColorSource, mapped, pair.Value, order));
+            else if (IsVariantOptionName(pair.Key) && !IsWebColorOptionKey(pair.Key))
+            {
+                // A missing Renk mapping must not make the importer fall back
+                // to Web Color. Preserve the real slicer value under the
+                // canonical local option name until it is mapped explicitly.
+                candidates.Add((IsColorOptionKey(pair.Key) ? "Renk" : pair.Key, false, null, pair.Value, order));
+            }
             order++;
         }
 
@@ -2870,7 +2890,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .OrderBy(candidate => candidate.IsWebColorSource ? 1 : 0)
                 .ThenBy(candidate => candidate.Order)
                 .First();
-            panelOptions[selected.PanelLabel] = await PanelOptionValueAsync(tenantId, connectionId, categoryContext, selected.Mapped, selected.RemoteValue, cancellationToken);
+            panelOptions[selected.PanelLabel] = selected.Mapped is null
+                ? CleanCatalogOptionValue(selected.RemoteValue)
+                : await PanelOptionValueAsync(tenantId, connectionId, categoryContext, selected.Mapped, selected.RemoteValue, cancellationToken);
         }
         if (panelOptions.Count > 0) return OptionSignature(panelOptions);
         var fallbackOptions = options.Where(pair => IsVariantOptionName(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
@@ -2906,7 +2928,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private static bool TryGetMappedAttribute(IReadOnlyDictionary<string, LocalCategoryAttribute> attributes, string remoteName, out LocalCategoryAttribute mapped)
     {
-        if (attributes.TryGetValue(NormalizeCatalogKey(remoteName, 320), out var direct))
+        if (attributes.TryGetValue(NormalizeCatalogKey(remoteName, 320), out var direct)
+            && (IsWebColorOptionKey(remoteName) || !IsWebColorOptionKey(direct.Remote.Name)))
         {
             mapped = direct;
             return true;
@@ -2925,6 +2948,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .OrderByDescending(item => IsWebColorOptionKey(item.Remote.Name) == wantsWebColor)
             .ThenByDescending(item => item.Role == "OPTION")
             .FirstOrDefault()!;
+        // If the feed contains the real Renk field but only Web Color is
+        // mapped locally, do not silently replace the real value with the
+        // marketplace presentation value. The caller can preserve the raw
+        // Renk value instead.
+        if (mapped is not null && !wantsWebColor && IsWebColorOptionKey(mapped.Remote.Name))
+        {
+            mapped = null!;
+            return false;
+        }
         return mapped is not null;
     }
 
@@ -3452,6 +3484,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         Guid variantId;
         try { using var payload = JsonDocument.Parse(payloadJson); variantId = payload.RootElement.GetProperty("variantId").GetGuid(); }
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or FormatException) { return JobExecutionResult.Blocked("STOCK_PROJECTION_PAYLOAD_INVALID", "Stok projection işi geçersiz payload içeriyor."); }
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
+        if (connection is null) return JobExecutionResult.Blocked("CONNECTION_NOT_FOUND", "Bağlantı bulunamadı.");
+        // Stock projection is an automatic write path. Stage manual writes remain
+        // available, but an automatic projection must never enqueue a remote write
+        // while the explicit external-write switch is off.
+        if (!WritesEnabled(connection.SettingsJson)) return JobExecutionResult.Success();
         if (!await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId && x.Status == "ACTIVE", cancellationToken)) return JobExecutionResult.Success();
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, variantId);
         if (!build.Succeeded) return JobExecutionResult.Blocked(build.Error!.Code, build.Error.Message);
@@ -3463,6 +3501,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = jobPayload, PayloadVersion = 1, PayloadHash = Hash(jobPayload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = 1, Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken);
         return JobExecutionResult.Success();
+    }
+
+    private bool WritesEnabled(string settingsJson)
+    {
+        if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(settingsJson);
+            return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
     }
 
     // Trendyol's claims feed is date-bounded for the initial scan. Invalidating

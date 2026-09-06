@@ -262,8 +262,8 @@
   gap: 8px;
   min-height: 37px;
   padding: 4px 6px;
-  background: #141f32 !important;
-  border-color: #29344d !important;
+  background: #121319 !important;
+  border-color: #3c3e4a !important;
   border-radius: 5px;
   text-decoration: none;
 }
@@ -395,7 +395,7 @@
 }
 .app-shell .dashboard-revenue-chart {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 68px minmax(0, 1fr);
   align-items: stretch;
   min-height: 194px;
   padding: 0;
@@ -406,7 +406,7 @@
   position: relative;
   align-self: end;
   height: 132px;
-  margin: 0 8px 18px 0;
+  margin: 0 4px 18px 0;
 }
 .app-shell .dashboard-revenue-axis > span {
   position: absolute;
@@ -425,7 +425,7 @@
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding-right: 4px;
+  padding-right: 0;
 }
 .app-shell .dashboard-revenue-plot-inner {
   position: relative;

@@ -1478,11 +1478,21 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setVariantMediaModal({ mode: 'bulk', draftRefs: [], groupId: group.id, valueId: group.values[0]?.id ?? '' })
   }
   function rowOptionValue(row: VariantDraft, group: Pick<VariantMediaGroup, 'name'>) {
-    const matchesGroup = (name: string) => name.toLocaleLowerCase('tr-TR') === group.name.trim().toLocaleLowerCase('tr-TR')
-      || (isColorOptionName(name) && isColorOptionName(group.name))
-    const direct = Object.entries(row.options).find(([name, value]) => matchesGroup(name) && value.trim())?.[1]
-    if (direct) return direct
-    return parseVariantOptionSignature(row.optionSignature).find(option => matchesGroup(option.name))?.value ?? ''
+    const groupName = normalizeVariantOptionName(group.name)
+    const optionRank = (name: string) => {
+      const normalized = normalizeVariantOptionName(name)
+      if (normalized === groupName) return 3
+      if (!isColorOptionName(name) || !isColorOptionName(group.name)) return -1
+      return isWebColorOptionName(name) ? 1 : 2
+    }
+    const options = [
+      ...Object.entries(row.options).map(([name, value]) => ({ name, value })),
+      ...parseVariantOptionSignature(row.optionSignature)
+    ]
+    return options
+      .filter(option => option.value.trim())
+      .sort((left, right) => optionRank(right.name) - optionRank(left.name))
+      .find(option => optionRank(option.name) >= 0)?.value ?? ''
   }
   function rowMatchesVariantMediaValue(row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) {
     return Boolean((group.attributeId && row.attributeValueIds[group.attributeId] === value.id) || rowOptionValue(row, group).trim().toLocaleLowerCase('tr-TR') === value.value.trim().toLocaleLowerCase('tr-TR'))
