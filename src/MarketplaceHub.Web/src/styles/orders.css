@@ -2000,3 +2000,22 @@
 .app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action.is-printed > span {
   opacity: .45;
 }
+
+/* Render one thin frame per order group; child product/price rows must not double it. */
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row {
+  box-sizing: border-box !important;
+  border-top: 1px solid var(--rv-line) !important;
+  border-bottom: 1px solid var(--rv-line) !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row .order-reference-products > article:first-child,
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row .order-reference-prices > strong:first-child {
+  border-top: 0 !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row .order-reference-products > article:not(:last-child),
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row .order-reference-prices > strong:not(:last-child) {
+  border-bottom: 1px solid var(--rv-line) !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row .order-reference-products > article:last-child,
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row .order-reference-prices > strong:last-child {
+  border-bottom: 0 !important;
+}
