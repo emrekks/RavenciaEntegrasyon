@@ -689,6 +689,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var actions = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken) && claim.Status == ReturnClaimStatus.ActionRequired
             ? ReturnActions
             : await CapabilityValues(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, "allowedActions", cancellationToken);
+        var approvedAt = claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+            ? await db.ReturnDecisions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.Action == "APPROVE" && x.Status == "SUCCEEDED")
+                .OrderByDescending(x => x.CompletedAt)
+                .Select(x => x.CompletedAt)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+        approvedAt ??= claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed ? claim.UpdatedAt : null;
         var sourceLines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var orderLineIds = sourceLines.Select(x => x.OrderLineId).ToArray();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
@@ -699,15 +707,17 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var lines = sourceLines.Select(line =>
         {
             var source = orderLines.GetValueOrDefault(line.OrderLineId);
+            var sourceSnapshot = source is null ? null : SourceLine(source.SourceSnapshotJson);
             var disposed = dispositions.GetValueOrDefault(line.Id);
             return new ReturnLineView(line.Id, line.ExternalLineId, line.OrderLineId, source?.Sku ?? "—", source?.Barcode, source?.TitleSnapshot ?? "—", line.Quantity, disposed, Math.Max(0, line.Quantity - disposed), source?.UnitPrice ?? 0,
                 source?.VariantId is { } variantId ? imageUrls.GetValueOrDefault(variantId) : null,
-                source?.VariantId is { } mappedVariantId && inventoryVariants.Contains(mappedVariantId));
+                source?.VariantId is { } mappedVariantId && inventoryVariants.Contains(mappedVariantId),
+                sourceSnapshot?.OptionSignature);
         }).ToList();
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, claim.ActionDueAt, actions, claim.Version,
-            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, package?.CargoProviderExternalId, package?.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed));
+            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, package?.CargoProviderExternalId, package?.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt));
     }
 
     public async Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken)

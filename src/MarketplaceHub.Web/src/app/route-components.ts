@@ -16,7 +16,6 @@ export const IntegrationsPage = lazy(() => import('../features/marketplace').the
 export const MappingPage = lazy(() => import('../features/marketplace').then(module => ({ default: module.MappingPage })))
 export const OrdersPage = lazy(() => import('../features/marketplace').then(module => ({ default: module.OrdersPage })))
 export const ReturnsPage = lazy(() => import('../features/marketplace').then(module => ({ default: module.ReturnsPage })))
-export const ReturnDetailPage = lazy(() => import('../features/marketplace').then(module => ({ default: module.ReturnDetailPage })))
 export const ShipmentDetailPage = lazy(() => import('../features/marketplace').then(module => ({ default: module.ShipmentDetailPage })))
 export const ShipmentsPage = lazy(() => import('../features/marketplace').then(module => ({ default: module.ShipmentsPage })))
 

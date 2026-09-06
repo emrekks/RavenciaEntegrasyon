@@ -411,7 +411,8 @@ public sealed record ReturnLineView(
     decimal RemainingQuantity,
     decimal UnitPrice,
     string? ImageUrl,
-    bool HasInventoryMapping);
+    bool HasInventoryMapping,
+    string? OptionSignature = null);
 public sealed record ReturnListView(
     Guid Id,
     string ExternalClaimId,
@@ -463,7 +464,8 @@ public sealed record ReturnDetailView(
     string? CargoProviderName = null,
     string? CargoTrackingNumber = null,
     IReadOnlyList<ReturnLineView>? Lines = null,
-    bool StockDispositionAvailable = false);
+    bool StockDispositionAvailable = false,
+    DateTimeOffset? ApprovedAt = null);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);
 
