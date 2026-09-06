@@ -1863,11 +1863,22 @@
 }
 .app-shell.stitch-shell .orders-page .order-reference-prices > strong {
   display: flex !important;
+  justify-content: center !important;
   align-items: center !important;
   box-sizing: border-box !important;
   min-height: 0 !important;
   height: 100% !important;
   padding: 10px !important;
+  text-align: center !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-products,
+.app-shell.stitch-shell .orders-page .order-reference-prices {
+  grid-auto-rows: minmax(194px, auto) !important;
+  align-content: stretch !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-products > article {
+  box-sizing: border-box !important;
+  border-bottom: 1px solid #1e202f !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-prices > strong:not(:last-child) {
   border-bottom: 1px solid #1e202f !important;

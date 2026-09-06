@@ -663,11 +663,22 @@
 }
 .app-shell .reference-returns-page .order-reference-prices > strong {
   display: flex !important;
+  justify-content: center !important;
   align-items: center !important;
   box-sizing: border-box !important;
   min-height: 145px !important;
   height: 100% !important;
   padding: 12px 9px !important;
+  text-align: center !important;
+}
+.app-shell .reference-returns-page .order-reference-products,
+.app-shell .reference-returns-page .order-reference-prices {
+  grid-auto-rows: minmax(145px, auto) !important;
+  align-content: stretch !important;
+}
+.app-shell .reference-returns-page .order-reference-products > article {
+  box-sizing: border-box !important;
+  border-bottom: 1px solid #1e202f !important;
 }
 .app-shell .reference-returns-page .order-reference-prices > strong:not(:last-child) {
   border-bottom: 1px solid #1e202f !important;
