@@ -1882,6 +1882,8 @@
 }
 .app-shell.stitch-shell .orders-page .order-reference-prices > strong {
   border: 1px solid #34445c !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-products > article + article,
 .app-shell.stitch-shell .orders-page .order-reference-prices > strong + strong {
