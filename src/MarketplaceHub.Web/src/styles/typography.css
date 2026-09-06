@@ -313,3 +313,19 @@ html { font-size: calc(16px * var(--rv-font-scale)); }
 .app-shell.stitch-shell input,
 .app-shell.stitch-shell select,
 .app-shell.stitch-shell textarea { font-size: calc(var(--rv-type-action-size) * var(--rv-font-scale)) !important; }
+
+/* A few compact route styles intentionally use px values. Keep those text
+   nodes connected to the account scale as well, instead of leaving them at
+   the legacy tiny size when Küçük/Normal/Büyük changes. */
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar .rich-text-tool,
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar select {
+  font-size: calc(8px * var(--rv-font-scale, 1)) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar .rich-text-tool-icon {
+  font-size: calc(11px * var(--rv-font-scale, 1)) !important;
+}
+.app-shell.stitch-shell .product-variant-tooltip,
+.app-shell.stitch-shell .product-variant-tooltip-row > strong,
+.app-shell.stitch-shell .product-variant-tooltip-row > span {
+  font-size: calc(10px * var(--rv-font-scale, 1)) !important;
+}

@@ -490,16 +490,10 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect }:
 
 type VariantDisplayGroup = { label: string; values: string[] }
 
-function ProductVariantHover({ count, groups }: { count: number; groups: VariantDisplayGroup[] }) {
+function ProductVariantHover({ count, catalogCount, groups }: { count: number; catalogCount: number; groups: VariantDisplayGroup[] }) {
   const triggerRef = useRef<HTMLDivElement>(null)
-  const hideTimer = useRef<number | null>(null)
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ left: 16, top: 16 })
-
-  function clearHideTimer() {
-    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current)
-    hideTimer.current = null
-  }
 
   function updatePosition() {
     const rect = triggerRef.current?.getBoundingClientRect()
@@ -515,37 +509,36 @@ function ProductVariantHover({ count, groups }: { count: number; groups: Variant
     setPosition({ left, top })
   }
 
-  function showTooltip() {
-    clearHideTimer()
-    setOpen(true)
+  function toggleTooltip() {
+    setOpen(value => !value)
     window.requestAnimationFrame(updatePosition)
-  }
-
-  function hideTooltip() {
-    clearHideTimer()
-    hideTimer.current = window.setTimeout(() => setOpen(false), 120)
   }
 
   useEffect(() => {
     if (!open) return
     updatePosition()
     const handleViewportChange = () => updatePosition()
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Element && (triggerRef.current?.contains(target) || target.closest('.product-variant-tooltip'))) return
+      setOpen(false)
+    }
     window.addEventListener('resize', handleViewportChange)
     window.addEventListener('scroll', handleViewportChange, true)
+    document.addEventListener('pointerdown', closeOnOutsideClick)
     return () => {
       window.removeEventListener('resize', handleViewportChange)
       window.removeEventListener('scroll', handleViewportChange, true)
+      document.removeEventListener('pointerdown', closeOnOutsideClick)
     }
   }, [groups.length, open])
 
-  useEffect(() => () => clearHideTimer(), [])
-
   return <>
-    <div ref={triggerRef} className="product-list-variants product-variant-hover" tabIndex={0} aria-label={`${count} varyant`} onMouseEnter={showTooltip} onMouseLeave={hideTooltip} onFocus={showTooltip} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) hideTooltip() }}>
-      <strong>{count} varyant</strong>
+    <div ref={triggerRef} className="product-list-variants product-variant-hover" tabIndex={0} role="button" aria-expanded={open} aria-label={`${catalogCount} seçenek, ${count} varyant. Varyant bilgilerini görmek için tıklayın`} title="Varyant bilgilerini görmek için tıklayın" onClick={toggleTooltip} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleTooltip() } }}>
+      <strong>{catalogCount} seçenek</strong><span>{count} varyant</span>
     </div>
     {open && createPortal(
-      <span className="product-variant-tooltip product-variant-tooltip-portal" role="tooltip" style={{ left: position.left, top: position.top }} onMouseEnter={clearHideTimer} onMouseLeave={hideTooltip}>
+      <span className="product-variant-tooltip product-variant-tooltip-portal" role="tooltip" style={{ left: position.left, top: position.top }}>
         {groups.map(group => <span className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span>{group.values.join(', ')}</span></span>)}
       </span>,
       document.body
@@ -569,8 +562,8 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
       <div className="product-catalog-row">
         <input className="product-row-select" type="checkbox" aria-label={`${product.title} ürün grubunu seç`} checked={selected} onChange={onSelect} />
         {product.primaryImageUrl ? <img src={product.primaryImageUrl} alt={product.title} className="product-list-thumb clickable-thumb" onClick={() => onImageClick(product.primaryImageUrl!, product.title)} title="Görseli büyütmek için tıklayın" /> : <span className="product-list-placeholder">Görsel yok</span>}
-        <div className="product-list-identity"><strong>{product.title}</strong><small>Model Kodu: <code className="technical-text model-code-value">{modelCode}</code></small>{group.products.length > 1 && <small className="product-list-group-note">{group.products.length} katalog kaydı tek kartta</small>}</div>
-        <ProductVariantHover count={group.variants.length} groups={variantDisplayGroups} />
+        <div className="product-list-identity"><strong>{product.title}</strong><small>Model Kodu: <code className="technical-text model-code-value">{modelCode}</code></small></div>
+        <ProductVariantHover count={group.variants.length} catalogCount={group.products.length} groups={variantDisplayGroups} />
         <div className="product-list-price clickable-cell" title="Fiyatı hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('price')}><strong>{money(startingPrice, product.currency)}</strong></div>
         <div className="product-list-stock clickable-cell" title="Stoğu hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('stock')}><strong>{totalStock}</strong></div>
         <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ''}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'}>TY<i /></span><small>{platformActive ? 'Eşleşti' : 'Eşleşmedi'}</small></div>

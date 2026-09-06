@@ -445,7 +445,7 @@ function AppearanceSettingsPage() {
     {message && <div className="notice" role="status">{message}</div>}
     {appearance.isError && <div className="error" role="alert">Hesap görünüm ayarları alınamadı; varsayılan görünüm gösteriliyor.</div>}
     <section className="panel appearance-settings-panel">
-      <div className="panel-title"><div><h2>Okunabilirlik</h2><p>Tablo ve işlem ekranlarındaki yazıları hesabınız için özelleştirin.</p></div><span className="security-state enabled">Hesap ayarı</span></div>
+      <div className="panel-title"><div><h2>Okunabilirlik</h2><p>Tablo ve işlem ekranlarındaki yazıları hesabınız için özelleştirin.</p></div></div>
       <div className="appearance-settings-grid">
         <label><span>Font tipi</span><select value={appearance.draft.fontFamily} onChange={event => appearance.setDraft({ ...appearance.draft, fontFamily: event.target.value as AppearanceSettings['fontFamily'] })}>{appearanceFontFamilyOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
         <label><span>Yazı boyutu</span><select value={appearance.draft.fontSize} onChange={event => appearance.setDraft({ ...appearance.draft, fontSize: event.target.value as AppearanceSettings['fontSize'] })}>{appearanceFontSizeOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></label>

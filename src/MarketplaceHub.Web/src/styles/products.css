@@ -3641,3 +3641,46 @@
 .app-shell.stitch-shell .products-page .order-pagination > span {
   font-size: calc(9px * var(--rv-font-scale, 1)) !important;
 }
+
+/* Keep the family count beside the variant count; the option details open on
+   click so a hover cannot unexpectedly cover neighboring catalog rows. */
+.app-shell.stitch-shell .products-page .product-group-card .product-list-variants {
+  align-content: center !important;
+  justify-items: start !important;
+  gap: 3px !important;
+  cursor: pointer !important;
+}
+.app-shell.stitch-shell .products-page .product-group-card .product-list-variants > strong,
+.app-shell.stitch-shell .products-page .product-group-card .product-list-variants > span {
+  display: block !important;
+  color: #dce3ff !important;
+  font-size: calc(9px * var(--rv-font-scale, 1)) !important;
+  line-height: 1.25 !important;
+  white-space: nowrap !important;
+}
+.app-shell.stitch-shell .products-page .product-group-card .product-list-variants > span {
+  color: #aeb8df !important;
+}
+
+/* Toolbar groups sit next to one another and wrap naturally when the editor
+   becomes narrower. */
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 4px !important;
+  overflow: visible !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar .rich-text-tool-group {
+  display: flex !important;
+  flex: 0 1 auto !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar .rich-text-alignment-group {
+  flex-wrap: nowrap !important;
+}
