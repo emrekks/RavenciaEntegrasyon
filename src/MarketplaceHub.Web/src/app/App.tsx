@@ -419,14 +419,16 @@ function AppearanceSettingsPage() {
     fontSize: `${appearanceFontScale[appearance.draft.fontSize]}rem`
   }
 
-  return <section className="content security-page appearance-page">
-    <div className="page-heading"><div><p className="eyebrow">Ayarlar</p><h1>Görünüm ayarları</h1><p className="lede">Font tipi ve yazı boyutu hesabınıza kaydedilir; farklı tarayıcı ve cihazlarda aynı görünümü kullanır.</p></div></div>
-    <nav className="settings-tabs appearance-settings-tabs" aria-label="Ayarlar bölümleri">
-      <Link className="button-link" to="/settings">Güvenlik ve oturumlar</Link>
-      <Link className="button-link" to="/settings?tab=database">Veritabanı temizliği</Link>
-      <Link className="button-link" to="/settings?tab=shipping">Kargo ayarları</Link>
-      <span className="button-link active" role="tab" aria-selected="true">Görünüm</span>
-    </nav>
+  const navigate = useNavigate()
+
+  return <section className="content security-page">
+    <div className="page-heading"><div><p className="eyebrow">Ayarlar</p><h1>Sistem ayarları</h1><p className="lede">Güvenlik ve yerel operasyon verilerini tek ekranda yönetin.</p></div></div>
+    <div className="settings-tabs" role="tablist">
+      <button type="button" role="tab" aria-selected={false} onClick={() => navigate('/settings')}>Güvenlik ve oturumlar</button>
+      <button type="button" role="tab" aria-selected={false} onClick={() => navigate('/settings?tab=database')}>Veritabanı temizliği</button>
+      <button type="button" role="tab" aria-selected={false} onClick={() => navigate('/settings?tab=shipping')}>Kargo ayarları</button>
+      <button type="button" role="tab" aria-selected={true} className="active">Görünüm</button>
+    </div>
     {message && <div className="notice" role="status">{message}</div>}
     {appearance.isError && <div className="error" role="alert">Hesap görünüm ayarları alınamadı; varsayılan görünüm gösteriliyor.</div>}
     <section className="panel appearance-settings-panel">
