@@ -1,68 +1,68 @@
 /* Returns page — order reference workspace skin. Keep the return filters and
    actions intact while giving the list the same visual hierarchy as orders. */
 .app-shell .reference-returns-page {
-  max-width: none;
-  padding: 28px clamp(18px, 2.6vw, 44px) 42px;
-  background: transparent;
+  max-width: none !important;
+  padding: 28px clamp(18px, 2.6vw, 44px) 42px !important;
+  background: transparent !important;
 }
 .app-shell .reference-returns-page > .returns-reference-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  margin: 0 0 28px;
-  padding: 0 0 20px;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid #1e202f;
-  border-radius: 0;
-  box-shadow: none;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: space-between !important;
+  gap: 24px !important;
+  margin: 0 0 28px !important;
+  padding: 0 0 20px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid #1e202f !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 .app-shell .reference-returns-page > .returns-reference-heading h1 {
-  margin: 0;
-  color: #e3e1ed;
-  font-family: var(--rv-font-ui);
-  font-size: clamp(1.7rem, 2.4vw, 2rem);
-  font-weight: 700;
-  letter-spacing: -.035em;
-  line-height: 1.15;
+  margin: 0 !important;
+  color: #e3e1ed !important;
+  font-family: var(--rv-font-ui) !important;
+  font-size: clamp(1.7rem, 2.4vw, 2rem) !important;
+  font-weight: 700 !important;
+  letter-spacing: -.035em !important;
+  line-height: 1.15 !important;
 }
 .app-shell .reference-returns-page > .returns-reference-heading .lede {
-  margin: 5px 0 0;
-  color: #c6c5d7;
-  font-size: .78rem;
+  margin: 5px 0 0 !important;
+  color: #c6c5d7 !important;
+  font-size: .78rem !important;
 }
 .returns-reference-heading-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 0 0 auto;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex: 0 0 auto !important;
 }
 .returns-reference-heading-actions .returns-sync-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 36px;
-  padding: 0 14px;
-  color: #fffdff;
-  background: #5865f2;
-  border: 1px solid rgba(45, 59, 255, .8);
-  border-radius: 7px;
-  box-shadow: 0 0 15px rgba(45, 59, 255, .24);
-  font-size: .68rem;
-  font-weight: 750;
-  transform: none;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  min-height: 36px !important;
+  padding: 0 14px !important;
+  color: #fffdff !important;
+  background: #5865f2 !important;
+  border: 1px solid rgba(45, 59, 255, .8) !important;
+  border-radius: 7px !important;
+  box-shadow: 0 0 15px rgba(45, 59, 255, .24) !important;
+  font-size: .68rem !important;
+  font-weight: 750 !important;
+  transform: none !important;
 }
 .returns-reference-heading-actions .returns-sync-action:hover:not(:disabled) {
-  color: #fff;
-  background: #2d3bff;
-  border-color: #5865f2;
-  box-shadow: 0 0 18px rgba(45, 59, 255, .34);
+  color: #fff !important;
+  background: #2d3bff !important;
+  border-color: #5865f2 !important;
+  box-shadow: 0 0 18px rgba(45, 59, 255, .34) !important;
 }
 .returns-reference-heading-actions .returns-sync-action:disabled {
-  opacity: .55;
-  cursor: not-allowed;
+  opacity: .55 !important;
+  cursor: not-allowed !important;
 }
 .returns-reference-heading-actions .returns-sync-icon {
   display: inline-flex;
@@ -83,646 +83,646 @@
   stroke-linejoin: round;
 }
 .returns-reference-filter-shell {
-  margin: 0 0 18px;
-  overflow: hidden;
-  background: #12131b;
-  border: 1px solid #1e202f;
-  border-radius: 8px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, .2);
+  margin: 0 0 18px !important;
+  overflow: hidden !important;
+  background: #12131b !important;
+  border: 1px solid #1e202f !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .2) !important;
 }
 .returns-reference-filter-shell .return-reference-tabs {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  min-height: 43px;
-  margin: 0 0 10px;
-  padding: 0 7px;
-  overflow-x: auto;
-  background: #0d0e16;
-  border: 0;
-  border-bottom: 1px solid #1e202f;
-  border-radius: 0;
+  display: flex !important;
+  align-items: stretch !important;
+  gap: 0 !important;
+  min-height: 43px !important;
+  margin: 0 0 10px !important;
+  padding: 0 7px !important;
+  overflow-x: auto !important;
+  background: #0d0e16 !important;
+  border: 0 !important;
+  border-bottom: 1px solid #1e202f !important;
+  border-radius: 0 !important;
 }
 .returns-reference-filter-shell .return-reference-filters {
-  margin-top: 0;
+  margin-top: 0 !important;
 }
 .returns-reference-filter-shell .return-reference-tabs button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 43px;
-  min-width: 0;
-  padding: 0 13px;
-  color: #c6c5d7;
-  background: transparent;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  box-shadow: none;
-  font-size: .67rem;
-  font-weight: 650;
-  white-space: nowrap;
-  transform: none;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  min-height: 43px !important;
+  min-width: 0 !important;
+  padding: 0 13px !important;
+  color: #c6c5d7 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: .67rem !important;
+  font-weight: 650 !important;
+  white-space: nowrap !important;
+  transform: none !important;
 }
 .returns-reference-filter-shell .return-reference-tabs button:hover {
-  color: #e3e1ed;
-  background: #1a1b23;
+  color: #e3e1ed !important;
+  background: #1a1b23 !important;
 }
 .returns-reference-filter-shell .return-reference-tabs button.active {
-  color: #bec2ff;
-  background: transparent;
-  border-bottom-color: #5865f2;
-  text-shadow: 0 0 8px rgba(88, 101, 242, .42);
+  color: #bec2ff !important;
+  background: transparent !important;
+  border-bottom-color: #5865f2 !important;
+  text-shadow: 0 0 8px rgba(88, 101, 242, .42) !important;
 }
 .returns-reference-filter-shell .return-reference-tabs button b {
-  display: inline-grid;
-  place-items: center;
-  min-width: 22px;
-  height: 20px;
-  margin: 0;
-  padding: 0 5px;
-  color: #c6c5d7;
-  background: #1f1f27;
-  border: 1px solid #1e202f;
-  border-radius: 999px;
-  font-size: .58rem;
-  font-weight: 700;
+  display: inline-grid !important;
+  place-items: center !important;
+  min-width: 22px !important;
+  height: 20px !important;
+  margin: 0 !important;
+  padding: 0 5px !important;
+  color: #c6c5d7 !important;
+  background: #1f1f27 !important;
+  border: 1px solid #1e202f !important;
+  border-radius: 999px !important;
+  font-size: .58rem !important;
+  font-weight: 700 !important;
 }
 .returns-reference-filter-shell .return-reference-tabs button:nth-child(2) b {
-  color: #ffb4ab;
-  background: rgba(147, 0, 10, .2);
-  border-color: rgba(255, 180, 171, .24);
+  color: #ffb4ab !important;
+  background: rgba(147, 0, 10, .2) !important;
+  border-color: rgba(255, 180, 171, .24) !important;
 }
-.returns-reference-filter-shell .return-reference-tabs button small { display: none; }
+.returns-reference-filter-shell .return-reference-tabs button small { display: none !important; }
 .app-shell .reference-returns-page > .return-reference-workspace {
-  margin-top: 0;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  margin-top: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 .reference-returns-page .return-reference-workspace > header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
-  margin: 0 0 12px;
-  padding: 0 2px;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  margin: 0 0 12px !important;
+  padding: 0 2px !important;
 }
 .reference-returns-page .return-reference-workspace h2 {
-  margin: 0;
-  color: #e3e1ed;
-  font-size: .98rem;
-  font-weight: 700;
-  letter-spacing: -.02em;
+  margin: 0 !important;
+  color: #e3e1ed !important;
+  font-size: .98rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -.02em !important;
 }
 .reference-returns-page .return-reference-workspace header p {
-  margin: 4px 0 0;
-  color: #8f8fa0;
-  font-size: .65rem;
+  margin: 4px 0 0 !important;
+  color: #8f8fa0 !important;
+  font-size: .65rem !important;
 }
 .reference-returns-page .return-reference-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
 }
 .reference-returns-page .return-reference-header-actions label {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: #8f8fa0;
-  font-size: .62rem;
-  font-weight: 650;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  color: #8f8fa0 !important;
+  font-size: .62rem !important;
+  font-weight: 650 !important;
 }
 .reference-returns-page .return-reference-header-actions select {
-  min-height: 32px;
-  min-width: 68px;
-  padding: 5px 8px;
-  color: #e3e1ed;
-  background: #1a1b23;
-  border: 1px solid #1e202f;
-  border-radius: 5px;
-  font-size: .65rem;
+  min-height: 32px !important;
+  min-width: 68px !important;
+  padding: 5px 8px !important;
+  color: #e3e1ed !important;
+  background: #1a1b23 !important;
+  border: 1px solid #1e202f !important;
+  border-radius: 5px !important;
+  font-size: .65rem !important;
 }
 .app-shell .reference-returns-page .return-reference-table {
-  display: grid;
-  min-width: 0;
-  margin-top: 0;
-  overflow: auto;
-  background: #12131b;
-  border: 1px solid #1e202f;
-  border-radius: 8px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, .2);
+  display: grid !important;
+  min-width: 0 !important;
+  margin-top: 0 !important;
+  overflow: auto !important;
+  background: #12131b !important;
+  border: 1px solid #1e202f !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .2) !important;
 }
 .app-shell .reference-returns-page .return-reference-head,
 .app-shell .reference-returns-page .return-reference-row {
-  grid-template-columns: minmax(150px, 1.05fr) minmax(92px, .62fr) minmax(230px, 1.72fr) minmax(78px, .55fr) minmax(112px, .82fr) minmax(156px, 1.16fr) minmax(126px, .9fr) minmax(140px, 1fr);
-  min-width: 1080px;
+  grid-template-columns: minmax(150px, 1.05fr) minmax(92px, .62fr) minmax(230px, 1.72fr) minmax(78px, .55fr) minmax(112px, .82fr) minmax(156px, 1.16fr) minmax(126px, .9fr) minmax(140px, 1fr) !important;
+  min-width: 1080px !important;
 }
 .app-shell .reference-returns-page .return-reference-head {
-  position: static;
-  min-height: 43px;
-  color: #8f8fa0;
-  background: #1f1f27;
-  border: 0;
-  border-bottom: 1px solid #1e202f;
-  border-radius: 0;
-  box-shadow: none;
-  text-transform: uppercase;
-  letter-spacing: .04em;
+  position: static !important;
+  min-height: 43px !important;
+  color: #8f8fa0 !important;
+  background: #1f1f27 !important;
+  border: 0 !important;
+  border-bottom: 1px solid #1e202f !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  text-transform: uppercase !important;
+  letter-spacing: .04em !important;
 }
 .app-shell .reference-returns-page .return-reference-head > * {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  padding: 0 10px;
-  color: #8f8fa0;
-  border-right: 1px solid #1e202f;
-  font-size: .58rem;
-  font-weight: 750;
+  display: flex !important;
+  align-items: center !important;
+  min-width: 0 !important;
+  padding: 0 10px !important;
+  color: #8f8fa0 !important;
+  border-right: 1px solid #1e202f !important;
+  font-size: .58rem !important;
+  font-weight: 750 !important;
 }
-.app-shell .reference-returns-page .return-reference-head > *:last-child { border-right: 0; }
+.app-shell .reference-returns-page .return-reference-head > *:last-child { border-right: 0 !important; }
 .app-shell .reference-returns-page .return-reference-row {
-  min-height: 194px;
-  color: #e3e1ed;
-  background: #12131b;
-  border: 0;
-  border-bottom: 1px solid #1e202f;
-  border-radius: 0;
-  box-shadow: none;
-  transform: none;
+  min-height: 194px !important;
+  color: #e3e1ed !important;
+  background: #12131b !important;
+  border: 0 !important;
+  border-bottom: 1px solid #1e202f !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
 }
 .app-shell .reference-returns-page .return-reference-row:hover {
-  color: #e3e1ed;
-  background: #1a1b23;
-  border-color: #1e202f;
-  transform: none;
+  color: #e3e1ed !important;
+  background: #1a1b23 !important;
+  border-color: #1e202f !important;
+  transform: none !important;
 }
-.app-shell .reference-returns-page .return-reference-row:last-child { border-bottom: 0; }
+.app-shell .reference-returns-page .return-reference-row:last-child { border-bottom: 0 !important; }
 .app-shell .reference-returns-page .return-reference-row > span {
-  min-width: 0;
-  min-height: 194px;
-  padding: 14px 10px;
-  color: #e3e1ed;
-  border-right: 1px solid #1e202f;
-  border-bottom: 0;
-  font-size: .68rem;
+  min-width: 0 !important;
+  min-height: 194px !important;
+  padding: 14px 10px !important;
+  color: #e3e1ed !important;
+  border-right: 1px solid #1e202f !important;
+  border-bottom: 0 !important;
+  font-size: .68rem !important;
 }
-.app-shell .reference-returns-page .return-reference-row > span:last-child { border-right: 0; }
+.app-shell .reference-returns-page .return-reference-row > span:last-child { border-right: 0 !important; }
 .app-shell .reference-returns-page .return-reference-row strong,
-.app-shell .reference-returns-page .return-reference-row b { color: #e3e1ed; }
+.app-shell .reference-returns-page .return-reference-row b { color: #e3e1ed !important; }
 .app-shell .reference-returns-page .return-reference-row small {
-  color: #c6c5d7;
-  font-size: .59rem;
-  line-height: 1.35;
+  color: #c6c5d7 !important;
+  font-size: .59rem !important;
+  line-height: 1.35 !important;
 }
 .app-shell .reference-returns-page .order-reference-meta, .app-shell .reference-returns-page .order-reference-buyer, .app-shell .reference-returns-page .order-reference-cargo, .app-shell .reference-returns-page .order-reference-invoice {
-  gap: 5px;
+  gap: 5px !important;
 }
-.app-shell .reference-returns-page .order-reference-meta > strong { font-size: .67rem; }
+.app-shell .reference-returns-page .order-reference-meta > strong { font-size: .67rem !important; }
 .app-shell .reference-returns-page .order-reference-buyer {
-  align-items: center;
-  text-align: center;
+  align-items: center !important;
+  text-align: center !important;
 }
 .app-shell .reference-returns-page .order-reference-buyer strong {
-  overflow-wrap: anywhere;
-  font-size: .63rem;
+  overflow-wrap: anywhere !important;
+  font-size: .63rem !important;
 }
 .app-shell .reference-returns-page .order-reference-products > article {
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 7px;
-  min-height: 194px;
-  padding: 9px 7px;
-  border-color: #1e202f;
+  grid-template-columns: 56px minmax(0, 1fr) !important;
+  gap: 7px !important;
+  min-height: 194px !important;
+  padding: 9px 7px !important;
+  border-color: #1e202f !important;
 }
 .app-shell .reference-returns-page .order-reference-products > article > div {
-  justify-content: flex-start;
-  gap: 2px;
+  justify-content: flex-start !important;
+  gap: 2px !important;
 }
 .app-shell .reference-returns-page .order-reference-products article strong {
-  font-size: .64rem;
-  line-height: 1.2;
+  font-size: .64rem !important;
+  line-height: 1.2 !important;
 }
 .app-shell .reference-returns-page .order-reference-products article small {
-  font-size: .57rem;
-  line-height: 1.2;
+  font-size: .57rem !important;
+  line-height: 1.2 !important;
 }
 .app-shell .reference-returns-page .order-reference-products img,
 .app-shell .reference-returns-page .reference-product-placeholder {
-  width: 54px;
-  height: 81px;
-  aspect-ratio: 2 / 3;
-  object-fit: cover;
+  width: 54px !important;
+  height: 81px !important;
+  aspect-ratio: 2 / 3 !important;
+  object-fit: cover !important;
 }
 .app-shell .reference-returns-page .reference-product-media {
-  position: relative;
-  display: block;
-  width: 54px;
-  height: 81px;
-  min-width: 54px;
+  position: relative !important;
+  display: block !important;
+  width: 54px !important;
+  height: 81px !important;
+  min-width: 54px !important;
 }
 .app-shell .reference-returns-page .reference-product-media .product-image-button {
-  display: block;
-  width: 54px;
-  height: 81px;
-  min-height: 81px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
+  display: block !important;
+  width: 54px !important;
+  height: 81px !important;
+  min-height: 81px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 .app-shell .reference-returns-page .reference-product-media .product-image-button img,
 .app-shell .reference-returns-page .reference-product-media > .reference-product-placeholder {
-  display: block;
-  width: 54px;
-  height: 81px;
+  display: block !important;
+  width: 54px !important;
+  height: 81px !important;
 }
 .app-shell .reference-returns-page .order-reference-prices,
 .app-shell .reference-returns-page .order-reference-cargo,
-.app-shell .reference-returns-page .order-reference-invoice { text-align: left; }
+.app-shell .reference-returns-page .order-reference-invoice { text-align: left !important; }
 .app-shell .reference-returns-page .order-reference-cargo .cargo-provider-display {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 5px;
-  width: 100%;
-  min-width: 0;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  width: 100% !important;
+  min-width: 0 !important;
 }
 .app-shell .reference-returns-page .order-reference-cargo .cargo-provider-icon {
-  display: block;
-  width: 82px;
-  height: 30px;
-  max-width: 100%;
-  object-fit: contain;
-  object-position: left center;
+  display: block !important;
+  width: 82px !important;
+  height: 30px !important;
+  max-width: 100% !important;
+  object-fit: contain !important;
+  object-position: left center !important;
 }
 .app-shell .reference-returns-page .order-reference-cargo .cargo-provider-icon-fallback {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 26px;
-  color: #bec2ff;
-  background: rgba(88, 101, 242, .14);
-  border: 1px solid rgba(88, 101, 242, .3);
-  border-radius: 5px;
-  font-size: .58rem;
-  font-weight: 800;
+  display: grid !important;
+  place-items: center !important;
+  width: 36px !important;
+  height: 26px !important;
+  color: #bec2ff !important;
+  background: rgba(88, 101, 242, .14) !important;
+  border: 1px solid rgba(88, 101, 242, .3) !important;
+  border-radius: 5px !important;
+  font-size: .58rem !important;
+  font-weight: 800 !important;
 }
-.app-shell .reference-returns-page .order-reference-prices > strong { font-size: .64rem; }
-.app-shell .reference-returns-page .order-reference-cargo strong { font-size: .67rem; line-height: 1.2; }
-.app-shell .reference-returns-page .order-reference-cargo b { font-size: .6rem; overflow-wrap: anywhere; }
-.app-shell .reference-returns-page .order-reference-invoice > strong { font-size: .67rem; }
+.app-shell .reference-returns-page .order-reference-prices > strong { font-size: .64rem !important; }
+.app-shell .reference-returns-page .order-reference-cargo strong { font-size: .67rem !important; line-height: 1.2 !important; }
+.app-shell .reference-returns-page .order-reference-cargo b { font-size: .6rem !important; overflow-wrap: anywhere !important; }
+.app-shell .reference-returns-page .order-reference-invoice > strong { font-size: .67rem !important; }
 .app-shell .reference-returns-page .order-reference-invoice > span {
-  align-self: flex-start;
-  padding: 3px 6px;
-  border-radius: 999px;
-  font-size: .55rem;
-  font-weight: 750;
-  line-height: 1.2;
-  white-space: nowrap;
+  align-self: flex-start !important;
+  padding: 3px 6px !important;
+  border-radius: 999px !important;
+  font-size: .55rem !important;
+  font-weight: 750 !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
 }
 .app-shell .reference-returns-page .order-reference-invoice.invoice-pending > span {
-  color: #ffb4ab;
-  background: rgba(147, 0, 10, .2);
+  color: #ffb4ab !important;
+  background: rgba(147, 0, 10, .2) !important;
 }
 .app-shell .reference-returns-page .order-reference-invoice.invoice-created > span {
-  color: #8ef0b4;
-  background: rgba(35, 142, 91, .2);
+  color: #8ef0b4 !important;
+  background: rgba(35, 142, 91, .2) !important;
 }
 .app-shell .reference-returns-page .return-detail-trigger,
 .app-shell .reference-returns-page .return-cargo-track {
-  align-self: flex-start;
-  margin-top: 3px;
-  padding: 4px 6px;
-  color: #bec2ff;
-  background: transparent;
-  border: 1px solid #454655;
-  border-radius: 4px;
-  box-shadow: none;
-  font-size: .58rem;
-  font-weight: 750;
+  align-self: flex-start !important;
+  margin-top: 3px !important;
+  padding: 4px 6px !important;
+  color: #bec2ff !important;
+  background: transparent !important;
+  border: 1px solid #454655 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  font-size: .58rem !important;
+  font-weight: 750 !important;
 }
 .app-shell .reference-returns-page .return-detail-trigger:hover,
 .app-shell .reference-returns-page .return-cargo-track:hover {
-  color: #fff;
-  background: #292932;
-  border-color: #5865f2;
-  transform: none;
+  color: #fff !important;
+  background: #292932 !important;
+  border-color: #5865f2 !important;
+  transform: none !important;
 }
 .app-shell .reference-returns-page .return-pagination {
-  margin: 10px 0 0;
-  color: #8f8fa0;
+  margin: 10px 0 0 !important;
+  color: #8f8fa0 !important;
 }
 @media (max-width: 850px) {
-  .app-shell .reference-returns-page > .returns-reference-heading { align-items: flex-start; flex-direction: column; }
-  .returns-reference-heading-actions { width: 100%; justify-content: flex-end; }
+  .app-shell .reference-returns-page > .returns-reference-heading { align-items: flex-start !important; flex-direction: column !important; }
+  .returns-reference-heading-actions { width: 100% !important; justify-content: flex-end !important; }
 }
 @media (max-width: 560px) {
-  .app-shell .reference-returns-page { padding: 20px 16px 30px; }
-  .returns-reference-heading-actions { justify-content: stretch; }
-  .returns-reference-heading-actions .returns-sync-action { width: 100%; }
-  .reference-returns-page .return-reference-workspace > header { align-items: flex-start; flex-direction: column; }
-  .reference-returns-page .return-reference-header-actions { width: 100%; justify-content: flex-end; }
+  .app-shell .reference-returns-page { padding: 20px 16px 30px !important; }
+  .returns-reference-heading-actions { justify-content: stretch !important; }
+  .returns-reference-heading-actions .returns-sync-action { width: 100% !important; }
+  .reference-returns-page .return-reference-workspace > header { align-items: flex-start !important; flex-direction: column !important; }
+  .reference-returns-page .return-reference-header-actions { width: 100% !important; justify-content: flex-end !important; }
 }
 
 /* Keep first-value tokens anchored to their input instead of changing the save row height. */
 .mapping-reference-card .panel-attribute-create {
-  align-items: start;
+  align-items: start !important;
 }
 .mapping-reference-card .panel-attribute-create > label,
 .mapping-reference-card .panel-value-token-input,
 .mapping-reference-card .panel-value-token-entry,
 .mapping-reference-card .panel-value-token-list {
-  min-width: 0;
+  min-width: 0 !important;
 }
 .mapping-reference-card .panel-attribute-create > label {
-  align-content: start;
+  align-content: start !important;
 }
 .mapping-reference-card .panel-attribute-create > button {
-  align-self: start;
-  margin-top: 20px;
+  align-self: start !important;
+  margin-top: 20px !important;
 }
 .mapping-reference-card .panel-value-token-entry {
-  align-items: stretch;
+  align-items: stretch !important;
 }
 .mapping-reference-card .panel-value-token-entry input {
-  width: 100%;
-  min-width: 0;
+  width: 100% !important;
+  min-width: 0 !important;
 }
 .mapping-reference-card .panel-value-token-list {
-  align-items: center;
-  min-height: 0;
+  align-items: center !important;
+  min-height: 0 !important;
 }
 .mapping-reference-card .panel-value-token {
-  flex: 0 1 auto;
-  box-sizing: border-box;
-  margin: 0;
-  line-height: 1.2;
+  flex: 0 1 auto !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  line-height: 1.2 !important;
 }
 .mapping-reference-card .panel-value-token > span {
-  min-width: 0;
-  max-width: calc(100% - 24px);
+  min-width: 0 !important;
+  max-width: calc(100% - 24px) !important;
 }
 @media (max-width: 900px) {
-  .mapping-reference-card .panel-attribute-create > button { margin-top: 20px; }
+  .mapping-reference-card .panel-attribute-create > button { margin-top: 20px !important; }
 }
 @media (max-width: 560px) {
-  .mapping-reference-card .panel-attribute-create > button { margin-top: 0; }
+  .mapping-reference-card .panel-attribute-create > button { margin-top: 0 !important; }
 }
 
 /* Historical Returns visual baseline (pre-a3f77ad). Keep this route-scoped so
    restoring the former hierarchy cannot affect Orders or other workspaces. */
 .app-shell .reference-returns-page {
-  max-width: none;
-  padding: 14px 16px 32px;
+  max-width: none !important;
+  padding: 14px 16px 32px !important;
 }
 .app-shell .reference-returns-page > .return-reference-tabs {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  min-height: 0;
-  margin: -14px -16px 18px;
-  padding: 0 16px;
-  overflow-x: auto;
-  background: #0d0e16;
-  border: 0;
-  border-bottom: 1px solid var(--rv-line);
-  border-radius: 0;
-  box-shadow: none;
+  display: flex !important;
+  align-items: stretch !important;
+  gap: 0 !important;
+  min-height: 0 !important;
+  margin: -14px -16px 18px !important;
+  padding: 0 16px !important;
+  overflow-x: auto !important;
+  background: #0d0e16 !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--rv-line) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 .app-shell .reference-returns-page > .return-reference-tabs button {
-  display: grid;
-  flex: 0 0 auto;
-  align-content: center;
-  gap: 3px;
-  min-width: 128px;
-  min-height: 0;
-  padding: 13px 20px 10px;
-  color: var(--rv-muted);
-  background: transparent;
-  border: 0;
-  border-right: 1px solid var(--rv-line);
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  box-shadow: none;
-  font-size: .78rem;
-  font-weight: 650;
-  text-align: left;
-  white-space: nowrap;
-  transform: none;
+  display: grid !important;
+  flex: 0 0 auto !important;
+  align-content: center !important;
+  gap: 3px !important;
+  min-width: 128px !important;
+  min-height: 0 !important;
+  padding: 13px 20px 10px !important;
+  color: var(--rv-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-right: 1px solid var(--rv-line) !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: .78rem !important;
+  font-weight: 650 !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+  transform: none !important;
 }
 .app-shell .reference-returns-page > .return-reference-tabs button:hover,
 .app-shell .reference-returns-page > .return-reference-tabs button.active {
-  color: var(--rv-primary);
-  background: #1a1b23;
-  border-bottom-color: var(--rv-primary);
+  color: var(--rv-primary) !important;
+  background: #1a1b23 !important;
+  border-bottom-color: var(--rv-primary) !important;
 }
 .app-shell .reference-returns-page > .return-reference-tabs button strong {
-  color: inherit;
-  font-size: inherit;
+  color: inherit !important;
+  font-size: inherit !important;
 }
 .app-shell .reference-returns-page > .return-reference-tabs button small {
-  display: block;
-  color: inherit;
-  font-size: .7rem;
-  font-weight: 600;
+  display: block !important;
+  color: inherit !important;
+  font-size: .7rem !important;
+  font-weight: 600 !important;
 }
 .app-shell .reference-returns-page > .return-reference-filters {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 14px;
-  align-items: end;
-  margin: 0;
-  padding: 22px 24px;
-  background: var(--rv-surface-deep);
-  border: 1px solid var(--rv-line);
-  border-radius: 8px;
-  box-shadow: none;
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  align-items: end !important;
+  margin: 0 !important;
+  padding: 22px 24px !important;
+  background: var(--rv-surface-deep) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
 }
 .app-shell .reference-returns-page > .return-reference-filters input,
 .app-shell .reference-returns-page > .return-reference-filters select {
-  width: 100%;
-  min-height: 34px;
-  min-width: 0;
-  padding: 7px 12px;
-  color: var(--rv-ink);
-  background: var(--rv-surface);
-  border: 1px solid var(--rv-line-strong);
-  border-radius: 4px;
-  font-size: .8rem;
+  width: 100% !important;
+  min-height: 34px !important;
+  min-width: 0 !important;
+  padding: 7px 12px !important;
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  border-radius: 4px !important;
+  font-size: .8rem !important;
 }
 .app-shell .reference-returns-page .return-filter-actions {
-  display: flex;
-  grid-column: 4 / 6;
-  justify-content: flex-end;
-  gap: 14px;
+  display: flex !important;
+  grid-column: 4 / 6 !important;
+  justify-content: flex-end !important;
+  gap: 14px !important;
 }
 .app-shell .reference-returns-page .return-filter-actions button {
-  min-width: 166px;
-  min-height: 34px;
-  padding: 7px 18px;
-  border-radius: 4px;
-  font-size: .78rem;
+  min-width: 166px !important;
+  min-height: 34px !important;
+  padding: 7px 18px !important;
+  border-radius: 4px !important;
+  font-size: .78rem !important;
 }
 .app-shell .reference-returns-page > .return-reference-workspace {
-  margin-top: 24px;
-  padding: 22px 24px;
-  background: transparent;
-  border: 0;
-  border-radius: 8px;
-  box-shadow: none;
+  margin-top: 24px !important;
+  padding: 22px 24px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
 }
 .app-shell .reference-returns-page .return-reference-workspace > header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 0 0 22px;
-  padding: 0;
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  margin: 0 0 22px !important;
+  padding: 0 !important;
 }
 .app-shell .reference-returns-page .return-reference-workspace h1 {
-  margin: 0;
-  color: var(--rv-ink);
-  font-size: 1.08rem;
-  font-weight: 700;
+  margin: 0 !important;
+  color: var(--rv-ink) !important;
+  font-size: 1.08rem !important;
+  font-weight: 700 !important;
 }
 .app-shell .reference-returns-page .return-reference-workspace header p {
-  margin: 4px 0 0;
-  color: var(--rv-muted);
-  font-size: .75rem;
+  margin: 4px 0 0 !important;
+  color: var(--rv-muted) !important;
+  font-size: .75rem !important;
 }
 .app-shell .reference-returns-page .return-reference-workspace > header > button {
-  min-width: 150px;
-  font-size: .76rem;
+  min-width: 150px !important;
+  font-size: .76rem !important;
 }
 .app-shell .reference-returns-page .return-reference-table {
-  display: grid;
-  gap: 0;
-  min-width: 0;
-  margin-top: 0;
-  padding: 0;
-  overflow: auto;
-  background: #12131b;
-  border: 1px solid #1e202f;
-  border-radius: 8px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, .2);
+  display: grid !important;
+  gap: 0 !important;
+  min-width: 0 !important;
+  margin-top: 0 !important;
+  padding: 0 !important;
+  overflow: auto !important;
+  background: #12131b !important;
+  border: 1px solid #1e202f !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .2) !important;
 }
 .app-shell .reference-returns-page .return-reference-head,
 .app-shell .reference-returns-page .return-reference-row {
-  grid-template-columns: 1.32fr .58fr 2.1fr .65fr .95fr .88fr .95fr 1.2fr;
-  min-width: 1180px;
-  border: 0;
-  border-bottom: 1px solid #1e202f;
-  border-radius: 0;
-  overflow: hidden;
+  grid-template-columns: 1.32fr .58fr 2.1fr .65fr .95fr .88fr .95fr 1.2fr !important;
+  min-width: 1180px !important;
+  border: 0 !important;
+  border-bottom: 1px solid #1e202f !important;
+  border-radius: 0 !important;
+  overflow: hidden !important;
 }
 .app-shell .reference-returns-page .return-reference-head {
-  min-height: 0;
-  color: #8f8fa0;
-  background: #1f1f27;
-  border-bottom: 1px solid #1e202f;
-  box-shadow: none;
-  text-transform: none;
-  letter-spacing: normal;
+  min-height: 0 !important;
+  color: #8f8fa0 !important;
+  background: #1f1f27 !important;
+  border-bottom: 1px solid #1e202f !important;
+  box-shadow: none !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
 }
 .app-shell .reference-returns-page .return-reference-head > * {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  padding: 17px 9px;
-  color: #8f8fa0;
-  border-right: 1px solid #1e202f;
-  font-size: .76rem;
-  font-weight: 700;
+  display: flex !important;
+  align-items: center !important;
+  min-width: 0 !important;
+  padding: 17px 9px !important;
+  color: #8f8fa0 !important;
+  border-right: 1px solid #1e202f !important;
+  font-size: .76rem !important;
+  font-weight: 700 !important;
 }
-.app-shell .reference-returns-page .return-reference-head > *:last-child { border-right: 0; }
+.app-shell .reference-returns-page .return-reference-head > *:last-child { border-right: 0 !important; }
 .app-shell .reference-returns-page .return-reference-row {
-  min-height: 145px;
-  color: #e3e1ed;
-  background: #12131b;
-  border-color: #1e202f;
-  box-shadow: none;
-  transform: none;
+  min-height: 145px !important;
+  color: #e3e1ed !important;
+  background: #12131b !important;
+  border-color: #1e202f !important;
+  box-shadow: none !important;
+  transform: none !important;
 }
 .app-shell .reference-returns-page .return-reference-row:hover {
-  color: #e3e1ed;
-  background: #1a1b23;
-  border-color: #1e202f;
-  transform: none;
+  color: #e3e1ed !important;
+  background: #1a1b23 !important;
+  border-color: #1e202f !important;
+  transform: none !important;
 }
 .app-shell .reference-returns-page .return-reference-row > span {
-  min-width: 0;
-  min-height: 145px;
-  padding: 12px 9px;
-  color: #e3e1ed;
-  background: #12131b;
-  border-right: 1px solid #1e202f;
-  border-bottom: 0;
-  font-size: .75rem;
+  min-width: 0 !important;
+  min-height: 145px !important;
+  padding: 12px 9px !important;
+  color: #e3e1ed !important;
+  background: #12131b !important;
+  border-right: 1px solid #1e202f !important;
+  border-bottom: 0 !important;
+  font-size: .75rem !important;
 }
-.app-shell .reference-returns-page .return-reference-row > span:last-child { border-right: 0; }
+.app-shell .reference-returns-page .return-reference-row > span:last-child { border-right: 0 !important; }
 .app-shell .reference-returns-page .return-reference-row strong,
-.app-shell .reference-returns-page .return-reference-row b { color: #e3e1ed; font-size: .78rem; }
-.app-shell .reference-returns-page .return-reference-row small { color: #c6c5d7; font-size: .68rem; line-height: 1.35; }
+.app-shell .reference-returns-page .return-reference-row b { color: #e3e1ed !important; font-size: .78rem !important; }
+.app-shell .reference-returns-page .return-reference-row small { color: #c6c5d7 !important; font-size: .68rem !important; line-height: 1.35 !important; }
 .app-shell .reference-returns-page .order-reference-products > article {
-  align-items: center;
-  grid-template-columns: 62px minmax(0, 1fr);
-  min-height: 145px;
-  padding: 9px 7px;
+  align-items: center !important;
+  grid-template-columns: 62px minmax(0, 1fr) !important;
+  min-height: 145px !important;
+  padding: 9px 7px !important;
 }
 .app-shell .reference-returns-page .order-reference-products > article > div {
-  justify-content: center;
+  justify-content: center !important;
 }
 .app-shell .reference-returns-page .order-reference-prices {
-  grid-auto-rows: minmax(145px, auto);
-  align-content: stretch;
+  grid-auto-rows: minmax(145px, auto) !important;
+  align-content: stretch !important;
 }
 .app-shell .reference-returns-page .order-reference-prices > strong {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  box-sizing: border-box;
-  min-height: 145px;
-  height: 100%;
-  padding: 12px 9px;
-  text-align: center;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  box-sizing: border-box !important;
+  min-height: 145px !important;
+  height: 100% !important;
+  padding: 12px 9px !important;
+  text-align: center !important;
 }
 .app-shell .reference-returns-page .order-reference-products,
 .app-shell .reference-returns-page .order-reference-prices {
-  padding: 0;
-  grid-auto-rows: minmax(145px, auto);
-  align-content: stretch;
+  padding: 0 !important;
+  grid-auto-rows: minmax(145px, auto) !important;
+  align-content: stretch !important;
 }
 .app-shell .reference-returns-page .order-reference-products > article {
-  box-sizing: border-box;
-  border-block: 1px solid #34445c;
-  border-inline: 0;
+  box-sizing: border-box !important;
+  border-block: 1px solid #34445c !important;
+  border-inline: 0 !important;
 }
 .app-shell .reference-returns-page .order-reference-prices > strong {
-  border-block: 1px solid #34445c;
-  border-inline: 0;
+  border-block: 1px solid #34445c !important;
+  border-inline: 0 !important;
 }
 .app-shell .reference-returns-page .order-reference-products > article + article,
 .app-shell .reference-returns-page .order-reference-prices > strong + strong {
-  border-top: 0;
+  border-top: 0 !important;
 }
 .app-shell .reference-returns-page .order-reference-products > article:last-child,
 .app-shell .reference-returns-page .order-reference-prices > strong:last-child {
-  border-bottom: 1px solid #34445c;
+  border-bottom: 1px solid #34445c !important;
 }
 .app-shell .reference-returns-page .return-reference-table,
 .app-shell .reference-returns-page .return-reference-head > *,
 .app-shell .reference-returns-page .return-reference-row > span,
 .app-shell .reference-returns-page .return-reference-row {
-  border-color: #34445c;
+  border-color: #34445c !important;
 }
 .app-shell .reference-returns-page .order-reference-prices > strong:not(:last-child) {
-  border-bottom: 1px solid #34445c;
+  border-bottom: 1px solid #34445c !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row + .return-reference-row {
-  margin-top: 10px;
+  margin-top: 10px !important;
 }
 
 
@@ -732,106 +732,106 @@
 .app-shell.stitch-shell .reference-returns-page .return-reference-row,
 .app-shell.stitch-shell .reference-returns-page .order-reference-products > article,
 .app-shell.stitch-shell .reference-returns-page .order-reference-prices > strong {
-  border-color: var(--rv-line);
-  border-top-color: var(--rv-line);
-  border-bottom-color: var(--rv-line);
+  border-color: var(--rv-line) !important;
+  border-top-color: var(--rv-line) !important;
+  border-bottom-color: var(--rv-line) !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-status {
-  display: grid;
-  align-content: center;
-  align-items: start;
-  justify-items: start;
-  min-height: 145px;
-  padding: 12px 9px;
-  text-align: left;
+  display: grid !important;
+  align-content: center !important;
+  align-items: start !important;
+  justify-items: start !important;
+  min-height: 145px !important;
+  padding: 12px 9px !important;
+  text-align: left !important;
 }
 .app-shell .reference-returns-page .return-reference-status .return-detail-trigger,
 .app-shell .reference-returns-page .return-reference-row .return-cargo-track {
-  align-self: center;
-  margin-top: 5px;
-  color: var(--rv-primary);
-  background: transparent;
-  border: 1px solid var(--rv-line-strong);
-  border-radius: 4px;
-  box-shadow: none;
-  font-size: .68rem;
+  align-self: center !important;
+  margin-top: 5px !important;
+  color: var(--rv-primary) !important;
+  background: transparent !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  font-size: .68rem !important;
 }
 .app-shell .reference-returns-page .return-pagination {
-  margin: 10px 0 0;
-  color: var(--rv-muted);
+  margin: 10px 0 0 !important;
+  color: var(--rv-muted) !important;
 }
 @media (max-width: 900px) {
-  .app-shell .reference-returns-page > .return-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .app-shell .reference-returns-page .return-filter-actions { grid-column: 1 / -1; }
+  .app-shell .reference-returns-page > .return-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .app-shell .reference-returns-page .return-filter-actions { grid-column: 1 / -1 !important; }
 }
 @media (max-width: 560px) {
-  .app-shell .reference-returns-page > .return-reference-filters { grid-template-columns: 1fr; }
-  .app-shell .reference-returns-page .return-filter-actions { grid-column: auto; justify-content: stretch; }
-  .app-shell .reference-returns-page .return-filter-actions button { flex: 1; }
-  .app-shell .reference-returns-page .return-reference-workspace > header { align-items: flex-start; flex-direction: column; }
-  .app-shell .reference-returns-page .return-reference-workspace > header > button { width: 100%; }
+  .app-shell .reference-returns-page > .return-reference-filters { grid-template-columns: 1fr !important; }
+  .app-shell .reference-returns-page .return-filter-actions { grid-column: auto !important; justify-content: stretch !important; }
+  .app-shell .reference-returns-page .return-filter-actions button { flex: 1 !important; }
+  .app-shell .reference-returns-page .return-reference-workspace > header { align-items: flex-start !important; flex-direction: column !important; }
+  .app-shell .reference-returns-page .return-reference-workspace > header > button { width: 100% !important; }
 }
 
 /* Keep return groups framed by one thin full-width line without doubled child borders. */
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row {
-  box-sizing: border-box;
-  border-top: 1px solid var(--rv-line);
-  border-bottom: 1px solid var(--rv-line);
+  box-sizing: border-box !important;
+  border-top: 1px solid var(--rv-line) !important;
+  border-bottom: 1px solid var(--rv-line) !important;
 }
 
 /* Keep return filters in the same surface hierarchy as the rest of Ravencia. */
 .app-shell.stitch-shell .reference-returns-page > .return-reference-filters {
-  color: var(--rv-ink);
-  background: var(--rv-surface);
-  border-color: var(--rv-line);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, .18);
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .18) !important;
 }
 .app-shell.stitch-shell .reference-returns-page > .return-reference-filters input,
 .app-shell.stitch-shell .reference-returns-page > .return-reference-filters select {
-  color: var(--rv-ink);
-  background: var(--rv-bg-raised);
-  border-color: var(--rv-line-strong);
+  color: var(--rv-ink) !important;
+  background: var(--rv-bg-raised) !important;
+  border-color: var(--rv-line-strong) !important;
 }
 .app-shell.stitch-shell .reference-returns-page > .return-reference-filters input:focus,
 .app-shell.stitch-shell .reference-returns-page > .return-reference-filters select:focus {
-  border-color: var(--rv-primary);
-  box-shadow: 0 0 0 3px rgba(113, 104, 245, .12);
+  border-color: var(--rv-primary) !important;
+  box-shadow: 0 0 0 3px rgba(113, 104, 245, .12) !important;
 }
 .app-shell.stitch-shell .reference-returns-page > .return-reference-tabs {
-  background: var(--rv-surface-deep);
-  border-bottom-color: var(--rv-line);
+  background: var(--rv-surface-deep) !important;
+  border-bottom-color: var(--rv-line) !important;
 }
 .app-shell.stitch-shell .reference-returns-page > .return-reference-tabs button {
-  color: var(--rv-muted);
-  border-right-color: var(--rv-line);
+  color: var(--rv-muted) !important;
+  border-right-color: var(--rv-line) !important;
 }
 .app-shell.stitch-shell .reference-returns-page > .return-reference-tabs button:hover,
 .app-shell.stitch-shell .reference-returns-page > .return-reference-tabs button.active {
-  color: var(--rv-primary-hover);
-  background: rgba(113, 104, 245, .1);
-  border-bottom-color: var(--rv-primary);
+  color: var(--rv-primary-hover) !important;
+  background: rgba(113, 104, 245, .1) !important;
+  border-bottom-color: var(--rv-primary) !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-filter-actions .secondary {
-  color: var(--rv-muted);
-  background: var(--rv-surface-raised);
-  border-color: var(--rv-line-strong);
+  color: var(--rv-muted) !important;
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-line-strong) !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-filter-actions button:not(.secondary) {
-  color: #fff;
-  background: var(--rv-primary);
-  border-color: var(--rv-primary);
+  color: #fff !important;
+  background: var(--rv-primary) !important;
+  border-color: var(--rv-primary) !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-products > article:first-child,
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-prices > strong:first-child {
-  border-top: 0;
+  border-top: 0 !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-products > article:not(:last-child),
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-prices > strong:not(:last-child) {
-  border-bottom: 1px solid var(--rv-line);
+  border-bottom: 1px solid var(--rv-line) !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-products > article:last-child,
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-prices > strong:last-child {
-  border-bottom: 0;
+  border-bottom: 0 !important;
 }
 
 /* Keep returns on the same single surface as the page background and frame. */
@@ -843,345 +843,345 @@
 .app-shell.stitch-shell .reference-returns-page .return-reference-head,
 .app-shell.stitch-shell .reference-returns-page .return-reference-row,
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > span {
-  background: var(--rv-bg, #0d0e16);
+  background: var(--rv-bg, #0d0e16) !important;
 }
 
 /* Keep the returns shell on the same page rhythm as Orders after the shared
    heading and filter wrapper are rendered. */
 .app-shell.stitch-shell .reference-returns-page > .returns-reference-heading {
-  align-items: flex-end;
-  margin-bottom: 28px;
+  align-items: flex-end !important;
+  margin-bottom: 28px !important;
 }
 .app-shell.stitch-shell .reference-returns-page > .returns-reference-heading .eyebrow {
-  display: none;
+  display: none !important;
 }
 .app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell {
-  margin: 0 0 18px;
-  overflow: hidden;
-  background: #12131b;
-  border: 1px solid #1e202f;
-  border-radius: 8px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, .2);
+  margin: 0 0 18px !important;
+  overflow: hidden !important;
+  background: #12131b !important;
+  border: 1px solid #1e202f !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .2) !important;
 }
 .app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-tabs {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  min-height: 43px;
-  margin: 0;
-  padding: 0 7px;
-  overflow-x: auto;
-  background: #0d0e16;
-  border: 0;
-  border-bottom: 1px solid #1e202f;
-  border-radius: 0;
+  display: flex !important;
+  align-items: stretch !important;
+  gap: 0 !important;
+  min-height: 43px !important;
+  margin: 0 !important;
+  padding: 0 7px !important;
+  overflow-x: auto !important;
+  background: #0d0e16 !important;
+  border: 0 !important;
+  border-bottom: 1px solid #1e202f !important;
+  border-radius: 0 !important;
 }
 .app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-tabs button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 43px;
-  min-width: 0;
-  padding: 0 13px;
-  color: #c6c5d7;
-  background: transparent;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  box-shadow: none;
-  font-size: .67rem;
-  font-weight: 650;
-  white-space: nowrap;
-  transform: none;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  min-height: 43px !important;
+  min-width: 0 !important;
+  padding: 0 13px !important;
+  color: #c6c5d7 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: .67rem !important;
+  font-weight: 650 !important;
+  white-space: nowrap !important;
+  transform: none !important;
 }
 .app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-tabs button:hover {
-  color: #e3e1ed;
-  background: #1a1b23;
+  color: #e3e1ed !important;
+  background: #1a1b23 !important;
 }
 .app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-tabs button.active {
-  color: #bec2ff;
-  background: transparent;
-  border-bottom-color: #5865f2;
-  text-shadow: 0 0 8px rgba(88, 101, 242, .42);
+  color: #bec2ff !important;
+  background: transparent !important;
+  border-bottom-color: #5865f2 !important;
+  text-shadow: 0 0 8px rgba(88, 101, 242, .42) !important;
 }
 .app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-tabs button small {
-  display: none;
+  display: none !important;
 }
 .app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-filters {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 14px;
-  align-items: end;
-  margin: 0;
-  padding: 22px 24px;
-  color: var(--rv-ink);
-  background: var(--rv-surface-deep);
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  align-items: end !important;
+  margin: 0 !important;
+  padding: 22px 24px !important;
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface-deep) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 .app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-filters input,
 .app-shell.stitch-shell .reference-returns-page .returns-reference-filter-shell > .return-reference-filters select {
-  width: 100%;
-  min-height: 34px;
-  min-width: 0;
-  padding: 7px 12px;
-  color: var(--rv-ink);
-  background: var(--rv-surface);
-  border: 1px solid var(--rv-line-strong);
-  border-radius: 4px;
-  font-size: .8rem;
+  width: 100% !important;
+  min-height: 34px !important;
+  min-width: 0 !important;
+  padding: 7px 12px !important;
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  border-radius: 4px !important;
+  font-size: .8rem !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-workspace {
-  margin-top: 18px;
-  padding: 0;
+  margin-top: 18px !important;
+  padding: 0 !important;
 }
 
 /* Orders and returns share the same outer spacing and heading treatment. */
 .app-shell.stitch-shell .reference-returns-page {
-  max-width: none;
-  padding: 28px clamp(18px, 2.6vw, 44px) 42px;
+  max-width: none !important;
+  padding: 28px clamp(18px, 2.6vw, 44px) 42px !important;
 }
 
 /* Products and prices share the same parent tracks so every internal separator joins cleanly. */
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row {
-  grid-template-rows: repeat(var(--return-line-count, 1), minmax(145px, auto));
+  grid-template-rows: repeat(var(--return-line-count, 1), minmax(145px, auto)) !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row > span {
-  grid-row: 1 / -1;
-  align-self: stretch;
-  min-height: 0;
+  grid-row: 1 / -1 !important;
+  align-self: stretch !important;
+  min-height: 0 !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-products,
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-prices {
-  display: grid;
-  grid-row: 1 / -1;
-  grid-template-rows: subgrid;
-  grid-auto-rows: unset;
-  align-self: stretch;
-  min-height: 0;
+  display: grid !important;
+  grid-row: 1 / -1 !important;
+  grid-template-rows: subgrid !important;
+  grid-auto-rows: unset !important;
+  align-self: stretch !important;
+  min-height: 0 !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-products > article,
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-prices > strong {
-  min-height: 0;
-  height: auto;
+  min-height: 0 !important;
+  height: auto !important;
 }
 
 /* Keep the return table typography and cell rhythm identical to the orders reference table. */
 .app-shell.stitch-shell .reference-returns-page .return-reference-head,
 .app-shell.stitch-shell .reference-returns-page .return-reference-row {
-  grid-template-columns: 1.1fr .68fr 2.55fr .62fr .85fr 1.05fr 1.05fr 1.05fr;
-  min-width: 1184px;
+  grid-template-columns: 1.1fr .68fr 2.55fr .62fr .85fr 1.05fr 1.05fr 1.05fr !important;
+  min-width: 1184px !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-head {
-  min-height: 43px;
-  text-transform: uppercase;
-  letter-spacing: .04em;
+  min-height: 43px !important;
+  text-transform: uppercase !important;
+  letter-spacing: .04em !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-head > * {
-  padding: 0 10px;
-  font-size: .58rem;
-  font-weight: 750;
+  padding: 0 10px !important;
+  font-size: .58rem !important;
+  font-weight: 750 !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-row {
-  min-height: 194px;
-  grid-template-rows: repeat(var(--return-line-count, 1), minmax(194px, auto));
+  min-height: 194px !important;
+  grid-template-rows: repeat(var(--return-line-count, 1), minmax(194px, auto)) !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > span {
-  min-height: 194px;
-  padding: 14px 10px;
-  font-size: .63rem;
+  min-height: 194px !important;
+  padding: 14px 10px !important;
+  font-size: .63rem !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > .order-reference-meta,
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > .order-reference-buyer,
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > .order-reference-cargo,
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > .order-reference-invoice,
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > .return-reference-status {
-  gap: 5px;
+  gap: 5px !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > .order-reference-meta > strong {
-  color: #bec2ff;
-  font-size: .71rem;
+  color: #bec2ff !important;
+  font-size: .71rem !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > .order-reference-meta > small,
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > .order-reference-cargo > small,
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > .order-reference-invoice > small {
-  color: #c6c5d7;
-  font-size: .59rem;
-  line-height: 1.35;
+  color: #c6c5d7 !important;
+  font-size: .59rem !important;
+  line-height: 1.35 !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > .order-reference-buyer > strong {
-  color: #e3e1ed;
-  font-size: .67rem;
-  line-height: 1.25;
+  color: #e3e1ed !important;
+  font-size: .67rem !important;
+  line-height: 1.25 !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-products > article {
-  grid-template-columns: 68px minmax(0, 1fr);
-  gap: 10px;
-  padding: 14px 10px;
+  grid-template-columns: 68px minmax(0, 1fr) !important;
+  gap: 10px !important;
+  padding: 14px 10px !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-products img,
 .app-shell.stitch-shell .reference-returns-page .reference-product-placeholder {
-  width: 60px;
-  height: 90px;
-  aspect-ratio: 2 / 3;
-  border: 1px solid #1e202f;
-  border-radius: 2px;
-  background: #1a1b23;
+  width: 60px !important;
+  height: 90px !important;
+  aspect-ratio: 2 / 3 !important;
+  border: 1px solid #1e202f !important;
+  border-radius: 2px !important;
+  background: #1a1b23 !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-products article strong {
-  color: #bec2ff;
-  font-size: .66rem;
-  line-height: 1.3;
-  text-decoration: none;
+  color: #bec2ff !important;
+  font-size: .66rem !important;
+  line-height: 1.3 !important;
+  text-decoration: none !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-products article small {
-  color: #c6c5d7;
-  font-size: .58rem;
-  line-height: 1.35;
+  color: #c6c5d7 !important;
+  font-size: .58rem !important;
+  line-height: 1.35 !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-prices > strong {
-  padding: 10px;
-  color: #e3e1ed;
-  font-size: .72rem;
+  padding: 10px !important;
+  color: #e3e1ed !important;
+  font-size: .72rem !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-cargo {
-  text-align: center;
+  text-align: center !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-cargo > b {
-  color: #e3e1ed;
-  font-size: .63rem;
+  color: #e3e1ed !important;
+  font-size: .63rem !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-invoice {
-  align-items: flex-start;
+  align-items: flex-start !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-invoice > strong {
-  color: #e3e1ed;
-  font-size: .72rem;
+  color: #e3e1ed !important;
+  font-size: .72rem !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-row > span:nth-child(7) > b {
-  color: #e3e1ed;
-  font-size: .67rem;
-  line-height: 1.25;
+  color: #e3e1ed !important;
+  font-size: .67rem !important;
+  line-height: 1.25 !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-status {
-  align-items: center;
-  justify-items: center;
-  text-align: center;
+  align-items: center !important;
+  justify-items: center !important;
+  text-align: center !important;
 }
 
 /* Final return-page alignment pass. */
 .app-shell.stitch-shell .reference-returns-page .return-reference-workspace > header {
-  align-items: flex-start;
-  justify-content: flex-start;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-workspace > header > div {
-  margin: 0;
-  text-align: left;
+  margin: 0 !important;
+  text-align: left !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-workspace > header h1,
 .app-shell.stitch-shell .reference-returns-page .return-reference-workspace > header p {
-  text-align: left;
+  text-align: left !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-workspace > header > button {
-  margin-left: auto;
+  margin-left: auto !important;
 }
 
 .app-shell.stitch-shell .reference-returns-page .order-reference-cargo {
-  text-align: center;
+  text-align: center !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-cargo .cargo-provider-display {
-  align-items: center;
-  text-align: center;
+  align-items: center !important;
+  text-align: center !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-cargo .cargo-provider-icon {
-  margin-inline: auto;
-  object-position: center center;
+  margin-inline: auto !important;
+  object-position: center center !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-cargo > b {
-  width: 100%;
-  text-align: center;
+  width: 100% !important;
+  text-align: center !important;
 }
 
 .app-shell.stitch-shell .reference-returns-page .order-reference-invoice > span {
-  align-self: flex-start;
-  justify-self: start;
-  display: inline-flex;
-  width: fit-content;
-  max-width: 100%;
-  box-sizing: border-box;
-  white-space: nowrap;
+  align-self: flex-start !important;
+  justify-self: start !important;
+  display: inline-flex !important;
+  width: fit-content !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
 }
 
 .app-shell.stitch-shell .reference-returns-page .return-reference-status {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 0;
-  min-height: 194px;
-  padding: 14px 10px;
-  text-align: center;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+  min-height: 194px !important;
+  padding: 14px 10px !important;
+  text-align: center !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-status .badge,
 .app-shell.stitch-shell .reference-returns-page .return-reference-status > small {
-  align-self: center;
-  text-align: center;
+  align-self: center !important;
+  text-align: center !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-status .return-detail-trigger {
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: fit-content;
-  min-width: 96px;
-  min-height: 30px;
-  margin: 0;
-  text-align: center;
+  align-self: center !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: fit-content !important;
+  min-width: 96px !important;
+  min-height: 30px !important;
+  margin: 0 !important;
+  text-align: center !important;
 }
 
 /* Match orders: every return group keeps its own visible gutter instead of merging into the next group. */
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row + .return-reference-row {
-  margin-top: 10px;
+  margin-top: 10px !important;
 }
 
 /* Give the details column back to long carrier tracking numbers. */
 .app-shell.stitch-shell .reference-returns-page .return-reference-head,
 .app-shell.stitch-shell .reference-returns-page .return-reference-row {
-  grid-template-columns: 1.1fr .68fr 2.3fr .62fr 1.1fr 1.05fr 1.05fr 1.05fr;
+  grid-template-columns: 1.1fr .68fr 2.3fr .62fr 1.1fr 1.05fr 1.05fr 1.05fr !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-cargo > b,
 .app-shell.stitch-shell .reference-returns-page .order-reference-cargo .cargo-provider-display > strong {
-  white-space: nowrap;
-  word-break: normal;
+  white-space: nowrap !important;
+  word-break: normal !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-cargo > b {
-  font-size: .6rem;
-  letter-spacing: -.02em;
+  font-size: .6rem !important;
+  letter-spacing: -.02em !important;
 }
 
 /* Price cells are numeric fields, so keep both the heading and values centered. */
 .app-shell.stitch-shell .reference-returns-page .order-reference-prices,
 .app-shell.stitch-shell .reference-returns-page .order-reference-prices > strong {
-  text-align: center;
+  text-align: center !important;
 }
 .app-shell.stitch-shell .reference-returns-page .order-reference-prices > strong {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 /* Use the same explicit tracks for products and prices so their horizontal rules join. */
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-products,
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-prices {
-  grid-template-rows: repeat(var(--return-line-count, 1), minmax(194px, auto));
+  grid-template-rows: repeat(var(--return-line-count, 1), minmax(194px, auto)) !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-products > article,
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-prices > strong {
-  border-bottom: 1px solid var(--rv-line);
+  border-bottom: 1px solid var(--rv-line) !important;
 }
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-products > article:last-child,
 .app-shell.stitch-shell .reference-returns-page .return-reference-table > .return-reference-row .order-reference-prices > strong:last-child {
-  border-bottom: 0;
+  border-bottom: 0 !important;
 }

@@ -3,7 +3,7 @@
 .product-edit-page .product-basics-grid > label:nth-child(6),
 .product-edit-page .product-basics-grid > label:nth-child(7),
 .product-edit-page .product-basics-grid > label:nth-child(8) {
-  display: grid;
+  display: grid !important;
   grid-column: auto;
   grid-row: auto;
 }
@@ -12,18 +12,18 @@
   grid-column: 1 / -1;
 }
 .product-edit-page .product-layout-grid > .publish-channel-panel {
-  display: grid;
+  display: grid !important;
 }
 
 /* Explanations stay beside the scope title and open from the info mark. */
 .database-scope-label {
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
   gap: 8px;
 }
 .database-scope-help {
   position: relative;
-  display: inline-grid;
+  display: inline-grid !important;
   place-items: center;
   width: 16px;
   height: 16px;

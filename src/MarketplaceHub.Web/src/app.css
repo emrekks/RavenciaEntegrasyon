@@ -4,7 +4,3 @@
 @import './styles/ravencia-theme.css';
 @import './styles/shared-workspaces.css';
 @import './styles/workspace.css';
-@import './styles/tokens.css';
-@import './styles/foundation.css';
-@import './styles/shell.css';
-@import './shared/ui/ui.css';

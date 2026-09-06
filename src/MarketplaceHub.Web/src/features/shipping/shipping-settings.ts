@@ -20,13 +20,7 @@ export function useShippingLabelSettings() {
   const migrationAttempted = useRef(false)
   const query = useQuery({
     queryKey: shippingLabelSettingsQueryKey,
-    queryFn: async () => {
-      try {
-        return await hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label')
-      } catch {
-        return { settings: loadShippingLabelSettings(), version: 0 }
-      }
-    },
+    queryFn: () => hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label'),
     staleTime: 60_000,
     retry: 2,
     refetchOnWindowFocus: true

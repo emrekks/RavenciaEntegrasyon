@@ -21,97 +21,97 @@
 .app-shell.stitch-shell h2,
 .app-shell.stitch-shell h3,
 .app-shell.stitch-shell h4 {
-  font-weight: var(--rv-type-heading-weight);
+  font-weight: var(--rv-type-heading-weight) !important;
 }
 
 .app-shell.stitch-shell h1 {
-  font-size: clamp(28px, 2.35vw, 34px);
-  line-height: 1.15;
+  font-size: clamp(28px, 2.35vw, 34px) !important;
+  line-height: 1.15 !important;
 }
 
 .app-shell.stitch-shell h2 {
-  font-size: 19px;
-  line-height: 1.3;
+  font-size: 19px !important;
+  line-height: 1.3 !important;
 }
 
 .app-shell.stitch-shell h3 {
-  font-size: 15px;
-  line-height: 1.35;
+  font-size: 15px !important;
+  line-height: 1.35 !important;
 }
 
 .app-shell.stitch-shell h4 {
-  font-size: 14px;
-  line-height: 1.35;
+  font-size: 14px !important;
+  line-height: 1.35 !important;
 }
 
 .app-shell.stitch-shell p {
-  font-size: 13px;
-  font-weight: var(--rv-type-regular);
-  line-height: 1.55;
+  font-size: 13px !important;
+  font-weight: var(--rv-type-regular) !important;
+  line-height: 1.55 !important;
 }
 
 .app-shell.stitch-shell small {
-  font-size: var(--rv-type-helper-size);
-  font-weight: var(--rv-type-regular);
-  line-height: 1.45;
+  font-size: var(--rv-type-helper-size) !important;
+  font-weight: var(--rv-type-regular) !important;
+  line-height: 1.45 !important;
 }
 
 .app-shell.stitch-shell label {
-  font-size: var(--rv-type-label-size);
-  font-weight: var(--rv-type-medium);
-  line-height: 1.35;
+  font-size: var(--rv-type-label-size) !important;
+  font-weight: var(--rv-type-medium) !important;
+  line-height: 1.35 !important;
 }
 
 .app-shell.stitch-shell input,
 .app-shell.stitch-shell select,
 .app-shell.stitch-shell textarea {
-  font-size: 13px;
-  font-weight: var(--rv-type-regular);
-  line-height: 1.4;
+  font-size: 13px !important;
+  font-weight: var(--rv-type-regular) !important;
+  line-height: 1.4 !important;
 }
 
 .app-shell.stitch-shell button,
 .app-shell.stitch-shell .button,
 .app-shell.stitch-shell a.button {
-  font-size: var(--rv-type-action-size);
-  font-weight: var(--rv-type-action-weight);
-  line-height: 1.3;
+  font-size: var(--rv-type-action-size) !important;
+  font-weight: var(--rv-type-action-weight) !important;
+  line-height: 1.3 !important;
 }
 
 .app-shell.stitch-shell aside nav a,
 .app-shell.stitch-shell .settings-nav > a,
 .app-shell.stitch-shell .logout-link {
-  font-size: 13px;
-  font-weight: var(--rv-type-medium);
+  font-size: 13px !important;
+  font-weight: var(--rv-type-medium) !important;
 }
 
 .app-shell.stitch-shell th {
-  font-size: 10px;
-  font-weight: var(--rv-type-action-weight);
-  line-height: 1.3;
+  font-size: 10px !important;
+  font-weight: var(--rv-type-action-weight) !important;
+  line-height: 1.3 !important;
 }
 
 .app-shell.stitch-shell td {
-  font-size: 12px;
-  font-weight: var(--rv-type-regular);
-  line-height: 1.45;
+  font-size: 12px !important;
+  font-weight: var(--rv-type-regular) !important;
+  line-height: 1.45 !important;
 }
 
 .app-shell.stitch-shell strong,
 .app-shell.stitch-shell b {
-  font-weight: var(--rv-type-action-weight);
+  font-weight: var(--rv-type-action-weight) !important;
 }
 
 .app-shell.stitch-shell .eyebrow {
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.25;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
 }
 
 .app-shell.stitch-shell .metrics article strong,
 .app-shell.stitch-shell .dashboard-metrics article strong,
 .app-shell.stitch-shell .product-metrics article strong {
-  font-weight: var(--rv-type-heading-weight);
+  font-weight: var(--rv-type-heading-weight) !important;
 }
 
 .ui-icon {
@@ -140,7 +140,7 @@
 .app-shell.stitch-shell .modal-close:not(:has(.ui-icon)),
 .app-shell.stitch-shell .panel-attribute-modal-card > header > button:not(:has(.ui-icon)),
 .app-shell.stitch-shell .panel-attribute-category-modal-card > header > button:not(:has(.ui-icon)) {
-  font-size: 0;
+  font-size: 0 !important;
 }
 
 .app-shell.stitch-shell .modal-close:not(:has(.ui-icon))::before,
@@ -178,7 +178,7 @@
 .app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='sil'],
 .app-shell.stitch-shell .mapping-icon-button[aria-label*='iptal et'],
 .app-shell.stitch-shell .mapping-icon-button[aria-label*='düzenle'] {
-  font-size: 0;
+  font-size: 0 !important;
 }
 
 .app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='iptal']:not(:has(.ui-icon))::before,
@@ -198,7 +198,7 @@
 /* Record delete buttons already render the shared inline SVG icon. Do not
    paint the legacy mask as well; it creates two stacked close marks. */
 .app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='sil']::before {
-  display: none;
+  display: none !important;
 }
 
 .app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='düzenle']:not(:has(.ui-icon))::before,
@@ -228,7 +228,7 @@
 
 .app-shell.stitch-shell .reference-menu-trigger,
 .app-shell.stitch-shell .integration-reference-page .reference-menu-trigger {
-  font-size: 0;
+  font-size: 0 !important;
 }
 
 .app-shell.stitch-shell .integration-filter-button > span[aria-hidden='true'],
@@ -239,7 +239,7 @@
   display: inline-block;
   width: 16px;
   height: 16px;
-  font-size: 0;
+  font-size: 0 !important;
   background: currentColor;
 }
 
@@ -255,7 +255,7 @@
   display: inline-block;
   width: 14px;
   height: 14px;
-  font-size: 0;
+  font-size: 0 !important;
   background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 9 7 7 7-7'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 9 7 7 7-7'/%3E%3C/svg%3E") center / contain no-repeat;
@@ -266,7 +266,7 @@
   display: inline-block;
   width: 15px;
   height: 15px;
-  font-size: 0;
+  font-size: 0 !important;
   background: currentColor;
   -webkit-mask: var(--ui-mask-check) center / contain no-repeat;
   mask: var(--ui-mask-check) center / contain no-repeat;
@@ -287,7 +287,7 @@
   display: inline-block;
   width: 16px;
   height: 16px;
-  font-size: 0;
+  font-size: 0 !important;
   background: currentColor;
   -webkit-mask: var(--ui-mask-grid) center / contain no-repeat;
   mask: var(--ui-mask-grid) center / contain no-repeat;
@@ -303,29 +303,29 @@
 :root { --rv-font-scale: 1.18; }
 html { font-size: calc(16px * var(--rv-font-scale)); }
 .app-shell.stitch-shell { font-size: calc(var(--rv-type-body-size) * var(--rv-font-scale)); }
-.app-shell.stitch-shell h1 { font-size: clamp(calc(28px * var(--rv-font-scale)), calc(2.35vw * var(--rv-font-scale)), calc(34px * var(--rv-font-scale))); }
-.app-shell.stitch-shell h2 { font-size: calc(19px * var(--rv-font-scale)); }
-.app-shell.stitch-shell h3 { font-size: calc(15px * var(--rv-font-scale)); }
-.app-shell.stitch-shell p { font-size: calc(13px * var(--rv-font-scale)); }
-.app-shell.stitch-shell small { font-size: calc(var(--rv-type-helper-size) * var(--rv-font-scale)); }
-.app-shell.stitch-shell label { font-size: calc(var(--rv-type-label-size) * var(--rv-font-scale)); }
+.app-shell.stitch-shell h1 { font-size: clamp(calc(28px * var(--rv-font-scale)), calc(2.35vw * var(--rv-font-scale)), calc(34px * var(--rv-font-scale))) !important; }
+.app-shell.stitch-shell h2 { font-size: calc(19px * var(--rv-font-scale)) !important; }
+.app-shell.stitch-shell h3 { font-size: calc(15px * var(--rv-font-scale)) !important; }
+.app-shell.stitch-shell p { font-size: calc(13px * var(--rv-font-scale)) !important; }
+.app-shell.stitch-shell small { font-size: calc(var(--rv-type-helper-size) * var(--rv-font-scale)) !important; }
+.app-shell.stitch-shell label { font-size: calc(var(--rv-type-label-size) * var(--rv-font-scale)) !important; }
 .app-shell.stitch-shell button,
 .app-shell.stitch-shell input,
 .app-shell.stitch-shell select,
-.app-shell.stitch-shell textarea { font-size: calc(var(--rv-type-action-size) * var(--rv-font-scale)); }
+.app-shell.stitch-shell textarea { font-size: calc(var(--rv-type-action-size) * var(--rv-font-scale)) !important; }
 
 /* A few compact route styles intentionally use px values. Keep those text
    nodes connected to the account scale as well, instead of leaving them at
    the legacy tiny size when Küçük/Normal/Büyük changes. */
 .app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar .rich-text-tool,
 .app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar select {
-  font-size: calc(8px * var(--rv-font-scale, 1));
+  font-size: calc(8px * var(--rv-font-scale, 1)) !important;
 }
 .app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar .rich-text-tool-icon {
-  font-size: calc(11px * var(--rv-font-scale, 1));
+  font-size: calc(11px * var(--rv-font-scale, 1)) !important;
 }
 .app-shell.stitch-shell .product-variant-tooltip,
 .app-shell.stitch-shell .product-variant-tooltip-row > strong,
 .app-shell.stitch-shell .product-variant-tooltip-row > span {
-  font-size: calc(10px * var(--rv-font-scale, 1));
+  font-size: calc(10px * var(--rv-font-scale, 1)) !important;
 }
