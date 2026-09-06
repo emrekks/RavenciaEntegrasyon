@@ -4,8 +4,10 @@ import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
 import { UiIcon, type UiIconName } from '../../shared/components'
+import { PageHeader } from '../../shared/ui'
 import '../../styles/product-editor.css'
 import '../../styles/products.css'
+import '../../shared/ui/ui.css'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -349,7 +351,11 @@ function VariantMediaPickerModal({
 }
 const Tag = ({ children }: { children: ReactNode }) => <span className="tag">{children}</span>
 const money = (value: number | null | undefined, currency = 'TRY') => value == null ? '—' : new Intl.NumberFormat('tr-TR', { style: 'currency', currency }).format(value)
-function Page({ title, eyebrow, action, className, children }: { title: string; eyebrow: string; action?: ReactNode; className?: string; children: ReactNode }) { const productBack = className?.includes('product-add-page'); return <section className={`content stitch-page ${className ?? ''}`}><div className={`page-heading${productBack ? ' product-page-heading' : ''}`}><div className={productBack ? 'product-page-heading-copy' : undefined}>{productBack && <Link className="product-heading-back" to="/products" aria-label="Ürünler listesine dön"><UiIcon name="arrowLeft" /></Link>}<div className={productBack ? 'product-page-heading-title' : undefined}><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div></div>{action}</div>{children}</section> }
+function Page({ title, eyebrow, action, className, children }: { title: string; eyebrow: string; action?: ReactNode; className?: string; children: ReactNode }) {
+  const productBack = className?.includes('product-add-page')
+  const headingTitle = productBack ? <span className="product-page-heading-title"><Link className="product-heading-back" to="/products" aria-label="Ürünler listesine dön"><UiIcon name="arrowLeft" /></Link><span>{title}</span></span> : title
+  return <section className={`content stitch-page ${className ?? ''}`}><PageHeader className={`page-heading${productBack ? ' product-page-heading' : ''}`} eyebrow={eyebrow} title={headingTitle} actions={action} />{children}</section>
+}
 
 type QuickEditMode = 'stock' | 'price' | 'both'
 

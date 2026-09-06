@@ -1,0 +1,198 @@
+.app-shell.stitch-shell {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.app-shell.stitch-shell > aside {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  box-sizing: border-box;
+  width: 232px;
+  height: 100vh;
+  overflow: hidden;
+  color: var(--rv-text-muted);
+  background: var(--rv-sidebar);
+  border-right: 1px solid var(--rv-border);
+  box-shadow: none;
+}
+
+.app-shell.stitch-shell > aside > nav,
+.app-shell.stitch-shell .settings-nav {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.app-shell.stitch-shell .sidebar-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 64px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--rv-border);
+}
+
+.app-shell.stitch-shell .stitch-brand-mark {
+  display: grid;
+  flex: 0 0 34px;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: #fff;
+  background: var(--rv-primary);
+  border-radius: 10px;
+  font-weight: 800;
+}
+
+.app-shell.stitch-shell .brand.wordmark {
+  min-width: 0;
+  border: 0;
+}
+
+.app-shell.stitch-shell .brand.wordmark strong {
+  display: block;
+  color: var(--rv-text);
+  font-size: 14px;
+  text-shadow: none;
+}
+
+.app-shell.stitch-shell .brand.wordmark small {
+  display: block;
+  margin-top: 2px;
+  color: var(--rv-text-faint);
+  font-size: 10px;
+}
+
+.app-shell.stitch-shell .sidebar-pin-toggle {
+  width: 28px;
+  min-height: 28px;
+  margin-left: auto;
+  padding: 5px;
+  color: var(--rv-text-faint);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.app-shell.stitch-shell .sidebar-pin-toggle:hover,
+.app-shell.stitch-shell .sidebar-pin-toggle.is-pinned {
+  color: var(--rv-text);
+  background: var(--rv-surface-2);
+  border-color: var(--rv-border);
+}
+
+.app-shell.stitch-shell > aside nav a,
+.app-shell.stitch-shell .logout-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--rv-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--rv-radius);
+  text-decoration: none;
+}
+
+.app-shell.stitch-shell > aside nav a:hover,
+.app-shell.stitch-shell .logout-link:hover {
+  color: var(--rv-text);
+  background: var(--rv-surface-2);
+  border-color: var(--rv-border);
+}
+
+.app-shell.stitch-shell > aside nav a.active {
+  color: #fff;
+  background: rgba(116, 107, 244, .18);
+  border-color: rgba(116, 107, 244, .5);
+  box-shadow: inset 3px 0 0 var(--rv-primary);
+}
+
+.app-shell.stitch-shell .nav-icon,
+.app-shell.stitch-shell .nav-icon svg {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+
+.app-shell.stitch-shell .settings-nav {
+  margin-top: auto;
+  border-top: 1px solid var(--rv-border);
+}
+
+.app-shell.stitch-shell .logout-link {
+  cursor: pointer;
+  text-align: left;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed,
+.app-shell.stitch-shell.sidebar-hover-expanded,
+.app-shell.stitch-shell.sidebar-pinned {
+  grid-template-columns: 232px minmax(0, 1fr);
+}
+
+.app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded):not(.sidebar-pinned) {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded):not(.sidebar-pinned) > aside {
+  width: 64px;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded):not(.sidebar-pinned) .sidebar-brand-row {
+  justify-content: center;
+  padding: 0 8px;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded):not(.sidebar-pinned) .brand.wordmark,
+.app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded):not(.sidebar-pinned) .sidebar-pin-toggle,
+.app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded):not(.sidebar-pinned) .nav-label {
+  display: none;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded):not(.sidebar-pinned) > aside nav,
+.app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded):not(.sidebar-pinned) .settings-nav {
+  padding-right: 8px;
+  padding-left: 8px;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded):not(.sidebar-pinned) > aside nav a,
+.app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded):not(.sidebar-pinned) .logout-link {
+  justify-content: center;
+  padding: 0;
+}
+
+@media (max-width: 760px) {
+  .app-shell.stitch-shell,
+  .app-shell.stitch-shell.sidebar-collapsed,
+  .app-shell.stitch-shell.sidebar-hover-expanded,
+  .app-shell.stitch-shell.sidebar-pinned {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .app-shell.stitch-shell > aside,
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded):not(.sidebar-pinned) > aside {
+    width: 64px;
+  }
+
+  .app-shell.stitch-shell .brand.wordmark,
+  .app-shell.stitch-shell .sidebar-pin-toggle,
+  .app-shell.stitch-shell .nav-label {
+    display: none;
+  }
+
+  .app-shell.stitch-shell .sidebar-brand-row {
+    justify-content: center;
+    padding: 0 8px;
+  }
+
+  .app-shell.stitch-shell > aside nav a,
+  .app-shell.stitch-shell .logout-link {
+    justify-content: center;
+    padding: 0;
+  }
+}

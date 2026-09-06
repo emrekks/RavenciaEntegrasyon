@@ -61,13 +61,36 @@ export function normalizeAppearanceSettings(value: unknown): AppearanceSettings 
 }
 
 export const appearanceSettingsQueryKey = ['appearance-settings'] as const
+const appearanceStorageKey = 'ravencia.appearanceSettings'
+
+function readCachedAppearance(): AppearanceSettings | null {
+  try {
+    const raw = localStorage.getItem(appearanceStorageKey)
+    return raw ? normalizeAppearanceSettings(JSON.parse(raw)) : null
+  } catch {
+    return null
+  }
+}
+
+async function loadAppearanceSettings(): Promise<AppearanceSettingsEnvelope> {
+  try {
+    const response = await hubApi<AppearanceSettingsEnvelope>('/settings/appearance')
+    const settings = normalizeAppearanceSettings(response.settings)
+    localStorage.setItem(appearanceStorageKey, JSON.stringify(settings))
+    return { ...response, settings }
+  } catch {
+    const cached = readCachedAppearance()
+    return { settings: cached ?? defaultAppearanceSettings, version: 0 }
+  }
+}
 
 export function useAppearanceSettings() {
   const client = useQueryClient()
   const query = useQuery({
     queryKey: appearanceSettingsQueryKey,
-    queryFn: () => hubApi<AppearanceSettingsEnvelope>('/settings/appearance'),
+    queryFn: loadAppearanceSettings,
     staleTime: 60_000,
+    retry: 2,
     refetchOnWindowFocus: true
   })
   const settings = normalizeAppearanceSettings(query.data?.settings)
@@ -82,7 +105,9 @@ export function useAppearanceSettings() {
       body: JSON.stringify(normalized)
     })
     client.setQueryData(appearanceSettingsQueryKey, saved)
-    setDraft(normalizeAppearanceSettings(saved.settings))
+    const settings = normalizeAppearanceSettings(saved.settings)
+    localStorage.setItem(appearanceStorageKey, JSON.stringify(settings))
+    setDraft(settings)
   }
 
   return { ...query, settings, draft, setDraft, save }

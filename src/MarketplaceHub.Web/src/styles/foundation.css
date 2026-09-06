@@ -1,0 +1,184 @@
+body {
+  background: var(--rv-bg);
+  color: var(--rv-text);
+  font-family: var(--rv-font-ui);
+}
+
+.app-shell.stitch-shell {
+  color: var(--rv-text);
+  background: var(--rv-bg);
+}
+
+.app-shell.stitch-shell main {
+  min-width: 0;
+  background: var(--rv-bg);
+}
+
+.app-shell.stitch-shell .content {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  padding: var(--rv-page-padding) var(--rv-page-padding) 42px;
+}
+
+.app-shell.stitch-shell .page-heading {
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 72px;
+  margin: 0 0 var(--rv-section-gap);
+  padding: 0 0 16px;
+  color: var(--rv-text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--rv-border);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.app-shell.stitch-shell .page-heading h1,
+.app-shell.stitch-shell .page-heading h2,
+.app-shell.stitch-shell .page-heading h3 {
+  margin: 0;
+  color: var(--rv-text);
+  letter-spacing: -.025em;
+  text-shadow: none;
+}
+
+.app-shell.stitch-shell .page-heading .lede,
+.app-shell.stitch-shell .page-heading > div > p:not(.eyebrow) {
+  margin: 6px 0 0;
+  color: var(--rv-text-muted);
+}
+
+.app-shell.stitch-shell .eyebrow {
+  margin: 0 0 5px;
+  color: var(--rv-primary-hover);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.app-shell.stitch-shell .panel,
+.app-shell.stitch-shell .grid article,
+.app-shell.stitch-shell .metrics article,
+.app-shell.stitch-shell .record-card,
+.app-shell.stitch-shell .integration-card,
+.app-shell.stitch-shell .table-wrap,
+.app-shell.stitch-shell .data-table,
+.app-shell.stitch-shell .product-catalog-table {
+  color: var(--rv-text);
+  background: var(--rv-surface-1);
+  border: 1px solid var(--rv-border);
+  border-radius: var(--rv-radius-lg);
+  box-shadow: none;
+}
+
+.app-shell.stitch-shell .panel-title,
+.app-shell.stitch-shell .editor-section-title {
+  border-color: var(--rv-border);
+}
+
+.app-shell.stitch-shell input,
+.app-shell.stitch-shell select,
+.app-shell.stitch-shell textarea {
+  box-sizing: border-box;
+  min-height: var(--rv-control-height);
+  color: var(--rv-text);
+  background: var(--rv-surface-2);
+  border: 1px solid var(--rv-border);
+  border-radius: var(--rv-radius);
+}
+
+.app-shell.stitch-shell textarea {
+  min-height: 96px;
+}
+
+.app-shell.stitch-shell input::placeholder,
+.app-shell.stitch-shell textarea::placeholder {
+  color: var(--rv-text-faint);
+}
+
+.app-shell.stitch-shell input:focus-visible,
+.app-shell.stitch-shell select:focus-visible,
+.app-shell.stitch-shell textarea:focus-visible,
+.app-shell.stitch-shell button:focus-visible,
+.app-shell.stitch-shell a:focus-visible {
+  outline: 2px solid var(--rv-primary);
+  outline-offset: 2px;
+}
+
+.app-shell.stitch-shell button,
+.app-shell.stitch-shell .button-link {
+  min-height: var(--rv-control-height);
+  border-radius: var(--rv-radius);
+  font: inherit;
+  font-weight: 600;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+  transform: none;
+}
+
+.app-shell.stitch-shell button:hover,
+.app-shell.stitch-shell .button-link:hover {
+  transform: none;
+}
+
+.app-shell.stitch-shell button:not([class]),
+.app-shell.stitch-shell .button-link:not(.secondary) {
+  color: #fff;
+  background: var(--rv-primary);
+  border-color: var(--rv-primary);
+  box-shadow: none;
+}
+
+.app-shell.stitch-shell button:not([class]):hover,
+.app-shell.stitch-shell .button-link:not(.secondary):hover {
+  background: var(--rv-primary-hover);
+  border-color: var(--rv-primary-hover);
+}
+
+.app-shell.stitch-shell button.secondary,
+.app-shell.stitch-shell .button-link.secondary {
+  color: var(--rv-text);
+  background: var(--rv-surface-2);
+  border: 1px solid var(--rv-border);
+  box-shadow: none;
+}
+
+.app-shell.stitch-shell button.secondary:hover,
+.app-shell.stitch-shell .button-link.secondary:hover {
+  background: var(--rv-surface-3);
+  border-color: var(--rv-primary);
+}
+
+.app-shell.stitch-shell .notice,
+.app-shell.stitch-shell .error,
+.app-shell.stitch-shell .status {
+  box-sizing: border-box;
+  color: var(--rv-text-muted);
+  background: var(--rv-surface-2);
+  border: 1px solid var(--rv-border);
+  border-radius: var(--rv-radius);
+}
+
+.app-shell.stitch-shell .empty,
+.app-shell.stitch-shell .unknown {
+  color: var(--rv-text-muted);
+  background: var(--rv-surface-2);
+  border-color: var(--rv-border);
+}
+
+@media (max-width: 900px) {
+  .app-shell.stitch-shell .content {
+    padding: 20px 16px 32px;
+  }
+
+  .app-shell.stitch-shell .page-heading {
+    flex-direction: column;
+    gap: 12px;
+  }
+}
