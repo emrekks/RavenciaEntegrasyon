@@ -651,7 +651,7 @@
 .app-shell.stitch-shell > aside nav a:hover,
 .app-shell.stitch-shell > aside .settings-nav > a:hover,
 .app-shell.stitch-shell > aside .logout-link:hover { color: #f5f5ff !important; background: rgba(124, 134, 255, .11) !important; border-color: rgba(124, 134, 255, .18) !important; transform: translateX(2px); }
-.app-shell.stitch-shell > aside nav a.active { color: #fff !important; background: linear-gradient(100deg, rgba(100, 112, 255, .96), rgba(121, 106, 235, .84)) !important; border-color: rgba(174, 181, 255, .34) !important; box-shadow: 0 10px 24px rgba(77, 83, 224, .26), inset 3px 0 0 #62e3ee !important; }
+.app-shell.stitch-shell > aside nav a.active { color: #fff !important; background: linear-gradient(100deg, rgba(100, 112, 255, .96), rgba(121, 106, 235, .84)) !important; border-color: rgba(174, 181, 255, .34) !important; box-shadow: 0 10px 24px rgba(77, 83, 224, .26) !important; }
 .app-shell.stitch-shell > aside nav a.active,
 .app-shell.stitch-shell > aside nav a.active:hover { border-left-color: transparent !important; }
 .app-shell.stitch-shell > aside .nav-icon { width: 21px !important; height: 21px !important; flex: 0 0 21px !important; stroke-width: 1.9 !important; color: #9ea7d5 !important; }

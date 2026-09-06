@@ -65,7 +65,7 @@ function Shell({ me }: { me: Me }) {
 
   }
   const icon = (name: string) => <svg className="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{icons[name]}</svg>
-  const item = (to: string, iconName: string, label: string) => <NavLink to={to} onClick={() => { if (!sidebarPinned) setSidebarHoverExpanded(false) }}>{icon(iconName)}<span className="nav-label">{label}</span></NavLink>
+  const item = (to: string, iconName: string, label: string) => <NavLink to={to}>{icon(iconName)}<span className="nav-label">{label}</span></NavLink>
   return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarExpanded ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
     <aside ref={sidebarRef} onPointerEnter={expandSidebarOnHover} onPointerLeave={collapseSidebarOnLeave} onFocus={expandSidebarOnHover} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) collapseSidebarOnLeave() }}>
       <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong><small>MarketplaceHub</small></div><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menü sabitlemesini kaldır' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menü sabitlendi' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3h8M9 3v5l-3 3v2h12v-2l-3-3V3M12 13v8" /></svg></button></div>

@@ -155,7 +155,7 @@ textarea {
   color: #fff !important;
   background: var(--st-primary) !important;
   border-color: rgba(190, 194, 255, .24) !important;
-  box-shadow: inset 3px 0 0 var(--st-cyan), 0 0 18px rgba(88, 101, 242, .12) !important;
+  box-shadow: 0 0 18px rgba(88, 101, 242, .12) !important;
 }
 
 .nav-icon {

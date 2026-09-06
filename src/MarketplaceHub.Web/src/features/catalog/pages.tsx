@@ -1213,6 +1213,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const [draggedMediaUrl, setDraggedMediaUrl] = useState<string | null>(null); const [dragOverMediaUrl, setDragOverMediaUrl] = useState<string | null>(null)
+  const [pointerDraggedVariantKey, setPointerDraggedVariantKey] = useState<string | null>(null)
+  const pointerDraggedVariantRef = useRef<string | null>(null)
+  const pointerDragSourceRef = useRef<HTMLDivElement | null>(null)
+  const pointerDragIdRef = useRef<number | null>(null)
   const [mediaUrlSettingsOpen, setMediaUrlSettingsOpen] = useState(false)
   const feedbackTimer = useRef<number | null>(null)
   const initialEditMediaUrl = useRef('')
@@ -1386,6 +1390,52 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       next.splice(next.findIndex(row => row.key === targetKey), 0, moved)
       return next
     })
+  }
+  useEffect(() => {
+    if (!pointerDraggedVariantKey) return
+    const rowKeyAtPoint = (clientX: number, clientY: number) => document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('[data-variant-row-key]')?.dataset.variantRowKey ?? null
+    const clearPointerDrag = () => {
+      const source = pointerDragSourceRef.current
+      if (source && pointerDragIdRef.current !== null) {
+        try { source.releasePointerCapture(pointerDragIdRef.current) } catch { /* pointer capture may already be released */ }
+      }
+      pointerDraggedVariantRef.current = null
+      pointerDragSourceRef.current = null
+      pointerDragIdRef.current = null
+      setPointerDraggedVariantKey(null)
+      setDraggedVariantKey(null)
+      setDragOverVariantKey(null)
+    }
+    const handlePointerMove = (event: PointerEvent) => {
+      event.preventDefault()
+      const targetKey = rowKeyAtPoint(event.clientX, event.clientY)
+      if (targetKey && targetKey !== pointerDraggedVariantKey) setDragOverVariantKey(targetKey)
+    }
+    const handlePointerUp = (event: PointerEvent) => {
+      const sourceKey = pointerDraggedVariantRef.current
+      const targetKey = rowKeyAtPoint(event.clientX, event.clientY)
+      if (sourceKey && targetKey) reorderVariants(sourceKey, targetKey)
+      clearPointerDrag()
+    }
+    document.addEventListener('pointermove', handlePointerMove, { passive: false })
+    document.addEventListener('pointerup', handlePointerUp)
+    document.addEventListener('pointercancel', clearPointerDrag)
+    return () => {
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', handlePointerUp)
+      document.removeEventListener('pointercancel', clearPointerDrag)
+    }
+  }, [pointerDraggedVariantKey])
+  function beginVariantPointerDrag(event: React.PointerEvent<HTMLDivElement>, keyValue: string) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    event.preventDefault()
+    pointerDraggedVariantRef.current = keyValue
+    pointerDragSourceRef.current = event.currentTarget
+    pointerDragIdRef.current = event.pointerId
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* capture is not available in every browser */ }
+    setPointerDraggedVariantKey(keyValue)
+    setDraggedVariantKey(keyValue)
+    setDragOverVariantKey(null)
   }
   function reorderMedia(sourceUrl: string, targetUrl: string) {
     if (!sourceUrl || !targetUrl || sourceUrl === targetUrl) return
@@ -1908,7 +1958,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <div className="variant-bulk-editor"><input value={bulkStock} onChange={event => setBulkStock(event.target.value)} type="number" min="0" placeholder="Tüm stoklar" /><input value={bulkSalePrice} onChange={event => setBulkSalePrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm satış fiyatları" /><input value={bulkListPrice} onChange={event => setBulkListPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm liste fiyatları" /><button type="button" className="secondary" onClick={applyBulk} disabled={hasVariantFilters && matchingVariantCount === 0}>{hasVariantFilters ? `${matchingVariantCount} seçilene uygula` : 'Tümüne uygula'}</button></div>
             <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary variant-clear-button" onClick={clearVariants}>Oluşan varyantları temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere görsel ata</button></div></div>
         </>}
-            <div className="variant-table-editor"><div className="variant-table-head"><span>#</span><span>Seçenek</span><span>Barkod</span><span className="variant-table-header-with-action"><span>Stok kodu</span><div className="variant-header-action-shell" ref={barcodeSkuActionRef}><button type="button" className="variant-header-action" onClick={() => setBarcodeSkuMenuOpen(current => !current)} aria-label="Barkoddan doldurma seçenekleri" aria-haspopup="menu" aria-expanded={barcodeSkuMenuOpen} title="Barkoddan stok kodu doldurma seçenekleri"><BarcodeFillIcon /></button>{barcodeSkuMenuOpen && <div className="variant-header-action-menu" role="menu"><button type="button" role="menuitem" disabled={!emptySkuBarcodeRowCount} onClick={() => applyBarcodeToSku('missing')}><span><strong>Eksik stok kodlarını doldur</strong><small>Sadece boş satırlar · {emptySkuBarcodeRowCount} aday</small></span><UiIcon name="externalLink" /></button><button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları stok koduna uygula</strong><small>Barkodu olan {barcodeRowCount} satırı güncelle</small></span><i aria-hidden="true">!</i></button><p>Çakışan barkodlar otomatik olarak atlanır; mevcut kodlar ilk seçenekte korunur.</p></div>}</div></span><span>Stok</span><span>Fiyat</span><span>Liste fiyatı</span><span>Varyant görseli</span><span>İşlem</span></div>{variantRows.length ? variantRows.map((row, index) => { const matchesFilter = rowMatchesVariantFilters(row); return <div className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; if (draggedVariantKey && draggedVariantKey !== row.key) setDragOverVariantKey(row.key) }} onDrop={event => { event.preventDefault(); const sourceKey = draggedVariantKey ?? event.dataTransfer.getData('text/plain'); if (sourceKey) reorderVariants(sourceKey, row.key); setDraggedVariantKey(null); setDragOverVariantKey(null) }}><div className="variant-row-lead" draggable title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', row.key); setDraggedVariantKey(row.key); setDragOverVariantKey(null) }} onDragEnd={() => { setDraggedVariantKey(null); setDragOverVariantKey(null) }}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div><input value={row.optionSignature} readOnly /><input className="technical-field barcode-value" value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" /><input className="technical-field sku-value" value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" /><input value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" /><input value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /><input value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /><div className="variant-media-cell"><button type="button" className={`variant-media-button ${row.mediaRefs.length ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç`} title="Varyant görsellerini seç"><VariantImageIcon />{row.mediaRefs.length > 0 && <i aria-hidden="true">{row.mediaRefs.length}</i>}</button></div><button type="button" className="secondary" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))}>Sil</button></div> }) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}</div>
+            <div className="variant-table-editor"><div className="variant-table-head"><span>#</span><span>Seçenek</span><span>Barkod</span><span className="variant-table-header-with-action"><span>Stok kodu</span><div className="variant-header-action-shell" ref={barcodeSkuActionRef}><button type="button" className="variant-header-action" onClick={() => setBarcodeSkuMenuOpen(current => !current)} aria-label="Barkoddan doldurma seçenekleri" aria-haspopup="menu" aria-expanded={barcodeSkuMenuOpen} title="Barkoddan stok kodu doldurma seçenekleri"><BarcodeFillIcon /></button>{barcodeSkuMenuOpen && <div className="variant-header-action-menu" role="menu"><button type="button" role="menuitem" disabled={!emptySkuBarcodeRowCount} onClick={() => applyBarcodeToSku('missing')}><span><strong>Eksik stok kodlarını doldur</strong><small>Sadece boş satırlar · {emptySkuBarcodeRowCount} aday</small></span><UiIcon name="externalLink" /></button><button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları stok koduna uygula</strong><small>Barkodu olan {barcodeRowCount} satırı güncelle</small></span><i aria-hidden="true">!</i></button><p>Çakışan barkodlar otomatik olarak atlanır; mevcut kodlar ilk seçenekte korunur.</p></div>}</div></span><span>Stok</span><span>Fiyat</span><span>Liste fiyatı</span><span>Varyant görseli</span><span>İşlem</span></div>{variantRows.length ? variantRows.map((row, index) => { const matchesFilter = rowMatchesVariantFilters(row); return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}><div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div><input value={row.optionSignature} readOnly /><input className="technical-field barcode-value" value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" /><input className="technical-field sku-value" value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" /><input value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" /><input value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /><input value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /><div className="variant-media-cell"><button type="button" className={`variant-media-button ${row.mediaRefs.length ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç`} title="Varyant görsellerini seç"><VariantImageIcon />{row.mediaRefs.length > 0 && <i aria-hidden="true">{row.mediaRefs.length}</i>}</button></div><button type="button" className="secondary" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))}>Sil</button></div> }) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}</div>
       </section>
     </div></div>
 

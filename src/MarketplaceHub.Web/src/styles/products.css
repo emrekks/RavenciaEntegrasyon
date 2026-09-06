@@ -3303,6 +3303,11 @@
 .product-media-link-button::before { content: none; }
 .product-media-link-button > .ui-icon { width: 16px; height: 16px; }
 .product-media-link-button b { display: grid; width: 16px; height: 16px; place-items: center; color: #5b65ef; background: #fff; border-radius: 50%; font-size: 9px; }
+.app-shell.stitch-shell .product-add-page .image-preview-card { position: relative; }
+.app-shell.stitch-shell .product-add-page .image-remove-btn { position: absolute; top: 7px; right: 7px; z-index: 3; display: grid; place-items: center; width: 28px; height: 28px; min-width: 28px; padding: 0; color: #fff; background: rgba(18, 22, 38, .88); border: 1px solid rgba(255, 255, 255, .72); border-radius: 50%; box-shadow: 0 4px 12px rgba(0, 0, 0, .4); cursor: pointer; opacity: .96; }
+.app-shell.stitch-shell .product-add-page .image-remove-btn:hover,
+.app-shell.stitch-shell .product-add-page .image-remove-btn:focus-visible { color: #fff; background: #d34b67; border-color: #ffb0bd; outline: none; transform: scale(1.06); }
+.app-shell.stitch-shell .product-add-page .image-remove-btn .ui-icon { width: 15px; height: 15px; }
 .app-shell.stitch-shell .product-add-page .image-preview-card { width: 116px !important; aspect-ratio: 2 / 3 !important; overflow: hidden !important; }
 .app-shell.stitch-shell .product-add-page .image-preview-card img { width: 100% !important; height: 100% !important; object-fit: cover !important; }
 .app-shell.stitch-shell .product-add-page .family-media-preview { border-color: rgba(105, 117, 255, .65) !important; background: rgba(105, 117, 255, .06) !important; }
