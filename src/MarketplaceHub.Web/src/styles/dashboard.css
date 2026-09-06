@@ -445,6 +445,12 @@
   height: 1px;
   background: rgba(66, 67, 83, .34);
 }
+.app-shell .dashboard-revenue-gridlines > i.is-major {
+  background: rgba(116, 119, 150, .48);
+}
+.app-shell .dashboard-revenue-gridlines > i.is-minor {
+  opacity: .58;
+}
 .app-shell .dashboard-revenue-columns {
   position: relative;
   display: grid;
