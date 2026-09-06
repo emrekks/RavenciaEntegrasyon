@@ -453,3 +453,240 @@
 @media (max-width: 560px) {
   .mapping-reference-card .panel-attribute-create > button { margin-top: 0 !important; }
 }
+
+/* Historical Returns visual baseline (pre-a3f77ad). Keep this route-scoped so
+   restoring the former hierarchy cannot affect Orders or other workspaces. */
+.app-shell .reference-returns-page {
+  max-width: none !important;
+  padding: 14px 16px 32px !important;
+}
+.app-shell .reference-returns-page > .return-reference-tabs {
+  display: flex !important;
+  align-items: stretch !important;
+  gap: 0 !important;
+  min-height: 0 !important;
+  margin: -14px -16px 18px !important;
+  padding: 0 16px !important;
+  overflow-x: auto !important;
+  background: rgba(7, 22, 46, .94) !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--rv-line) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.app-shell .reference-returns-page > .return-reference-tabs button {
+  display: grid !important;
+  flex: 0 0 auto !important;
+  align-content: center !important;
+  gap: 3px !important;
+  min-width: 128px !important;
+  min-height: 0 !important;
+  padding: 13px 20px 10px !important;
+  color: var(--rv-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-right: 1px solid var(--rv-line) !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: .78rem !important;
+  font-weight: 650 !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+  transform: none !important;
+}
+.app-shell .reference-returns-page > .return-reference-tabs button:hover,
+.app-shell .reference-returns-page > .return-reference-tabs button.active {
+  color: var(--rv-primary) !important;
+  background: rgba(24, 186, 255, .08) !important;
+  border-bottom-color: var(--rv-primary) !important;
+}
+.app-shell .reference-returns-page > .return-reference-tabs button strong {
+  color: inherit !important;
+  font-size: inherit !important;
+}
+.app-shell .reference-returns-page > .return-reference-tabs button small {
+  display: block !important;
+  color: inherit !important;
+  font-size: .7rem !important;
+  font-weight: 600 !important;
+}
+.app-shell .reference-returns-page > .return-reference-filters {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  align-items: end !important;
+  margin: 0 !important;
+  padding: 22px 24px !important;
+  background: var(--rv-surface-deep) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+.app-shell .reference-returns-page > .return-reference-filters input,
+.app-shell .reference-returns-page > .return-reference-filters select {
+  width: 100% !important;
+  min-height: 34px !important;
+  min-width: 0 !important;
+  padding: 7px 12px !important;
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface) !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  border-radius: 4px !important;
+  font-size: .8rem !important;
+}
+.app-shell .reference-returns-page .return-filter-actions {
+  display: flex !important;
+  grid-column: 4 / 6 !important;
+  justify-content: flex-end !important;
+  gap: 14px !important;
+}
+.app-shell .reference-returns-page .return-filter-actions button {
+  min-width: 166px !important;
+  min-height: 34px !important;
+  padding: 7px 18px !important;
+  border-radius: 4px !important;
+  font-size: .78rem !important;
+}
+.app-shell .reference-returns-page > .return-reference-workspace {
+  margin-top: 24px !important;
+  padding: 22px 24px !important;
+  background: var(--rv-surface-deep) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+.app-shell .reference-returns-page .return-reference-workspace > header {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  margin: 0 0 22px !important;
+  padding: 0 !important;
+}
+.app-shell .reference-returns-page .return-reference-workspace h1 {
+  margin: 0 !important;
+  color: var(--rv-ink) !important;
+  font-size: 1.08rem !important;
+  font-weight: 700 !important;
+}
+.app-shell .reference-returns-page .return-reference-workspace header p {
+  margin: 4px 0 0 !important;
+  color: var(--rv-muted) !important;
+  font-size: .75rem !important;
+}
+.app-shell .reference-returns-page .return-reference-workspace > header > button {
+  min-width: 150px !important;
+  font-size: .76rem !important;
+}
+.app-shell .reference-returns-page .return-reference-table {
+  display: grid !important;
+  gap: 7px !important;
+  min-width: 0 !important;
+  margin-top: 0 !important;
+  padding: 0 !important;
+  overflow: auto !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.app-shell .reference-returns-page .return-reference-head,
+.app-shell .reference-returns-page .return-reference-row {
+  grid-template-columns: 1.32fr .58fr 2.1fr .65fr .95fr .88fr .95fr 1.2fr !important;
+  min-width: 1180px !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  border-radius: 7px !important;
+  overflow: hidden !important;
+}
+.app-shell .reference-returns-page .return-reference-head {
+  min-height: 0 !important;
+  color: var(--rv-muted) !important;
+  background: rgba(16, 49, 95, .96) !important;
+  border-bottom: 1px solid var(--rv-line-strong) !important;
+  box-shadow: none !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+.app-shell .reference-returns-page .return-reference-head > * {
+  display: flex !important;
+  align-items: center !important;
+  min-width: 0 !important;
+  padding: 17px 9px !important;
+  color: var(--rv-muted) !important;
+  border-right: 1px solid var(--rv-line-strong) !important;
+  font-size: .76rem !important;
+  font-weight: 700 !important;
+}
+.app-shell .reference-returns-page .return-reference-head > *:last-child { border-right: 0 !important; }
+.app-shell .reference-returns-page .return-reference-row {
+  min-height: 145px !important;
+  color: var(--rv-ink) !important;
+  background: rgba(7, 24, 50, .9) !important;
+  border-color: var(--rv-line) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+.app-shell .reference-returns-page .return-reference-row:hover {
+  color: var(--rv-ink) !important;
+  background: rgba(18, 54, 102, .72) !important;
+  border-color: var(--rv-line-strong) !important;
+  transform: none !important;
+}
+.app-shell .reference-returns-page .return-reference-row > span {
+  min-width: 0 !important;
+  min-height: 145px !important;
+  padding: 12px 9px !important;
+  color: var(--rv-ink) !important;
+  border-right: 1px solid var(--rv-line) !important;
+  border-bottom: 0 !important;
+  font-size: .75rem !important;
+}
+.app-shell .reference-returns-page .return-reference-row > span:last-child { border-right: 0 !important; }
+.app-shell .reference-returns-page .return-reference-row strong,
+.app-shell .reference-returns-page .return-reference-row b { color: var(--rv-ink) !important; font-size: .78rem !important; }
+.app-shell .reference-returns-page .return-reference-row small { color: var(--rv-muted) !important; font-size: .68rem !important; line-height: 1.35 !important; }
+.app-shell .reference-returns-page .order-reference-products > article {
+  align-items: center !important;
+  grid-template-columns: 62px minmax(0, 1fr) !important;
+  min-height: 145px !important;
+  padding: 9px 7px !important;
+}
+.app-shell .reference-returns-page .order-reference-products > article > div {
+  justify-content: center !important;
+}
+.app-shell.stitch-shell .reference-returns-page .return-reference-status {
+  display: grid !important;
+  align-content: center !important;
+  align-items: start !important;
+  justify-items: start !important;
+  min-height: 145px !important;
+  padding: 12px 9px !important;
+  text-align: left !important;
+}
+.app-shell .reference-returns-page .return-reference-status .return-detail-trigger,
+.app-shell .reference-returns-page .return-reference-row .return-cargo-track {
+  align-self: center !important;
+  margin-top: 5px !important;
+  color: var(--rv-primary) !important;
+  background: transparent !important;
+  border: 1px solid var(--rv-line-strong) !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  font-size: .68rem !important;
+}
+.app-shell .reference-returns-page .return-pagination {
+  margin: 10px 0 0 !important;
+  color: var(--rv-muted) !important;
+}
+@media (max-width: 900px) {
+  .app-shell .reference-returns-page > .return-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .app-shell .reference-returns-page .return-filter-actions { grid-column: 1 / -1 !important; }
+}
+@media (max-width: 560px) {
+  .app-shell .reference-returns-page > .return-reference-filters { grid-template-columns: 1fr !important; }
+  .app-shell .reference-returns-page .return-filter-actions { grid-column: auto !important; justify-content: stretch !important; }
+  .app-shell .reference-returns-page .return-filter-actions button { flex: 1 !important; }
+  .app-shell .reference-returns-page .return-reference-workspace > header { align-items: flex-start !important; flex-direction: column !important; }
+  .app-shell .reference-returns-page .return-reference-workspace > header > button { width: 100% !important; }
+}

@@ -2372,7 +2372,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             Snapshot = snapshot,
             // Reprocess existing catalog products after changing mapped
             // attribute assignment semantics, not only newly fetched rows.
-            OptionRoleVersion = "catalog-options-v6-web-color-and-brand-mapping"
+            OptionRoleVersion = "catalog-options-v7-prefer-local-color-source"
         }));
         var isNewProduct = false;
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
@@ -2844,19 +2844,33 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<string> PanelOptionSignatureAsync(Guid tenantId, Guid connectionId, CategoryAttributeContext categoryContext, IReadOnlyDictionary<string, string> options, CancellationToken cancellationToken)
     {
-        var panelOptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var panelOptionSources = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        var candidates = new List<(string PanelLabel, bool IsWebColorSource, LocalCategoryAttribute Mapped, string RemoteValue, int Order)>();
+        var order = 0;
         foreach (var pair in options)
         {
-            if (!TryGetMappedAttribute(categoryContext.Attributes, pair.Key, out var mapped) || !IsCatalogProductOption(mapped, pair.Key)) continue;
+            if (!TryGetMappedAttribute(categoryContext.Attributes, pair.Key, out var mapped) || !IsCatalogProductOption(mapped, pair.Key))
+            {
+                order++;
+                continue;
+            }
             var panelLabel = mapped.Definition.Name;
             var isWebColorSource = IsWebColorOptionKey(pair.Key) || IsWebColorOptionKey(mapped.Remote.Name);
+            candidates.Add((panelLabel, isWebColorSource, mapped, pair.Value, order));
+            order++;
+        }
+
+        var panelOptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in candidates.GroupBy(candidate => NormalizeCatalogKey(candidate.PanelLabel, 160), StringComparer.Ordinal))
+        {
             // Trendyol can expose both the slicer value (Renk: Tavşanlı) and
             // the marketplace display value (Web Color: Çok Renkli). They
-            // map to the same panel option, so the real Renk value must win.
-            if (panelOptions.ContainsKey(panelLabel) && (!panelOptionSources[panelLabel] || isWebColorSource)) continue;
-            panelOptions[panelLabel] = await PanelOptionValueAsync(tenantId, connectionId, categoryContext, mapped, pair.Value, cancellationToken);
-            panelOptionSources[panelLabel] = isWebColorSource;
+            // map to the same panel option, so the real Renk value must win
+            // regardless of the source dictionary order.
+            var selected = group
+                .OrderBy(candidate => candidate.IsWebColorSource ? 1 : 0)
+                .ThenBy(candidate => candidate.Order)
+                .First();
+            panelOptions[selected.PanelLabel] = await PanelOptionValueAsync(tenantId, connectionId, categoryContext, selected.Mapped, selected.RemoteValue, cancellationToken);
         }
         if (panelOptions.Count > 0) return OptionSignature(panelOptions);
         var fallbackOptions = options.Where(pair => IsVariantOptionName(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
@@ -2905,9 +2919,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             return false;
         }
 
+        var wantsWebColor = IsWebColorOptionKey(remoteName);
         mapped = attributes.Values
             .Where(item => VariantOptionAxis(item.Remote.Name) == axis || VariantOptionAxis(item.Definition.Name) == axis)
-            .OrderByDescending(item => item.Role == "OPTION")
+            .OrderByDescending(item => IsWebColorOptionKey(item.Remote.Name) == wantsWebColor)
+            .ThenByDescending(item => item.Role == "OPTION")
             .FirstOrDefault()!;
         return mapped is not null;
     }

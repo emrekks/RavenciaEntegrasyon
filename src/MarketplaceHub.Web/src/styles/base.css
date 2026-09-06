@@ -165,7 +165,7 @@ button:disabled { cursor:not-allowed; opacity:.55; }
 .orders-page .order-reference-invoice .micro-invoice-chip,
 .orders-page .order-reference-invoice>span:not(.micro-invoice-chip){max-width:100%;padding-right:4px;padding-left:4px;font-size:.51rem;white-space:nowrap}
 @media(max-width:1400px){
-  .order-reference-head,.order-reference-grid{grid-template-columns:32px minmax(128px,.78fr) minmax(85px,.48fr) minmax(210px,1.55fr) minmax(68px,.34fr) minmax(100px,.5fr) minmax(116px,.56fr) minmax(120px,.58fr)}
+  .order-reference-head,.order-reference-grid{grid-template-columns:32px minmax(128px,.78fr) minmax(85px,.48fr) minmax(280px,1.85fr) minmax(68px,.34fr) minmax(100px,.5fr) minmax(96px,.46fr) minmax(150px,.5fr)}
 }
 /* Order list alignment. */
 .orders-page .reference-product-media{position:relative;display:grid;width:max-content;align-self:center;justify-self:center}

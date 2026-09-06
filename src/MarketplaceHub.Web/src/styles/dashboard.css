@@ -395,41 +395,138 @@
 }
 .app-shell .dashboard-revenue-chart {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
-  align-items: end;
-  gap: 10px;
-  min-height: 130px;
-  padding: 4px 8px 0;
-  background: repeating-linear-gradient(to bottom, transparent 0, transparent 31px, rgba(66, 67, 83, .34) 32px, transparent 33px);
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 194px;
+  padding: 0;
+  background: none;
   border-bottom: 1px solid #30313e;
+}
+.app-shell .dashboard-revenue-axis {
+  position: relative;
+  align-self: end;
+  height: 132px;
+  margin: 0 8px 18px 0;
+}
+.app-shell .dashboard-revenue-axis > span {
+  position: absolute;
+  right: 0;
+  overflow: hidden;
+  max-width: 100%;
+  color: #858493;
+  font-size: 8px;
+  line-height: 1;
+  text-align: right;
+  text-overflow: ellipsis;
+  transform: translateY(50%);
+  white-space: nowrap;
+}
+.app-shell .dashboard-revenue-plot {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-right: 4px;
+}
+.app-shell .dashboard-revenue-plot-inner {
+  position: relative;
+  min-width: 620px;
+  height: 194px;
+  padding-top: 44px;
+}
+.app-shell .dashboard-revenue-gridlines {
+  position: absolute;
+  inset: 0 4px 0 0;
+  pointer-events: none;
+}
+.app-shell .dashboard-revenue-gridlines > i {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: rgba(66, 67, 83, .34);
+}
+.app-shell .dashboard-revenue-columns {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: end;
+  gap: 4px;
+  height: 150px;
 }
 .app-shell .dashboard-revenue-column {
   display: grid;
-  grid-template-rows: 96px auto;
+  grid-template-rows: 132px 18px;
   align-items: end;
-  gap: 7px;
   min-width: 0;
   text-align: center;
 }
 .app-shell .dashboard-revenue-bar-wrap {
+  position: relative;
   display: flex;
   align-items: end;
   justify-content: center;
-  height: 96px;
+  height: 132px;
 }
 .app-shell .dashboard-revenue-bar {
+  position: relative;
   display: block;
-  width: min(38px, 70%);
+  width: min(24px, 76%);
   min-height: 4px;
   background: linear-gradient(180deg, #7e87ff, #4a55c6);
   border-top: 1px solid #a0a6ff;
   border-radius: 2px 2px 0 0;
   box-shadow: 0 0 13px rgba(88, 101, 242, .24);
+  cursor: help;
+}
+.app-shell .dashboard-revenue-hover {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  z-index: 2;
+  display: none;
+  min-width: 124px;
+  padding: 6px 8px;
+  color: #d8d6e2;
+  background: #202238;
+  border: 1px solid #6975ff;
+  border-radius: 4px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .35);
+  font-size: 9px;
+  line-height: 1.35;
+  text-align: left;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.app-shell .dashboard-revenue-hover strong,
+.app-shell .dashboard-revenue-hover > span {
+  display: block;
+}
+.app-shell .dashboard-revenue-hover strong {
+  color: #fff;
+  font-size: 9px;
+}
+.app-shell .dashboard-revenue-hover > span {
+  color: #c4c7ff;
+  margin-top: 2px;
+}
+.app-shell .dashboard-revenue-bar:hover .dashboard-revenue-hover,
+.app-shell .dashboard-revenue-bar:focus-visible .dashboard-revenue-hover {
+  display: block;
+}
+.app-shell .dashboard-revenue-column:first-child .dashboard-revenue-hover {
+  left: 0;
+  transform: none;
+}
+.app-shell .dashboard-revenue-column:last-child .dashboard-revenue-hover {
+  right: 0;
+  left: auto;
+  transform: none;
 }
 .app-shell .dashboard-revenue-column > span {
   overflow: hidden;
   color: #aaa9b9;
   font-size: 9px;
+  line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

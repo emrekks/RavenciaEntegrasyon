@@ -59,10 +59,7 @@ function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[
 }
 
 function variantColorKey(variant: Variant) {
-  const color = parseVariantOptionSignature(variant.optionSignature).find(option => {
-    const name = option.name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')
-    return name === 'RENK' || name === 'COLOR' || name === 'COLOUR' || name === 'WEBCOLOR' || name === 'WEBCOLOUR' || name === 'WEBRENK'
-  })
+  const color = preferredColorOption(parseVariantOptionSignature(variant.optionSignature))
   return color?.value.trim().toLocaleLowerCase('tr-TR') || null
 }
 
@@ -174,6 +171,23 @@ type VariantMediaGroup = { id: string; name: string; values: Array<{ id: string;
 type VariantFilterSelections = Record<string, string[]>
 type ParsedVariantOption = { name: string; value: string }
 
+function normalizeVariantOptionName(name: string) {
+  return name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')
+}
+
+function isWebColorOptionName(name: string) {
+  return ['WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(normalizeVariantOptionName(name))
+}
+
+function isColorOptionName(name: string) {
+  return ['RENK', 'COLOR', 'COLOUR', 'WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(normalizeVariantOptionName(name))
+}
+
+function preferredColorOption(options: ParsedVariantOption[]) {
+  return options.find(option => isColorOptionName(option.name) && !isWebColorOptionName(option.name))
+    ?? options.find(option => isColorOptionName(option.name))
+}
+
 function parseVariantOptionSignature(signature: string): ParsedVariantOption[] {
   return signature.split(/\s*\|\s*|_(?=[^_:=]+\s*[:=])/).flatMap(part => {
     const separatorIndex = part.search(/\s*[:=]/)
@@ -193,7 +207,7 @@ function productVariantDisplayGroups(variants: Variant[]) {
   }
   for (const variant of variants) {
     const options = parseVariantOptionSignature(variant.optionSignature)
-    const color = options.find(option => ['RENK', 'COLOR', 'COLOUR', 'WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(option.name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')))
+    const color = preferredColorOption(options)
     const size = options.find(option => ['BEDEN', 'SIZE', 'SIZ', 'NUMARA', 'NUMBER'].includes(option.name.replace(/\s+/g, '').toLocaleUpperCase('tr-TR')))
     if (color) {
       add(`color:${color.value.toLocaleLowerCase('tr-TR')}`, color.value, size?.value ?? (options.filter(option => option !== color).map(option => `${option.name}: ${option.value}`).join(' · ') || variant.sku))
@@ -251,13 +265,12 @@ function variantSignatureKey(signature: string) {
 }
 
 function isVariantOptionName(name: string) {
-  const normalized = name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')
+  const normalized = normalizeVariantOptionName(name)
   return ['RENK', 'COLOR', 'COLOUR', 'WEBCOLOR', 'WEBCOLOUR', 'WEBRENK', 'BEDEN', 'SIZE', 'SIZ', 'NUMARA', 'NUMBER'].includes(normalized)
 }
 
 function isColorAttributeName(name: string) {
-  const normalized = name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')
-  return ['RENK', 'COLOR', 'COLOUR', 'WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(normalized)
+  return isColorOptionName(name)
 }
 
 function VariantImageIcon() {
@@ -345,7 +358,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const eyebrow = mode === 'price' ? 'HIZLI FİYAT GÜNCELLEME' : mode === 'stock' ? 'HIZLI STOK GÜNCELLEME' : 'TOPLU DÜZENLEME'
   const variants = products.flatMap(product => product.variants.map(variant => ({ product, variant })))
   const groups = variants.reduce<Record<string, typeof variants>>((result, item) => {
-    const color = item.variant.optionSignature?.match(/(?:RENK|Renk|WEB COLOR|Web Color)\s*[:=]\s*([^|_]+)/)?.[1]?.trim() || 'Diğer'
+    const color = variantColorKey(item.variant) || 'Diğer'
     ;(result[color] ??= []).push(item)
     return result
   }, {})
@@ -353,7 +366,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     const labelPattern = labels.join('|')
     return signature.match(new RegExp(`(?:${labelPattern})\\s*[:=]\\s*([^|_]+)`, 'i'))?.[1]?.trim() || fallback
   }
-  const colorOf = (item: typeof variants[number]) => optionValue(item.variant.optionSignature || '', ['RENK', 'WEB COLOR'], 'Diğer')
+  const colorOf = (item: typeof variants[number]) => variantColorKey(item.variant) || 'Diğer'
   const sizeOf = (item: typeof variants[number]) => optionValue(item.variant.optionSignature || '', ['BEDEN', 'SIZE'], item.variant.optionSignature || 'Ana varyant')
   const colorOptions = Object.keys(groups)
   const [selectionDraft, setSelectionDraft] = useState<string[]>([])
@@ -1465,9 +1478,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setVariantMediaModal({ mode: 'bulk', draftRefs: [], groupId: group.id, valueId: group.values[0]?.id ?? '' })
   }
   function rowOptionValue(row: VariantDraft, group: Pick<VariantMediaGroup, 'name'>) {
-    const direct = row.options[group.name]
+    const matchesGroup = (name: string) => name.toLocaleLowerCase('tr-TR') === group.name.trim().toLocaleLowerCase('tr-TR')
+      || (isColorOptionName(name) && isColorOptionName(group.name))
+    const direct = Object.entries(row.options).find(([name, value]) => matchesGroup(name) && value.trim())?.[1]
     if (direct) return direct
-    return parseVariantOptionSignature(row.optionSignature).find(option => option.name.toLocaleLowerCase('tr-TR') === group.name.trim().toLocaleLowerCase('tr-TR'))?.value ?? ''
+    return parseVariantOptionSignature(row.optionSignature).find(option => matchesGroup(option.name))?.value ?? ''
   }
   function rowMatchesVariantMediaValue(row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) {
     return Boolean((group.attributeId && row.attributeValueIds[group.attributeId] === value.id) || rowOptionValue(row, group).trim().toLocaleLowerCase('tr-TR') === value.value.trim().toLocaleLowerCase('tr-TR'))
@@ -1668,8 +1683,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const bulkMediaGroups = useMemo<VariantMediaGroup[]>(() => {
     const groups: VariantMediaGroup[] = []
     const names = new Set<string>()
+    const hasPanelColorSource = (productToEdit.data?.options ?? []).some(option => isColorOptionName(option.label) && !isWebColorOptionName(option.label))
+      || optionRequirements.some(item => isColorOptionName(item.attribute.name) && !isWebColorOptionName(item.attribute.name))
+      || variantRows.some(row => parseVariantOptionSignature(row.optionSignature).some(option => isColorOptionName(option.name) && !isWebColorOptionName(option.name)))
     const addGroup = (group: VariantMediaGroup) => {
-      const canonicalName = ['WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(group.name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')) ? 'Renk' : group.name.trim()
+      if (hasPanelColorSource && isWebColorOptionName(group.name)) return
+      const canonicalName = isColorOptionName(group.name) ? 'Renk' : group.name.trim()
       const name = canonicalName.toLocaleLowerCase('tr-TR')
       if (!group.values.length || names.has(name)) return
       names.add(name)

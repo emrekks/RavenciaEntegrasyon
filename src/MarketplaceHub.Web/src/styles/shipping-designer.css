@@ -57,6 +57,7 @@
 .app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-content strong { overflow: hidden; color: #182541; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-barcode { display: grid; gap: 2px; width: 100%; }
 .app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-bars { width: 100%; height: 18px; }
+.app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-bars i.is-bar { background: #10131c !important; }
 .app-shell.stitch-shell .shipping-designer-block-preview .shipping-preview-barcode strong { display: block; overflow: hidden; color: #182541; font: 700 .8em/1 monospace; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell .shipping-designer-block-label { display:none; color:#000!important; }
 .app-shell.stitch-shell .shipping-designer-drop-empty { position: absolute; inset: 35% 15%; display: grid; place-content: center; gap: 5px; color: #60708e; text-align: center; }

@@ -10,7 +10,7 @@
 
 .app-shell.stitch-shell .order-reference-actions>.row-menu .row-menu-trigger{width:100%;justify-content:space-between}
 
-.app-shell.stitch-shell .order-label-actions{display:grid;gap:6px;width:100%;max-width:170px}
+.app-shell.stitch-shell .order-label-actions{display:grid;gap:6px;width:100%;max-width:148px}
 
 .app-shell.stitch-shell .order-label-action{display:flex;align-items:center;justify-content:space-between;gap:5px;width:100%;min-width:0;white-space:nowrap}
 
@@ -109,44 +109,6 @@
   .app-shell.stitch-shell .shipping-label-batch-preview > .shipping-label-print-surface { margin:0!important; break-inside:avoid; page-break-inside:avoid; }
 }
 
-.app-shell.stitch-shell .order-hidden-cancelled-notice {
-  pointer-events: auto !important;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.app-shell.stitch-shell .order-hidden-cancelled-notice span {
-  margin-right: auto;
-}
-
-.app-shell.stitch-shell .order-hidden-cancelled-notice-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-}
-
-.app-shell.stitch-shell .order-hidden-cancelled-notice button {
-  flex: 0 0 auto;
-  color: #dff7ff;
-  background: rgba(24, 186, 255, .14);
-  border: 1px solid rgba(24, 186, 255, .48);
-  border-radius: 6px;
-  padding: 7px 10px;
-  cursor: pointer;
-}
-
-.app-shell.stitch-shell .order-hidden-cancelled-notice button.notice-dismiss {
-  color: #b9c0d8;
-  background: transparent;
-  border-color: #464b60;
-}
-
-.app-shell.stitch-shell .order-hidden-cancelled-notice button.notice-dismiss:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, .06);
-}
 .app-shell .orders-page {
   max-width: none !important;
   padding: 28px clamp(18px, 2.6vw, 44px) 42px !important;
@@ -398,8 +360,8 @@
 }
 .app-shell .orders-page .order-reference-head,
 .app-shell .orders-page .order-reference-grid {
-  grid-template-columns: 34px minmax(160px, 1.1fr) minmax(100px, .68fr) minmax(260px, 2.1fr) minmax(90px, .62fr) minmax(130px, .85fr) minmax(220px, 1.38fr) minmax(200px, 1.25fr) !important;
-  min-width: 1160px !important;
+  grid-template-columns: 34px minmax(160px, 1.1fr) minmax(100px, .68fr) minmax(330px, 2.55fr) minmax(90px, .62fr) minmax(130px, .85fr) minmax(170px, 1.05fr) minmax(170px, 1.05fr) !important;
+  min-width: 1184px !important;
 }
 .app-shell .orders-page .order-reference-head {
   position: static !important;
@@ -476,7 +438,7 @@
 }
 .app-shell .orders-page .order-reference-products { padding: 0 !important; }
 .app-shell .orders-page .order-reference-products > article {
-  grid-template-columns: 62px minmax(0, 1fr) !important;
+  grid-template-columns: 68px minmax(0, 1fr) !important;
   gap: 10px !important;
   min-height: 194px !important;
   padding: 14px 10px !important;
@@ -485,8 +447,9 @@
 .app-shell .orders-page .order-reference-products > article:last-child { border-bottom: 0 !important; }
 .app-shell .orders-page .order-reference-products img,
 .app-shell .orders-page .reference-product-placeholder {
-  width: 54px !important;
-  height: 74px !important;
+  width: 60px !important;
+  height: 90px !important;
+  aspect-ratio: 2 / 3 !important;
   border: 1px solid #1e202f !important;
   border-radius: 2px !important;
   background: #1a1b23 !important;
@@ -639,16 +602,16 @@
 .app-shell .orders-page .reference-product-media {
   position: relative !important;
   display: block !important;
-  width: 54px !important;
-  height: 81px !important;
+  width: 60px !important;
+  height: 90px !important;
   aspect-ratio: 2 / 3 !important;
-  min-width: 54px !important;
+  min-width: 60px !important;
 }
 .app-shell .orders-page .reference-product-media .product-image-button {
   display: block !important;
-  width: 54px !important;
-  height: 81px !important;
-  min-height: 81px !important;
+  width: 60px !important;
+  height: 90px !important;
+  min-height: 90px !important;
   aspect-ratio: 2 / 3 !important;
   padding: 0 !important;
   border: 0 !important;
@@ -658,8 +621,8 @@
 .app-shell .orders-page .reference-product-media .product-image-button img,
 .app-shell .orders-page .reference-product-media > .reference-product-placeholder {
   display: block !important;
-  width: 54px !important;
-  height: 81px !important;
+  width: 60px !important;
+  height: 90px !important;
   aspect-ratio: 2 / 3 !important;
 }
 /* Align order controls and keep row menus tied to their trigger width. */
@@ -1096,7 +1059,7 @@
   width: 100% !important;
 }
 .app-shell .orders-page .order-reference-actions .row-menu {
-  width: min(116px, 100%) !important;
+  width: min(148px, 100%) !important;
   max-width: 100% !important;
   align-self: center !important;
 }

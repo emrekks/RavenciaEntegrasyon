@@ -282,4 +282,50 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal("M", variant.Options["Beden"]);
         Assert.Equal("Renk: Siyah | Beden: M", string.Join(" | ", variant.Options.Select(x => $"{x.Key}: {x.Value}")));
     }
+
+    [Fact]
+    public void CatalogProductResponse_PrefersLocalColorOverWebColorWhenGroupingVariantImages()
+    {
+        const string json = """
+        {
+          "content": [{
+            "contentId": 800007,
+            "productMainId": "PRODUCT-007",
+            "title": "Çok renkli takım",
+            "variants": [
+              {
+                "variantId": 870001,
+                "stockCode": "SKU-007-RABBIT",
+                "attributes": [
+                  { "attributeName": "Web Color", "attributeValue": "Çok Renkli" },
+                  { "attributeName": "Renk", "attributeValue": "Tavşanlı Çok Renkli" },
+                  { "attributeName": "Beden", "attributeValue": "S" }
+                ],
+                "images": ["https://cdn.example.test/rabbit.jpg"]
+              },
+              {
+                "variantId": 870002,
+                "stockCode": "SKU-007-FLOWER",
+                "attributes": [
+                  { "attributeName": "Web Color", "attributeValue": "Çok Renkli" },
+                  { "attributeName": "Renk", "attributeValue": "Çiçekli Çok Renkli" },
+                  { "attributeName": "Beden", "attributeValue": "S" }
+                ],
+                "images": ["https://cdn.example.test/flower.jpg"]
+              }
+            ]
+          }]
+        }
+        """;
+
+        var product = Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items);
+        var rabbit = Assert.Single(product.Variants, variant => variant.Sku == "SKU-007-RABBIT");
+        var flower = Assert.Single(product.Variants, variant => variant.Sku == "SKU-007-FLOWER");
+
+        Assert.Equal("Tavşanlı Çok Renkli", rabbit.Options["Renk"]);
+        Assert.Equal("Çok Renkli", rabbit.Options["Web Color"]);
+        Assert.Equal(new[] { "https://cdn.example.test/rabbit.jpg" }, rabbit.ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/flower.jpg" }, flower.ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/rabbit.jpg", "https://cdn.example.test/flower.jpg" }, product.ImageUrls);
+    }
 }
