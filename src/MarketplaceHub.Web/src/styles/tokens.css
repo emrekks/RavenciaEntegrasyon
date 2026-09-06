@@ -114,4 +114,7 @@
   --st-orange: var(--rv-warning);
   --st-red: var(--rv-danger);
   --st-cyan: var(--rv-info);
+  --st-radius: var(--rv-radius-lg);
+  --st-control-radius: var(--rv-radius);
+  --rv-line: var(--rv-border);
 }

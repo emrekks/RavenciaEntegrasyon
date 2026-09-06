@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 
-export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
+export type AppearanceFontFamily = 'dmsans' | 'inter' | 'system' | 'segoe' | 'arial'
 export type AppearanceFontSize = 'small' | 'normal' | 'large' | 'extra-large'
 
 export type AppearanceSettings = {
@@ -16,11 +16,12 @@ export type AppearanceSettingsEnvelope = {
 }
 
 export const defaultAppearanceSettings: AppearanceSettings = {
-  fontFamily: 'inter',
+  fontFamily: 'dmsans',
   fontSize: 'normal'
 }
 
 export const appearanceFontFamilyOptions: Array<{ value: AppearanceFontFamily; label: string }> = [
+  { value: 'dmsans', label: 'DM Sans (Önerilen)' },
   { value: 'inter', label: 'Inter' },
   { value: 'system', label: 'Sistem yazı tipi' },
   { value: 'segoe', label: 'Segoe UI' },
@@ -35,7 +36,8 @@ export const appearanceFontSizeOptions: Array<{ value: AppearanceFontSize; label
 ]
 
 export const appearanceFontFamilyCss: Record<AppearanceFontFamily, string> = {
-  inter: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  dmsans: '"DM Sans", "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  inter: '"DM Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   system: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   segoe: '"Segoe UI", system-ui, sans-serif',
   arial: 'Arial, Helvetica, sans-serif'

@@ -2075,56 +2075,53 @@
   padding-inline: 7px !important;
 }
 
-/* Keep the page background and the inner reference frame on one surface. */
-.app-shell.stitch-shell .orders-page,
-.app-shell.stitch-shell .orders-page .orders-reference-filter-shell,
-.app-shell.stitch-shell .orders-page .order-filter-primary,
-.app-shell.stitch-shell .orders-page .order-filter-advanced,
-.app-shell.stitch-shell .orders-page .order-reference-table,
-.app-shell.stitch-shell .orders-page .order-reference-head,
-.app-shell.stitch-shell .orders-page .order-reference-row,
-.app-shell.stitch-shell .orders-page .order-reference-grid > *,
-.app-shell.stitch-shell .orders-page .order-reference-products > article,
-.app-shell.stitch-shell .orders-page .order-reference-prices > strong,
-.app-shell.stitch-shell .orders-page .order-pagination {
-  background: var(--rv-bg, #0d0e16) !important;
+/* Keep the page background clean and transparent for the Obsidian surfaces. */
+.app-shell.stitch-shell .orders-page {
+  background: transparent !important;
+}
+.app-shell.stitch-shell .orders-page .orders-reference-filter-shell {
+  background: transparent !important;
 }
 
-/* The column heading stays one continuous strip, while every order group
-   gets its own frame and a real gutter between groups. */
+/* Every order group gets its own sleek card frame with clean Obsidian styling. */
 .app-shell.stitch-shell .orders-page .order-reference-table {
-  gap: 10px !important;
+  gap: 12px !important;
   padding: 0 !important;
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-head {
-  border: 1px solid #34445c !important;
-  border-radius: 9px !important;
+  background: #12131b !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  min-height: 44px !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row {
   margin: 0 !important;
-  border: 2px solid #52627c !important;
-  border-radius: 10px !important;
+  background: #12131b !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px !important;
   overflow: visible !important;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, .16) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row + .order-reference-row {
-  margin-top: 0 !important;
+  margin-top: 10px !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row:last-child {
-  border-bottom: 2px solid #52627c !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row:hover {
-  border-color: #7185a4 !important;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, .22) !important;
+  background: #151620 !important;
+  border-color: rgba(139, 92, 246, 0.45) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 16px rgba(139, 92, 246, 0.1) !important;
 }
 
-/* Match the returns table: the group frame is visible, while the column
-   dividers stay subtle and the entire group keeps one shared background. */
+/* Grid columns inside the card keep subtle dividers without covering the card background. */
 .app-shell.stitch-shell .orders-page .order-reference-grid > * {
-  border-right-color: var(--rv-border, rgba(255,255,255,0.08)) !important;
+  background: transparent !important;
+  border-right-color: rgba(255, 255, 255, 0.06) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2161,115 +2158,120 @@
 .orders-subtab-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: var(--rv-surface);
-  border-top: 1px solid var(--rv-border-subtle);
+  gap: 12px;
+  padding: 12px 16px;
+  background: #0e0f16;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
   flex-wrap: wrap;
+  margin-bottom: 16px;
 }
 
 .orders-search-box {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1 1 240px;
-  min-width: 200px;
-  max-width: 380px;
+  flex: 1 1 260px;
+  min-width: 220px;
+  max-width: 420px;
 }
 
 .orders-search-box svg {
   position: absolute;
-  left: 10px;
-  width: 15px;
-  height: 15px;
-  color: var(--rv-text-tertiary);
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  color: #8b8fa3;
   pointer-events: none;
 }
 
 .orders-search-box input {
   width: 100%;
-  height: 34px;
-  padding: 0 30px 0 34px !important;
-  background: var(--rv-surface-raised) !important;
-  border: 1px solid var(--rv-border) !important;
-  border-radius: var(--rv-radius-sm) !important;
-  color: var(--rv-text) !important;
-  font-size: var(--rv-type-xs) !important;
+  height: 38px;
+  padding: 0 32px 0 38px !important;
+  background: #161722 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  color: #f0f0f5 !important;
+  font-size: 13px !important;
   outline: none !important;
-  transition: border-color var(--rv-transition), background var(--rv-transition) !important;
+  transition: border-color 150ms ease, box-shadow 150ms ease !important;
 }
 
 .orders-search-box input:focus {
-  border-color: var(--rv-primary) !important;
-  background: var(--rv-surface-lowest) !important;
+  border-color: #8b5cf6 !important;
+  background: #12131b !important;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.25) !important;
 }
 
 .orders-search-box input::placeholder {
-  color: var(--rv-text-tertiary) !important;
+  color: #5c5f73 !important;
 }
 
 .orders-search-clear {
   position: absolute;
-  right: 8px;
+  right: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
-  color: var(--rv-text-tertiary);
+  color: #8b8fa3;
   cursor: pointer;
 }
-.orders-search-clear:hover { color: var(--rv-text); }
+.orders-search-clear:hover { color: #f0f0f5; }
 
 .orders-filter-dropdowns {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .orders-filter-dropdowns select {
-  height: 34px;
-  padding: 0 28px 0 12px;
-  background: var(--rv-surface-raised) !important;
-  border: 1px solid var(--rv-border) !important;
-  border-radius: 100px !important;
-  color: var(--rv-text-secondary) !important;
-  font-size: var(--rv-type-xs) !important;
+  height: 38px;
+  padding: 0 28px 0 14px;
+  background: #161722 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  color: #8b8fa3 !important;
+  font-size: 13px !important;
   font-weight: 500 !important;
   cursor: pointer;
   outline: none;
-  transition: all var(--rv-transition);
+  transition: all 150ms ease;
 }
 
 .orders-filter-dropdowns select:hover {
-  border-color: var(--rv-border-strong) !important;
-  color: var(--rv-text) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: #f0f0f5 !important;
 }
 
 .orders-filter-dropdowns select.has-active-filter {
-  border-color: var(--rv-primary) !important;
-  color: var(--rv-primary-text) !important;
-  background: var(--rv-primary-muted) !important;
+  border-color: #8b5cf6 !important;
+  color: #c4b5fd !important;
+  background: rgba(139, 92, 246, 0.12) !important;
 }
 
 .orders-filter-reset-btn {
-  height: 34px;
-  padding: 0 12px;
-  background: transparent;
-  border: 1px dashed var(--rv-border-strong);
-  border-radius: 100px;
-  color: var(--rv-text-secondary);
-  font-size: var(--rv-type-xs);
+  height: 38px;
+  padding: 0 14px;
+  background: rgba(244, 63, 94, 0.1);
+  border: 1px solid rgba(244, 63, 94, 0.25);
+  border-radius: 8px;
+  color: #fda4af;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all var(--rv-transition);
+  transition: all 150ms ease;
 }
 .orders-filter-reset-btn:hover {
-  border-color: var(--rv-danger);
-  color: var(--rv-danger-text);
-  background: var(--rv-danger-muted);
+  border-color: #f43f5e;
+  color: #fff;
+  background: #f43f5e;
 }
 
 /* ── Floating Bulk Actions Bar ── */
@@ -2280,13 +2282,14 @@
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 8px 18px;
-  background: var(--rv-surface-overlay);
-  border: 1px solid var(--rv-border-strong);
-  border-radius: 100px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
-  z-index: var(--rv-z-popover);
+  gap: 16px;
+  padding: 10px 20px;
+  background: rgba(18, 19, 27, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55), 0 0 24px rgba(139, 92, 246, 0.25);
+  z-index: 100;
   animation: rv-slide-up 200ms ease;
 }
 
@@ -2294,8 +2297,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--rv-type-xs);
-  color: var(--rv-text);
+  font-size: 13px;
+  color: #f0f0f5;
   white-space: nowrap;
 }
 
@@ -2303,93 +2306,396 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 100px;
-  background: var(--rv-primary);
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #8b5cf6;
   color: #fff;
   font-weight: 700;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .orders-bulk-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .orders-bulk-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 100px;
-  font-size: var(--rv-type-xs);
+  gap: 7px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: all var(--rv-transition);
+  transition: all 150ms ease;
   border: none;
 }
 
-.orders-bulk-btn svg { width: 14px; height: 14px; }
+.orders-bulk-btn svg { width: 15px; height: 15px; }
 
 .orders-bulk-primary {
-  background: var(--rv-primary);
+  background: #8b5cf6;
   color: #fff;
+  box-shadow: 0 0 14px rgba(139, 92, 246, 0.35);
 }
-.orders-bulk-primary:hover { background: var(--rv-primary-hover); }
+.orders-bulk-primary:hover {
+  background: #7c3aed;
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+}
 
 .orders-bulk-secondary {
-  background: var(--rv-surface-raised);
-  color: var(--rv-text);
-  border: 1px solid var(--rv-border);
+  background: #1a1b24;
+  color: #f0f0f5;
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 .orders-bulk-secondary:hover {
-  background: var(--rv-surface-highest);
-  border-color: var(--rv-border-strong);
+  background: #222330;
+  border-color: rgba(139, 92, 246, 0.4);
 }
 
 .orders-bulk-clear {
   background: transparent;
-  color: var(--rv-text-secondary);
+  color: #8b8fa3;
 }
 .orders-bulk-clear:hover {
-  color: var(--rv-danger-text);
-  background: var(--rv-danger-muted);
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.15);
 }
 
-/* ── Order Reference Row Obsidian Polish ── */
+/* ═══════════════════════════════════════════════════════════
+   Ravencia Obsidian — Order Reference Table & Rows Complete Polish
+   ═══════════════════════════════════════════════════════════ */
+
+/* Header */
+.app-shell.stitch-shell .orders-page .order-reference-head {
+  background: #12131b !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  min-height: 44px !important;
+  margin-bottom: 6px !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-reference-head > * {
+  color: #8b8fa3 !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: .06em !important;
+  text-transform: uppercase !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Row Cards */
 .app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row {
-  background: var(--rv-surface) !important;
-  border: 1px solid var(--rv-border) !important;
-  border-radius: var(--rv-radius) !important;
-  box-shadow: var(--rv-shadow-sm) !important;
-  transition: background var(--rv-transition), border-color var(--rv-transition), box-shadow var(--rv-transition) !important;
+  background: #12131b !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+  transition: all 150ms ease !important;
+  margin-bottom: 10px !important;
 }
 
 .app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row:hover {
-  background: var(--rv-surface-raised) !important;
-  border-color: var(--rv-border-strong) !important;
-  box-shadow: var(--rv-shadow) !important;
+  background: #151620 !important;
+  border-color: rgba(139, 92, 246, 0.45) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 16px rgba(139, 92, 246, 0.1) !important;
 }
 
+/* Internal cells background */
+.app-shell.stitch-shell .orders-page .order-reference-grid > * {
+  background: transparent !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+  padding: 14px 12px !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-reference-products > article,
+.app-shell.stitch-shell .orders-page .order-reference-prices > strong {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Order Number & Meta Cell */
 .app-shell.stitch-shell .orders-page .order-reference-meta .order-number strong {
-  color: var(--rv-primary-text) !important;
+  color: #a78bfa !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  letter-spacing: .02em !important;
 }
 
 .app-shell.stitch-shell .orders-page .order-package-mark {
-  background: var(--rv-warning) !important;
+  background: #fbbf24 !important;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.4) !important;
 }
 
-.app-shell.stitch-shell .orders-page .order-label-action.is-printed {
-  color: var(--rv-success-text) !important;
-  background: var(--rv-success-muted) !important;
-  border-color: rgba(52, 211, 153, 0.25) !important;
+.app-shell.stitch-shell .orders-page .order-number-copy {
+  color: #8b8fa3 !important;
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 6px !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
-.app-shell.stitch-shell .orders-page .order-label-action.is-printed svg {
-  color: var(--rv-success) !important;
+.app-shell.stitch-shell .orders-page .order-number-copy:hover {
+  color: #c4b5fd !important;
+  background: rgba(139, 92, 246, 0.15) !important;
+  border-color: rgba(139, 92, 246, 0.35) !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-reference-meta > small {
+  color: #8b8fa3 !important;
+  font-size: 12px !important;
+  line-height: 1.4 !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-reference-meta > span {
+  font-size: 12px !important;
+  color: #8b8fa3 !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-reference-meta > span b {
+  font-size: 12px !important;
+  color: #f0f0f5 !important;
+}
+
+/* Buyer Cell */
+.app-shell.stitch-shell .orders-page .order-reference-buyer > strong {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #f0f0f5 !important;
+}
+
+/* Products Cell */
+.app-shell.stitch-shell .orders-page .order-reference-products article strong {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #e2e4ef !important;
+  line-height: 1.4 !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-reference-products article small {
+  font-size: 12px !important;
+  color: #8b8fa3 !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-reference-products article code.technical-text {
+  font-size: 11px !important;
+  color: #c4b5fd !important;
+  background: rgba(139, 92, 246, 0.12) !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+  border: 1px solid rgba(139, 92, 246, 0.2) !important;
+}
+
+.app-shell.stitch-shell .orders-page .quantity-bubble {
+  background: #8b5cf6 !important;
+  color: #fff !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  border: 2px solid #12131b !important;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4) !important;
+}
+
+/* Price Cell */
+.app-shell.stitch-shell .orders-page .order-reference-prices > strong {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #34d399 !important;
+}
+
+/* Cargo Cell */
+.app-shell.stitch-shell .orders-page .order-reference-cargo .cargo-provider-display strong {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #f0f0f5 !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-reference-cargo b {
+  font-size: 12px !important;
+  color: #c4b5fd !important;
+}
+
+/* Invoice Cell */
+.app-shell.stitch-shell .orders-page .order-reference-invoice > small {
+  font-size: 11px !important;
+  color: #8b8fa3 !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-reference-invoice > strong {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #f0f0f5 !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-reference-invoice .invoice-document-link {
+  display: inline-flex !important;
+  align-items: center !important;
+  font-size: 12px !important;
+  color: #38bdf8 !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-invoice .invoice-document-link:hover {
+  text-decoration: underline !important;
+}
+
+/* Actions Cell & Print Buttons */
+.app-shell.stitch-shell .orders-page .order-label-actions {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-label-action,
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  min-height: 32px !important;
+  padding: 0 10px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  background: rgba(139, 92, 246, 0.15) !important;
+  color: #c4b5fd !important;
+  border: 1px solid rgba(139, 92, 246, 0.35) !important;
+  cursor: pointer !important;
+  transition: all 150ms ease !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-label-action:hover,
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action:hover {
+  background: #8b5cf6 !important;
+  color: #ffffff !important;
+  border-color: #8b5cf6 !important;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.4) !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-label-action.is-printed,
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action.is-printed {
+  color: #6ee7b7 !important;
+  background: rgba(52, 211, 153, 0.12) !important;
+  border-color: rgba(52, 211, 153, 0.3) !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-label-action.is-printed:hover,
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action.is-printed:hover {
+  background: rgba(52, 211, 153, 0.22) !important;
+  color: #34d399 !important;
+  border-color: #34d399 !important;
+  box-shadow: 0 0 12px rgba(52, 211, 153, 0.3) !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-label-action.is-printed svg,
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action.is-printed svg {
+  display: inline-block !important;
+  color: #34d399 !important;
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.app-shell.stitch-shell .orders-page .row-menu-trigger {
+  min-height: 32px !important;
+  padding: 0 10px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  background: #1a1b24 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #e2e4ef !important;
+  transition: all 150ms ease !important;
+}
+
+.app-shell.stitch-shell .orders-page .row-menu-trigger:hover {
+  border-color: rgba(139, 92, 246, 0.45) !important;
+  color: #fff !important;
+  background: #222330 !important;
+}
+
+.app-shell.stitch-shell .orders-page .row-popover {
+  background: #1a1b24 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5) !important;
+}
+
+.app-shell.stitch-shell .orders-page .row-popover button,
+.app-shell.stitch-shell .orders-page .row-popover a {
+  font-size: 13px !important;
+  padding: 8px 12px !important;
+  border-radius: 6px !important;
+  color: #e2e4ef !important;
+}
+
+.app-shell.stitch-shell .orders-page .row-popover button:hover,
+.app-shell.stitch-shell .orders-page .row-popover a:hover {
+  background: rgba(139, 92, 246, 0.15) !important;
+  color: #fff !important;
+}
+
+/* Status Tabs Polish */
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs {
+  background: #12131b !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs button {
+  min-height: 48px !important;
+  padding: 0 16px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #8b8fa3 !important;
+}
+
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs button:hover {
+  color: #f0f0f5 !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs button.active {
+  color: #ffffff !important;
+  border-bottom-color: #8b5cf6 !important;
+  text-shadow: 0 0 12px rgba(139, 92, 246, 0.5) !important;
+}
+
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs button b {
+  min-width: 24px !important;
+  height: 22px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  background: #1a1b24 !important;
+  color: #8b8fa3 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 999px !important;
+}
+
+.app-shell.stitch-shell .orders-reference-filter-shell .order-tabs button.active b {
+  background: rgba(139, 92, 246, 0.2) !important;
+  color: #c4b5fd !important;
+  border-color: rgba(139, 92, 246, 0.4) !important;
+}
+
+/* Pagination Polish */
+.app-shell.stitch-shell .orders-page .order-pagination {
+  background: #12131b !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  padding: 12px 18px !important;
+  margin-top: 16px !important;
+}
+
+.app-shell.stitch-shell .orders-page .order-pagination button {
+  min-height: 34px !important;
+  padding: 0 14px !important;
+  font-size: 13px !important;
+  border-radius: 6px !important;
+  background: #1a1b24 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #f0f0f5 !important;
 }
