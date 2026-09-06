@@ -1988,14 +1988,95 @@
 .app-shell.stitch-shell .sync-policy-row > .sync-policy-toggle input { flex: 0 0 auto; width: 16px; height: 16px; accent-color: #6f7aff; }
 .app-shell.stitch-shell .sync-policy-row > button { min-height: 38px; margin: 0; white-space: nowrap; }
 .app-shell.stitch-shell .sync-policy-gap { color: #f0c67a !important; }
+
+/* Arrange capability evidence as compact horizontal cards in the detail workspace. */
+.app-shell.stitch-shell .integration-inline-workspace .capability-evidence-panel .capability-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.app-shell.stitch-shell .integration-inline-workspace .capability-evidence-panel .capability-list > div {
+  min-width: 0;
+  min-height: 68px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid rgba(151, 160, 207, .18);
+  border-radius: 8px;
+  background: rgba(9, 29, 60, .42);
+}
+.app-shell.stitch-shell .integration-inline-workspace .capability-evidence-panel .capability-list > div > span {
+  min-width: 0;
+  gap: 3px;
+}
+.app-shell.stitch-shell .integration-inline-workspace .capability-evidence-panel .capability-list > div strong,
+.app-shell.stitch-shell .integration-inline-workspace .capability-evidence-panel .capability-list > div small {
+  overflow-wrap: anywhere;
+}
 @media (max-width: 860px) {
   .app-shell.stitch-shell .sync-policy-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
   .app-shell.stitch-shell .sync-policy-identity { grid-column: 1 / -1; }
   .app-shell.stitch-shell .sync-policy-row > button { align-self: end; }
+}
+@media (max-width: 760px) {
+  .app-shell.stitch-shell .integration-inline-workspace .capability-evidence-panel .capability-list { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .app-shell.stitch-shell .integration-detail-write-heading { flex-direction: column; }
   .app-shell.stitch-shell .sync-policy-row { grid-template-columns: 1fr; }
   .app-shell.stitch-shell .sync-policy-identity { grid-column: auto; }
   .app-shell.stitch-shell .sync-policy-row > button { width: 100%; }
+}
+
+/* Keep return details on the same dark Ravencia surface system as the rest of the app. */
+.app-shell.stitch-shell .return-detail-modal {
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line-strong) !important;
+}
+.app-shell.stitch-shell .return-detail-modal > header,
+.app-shell.stitch-shell .return-detail-modal > footer {
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line) !important;
+}
+.app-shell.stitch-shell .return-detail-summary,
+.app-shell.stitch-shell .return-detail-product-head img,
+.app-shell.stitch-shell .return-detail-product-head > .reference-product-placeholder,
+.app-shell.stitch-shell .return-detail-modal > footer .secondary {
+  background: var(--rv-surface-deep) !important;
+  border-color: var(--rv-line-strong) !important;
+}
+.app-shell.stitch-shell .return-detail-product {
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-line-strong) !important;
+}
+.app-shell.stitch-shell .return-detail-product-head,
+.app-shell.stitch-shell .return-detail-modal > footer {
+  border-color: var(--rv-line) !important;
+}
+
+/* Keep the detail context fixed while only the product list scrolls. */
+.app-shell.stitch-shell .return-detail-modal {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+}
+.app-shell.stitch-shell .return-detail-modal > header,
+.app-shell.stitch-shell .return-detail-modal > .return-detail-summary,
+.app-shell.stitch-shell .return-detail-modal > h3,
+.app-shell.stitch-shell .return-detail-modal > footer {
+  flex: 0 0 auto !important;
+}
+.app-shell.stitch-shell .return-detail-modal > h3 {
+  position: relative;
+  z-index: 1;
+  background: var(--rv-surface) !important;
+}
+.app-shell.stitch-shell .return-detail-modal > .return-detail-products {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: 52vh !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
 }

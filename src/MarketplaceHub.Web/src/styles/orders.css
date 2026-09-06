@@ -18,7 +18,7 @@
 
 .app-shell.stitch-shell .order-label-action small{flex:0 0 auto}
 
-.app-shell.stitch-shell .order-label-action.is-printed{opacity:.48;filter:saturate(.45)}
+.app-shell.stitch-shell .order-label-action.is-printed{color:#a5a9b8;border-color:#686d80;background:rgba(104,109,128,.12);opacity:1;filter:none}
 
 .app-shell.stitch-shell .order-label-action.is-printed i{font-style:normal;color:#96efbd}
 
@@ -1996,9 +1996,18 @@
 .app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action.is-printed {
   opacity: 1 !important;
   filter: none !important;
+  color: #a5a9b8 !important;
+  border-color: #686d80 !important;
+  background: rgba(104, 109, 128, .12) !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action.is-printed > span {
-  opacity: .45;
+  opacity: 1;
+}
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action.is-printed:hover,
+.app-shell.stitch-shell .orders-page .order-reference-actions .order-label-action.is-printed:focus-visible {
+  color: #e6e8f0 !important;
+  border-color: #969caf !important;
+  background: rgba(150, 156, 175, .18) !important;
 }
 
 /* Render one thin frame per order group; child product/price rows must not double it. */

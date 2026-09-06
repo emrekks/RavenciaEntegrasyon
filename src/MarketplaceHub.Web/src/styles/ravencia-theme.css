@@ -446,6 +446,34 @@ html, body, #root {
   .app-shell .job-detail-drawer { animation: none; }
 }
 
+/* Sidebar uses the same quiet violet accent on every route. */
+.app-shell.stitch-shell > aside {
+  color: var(--rv-ink);
+  background: var(--rv-sidebar) !important;
+  border-right-color: var(--rv-line) !important;
+}
+.app-shell.stitch-shell > aside .sidebar-brand-row { border-bottom-color: var(--rv-line) !important; }
+.app-shell.stitch-shell > aside nav a,
+.app-shell.stitch-shell > aside .logout-link { color: var(--rv-muted) !important; }
+.app-shell.stitch-shell > aside nav a:hover,
+.app-shell.stitch-shell > aside .logout-link:hover {
+  color: var(--rv-ink) !important;
+  background: rgba(113, 104, 245, .08) !important;
+  border-color: var(--rv-line) !important;
+}
+.app-shell.stitch-shell > aside nav a.active {
+  color: #fff !important;
+  background: rgba(113, 104, 245, .16) !important;
+  border-color: rgba(113, 104, 245, .34) !important;
+  box-shadow: inset 3px 0 0 var(--rv-primary) !important;
+}
+.app-shell.stitch-shell > aside nav a.active .nav-icon {
+  color: #fff !important;
+  background: rgba(113, 104, 245, .34) !important;
+  border-color: rgba(113, 104, 245, .44) !important;
+}
+.app-shell.stitch-shell > aside .settings-nav { border-top-color: var(--rv-line) !important; }
+
 /* Auth workspace — deliberately calmer and structurally distinct from the
    marketplace-logo splash screen. */
 .cyber-login-page {

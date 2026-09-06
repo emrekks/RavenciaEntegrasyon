@@ -173,39 +173,39 @@ function normalizeLayout(value: unknown, fallback: ShippingLabelBlock[]) {
   return selected.length ? selected : cloneLayout(fallback)
 }
 
-export function loadShippingLabelSettings(): ShippingLabelSettings {
-  try {
-    const value = JSON.parse(localStorage.getItem(storageKey) ?? 'null') as Partial<ShippingLabelSettings> | null
-    if (!value || typeof value !== 'object') return { ...defaultShippingLabelSettings, layout: { a4: cloneLayout(defaultLayout), sticker: cloneLayout(defaultLayout) } }
-    const a4LabelsPerPage = value.a4LabelsPerPage === 2 || value.a4LabelsPerPage === 4 ? value.a4LabelsPerPage : 1
-    return {
-      senderName: typeof value.senderName === 'string' ? value.senderName.slice(0, 120) : defaultShippingLabelSettings.senderName,
-      senderAddress: typeof value.senderAddress === 'string' ? value.senderAddress.slice(0, 500) : defaultShippingLabelSettings.senderAddress,
-      defaultFormat: value.defaultFormat === 'sticker' ? 'sticker' : 'a4',
-      showA4Button: value.showA4Button !== false,
-      showStickerButton: value.showStickerButton !== false,
-      a4LabelsPerPage,
-      stickerWidthMm: boundedNumber(value.stickerWidthMm, defaultShippingLabelSettings.stickerWidthMm, 40, 300),
-      stickerHeightMm: boundedNumber(value.stickerHeightMm, defaultShippingLabelSettings.stickerHeightMm, 40, 300),
-      showCustomerPhone: value.showCustomerPhone !== false,
-      sectionGapMm: boundedNumber(value.sectionGapMm, defaultShippingLabelSettings.sectionGapMm, 0, 20),
-      layout: {
-        a4: normalizeLayout(value.layout?.a4, defaultLayout),
-        sticker: normalizeLayout(value.layout?.sticker, defaultLayout)
-      }
+export function normalizeShippingLabelSettings(raw: unknown): ShippingLabelSettings {
+  const value = raw && typeof raw === 'object' ? raw as Partial<ShippingLabelSettings> : {}
+  const a4LabelsPerPage = value.a4LabelsPerPage === 2 || value.a4LabelsPerPage === 4 ? value.a4LabelsPerPage : 1
+  return {
+    senderName: typeof value.senderName === 'string' ? value.senderName.slice(0, 120) : defaultShippingLabelSettings.senderName,
+    senderAddress: typeof value.senderAddress === 'string' ? value.senderAddress.slice(0, 500) : defaultShippingLabelSettings.senderAddress,
+    defaultFormat: value.defaultFormat === 'sticker' ? 'sticker' : 'a4',
+    showA4Button: value.showA4Button !== false,
+    showStickerButton: value.showStickerButton !== false,
+    a4LabelsPerPage,
+    stickerWidthMm: boundedNumber(value.stickerWidthMm, defaultShippingLabelSettings.stickerWidthMm, 40, 300),
+    stickerHeightMm: boundedNumber(value.stickerHeightMm, defaultShippingLabelSettings.stickerHeightMm, 40, 300),
+    showCustomerPhone: value.showCustomerPhone !== false,
+    sectionGapMm: boundedNumber(value.sectionGapMm, defaultShippingLabelSettings.sectionGapMm, 0, 20),
+    layout: {
+      a4: normalizeLayout(value.layout?.a4, defaultLayout),
+      sticker: normalizeLayout(value.layout?.sticker, defaultLayout)
     }
-  } catch {
-    return { ...defaultShippingLabelSettings, layout: { a4: cloneLayout(defaultLayout), sticker: cloneLayout(defaultLayout) } }
   }
 }
 
-export function saveShippingLabelSettings(settings: ShippingLabelSettings): boolean {
+export function loadShippingLabelSettings(): ShippingLabelSettings {
   try {
-    const serialized = JSON.stringify(settings)
-    localStorage.setItem(storageKey, serialized)
-    return localStorage.getItem(storageKey) === serialized
+    return normalizeShippingLabelSettings(JSON.parse(localStorage.getItem(storageKey) ?? 'null'))
   } catch {
-    // Private browsing or storage quota/security policies may disallow local storage.
+    return normalizeShippingLabelSettings(null)
+  }
+}
+
+export function hasStoredShippingLabelSettings() {
+  try {
+    return localStorage.getItem(storageKey) !== null
+  } catch {
     return false
   }
 }

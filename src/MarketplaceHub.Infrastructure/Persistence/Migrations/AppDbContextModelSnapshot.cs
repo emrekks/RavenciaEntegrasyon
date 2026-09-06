@@ -4413,6 +4413,31 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("tenants", "iam");
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.TenantSetting", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ValueJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("TenantId", "Key");
+
+                    b.ToTable("tenant_settings", "iam");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.TenantMembership", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5792,6 +5817,15 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.TenantSetting", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

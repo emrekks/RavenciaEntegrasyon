@@ -131,3 +131,83 @@
   width: 56% !important;
   max-width: 56% !important;
 }
+
+/* The designer chrome follows the authenticated workspace palette; the paper
+   itself remains white because it represents the printed label. */
+.app-shell.stitch-shell .shipping-designer-panel {
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line) !important;
+}
+.app-shell.stitch-shell .shipping-designer {
+  background: var(--rv-surface-deep) !important;
+  border-color: var(--rv-line) !important;
+}
+.app-shell.stitch-shell .shipping-designer-kicker,
+.app-shell.stitch-shell .shipping-designer-inspector-tabs button.is-active { color: var(--rv-primary-hover) !important; }
+.app-shell.stitch-shell .shipping-designer-toolbar h3,
+.app-shell.stitch-shell .shipping-designer-panel-heading > span,
+.app-shell.stitch-shell .shipping-designer-stage-bar { color: var(--rv-ink) !important; }
+.app-shell.stitch-shell .shipping-designer-toolbar,
+.app-shell.stitch-shell .shipping-designer-panel-heading > small,
+.app-shell.stitch-shell .shipping-designer-stage-bar small,
+.app-shell.stitch-shell .shipping-designer-stage-help,
+.app-shell.stitch-shell .shipping-designer-help,
+.app-shell.stitch-shell .shipping-designer-barcode-settings p,
+.app-shell.stitch-shell .shipping-designer-empty { color: var(--rv-muted) !important; }
+.app-shell.stitch-shell .shipping-designer-format-tabs {
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-line) !important;
+}
+.app-shell.stitch-shell .shipping-designer-format-tabs button { color: var(--rv-muted) !important; }
+.app-shell.stitch-shell .shipping-designer-format-tabs button small { color: var(--rv-muted-2) !important; }
+.app-shell.stitch-shell .shipping-designer-format-tabs button.is-active {
+  color: #fff !important;
+  background: var(--rv-primary) !important;
+  box-shadow: 0 4px 12px rgba(113, 104, 245, .24) !important;
+}
+.app-shell.stitch-shell .shipping-designer-format-tabs button.is-active small { color: #e8e7ff !important; }
+.app-shell.stitch-shell .shipping-designer-palette,
+.app-shell.stitch-shell .shipping-designer-stage,
+.app-shell.stitch-shell .shipping-designer-inspector {
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line) !important;
+}
+.app-shell.stitch-shell .shipping-designer-stage { background: var(--rv-bg-raised) !important; }
+.app-shell.stitch-shell .shipping-designer-palette-list button {
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface-deep) !important;
+  border-color: var(--rv-line) !important;
+}
+.app-shell.stitch-shell .shipping-designer-palette-list button:hover:not(:disabled) {
+  background: rgba(113, 104, 245, .12) !important;
+  border-color: var(--rv-primary) !important;
+}
+.app-shell.stitch-shell .shipping-designer-palette-list small,
+.app-shell.stitch-shell .shipping-designer-custom-fields label,
+.app-shell.stitch-shell .shipping-designer-inspector-body > label,
+.app-shell.stitch-shell .shipping-designer-number-field { color: var(--rv-muted) !important; }
+.app-shell.stitch-shell .shipping-designer-palette-icon,
+.app-shell.stitch-shell .shipping-designer-position-grid,
+.app-shell.stitch-shell .shipping-designer-barcode-settings {
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-line) !important;
+}
+.app-shell.stitch-shell .shipping-designer-custom-fields { border-top-color: var(--rv-line) !important; }
+.app-shell.stitch-shell .shipping-designer-custom-fields input,
+.app-shell.stitch-shell .shipping-designer-custom-fields textarea,
+.app-shell.stitch-shell .shipping-designer-inspector input,
+.app-shell.stitch-shell .shipping-designer-inspector select,
+.app-shell.stitch-shell .shipping-designer-inspector textarea,
+.app-shell.stitch-shell .shipping-designer-template-actions select {
+  color: var(--rv-ink) !important;
+  background: var(--rv-bg-raised) !important;
+  border-color: var(--rv-line-strong) !important;
+}
+.app-shell.stitch-shell .shipping-designer-inspector-tabs { border-bottom-color: var(--rv-line) !important; }
+.app-shell.stitch-shell .shipping-designer-inspector-tabs button { color: var(--rv-muted) !important; }
+.app-shell.stitch-shell .shipping-designer-field-chips button {
+  color: #e8e7ff !important;
+  background: rgba(113, 104, 245, .16) !important;
+  border-color: rgba(113, 104, 245, .36) !important;
+}

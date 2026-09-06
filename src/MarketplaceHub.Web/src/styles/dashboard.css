@@ -609,8 +609,52 @@
     width: 100%;
     justify-content: space-between;
   }
-  .app-shell .dashboard-custom-range label,
+.app-shell .dashboard-custom-range label,
 .app-shell .dashboard-custom-range input {
   width: 100%;
 }
+}
+
+/* Give the revenue plot a little more room on the left while keeping axis
+   labels readable. The stock list uses one calm frame with thin row dividers. */
+.app-shell.stitch-shell .dashboard-revenue-chart {
+  grid-template-columns: 50px minmax(0, 1fr) !important;
+}
+.app-shell.stitch-shell .dashboard-revenue-axis { margin-right: 2px !important; }
+.app-shell.stitch-shell .dashboard-stock-panel .dashboard-product-list {
+  display: grid !important;
+  gap: 0 !important;
+  max-height: 170px !important;
+  margin-top: 8px !important;
+  padding: 5px 6px !important;
+  background: var(--rv-surface-deep) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: var(--rv-radius-sm) !important;
+}
+.app-shell.stitch-shell .dashboard-stock-panel .dashboard-product-list a {
+  min-height: 39px !important;
+  padding: 5px 4px !important;
+  color: var(--rv-ink) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--rv-line) !important;
+  border-radius: 0 !important;
+}
+.app-shell.stitch-shell .dashboard-stock-panel .dashboard-product-list a:last-child { border-bottom: 0 !important; }
+.app-shell.stitch-shell .dashboard-stock-panel .dashboard-product-list a:hover {
+  color: var(--rv-ink) !important;
+  background: rgba(113, 104, 245, .08) !important;
+}
+.app-shell.stitch-shell .dashboard-stock-panel .dashboard-product-list a > img,
+.app-shell.stitch-shell .dashboard-stock-panel .dashboard-product-list a > span {
+  background: var(--rv-surface-raised) !important;
+  border: 1px solid var(--rv-line) !important;
+  border-radius: 4px;
+}
+.app-shell.stitch-shell .dashboard-stock-panel .dashboard-product-list strong { color: var(--rv-ink) !important; }
+.app-shell.stitch-shell .dashboard-stock-panel .dashboard-product-list b { color: var(--rv-muted) !important; }
+
+.app-shell.stitch-shell .dashboard-revenue-bar,
+.app-shell.stitch-shell .dashboard-revenue-bar:hover {
+  cursor: default !important;
 }

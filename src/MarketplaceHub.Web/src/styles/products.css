@@ -3515,3 +3515,105 @@
   white-space: nowrap;
   line-height: 1;
 }
+
+/* Product creation surfaces inherit the authenticated Ravencia palette. */
+.app-shell.stitch-shell .product-add-page {
+  --st-surface-lowest: var(--rv-bg-raised);
+  --st-surface: var(--rv-surface);
+  --st-surface-low: var(--rv-surface-raised);
+  --st-surface-container: var(--rv-surface-deep);
+  --st-surface-high: #1c2534;
+  --st-surface-highest: var(--rv-line-strong);
+  --st-text: var(--rv-ink);
+  --st-muted: var(--rv-muted);
+  --st-outline: var(--rv-line-strong);
+  --st-primary-soft: var(--rv-primary-hover);
+  --st-primary: var(--rv-primary);
+  --st-cyan: var(--rv-cyan);
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-editor-pro {
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface-deep) !important;
+  border-color: var(--rv-line) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-editor-head,
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar,
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-editor-foot {
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface) !important;
+  border-color: var(--rv-line) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-editor-head strong,
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-editor-meta {
+  color: var(--rv-ink) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-mode-note,
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-editor-foot {
+  color: var(--rv-muted) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-mode-switch {
+  background: var(--rv-surface-deep) !important;
+  border-color: var(--rv-line-strong) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-mode-switch button {
+  color: var(--rv-muted) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-mode-switch button.active {
+  color: #fff !important;
+  background: var(--rv-primary) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar button,
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar select {
+  color: var(--rv-muted) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar button:hover,
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-toolbar select:hover {
+  color: var(--rv-ink) !important;
+  background: rgba(113, 104, 245, .12) !important;
+  border-color: rgba(113, 104, 245, .28) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-canvas,
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-html-editor {
+  color: var(--rv-ink) !important;
+  background: var(--rv-bg-raised) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-canvas:empty::before {
+  color: var(--rv-muted-2) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-description-field .rich-text-editor-foot b {
+  color: var(--rv-primary-hover) !important;
+}
+.app-shell.stitch-shell .product-add-page .unknown {
+  color: var(--rv-muted) !important;
+  background: var(--rv-surface-deep) !important;
+  border: 1px dashed var(--rv-line-strong) !important;
+  border-radius: var(--rv-radius-sm) !important;
+}
+.app-shell.stitch-shell .product-add-page .unknown strong { color: var(--rv-ink) !important; }
+.app-shell.stitch-shell .product-add-page .product-media-upload {
+  color: var(--rv-muted) !important;
+  background: var(--rv-surface-deep) !important;
+  border-color: var(--rv-line-strong) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-media-upload:hover,
+.app-shell.stitch-shell .product-add-page .product-media-upload:focus-within {
+  color: var(--rv-primary-hover) !important;
+  background: rgba(113, 104, 245, .08) !important;
+  border-color: var(--rv-primary) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-media-upload input[type="file"]::file-selector-button {
+  color: var(--rv-ink) !important;
+  background: var(--rv-surface-raised) !important;
+  border-color: var(--rv-line-strong) !important;
+}
+.app-shell.stitch-shell .product-add-page .product-media-upload strong { color: var(--rv-ink) !important; }
+.app-shell.stitch-shell .product-add-page .product-media-upload small { color: var(--rv-muted) !important; }
+.app-shell.stitch-shell .product-add-page .attribute-variant-action {
+  color: var(--rv-ink) !important;
+  background: rgba(113, 104, 245, .08) !important;
+  border-color: var(--rv-line) !important;
+  border-radius: var(--rv-radius-sm) !important;
+}
+.app-shell.stitch-shell .product-add-page .attribute-variant-action small { color: var(--rv-muted) !important; }

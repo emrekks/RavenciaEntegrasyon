@@ -12,6 +12,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>(options)
 {
     public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<TenantSetting> TenantSettings => Set<TenantSetting>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<UserSecurity> UserSecurities => Set<UserSecurity>();
     public DbSet<RecoveryCode> RecoveryCodes => Set<RecoveryCode>();
@@ -218,6 +219,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.Code).HasMaxLength(64); entity.HasIndex(x => x.Code).IsUnique();
             entity.Property(x => x.DisplayName).HasMaxLength(160); entity.Property(x => x.Timezone).HasMaxLength(64);
             entity.Property(x => x.Status).HasConversion(RecordStatusConverter).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
+        });
+        builder.Entity<TenantSetting>(entity =>
+        {
+            entity.ToTable("tenant_settings", "iam"); entity.HasKey(x => new { x.TenantId, x.Key });
+            entity.Property(x => x.Key).HasMaxLength(128);
+            entity.Property(x => x.ValueJson).HasColumnType("jsonb");
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         });
         builder.Entity<TenantMembership>(entity =>
         {
