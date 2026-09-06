@@ -416,7 +416,7 @@ html, body, #root {
 .app-shell .workspace-modal,
 .app-shell .integration-modal,
 .app-shell .single-order-sync-modal { color: var(--rv-ink); background: var(--rv-surface); border-color: var(--rv-line-strong); box-shadow: 0 28px 72px rgba(0, 0, 0, .56); }
-.job-detail-backdrop { position: fixed; z-index: 70; inset: 0; display: flex; justify-content: flex-end; background: rgba(2, 4, 8, .68); backdrop-filter: blur(3px); }
+.job-detail-backdrop { position: fixed; z-index: var(--rv-z-backdrop, 1000); inset: 0; display: flex; justify-content: flex-end; background: rgba(2, 4, 8, .68); backdrop-filter: blur(3px); }
 .app-shell .job-detail-drawer { width: min(650px, 92vw); height: 100%; margin: 0; padding: 24px; overflow-y: auto; background: var(--rv-surface) !important; border-width: 0 0 0 1px; border-radius: 0; box-shadow: -24px 0 60px rgba(0, 0, 0, .48); animation: rv-drawer-in .2s ease-out; }
 .job-detail-drawer .panel-title { position: sticky; z-index: 2; top: -24px; margin: -24px -24px 20px; padding: 22px 24px 18px; background: rgba(17, 23, 34, .96); backdrop-filter: blur(14px); }
 .job-detail-facts { display: grid; gap: 10px; margin-bottom: 16px; }

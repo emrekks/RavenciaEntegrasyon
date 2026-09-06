@@ -303,7 +303,7 @@
 .jobs-reference-page-buttons button.active { color: #fff; background: var(--st-primary); border-color: var(--st-primary); }
 .jobs-reference-page-buttons button:disabled { opacity: .32; cursor: not-allowed; }
 .jobs-reference-page-buttons > span { padding: 0 2px; color: var(--st-muted); }
-.jobs-reference-drawer-backdrop { z-index: 100 !important; background: rgba(5,6,11,.68) !important; backdrop-filter: blur(2px); }
+.jobs-reference-drawer-backdrop { z-index: var(--rv-z-backdrop, 1000) !important; background: rgba(5,6,11,.68) !important; backdrop-filter: blur(2px); }
 .jobs-reference-drawer {
   width: min(540px, calc(100vw - 24px)) !important;
   max-width: none !important;

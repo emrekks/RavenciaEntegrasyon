@@ -7,7 +7,6 @@ import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, Impor
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, loadShippingLabelSettings, saveShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
 import '../styles/dashboard.css'
-import '../styles/shipping-designer.css'
 import '../styles/typography.css'
 
 function Shell({ me }: { me: Me }) {
@@ -275,6 +274,10 @@ function Security() {
     const tab = new URLSearchParams(window.location.search).get('tab')
     return tab === 'database' || tab === 'shipping' ? tab : 'security'
   })
+  useEffect(() => {
+    if (settingsTab !== 'shipping') return
+    void import('../styles/shipping-designer.css').catch(() => undefined)
+  }, [settingsTab])
   const [labelSettings, setLabelSettings] = useState<ShippingLabelSettings>(() => loadShippingLabelSettings())
   const [resetScopes, setResetScopes] = useState<string[]>([])
   const [resetConfirmation, setResetConfirmation] = useState('')

@@ -6,15 +6,30 @@
   --rv-page-gutter: clamp(18px, 2.6vw, 42px);
   --rv-section-gap: 18px;
   --rv-control-height: 40px;
-  --rv-radius: 10px;
   --rv-border: rgba(137, 145, 205, .22);
   --rv-border-strong: rgba(111, 122, 255, .42);
   --rv-surface-quiet: #10121c;
-  --rv-surface-raised: #171a26;
   --rv-surface-soft: #1b1e2b;
+  --rv-z-base: 0;
+  --rv-z-sticky: 10;
+  --rv-z-sidebar: 40;
+  --rv-z-dropdown: 80;
+  --rv-z-popover: 100;
+  --rv-z-backdrop: 1000;
+  --rv-z-modal: 1200;
+  --rv-z-nested-modal: 1300;
+  --rv-z-toast: 2400;
+  --rv-z-splash: 9999;
 }
 
 /* A single, predictable frame for every authenticated route. */
+.app-shell.stitch-shell {
+  display: grid !important;
+  grid-template-columns: 74px minmax(0, 1fr) !important;
+  min-height: 100vh;
+  background: var(--st-obsidian, #05060b) !important;
+}
+
 .app-shell.stitch-shell > main {
   min-width: 0;
   background:
@@ -385,14 +400,16 @@
   top: 0;
   height: 100vh;
   align-self: flex-start;
-  z-index: 20;
+  z-index: var(--rv-z-sidebar);
 }
 
 .app-shell.stitch-shell > main {
-  height: 100%;
+  height: 100vh;
   min-height: 0;
+  max-height: 100vh;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 @media (max-width: 860px) {
@@ -499,7 +516,7 @@
   position: fixed !important;
   top: 76px;
   right: 24px;
-  z-index: 2400;
+  z-index: var(--rv-z-toast);
   display: flex;
   align-items: flex-start;
   gap: 11px;
@@ -562,7 +579,7 @@
   position: fixed !important;
   right: 24px;
   bottom: 24px;
-  z-index: 2400;
+  z-index: var(--rv-z-toast);
   width: min(390px, calc(100vw - 32px));
   margin: 0 !important;
   padding: 13px 16px !important;
@@ -591,12 +608,17 @@
   .app-shell.stitch-shell .mapping-popup-content .embedded-attribute-grid {
     grid-template-columns: 1fr !important;
   }
+
+  .app-shell.stitch-shell > main {
+    height: auto;
+    min-height: 100%;
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 /* Workspace interaction and visual hierarchy. */
 .app-shell.stitch-shell > aside {
-  width: 272px !important;
-  padding: 22px 16px 18px !important;
   background: linear-gradient(180deg, #0c0e18 0%, #101321 100%) !important;
   border-right: 1px solid rgba(147, 156, 255, .14) !important;
 }
@@ -623,11 +645,22 @@
 .app-shell.stitch-shell > aside .settings-nav > a:hover,
 .app-shell.stitch-shell > aside .logout-link:hover { color: #f5f5ff !important; background: rgba(124, 134, 255, .11) !important; border-color: rgba(124, 134, 255, .18) !important; transform: translateX(2px); }
 .app-shell.stitch-shell > aside nav a.active { color: #fff !important; background: linear-gradient(100deg, rgba(100, 112, 255, .96), rgba(121, 106, 235, .84)) !important; border-color: rgba(174, 181, 255, .34) !important; box-shadow: 0 10px 24px rgba(77, 83, 224, .26), inset 3px 0 0 #62e3ee !important; }
+.app-shell.stitch-shell > aside nav a.active,
+.app-shell.stitch-shell > aside nav a.active:hover { border-left-color: transparent !important; }
 .app-shell.stitch-shell > aside .nav-icon { width: 21px !important; height: 21px !important; flex: 0 0 21px !important; stroke-width: 1.9 !important; color: #9ea7d5 !important; }
 .app-shell.stitch-shell > aside nav a.active .nav-icon { color: #fff !important; }
 .app-shell.stitch-shell > aside .settings-nav { gap: 6px !important; padding-top: 18px !important; border-top-color: rgba(173, 180, 255, .14) !important; }
 .app-shell.stitch-shell > aside .logout-link { background: transparent !important; }
-.app-shell.stitch-shell.sidebar-collapsed > aside { width: 84px !important; padding-inline: 10px !important; }
+
+.app-shell.stitch-shell .security-page .sessions li { grid-template-columns:32px minmax(0,1fr) auto; min-width:0; gap:14px; padding-inline:14px; }
+.app-shell.stitch-shell .security-page .sessions li > span:nth-child(2) { min-width:0; overflow:hidden; }
+.app-shell.stitch-shell .security-page .sessions li > span:nth-child(2) small { display:block; overflow-wrap:anywhere; line-height:1.45; }
+.app-shell.stitch-shell .security-page .sessions li > b { white-space:nowrap; text-align:right; }
+
+@media (max-width:700px) {
+  .app-shell.stitch-shell .security-page .sessions li { grid-template-columns:32px minmax(0,1fr); }
+  .app-shell.stitch-shell .security-page .sessions li > b { grid-column:2; text-align:left; }
+}
 .app-shell.stitch-shell.sidebar-collapsed > aside nav a,
 .app-shell.stitch-shell.sidebar-collapsed > aside .settings-nav > a,
 .app-shell.stitch-shell.sidebar-collapsed > aside .logout-link { justify-content: center; padding-inline: 0 !important; }
@@ -653,36 +686,36 @@
 
 /* Product description gets a clear editor chrome and a comfortable writing canvas. */
 .app-shell.stitch-shell .product-description-field > .rich-text-editor { overflow: hidden; border: 1px solid rgba(151, 160, 207, .28) !important; border-radius: 15px !important; background: #15192a !important; box-shadow: 0 12px 28px rgba(0, 0, 0, .14) !important; }
-.app-shell.stitch-shell .rich-text-editor-head { min-height: 58px; padding: 11px 15px !important; background: linear-gradient(100deg, rgba(32, 37, 63, .96), rgba(24, 28, 46, .96)) !important; border-bottom: 1px solid rgba(151, 160, 207, .18) !important; }
-.app-shell.stitch-shell .rich-text-editor-head strong { color: #f0f1ff !important; font-size: 13px !important; }
-.app-shell.stitch-shell .rich-text-mode-note { margin-top: 4px; color: #8f98bb !important; font-size: 10px !important; }
-.app-shell.stitch-shell .rich-text-editor-meta { gap: 12px !important; color: #aeb4d1 !important; }
-.app-shell.stitch-shell .rich-text-mode-switch { padding: 3px !important; background: #0e1120 !important; border: 1px solid rgba(151, 160, 207, .2) !important; border-radius: 9px !important; }
-.app-shell.stitch-shell .rich-text-mode-switch button { min-height: 28px; padding: 0 9px !important; border-radius: 6px !important; color: #8e96b4 !important; }
-.app-shell.stitch-shell .rich-text-mode-switch button.active { color: #fff !important; background: #626eff !important; }
-.app-shell.stitch-shell .rich-text-toolbar { display: flex; flex-wrap: wrap; gap: 8px !important; padding: 10px 13px !important; background: #111525 !important; border-bottom: 1px solid rgba(151, 160, 207, .14) !important; }
-.app-shell.stitch-shell .rich-text-tool-group { gap: 4px !important; padding-right: 8px; border-right: 1px solid rgba(151, 160, 207, .18); }
-.app-shell.stitch-shell .rich-text-tool { min-height: 30px !important; padding: 0 8px !important; color: #b9c0e2 !important; border-radius: 7px !important; }
-.app-shell.stitch-shell .rich-text-tool:hover:not(:disabled) { color: #fff !important; background: rgba(124, 134, 255, .16) !important; }
-.app-shell.stitch-shell .rich-text-tool-icon { color: #7f8aff !important; }
-.app-shell.stitch-shell .rich-text-canvas,
-.app-shell.stitch-shell .rich-text-html-editor { min-height: 240px !important; padding: 18px 19px !important; color: #edf0ff !important; background: #0d111e !important; font-size: 14px !important; line-height: 1.7 !important; }
-.app-shell.stitch-shell .rich-text-canvas:focus,
-.app-shell.stitch-shell .rich-text-html-editor:focus { outline: 2px solid rgba(124, 134, 255, .55) !important; outline-offset: -2px; }
-.app-shell.stitch-shell .rich-text-editor-foot { padding: 9px 15px !important; color: #7f88a9 !important; background: #111525 !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-editor-head { min-height: 58px; padding: 11px 15px !important; background: linear-gradient(100deg, rgba(32, 37, 63, .96), rgba(24, 28, 46, .96)) !important; border-bottom: 1px solid rgba(151, 160, 207, .18) !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-editor-head strong { color: #f0f1ff !important; font-size: 13px !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-mode-note { margin-top: 4px; color: #8f98bb !important; font-size: 10px !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-editor-meta { gap: 12px !important; color: #aeb4d1 !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-mode-switch { padding: 3px !important; background: #0e1120 !important; border: 1px solid rgba(151, 160, 207, .2) !important; border-radius: 9px !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-mode-switch button { min-height: 28px; padding: 0 9px !important; border-radius: 6px !important; color: #8e96b4 !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-mode-switch button.active { color: #fff !important; background: #626eff !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-toolbar { display: flex; flex-wrap: wrap; gap: 8px !important; padding: 10px 13px !important; background: #111525 !important; border-bottom: 1px solid rgba(151, 160, 207, .14) !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-tool-group { gap: 4px !important; padding-right: 8px; border-right: 1px solid rgba(151, 160, 207, .18); }
+.app-shell.stitch-shell .product-add-page .rich-text-tool { min-height: 30px !important; padding: 0 8px !important; color: #b9c0e2 !important; border-radius: 7px !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-tool:hover:not(:disabled) { color: #fff !important; background: rgba(124, 134, 255, .16) !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-tool-icon { color: #7f8aff !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-canvas,
+.app-shell.stitch-shell .product-add-page .rich-text-html-editor { min-height: 240px !important; padding: 18px 19px !important; color: #edf0ff !important; background: #0d111e !important; font-size: 14px !important; line-height: 1.7 !important; }
+.app-shell.stitch-shell .product-add-page .rich-text-canvas:focus,
+.app-shell.stitch-shell .product-add-page .rich-text-html-editor:focus { outline: 2px solid rgba(124, 134, 255, .55) !important; outline-offset: -2px; }
+.app-shell.stitch-shell .product-add-page .rich-text-editor-foot { padding: 9px 15px !important; color: #7f88a9 !important; background: #111525 !important; }
 
 .app-shell.stitch-shell .product-media-upload { min-height: 118px !important; border-radius: 14px !important; border-color: rgba(124, 134, 255, .35) !important; background: linear-gradient(135deg, rgba(41, 47, 87, .38), rgba(19, 23, 39, .9)) !important; }
 .app-shell.stitch-shell .product-media-upload:hover { border-color: #7d87ff !important; background: linear-gradient(135deg, rgba(58, 66, 126, .5), rgba(19, 23, 39, .94)) !important; }
 
-.app-shell.stitch-shell .attribute-variant-action { align-items: center !important; padding: 15px !important; border-color: rgba(124, 134, 255, .22) !important; background: linear-gradient(100deg, rgba(28, 34, 57, .96), rgba(18, 23, 39, .96)) !important; border-radius: 14px !important; }
-.app-shell.stitch-shell .attribute-variant-action > div:first-child strong { color: #f1f2ff !important; font-size: 14px !important; }
-.app-shell.stitch-shell .attribute-variant-action > div:first-child small { color: #9ba4ca !important; line-height: 1.45 !important; }
-.app-shell.stitch-shell .attribute-builder-list { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 12px !important; }
-.app-shell.stitch-shell .attribute-builder-card { border-color: rgba(151, 160, 207, .2) !important; border-radius: 13px !important; background: #171b2b !important; }
-.app-shell.stitch-shell .attribute-builder-card:has(.attribute-builder-toggle input:checked) { border-color: rgba(124, 134, 255, .65) !important; box-shadow: 0 0 0 2px rgba(124, 134, 255, .12) !important; }
-.app-shell.stitch-shell .option-chip-list { gap: 7px !important; }
-.app-shell.stitch-shell .option-chip { min-height: 33px !important; padding-inline: 12px !important; border-radius: 8px !important; }
-.app-shell.stitch-shell .option-chip.active { color: #fff !important; background: #626eff !important; border-color: #8991ff !important; box-shadow: 0 6px 14px rgba(98, 110, 255, .22); }
+.app-shell.stitch-shell .product-add-page .attribute-variant-action { align-items: center !important; padding: 15px !important; border-color: rgba(124, 134, 255, .22) !important; background: linear-gradient(100deg, rgba(28, 34, 57, .96), rgba(18, 23, 39, .96)) !important; border-radius: 14px !important; }
+.app-shell.stitch-shell .product-add-page .attribute-variant-action > div:first-child strong { color: #f1f2ff !important; font-size: 14px !important; }
+.app-shell.stitch-shell .product-add-page .attribute-variant-action > div:first-child small { color: #9ba4ca !important; line-height: 1.45 !important; }
+.app-shell.stitch-shell .product-add-page .attribute-builder-list { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 12px !important; }
+.app-shell.stitch-shell .product-add-page .attribute-builder-card { border-color: rgba(151, 160, 207, .2) !important; border-radius: 13px !important; background: #171b2b !important; }
+.app-shell.stitch-shell .product-add-page .attribute-builder-card:has(.attribute-builder-toggle input:checked) { border-color: rgba(124, 134, 255, .65) !important; box-shadow: 0 0 0 2px rgba(124, 134, 255, .12) !important; }
+.app-shell.stitch-shell .product-add-page .option-chip-list { gap: 7px !important; }
+.app-shell.stitch-shell .product-add-page .option-chip { min-height: 33px !important; padding-inline: 12px !important; border-radius: 8px !important; }
+.app-shell.stitch-shell .product-add-page .option-chip.active { color: #fff !important; background: #626eff !important; border-color: #8991ff !important; box-shadow: 0 6px 14px rgba(98, 110, 255, .22); }
 .app-shell.stitch-shell .order-reference-actions > small { color: #8189a8; font-size: 10px; }
 .app-shell.stitch-shell .orders-page .order-reference-row.cancelled {
   background: rgba(241, 112, 124, .035) !important;
@@ -1044,11 +1077,10 @@
 .app-shell.stitch-shell .job-detail-facts p strong { overflow-wrap: anywhere; }
 
 @media (max-width: 900px) {
-  .app-shell.stitch-shell > aside { width: 84px !important; padding-inline: 10px !important; }
   .app-shell.stitch-shell > aside .brand.wordmark, .app-shell.stitch-shell > aside nav a:not(.active)::after, .app-shell.stitch-shell > aside nav a, .app-shell.stitch-shell > aside .settings-nav > a, .app-shell.stitch-shell > aside .logout-link { font-size: 0 !important; }
   .app-shell.stitch-shell > aside nav a, .app-shell.stitch-shell > aside .settings-nav > a, .app-shell.stitch-shell > aside .logout-link { justify-content: center; padding-inline: 0 !important; }
   .app-shell.stitch-shell > aside .sidebar-brand-row { justify-content: center; padding-inline: 0 !important; }
-  .app-shell.stitch-shell .attribute-builder-list { grid-template-columns: 1fr !important; }
+  .app-shell.stitch-shell .product-add-page .attribute-builder-list { grid-template-columns: 1fr !important; }
   .app-shell.stitch-shell .return-detail-product-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .app-shell.stitch-shell .return-detail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .app-shell.stitch-shell .mapping-category-builder .mapping-target-controls { grid-template-columns: 1fr !important; }
@@ -1381,7 +1413,7 @@
   .app-shell.stitch-shell > aside {
     position: fixed !important;
     inset: 0 auto 0 0;
-    z-index: 5000 !important;
+    z-index: var(--rv-z-sidebar) !important;
     width: 74px !important;
     height: 100vh !important;
     min-height: 100vh !important;
@@ -1558,14 +1590,24 @@
 }
 
 @media (max-width: 760px) {
-  .app-shell.stitch-shell {
+  .app-shell.stitch-shell,
+  .sidebar-collapsed.app-shell.stitch-shell {
+    display: block !important;
     height: auto;
     min-height: 100vh;
     overflow: visible;
   }
 
-  .app-shell.stitch-shell > aside {
-    z-index: 5000 !important;
+  .app-shell.stitch-shell > aside,
+  .sidebar-collapsed.stitch-shell > aside {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    width: 62px !important;
+    height: 100dvh;
+    min-height: 100dvh;
+    padding: 10px 7px !important;
+    z-index: var(--rv-z-sidebar) !important;
   }
 
   .app-shell.stitch-shell > main {
@@ -1722,9 +1764,9 @@
   box-shadow: 0 0 0 2px rgba(88, 101, 242, .2), 0 0 10px rgba(88, 101, 242, .1) !important;
 }
 
-/* Kullanıcıya görünen etiketler kaynak metindeki başlık biçimini korur. */
-.app-shell.stitch-shell * {
-  text-transform: none !important;
+/* The shell provides the neutral inherited default; component roles may opt in. */
+.app-shell.stitch-shell {
+  text-transform: none;
 }
 
 /* Shared mapping workspace treatment. */
@@ -1734,19 +1776,19 @@
 .app-shell.stitch-shell .mapping-advanced-tools .attribute-mapping-card.required.unmapped { border-color: rgba(230, 183, 95, .82) !important; box-shadow: inset 3px 0 0 #e6b75f, 0 0 0 1px rgba(230, 183, 95, .14) !important; }
 .app-shell.stitch-shell .mapping-popup-content .editor-section-title { display: block !important; padding: 0 0 13px !important; margin: 0 0 14px !important; border: 0 !important; border-bottom: 1px solid var(--mapping-modal-line-soft) !important; text-align: left !important; }
 .app-shell.stitch-shell .mapping-popup-content .editor-section-title > div { display: grid !important; gap: 4px !important; min-width: 0 !important; }
-.app-shell.stitch-shell .integration-settings-modal-backdrop { position: fixed; inset: 0 0 0 74px; z-index: 6000; display: grid; place-items: center; padding: 24px; background: rgba(5, 7, 13, .78); backdrop-filter: blur(4px); }
+.app-shell.stitch-shell .integration-settings-modal-backdrop { position: fixed; inset: 0; z-index: var(--rv-z-backdrop); display: grid; place-items: center; padding: 24px; background: rgba(5, 7, 13, .78); backdrop-filter: blur(4px); }
 .app-shell.stitch-shell .integration-settings-modal { width: min(1040px, 100%); max-height: min(880px, calc(100vh - 48px)); overflow: auto; padding: 18px; background: #12141b; border: 1px solid #4a4c5b; border-radius: 10px; box-shadow: 0 24px 80px rgba(0, 0, 0, .5); }
 .app-shell.stitch-shell .integration-settings-modal > header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
 .app-shell.stitch-shell .integration-settings-modal .integration-inline-workspace { padding: 0 !important; }
 .app-shell.stitch-shell .integration-settings-modal .integration-inline-workspace > .page-heading { display: none; }
 @media (max-width: 760px) {
   .app-shell.stitch-shell .mapping-view-tabs { overflow: visible !important; }
-  .app-shell.stitch-shell .integration-settings-modal-backdrop { inset: 0 0 0 62px; padding: 10px; }
+  .app-shell.stitch-shell .integration-settings-modal-backdrop { inset: 0; padding: 10px; }
   .app-shell.stitch-shell .integration-settings-modal { max-height: calc(100vh - 20px); padding: 12px; }
 }
 
 @media (min-width: 761px) and (max-width: 900px) {
-  .app-shell.stitch-shell .integration-settings-modal-backdrop { inset: 0 0 0 84px; }
+  .app-shell.stitch-shell .integration-settings-modal-backdrop { inset: 0; }
 }
 
 /* Job details explain the effect first, then show the technical trace. */

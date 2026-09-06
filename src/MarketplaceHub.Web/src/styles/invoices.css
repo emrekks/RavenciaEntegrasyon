@@ -466,7 +466,7 @@
   cursor: pointer !important;
 }
 .invoice-reference-details-trigger:hover { color: #fff !important; background: #272b51 !important; border-color: #6974ff !important; transform: none !important; box-shadow: none !important; }
-.invoice-detail-backdrop { position: fixed !important; z-index: 120 !important; inset: 0 !important; display: flex !important; justify-content: flex-end !important; background: rgba(4, 6, 14, .72) !important; backdrop-filter: blur(4px) !important; }
+.invoice-detail-backdrop { position: fixed !important; z-index: var(--rv-z-backdrop, 1000) !important; inset: 0 !important; display: flex !important; justify-content: flex-end !important; background: rgba(4, 6, 14, .72) !important; backdrop-filter: blur(4px) !important; }
 .invoice-detail-drawer { display: flex !important; flex-direction: column !important; width: min(650px, 100%) !important; height: 100% !important; overflow: hidden !important; color: #eef0ff !important; background: #11131e !important; border-left: 1px solid #34385b !important; box-shadow: -18px 0 60px rgba(0,0,0,.42) !important; }
 .invoice-detail-header { display: flex !important; align-items: flex-start !important; justify-content: space-between !important; gap: 18px !important; padding: 24px 26px 20px !important; border-bottom: 1px solid #2a2d42 !important; }
 .invoice-detail-header h2 { margin: 3px 0 6px !important; color: #fff !important; font-size: 1.2rem !important; }

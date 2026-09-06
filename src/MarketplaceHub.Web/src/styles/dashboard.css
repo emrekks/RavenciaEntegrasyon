@@ -308,15 +308,7 @@
   .app-shell .dashboard-bottom-grid { grid-template-columns: 1fr !important; }
 }
 
-/* Keep the dashboard scrollable and show data freshness. */
-html { overflow-y: auto !important; }
-.app-shell.stitch-shell,
-.app-shell.stitch-shell > main,
-.app-shell .content.dashboard {
-  height: auto !important;
-  max-height: none !important;
-  overflow: visible !important;
-}
+/* Scroll ownership is centralized in workspace.css; dashboard owns content only. */
 .app-shell .dashboard .dashboard-heading-actions:empty { display: none !important; }
 .app-shell .dashboard .dashboard-sync-list a {
   grid-template-columns: 18px minmax(0, 1fr) auto;
@@ -358,12 +350,6 @@ html { overflow-y: auto !important; }
 .app-shell .dashboard-sync-icon.returns { color: #ffb689; background: rgba(255, 182, 137, .1); border-color: rgba(255, 182, 137, .28); }
 .app-shell .dashboard-sync-icon.stock { color: #7de2cb; background: rgba(69, 230, 176, .1); border-color: rgba(69, 230, 176, .28); }
 
-.app-shell.stitch-shell > main:has(.content.dashboard) {
-  height: 100vh !important;
-  min-height: 100vh !important;
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-}
 .app-shell .dashboard-revenue-panel .panel-title {
   align-items: flex-start !important;
   gap: 12px !important;

@@ -6,7 +6,6 @@ import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../sh
 import { UiIcon, type UiIconName } from '../../shared/components'
 import '../../styles/product-editor.css'
 import '../../styles/products.css'
-import '../../styles/typography.css'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -1087,7 +1086,6 @@ function CategoryAttributeMappingPanel({
   webColorRequirement,
   webColorAutoEnabled,
   manualWebColorValueId,
-  variantAttributeIds,
   onToggleWebColorAuto,
   onManualWebColorValueChange
 }: {
@@ -1103,7 +1101,6 @@ function CategoryAttributeMappingPanel({
   webColorRequirement?: CategoryRequirement
   webColorAutoEnabled: boolean
   manualWebColorValueId: string
-  variantAttributeIds: string[]
   onToggleWebColorAuto: (enabled: boolean) => void
   onManualWebColorValueChange: (valueId: string) => void
 }) {
@@ -1147,9 +1144,7 @@ function CategoryAttributeMappingPanel({
               <input type="checkbox" checked={webColorAutoEnabled} onChange={event => onToggleWebColorAuto(event.target.checked)} />
               <span><strong>Varyant renklerini otomatik aktar</strong><small>{webColorAutoEnabled ? 'Açık · Renk eşleşmelerinden dönüştürülmüş Web Color gönderilir.' : 'Kapalı · Web Color panel değeri aşağıdan seçilir.'}</small></span>
             </label>
-            {webColorAutoEnabled ? (
-              <div className="attribute-builder-web-color-status"><strong>Otomatik aktarım aktif</strong><small>{variantAttributeIds.includes(webColorRequirement.attributeId) ? 'Seçilen Renk varyantlarının eşleşmiş Web Color karşılıkları gönderilecek.' : 'Otomatik aktarım için Ürün seçenekleri bölümünde Renk varyantını seçin.'}</small></div>
-            ) : (
+            {webColorAutoEnabled ? null : (
               <label className="attribute-builder-web-color-manual">Manuel panel rengi<select aria-label="Manuel Web Color panel değeri" value={manualWebColorValueId} onChange={event => onManualWebColorValueChange(event.target.value)}><option value="">Panel rengi seçin</option>{sortOptionValues('Renk', webColorRequirement.attribute.values).map(value => <option key={value.id} value={value.id}>{cleanOptionValue(value.value)}</option>)}</select></label>
             )}
           </div>
@@ -1792,7 +1787,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       webColorRequirement={webColorRequirement}
       webColorAutoEnabled={webColorAutoEnabled}
       manualWebColorValueId={manualWebColorValueId}
-      variantAttributeIds={variantAttributeIds}
       onToggleWebColorAuto={toggleWebColorAuto}
       onManualWebColorValueChange={setManualWebColorValueId}
     />}

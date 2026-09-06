@@ -1,5 +1,152 @@
 /* Orders page — reference workspace skin. Keep the existing order actions and
    data model intact while matching the dark Bento-style reference surface. */
+.app-shell.stitch-shell .order-reference-actions{align-items:flex-start;justify-content:flex-end;min-width:0;gap:8px;padding:12px 10px}
+
+.app-shell.stitch-shell .order-status-column{min-width:0;width:100%;align-items:flex-start;gap:6px}
+
+.app-shell.stitch-shell .order-status-column small{white-space:normal;line-height:1.35}
+
+.app-shell.stitch-shell .order-reference-actions>.row-menu{width:100%;max-width:150px}
+
+.app-shell.stitch-shell .order-reference-actions>.row-menu .row-menu-trigger{width:100%;justify-content:space-between}
+
+.app-shell.stitch-shell .order-label-actions{display:grid;gap:6px;width:100%;max-width:170px}
+
+.app-shell.stitch-shell .order-label-action{display:flex;align-items:center;justify-content:space-between;gap:5px;width:100%;min-width:0;white-space:nowrap}
+
+.app-shell.stitch-shell .order-label-action span{overflow:hidden;text-overflow:ellipsis}
+
+.app-shell.stitch-shell .order-label-action small{flex:0 0 auto}
+
+.app-shell.stitch-shell .order-label-action.is-printed{opacity:.48;filter:saturate(.45)}
+
+.app-shell.stitch-shell .order-label-action.is-printed i{font-style:normal;color:#96efbd}
+
+.app-shell.stitch-shell .invoice-info-modal .invoice-address-sheet>p{margin:18px 0 0;padding:12px 14px;color:var(--rv-muted);background:rgba(113,104,245,.09);border:1px solid rgba(113,104,245,.25);border-radius:9px;line-height:1.5}
+.app-shell.stitch-shell .invoice-info-modal .invoice-address-sheet>p strong{color:#e9e7ff}
+
+.app-shell.stitch-shell .orders-page .order-reference-actions { align-items:center !important; justify-content:center !important; gap:7px !important; }
+
+.app-shell.stitch-shell .orders-page .order-reference-actions > .order-status-column { align-items:center !important; align-self:center !important; text-align:center; }
+
+.app-shell.stitch-shell .orders-page .order-reference-actions > .order-label-actions,
+.app-shell.stitch-shell .orders-page .order-reference-actions > .row-menu { align-self:center !important; }
+
+.app-shell.stitch-shell .orders-page .orders-reference-filter-shell { overflow: visible !important; }
+
+.app-shell.stitch-shell .orders-page .order-action-menu { display:inline-flex!important; align-items:center!important; justify-content:center!important; gap:7px!important; height:30px!important; }
+
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-menu-shell { z-index:var(--rv-z-popover); }
+
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu {
+  z-index:var(--rv-z-popover)!important;
+  min-width:248px!important;
+  padding:7px!important;
+  color:#eef0ff!important;
+  background:linear-gradient(180deg,#1c2032 0%,#151826 100%)!important;
+  border:1px solid rgba(124,134,255,.34)!important;
+  border-radius:9px!important;
+  box-shadow:0 20px 46px rgba(0,0,0,.52),0 0 0 1px rgba(255,255,255,.025) inset!important;
+}
+
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button {
+  display:grid!important;
+  grid-template-columns:30px minmax(0,1fr)!important;
+  gap:8px!important;
+  align-items:center!important;
+  min-height:48px!important;
+  padding:8px 9px!important;
+  color:#eef0ff!important;
+  background:transparent!important;
+  border:0!important;
+  border-bottom:1px solid rgba(139,146,184,.16)!important;
+  border-radius:6px!important;
+  box-shadow:none!important;
+  text-align:left!important;
+  transform:none!important;
+  transition:background-color .15s ease,color .15s ease!important;
+}
+
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button:last-child { border-bottom-color:transparent!important; }
+
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button:hover,
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button:focus-visible {
+  color:#fff!important;
+  background:rgba(88,101,242,.16)!important;
+  outline:0!important;
+}
+
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button>b {
+  display:grid!important;
+  place-items:center!important;
+  width:26px!important;
+  height:26px!important;
+  color:#e7e9ff!important;
+  background:rgba(88,101,242,.28)!important;
+  border:1px solid rgba(124,134,255,.48)!important;
+  border-radius:6px!important;
+  font-size:.62rem!important;
+}
+
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button>span { display:grid!important; gap:2px!important; font-size:.72rem!important; font-weight:750!important; }
+
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu button small { color:#aeb4d1!important; font-size:.61rem!important; font-weight:550!important; }
+
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu.opens-up { top:auto!important; bottom:calc(100% + 6px)!important; }
+
+.app-shell.stitch-shell .orders-page .orders-reference-bottom-toolbar .bulk-action-menu.opens-down { top:calc(100% + 6px)!important; bottom:auto!important; }
+
+.app-shell.stitch-shell .bulk-operation-summary { display:grid; gap:4px; margin:12px 24px 0; padding:10px 12px; color:#e8eaff; background:rgba(113,104,245,.1); border:1px solid rgba(124,134,255,.25); border-radius:8px; }
+
+.app-shell.stitch-shell .bulk-operation-summary small { color:#aeb4d1; line-height:1.4; }
+
+.app-shell.stitch-shell .shipping-label-batch-preview { display:grid; gap:16px; max-height:min(620px,65vh); overflow:auto; padding:12px; background:#0d111e; }
+
+.app-shell.stitch-shell .shipping-label-batch-preview > .shipping-label-print-surface { margin:0 auto; }
+
+@media print {
+  .app-shell.stitch-shell .shipping-label-batch-preview { display:block!important; max-height:none!important; overflow:visible!important; padding:0!important; background:#fff!important; }
+  .app-shell.stitch-shell .shipping-label-batch-preview > .shipping-label-print-surface { margin:0!important; break-inside:avoid; page-break-inside:avoid; }
+}
+
+.app-shell.stitch-shell .order-hidden-cancelled-notice {
+  pointer-events: auto !important;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-shell.stitch-shell .order-hidden-cancelled-notice span {
+  margin-right: auto;
+}
+
+.app-shell.stitch-shell .order-hidden-cancelled-notice-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.app-shell.stitch-shell .order-hidden-cancelled-notice button {
+  flex: 0 0 auto;
+  color: #dff7ff;
+  background: rgba(24, 186, 255, .14);
+  border: 1px solid rgba(24, 186, 255, .48);
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.app-shell.stitch-shell .order-hidden-cancelled-notice button.notice-dismiss {
+  color: #b9c0d8;
+  background: transparent;
+  border-color: #464b60;
+}
+
+.app-shell.stitch-shell .order-hidden-cancelled-notice button.notice-dismiss:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, .06);
+}
 .app-shell .orders-page {
   max-width: none !important;
   padding: 28px clamp(18px, 2.6vw, 44px) 42px !important;

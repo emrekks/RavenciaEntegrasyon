@@ -146,9 +146,9 @@
 .app-shell.stitch-shell .modal-close:not(:has(.ui-icon))::before,
 .app-shell.stitch-shell .panel-attribute-modal-card > header > button:not(:has(.ui-icon))::before,
 .app-shell.stitch-shell .panel-attribute-category-modal-card > header > button:not(:has(.ui-icon))::before,
-.app-shell.stitch-shell .panel-category-picker > div > button[aria-label*='kapat']::before,
-.app-shell.stitch-shell .category-chip-remove::before,
-.app-shell.stitch-shell .panel-value-token button::before {
+.app-shell.stitch-shell .panel-category-picker > div > button[aria-label*='kapat']:not(:has(.ui-icon))::before,
+.app-shell.stitch-shell .category-chip-remove:not(:has(.ui-icon))::before,
+.app-shell.stitch-shell .panel-value-token button:not(:has(.ui-icon))::before {
   content: '';
   display: block;
   width: 16px;
@@ -159,7 +159,7 @@
   mask: var(--ui-mask-close) center / contain no-repeat;
 }
 
-.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='kaydet']::before,
+.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='kaydet']:not(:has(.ui-icon))::before,
 .app-shell.stitch-shell .mapping-icon-button[aria-label*='kaydet'] > span[aria-hidden='true']::before {
   display: inline-block;
   width: 16px;
@@ -174,15 +174,15 @@
 .app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='iptal'],
 .app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='düzenle'],
 .app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='sil'],
-.app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='düzenle'],
+.app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='düzenle']:not(.panel-attribute-category-button),
 .app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='sil'],
 .app-shell.stitch-shell .mapping-icon-button[aria-label*='iptal et'],
 .app-shell.stitch-shell .mapping-icon-button[aria-label*='düzenle'] {
   font-size: 0 !important;
 }
 
-.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='iptal']::before,
-.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='sil']::before,
+.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='iptal']:not(:has(.ui-icon))::before,
+.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='sil']:not(:has(.ui-icon))::before,
 .app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='sil']::before,
 .app-shell.stitch-shell .mapping-icon-button[aria-label*='iptal et']::before {
   content: '';
@@ -201,9 +201,9 @@
   display: none !important;
 }
 
-.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='düzenle']::before,
-.app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='düzenle']::before,
-.app-shell.stitch-shell .mapping-icon-button[aria-label*='düzenle']::before {
+.app-shell.stitch-shell .panel-attribute-value-editor button[aria-label*='düzenle']:not(:has(.ui-icon))::before,
+.app-shell.stitch-shell .panel-attribute-record-actions > button[aria-label*='düzenle']:not(.panel-attribute-category-button):not(:has(.ui-icon))::before,
+.app-shell.stitch-shell .mapping-icon-button[aria-label*='düzenle']:not(:has(.ui-icon))::before {
   content: '';
   display: block;
   width: 15px;

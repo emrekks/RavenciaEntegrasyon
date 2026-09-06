@@ -58,24 +58,12 @@ textarea {
 }
 
 .app-shell.stitch-shell {
-  display: grid !important;
-  grid-template-columns: 248px minmax(0, 1fr) !important;
-  min-height: 100vh;
   background: var(--st-obsidian) !important;
 }
 
 .stitch-shell > aside {
-  position: sticky !important;
-  top: 0;
-  align-self: start;
-  z-index: 40;
   display: flex !important;
   flex-direction: column;
-  width: 248px !important;
-  height: 100vh;
-  min-height: 100vh;
-  padding: 18px 14px 16px !important;
-  overflow: hidden auto;
   background: var(--st-surface-lowest) !important;
   border-right: 1px solid var(--st-surface-highest) !important;
   box-shadow: none !important;
@@ -202,8 +190,6 @@ textarea {
   min-width: 0;
 }
 
-.sidebar-collapsed.app-shell.stitch-shell { grid-template-columns: 74px minmax(0, 1fr) !important; }
-.sidebar-collapsed.stitch-shell > aside { width: 74px !important; padding-inline: 10px !important; }
 .sidebar-collapsed .sidebar-brand-row { justify-content: center; padding-inline: 0; }
 .sidebar-collapsed .brand.wordmark { overflow: hidden; font-size: 0; }
 .sidebar-collapsed aside nav a:not(.active) > :not(.nav-icon), .sidebar-collapsed aside nav a.active > :not(.nav-icon), .sidebar-collapsed .settings-nav > a > :not(.nav-icon), .sidebar-collapsed .logout-link > :not(.nav-icon) { display: none !important; }
@@ -564,7 +550,7 @@ textarea {
 }
 .category-chip-list { max-height: 220px; overflow: auto; padding: 8px !important; background: var(--st-surface-lowest) !important; border: 1px solid var(--st-surface-highest) !important; border-radius: 5px !important; }
 .category-chip-list button, .chip { color: #d7d8ff !important; background: rgba(88, 101, 242, .14) !important; border: 1px solid rgba(88, 101, 242, .34) !important; border-radius: 3px !important; }
-.attribute-builder-list { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+.app-shell.stitch-shell .product-add-page .attribute-builder-list { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
 
 .security-page .settings-tabs { margin-bottom: 16px; }
 .security-authenticator-card,
@@ -584,13 +570,9 @@ textarea {
 .jobs-page td { padding: 10px 11px !important; }
 
 @media (max-width: 1320px) {
-  .app-shell.stitch-shell { grid-template-columns: 222px minmax(0, 1fr) !important; }
-  .stitch-shell > aside { width: 222px !important; }
 }
 
 @media (max-width: 1080px) {
-  .app-shell.stitch-shell { grid-template-columns: 74px minmax(0, 1fr) !important; }
-  .stitch-shell > aside { width: 74px !important; padding-inline: 10px !important; }
   .sidebar-brand-row { justify-content: center; padding-inline: 0; }
   .brand.wordmark { overflow: hidden; font-size: 0; }
   .stitch-shell aside nav a > :not(.nav-icon), .stitch-shell .settings-nav > a > :not(.nav-icon), .stitch-shell .logout-link > :not(.nav-icon) { display: none !important; }
@@ -709,41 +691,10 @@ textarea {
 .app-shell.stitch-shell .mapping-transfer-warning { color: #a9adbd; }
 .app-shell.stitch-shell .mapping-transfer-warning { margin: 0; line-height: 1.5; }
 
-/* Entegrasyon ayrıntıları karttan ayrılmadan modal içinde açılır. */
-.app-shell.stitch-shell .integration-settings-modal-backdrop {
-  position: fixed;
-  inset: 0 0 0 74px;
-  z-index: 6000;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(5, 7, 13, .78);
-  backdrop-filter: blur(4px);
-}
-.app-shell.stitch-shell .integration-settings-modal {
-  width: min(1040px, 100%);
-  max-height: min(880px, calc(100vh - 48px));
-  overflow: auto;
-  padding: 18px;
-  background: #12141b;
-  border: 1px solid #4a4c5b;
-  border-radius: 10px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, .5);
-}
-.app-shell.stitch-shell .integration-settings-modal > header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-.app-shell.stitch-shell .integration-settings-modal .integration-inline-workspace { padding: 0 !important; }
-.app-shell.stitch-shell .integration-settings-modal .integration-inline-workspace > .page-heading { display: none; }
-
 @media (max-width: 760px) {
   .app-shell.stitch-shell .mapping-reference-heading { flex-direction: column; gap: 14px; }
   .app-shell.stitch-shell .mapping-reference-heading-actions { justify-items: start; padding-top: 0; }
   .app-shell.stitch-shell .mapping-transfer-actions { flex-wrap: wrap; }
-  .app-shell.stitch-shell .integration-settings-modal-backdrop { inset: 0 0 0 62px; padding: 10px; }
-  .app-shell.stitch-shell .integration-settings-modal { max-height: calc(100vh - 20px); padding: 12px; }
-}
-
-@media (min-width: 761px) and (max-width: 900px) {
-  .app-shell.stitch-shell .integration-settings-modal-backdrop { inset: 0 0 0 84px; }
 }
 
 /* Orders toolbar: one aligned control surface with a single visual hierarchy. */
@@ -991,18 +942,6 @@ textarea {
 }
 
 @media (max-width: 760px) {
-  .app-shell.stitch-shell,
-  .sidebar-collapsed.app-shell.stitch-shell { display: block !important; }
-  .stitch-shell > aside,
-  .sidebar-collapsed.stitch-shell > aside {
-    position: fixed !important;
-    top: 0;
-    left: 0;
-    width: 62px !important;
-    height: 100dvh;
-    min-height: 100dvh;
-    padding: 10px 7px !important;
-  }
   .stitch-brand-mark { width: 32px; height: 32px; flex-basis: 32px; }
   .stitch-shell .brand.wordmark { display: none !important; }
   .stitch-shell > aside nav {
@@ -1027,13 +966,12 @@ textarea {
     padding: 0 !important;
     flex: 0 0 42px !important;
   }
-  .stitch-shell > main { margin-left: 62px; }
   .stitch-shell .content { min-height: calc(100vh - 54px); padding: 16px 12px 24px !important; }
   .stitch-shell .page-heading { align-items: flex-start !important; flex-direction: column; gap: 12px !important; }
   .stitch-shell h1 { font-size: 24px !important; }
   .metrics, .dashboard-metrics, .product-metrics { grid-template-columns: 1fr !important; gap: 8px !important; }
   .dashboard-metrics > article, .product-metrics > article { min-height: 86px !important; }
-  .integration-fields, .attribute-builder-list { grid-template-columns: 1fr !important; }
+  .integration-fields, .app-shell.stitch-shell .product-add-page .attribute-builder-list { grid-template-columns: 1fr !important; }
   .order-tabs, .settings-tabs { width: 100%; }
   .order-tabs button, .settings-tabs button { white-space: nowrap; }
 }
@@ -1082,7 +1020,7 @@ textarea {
 }
 
 .app-shell.stitch-shell .shipping-label-backdrop {
-  z-index: 1200;
+  z-index: var(--rv-z-modal, 1200);
 }
 
 .app-shell.stitch-shell .shipping-label-modal {
@@ -2103,7 +2041,7 @@ textarea {
 
 .mapping-local-manager { margin-top: 2px; color: #a5a4b5; }
 .mapping-local-manager > summary { width: max-content; color: #bec2ff; font-size: 11px; cursor: pointer; }
-.mapping-local-manager[open] { position: fixed; z-index: 1260; inset: 0; display: grid; place-items: center; margin: 0; padding: 64px; background: rgba(4, 4, 9, .64); }
+.mapping-local-manager[open] { position: fixed; z-index: var(--rv-z-modal, 1200); inset: 0; display: grid; place-items: center; margin: 0; padding: 64px; background: rgba(4, 4, 9, .64); }
 .mapping-local-manager[open] > summary { display: none; }
 .mapping-local-manager-dialog { display: grid; gap: 12px; width: min(620px, 100%); max-height: min(620px, 100%); padding: 18px; overflow: auto; background: #1a1b23; border: 1px solid #555767; border-radius: 6px; box-shadow: 0 20px 46px rgba(0, 0, 0, .5); }
 .mapping-local-manager-dialog > header { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid #34343d; }
@@ -2176,7 +2114,7 @@ textarea {
 .mapping-advanced-tools[open] {
   display: grid;
   position: fixed;
-  z-index: 1200;
+  z-index: var(--rv-z-modal, 1200);
   inset: 70px 34px 28px 254px;
   grid-template-rows: auto minmax(0, 1fr);
   margin: 0;
@@ -2418,10 +2356,10 @@ textarea {
   .mapping-local-manager-dialog .category-library-tools select { grid-column: 2; grid-row: 1; }
 }
 .panel-attribute-records details { margin-top: 8px; }
-.panel-attribute-modal { position: fixed; z-index: 1300; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(3, 4, 8, .7); }
+.panel-attribute-modal { position: fixed; z-index: var(--rv-z-nested-modal, 1300); inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(3, 4, 8, .7); }
 .panel-attribute-modal-card { display: grid; gap: 12px; width: min(580px, 100%); max-height: min(650px, calc(100vh - 40px)); padding: 16px; overflow: auto; background: #191a22; border: 1px solid #5b5d70; border-radius: 7px; box-shadow: 0 26px 80px rgba(0, 0, 0, .62); }
-.panel-attribute-modal-card > header { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid #34343d; }
-.panel-attribute-modal-card > header > div { display: grid; gap: 3px; }
+.panel-attribute-modal-card > header { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid #34343d; text-align: left !important; }
+.panel-attribute-modal-card > header > div { display: grid; gap: 3px; text-align: left !important; }
 .panel-attribute-modal-card > header strong { color: #f0eff8; font-size: 15px; }
 .panel-attribute-modal-card > header small { color: #9293a3; font-size: 10px; }
 .panel-attribute-modal-card > header > button { width: 30px !important; min-width: 30px !important; height: 30px !important; min-height: 30px !important; padding: 0 !important; color: #d4d3df !important; background: transparent !important; border: 1px solid #444553 !important; }
@@ -2605,16 +2543,6 @@ textarea {
 
 /* Category mapping workspace modal: a self-contained Obsidian surface. */
 .mapping-advanced-tools[open] {
-  --mapping-modal-bg: #0b1220;
-  --mapping-modal-surface: #121b2c;
-  --mapping-modal-surface-raised: #18263d;
-  --mapping-modal-surface-deep: #0a101b;
-  --mapping-modal-line: #2a3954;
-  --mapping-modal-line-soft: rgba(148, 163, 184, .16);
-  --mapping-modal-text: #eef2ff;
-  --mapping-modal-muted: #91a0b9;
-  --mapping-modal-primary: #7168f5;
-  --mapping-modal-primary-soft: rgba(113, 104, 245, .16);
   --mapping-modal-success: #35d3a1;
   --mapping-modal-warning: #e6b75f;
   /* Center within the content area instead of the viewport; the 74px rail
@@ -2865,17 +2793,24 @@ textarea {
   min-height: 62px !important;
   height: 62px !important;
   box-sizing: border-box !important;
-  padding: 7px 9px !important;
+  padding: 0 !important;
+}
+.mapping-advanced-tools .web-color-assignment-current span {
+  color: var(--mapping-modal-muted) !important;
+  font-size: 9px !important;
+}
+.mapping-advanced-tools .web-color-assignment-current-box {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 38px !important;
+  height: 38px !important;
+  box-sizing: border-box !important;
+  padding: 0 9px !important;
   background: #182235 !important;
   border: 1px solid #30405d !important;
   border-radius: 6px !important;
 }
-.mapping-advanced-tools .web-color-assignment-current span,
-.mapping-advanced-tools .web-color-assignment-current small {
-  color: var(--mapping-modal-muted) !important;
-  font-size: 9px !important;
-}
-.mapping-advanced-tools .web-color-assignment-current strong { color: var(--mapping-modal-text) !important; font-size: 11px !important; }
+.mapping-advanced-tools .web-color-assignment-current-box strong { color: var(--mapping-modal-text) !important; font-size: 11px !important; }
 .mapping-advanced-tools .web-color-panel-value-picker {
   display: grid !important;
   gap: 7px !important;
@@ -3018,7 +2953,7 @@ textarea {
 .brand-mapping-pair-grid .mapping-side-head strong { color: var(--st-text) !important; font-size: 12px !important; }
 .brand-mapping-pair-grid .mapping-side-head small { color: var(--st-muted) !important; font-size: 10px !important; }
 .brand-mapping-pair-grid .searchable-select > span { color: var(--st-muted) !important; font-size: 9px !important; }
-.brand-mapping-pair-grid .mapping-link-rail span { width: 34px !important; height: 34px !important; color: #dce0ff !important; background: rgba(113, 104, 245, .16) !important; border-color: rgba(113, 104, 245, .42) !important; font-size: 15px !important; }
+.brand-mapping-pair-grid .mapping-link-rail > .ui-icon { width: 34px !important; height: 34px !important; padding: 8px !important; box-sizing: border-box; color: #dce0ff !important; background: rgba(113, 104, 245, .16) !important; border: 1px solid rgba(113, 104, 245, .42) !important; border-radius: 4px !important; }
 .brand-mapping-console > .mapping-action { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; padding-top: 14px !important; margin-top: 0 !important; border-top: 1px solid rgba(148, 163, 184, .16) !important; color: var(--st-muted) !important; font-size: 10px !important; }
 .brand-mapping-console > .mapping-action button { min-height: 36px !important; padding: 0 14px !important; color: #fff !important; background: var(--st-primary) !important; border-color: #8a83ff !important; border-radius: 6px !important; box-shadow: none !important; font-size: 10px !important; }
 
@@ -3027,7 +2962,7 @@ textarea {
 .brand-mapping-saved-card .mapping-icon-button[aria-label="Marka eşleştirmesini düzenle"]::before { content: ''; display: block; width: 16px; height: 16px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c6c5d7' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 16-.8 3.8L8 19 18.5 8.5a2.1 2.1 0 0 0-3-3L5 16Z'/%3E%3Cpath d='m14.5 6.5 3 3'/%3E%3C/svg%3E") center / contain no-repeat; }
 .brand-mapping-saved-card .mapping-delete-button::before { content: none !important; }
 .brand-mapping-saved-card .mapping-icon-button:hover { color: #fff !important; background: rgba(104, 114, 232, .14) !important; border-color: #6872e8 !important; }
-.brand-mapping-modal-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(7, 8, 13, .76); }
+.brand-mapping-modal-backdrop { position: fixed; z-index: var(--rv-z-backdrop, 1000); inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(7, 8, 13, .76); }
 .brand-mapping-modal { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(560px, calc(100vw - 40px)); max-height: min(620px, calc(100vh - 48px)); overflow: hidden; color: #e3e1ed; background: #1a1b23; border: 1px solid #454655; border-radius: 6px; box-shadow: 0 24px 70px rgba(0, 0, 0, .55); }
 .brand-mapping-modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px 20px; border-bottom: 1px solid #454655; }
 .brand-mapping-modal > header small { display: block; margin-bottom: 5px; color: #aeb6ff; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
@@ -3062,7 +2997,7 @@ textarea {
 .brand-library-list > span { background: #22232c !important; border-color: #454655 !important; border-radius: 3px !important; }
 .brand-library-list > span.active { background: #292a35 !important; border-color: #6872e8 !important; box-shadow: inset 3px 0 0 #6872e8; }
 .brand-mapping-pair-grid .mapping-link-rail { color: #c6c5d7 !important; }
-.brand-mapping-pair-grid .mapping-link-rail span { color: #c6c5d7 !important; background: #1a1b23 !important; border-color: #454655 !important; border-radius: 3px !important; }
+.brand-mapping-pair-grid .mapping-link-rail > .ui-icon { color: #c6c5d7 !important; background: #1a1b23 !important; border-color: #454655 !important; border-radius: 3px !important; }
 .brand-mapping-pair-grid .searchable-select-trigger { display: flex !important; align-items: center !important; justify-content: space-between !important; width: 100% !important; min-height: 42px !important; padding: 0 12px !important; color: #e3e1ed !important; background: #1a1b23 !important; border: 1px solid #454655 !important; border-radius: 3px !important; text-align: left !important; }
 .brand-mapping-pair-grid .searchable-select-trigger > span { min-width: 0; overflow: hidden; color: inherit !important; font-size: 11px !important; text-overflow: ellipsis; white-space: nowrap; }
 .brand-mapping-pair-grid .searchable-select-trigger > .ui-icon { width: 15px; height: 15px; color: #c6c5d7; }
@@ -3155,7 +3090,7 @@ textarea {
   .brand-mapping-console { padding: 14px !important; }
   .brand-library-create, .brand-mapping-pair-grid { grid-template-columns: 1fr !important; }
   .brand-mapping-pair-grid .mapping-link-rail { grid-auto-flow: column; }
-  .brand-mapping-pair-grid .mapping-link-rail span { transform: rotate(90deg); }
+  .brand-mapping-pair-grid .mapping-link-rail > .ui-icon { transform: rotate(90deg); }
   .brand-mapping-console > .mapping-action { align-items: stretch !important; flex-direction: column !important; }
   .brand-mapping-console > .mapping-action button { width: 100% !important; }
   .brand-mapping-target-controls { grid-template-columns: 1fr; }
@@ -3563,7 +3498,6 @@ textarea {
 }
 
 /* A value editor must trap scrolling inside its own list. */
-body:has(.panel-attribute-modal) { overflow: hidden !important; }
 .panel-attribute-modal { touch-action: none; }
 .panel-attribute-modal-card,
 .panel-attribute-value-editor { overscroll-behavior: contain !important; }
@@ -4211,7 +4145,6 @@ body:has(.panel-attribute-modal) { overflow: hidden !important; }
 }
 .panel-attribute-sort-hint > span { color: #bfc3ff; font-size: 16px; line-height: 1; }
 .panel-attribute-sort-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; white-space: nowrap; }
-.panel-attribute-sort-actions > span { margin-right: 2px; color: #9293a3; font-size: 10px; }
 .panel-attribute-sort-actions > button { min-width: 42px !important; min-height: 30px !important; padding: 0 8px !important; color: #d9dcff !important; background: rgba(113, 104, 245, .16) !important; border: 1px solid rgba(134, 142, 255, .48) !important; border-radius: 4px !important; font-size: 10px !important; font-weight: 750; }
 .panel-attribute-sort-actions > button:hover { color: #fff !important; background: #7168f5 !important; border-color: #8f94ff !important; }
 .panel-attribute-sort-actions > button:focus-visible { outline: 2px solid #9ea7ff !important; outline-offset: 2px; }
