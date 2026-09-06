@@ -18,6 +18,7 @@ export type UiIconName =
   | 'code'
   | 'close'
   | 'command'
+  | 'copy'
   | 'download'
   | 'edit'
   | 'externalLink'
@@ -66,6 +67,7 @@ const paths: Record<UiIconName, ReactNode> = {
   code: <><path d="m9 7-5 5 5 5M15 7l5 5-5 5" /><path d="m14 4-4 16" /></>,
   close: <path d="m6 6 12 12M18 6 6 18" />,
   command: <path d="M8 8a3 3 0 1 1 3-3v14a3 3 0 1 1-3-3h8a3 3 0 1 1-3 3V5a3 3 0 1 1 3 3H8Z" />,
+  copy: <><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>,
   download: <><path d="M12 4v11m-4-4 4 4 4-4" /><path d="M5 20h14" /></>,
   edit: <><path d="m5 16-.8 3.8L8 19l10.5-10.5a2.1 2.1 0 0 0-3-3L5 16Z" /><path d="m14.5 6.5 3 3" /></>,
   externalLink: <><path d="M14 5h5v5m0-5-8 8" /><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></>,

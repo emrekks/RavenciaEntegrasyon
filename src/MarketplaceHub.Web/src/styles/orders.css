@@ -2028,3 +2028,57 @@
 .app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row .order-reference-prices > strong:last-child {
   border-bottom: 0 !important;
 }
+
+/* Keep the copy affordance visible even in the compact order metadata cell. */
+.app-shell.stitch-shell .orders-page .order-number-copy {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 !important;
+  color: #aeb5d1 !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 5px !important;
+}
+.app-shell.stitch-shell .orders-page .order-number-copy:hover,
+.app-shell.stitch-shell .orders-page .order-number-copy:focus-visible {
+  color: #bec2ff !important;
+  background: rgba(113, 104, 245, .12) !important;
+  border-color: rgba(113, 104, 245, .28) !important;
+}
+.app-shell.stitch-shell .orders-page .order-number-copy > .ui-icon {
+  display: block !important;
+  width: 14px !important;
+  height: 14px !important;
+}
+
+/* The gutter belongs to the next order group; mask cell dividers inside it. */
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row {
+  position: relative !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row + .order-reference-row {
+  margin-top: 10px !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row + .order-reference-row::before {
+  position: absolute;
+  z-index: 4;
+  top: -10px;
+  right: 0;
+  left: 0;
+  height: 10px;
+  content: '';
+  background: var(--rv-bg, #0d0e16);
+  pointer-events: none;
+}
+
+/* The invoice menu only needs to fit its label and chevron. */
+.app-shell.stitch-shell .orders-page .order-reference-invoice .row-menu {
+  width: min(132px, 100%) !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-invoice .row-menu-trigger {
+  min-width: 0 !important;
+  padding-inline: 7px !important;
+}

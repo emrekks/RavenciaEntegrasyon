@@ -22,6 +22,7 @@ export function useShippingLabelSettings() {
     queryKey: shippingLabelSettingsQueryKey,
     queryFn: () => hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label'),
     staleTime: 60_000,
+    retry: 2,
     refetchOnWindowFocus: true
   })
 

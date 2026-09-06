@@ -28,7 +28,7 @@ export const appearanceFontFamilyOptions: Array<{ value: AppearanceFontFamily; l
 ]
 
 export const appearanceFontSizeOptions: Array<{ value: AppearanceFontSize; label: string; description: string }> = [
-  { value: 'normal', label: 'Normal', description: 'Önerilen, mevcut görünümden daha okunaklı' },
+  { value: 'normal', label: 'Normal', description: 'Önerilen, okunabilirliği artırılmış görünüm' },
   { value: 'large', label: 'Büyük', description: 'Yoğun tablolarda daha rahat okuma' },
   { value: 'extra-large', label: 'Çok büyük', description: 'En yüksek okunabilirlik' }
 ]
@@ -41,9 +41,9 @@ export const appearanceFontFamilyCss: Record<AppearanceFontFamily, string> = {
 }
 
 export const appearanceFontScale: Record<AppearanceFontSize, number> = {
-  normal: 1.18,
-  large: 1.32,
-  'extra-large': 1.48
+  normal: 1.32,
+  large: 1.48,
+  'extra-large': 1.68
 }
 
 const fontFamilies = new Set<AppearanceFontFamily>(appearanceFontFamilyOptions.map(option => option.value))

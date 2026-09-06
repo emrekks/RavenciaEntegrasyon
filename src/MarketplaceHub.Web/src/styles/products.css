@@ -3617,3 +3617,27 @@
   border-radius: var(--rv-radius-sm) !important;
 }
 .app-shell.stitch-shell .product-add-page .attribute-variant-action small { color: var(--rv-muted) !important; }
+
+/* Compact catalog rows use px values; multiply them by the account readability scale too. */
+.app-shell.stitch-shell .products-page .product-catalog-head,
+.app-shell.stitch-shell .products-page .product-catalog-head > span,
+.app-shell.stitch-shell .products-page .product-select-all {
+  font-size: calc(9px * var(--rv-font-scale, 1)) !important;
+}
+.app-shell.stitch-shell .products-page .product-list-identity > strong,
+.app-shell.stitch-shell .products-page .product-list-price > strong {
+  font-size: calc(10px * var(--rv-font-scale, 1)) !important;
+}
+.app-shell.stitch-shell .products-page .product-list-identity small {
+  font-size: calc(8px * var(--rv-font-scale, 1)) !important;
+}
+.app-shell.stitch-shell .products-page .product-list-variants,
+.app-shell.stitch-shell .products-page .product-list-stock > strong,
+.app-shell.stitch-shell .products-page .product-list-status small,
+.app-shell.stitch-shell .products-page .product-pagination-controls button,
+.app-shell.stitch-shell .products-page .pagination-ellipsis,
+.app-shell.stitch-shell .products-page .order-pagination > label,
+.app-shell.stitch-shell .products-page .order-pagination > label select,
+.app-shell.stitch-shell .products-page .order-pagination > span {
+  font-size: calc(9px * var(--rv-font-scale, 1)) !important;
+}
