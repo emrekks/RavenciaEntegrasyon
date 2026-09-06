@@ -2100,20 +2100,25 @@
   box-shadow: none !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-head {
-  border: 1px solid var(--rv-line-strong) !important;
+  border: 1px solid #34445c !important;
   border-radius: 8px !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row {
   margin: 0 !important;
-  border: 1px solid var(--rv-line-strong) !important;
+  border: 1px solid #34445c !important;
   border-radius: 8px !important;
   overflow: visible !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .16) !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row + .order-reference-row {
   margin-top: 0 !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row:last-child {
-  border-bottom: 1px solid var(--rv-line-strong) !important;
+  border-bottom: 1px solid #34445c !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-table > .order-reference-row:hover {
+  border-color: #52627c !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .22) !important;
 }
 
 /* Match the returns table: the group frame is visible, while the column
