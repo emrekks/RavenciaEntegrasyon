@@ -1577,6 +1577,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var categoryContexts = new Dictionary<string, CategoryAttributeContext>(StringComparer.Ordinal);
         var nextCursor = cursor.OpaqueCursor;
         var pageNumber = 0;
+        var pendingCatalogSnapshots = new List<RemoteCatalogProduct>();
         do
         {
             pageNumber++;
@@ -1604,6 +1605,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             foreach (var _ in result.Value!.Items) TrackReceived();
             receivedProducts += result.Value.Items.Count;
             totalProducts ??= result.Value.TotalCount;
+            pendingCatalogSnapshots.AddRange(result.Value.Items);
             // Trendyol can change the catalog while a long scan is running. If
             // its reported total falls behind the pages actually returned, do
             // not publish an impossible "received / total" progress state.
@@ -1617,27 +1619,48 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 await UpdateProductSyncProgressAsync(tenantId, receivedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "sayfa alındı", receivedProducts), cancellationToken);
             }
 
-            foreach (var invalidSnapshot in result.Value.Items.Where(x => string.IsNullOrWhiteSpace(x.ExternalProductId)))
+            if (jobId is { } processedJob)
             {
-                telemetryImportFailedCount++;
-                telemetryFailedCount++;
-                db.ChangeTracker.Clear();
-                categoryContexts.Clear();
-                importedAttributeLibrary.Clear();
-                try
-                {
-                    await RecordProductImportFailure(tenantId, connectionId, invalidSnapshot, new InvalidOperationException("Trendyol ürün kimliği boş döndü."), cancellationToken);
-                }
-                catch (Exception issueException) when (issueException is not OperationCanceledException)
-                {
-                    db.ChangeTracker.Clear();
-                }
-                if (jobId is { } invalidProgressJob)
-                    await UpdateProductSyncProgressAsync(tenantId, invalidProgressJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "geçersiz ürün atlandı", receivedProducts), cancellationToken);
+                var percent = totalProducts is { } total && total > 0
+                    ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
+                    : (int?)null;
+                await UpdateProductSyncProgressAsync(tenantId, processedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "sayfa alındı; model sırası hazırlanıyor", receivedProducts), cancellationToken);
             }
 
-            foreach (var snapshot in result.Value!.Items
-                         .Where(x => !string.IsNullOrWhiteSpace(x.ExternalProductId))
+            if (result.Value.HasMore)
+            {
+                if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol ürün sayfası hasMore=true ancak nextPageToken boş döndü.");
+                nextCursor = result.Value.NextCursor;
+            }
+            else
+            {
+                break;
+            }
+        } while (!cancellationToken.IsCancellationRequested);
+
+        foreach (var invalidSnapshot in pendingCatalogSnapshots.Where(x => string.IsNullOrWhiteSpace(x.ExternalProductId)))
+        {
+            telemetryImportFailedCount++;
+            telemetryFailedCount++;
+            db.ChangeTracker.Clear();
+            categoryContexts.Clear();
+            importedAttributeLibrary.Clear();
+            try
+            {
+                await RecordProductImportFailure(tenantId, connectionId, invalidSnapshot, new InvalidOperationException("Trendyol ürün kimliği boş döndü."), cancellationToken);
+            }
+            catch (Exception issueException) when (issueException is not OperationCanceledException)
+            {
+                db.ChangeTracker.Clear();
+            }
+        }
+
+        if (jobId is { } orderingJob)
+            await UpdateProductSyncProgressAsync(tenantId, orderingJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "model sırası hazır; aktarım başlıyor", receivedProducts), cancellationToken);
+
+        foreach (var modelSnapshots in CatalogImportOrdering.GroupByModel(pendingCatalogSnapshots))
+        {
+            foreach (var snapshot in modelSnapshots
                          .GroupBy(x => x.ExternalProductId, StringComparer.OrdinalIgnoreCase)
                          .Select(MergeCatalogSnapshots))
             {
@@ -1656,7 +1679,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 }
                 catch (Exception exception)
                 {
-                    // Isolate a malformed product so it cannot poison the rest of the page.
+                    // Isolate a malformed product so it cannot poison the next model.
                     telemetryImportFailedCount++;
                     telemetryFailedCount++;
                     db.ChangeTracker.Clear();
@@ -1676,45 +1699,23 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 if (jobId is { } itemProgressJob)
                 {
                     var percent = totalProducts is { } total && total > 0
-                        ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
+                        ? Math.Clamp((int)Math.Floor(telemetryImportProcessedCount * 100d / total), 0, 99)
                         : (int?)null;
-                    await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "ürün işleniyor", receivedProducts), cancellationToken);
+                    await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "model ürünü işleniyor", receivedProducts), cancellationToken);
                 }
             }
+        }
 
-            if (jobId is { } processedJob)
-            {
-                var percent = totalProducts is { } total && total > 0
-                    ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
-                    : (int?)null;
-                await UpdateProductSyncProgressAsync(tenantId, processedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "sayfa tamamlandı", receivedProducts), cancellationToken);
-            }
-
-            if (result.Value.HasMore)
-            {
-                if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol ürün sayfası hasMore=true ancak nextPageToken boş döndü.");
-                nextCursor = result.Value.NextCursor;
-                db.ChangeTracker.Clear();
-                var completedPageCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
-                completedPageCursor.OpaqueCursor = nextCursor;
-                completedPageCursor.Version++;
-                await db.SaveChangesAsync(cancellationToken);
-            }
-            else
-            {
-                db.ChangeTracker.Clear();
-                var completedCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
-                completedCursor.OpaqueCursor = null;
-                // Approved-products supports a modified-date filter. Keep a short
-                // overlap so a variant changed while a page was being read is not lost.
-                completedCursor.LastModifiedWatermark = timeProvider.GetUtcNow().AddSeconds(-60);
-                completedCursor.Version++;
-                if (jobId is { } completedJob)
-                    await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(pageNumber, totalProducts, "aktarımı tamamlandı", receivedProducts), cancellationToken, keepExistingTotal: true);
-                await db.SaveChangesAsync(cancellationToken);
-                break;
-            }
-        } while (!cancellationToken.IsCancellationRequested);
+        db.ChangeTracker.Clear();
+        var completedCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
+        completedCursor.OpaqueCursor = null;
+        // Approved-products supports a modified-date filter. Keep a short
+        // overlap so a variant changed while a page was being read is not lost.
+        completedCursor.LastModifiedWatermark = timeProvider.GetUtcNow().AddSeconds(-60);
+        completedCursor.Version++;
+        if (jobId is { } completedJob)
+            await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(pageNumber, totalProducts, "aktarımı tamamlandı", receivedProducts), cancellationToken, keepExistingTotal: true);
+        await db.SaveChangesAsync(cancellationToken);
         return true;
     }
 

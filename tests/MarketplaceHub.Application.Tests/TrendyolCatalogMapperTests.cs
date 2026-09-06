@@ -1,10 +1,40 @@
+using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
+using MarketplaceHub.Infrastructure.Persistence;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
 public sealed class TrendyolCatalogMapperTests
 {
+    [Fact]
+    public void CatalogImportOrdering_CompletesEachModelBeforeMovingToTheNextOne()
+    {
+        static RemoteCatalogProduct Product(string externalId, string modelId, string sku) => new(
+            externalId,
+            modelId,
+            modelId,
+            "",
+            null,
+            null,
+            null,
+            null,
+            [],
+            [new RemoteCatalogVariant(sku, sku, null, modelId, new Dictionary<string, string>(), false, null, null, null, null, null, "{}")],
+            "{}");
+
+        var groups = CatalogImportOrdering.GroupByModel(new[]
+        {
+            Product("content-2", "model-a", "model-a-red"),
+            Product("content-9", "model-b", "model-b-small"),
+            Product("content-3", "model-a", "model-a-blue")
+        }).ToList();
+
+        Assert.Equal(2, groups.Count);
+        Assert.Equal(new[] { "content-2", "content-3" }, groups[0].Select(x => x.ExternalProductId));
+        Assert.Equal(new[] { "content-9" }, groups[1].Select(x => x.ExternalProductId));
+    }
+
     [Fact]
     public void ApprovedProductResponse_PreservesParentVariantsPricesStockAndOptions()
     {
