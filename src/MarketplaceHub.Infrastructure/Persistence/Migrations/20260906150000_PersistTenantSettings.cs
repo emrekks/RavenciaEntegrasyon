@@ -1,9 +1,12 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace MarketplaceHub.Infrastructure.Persistence.Migrations;
 
+[DbContext(typeof(AppDbContext))]
+[Migration("20260906150000_PersistTenantSettings")]
 public partial class PersistTenantSettings : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
