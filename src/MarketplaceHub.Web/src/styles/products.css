@@ -205,7 +205,7 @@
   min-height: 40px !important;
   padding: 7px 9px !important;
   color: #e9ebff;
-  text-align: left;
+  text-align: left !important;
   background: #151a2c !important;
   border: 1px solid #354064;
   border-color: #303a61 !important;
@@ -214,10 +214,10 @@
 }
 .app-shell.stitch-shell .variant-filter-select-trigger:hover,
 .app-shell.stitch-shell .variant-filter-select-trigger.active { background: #1b2240 !important; border-color: #5966b8 !important; }
-.app-shell.stitch-shell .variant-filter-select-trigger > span { display: grid; gap: 3px; min-width: 0; }
+.app-shell.stitch-shell .variant-filter-select-trigger > span { display: grid; flex: 1 1 auto; gap: 3px; min-width: 0; text-align: left !important; }
 .app-shell.stitch-shell .variant-filter-select-trigger small { overflow: hidden; color: #8993b4; font-size: 8px !important; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell .variant-filter-select-trigger strong { overflow: hidden; color: #f1f2ff; font-size: 10px !important; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell.stitch-shell .variant-filter-select-trigger > .ui-icon { flex: 0 0 auto; color: #aeb8e8; width: 15px; height: 15px; transition: transform .16s ease; }
+.app-shell.stitch-shell .variant-filter-select-trigger > .ui-icon { flex: 0 0 auto; margin-left: auto; color: #aeb8e8; width: 15px; height: 15px; transition: transform .16s ease; }
 .app-shell.stitch-shell .variant-filter-select-trigger[aria-expanded="true"] > .ui-icon { transform: rotate(180deg); }
 .app-shell.stitch-shell .variant-filter-dropdown-menu {
   position: absolute;

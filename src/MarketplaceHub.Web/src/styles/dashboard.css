@@ -410,13 +410,13 @@
 }
 .app-shell .dashboard-revenue-axis > span {
   position: absolute;
-  right: 0;
+  left: 0;
   overflow: hidden;
   max-width: 100%;
   color: #858493;
   font-size: 8px;
   line-height: 1;
-  text-align: right;
+  text-align: left;
   text-overflow: ellipsis;
   transform: translateY(50%);
   white-space: nowrap;
@@ -524,9 +524,11 @@
 }
 .app-shell .dashboard-revenue-column > span {
   overflow: hidden;
+  padding-left: 1px;
   color: #aaa9b9;
   font-size: 9px;
   line-height: 18px;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

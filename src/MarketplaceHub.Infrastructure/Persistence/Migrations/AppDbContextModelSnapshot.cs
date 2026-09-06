@@ -3382,6 +3382,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Sku")
                         .IsRequired()
                         .HasMaxLength(160)
@@ -3421,6 +3424,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.HasIndex("TenantId", "ProductId");
+
+                    b.HasIndex("TenantId", "ProductId", "SortOrder");
 
                     b.HasIndex("TenantId", "SkuNormalized")
                         .IsUnique();

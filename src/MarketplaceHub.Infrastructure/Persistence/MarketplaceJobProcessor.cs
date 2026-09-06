@@ -2457,9 +2457,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             await NormalizeLegacyWebColorOptions(tenantId, product.Id, cancellationToken);
             var importedVariants = new List<ProductVariant>(snapshot.Variants.Count);
-            foreach (var remote in snapshot.Variants)
+            foreach (var (remote, sortOrder) in snapshot.Variants.Select((remote, index) => (remote, index)))
             {
-                var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, categoryContext, now, cancellationToken);
+                var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, sortOrder, categoryContext, now, cancellationToken);
                 if (importedVariant is not null) importedVariants.Add(importedVariant);
             }
             if (categoryContext is not null && importedVariants.Count > 0)
@@ -2639,7 +2639,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return category;
     }
 
-    private async Task<ProductVariant?> UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, CategoryAttributeContext? categoryContext, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<ProductVariant?> UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, int sortOrder, CategoryAttributeContext? categoryContext, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var sku = Short(string.IsNullOrWhiteSpace(remote.Sku) ? remote.Barcode ?? remote.ExternalVariantId : remote.Sku, 160);
         var skuNormalized = NormalizeCatalogKey(sku, 160);
@@ -2661,7 +2661,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             variant = await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized, cancellationToken);
         if (variant is null)
         {
-            variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, Sku = sku, SkuNormalized = skuNormalized, Barcode = barcode, BarcodeNormalized = barcodeNormalized, ModelCode = Short(remote.ModelCode, 160), OptionSignature = optionSignature, Status = remote.Archived ? ProductStatus.Archived : ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+            variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = sortOrder, Sku = sku, SkuNormalized = skuNormalized, Barcode = barcode, BarcodeNormalized = barcodeNormalized, ModelCode = Short(remote.ModelCode, 160), OptionSignature = optionSignature, Status = remote.Archived ? ProductStatus.Archived : ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
             db.ProductVariants.Add(variant);
             telemetryInsertedCount++;
         }
@@ -2669,9 +2669,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             var nextModelCode = Short(remote.ModelCode, 160);
             var nextStatus = remote.Archived ? ProductStatus.Archived : ProductStatus.Active;
-            if (variant.Sku != sku || variant.SkuNormalized != skuNormalized || variant.Barcode != barcode || variant.BarcodeNormalized != barcodeNormalized || variant.ModelCode != nextModelCode || variant.OptionSignature != optionSignature || variant.Status != nextStatus)
+            if (variant.SortOrder != sortOrder || variant.Sku != sku || variant.SkuNormalized != skuNormalized || variant.Barcode != barcode || variant.BarcodeNormalized != barcodeNormalized || variant.ModelCode != nextModelCode || variant.OptionSignature != optionSignature || variant.Status != nextStatus)
             {
-                variant.Sku = sku; variant.SkuNormalized = skuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = barcodeNormalized; variant.ModelCode = nextModelCode; variant.OptionSignature = optionSignature; variant.Status = nextStatus; variant.UpdatedAt = now; variant.Version++;
+                variant.SortOrder = sortOrder; variant.Sku = sku; variant.SkuNormalized = skuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = barcodeNormalized; variant.ModelCode = nextModelCode; variant.OptionSignature = optionSignature; variant.Status = nextStatus; variant.UpdatedAt = now; variant.Version++;
                 telemetryUpdatedCount++;
             }
         }

@@ -111,6 +111,7 @@ public sealed class ProductVariant
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid ProductId { get; set; }
+    public int SortOrder { get; set; }
     public required string Sku { get; set; }
     public required string SkuNormalized { get; set; }
     public string? Barcode { get; set; }

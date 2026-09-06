@@ -1864,9 +1864,13 @@
 .app-shell.stitch-shell .orders-page .order-reference-prices > strong {
   display: flex !important;
   align-items: center !important;
+  box-sizing: border-box !important;
   min-height: 0 !important;
   height: 100% !important;
   padding: 10px !important;
+}
+.app-shell.stitch-shell .orders-page .order-reference-prices > strong:not(:last-child) {
+  border-bottom: 1px solid #1e202f !important;
 }
 .app-shell.stitch-shell .orders-page .order-reference-meta > span {
   font-size: .58rem !important;
