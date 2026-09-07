@@ -312,7 +312,7 @@
   .order-reference-table { width: 100%; min-width: 0; overflow: visible; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
   /* Returns use one continuous table surface: the header must never float over
      the first record while the page scrolls. */
-  .return-reference-table { width: 100%; min-width: 1240px; overflow: visible; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
+  .return-reference-table { width: 100%; min-width: 0; overflow-x: auto; overflow-y: visible; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
   .order-reference-head, .order-reference-grid, .return-reference-head, .return-reference-row { display: grid; grid-template-columns: 36px minmax(170px, .95fr) minmax(110px, .62fr) minmax(260px, 1.65fr) minmax(92px, .55fr) minmax(132px, .75fr) minmax(170px, .95fr) minmax(150px, .8fr); align-items: stretch; }
   .return-reference-head, .return-reference-row { grid-template-columns: minmax(170px, .95fr) minmax(110px, .62fr) minmax(300px, 1.8fr) minmax(92px, .55fr) minmax(132px, .75fr) minmax(170px, .95fr) minmax(160px, .9fr) minmax(150px, .8fr); }
   .order-reference-head, .return-reference-head { position: sticky; top: 68px; z-index: 20; min-height: 52px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
@@ -1059,7 +1059,7 @@
   .order-label-actions { display: grid; gap: var(--rv-space-2); }
   .order-label-action { width: 100%; min-height: 42px; }
   .order-label-action .ui-icon { width: 14px; height: 14px; }
-  .return-reference-workspace { min-width: 0; overflow: hidden; }
+  .return-reference-workspace { min-width: 0; overflow: visible; }
   .return-reference-head, .return-reference-row { min-width: 1240px; }
   .return-reference-row > * { overflow-wrap: anywhere; }
   .return-reference-status { min-width: 0; }
