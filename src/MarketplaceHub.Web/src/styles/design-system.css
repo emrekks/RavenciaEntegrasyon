@@ -287,20 +287,21 @@
   .order-search { min-width: 0; }
   .order-search input { min-width: 0; }
   /* Orders and returns share the same record geometry. Each record is its own card. */
+  .orders-page { min-width: 0; }
   .orders-reference-filter-shell, .returns-reference-filter-shell { display: grid; gap: var(--rv-space-3); margin-bottom: var(--rv-space-5); }
-  .order-tabs, .return-reference-tabs { display: flex; gap: var(--rv-space-1); overflow-x: auto; padding: var(--rv-space-1); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
-  .order-tabs button, .return-reference-tabs button { display: grid; min-width: max-content; gap: 2px; min-height: 52px; padding: var(--rv-space-2) var(--rv-space-4); color: var(--rv-color-muted); background: transparent; border: 1px solid transparent; border-radius: var(--rv-radius-md); text-align: left; }
+  .order-tabs, .return-reference-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(112px, 1fr); gap: var(--rv-space-1); overflow-x: auto; padding: var(--rv-space-1); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); scrollbar-width: thin; }
+  .order-tabs button, .return-reference-tabs button { display: grid; min-width: 0; gap: 2px; min-height: 64px; padding: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-muted); background: transparent; border: 1px solid transparent; border-radius: var(--rv-radius-md); text-align: left; }
   .order-tabs button b, .return-reference-tabs button small { color: inherit; font-size: var(--rv-font-size-xs); }
   .order-tabs button.active, .order-tabs button[aria-selected="true"], .return-reference-tabs button.active, .return-reference-tabs button[aria-selected="true"] { color: #fff; background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
   .order-filter-panel { display: grid; gap: var(--rv-space-3); padding: var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
   .order-filter-primary, .order-filter-advanced { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--rv-space-3); align-items: end; }
   .order-filter-primary label, .order-filter-advanced label { display: grid; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
   .filter-actions, .order-filter-actions, .return-filter-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--rv-space-2); }
-  .order-reference-table { min-width: 1240px; overflow: visible; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
+  .order-reference-table { width: 100%; min-width: 0; overflow: visible; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
   .return-reference-table { min-width: 1240px; overflow: visible; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
-  .order-reference-head, .order-reference-grid, .return-reference-head, .return-reference-row { display: grid; grid-template-columns: 36px minmax(170px, .95fr) minmax(110px, .62fr) minmax(300px, 1.8fr) minmax(92px, .55fr) minmax(132px, .75fr) minmax(170px, .95fr) minmax(150px, .8fr); align-items: stretch; }
+  .order-reference-head, .order-reference-grid, .return-reference-head, .return-reference-row { display: grid; grid-template-columns: 36px minmax(170px, .95fr) minmax(110px, .62fr) minmax(260px, 1.65fr) minmax(92px, .55fr) minmax(132px, .75fr) minmax(170px, .95fr) minmax(150px, .8fr); align-items: stretch; }
   .return-reference-head, .return-reference-row { grid-template-columns: minmax(170px, .95fr) minmax(110px, .62fr) minmax(300px, 1.8fr) minmax(92px, .55fr) minmax(132px, .75fr) minmax(170px, .95fr) minmax(160px, .9fr) minmax(150px, .8fr); }
-  .order-reference-head, .return-reference-head { position: sticky; top: 68px; z-index: 10; min-height: 48px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .order-reference-head, .return-reference-head { position: sticky; top: 68px; z-index: 20; min-height: 52px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
   .order-reference-head { margin: -1px -1px 0; border-radius: var(--rv-radius-lg) var(--rv-radius-lg) 0 0; }
   .order-reference-head > *, .return-reference-head > * { display: flex; min-width: 0; align-items: center; padding: var(--rv-space-3); border-right: 1px solid var(--rv-color-border); }
   .order-reference-head > *:last-child, .return-reference-head > *:last-child { border-right: 0; }
@@ -324,7 +325,7 @@
   .order-reference-products img, .reference-product-placeholder { width: 58px; height: auto; aspect-ratio: 2 / 3; object-fit: cover; border-radius: var(--rv-radius-sm); }
   .reference-product-placeholder { display: grid; place-items: center; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); }
   .order-reference-products article > div { display: grid; gap: 3px; min-width: 0; }
-  .order-reference-products strong { overflow: hidden; text-overflow: ellipsis; }
+  .order-reference-products strong { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-height: 1.4; }
   .order-reference-products small, .order-reference-meta small, .order-reference-invoice small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
   .order-number { display: inline-flex; align-items: center; gap: var(--rv-space-1); }
   .order-number > strong { color: var(--rv-color-primary); }
@@ -333,13 +334,19 @@
   .cargo-provider-display { display: grid; justify-items: center; gap: 3px; }
   .cargo-provider-icon { max-width: 100%; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 800; text-align: center; }
   .order-reference-cargo > b { color: var(--rv-color-ink); font-family: var(--rv-font-mono); font-size: var(--rv-font-size-xs); overflow-wrap: anywhere; }
-  .row-menu { position: relative; }
+  .row-menu { position: relative; min-width: 0; }
   .row-menu-trigger, .order-column-filter-trigger { display: inline-flex; min-height: var(--rv-control-height-sm); align-items: center; justify-content: space-between; gap: var(--rv-space-2); padding: 0 var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); }
-  .order-column-filter { display: flex; min-width: 0; align-items: center; }
+  .order-column-filter { position: relative; display: flex; min-width: 0; align-items: center; }
   .order-column-filter-trigger { width: 100%; }
   .order-column-filter-trigger .order-filter-funnel { width: 14px; height: 14px; flex: 0 0 14px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
   .order-column-filter.has-filter .order-column-filter-trigger { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
-  .row-menu > div, .order-column-filter-popover { position: absolute; right: 0; z-index: var(--rv-z-dropdown); display: grid; min-width: 210px; gap: var(--rv-space-1); padding: var(--rv-space-2); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
+  .row-menu > div, .order-column-filter-popover { position: absolute; top: calc(100% + var(--rv-space-2)); right: 0; z-index: var(--rv-z-dropdown); display: grid; min-width: 220px; gap: var(--rv-space-2); padding: var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); font-size: var(--rv-font-size-sm); font-weight: 600; letter-spacing: normal; text-align: left; text-transform: none; }
+  .row-menu > div.opens-up { top: auto; bottom: calc(100% + var(--rv-space-2)); }
+  .row-menu > div.opens-down { top: calc(100% + var(--rv-space-2)); bottom: auto; }
+  .order-column-filter-popover { width: max-content; min-width: 260px; }
+  .order-column-filter-popover.invoice-filter-popover { min-width: 300px; }
+  .order-column-filter-popover label { display: grid; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
+  .order-column-filter-popover select { width: 100%; min-width: 0; }
   .row-menu > div button, .order-column-filter-popover button { min-height: 36px; justify-content: flex-start; color: var(--rv-color-ink); background: transparent; border: 0; text-align: left; }
   .row-menu > div button:hover, .order-column-filter-popover button:hover { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
   .return-reference-row { grid-template-columns: minmax(170px, .95fr) minmax(110px, .62fr) minmax(300px, 1.8fr) minmax(92px, .55fr) minmax(132px, .75fr) minmax(170px, .95fr) minmax(160px, .9fr) minmax(150px, .8fr); }
@@ -947,11 +954,13 @@
   .job-detail-facts p, .jobs-reference-order-facts p { display: grid; gap: 2px; margin: 0; padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .job-detail-facts small, .jobs-reference-order-facts small { color: var(--rv-color-muted); }
 
-  /* Orders and returns need a real horizontal data surface at desktop widths;
-     body overflow is intentionally hidden, so the table owns its scroll. */
+  /* Orders stay as one continuous desktop surface. Returns keep their own scroll
+     because they carry an additional status column. */
   .orders-page .order-tabs, .reference-returns-page .return-reference-tabs { min-width: 0; }
-  .order-reference-table, .return-reference-table { overflow-x: auto; overflow-y: visible; }
-  .order-reference-head, .order-reference-grid, .return-reference-head, .return-reference-row { min-width: 1240px; }
+  .order-reference-table { overflow: visible; }
+  .return-reference-table { overflow-x: auto; overflow-y: visible; }
+  .order-reference-head, .order-reference-grid { min-width: 1180px; }
+  .return-reference-head, .return-reference-row { min-width: 1240px; }
   .order-reference-head > *, .return-reference-head > * { white-space: nowrap; }
   .order-reference-grid > *, .return-reference-row > * { overflow-wrap: anywhere; }
   .order-reference-products > article { min-height: 86px; }
@@ -987,6 +996,8 @@
   .product-pricing-card .product-step-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .product-basics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .product-basics-grid .product-title-field, .product-basics-grid .product-brand-field { grid-column: 1 / -1; }
+  .order-reference-table { overflow-x: auto; overflow-y: visible; }
+  .order-reference-head { top: 0; }
 }
 
 @media (max-width: 900px) {
