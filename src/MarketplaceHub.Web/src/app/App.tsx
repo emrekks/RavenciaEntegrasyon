@@ -139,49 +139,39 @@ function Login() {
     }
   }
 
-  return <main className="rv-auth-page">
-    <section className="rv-auth-showcase" aria-label="Ravencia operasyon merkezi">
-      <div className="rv-auth-topline">
-        <div className="rv-auth-brand">
-          <img className="rv-auth-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" />
-          <div><img className="rv-auth-wordmark" src="/pack/brand/ravencia-wordmark-transparent.png" alt="Ravencia" /><small>MARKETPLACEHUB</small></div>
-        </div>
-        <span className="rv-auth-live"><i /> Sistemler aktif</span>
+  return <main className="rv-auth-page rv-auth-cyber">
+    <div className="rv-auth-cyber-grid" aria-hidden="true" />
+    <section className="rv-auth-visual" aria-label="Ravencia operasyon merkezi">
+      <header className="rv-auth-brandbar">
+        <div className="rv-auth-brand-lockup"><img className="rv-auth-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" /><img className="rv-auth-wordmark" src="/pack/brand/ravencia-wordmark-transparent.png" alt="Ravencia MarketplaceHub" /></div>
+        <span className="rv-auth-system-state"><i /> SYSTEM ONLINE</span>
+      </header>
+      <div className="rv-auth-hero">
+        <div className="rv-auth-hero-meta"><span>RV / 01</span><span>OPERATIONS CORE</span></div>
+        <h1>Marketplace<br /><em>operations</em><br />reimagined.</h1>
+        <p className="rv-auth-hero-lede">Sipariş, stok ve entegrasyon akışlarını tek bir komuta merkezinden yönetin.</p>
+        <div className="rv-auth-signal-row" aria-label="Operasyon sinyalleri"><span><b>01</b><small>ORDER FLOW</small></span><span><b>02</b><small>LIVE SYNC</small></span><span><b>03</b><small>SECURE DATA</small></span></div>
       </div>
-
-      <div className="rv-auth-intro">
-        <p className="rv-auth-kicker"><span /> Operasyon merkezi</p>
-        <h1>İşinizi <em>tek akışta</em> yönetin.</h1>
-        <p className="rv-auth-lede">Siparişten iadeye, stoktan faturaya kadar tüm pazaryeri operasyonunuzu Ravencia’nın güvenli merkezinde birleştirin.</p>
-      </div>
-
-      <div className="rv-auth-flow" aria-label="Operasyon akışları">
-        <article><span className="rv-auth-flow-icon"><UiIcon name="orders" /></span><div><strong>Siparişler</strong><small>Tek merkezden takip</small></div></article>
-        <article><span className="rv-auth-flow-icon"><UiIcon name="sync" /></span><div><strong>Senkronizasyon</strong><small>Güvenli veri akışı</small></div></article>
-        <article><span className="rv-auth-flow-icon"><UiIcon name="returns" /></span><div><strong>İadeler</strong><small>Kontrollü operasyon</small></div></article>
-      </div>
-
-      <div className="rv-auth-trust"><span><UiIcon name="check" /> Yerel veri katmanı</span><span><UiIcon name="check" /> İzlenebilir işlemler</span><span><UiIcon name="check" /> 7/24 kontrol</span></div>
+      <footer className="rv-auth-visual-footer"><span>RAVENCIA / MARKETPLACEHUB</span><span>07—09—2026</span></footer>
     </section>
 
-    <section className="rv-auth-panel">
-      <div className="rv-auth-card">
-        <div className="rv-auth-card-glow" aria-hidden="true" />
-        <header className="rv-auth-card-header">
-          <span className="rv-auth-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-5"/></svg></span>
-          <div><p>Özel erişim</p><h2>Çalışma alanına giriş</h2><span>Yetkili hesabınızla devam edin.</span></div>
-        </header>
-
-        <form className="rv-auth-form" onSubmit={submit}>
-          <div className="rv-auth-field"><label htmlFor="login-email">E-posta adresi</label><div className="rv-auth-control"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="m4 7 8 6 8-6"/></svg><input id="login-email" name="email" type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="username" placeholder="ornek@ravencia.com" autoFocus /></div></div>
-          <div className="rv-auth-field"><div className="rv-auth-label-row"><label htmlFor="login-password">Parola</label><button type="button" onClick={() => setError('Parola sıfırlama için sistem yöneticinizle iletişime geçin.')}>Parolamı unuttum</button></div><div className="rv-auth-control"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input id="login-password" name="password" type={showPw ? 'text' : 'password'} required autoComplete="current-password" placeholder="Parolanızı girin" /><button type="button" className="rv-auth-password-toggle" aria-label={showPw ? 'Parolayı gizle' : 'Parolayı göster'} onClick={() => setShowPw(value => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div>
-          {tenantOptions.length > 0 && <div className="rv-auth-field"><label htmlFor="login-tenant">Çalışma alanı</label><select id="login-tenant" value={tenantId} onChange={event => setTenantId(event.target.value)} required><option value="">Çalışma alanı seçin</option>{tenantOptions.map(option => <option key={option.id} value={option.id}>{option.displayName}</option>)}</select></div>}
-          <label className="rv-auth-remember"><input type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} /><span>E-posta adresimi bu cihazda hatırla</span></label>
-          {error && <div className="rv-auth-error" role="alert"><i /><span>{error}</span></div>}
-          <button className="rv-auth-submit" type="submit" disabled={loading}>{loading ? <><i /> Oturum doğrulanıyor…</> : <><span>Güvenli giriş yap</span><UiIcon name="arrowRight" /></>}</button>
-        </form>
-
-        <footer className="rv-auth-footer"><span><i /> TLS ile şifrelenmiş bağlantı</span><small>Ravencia · Yetkili erişim</small></footer>
+    <section className="rv-auth-login-panel">
+      <div className="rv-auth-login-shell">
+        <div className="rv-auth-login-top"><span>ACCESS GATE <b>02</b></span><span><i /> ENCRYPTED SESSION</span></div>
+        <div className="rv-auth-card">
+          <div className="rv-auth-card-glow" aria-hidden="true" />
+          <header className="rv-auth-login-header"><div className="rv-auth-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z" /><path d="m9 12 2 2 4-5" /></svg></div><div><p>YETKİLİ ERİŞİM</p><h2>Komuta merkezine<br />giriş yapın.</h2><span>Ravencia hesabınızla devam edin.</span></div></header>
+          <div className="rv-auth-progress" aria-hidden="true"><span /><span /><span /></div>
+          <form className="rv-auth-form" onSubmit={submit}>
+            <div className="rv-auth-field"><label htmlFor="login-email">E-posta adresi</label><div className="rv-auth-control"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z" /><path d="m4 7 8 6 8-6" /></svg><input id="login-email" name="email" type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="username" placeholder="ornek@ravencia.com" autoFocus /></div></div>
+            <div className="rv-auth-field"><div className="rv-auth-label-row"><label htmlFor="login-password">Parola</label><button type="button" onClick={() => setError('Parola sıfırlama için sistem yöneticinizle iletişime geçin.')}>Parolamı unuttum</button></div><div className="rv-auth-control"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><input id="login-password" name="password" type={showPw ? 'text' : 'password'} required autoComplete="current-password" placeholder="Parolanızı girin" /><button type="button" className="rv-auth-password-toggle" aria-label={showPw ? 'Parolayı gizle' : 'Parolayı göster'} onClick={() => setShowPw(value => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg></button></div></div>
+            {tenantOptions.length > 0 && <div className="rv-auth-field"><label htmlFor="login-tenant">Çalışma alanı</label><select id="login-tenant" value={tenantId} onChange={event => setTenantId(event.target.value)} required><option value="">Çalışma alanı seçin</option>{tenantOptions.map(option => <option key={option.id} value={option.id}>{option.displayName}</option>)}</select></div>}
+            <label className="rv-auth-remember"><input type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} /><span>E-posta adresimi bu cihazda hatırla</span></label>
+            {error && <div className="rv-auth-error" role="alert"><i /><span>{error}</span></div>}
+            <button className="rv-auth-submit" type="submit" disabled={loading}>{loading ? <><i /> Oturum doğrulanıyor…</> : <><span>Güvenli giriş yap</span><UiIcon name="arrowRight" /></>}</button>
+          </form>
+          <footer className="rv-auth-footer"><span><i /> TLS ile şifrelenmiş bağlantı</span><small>Ravencia · Yetkili erişim</small></footer>
+        </div>
       </div>
     </section>
   </main>

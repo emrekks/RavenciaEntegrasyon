@@ -498,6 +498,54 @@
   .rv-auth-footer span { display: inline-flex; align-items: center; gap: var(--rv-space-2); }
   .rv-auth-footer small { text-align: right; }
 
+  /* Cyber access surface: a separate composition with a fixed visual rhythm. */
+  .rv-auth-cyber { grid-template-columns: minmax(0, 1.22fr) minmax(480px, .78fr); background: #07111f; }
+  .rv-auth-cyber::before { background: linear-gradient(90deg, transparent 0 57.9%, rgb(104 151 210 / 24%) 58%, transparent 58.1%), linear-gradient(160deg, transparent 0 48%, rgb(58 212 194 / 9%) 48.1%, transparent 48.2%); opacity: .72; }
+  .rv-auth-cyber::after { top: 8%; right: 34%; width: 520px; height: 520px; background: var(--rv-color-primary); filter: blur(150px); opacity: .11; }
+  .rv-auth-cyber-grid { position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: linear-gradient(rgb(144 183 229 / 6%) 1px, transparent 1px), linear-gradient(90deg, rgb(144 183 229 / 6%) 1px, transparent 1px); background-size: 64px 64px; mask-image: linear-gradient(90deg, rgb(0 0 0 / 72%), transparent 78%); }
+  .rv-auth-visual, .rv-auth-login-panel { position: relative; z-index: 1; min-width: 0; min-height: 100dvh; }
+  .rv-auth-visual { display: flex; flex-direction: column; justify-content: space-between; gap: var(--rv-space-8); padding: clamp(32px, 5vw, 84px); border-right: 1px solid rgb(144 183 229 / 20%); }
+  .rv-auth-brandbar { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-5); }
+  .rv-auth-brand-lockup { display: flex; align-items: center; gap: var(--rv-space-3); }
+  .rv-auth-brand-lockup .rv-auth-symbol { width: 52px; height: 52px; }
+  .rv-auth-brand-lockup .rv-auth-wordmark { width: 150px; }
+  .rv-auth-system-state, .rv-auth-login-top, .rv-auth-hero-meta, .rv-auth-visual-footer { color: #8fa9c7; font-family: var(--rv-font-mono); font-size: 10px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+  .rv-auth-system-state { display: inline-flex; align-items: center; gap: 9px; }
+  .rv-auth-system-state i, .rv-auth-login-top i { width: 7px; height: 7px; flex: 0 0 7px; background: var(--rv-color-accent); border-radius: 50%; box-shadow: 0 0 0 4px rgb(57 207 187 / 12%), 0 0 18px rgb(57 207 187 / 72%); }
+  .rv-auth-hero { max-width: 720px; margin-block: auto; padding-block: clamp(40px, 10vh, 140px); }
+  .rv-auth-hero-meta { display: flex; gap: var(--rv-space-5); margin-bottom: var(--rv-space-5); color: var(--rv-color-accent); }
+  .rv-auth-hero-meta span:first-child { color: #8fa9c7; }
+  .rv-auth-hero h1 { max-width: 720px; margin: 0 0 var(--rv-space-5); color: #f1f7ff; font-size: clamp(3.2rem, 7vw, 7.4rem); font-weight: 850; line-height: .91; letter-spacing: -.075em; }
+  .rv-auth-hero h1 em { color: transparent; background: linear-gradient(110deg, #77b8ff, #4fe2c9); background-clip: text; font-style: normal; }
+  .rv-auth-hero-lede { max-width: 480px; margin: 0; color: #a6bdd8; font-size: clamp(1rem, 1.35vw, 1.18rem); line-height: 1.65; }
+  .rv-auth-signal-row { display: flex; flex-wrap: wrap; gap: var(--rv-space-6); margin-top: clamp(28px, 5vh, 54px); padding-top: var(--rv-space-4); border-top: 1px solid rgb(144 183 229 / 20%); }
+  .rv-auth-signal-row span { display: grid; gap: 5px; min-width: 110px; }
+  .rv-auth-signal-row b { color: var(--rv-color-accent); font-family: var(--rv-font-mono); font-size: 11px; }
+  .rv-auth-signal-row small { color: #8fa9c7; font-family: var(--rv-font-mono); font-size: 10px; letter-spacing: .12em; }
+  .rv-auth-visual-footer { display: flex; justify-content: space-between; gap: var(--rv-space-4); padding-top: var(--rv-space-4); color: #6f89a8; border-top: 1px solid rgb(144 183 229 / 15%); }
+  .rv-auth-login-panel { display: flex; align-items: center; justify-content: center; padding: clamp(24px, 5vw, 84px); background: rgb(6 16 30 / 74%); }
+  .rv-auth-login-shell { width: min(100%, 500px); }
+  .rv-auth-login-top { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); margin-bottom: var(--rv-space-3); color: #718baa; }
+  .rv-auth-login-top span:last-child { display: inline-flex; align-items: center; gap: 8px; }
+  .rv-auth-login-top b { color: var(--rv-color-primary); font-weight: 700; }
+  .rv-auth-cyber .rv-auth-card { width: 100%; padding: clamp(28px, 4vw, 44px); background: linear-gradient(145deg, rgb(18 34 57 / 97%), rgb(8 20 36 / 97%)); border: 1px solid rgb(119 172 232 / 32%); border-radius: 18px; box-shadow: 0 32px 100px rgb(0 0 0 / 34%), inset 0 1px rgb(255 255 255 / 5%); }
+  .rv-auth-cyber .rv-auth-card-glow { top: -120px; right: -100px; width: 270px; height: 270px; background: #4fe2c9; filter: blur(100px); opacity: .09; }
+  .rv-auth-login-header { position: relative; display: flex; align-items: flex-start; gap: var(--rv-space-4); }
+  .rv-auth-login-header h2, .rv-auth-login-header p, .rv-auth-login-header span { margin: 0; }
+  .rv-auth-login-header p { margin-bottom: 7px; color: var(--rv-color-accent); font-family: var(--rv-font-mono); font-size: 10px; font-weight: 800; letter-spacing: .13em; }
+  .rv-auth-login-header h2 { color: #f1f7ff; font-size: clamp(1.55rem, 2.5vw, 2rem); line-height: 1.08; letter-spacing: -.035em; }
+  .rv-auth-login-header span { display: block; margin-top: 8px; color: #91a8c3; font-size: var(--rv-font-size-sm); }
+  .rv-auth-cyber .rv-auth-card-icon { width: 50px; height: 50px; flex: 0 0 50px; color: var(--rv-color-accent); background: rgb(57 207 187 / 10%); border-color: rgb(57 207 187 / 30%); border-radius: 13px; }
+  .rv-auth-progress { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: var(--rv-space-6); }
+  .rv-auth-progress span { height: 3px; background: rgb(119 172 232 / 18%); border-radius: 99px; }
+  .rv-auth-progress span:first-child { background: linear-gradient(90deg, var(--rv-color-primary), var(--rv-color-accent)); }
+  .rv-auth-cyber .rv-auth-form { margin-top: var(--rv-space-6); }
+  .rv-auth-cyber .rv-auth-field label, .rv-auth-cyber .rv-auth-label-row label { color: #d8e7f7; }
+  .rv-auth-cyber .rv-auth-control, .rv-auth-cyber .rv-auth-field > select { background: rgb(5 15 28 / 74%); border-color: rgb(119 172 232 / 32%); border-radius: 11px; }
+  .rv-auth-cyber .rv-auth-control:focus-within { background: rgb(8 23 40 / 92%); border-color: #72b7ff; box-shadow: 0 0 0 4px rgb(92 168 247 / 14%), 0 0 24px rgb(92 168 247 / 10%); }
+  .rv-auth-cyber .rv-auth-submit { min-height: 54px; background: linear-gradient(105deg, #4f9dff, #35cbb9); border-radius: 11px; box-shadow: 0 14px 28px rgb(45 170 206 / 20%); }
+  .rv-auth-cyber .rv-auth-footer { margin-top: var(--rv-space-5); color: #718baa; border-top-color: rgb(119 172 232 / 20%); }
+
   /* Shared primitives have one declaration site. Feature pages consume these
      contracts instead of layering page-specific replacements over them. */
   .rv-field { display: grid; gap: var(--rv-space-2); min-width: 0; color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); font-weight: 700; }
@@ -555,6 +603,8 @@
 @media (max-width: 1200px) {
   .content { padding-inline: 28px; }
   .rv-auth-page { grid-template-columns: minmax(0, 1fr) minmax(400px, .78fr); }
+  .rv-auth-cyber { grid-template-columns: minmax(0, 1fr) minmax(420px, .8fr); }
+  .rv-auth-hero h1 { font-size: clamp(3rem, 6vw, 5.8rem); }
   .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-report-grid { grid-template-columns: 1fr; }
   .dashboard-bottom-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -581,6 +631,8 @@
   .rv-auth-page { grid-template-columns: 1fr; }
   .rv-auth-showcase { display: none; }
   .rv-auth-panel { min-height: 100dvh; padding: 24px; }
+  .rv-auth-visual { display: none; }
+  .rv-auth-login-panel { min-height: 100dvh; padding: 24px; }
 }
 
 @media (max-width: 700px) {
@@ -620,6 +672,9 @@
   .shipping-designer-format-tabs button { flex: 1; }
   .rv-filter-actions > * { flex: 1; }
   .rv-modal-body, .rv-drawer-body { padding: var(--rv-space-4); }
+  .rv-auth-login-panel { padding: 16px; }
+  .rv-auth-login-top { font-size: 9px; }
+  .rv-auth-cyber .rv-auth-card { padding: 24px 20px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
