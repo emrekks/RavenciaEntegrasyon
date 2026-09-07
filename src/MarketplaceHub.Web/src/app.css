@@ -1,8 +1,5 @@
 /* Single stylesheet entrypoint. Route CSS is intentionally not imported here. */
 @import './styles/tokens.css' layer(tokens);
-@import './styles/design-components.css' layer(design-components);
-@import './styles/design-layouts.css' layer(design-layouts);
-@import './styles/design-features.css' layer(features);
 @import './styles/design-system.css';
 
 @layer reset, tokens, base, components, layouts, features, utilities;
