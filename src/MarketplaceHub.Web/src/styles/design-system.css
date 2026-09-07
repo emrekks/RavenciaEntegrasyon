@@ -202,8 +202,8 @@
   .product-toolbar { display: grid; grid-template-columns: auto minmax(240px, 1fr) repeat(2, minmax(130px, .35fr)); gap: var(--rv-space-3); align-items: center; padding: var(--rv-space-3); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
   .product-toolbar .order-search { position: relative; }
   .product-toolbar .order-search input { padding-left: var(--rv-space-5); }
-  .product-catalog-table { min-width: 1120px; }
-  .product-catalog-head, .product-catalog-row { display: grid; grid-template-columns: 40px 56px minmax(300px, 2fr) minmax(110px, .7fr) minmax(100px, .65fr) minmax(90px, .55fr) minmax(120px, .75fr) minmax(120px, .75fr) minmax(92px, .5fr); align-items: center; }
+  .product-catalog-table { min-width: 1280px; }
+  .product-catalog-head, .product-catalog-row { display: grid; grid-template-columns: 40px 56px minmax(300px, 2fr) minmax(140px, .8fr) minmax(110px, .65fr) minmax(90px, .55fr) minmax(120px, .75fr) minmax(120px, .75fr) minmax(92px, .5fr); align-items: center; }
   .product-catalog-head { min-height: 46px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
   .product-catalog-head > * { min-width: 0; padding-inline: var(--rv-space-3); }
   .product-select-all { grid-column: 1 / span 3; display: flex; align-items: center; gap: var(--rv-space-2); }
@@ -223,6 +223,7 @@
   .product-list-identity > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .product-list-identity small, .product-list-platforms small, .product-list-status small { overflow: hidden; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
   .product-list-variants { display: grid; grid-column: 4; gap: 2px; align-content: center; min-width: 0; }
+  .product-list-variants strong, .product-list-variants span { white-space: nowrap; }
   .product-list-price { grid-column: 5; }
   .product-list-stock { grid-column: 6; }
   .product-list-platforms { grid-column: 7; display: grid; justify-items: start; gap: 3px; }
