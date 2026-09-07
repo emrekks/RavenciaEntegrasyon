@@ -6,7 +6,7 @@ import { UiIcon, type UiIconName } from '../shared/components'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, InventoryPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, BillingSettingsPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
-import { appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, appearanceThemeModeOptions, useAppearanceSettings, type AppearanceSettings } from '../features/settings/appearance-settings'
+import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, appearanceThemeModeOptions, defaultAppearanceSettings, useAppearanceSettings, type AppearanceColorTheme, type AppearanceSettings } from '../features/settings/appearance-settings'
 
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
@@ -15,6 +15,7 @@ function Shell({ me }: { me: Me }) {
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') === 'true')
   const sidebarHoverTimer = useRef<number | null>(null)
   const sidebarRef = useRef<HTMLElement>(null)
+  const appearanceColorsKey = JSON.stringify(appearanceSettings.settings.colors)
   async function logout() { await api('/logout', { method: 'POST' }); window.location.replace(`/?signedOut=${Date.now()}`) }
   const sidebarExpanded = sidebarPinned || sidebarHoverExpanded
   const menuCollapsed = !sidebarExpanded
@@ -26,11 +27,13 @@ function Shell({ me }: { me: Me }) {
       const resolvedTheme = appearanceSettings.settings.themeMode === 'system' ? (media.matches ? 'dark' : 'light') : appearanceSettings.settings.themeMode
       document.documentElement.dataset.theme = resolvedTheme
       document.documentElement.dataset.themeMode = appearanceSettings.settings.themeMode
+      const palette = appearanceSettings.settings.colors[resolvedTheme]
+      appearanceColorTokenOptions.forEach(({ key }) => document.documentElement.style.setProperty(appearanceColorCssVariable(key), palette[key]))
     }
     applyTheme()
     media.addEventListener('change', applyTheme)
     return () => media.removeEventListener('change', applyTheme)
-  }, [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize, appearanceSettings.settings.themeMode])
+  }, [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize, appearanceSettings.settings.themeMode, appearanceColorsKey])
   const pageNames: Record<string, string> = { '/dashboard': 'Dashboard', '/products': 'Ürünler', '/products/new': 'Yeni ürün', '/orders': 'Siparişler', '/returns': 'İadeler', '/jobs': 'İşlem takibi', '/integrations': 'Platformlar', '/mappings/categories': 'Eşleştirme ayarları', '/settings': 'Sistem ayarları', '/settings/appearance': 'Görünüm ayarları' }
   const pageName = pageNames[location.pathname] ?? (location.pathname.startsWith('/products/') ? 'Ürün detayları' : location.pathname.startsWith('/returns/') ? 'İade detayları' : 'Ravencia')
   async function toggleTheme() {
@@ -411,6 +414,7 @@ function AppearanceSettingsPage() {
   const appearance = useAppearanceSettings()
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [colorTheme, setColorTheme] = useState<AppearanceColorTheme>('dark')
 
   async function save() {
     setBusy(true)
@@ -427,7 +431,13 @@ function AppearanceSettingsPage() {
 
   const previewStyle: CSSProperties = {
     fontFamily: appearanceFontFamilyCss[appearance.draft.fontFamily],
-    fontSize: `${appearanceFontScale[appearance.draft.fontSize]}rem`
+    fontSize: `${appearanceFontScale[appearance.draft.fontSize]}rem`,
+    ...Object.fromEntries(appearanceColorTokenOptions.map(({ key }) => [appearanceColorCssVariable(key), appearance.draft.colors[colorTheme][key]]))
+  }
+
+  const palette = appearance.draft.colors[colorTheme]
+  function updateColor(key: typeof appearanceColorTokenOptions[number]['key'], value: string) {
+    appearance.setDraft({ ...appearance.draft, colors: { ...appearance.draft.colors, [colorTheme]: { ...appearance.draft.colors[colorTheme], [key]: value } } })
   }
 
   const navigate = useNavigate()
@@ -449,6 +459,10 @@ function AppearanceSettingsPage() {
         <label><span>Yazı boyutu</span><select value={appearance.draft.fontSize} onChange={event => appearance.setDraft({ ...appearance.draft, fontSize: event.target.value as AppearanceSettings['fontSize'] })}>{appearanceFontSizeOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></label>
         <label><span>Tema</span><select value={appearance.draft.themeMode} onChange={event => appearance.setDraft({ ...appearance.draft, themeMode: event.target.value as AppearanceSettings['themeMode'] })}>{appearanceThemeModeOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></label>
       </div>
+      <section className="appearance-color-editor">
+        <div className="appearance-color-editor-heading"><div><h2>Renk paleti</h2><p>Her renk tokenını ayrı ayrı düzenleyin. Değişiklikler seçilen tema için kaydedilir.</p></div><div className="appearance-color-actions"><div className="rv-tabs appearance-color-theme-tabs" role="tablist" aria-label="Renk teması"><button type="button" role="tab" aria-selected={colorTheme === 'light'} className={colorTheme === 'light' ? 'is-active' : ''} onClick={() => setColorTheme('light')}>Açık tema</button><button type="button" role="tab" aria-selected={colorTheme === 'dark'} className={colorTheme === 'dark' ? 'is-active' : ''} onClick={() => setColorTheme('dark')}>Koyu tema</button></div><button type="button" className="rv-button rv-button-secondary rv-button-sm" onClick={() => appearance.setDraft({ ...appearance.draft, colors: { ...appearance.draft.colors, [colorTheme]: { ...defaultAppearanceSettings.colors[colorTheme] } } })}>Varsayılanlara dön</button></div></div>
+        <div className="appearance-color-grid">{appearanceColorTokenOptions.map(({ key, label, description }) => <label className="appearance-color-field" key={key}><span><b>{label}</b><small>{description}</small></span><span className="appearance-color-control"><input type="color" value={palette[key]} onChange={event => updateColor(key, event.target.value)} aria-label={`${label} rengi`} /><code>{palette[key].toUpperCase()}</code></span></label>)}</div>
+      </section>
       <div className="appearance-preview" style={previewStyle}><small>Önizleme</small><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p></div>
       <button type="button" onClick={() => void save()} disabled={busy}>{busy ? 'Kaydediliyor…' : 'Görünüm ayarlarını kaydet'}</button>
     </section>

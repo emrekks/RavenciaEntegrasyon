@@ -5,11 +5,18 @@ import { hubApi } from '../../shared/api'
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
 export type AppearanceFontSize = 'small' | 'normal' | 'large' | 'extra-large'
 export type AppearanceThemeMode = 'system' | 'light' | 'dark'
+export type AppearanceColorTheme = 'light' | 'dark'
+export type AppearanceColorToken = 'bg' | 'surface' | 'surfaceRaised' | 'surfaceSoft' | 'border' | 'borderStrong' | 'ink' | 'muted' | 'subtle' | 'primary' | 'primaryHover' | 'primarySoft' | 'accent' | 'accentSoft' | 'warning' | 'warningSoft' | 'danger' | 'dangerSoft' | 'info'
+
+export type AppearancePalette = Record<AppearanceColorToken, string>
+
+export type AppearanceColors = Record<AppearanceColorTheme, AppearancePalette>
 
 export type AppearanceSettings = {
   fontFamily: AppearanceFontFamily
   fontSize: AppearanceFontSize
   themeMode: AppearanceThemeMode
+  colors: AppearanceColors
 }
 
 export type AppearanceSettingsEnvelope = {
@@ -20,7 +27,41 @@ export type AppearanceSettingsEnvelope = {
 export const defaultAppearanceSettings: AppearanceSettings = {
   fontFamily: 'inter',
   fontSize: 'normal',
-  themeMode: 'system'
+  themeMode: 'system',
+  colors: {
+    light: {
+      bg: '#f3f6fa', surface: '#ffffff', surfaceRaised: '#f8fbfd', surfaceSoft: '#eaf1f7', border: '#cbd9e5', borderStrong: '#9eb4c6', ink: '#10243a', muted: '#5b7186', subtle: '#7d91a3', primary: '#1677c8', primaryHover: '#0f62aa', primarySoft: '#e4f1ff', accent: '#0a9b8c', accentSoft: '#def7f1', warning: '#b7791f', warningSoft: '#fff4d8', danger: '#c53d52', dangerSoft: '#ffe8ed', info: '#326fbd'
+    },
+    dark: {
+      bg: '#0f1720', surface: '#1e2935', surfaceRaised: '#273746', surfaceSoft: '#314354', border: '#3a4b5d', borderStrong: '#60758a', ink: '#f1f5f9', muted: '#cbd5e1', subtle: '#94a3b8', primary: '#cbd5e1', primaryHover: '#e2e8f0', primarySoft: '#2b3a4a', accent: '#38bdf8', accentSoft: '#123b52', warning: '#fbbf24', warningSoft: '#4a3514', danger: '#fb7185', dangerSoft: '#4a202c', info: '#93c5fd'
+    }
+  }
+}
+
+export const appearanceColorTokenOptions: Array<{ key: AppearanceColorToken; label: string; description: string }> = [
+  { key: 'bg', label: 'Arka plan', description: 'Sayfanın ana zemini' },
+  { key: 'surface', label: 'Yüzey', description: 'Kart ve panel zemini' },
+  { key: 'surfaceRaised', label: 'Yükseltilmiş yüzey', description: 'Alan ve kontrol zemini' },
+  { key: 'surfaceSoft', label: 'Yumuşak yüzey', description: 'İkincil yüzey ve rozet zemini' },
+  { key: 'border', label: 'Kenarlık', description: 'Standart ayırıcı çizgiler' },
+  { key: 'borderStrong', label: 'Güçlü kenarlık', description: 'Input ve belirgin çerçeveler' },
+  { key: 'ink', label: 'Ana metin', description: 'Başlık ve önemli metinler' },
+  { key: 'muted', label: 'İkincil metin', description: 'Açıklama ve yardımcı metinler' },
+  { key: 'subtle', label: 'Soluk metin', description: 'Düşük öncelikli metinler' },
+  { key: 'primary', label: 'Ana renk', description: 'Birincil buton ve aktif durum' },
+  { key: 'primaryHover', label: 'Ana renk hover', description: 'Birincil etkileşim hover durumu' },
+  { key: 'primarySoft', label: 'Ana renk yumuşak', description: 'Seçili ve hafif vurgulu alanlar' },
+  { key: 'accent', label: 'Accent', description: 'Başarı ve ikincil vurgu' },
+  { key: 'accentSoft', label: 'Accent yumuşak', description: 'Başarı arka planları' },
+  { key: 'warning', label: 'Uyarı', description: 'Uyarı ve dikkat durumları' },
+  { key: 'warningSoft', label: 'Uyarı yumuşak', description: 'Uyarı arka planları' },
+  { key: 'danger', label: 'Hata', description: 'Hata ve tehlikeli işlemler' },
+  { key: 'dangerSoft', label: 'Hata yumuşak', description: 'Hata arka planları' },
+  { key: 'info', label: 'Bilgi', description: 'Bilgilendirme vurgusu' }
+]
+
+export function appearanceColorCssVariable(token: AppearanceColorToken) {
+  return `--rv-color-${token.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}`
 }
 
 export const appearanceFontFamilyOptions: Array<{ value: AppearanceFontFamily; label: string }> = [
@@ -60,6 +101,23 @@ export const appearanceFontScale: Record<AppearanceFontSize, number> = {
 const fontFamilies = new Set<AppearanceFontFamily>(appearanceFontFamilyOptions.map(option => option.value))
 const fontSizes = new Set<AppearanceFontSize>(appearanceFontSizeOptions.map(option => option.value))
 const themeModes = new Set<AppearanceThemeMode>(appearanceThemeModeOptions.map(option => option.value))
+const colorTokens: AppearanceColorToken[] = appearanceColorTokenOptions.map(option => option.key)
+const hexColor = /^#[0-9a-f]{6}$/i
+
+function normalizePalette(value: unknown, fallback: AppearancePalette): AppearancePalette {
+  if (!value || typeof value !== 'object') return { ...fallback }
+  const candidate = value as Partial<AppearancePalette>
+  return Object.fromEntries(colorTokens.map(token => [token, typeof candidate[token] === 'string' && hexColor.test(candidate[token]) ? candidate[token] : fallback[token]])) as AppearancePalette
+}
+
+function normalizeColors(value: unknown): AppearanceColors {
+  if (!value || typeof value !== 'object') return { light: { ...defaultAppearanceSettings.colors.light }, dark: { ...defaultAppearanceSettings.colors.dark } }
+  const candidate = value as Partial<AppearanceColors>
+  return {
+    light: normalizePalette(candidate.light, defaultAppearanceSettings.colors.light),
+    dark: normalizePalette(candidate.dark, defaultAppearanceSettings.colors.dark)
+  }
+}
 
 export function normalizeAppearanceSettings(value: unknown): AppearanceSettings {
   if (!value || typeof value !== 'object') return defaultAppearanceSettings
@@ -67,7 +125,8 @@ export function normalizeAppearanceSettings(value: unknown): AppearanceSettings 
   return {
     fontFamily: typeof candidate.fontFamily === 'string' && fontFamilies.has(candidate.fontFamily as AppearanceFontFamily) ? candidate.fontFamily as AppearanceFontFamily : defaultAppearanceSettings.fontFamily,
     fontSize: typeof candidate.fontSize === 'string' && fontSizes.has(candidate.fontSize as AppearanceFontSize) ? candidate.fontSize as AppearanceFontSize : defaultAppearanceSettings.fontSize,
-    themeMode: typeof candidate.themeMode === 'string' && themeModes.has(candidate.themeMode as AppearanceThemeMode) ? candidate.themeMode as AppearanceThemeMode : defaultAppearanceSettings.themeMode
+    themeMode: typeof candidate.themeMode === 'string' && themeModes.has(candidate.themeMode as AppearanceThemeMode) ? candidate.themeMode as AppearanceThemeMode : defaultAppearanceSettings.themeMode,
+    colors: normalizeColors(candidate.colors)
   }
 }
 
@@ -83,8 +142,9 @@ export function useAppearanceSettings() {
   })
   const settings = normalizeAppearanceSettings(query.data?.settings)
   const [draft, setDraft] = useState<AppearanceSettings>(settings)
+  const settingsColorsKey = JSON.stringify(settings.colors)
 
-  useEffect(() => setDraft(settings), [settings.fontFamily, settings.fontSize, settings.themeMode])
+  useEffect(() => setDraft(settings), [settings.fontFamily, settings.fontSize, settings.themeMode, settingsColorsKey])
 
   async function save(next: AppearanceSettings) {
     const normalized = normalizeAppearanceSettings(next)

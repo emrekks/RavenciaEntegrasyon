@@ -14,6 +14,15 @@ public static class SettingsEndpoints
     private static readonly HashSet<string> AppearanceFontFamilies = new(StringComparer.OrdinalIgnoreCase) { "inter", "system", "segoe", "arial" };
     private static readonly HashSet<string> AppearanceFontSizes = new(StringComparer.OrdinalIgnoreCase) { "small", "normal", "large", "extra-large" };
     private static readonly HashSet<string> AppearanceThemeModes = new(StringComparer.OrdinalIgnoreCase) { "system", "light", "dark" };
+    private static readonly IReadOnlyDictionary<string, string> DefaultLightAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["bg"] = "#f3f6fa", ["surface"] = "#ffffff", ["surfaceRaised"] = "#f8fbfd", ["surfaceSoft"] = "#eaf1f7", ["border"] = "#cbd9e5", ["borderStrong"] = "#9eb4c6", ["ink"] = "#10243a", ["muted"] = "#5b7186", ["subtle"] = "#7d91a3", ["primary"] = "#1677c8", ["primaryHover"] = "#0f62aa", ["primarySoft"] = "#e4f1ff", ["accent"] = "#0a9b8c", ["accentSoft"] = "#def7f1", ["warning"] = "#b7791f", ["warningSoft"] = "#fff4d8", ["danger"] = "#c53d52", ["dangerSoft"] = "#ffe8ed", ["info"] = "#326fbd"
+    };
+    private static readonly IReadOnlyDictionary<string, string> DefaultDarkAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["bg"] = "#0f1720", ["surface"] = "#1e2935", ["surfaceRaised"] = "#273746", ["surfaceSoft"] = "#314354", ["border"] = "#3a4b5d", ["borderStrong"] = "#60758a", ["ink"] = "#f1f5f9", ["muted"] = "#cbd5e1", ["subtle"] = "#94a3b8", ["primary"] = "#cbd5e1", ["primaryHover"] = "#e2e8f0", ["primarySoft"] = "#2b3a4a", ["accent"] = "#38bdf8", ["accentSoft"] = "#123b52", ["warning"] = "#fbbf24", ["warningSoft"] = "#4a3514", ["danger"] = "#fb7185", ["dangerSoft"] = "#4a202c", ["info"] = "#93c5fd"
+    };
+    private static readonly string[] AppearanceColorTokens = ["bg", "surface", "surfaceRaised", "surfaceSoft", "border", "borderStrong", "ink", "muted", "subtle", "primary", "primaryHover", "primarySoft", "accent", "accentSoft", "warning", "warningSoft", "danger", "dangerSoft", "info"];
 
     public static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -94,11 +103,13 @@ public static class SettingsEndpoints
         var fontFamily = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "fontFamily") : null;
         var fontSize = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "fontSize") : null;
         var themeMode = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "themeMode") : null;
+        var colors = NormalizeAppearanceColors(value);
         return new
         {
             fontFamily = AppearanceFontFamilies.Contains(fontFamily ?? string.Empty) ? fontFamily!.ToLowerInvariant() : "inter",
             fontSize = AppearanceFontSizes.Contains(fontSize ?? string.Empty) ? fontSize!.ToLowerInvariant() : "normal",
-            themeMode = AppearanceThemeModes.Contains(themeMode ?? string.Empty) ? themeMode!.ToLowerInvariant() : "system"
+            themeMode = AppearanceThemeModes.Contains(themeMode ?? string.Empty) ? themeMode!.ToLowerInvariant() : "system",
+            colors
         };
     }
 
@@ -113,8 +124,72 @@ public static class SettingsEndpoints
             return false;
         }
 
-        normalized = new { fontFamily = fontFamily.ToLowerInvariant(), fontSize = fontSize.ToLowerInvariant(), themeMode = themeMode.ToLowerInvariant() };
+        if (!TryNormalizeAppearanceColors(value, out var colors))
+        {
+            normalized = new { };
+            return false;
+        }
+
+        normalized = new { fontFamily = fontFamily.ToLowerInvariant(), fontSize = fontSize.ToLowerInvariant(), themeMode = themeMode.ToLowerInvariant(), colors };
         return true;
+    }
+
+    private static object NormalizeAppearanceColors(JsonElement? value)
+    {
+        var colors = value is { ValueKind: JsonValueKind.Object } && value.Value.TryGetProperty("colors", out var property) && property.ValueKind == JsonValueKind.Object ? property : (JsonElement?)null;
+        return new
+        {
+            light = NormalizeAppearancePalette(colors, "light", DefaultLightAppearanceColors),
+            dark = NormalizeAppearancePalette(colors, "dark", DefaultDarkAppearanceColors)
+        };
+    }
+
+    private static Dictionary<string, string> NormalizeAppearancePalette(JsonElement? colors, string theme, IReadOnlyDictionary<string, string> defaults)
+    {
+        var palette = colors is { ValueKind: JsonValueKind.Object } && colors.Value.TryGetProperty(theme, out var property) && property.ValueKind == JsonValueKind.Object ? property : (JsonElement?)null;
+        var normalized = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var token in AppearanceColorTokens)
+        {
+            var candidate = palette is { ValueKind: JsonValueKind.Object } ? ReadString(palette.Value, token) : null;
+            normalized[token] = candidate is not null && IsHexColor(candidate) ? candidate.ToLowerInvariant() : defaults[token];
+        }
+        return normalized;
+    }
+
+    private static bool TryNormalizeAppearanceColors(JsonElement value, out object colors)
+    {
+        if (!value.TryGetProperty("colors", out var colorsElement))
+        {
+            colors = NormalizeAppearanceColors(null);
+            return true;
+        }
+
+        if (colorsElement.ValueKind != JsonValueKind.Object || !TryNormalizeAppearancePalette(colorsElement, "light", DefaultLightAppearanceColors, out var light) || !TryNormalizeAppearancePalette(colorsElement, "dark", DefaultDarkAppearanceColors, out var dark))
+        {
+            colors = new { };
+            return false;
+        }
+
+        colors = new { light, dark };
+        return true;
+    }
+
+    private static bool TryNormalizeAppearancePalette(JsonElement colors, string theme, IReadOnlyDictionary<string, string> defaults, out Dictionary<string, string> normalized)
+    {
+        normalized = new Dictionary<string, string>(StringComparer.Ordinal);
+        var palette = colors.TryGetProperty(theme, out var property) && property.ValueKind == JsonValueKind.Object ? property : (JsonElement?)null;
+        foreach (var token in AppearanceColorTokens)
+        {
+            var candidate = palette is { ValueKind: JsonValueKind.Object } ? ReadString(palette.Value, token) : null;
+            if (candidate is not null && !IsHexColor(candidate)) return false;
+            normalized[token] = candidate?.ToLowerInvariant() ?? defaults[token];
+        }
+        return true;
+    }
+
+    private static bool IsHexColor(string value)
+    {
+        return value.Length == 7 && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
     }
 
     private static string? ReadString(JsonElement value, string propertyName)
