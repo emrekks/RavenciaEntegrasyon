@@ -85,7 +85,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) { color-scheme: dark; }
   :root:not([data-theme]) {
-    --rv-color-bg: #0a0f1a;
+    --rv-color-bg: #0a0e1a;
     --rv-color-surface: #111827;
     --rv-color-surface-raised: #1a2235;
     --rv-color-surface-soft: #1d2638;
@@ -112,7 +112,7 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --rv-color-bg: #0a0f1a;
+  --rv-color-bg: #0a0e1a;
   --rv-color-surface: #111827;
   --rv-color-surface-raised: #1a2235;
   --rv-color-surface-soft: #1d2638;

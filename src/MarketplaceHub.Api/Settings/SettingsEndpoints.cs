@@ -20,7 +20,7 @@ public static class SettingsEndpoints
     };
     private static readonly IReadOnlyDictionary<string, string> DefaultDarkAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["bg"] = "#0a0f1a", ["surface"] = "#111827", ["surfaceRaised"] = "#1a2235", ["surfaceSoft"] = "#1d2638", ["border"] = "#1e2d45", ["borderStrong"] = "#243352", ["ink"] = "#f1f5f9", ["muted"] = "#94a3b8", ["subtle"] = "#64748b", ["primary"] = "#6366f1", ["primaryHover"] = "#4f46e5", ["primarySoft"] = "#292d67", ["accent"] = "#10b981", ["accentSoft"] = "#173c3a", ["warning"] = "#f59e0b", ["warningSoft"] = "#4a3514", ["danger"] = "#ef4444", ["dangerSoft"] = "#4a282c", ["info"] = "#3b82f6"
+        ["bg"] = "#0a0e1a", ["surface"] = "#111827", ["surfaceRaised"] = "#1a2235", ["surfaceSoft"] = "#1d2638", ["border"] = "#1e2d45", ["borderStrong"] = "#243352", ["ink"] = "#f1f5f9", ["muted"] = "#94a3b8", ["subtle"] = "#64748b", ["primary"] = "#6366f1", ["primaryHover"] = "#4f46e5", ["primarySoft"] = "#292d67", ["accent"] = "#10b981", ["accentSoft"] = "#173c3a", ["warning"] = "#f59e0b", ["warningSoft"] = "#4a3514", ["danger"] = "#ef4444", ["dangerSoft"] = "#4a282c", ["info"] = "#3b82f6"
     };
     private static readonly string[] AppearanceColorTokens = ["bg", "surface", "surfaceRaised", "surfaceSoft", "border", "borderStrong", "ink", "muted", "subtle", "primary", "primaryHover", "primarySoft", "accent", "accentSoft", "warning", "warningSoft", "danger", "dangerSoft", "info"];
 
