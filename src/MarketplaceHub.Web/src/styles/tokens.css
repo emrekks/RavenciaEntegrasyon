@@ -32,6 +32,17 @@
   --rv-control-height-sm: 36px;
   --rv-control-height-md: 44px;
   --rv-control-height-lg: 50px;
+  --rv-icon-size-sm: 16px;
+  --rv-icon-size-md: 20px;
+  --rv-icon-size-lg: 24px;
+  --rv-sidebar-width: 248px;
+  --rv-sidebar-collapsed-width: 76px;
+  --rv-topbar-height: 68px;
+  --rv-content-max-width: 1600px;
+  --rv-content-wide-max-width: 1760px;
+  --rv-page-padding-inline: clamp(20px, 3vw, 40px);
+  --rv-page-padding-block-start: 34px;
+  --rv-page-padding-block-end: 60px;
   --rv-space-1: 4px;
   --rv-space-2: 8px;
   --rv-space-3: 12px;
@@ -45,6 +56,8 @@
   --rv-shadow-sm: 0 1px 2px rgb(16 36 58 / 8%);
   --rv-shadow-md: 0 10px 30px rgb(16 36 58 / 10%);
   --rv-shadow-lg: 0 24px 60px rgb(16 36 58 / 16%);
+  --rv-duration-fast: 160ms;
+  --rv-ease-standard: cubic-bezier(.2, .8, .2, 1);
   --rv-z-sticky: 20;
   --rv-z-sidebar: 40;
   --rv-z-dropdown: 80;
