@@ -544,6 +544,12 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
   </>
 }
 
+function ProductCatalogImage({ url, title, onClick }: { url: string | null; title: string; onClick: () => void }) {
+  const [failed, setFailed] = useState(false)
+  if (failed || !url) return <span className="product-list-placeholder" aria-label={`${title} için ürün görseli bulunamadı`}><UiIcon name="image" /></span>
+  return <img src={url} alt={title} className="product-list-thumb clickable-thumb" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} onClick={onClick} title="Görseli büyütmek için tıklayın" />
+}
+
 function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick, onDelete }: { group: ProductGroup; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void; onDelete: () => void }) {
   const product = group.primary
   const platformActive = group.products.some(item => Boolean(item.activePlatforms?.length))
@@ -559,13 +565,13 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
   return <article className="product-catalog-item color-variant-item product-group-card">
       <div className="product-catalog-row">
         <input className="product-row-select" type="checkbox" aria-label={`${product.title} ürün grubunu seç`} checked={selected} onChange={onSelect} />
-        {product.primaryImageUrl ? <img src={product.primaryImageUrl} alt={product.title} className="product-list-thumb clickable-thumb" onClick={() => onImageClick(product.primaryImageUrl!, product.title)} title="Görseli büyütmek için tıklayın" /> : <span className="product-list-placeholder">Görsel yok</span>}
+        <ProductCatalogImage url={product.primaryImageUrl} title={product.title} onClick={() => onImageClick(product.primaryImageUrl!, product.title)} />
         <div className="product-list-identity"><strong>{product.title}</strong><small>Model Kodu: <code className="technical-text model-code-value">{modelCode}</code></small></div>
         <ProductVariantHover count={group.variants.length} catalogCount={group.products.length} groups={variantDisplayGroups} />
         <div className="product-list-price clickable-cell" title="Fiyatı hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('price')}><strong>{money(startingPrice, product.currency)}</strong></div>
         <div className="product-list-stock clickable-cell" title="Stoğu hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('stock')}><strong>{totalStock}</strong></div>
         <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ''}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'}>TY<i /></span><small>{platformActive ? 'Eşleşti' : 'Eşleşmedi'}</small></div>
-        <div className={`product-list-status ${status === 'ACTIVE' ? 'active' : 'inactive'}`}><Tag>{statusLabel}</Tag><small>{statusHint}</small></div>
+        <div className={`product-list-status ${status === 'ACTIVE' ? 'active' : 'inactive'}`}><Tag>{statusLabel}</Tag>{status !== 'ACTIVE' && <small>{statusHint}</small>}</div>
         <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title={group.products.length > 1 ? 'Ürün grubundaki ilk kaydı düzenle' : 'Ürünü düzenle'}><UiIcon className="product-edit-icon" name="edit" /></Link><button type="button" className="product-delete-button" onClick={event => { event.stopPropagation(); onDelete() }} aria-label={`${product.title} ürün grubunu sil`} title={group.products.length > 1 ? 'Ürün grubundaki tüm kayıtları sil' : 'Ürünü sil'}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16m-10 0V4h4v3m-7 0 1 13h8l1-13m-5 4v6m4-6v6" /></svg></button></div>
       </div>
     </article>
@@ -834,14 +840,16 @@ export function ProductsPage() {
     </div>}
     <ErrorBox error={query.error ?? summaryQuery.error ?? connectionsQuery.error} />
     {query.isLoading && !pageProducts.length ? <p>Yükleniyor…</p> : !pageProducts.length ? <div className="empty">Filtrelerle eşleşen ürün yok.</div> : (
-      <div className="product-catalog-table preferred-product-catalog">
-        <div className="product-catalog-head">
-          <label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label={`${pageProductGroups.length} ürün kartının tümünü seç`} title={`Yalnızca bu sayfadaki ${pageProductGroups.length} kartı seçer`} /><span>Ürün Detayı</span></label>
-          <span>Varyant</span><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
+      <div className="product-catalog-scroll">
+        <div className="product-catalog-table preferred-product-catalog">
+          <div className="product-catalog-head">
+            <label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label={`${pageProductGroups.length} ürün kartının tümünü seç`} title={`Yalnızca bu sayfadaki ${pageProductGroups.length} kartı seçer`} /><span>Ürün Detayı</span></label>
+            <span>Varyant</span><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
+          </div>
+          {pageProductGroups.map(group => (
+            <ProductColorRows key={group.id} group={group} selected={group.products.every(product => selectedProductIds.includes(product.id))} onSelect={() => toggleProductGroup(group)} onQuickEdit={mode => setQuickEdit({ productIds: group.products.map(product => product.id), mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} onDelete={() => requestDeleteProductGroup(group)} />
+          ))}
         </div>
-        {pageProductGroups.map(group => (
-          <ProductColorRows key={group.id} group={group} selected={group.products.every(product => selectedProductIds.includes(product.id))} onSelect={() => toggleProductGroup(group)} onQuickEdit={mode => setQuickEdit({ productIds: group.products.map(product => product.id), mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} onDelete={() => requestDeleteProductGroup(group)} />
-        ))}
       </div>
     )}
     {totalCount > 0 && <div className="order-pagination"><label>Sayfa başına <select aria-label="Sayfa başına ürün kartı" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100].map(value => <option key={value} value={value}>{value}</option>)}</select> kart</label><span>Toplam {totalCount.toLocaleString('tr-TR')} ürün kartından {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)} arası gösteriliyor · Bu sayfada {pageProductGroups.length} kart</span><div className="product-pagination-controls"><button type="button" aria-label="Önceki sayfa" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}><UiIcon name="chevronLeft" /></button><b>Sayfa {currentPage} / {totalPages}</b><button type="button" aria-label="Sonraki sayfa" disabled={currentPage >= totalPages || !nextPageCursor} onClick={goToNextPage}><UiIcon name="chevronRight" /></button></div></div>}
