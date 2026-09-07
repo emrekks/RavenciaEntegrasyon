@@ -64,6 +64,8 @@
   .panel-title p { margin-bottom: 0; }
   .grid, .cards, .detail-grid, .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-4); align-items: start; }
   .grid article, .cards article { min-width: 0; }
+  .cards article { display: grid; gap: var(--rv-space-2); }
+  .cards article > div { display: grid; min-width: 0; gap: 2px; }
   .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-4); }
   .form-grid > button, .form-grid > .error, .form-grid > .success { grid-column: 1 / -1; }
   .inline-form { display: flex; flex-wrap: wrap; align-items: end; gap: var(--rv-space-3); }
@@ -75,6 +77,10 @@
   .spaced { margin-block: var(--rv-space-5); }
   .back { display: inline-flex; align-items: center; gap: var(--rv-space-2); margin-bottom: var(--rv-space-4); color: var(--rv-color-muted); text-decoration: none; font-weight: 700; }
   .back:hover { color: var(--rv-color-primary); }
+  .tree-list { display: grid; gap: var(--rv-space-2); margin-top: var(--rv-space-4); }
+  .tree-list > article { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--rv-space-3); min-width: 0; padding: var(--rv-space-3) var(--rv-space-4); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .tree-list > article > div { display: grid; min-width: 0; gap: 2px; }
+  .tree-list > article :where(strong, small) { min-width: 0; overflow-wrap: anywhere; }
 }
 
 @layer components {
