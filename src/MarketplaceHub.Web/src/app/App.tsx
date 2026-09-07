@@ -139,28 +139,23 @@ function Login() {
     }
   }
 
-  return <main className="rv-auth-page rv-auth-cyber">
-    <div className="rv-auth-cyber-grid" aria-hidden="true" />
-    <section className="rv-auth-visual" aria-label="Ravencia operasyon merkezi">
-      <header className="rv-auth-brandbar">
-        <div className="rv-auth-brand-lockup"><img className="rv-auth-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" /><img className="rv-auth-wordmark" src="/pack/brand/ravencia-wordmark-transparent.png" alt="Ravencia MarketplaceHub" /></div>
-        <span className="rv-auth-system-state"><i /> SYSTEM ONLINE</span>
-      </header>
+  return <main className="rv-auth-page rv-auth-single">
+    <div className="rv-auth-atmosphere" aria-hidden="true"><span className="rv-auth-orb rv-auth-orb-one" /><span className="rv-auth-orb rv-auth-orb-two" /><span className="rv-auth-scanline" /></div>
+    <header className="rv-auth-header">
+      <div className="rv-auth-brand"><img className="rv-auth-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" /><img className="rv-auth-wordmark" src="/pack/brand/ravencia-wordmark-transparent.png" alt="Ravencia MarketplaceHub" /></div>
+      <span className="rv-auth-system-status"><i /> Sistem hazır</span>
+    </header>
+    <section className="rv-auth-stage" aria-label="Ravencia operasyon merkezi girişi">
       <div className="rv-auth-hero">
-        <div className="rv-auth-hero-meta"><span>RV / 01</span><span>OPERATIONS CORE</span></div>
-        <h1>Marketplace<br /><em>operations</em><br />reimagined.</h1>
-        <p className="rv-auth-hero-lede">Sipariş, stok ve entegrasyon akışlarını tek bir komuta merkezinden yönetin.</p>
-        <div className="rv-auth-signal-row" aria-label="Operasyon sinyalleri"><span><b>01</b><small>ORDER FLOW</small></span><span><b>02</b><small>LIVE SYNC</small></span><span><b>03</b><small>SECURE DATA</small></span></div>
+        <p className="rv-auth-kicker"><span>RAVENCIA / CORE ACCESS</span><i /></p>
+        <h1>Operasyonun<br /><em>kontrolü sende.</em></h1>
+        <p className="rv-auth-lede">Sipariş, stok ve entegrasyon akışlarını tek bir akıllı merkezden yönetin.</p>
       </div>
-      <footer className="rv-auth-visual-footer"><span>RAVENCIA / MARKETPLACEHUB</span><span>07—09—2026</span></footer>
-    </section>
-
-    <section className="rv-auth-login-panel">
       <div className="rv-auth-login-shell">
-        <div className="rv-auth-login-top"><span>ACCESS GATE <b>02</b></span><span><i /> ENCRYPTED SESSION</span></div>
+        <div className="rv-auth-login-top"><span><i /> Güvenli erişim</span><span>Oturum korumalı</span></div>
         <div className="rv-auth-card">
           <div className="rv-auth-card-glow" aria-hidden="true" />
-          <header className="rv-auth-login-header"><div className="rv-auth-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z" /><path d="m9 12 2 2 4-5" /></svg></div><div><p>YETKİLİ ERİŞİM</p><h2>Komuta merkezine<br />giriş yapın.</h2><span>Ravencia hesabınızla devam edin.</span></div></header>
+          <header className="rv-auth-login-header"><div className="rv-auth-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z" /><path d="m9 12 2 2 4-5" /></svg></div><div><p>YÖNETİM PANELİ</p><h2>Hesabınıza giriş yapın.</h2><span>Ravencia çalışma alanınıza güvenli erişim.</span></div></header>
           <div className="rv-auth-progress" aria-hidden="true"><span /><span /><span /></div>
           <form className="rv-auth-form" onSubmit={submit}>
             <div className="rv-auth-field"><label htmlFor="login-email">E-posta adresi</label><div className="rv-auth-control"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z" /><path d="m4 7 8 6 8-6" /></svg><input id="login-email" name="email" type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="username" placeholder="ornek@ravencia.com" autoFocus /></div></div>
@@ -170,10 +165,11 @@ function Login() {
             {error && <div className="rv-auth-error" role="alert"><i /><span>{error}</span></div>}
             <button className="rv-auth-submit" type="submit" disabled={loading}>{loading ? <><i /> Oturum doğrulanıyor…</> : <><span>Güvenli giriş yap</span><UiIcon name="arrowRight" /></>}</button>
           </form>
-          <footer className="rv-auth-footer"><span><i /> TLS ile şifrelenmiş bağlantı</span><small>Ravencia · Yetkili erişim</small></footer>
+          <footer className="rv-auth-footer"><span><i /> TLS şifreli bağlantı</span><small>Ravencia Workspace</small></footer>
         </div>
       </div>
     </section>
+    <footer className="rv-auth-page-footer"><span>RA / OPERATIONS PLATFORM</span><span>SECURE WORKSPACE</span></footer>
   </main>
 }
 
