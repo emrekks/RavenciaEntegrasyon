@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { Suspense, useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiRequestError, hubApi, type Me, type TenantOption } from '../shared/api'
@@ -95,6 +95,9 @@ export function App() {
     document.addEventListener('wheel', blurNumberInputOnWheel, { capture: true })
     return () => document.removeEventListener('wheel', blurNumberInputOnWheel, { capture: true })
   }, [])
+  const authPreview = import.meta.env.DEV ? new URLSearchParams(window.location.search).get('authPreview') : null
+  if (authPreview === 'password') return <ChangePassword />
+  if (authPreview === 'mfa') return <MfaChallenge />
   if (me.isLoading) return null
   if (me.isError) return <Routes><Route path="*" element={<Login />} /></Routes>
   if (!me.data) return <Status title="Oturum bilgisi alınamadı" />
@@ -102,6 +105,38 @@ export function App() {
   if (me.data.state === 'MFA_CHALLENGE') return <MfaChallenge />
   if (me.data.state !== 'ACTIVE') return <Status title="Oturum kilitli" detail="Yeniden giriş yapın." />
   return <Shell me={me.data} />
+}
+
+function AuthShieldIcon() {
+  return <div className="rv-auth-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z" /><path d="m9 12 2 2 4-5" /></svg></div>
+}
+
+function AuthPageFrame({ ariaLabel, heroKicker, heroTitle, heroDescription, accessLabel, accessMeta, cardEyebrow, cardTitle, cardDescription, progressStep = 1, children, footerMeta = 'Ravencia Workspace' }: { ariaLabel: string; heroKicker: string; heroTitle: ReactNode; heroDescription: string; accessLabel: string; accessMeta: string; cardEyebrow: string; cardTitle: string; cardDescription: string; progressStep?: 1 | 2 | 3; children: ReactNode; footerMeta?: string }) {
+  return <main className="rv-auth-page rv-auth-single">
+    <div className="rv-auth-atmosphere" aria-hidden="true"><span className="rv-auth-orb rv-auth-orb-one" /><span className="rv-auth-orb rv-auth-orb-two" /><span className="rv-auth-scanline" /></div>
+    <header className="rv-auth-header">
+      <div className="rv-auth-brand"><img className="rv-auth-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" /><img className="rv-auth-wordmark" src="/pack/brand/ravencia-wordmark-transparent.png" alt="Ravencia MarketplaceHub" /></div>
+      <span className="rv-auth-system-status"><i /> Sistem hazır</span>
+    </header>
+    <section className="rv-auth-stage" aria-label={ariaLabel}>
+      <div className="rv-auth-hero">
+        <p className="rv-auth-kicker"><span>{heroKicker}</span><i /></p>
+        <h1>{heroTitle}</h1>
+        <p className="rv-auth-lede">{heroDescription}</p>
+      </div>
+      <div className="rv-auth-login-shell">
+        <div className="rv-auth-login-top"><span><i /> {accessLabel}</span><span>{accessMeta}</span></div>
+        <div className="rv-auth-card">
+          <div className="rv-auth-card-glow" aria-hidden="true" />
+          <header className="rv-auth-login-header"><AuthShieldIcon /><div><p>{cardEyebrow}</p><h2>{cardTitle}</h2><span>{cardDescription}</span></div></header>
+          <div className={`rv-auth-progress rv-auth-progress-step-${progressStep}`} aria-hidden="true"><span /><span /><span /></div>
+          {children}
+          <footer className="rv-auth-footer"><span><i /> TLS şifreli bağlantı</span><small>{footerMeta}</small></footer>
+        </div>
+      </div>
+    </section>
+    <footer className="rv-auth-page-footer"><span>RA / OPERATIONS PLATFORM</span><span>SECURE WORKSPACE</span></footer>
+  </main>
 }
 
 function Login() {
@@ -139,24 +174,7 @@ function Login() {
     }
   }
 
-  return <main className="rv-auth-page rv-auth-single">
-    <div className="rv-auth-atmosphere" aria-hidden="true"><span className="rv-auth-orb rv-auth-orb-one" /><span className="rv-auth-orb rv-auth-orb-two" /><span className="rv-auth-scanline" /></div>
-    <header className="rv-auth-header">
-      <div className="rv-auth-brand"><img className="rv-auth-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" /><img className="rv-auth-wordmark" src="/pack/brand/ravencia-wordmark-transparent.png" alt="Ravencia MarketplaceHub" /></div>
-      <span className="rv-auth-system-status"><i /> Sistem hazır</span>
-    </header>
-    <section className="rv-auth-stage" aria-label="Ravencia operasyon merkezi girişi">
-      <div className="rv-auth-hero">
-        <p className="rv-auth-kicker"><span>RAVENCIA / CORE ACCESS</span><i /></p>
-        <h1>Operasyonun<br /><em>kontrolü sende.</em></h1>
-        <p className="rv-auth-lede">Sipariş, stok ve entegrasyon akışlarını tek bir akıllı merkezden yönetin.</p>
-      </div>
-      <div className="rv-auth-login-shell">
-        <div className="rv-auth-login-top"><span><i /> Güvenli erişim</span><span>Oturum korumalı</span></div>
-        <div className="rv-auth-card">
-          <div className="rv-auth-card-glow" aria-hidden="true" />
-          <header className="rv-auth-login-header"><div className="rv-auth-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z" /><path d="m9 12 2 2 4-5" /></svg></div><div><p>YÖNETİM PANELİ</p><h2>Hesabınıza giriş yapın.</h2><span>Ravencia çalışma alanınıza güvenli erişim.</span></div></header>
-          <div className="rv-auth-progress" aria-hidden="true"><span /><span /><span /></div>
+  return <AuthPageFrame ariaLabel="Ravencia operasyon merkezi girişi" heroKicker="RAVENCIA / CORE ACCESS" heroTitle={<>Operasyonun <em>kontrolü sende.</em></>} heroDescription="Sipariş, stok ve entegrasyon akışlarını tek bir akıllı merkezden yönetin." accessLabel="Güvenli erişim" accessMeta="Oturum korumalı" cardEyebrow="YÖNETİM PANELİ" cardTitle="Hesabınıza giriş yapın" cardDescription="Ravencia çalışma alanınıza güvenli erişim.">
           <form className="rv-auth-form" onSubmit={submit}>
             <div className="rv-auth-field"><label htmlFor="login-email">E-posta adresi</label><div className="rv-auth-control"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z" /><path d="m4 7 8 6 8-6" /></svg><input id="login-email" name="email" type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="username" placeholder="ornek@ravencia.com" autoFocus /></div></div>
             <div className="rv-auth-field"><div className="rv-auth-label-row"><label htmlFor="login-password">Parola</label><button type="button" onClick={() => setError('Parola sıfırlama için sistem yöneticinizle iletişime geçin.')}>Parolamı unuttum</button></div><div className="rv-auth-control"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg><input id="login-password" name="password" type={showPw ? 'text' : 'password'} required autoComplete="current-password" placeholder="Parolanızı girin" /><button type="button" className="rv-auth-password-toggle" aria-label={showPw ? 'Parolayı gizle' : 'Parolayı göster'} onClick={() => setShowPw(value => !value)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg></button></div></div>
@@ -165,16 +183,65 @@ function Login() {
             {error && <div className="rv-auth-error" role="alert"><i /><span>{error}</span></div>}
             <button className="rv-auth-submit" type="submit" disabled={loading}>{loading ? <><i /> Oturum doğrulanıyor…</> : <><span>Güvenli giriş yap</span><UiIcon name="arrowRight" /></>}</button>
           </form>
-          <footer className="rv-auth-footer"><span><i /> TLS şifreli bağlantı</span><small>Ravencia Workspace</small></footer>
-        </div>
-      </div>
-    </section>
-    <footer className="rv-auth-page-footer"><span>RA / OPERATIONS PLATFORM</span><span>SECURE WORKSPACE</span></footer>
-  </main>
+  </AuthPageFrame>
 }
 
-function ChangePassword() { const client = useQueryClient(); const [message, setMessage] = useState('İlk girişte parolanızı değiştirmeniz gerekir.'); async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await api('/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: data.get('current'), newPassword: data.get('next') }) }); await client.invalidateQueries({ queryKey: ['me'] }) } catch { setMessage('Parola değiştirilemedi; politika ve mevcut parolayı kontrol edin.') } } return <div className="auth-page"><section className="auth-card"><h1>Parolanızı değiştirin</h1><p role="status">{message}</p><form onSubmit={submit}><label>Geçerli parola<input name="current" type="password" required /></label><label>Yeni parola<input name="next" type="password" minLength={15} maxLength={64} required /></label><button>Parolayı değiştir</button></form></section></div> }
-function MfaChallenge() { const client = useQueryClient(); const [error, setError] = useState(''); async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await api('/mfa/challenge', { method: 'POST', body: JSON.stringify({ code: data.get('code'), recoveryCode: data.get('recovery') || null }) }); await client.invalidateQueries({ queryKey: ['me'] }) } catch { setError('Kod geçersiz veya daha önce kullanılmış.') } } return <div className="auth-page"><section className="auth-card"><h1>İki adımlı doğrulama</h1><p>Authenticator uygulamanızdaki 6 haneli kodu girin.</p><form onSubmit={submit}><label>Doğrulama kodu<input name="code" inputMode="numeric" pattern="[0-9]{6}" /></label><label>Kurtarma kodu (alternatif)<input name="recovery" /></label>{error && <div role="alert" className="error">{error}</div>}<button>Doğrula</button></form></section></div> }
+function ChangePassword() {
+  const client = useQueryClient()
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setLoading(true)
+    const data = new FormData(event.currentTarget)
+    try {
+      await api('/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: data.get('current'), newPassword: data.get('next') }) })
+      await client.invalidateQueries({ queryKey: ['me'] })
+    } catch {
+      setError('Parola değiştirilemedi. Mevcut parolanızı ve güvenlik koşullarını kontrol edin.')
+    } finally {
+      setLoading(false)
+    }
+  }
+  return <AuthPageFrame ariaLabel="Ravencia parola yenileme" heroKicker="RAVENCIA / ACCOUNT SECURITY" heroTitle={<>Hesabını <em>güvenceye al.</em></>} heroDescription="Çalışma alanına devam etmeden önce güçlü ve benzersiz bir parola belirleyin." accessLabel="Güvenlik adımı" accessMeta="2 / 3" cardEyebrow="PAROLA YENİLEME" cardTitle="Yeni parolanızı belirleyin" cardDescription="İlk giriş güvenlik adımını tamamlayın." progressStep={2} footerMeta="Parola politikası etkin">
+    <form className="rv-auth-form" onSubmit={submit}>
+      <div className="rv-auth-field"><label htmlFor="current-password">Geçerli parola</label><div className="rv-auth-control"><UiIcon name="lock" /><input id="current-password" name="current" type="password" autoComplete="current-password" required autoFocus placeholder="Geçerli parolanız" /></div></div>
+      <div className="rv-auth-field"><label htmlFor="new-password">Yeni parola</label><div className="rv-auth-control"><UiIcon name="lock" /><input id="new-password" name="next" type="password" autoComplete="new-password" minLength={15} maxLength={64} required placeholder="En az 15 karakter" /></div><small className="rv-auth-hint">15–64 karakter; hesabınıza özel, tahmin edilmesi zor bir parola kullanın.</small></div>
+      {error && <div className="rv-auth-error" role="alert"><i /><span>{error}</span></div>}
+      <button className="rv-auth-submit" type="submit" disabled={loading}>{loading ? <><i /> Parola güncelleniyor…</> : <><span>Parolayı güncelle</span><UiIcon name="arrowRight" /></>}</button>
+    </form>
+  </AuthPageFrame>
+}
+
+function MfaChallenge() {
+  const client = useQueryClient()
+  const [mode, setMode] = useState<'code' | 'recovery'>('code')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setLoading(true)
+    const data = new FormData(event.currentTarget)
+    try {
+      await api('/mfa/challenge', { method: 'POST', body: JSON.stringify({ code: mode === 'code' ? data.get('code') : null, recoveryCode: mode === 'recovery' ? data.get('recovery') : null }) })
+      await client.invalidateQueries({ queryKey: ['me'] })
+    } catch {
+      setError(mode === 'code' ? 'Doğrulama kodu geçersiz veya süresi dolmuş.' : 'Kurtarma kodu geçersiz veya daha önce kullanılmış.')
+    } finally {
+      setLoading(false)
+    }
+  }
+  return <AuthPageFrame ariaLabel="Ravencia iki adımlı doğrulama" heroKicker="RAVENCIA / VERIFIED ACCESS" heroTitle={<>Son adım, <em>güvenli erişim.</em></>} heroDescription="Hesabınızı ve operasyon verilerinizi ikinci bir doğrulama katmanıyla koruyoruz." accessLabel="Kimlik doğrulama" accessMeta="3 / 3" cardEyebrow="İKİ ADIMLI DOĞRULAMA" cardTitle="Erişiminizi doğrulayın" cardDescription={mode === 'code' ? 'Authenticator uygulamanızdaki 6 haneli kodu girin.' : 'Tek kullanımlık kurtarma kodlarınızdan birini girin.'} progressStep={3} footerMeta="Doğrulama koruması etkin">
+    <div className="rv-auth-choice" role="tablist" aria-label="Doğrulama yöntemi"><button type="button" role="tab" aria-selected={mode === 'code'} className={mode === 'code' ? 'is-active' : ''} onClick={() => { setMode('code'); setError('') }}>Authenticator kodu</button><button type="button" role="tab" aria-selected={mode === 'recovery'} className={mode === 'recovery' ? 'is-active' : ''} onClick={() => { setMode('recovery'); setError('') }}>Kurtarma kodu</button></div>
+    <form className="rv-auth-form rv-auth-mfa-form" onSubmit={submit}>
+      {mode === 'code' ? <div className="rv-auth-field"><label htmlFor="mfa-code">6 haneli doğrulama kodu</label><div className="rv-auth-control"><UiIcon name="shield" /><input id="mfa-code" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required autoFocus placeholder="000000" /></div></div> : <div className="rv-auth-field"><label htmlFor="mfa-recovery">Kurtarma kodu</label><div className="rv-auth-control"><UiIcon name="lock" /><input id="mfa-recovery" name="recovery" autoComplete="off" required autoFocus placeholder="Kurtarma kodunu girin" /></div></div>}
+      {error && <div className="rv-auth-error" role="alert"><i /><span>{error}</span></div>}
+      <button className="rv-auth-submit" type="submit" disabled={loading}>{loading ? <><i /> Doğrulanıyor…</> : <><span>Erişimi doğrula</span><UiIcon name="arrowRight" /></>}</button>
+    </form>
+  </AuthPageFrame>
+}
 type DashboardMetrics = { pendingOrders: number; lateOrders: number; todayOrders: number; todayProductQuantity: number; monthOrders: number; monthProductQuantity: number; pendingReturns: number; dueSoonInvoices: number; uninvoicedInvoices: number; lowStockProducts: number; activeConnections: number; pendingByPlatform: Record<string, number> }
 type DashboardLowStock = { id: string; title: string; totalStock: number; primaryImageUrl: string | null }
 type DashboardSyncStatus = { resourceType: string; label: string; kind: string; status: string; lastAttemptAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null }
