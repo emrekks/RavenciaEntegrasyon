@@ -1613,7 +1613,9 @@
   .app-shell.stitch-shell > aside, .app-shell.stitch-shell.sidebar-pinned > aside { position: static; display: block; width: 100%; min-height: auto; padding: var(--rv-space-2) var(--rv-space-3); border-right: 0; border-bottom: 1px solid var(--rv-color-border); }
   .app-shell.stitch-shell > aside .sidebar-brand-row { justify-content: flex-start; padding: 0 0 var(--rv-space-2); border-bottom: 0; }
   .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-brand-row { display: flex; min-height: 48px; align-content: initial; justify-content: flex-start; justify-items: initial; grid-template-rows: none; row-gap: 0; padding: 0 0 var(--rv-space-2); }
-  .app-shell.stitch-shell > aside .brand.wordmark, .app-shell.stitch-shell > aside .sidebar-pin-toggle, .app-shell.stitch-shell > aside .nav-label { display: initial; }
+  .app-shell.stitch-shell > aside .brand.wordmark { display: grid; }
+  .app-shell.stitch-shell > aside .sidebar-pin-toggle { display: inline-grid; }
+  .app-shell.stitch-shell > aside .nav-label { display: inline; }
   .app-shell.stitch-shell > aside .sidebar-pin-toggle { display: inline-grid; }
   .app-shell.stitch-shell > aside nav, .app-shell.stitch-shell > aside .settings-nav { display: flex; gap: var(--rv-space-1); margin: 0; padding: 0; overflow-x: auto; border: 0; }
   .app-shell.stitch-shell > aside nav a, .app-shell.stitch-shell > aside .logout-link { flex: 0 0 auto; justify-content: flex-start; padding-inline: var(--rv-space-3); }
