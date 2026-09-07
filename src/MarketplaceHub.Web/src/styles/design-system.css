@@ -425,6 +425,7 @@
   .shipping-designer-delete { width: 100%; color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: color-mix(in srgb, var(--rv-color-danger) 38%, transparent); }
   /* Login and splash use the same tokens but remain separate from the app shell. */
   .cyber-login-page { position: relative; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(420px, .8fr); min-height: 100vh; overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-bg); }
+  .cyber-login-grid { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
   .cyber-login-story, .cyber-login-panel { position: relative; z-index: 1; display: grid; align-content: center; padding: clamp(32px, 7vw, 100px); }
   .cyber-login-story { gap: clamp(32px, 6vh, 72px); background: linear-gradient(135deg, var(--rv-color-primary-soft), transparent 65%); }
   .cyber-login-panel { background: var(--rv-color-surface); border-left: 1px solid var(--rv-color-border); }
