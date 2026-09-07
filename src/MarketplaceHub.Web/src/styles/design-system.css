@@ -145,6 +145,8 @@
   .order-pagination strong, .order-pagination b { color: var(--rv-color-ink); }
   .data-table { display: grid; overflow-x: auto; }
   .data-table > * { display: grid; grid-template-columns: minmax(220px, 1.7fr) minmax(120px, .7fr) minmax(160px, .9fr) minmax(120px, .7fr); min-width: 720px; align-items: center; gap: var(--rv-space-4); min-height: 64px; padding: var(--rv-space-3) var(--rv-space-4); border-bottom: 1px solid var(--rv-color-border); color: inherit; text-decoration: none; }
+  .data-table > * > span:first-child { display: grid; min-width: 0; gap: 2px; }
+  .data-table > * > span:first-child > :where(strong, small) { min-width: 0; overflow-wrap: anywhere; }
   .data-table > *:first-child { background: var(--rv-color-surface-raised); }
   .data-table > *:last-child { border-bottom: 0; }
   .data-table > a:hover { background: var(--rv-color-primary-soft); }
