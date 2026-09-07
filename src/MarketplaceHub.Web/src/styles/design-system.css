@@ -331,10 +331,6 @@
   .appearance-color-control { display: flex; flex: 0 0 auto; align-items: center; gap: var(--rv-space-2); }
   .appearance-color-control input[type="color"] { width: 42px; height: 34px; min-height: 34px; padding: 2px; background: transparent; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); cursor: pointer; }
   .appearance-color-control code { min-width: 76px; padding: 6px 8px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); text-align: center; }
-  .appearance-save-status { min-height: 24px; margin: var(--rv-space-4) 0 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
-  .appearance-save-status.is-saving { color: var(--rv-color-primary); }
-  .appearance-save-status.is-saved { color: var(--rv-color-accent); }
-  .appearance-save-status.is-error { color: var(--rv-color-danger); }
   .appearance-preview { display: grid; gap: var(--rv-space-2); margin-top: var(--rv-space-5); padding: var(--rv-space-5); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
   .appearance-preview small { color: var(--rv-color-muted); }
   .appearance-preview strong { font-size: 1.35em; }

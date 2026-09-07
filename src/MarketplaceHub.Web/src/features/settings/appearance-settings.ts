@@ -141,19 +141,10 @@ export function useAppearanceSettings() {
     refetchOnWindowFocus: true
   })
   const settings = normalizeAppearanceSettings(query.data?.settings)
-  const [draft, setDraftState] = useState<AppearanceSettings>(settings)
-  const [isDirty, setIsDirty] = useState(false)
+  const [draft, setDraft] = useState<AppearanceSettings>(settings)
   const settingsColorsKey = JSON.stringify(settings.colors)
 
-  useEffect(() => {
-    setDraftState(settings)
-    setIsDirty(false)
-  }, [settings.fontFamily, settings.fontSize, settings.themeMode, settingsColorsKey])
-
-  function setDraft(next: AppearanceSettings) {
-    setDraftState(next)
-    setIsDirty(true)
-  }
+  useEffect(() => setDraft(settings), [settings.fontFamily, settings.fontSize, settings.themeMode, settingsColorsKey])
 
   async function save(next: AppearanceSettings) {
     const normalized = normalizeAppearanceSettings(next)
@@ -162,9 +153,8 @@ export function useAppearanceSettings() {
       body: JSON.stringify(normalized)
     })
     client.setQueryData(appearanceSettingsQueryKey, saved)
-    setDraftState(normalizeAppearanceSettings(saved.settings))
-    setIsDirty(false)
+    setDraft(normalizeAppearanceSettings(saved.settings))
   }
 
-  return { ...query, settings, draft, setDraft, save, isDirty }
+  return { ...query, settings, draft, setDraft, save }
 }
