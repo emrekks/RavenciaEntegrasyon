@@ -405,6 +405,7 @@
   .order-search input { min-width: 0; }
   /* Orders and returns share the same record geometry. Each record is its own card. */
   .orders-page { min-width: 0; }
+  .orders-export-icon, .orders-sync-icon, .returns-sync-icon { display: block; width: 18px; height: 18px; flex: 0 0 18px; }
   .orders-reference-filter-shell, .returns-reference-filter-shell { display: grid; gap: var(--rv-space-3); margin-bottom: var(--rv-space-5); }
   .order-tabs, .return-reference-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(112px, 1fr); gap: var(--rv-space-1); overflow-x: auto; padding: var(--rv-space-1); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); scrollbar-width: thin; }
   .order-tabs button, .return-reference-tabs button { display: grid; min-width: 0; gap: 2px; min-height: 64px; padding: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-muted); background: transparent; border: 1px solid transparent; border-radius: var(--rv-radius-md); text-align: left; }
