@@ -11,7 +11,7 @@
   html { min-width: 320px; background: var(--rv-color-bg); color-scheme: dark; text-size-adjust: 100%; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
   body { min-width: 320px; min-height: 100vh; margin: 0; }
   button, input, select, textarea { font: inherit; }
-  button { cursor: pointer; }
+  button { cursor: pointer; line-height: 1.2; }
   img { max-width: 100%; }
 }
 
@@ -32,7 +32,7 @@
 @layer layouts {
   .app-shell.stitch-shell { display: grid; grid-template-columns: var(--rv-sidebar-width) minmax(0, 1fr); min-height: 100vh; background: var(--rv-color-bg); }
   .app-shell.stitch-shell > aside { position: fixed; inset: 0 auto 0 0; z-index: var(--rv-z-sidebar); display: flex; width: var(--rv-sidebar-width); flex-direction: column; padding: var(--rv-space-5) var(--rv-space-4); overflow-y: auto; color: var(--rv-color-ink); background: var(--rv-color-surface); border-right: 1px solid var(--rv-color-border); }
-  .app-shell.stitch-shell > main { grid-column: 2; min-width: 0; min-height: 100vh; padding-top: var(--rv-topbar-height); overflow: clip; background: var(--rv-color-bg); }
+  .app-shell.stitch-shell > main { grid-column: 2; min-width: 0; min-height: 100vh; padding-top: var(--rv-topbar-height); overflow: visible; background: var(--rv-color-bg); }
   .app-shell.stitch-shell.sidebar-collapsed { grid-template-columns: var(--rv-sidebar-collapsed-width) minmax(0, 1fr); }
   .app-shell.stitch-shell.sidebar-collapsed > aside { width: var(--rv-sidebar-collapsed-width); padding-inline: var(--rv-space-3); }
   .app-shell.stitch-shell.sidebar-pinned { grid-template-columns: var(--rv-sidebar-width) minmax(0, 1fr); }
