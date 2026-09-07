@@ -21,6 +21,7 @@ export type UiIconName =
   | 'copy'
   | 'download'
   | 'edit'
+  | 'eye'
   | 'externalLink'
   | 'filter'
   | 'grid'
@@ -30,6 +31,7 @@ export type UiIconName =
   | 'link'
   | 'list'
   | 'lock'
+  | 'mail'
   | 'loader'
   | 'moreVertical'
   | 'paragraph'
@@ -90,6 +92,7 @@ const paths: Record<UiIconName, ReactNode> = {
   copy: <><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>,
   download: <><path d="M12 4v11m-4-4 4 4 4-4" /><path d="M5 20h14" /></>,
   edit: <><path d="m5 16-.8 3.8L8 19l10.5-10.5a2.1 2.1 0 0 0-3-3L5 16Z" /><path d="m14.5 6.5 3 3" /></>,
+  eye: <><path d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.8" /></>,
   externalLink: <><path d="M14 5h5v5m0-5-8 8" /><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></>,
   filter: <path d="M4 6h16M7 12h10m-7 6h4" />,
   grid: <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>,
@@ -99,6 +102,7 @@ const paths: Record<UiIconName, ReactNode> = {
   link: <><path d="m9.5 14.5 5-5" /><path d="m7 17-1.2 1.2a3.3 3.3 0 0 1-4.7-4.7l3.4-3.4a3.3 3.3 0 0 1 4.7 0M17 7l1.2-1.2a3.3 3.3 0 0 1 4.7 4.7l-3.4 3.4a3.3 3.3 0 0 1-4.7 0" /></>,
   list: <><path d="M9 6h11M9 12h11M9 18h11" /><path d="M4 6h.01M4 12h.01M4 18h.01" /></>,
   lock: <><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
+  mail: <><rect x="3.5" y="5" width="17" height="14" rx="2" /><path d="m4 7 8 6 8-6" /></>,
   loader: <path d="M12 4a8 8 0 1 0 8 8" />,
   moreVertical: <><circle cx="12" cy="5" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none" /></>,
   paragraph: <><path d="M5 5h10a4 4 0 0 1 0 8H9" /><path d="M9 5v14M13 5v14" /></>,

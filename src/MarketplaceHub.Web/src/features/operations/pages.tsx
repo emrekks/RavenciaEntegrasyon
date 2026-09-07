@@ -139,7 +139,7 @@ function timeRangeLabel(value: JobTimeRange) {
 type JobsIconName = 'calendar' | 'chevron-down' | 'filter' | 'refresh' | 'search' | JobTypeIconName
 
 function JobsIcon({ name }: { name: JobsIconName }) {
-  const common = { className: `jobs-reference-icon jobs-reference-icon-${name}`, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true, focusable: false }
+  const common = { className: `jobs-reference-icon jobs-reference-icon-${name}`, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, vectorEffect: 'non-scaling-stroke' as const, shapeRendering: 'geometricPrecision' as const, preserveAspectRatio: 'xMidYMid meet' as const, 'aria-hidden': true, focusable: false }
   if (name === 'calendar') return <svg {...common}><rect x="3.5" y="4.5" width="17" height="16" rx="2" /><path d="M7.5 3.5v3M16.5 3.5v3M3.5 9h17M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01M16 17h.01" /></svg>
   if (name === 'chevron-down') return <svg {...common}><path d="m7 9 5 5 5-5" /></svg>
   if (name === 'filter') return <svg {...common}><path d="M4 5h16M7 12h10M10 19h4" /></svg>
