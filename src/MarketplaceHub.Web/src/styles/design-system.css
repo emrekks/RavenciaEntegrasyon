@@ -546,6 +546,9 @@
   .jobs-reference-drawer, .invoice-detail-drawer { position: fixed; inset: 0 0 0 auto; z-index: var(--rv-z-modal); width: min(620px, 100%); overflow: auto; padding: var(--rv-space-6); color: var(--rv-color-ink); background: var(--rv-color-surface); border-left: 1px solid var(--rv-color-border); box-shadow: var(--rv-shadow-lg); }
   .jobs-reference-drawer-backdrop, .invoice-detail-backdrop { position: fixed; inset: 0; z-index: calc(var(--rv-z-modal) - 1); background: rgb(5 16 29 / 62%); }
   .record-card { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-4); color: inherit; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); text-decoration: none; }
+  .record-card > span:first-child { display: grid; min-width: 0; gap: 2px; }
+  .record-card > span:first-child > :where(strong, small) { min-width: 0; overflow-wrap: anywhere; }
+  .record-card > span:last-child { min-width: 0; overflow-wrap: anywhere; }
   .record-card:hover { border-color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
   /* Invoicing workspace: every data surface keeps a stable seven-column grid
      and product media uses the same 2:3 contract as catalog and orders. */
