@@ -310,7 +310,9 @@
   .order-filter-primary label, .order-filter-advanced label { display: grid; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
   .filter-actions, .order-filter-actions, .return-filter-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--rv-space-2); }
   .order-reference-table { width: 100%; min-width: 0; overflow: visible; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
-  .return-reference-table { min-width: 1240px; overflow: visible; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+  /* Returns use one continuous table surface: the header must never float over
+     the first record while the page scrolls. */
+  .return-reference-table { width: 100%; min-width: 1240px; overflow: visible; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
   .order-reference-head, .order-reference-grid, .return-reference-head, .return-reference-row { display: grid; grid-template-columns: 36px minmax(170px, .95fr) minmax(110px, .62fr) minmax(260px, 1.65fr) minmax(92px, .55fr) minmax(132px, .75fr) minmax(170px, .95fr) minmax(150px, .8fr); align-items: stretch; }
   .return-reference-head, .return-reference-row { grid-template-columns: minmax(170px, .95fr) minmax(110px, .62fr) minmax(300px, 1.8fr) minmax(92px, .55fr) minmax(132px, .75fr) minmax(170px, .95fr) minmax(160px, .9fr) minmax(150px, .8fr); }
   .order-reference-head, .return-reference-head { position: sticky; top: 68px; z-index: 20; min-height: 52px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
@@ -321,6 +323,10 @@
   .order-reference-table > .order-reference-row { margin-top: 0; border-width: 0 0 1px; border-radius: 0; box-shadow: none; }
   .order-reference-table > .order-reference-row:last-child { border-bottom: 0; }
   .order-reference-table > .order-reference-row:hover { border-color: var(--rv-color-border); background: var(--rv-color-primary-soft); box-shadow: none; }
+  .return-reference-head { position: static; margin: -1px -1px 0; border-radius: var(--rv-radius-lg) var(--rv-radius-lg) 0 0; }
+  .return-reference-table > .return-reference-row { margin-top: 0; border-width: 0 0 1px; border-radius: 0; box-shadow: none; }
+  .return-reference-table > .return-reference-row:last-child { border-bottom: 0; border-radius: 0 0 var(--rv-radius-lg) var(--rv-radius-lg); }
+  .return-reference-table > .return-reference-row:hover { border-color: var(--rv-color-border); background: var(--rv-color-primary-soft); box-shadow: none; }
   .order-reference-grid > *, .return-reference-row > * { min-width: 0; padding: var(--rv-space-4) var(--rv-space-3); border-right: 1px solid var(--rv-color-border); }
   .order-reference-grid > *:last-child, .return-reference-row > *:last-child { border-right: 0; }
   .order-reference-row:hover, .return-reference-row:hover { border-color: var(--rv-color-primary); box-shadow: var(--rv-shadow-md); }
@@ -372,8 +378,8 @@
   .return-reference-row .return-reference-status { grid-column: 8; }
   .return-reference-status { display: grid; align-content: center; gap: var(--rv-space-2); }
   .return-detail-trigger, .return-cargo-track { display: inline-flex; align-items: center; gap: var(--rv-space-1); color: var(--rv-color-primary); background: transparent; border: 0; font-size: var(--rv-font-size-xs); font-weight: 750; }
-  .return-reference-filters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--rv-space-3); align-items: end; padding: var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
-  .return-reference-filters .return-filter-actions { grid-column: 4 / -1; }
+  .return-reference-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--rv-space-3); align-items: end; padding: var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
+  .return-reference-filters .return-filter-actions { grid-column: auto; min-height: var(--rv-control-height); }
   .return-reference-workspace { padding: var(--rv-space-5); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
   .return-reference-workspace > header { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-4); margin-bottom: var(--rv-space-4); }
   .return-reference-workspace > header h2, .return-reference-workspace > header p { margin: 0; }
