@@ -151,6 +151,14 @@
   .workspace-modal > header h2 { margin-bottom: var(--rv-space-1); }
   .workspace-modal > header p { margin: 0; }
   .workspace-modal > footer { display: flex; justify-content: flex-end; gap: var(--rv-space-2); padding: var(--rv-space-4) var(--rv-space-6); border-top: 1px solid var(--rv-color-border); }
+  .invoice-info-modal { width: min(780px, 100%); }
+  .invoice-info-modal .invoice-address-sheet { display: grid; min-height: 0; gap: var(--rv-space-4); overflow-y: auto; padding: var(--rv-space-5) var(--rv-space-6); }
+  .invoice-address-sheet > section { padding: var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .invoice-address-sheet h3 { margin: 0 0 var(--rv-space-4); font-size: var(--rv-font-size-md); }
+  .invoice-address-sheet dl { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: var(--rv-space-3) var(--rv-space-4); margin: 0; }
+  .invoice-address-sheet dt { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); font-weight: 700; }
+  .invoice-address-sheet dd { min-width: 0; margin: 0; color: var(--rv-color-ink); line-height: 1.55; overflow-wrap: anywhere; }
+  .invoice-address-sheet > p { margin: 0; padding: var(--rv-space-4); color: var(--rv-color-muted); background: var(--rv-color-primary-soft); border-left: 3px solid var(--rv-color-primary); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-sm); line-height: 1.55; }
   .modal-close { display: inline-grid; width: 36px; height: 36px; place-items: center; padding: 0; color: var(--rv-color-muted); background: transparent; border: 1px solid transparent; border-radius: var(--rv-radius-md); }
   .modal-close:hover { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
   .security-modal-body, .product-import-body { overflow: auto; padding: var(--rv-space-5) var(--rv-space-6); }
@@ -291,6 +299,10 @@
   .orders-reference-filter-shell, .returns-reference-filter-shell { display: grid; gap: var(--rv-space-3); margin-bottom: var(--rv-space-5); }
   .order-tabs, .return-reference-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(112px, 1fr); gap: var(--rv-space-1); overflow-x: auto; padding: var(--rv-space-1); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); scrollbar-width: thin; }
   .order-tabs button, .return-reference-tabs button { display: grid; min-width: 0; gap: 2px; min-height: 64px; padding: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-muted); background: transparent; border: 1px solid transparent; border-radius: var(--rv-radius-md); text-align: left; }
+  .orders-page .order-tabs button { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; align-content: center; column-gap: var(--rv-space-1); }
+  .orders-page .order-tabs button > span { grid-column: 1 / -1; overflow: hidden; font-size: var(--rv-font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
+  .orders-page .order-tabs button > b { grid-column: 1; }
+  .orders-page .order-tabs button > small { grid-column: 2; align-self: center; }
   .order-tabs button b, .return-reference-tabs button small { color: inherit; font-size: var(--rv-font-size-xs); }
   .order-tabs button.active, .order-tabs button[aria-selected="true"], .return-reference-tabs button.active, .return-reference-tabs button[aria-selected="true"] { color: #fff; background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
   .order-filter-panel { display: grid; gap: var(--rv-space-3); padding: var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
@@ -1071,6 +1083,9 @@
   .sessions li > :last-child { grid-column: 2; justify-self: start; }
   .workspace-modal-backdrop { padding: var(--rv-space-2); }
   .workspace-modal > header, .workspace-modal > footer, .security-modal-body, .product-import-body { padding-inline: var(--rv-space-4); }
+  .invoice-info-modal .invoice-address-sheet { padding: var(--rv-space-4); }
+  .invoice-address-sheet dl { grid-template-columns: 1fr; gap: var(--rv-space-1); }
+  .invoice-address-sheet dd + dt { margin-top: var(--rv-space-2); }
   .shipping-designer-workspace { grid-template-columns: 1fr; }
   .shipping-designer-inspector { grid-column: auto; }
   .shipping-designer-format-tabs { width: 100%; margin-left: 0; }
