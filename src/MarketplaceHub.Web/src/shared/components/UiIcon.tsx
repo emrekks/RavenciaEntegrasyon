@@ -115,7 +115,7 @@ const paths: Record<UiIconName, ReactNode> = {
   dashboard: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.8" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.8" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.8" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.8" /></>,
   products: <><path d="M6 8h12l1 12H5L6 8Z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /><path d="M9 12h6" /></>,
   orders: <><rect x="5" y="3.5" width="14" height="17" rx="2" /><path d="M9 3.5h6v3H9zM9 11h6M9 15h6M9 18h3" /></>,
-  returns: <><path d="M5 8.5 12 5l7 3.5v8L12 20l-7-3.5z" /><path d="M12 5v7m7-3.5-7 3.5-7-3.5" /><path d="M9 14H4" /><path d="m6.5 11.5-2.5 2.5 2.5 2.5" /></>,
+  returns: <><path d="M7 4.5h10l3 3v12H4v-12l3-3Z" /><path d="M7 4.5v4h10v-4" /><path d="M10 15H4m0 0 3-3m-3 3 3 3" /></>,
   jobs: <><path d="M4 5h16M4 12h9M4 19h7" /><path d="m16 15 2 2 4-5" /></>,
   settings: <><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></>,
   platforms: <><rect x="3.5" y="4" width="7" height="7" rx="1.8" /><rect x="13.5" y="13" width="7" height="7" rx="1.8" /><path d="M10.5 7.5h2a4 4 0 0 1 4 4V13M14 10l2.5 2.5L19 10" /></>,
