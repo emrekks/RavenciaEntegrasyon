@@ -306,7 +306,7 @@
   /* Settings, mapping, integrations, jobs and invoices use the same card grammar. */
   .security-page { max-width: 1280px; }
   .security-authenticator-card { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-5); }
-  .security-authenticator-card > div { display: grid; gap: var(--rv-space-2); }
+  .security-authenticator-card > div { display: grid; justify-items: start; gap: var(--rv-space-2); }
   .security-authenticator-card h2, .security-authenticator-card p { margin: 0; }
   .security-sessions-card { margin-top: var(--rv-space-4); }
   .session-bulk-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--rv-space-2); }
