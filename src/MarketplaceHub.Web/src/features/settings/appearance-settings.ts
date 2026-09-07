@@ -12,11 +12,19 @@ export type AppearancePalette = Record<AppearanceColorToken, string>
 
 export type AppearanceColors = Record<AppearanceColorTheme, AppearancePalette>
 
+export type AppearanceColorThemeProfile = {
+  id: string
+  name: string
+  palette: AppearancePalette
+  builtIn: boolean
+}
+
 export type AppearanceSettings = {
   fontFamily: AppearanceFontFamily
   fontSize: AppearanceFontSize
   themeMode: AppearanceThemeMode
   colors: { dark: AppearancePalette }
+  colorThemes: AppearanceColorThemeProfile[]
 }
 
 export type AppearanceSettingsEnvelope = {
@@ -24,15 +32,25 @@ export type AppearanceSettingsEnvelope = {
   version: number
 }
 
+const defaultDarkPalette: AppearancePalette = {
+  bg: '#0a0e1a', surface: '#111827', surfaceRaised: '#1a2235', surfaceSoft: '#1d2638', border: '#1e2d45', borderStrong: '#243352', ink: '#f1f5f9', muted: '#94a3b8', subtle: '#64748b', primary: '#6366f1', primaryHover: '#4f46e5', primarySoft: '#292d67', accent: '#10b981', accentSoft: '#173c3a', warning: '#f59e0b', warningSoft: '#4a3514', danger: '#ef4444', dangerSoft: '#4a282c', info: '#3b82f6'
+}
+
+export const defaultAppearanceColorTheme: AppearanceColorThemeProfile = {
+  id: 'default-dark',
+  name: 'Moda Zeyn ERP – Koyu Tema',
+  palette: { ...defaultDarkPalette },
+  builtIn: true
+}
+
 export const defaultAppearanceSettings: AppearanceSettings = {
   fontFamily: 'inter',
   fontSize: 'normal',
   themeMode: 'dark',
   colors: {
-    dark: {
-      bg: '#0a0e1a', surface: '#111827', surfaceRaised: '#1a2235', surfaceSoft: '#1d2638', border: '#1e2d45', borderStrong: '#243352', ink: '#f1f5f9', muted: '#94a3b8', subtle: '#64748b', primary: '#6366f1', primaryHover: '#4f46e5', primarySoft: '#292d67', accent: '#10b981', accentSoft: '#173c3a', warning: '#f59e0b', warningSoft: '#4a3514', danger: '#ef4444', dangerSoft: '#4a282c', info: '#3b82f6'
-    }
-  }
+    dark: { ...defaultDarkPalette }
+  },
+  colorThemes: [{ ...defaultAppearanceColorTheme, palette: { ...defaultAppearanceColorTheme.palette } }]
 }
 
 export const appearanceColorTokenOptions: Array<{ key: AppearanceColorToken; label: string; description: string }> = [
@@ -106,10 +124,28 @@ function normalizePalette(value: unknown, fallback: AppearancePalette): Appearan
 }
 
 function normalizeColors(value: unknown): AppearanceColors {
-  if (!value || typeof value !== 'object') return { dark: { ...defaultAppearanceSettings.colors.dark } }
+  if (!value || typeof value !== 'object') return { dark: { ...defaultDarkPalette } }
   const candidate = value as Partial<AppearanceColors>
-  const dark = normalizePalette(candidate.dark, defaultAppearanceSettings.colors.dark)
+  const dark = normalizePalette(candidate.dark, defaultDarkPalette)
   return { dark }
+}
+
+function normalizeColorThemes(value: unknown): AppearanceColorThemeProfile[] {
+  const profiles: AppearanceColorThemeProfile[] = [{ ...defaultAppearanceColorTheme, palette: { ...defaultAppearanceColorTheme.palette } }]
+  if (!Array.isArray(value)) return profiles
+  const ids = new Set(profiles.map(profile => profile.id.toLowerCase()))
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const candidate = item as Partial<AppearanceColorThemeProfile>
+    const id = typeof candidate.id === 'string' ? candidate.id.trim().slice(0, 80) : ''
+    const name = typeof candidate.name === 'string' ? candidate.name.trim().slice(0, 60) : ''
+    if (!id || !name || ids.has(id.toLowerCase()) || !candidate.palette) continue
+    const palette = normalizePalette(candidate.palette, defaultDarkPalette)
+    profiles.push({ id, name, palette, builtIn: false })
+    ids.add(id.toLowerCase())
+    if (profiles.length >= 24) break
+  }
+  return profiles
 }
 
 export function normalizeAppearanceSettings(value: unknown): AppearanceSettings {
@@ -119,7 +155,8 @@ export function normalizeAppearanceSettings(value: unknown): AppearanceSettings 
     fontFamily: typeof candidate.fontFamily === 'string' && fontFamilies.has(candidate.fontFamily as AppearanceFontFamily) ? candidate.fontFamily as AppearanceFontFamily : defaultAppearanceSettings.fontFamily,
     fontSize: typeof candidate.fontSize === 'string' && fontSizes.has(candidate.fontSize as AppearanceFontSize) ? candidate.fontSize as AppearanceFontSize : defaultAppearanceSettings.fontSize,
     themeMode: typeof candidate.themeMode === 'string' && themeModes.has(candidate.themeMode as AppearanceThemeMode) ? candidate.themeMode as AppearanceThemeMode : defaultAppearanceSettings.themeMode,
-    colors: normalizeColors(candidate.colors)
+    colors: normalizeColors(candidate.colors),
+    colorThemes: normalizeColorThemes(candidate.colorThemes)
   }
 }
 
@@ -136,8 +173,9 @@ export function useAppearanceSettings() {
   const settings = normalizeAppearanceSettings(query.data?.settings)
   const [draft, setDraft] = useState<AppearanceSettings>(settings)
   const settingsColorsKey = JSON.stringify(settings.colors)
+  const settingsThemesKey = JSON.stringify(settings.colorThemes)
 
-  useEffect(() => setDraft(settings), [settings.fontFamily, settings.fontSize, settings.themeMode, settingsColorsKey])
+  useEffect(() => setDraft(settings), [settings.fontFamily, settings.fontSize, settings.themeMode, settingsColorsKey, settingsThemesKey])
 
   async function save(next: AppearanceSettings) {
     const normalized = normalizeAppearanceSettings(next)

@@ -6,7 +6,7 @@ import { UiIcon, type UiIconName } from '../shared/components'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, InventoryPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, BillingSettingsPage, InvoiceDetailPage, InvoicesPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
-import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, appearanceThemeModeOptions, defaultAppearanceSettings, useAppearanceSettings, type AppearanceSettings } from '../features/settings/appearance-settings'
+import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, appearanceThemeModeOptions, defaultAppearanceColorTheme, useAppearanceSettings, type AppearanceSettings } from '../features/settings/appearance-settings'
 
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
@@ -32,43 +32,55 @@ function Shell({ me }: { me: Me }) {
   }, [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize, appearanceSettings.settings.themeMode, appearanceColorsKey])
   const pageNames: Record<string, string> = { '/dashboard': 'Dashboard', '/products': 'Ürünler', '/products/new': 'Yeni ürün', '/catalog/categories': 'Kategoriler', '/catalog/brands': 'Markalar', '/catalog/attributes': 'Özellikler', '/imports': 'İçe aktarımlar', '/inventory': 'Stok ve fiyat', '/shipments': 'Gönderiler', '/orders': 'Siparişler', '/returns': 'İadeler', '/invoices': 'Faturalar', '/jobs': 'İşlem takibi', '/integrations': 'Platformlar', '/mappings/categories': 'Eşleştirme ayarları', '/mappings/attributes': 'Özellik eşlemeleri', '/settings': 'Sistem ayarları', '/settings/appearance': 'Görünüm ayarları', '/settings/billing': 'Faturalandırma' }
   const pageName = pageNames[location.pathname] ?? (location.pathname.startsWith('/products/') ? 'Ürün detayları' : location.pathname.startsWith('/returns/') ? 'İade detayları' : location.pathname.startsWith('/imports/') ? 'İçe aktarma ayrıntıları' : location.pathname.startsWith('/integrations/') ? 'Platform ayrıntıları' : location.pathname.startsWith('/shipments/') ? 'Gönderi ayrıntıları' : 'Ravencia')
+  function clearSidebarHoverTimer() {
+    if (sidebarHoverTimer.current !== null) {
+      window.clearTimeout(sidebarHoverTimer.current)
+      sidebarHoverTimer.current = null
+    }
+  }
   function expandSidebarOnHover() {
-    if (sidebarHoverTimer.current !== null) window.clearTimeout(sidebarHoverTimer.current)
+    if (sidebarPinned) return
+    clearSidebarHoverTimer()
+    sidebarHoverTimer.current = window.setTimeout(() => {
+      sidebarHoverTimer.current = null
+      setSidebarHoverExpanded(true)
+    }, 180)
+  }
+  function expandSidebarOnFocus() {
+    clearSidebarHoverTimer()
     setSidebarHoverExpanded(true)
   }
   function collapseSidebarOnLeave() {
     if (sidebarPinned) return
-    if (sidebarHoverTimer.current !== null) window.clearTimeout(sidebarHoverTimer.current)
-    sidebarHoverTimer.current = null
-    setSidebarHoverExpanded(false)
+    clearSidebarHoverTimer()
+    sidebarHoverTimer.current = window.setTimeout(() => {
+      sidebarHoverTimer.current = null
+      setSidebarHoverExpanded(false)
+    }, 140)
   }
   function toggleSidebarPinned() {
     const nextPinned = !sidebarPinned
     setSidebarPinned(nextPinned)
     localStorage.setItem('ravencia.sidebarPinned', String(nextPinned))
-    if (nextPinned) setSidebarHoverExpanded(true)
+    clearSidebarHoverTimer()
+    setSidebarHoverExpanded(nextPinned)
   }
   useEffect(() => {
     if (sidebarPinned) return
-    const collapseIfPointerIsOutside = (event: PointerEvent) => {
-      if (!sidebarHoverExpanded) return
-      const rect = sidebarRef.current?.getBoundingClientRect()
-      if (!rect) return
-      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) setSidebarHoverExpanded(false)
+    const collapseOnWindowBlur = () => {
+      clearSidebarHoverTimer()
+      setSidebarHoverExpanded(false)
     }
-    const collapseOnWindowBlur = () => setSidebarHoverExpanded(false)
-    window.addEventListener('pointermove', collapseIfPointerIsOutside)
     window.addEventListener('blur', collapseOnWindowBlur)
     return () => {
-      window.removeEventListener('pointermove', collapseIfPointerIsOutside)
       window.removeEventListener('blur', collapseOnWindowBlur)
-      if (sidebarHoverTimer.current !== null) window.clearTimeout(sidebarHoverTimer.current)
+      clearSidebarHoverTimer()
     }
   }, [sidebarHoverExpanded, sidebarPinned])
   const icon = (name: UiIconName) => <UiIcon className="nav-icon" name={name} size={22} />
   const item = (to: string, iconName: UiIconName, label: string, end = false) => <NavLink to={to} end={end}>{icon(iconName)}<span className="nav-label">{label}</span></NavLink>
   return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarExpanded ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
-    <aside ref={sidebarRef} onPointerEnter={expandSidebarOnHover} onPointerLeave={collapseSidebarOnLeave} onFocus={expandSidebarOnHover} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) collapseSidebarOnLeave() }}>
+    <aside ref={sidebarRef} onPointerEnter={expandSidebarOnHover} onPointerLeave={collapseSidebarOnLeave} onFocus={expandSidebarOnFocus} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) collapseSidebarOnLeave() }}>
       <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong><small>MarketplaceHub</small></div><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menü sabitlemesini kaldır' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menü sabitlendi' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button></div>
       <nav aria-label="Ana menü">{item('/dashboard', 'dashboard', 'Dashboard')}{item('/products', 'products', 'Ürünler')}{item('/orders', 'orders', 'Siparişler')}{item('/returns', 'returns', 'İadeler')}{item('/invoices', 'invoiceDue', 'Faturalar')}{item('/jobs', 'jobs', 'İşlem Takibi')}{item('/integrations', 'platforms', 'Platformlar')}{item('/mappings/categories', 'mappings', 'Eşleştirme Ayarları')}</nav>
       <div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Çıkış Yap</span></button></div>
@@ -332,16 +344,16 @@ function Dashboard({ me }: { me: Me }) {
     const ratio = index / 5
     return { ratio, amount: revenueAxisMax * ratio, major: true }
   })
-  const revenueLabelEvery = Math.max(1, Math.ceil(revenueSeries.length / 8))
   const revenueTotal = revenueSeries.reduce((sum, item) => sum + item.amount, 0)
   const revenueOrderCount = revenueSeries.reduce((sum, item) => sum + item.orderCount, 0)
   const syncRows = bootstrap.data?.sync ?? []
   const latestSync = [...syncRows].sort((a, b) => new Date(b.lastSuccessAt ?? 0).getTime() - new Date(a.lastSuccessAt ?? 0).getTime())[0]
   const errors = [bootstrap.error, revenueQuery.error].filter(Boolean)
+  const revenuePlotMinWidth = revenueSeries.length > 45 ? `${revenueSeries.length * 22}px` : '100%'
   return <section className="content dashboard"><div className="page-heading"><div><p className="eyebrow">Operasyon merkezi</p><h1>Genel Bakış</h1><p className="lede">Merhaba {me.displayName}. Günlük operasyonun önemli sinyalleri tek ekranda.</p></div><div className="dashboard-heading-actions"><span className="dashboard-date">{now.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div></div>
     {errors.length > 0 && <div role="alert" className="error">Bazı operasyon verileri alınamadı; görünen metrikler kısmi olabilir.</div>}
      <div className="metrics dashboard-metrics operational-metrics"><article><DashboardMetricIcon kind="pending" /><small>Bekleyen Sipariş</small><strong>{loading ? '—' : metrics?.pendingOrders ?? 0}</strong></article><article className={(metrics?.lateOrders ?? 0) ? 'danger-metric' : ''}><DashboardMetricIcon kind="late" /><small>Geciken Sipariş</small><strong>{loading ? '—' : metrics?.lateOrders ?? 0}</strong></article><article><DashboardMetricIcon kind="today" /><small>Bugünkü Sipariş</small><strong>{loading ? '—' : metrics?.todayOrders ?? 0}</strong></article><article><DashboardMetricIcon kind="month" /><small>Bu Ayki Sipariş</small><strong>{loading ? '—' : metrics?.monthOrders ?? 0}</strong></article><article><DashboardMetricIcon kind="return" /><small>Aksiyon Bekleyen İade</small><strong>{loading ? '—' : metrics?.pendingReturns ?? 0}</strong></article><article className={(metrics?.dueSoonInvoices ?? 0) ? 'warning-metric' : ''}><DashboardMetricIcon kind="invoice" /><small>Süresi Yaklaşan Fatura</small><strong>{loading ? '—' : metrics?.dueSoonInvoices ?? 0}</strong></article><article><DashboardMetricIcon kind="uninvoiced" /><small>Fatura bekliyor</small><strong>{loading ? '—' : metrics?.uninvoicedInvoices ?? 0}</strong></article><article><DashboardMetricIcon kind="stock" /><small>Düşük / Yok Stok</small><strong>{loading ? '—' : metrics?.lowStockProducts ?? 0}</strong></article></div>
-    <div className="dashboard-report-grid"><article className="panel dashboard-revenue-panel"><div className="panel-title"><div><h2>Satış Cirosu</h2><p>Seçilen dönemde gerçekleşen sipariş toplamı</p></div><div className="dashboard-revenue-controls"><label className="dashboard-period-select"><span>Ciro dönemi</span><select aria-label="Ciro dönemi" value={revenueRange} onChange={event => setRevenueRange(event.target.value as DashboardRevenueRange)}><option value="1">Günlük</option><option value="3">Son 3 gün</option><option value="7">Son 7 gün</option><option value="14">Son 14 gün</option><option value="30">Son 30 gün</option><option value="month">Bu ay</option><option value="custom">Özel tarih</option></select></label><label><span>Platform</span><select aria-label="Ciro platformu" value={revenuePlatform} onChange={event => setRevenuePlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div></div>{revenueRange === 'custom' && <div className="dashboard-custom-range"><label><span>Başlangıç</span><input type="date" value={revenueFrom} max={revenueTo} onChange={event => setRevenueFrom(event.target.value)} /></label><label><span>Bitiş</span><input type="date" value={revenueTo} min={revenueFrom} onChange={event => setRevenueTo(event.target.value)} /></label></div>}<div className="dashboard-revenue-summary"><strong>{dashboardMoney(revenueTotal, revenueCurrency)}</strong><span>{revenueOrderCount} sipariş</span></div><div className="dashboard-revenue-chart" aria-label="Günlük satış cirosu"><div className="dashboard-revenue-axis" aria-hidden="true">{revenueAxisTicks.map(tick => <span key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }}>{dashboardAxisMoney(tick.amount, revenueCurrency)}</span>)}</div><div className="dashboard-revenue-plot"><div className="dashboard-revenue-plot-inner"><div className="dashboard-revenue-gridlines" aria-hidden="true">{revenueAxisTicks.map(tick => <i className="is-major" key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }} />)}</div><div className="dashboard-revenue-columns" style={{ gridTemplateColumns: `repeat(${Math.max(revenueSeries.length, 1)}, minmax(0, 1fr))` }}>{revenueSeries.map((point, index) => <div className="dashboard-revenue-column" key={point.key}><div className="dashboard-revenue-bar-wrap"><span className="dashboard-revenue-bar" style={{ height: `${Math.max(point.amount ? 7 : 3, point.amount / revenueAxisMax * 100)}%` }} aria-label={`${point.fullLabel}: ${dashboardMoney(point.amount, point.currency)}, ${point.orderCount} sipariş`} tabIndex={0}><span className="dashboard-revenue-hover"><strong>{point.fullLabel}</strong><span>{dashboardMoney(point.amount, point.currency)} · {point.orderCount} sipariş</span></span></span></div><span>{index === 0 || index === revenueSeries.length - 1 || index % revenueLabelEvery === 0 ? point.label : ''}</span></div>)}</div></div></div></div></article><article className="panel dashboard-api-panel"><div className="panel-title"><div><h2>Son senkronizasyonlar</h2><p>Sipariş, iade ve stok kayıtlarının güncel zamanı</p></div><Link className="dashboard-panel-link" to="/jobs">İşlem takibi <UiIcon name="arrowRight" /></Link></div><div className="dashboard-api-list dashboard-sync-list">{syncRows.map(row => <Link to="/jobs" key={row.resourceType}><span className={`dashboard-sync-icon ${row.kind}`} aria-hidden="true"><UiIcon name="sync" /></span><span><strong>{row.label}</strong><small>{row.status === 'SUCCEEDED' ? 'Başarılı senkronizasyon' : 'Henüz kayıt yok'}</small></span><b>{dashboardSyncTime(row)}</b></Link>)}</div><div className="dashboard-sync-meta"><UiIcon name="sync" /><span className="dashboard-sync-meta-copy"><strong>{latestSync ? `Son veri senkronizasyonu: ${dashboardSyncTime(latestSync)}` : 'Senkronizasyon kaydı yok'}</strong><small>Projection güncellemesi: {latestSync ? dashboardSyncTime(latestSync) : 'Kayıt yok'}</small></span></div></article></div>
+    <div className="dashboard-report-grid"><article className="panel dashboard-revenue-panel"><div className="panel-title"><div><h2>Satış Cirosu</h2><p>Seçilen dönemde gerçekleşen sipariş toplamı</p></div><div className="dashboard-revenue-controls"><label className="dashboard-period-select"><span>Ciro dönemi</span><select aria-label="Ciro dönemi" value={revenueRange} onChange={event => setRevenueRange(event.target.value as DashboardRevenueRange)}><option value="1">Günlük</option><option value="3">Son 3 gün</option><option value="7">Son 7 gün</option><option value="14">Son 14 gün</option><option value="30">Son 30 gün</option><option value="month">Bu ay</option><option value="custom">Özel tarih</option></select></label><label><span>Platform</span><select aria-label="Ciro platformu" value={revenuePlatform} onChange={event => setRevenuePlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div></div>{revenueRange === 'custom' && <div className="dashboard-custom-range"><label><span>Başlangıç</span><input type="date" value={revenueFrom} max={revenueTo} onChange={event => setRevenueFrom(event.target.value)} /></label><label><span>Bitiş</span><input type="date" value={revenueTo} min={revenueFrom} onChange={event => setRevenueTo(event.target.value)} /></label></div>}<div className="dashboard-revenue-summary"><strong>{dashboardMoney(revenueTotal, revenueCurrency)}</strong><span>{revenueOrderCount} sipariş</span></div><div className="dashboard-revenue-chart" aria-label="Günlük satış cirosu"><div className="dashboard-revenue-axis" aria-hidden="true"><div className="dashboard-revenue-axis-inner">{revenueAxisTicks.map(tick => <span key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }}>{dashboardAxisMoney(tick.amount, revenueCurrency)}</span>)}</div></div><div className="dashboard-revenue-plot"><div className="dashboard-revenue-plot-inner" style={{ minWidth: revenuePlotMinWidth }}><div className="dashboard-revenue-gridlines" aria-hidden="true">{revenueAxisTicks.map(tick => <i className="is-major" key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }} />)}</div><div className="dashboard-revenue-columns" style={{ gridTemplateColumns: `repeat(${Math.max(revenueSeries.length, 1)}, minmax(0, 1fr))` }}>{revenueSeries.map(point => <div className="dashboard-revenue-column" key={point.key}><div className="dashboard-revenue-bar-wrap"><span className="dashboard-revenue-bar" style={{ height: `${point.amount ? Math.max(4, point.amount / revenueAxisMax * 100) : 0}%` }} aria-label={`${point.fullLabel}: ${dashboardMoney(point.amount, point.currency)}, ${point.orderCount} sipariş`} tabIndex={0}><span className="dashboard-revenue-hover"><strong>{point.fullLabel}</strong><span>{dashboardMoney(point.amount, point.currency)} · {point.orderCount} sipariş</span></span></span></div><span>{point.label}</span></div>)}</div></div></div></div></article><article className="panel dashboard-api-panel"><div className="panel-title"><div><h2>Son senkronizasyonlar</h2><p>Sipariş, iade ve stok kayıtlarının güncel zamanı</p></div><Link className="dashboard-panel-link" to="/jobs">İşlem takibi <UiIcon name="arrowRight" /></Link></div><div className="dashboard-api-list dashboard-sync-list">{syncRows.map(row => <Link to="/jobs" key={row.resourceType}><span className={`dashboard-sync-icon ${row.kind}`} aria-hidden="true"><UiIcon name="sync" /></span><span><strong>{row.label}</strong><small>{row.status === 'SUCCEEDED' ? 'Başarılı senkronizasyon' : 'Henüz kayıt yok'}</small></span><b>{dashboardSyncTime(row)}</b></Link>)}</div><div className="dashboard-sync-meta"><UiIcon name="sync" /><span className="dashboard-sync-meta-copy"><strong>{latestSync ? `Son veri senkronizasyonu: ${dashboardSyncTime(latestSync)}` : 'Senkronizasyon kaydı yok'}</strong><small>Projection güncellemesi: {latestSync ? dashboardSyncTime(latestSync) : 'Kayıt yok'}</small></span></div></article></div>
   </section>
 }
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
@@ -457,6 +469,8 @@ function AppearanceSettingsPage() {
   const appearance = useAppearanceSettings()
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [newThemeName, setNewThemeName] = useState('')
+  const [selectedThemeId, setSelectedThemeId] = useState(defaultAppearanceColorTheme.id)
   const colorTheme = 'dark' as const
   const savedAppearance = useRef(appearance.settings)
 
@@ -499,6 +513,56 @@ function AppearanceSettingsPage() {
     }
   }
 
+  function applyColorTheme(theme: typeof appearance.draft.colorThemes[number]) {
+    setSelectedThemeId(theme.id)
+    appearance.setDraft({ ...appearance.draft, themeMode: 'dark', colors: { dark: { ...theme.palette } } })
+    setMessage(`${theme.name} önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.`)
+  }
+
+  async function saveColorTheme() {
+    const name = newThemeName.trim()
+    if (!name) {
+      setMessage('Kaydetmek için bir tema adı yazın.')
+      return
+    }
+    const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const profile = { id, name: name.slice(0, 60), palette: { ...palette }, builtIn: false }
+    const nextDraft = { ...appearance.draft, colorThemes: [...appearance.draft.colorThemes, profile] }
+    setBusy(true)
+    setMessage('')
+    try {
+      await appearance.save(nextDraft)
+      setSelectedThemeId(id)
+      setNewThemeName('')
+      setMessage(`“${profile.name}” renk teması kaydedildi.`)
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : 'Renk teması kaydedilemedi.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function deleteColorTheme(theme: typeof appearance.draft.colorThemes[number]) {
+    if (theme.builtIn) return
+    if (!window.confirm(`“${theme.name}” renk teması silinsin mi?`)) return
+    const nextThemes = appearance.draft.colorThemes.filter(item => item.id !== theme.id)
+    const nextDraft = { ...appearance.draft, colorThemes: nextThemes }
+    if (selectedThemeId === theme.id) {
+      setSelectedThemeId(defaultAppearanceColorTheme.id)
+      nextDraft.colors = { dark: { ...defaultAppearanceColorTheme.palette } }
+    }
+    setBusy(true)
+    setMessage('')
+    try {
+      await appearance.save(nextDraft)
+      setMessage(`“${theme.name}” renk teması silindi.`)
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : 'Renk teması silinemedi.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const previewStyle: CSSProperties = {
     fontFamily: appearanceFontFamilyCss[appearance.draft.fontFamily],
     fontSize: 'var(--rv-font-size-md)',
@@ -530,7 +594,8 @@ function AppearanceSettingsPage() {
         <label><span>Tema</span><div className="appearance-theme-lock"><strong>{appearanceThemeModeOptions[0].label}</strong><small>{appearanceThemeModeOptions[0].description}</small></div></label>
       </div>
       <section className="appearance-color-editor">
-        <div className="appearance-color-editor-heading"><div><h2>Moda Zeyn ERP – Koyu Tema</h2><p>Çalışma alanındaki tüm arayüz renkleri bu paletten gelir. Değişiklikler kaydetmeden önce anlık önizlenir.</p></div><div className="appearance-color-actions"><strong className="appearance-color-theme-label">Tek tema</strong><button type="button" className="rv-button rv-button-secondary rv-button-sm" onClick={() => appearance.setDraft({ ...appearance.draft, themeMode: 'dark', colors: { dark: { ...defaultAppearanceSettings.colors.dark } } })}>Varsayılanlara dön</button></div></div>
+        <div className="appearance-color-editor-heading"><div><h2>Renk paleti</h2><p>Değişiklikler kaydetmeden önce anlık önizlenir. Hazır paletleri saklayabilir, daha sonra yeniden uygulayabilirsiniz.</p></div><div className="appearance-color-actions"><strong className="appearance-color-theme-label">{appearance.draft.colorThemes.find(theme => theme.id === selectedThemeId)?.name ?? defaultAppearanceColorTheme.name}</strong><button type="button" className="rv-button rv-button-secondary rv-button-sm" onClick={() => applyColorTheme(defaultAppearanceColorTheme)}>Varsayılanlara dön</button></div></div>
+        <div className="appearance-color-themes" aria-label="Kayıtlı renk temaları"><div className="appearance-color-themes-heading"><div><h3>Kayıtlı temalar</h3><p>Varsayılan tema korunur ve silinemez.</p></div><div className="appearance-color-theme-create"><input value={newThemeName} maxLength={60} placeholder="Yeni tema adı" aria-label="Yeni tema adı" onChange={event => setNewThemeName(event.target.value)} /><button type="button" className="rv-button rv-button-primary rv-button-sm" disabled={busy || !newThemeName.trim()} onClick={() => void saveColorTheme()}>Renk temasını kaydet</button></div></div><div className="appearance-color-theme-list">{appearance.draft.colorThemes.map(theme => <article className={`appearance-color-theme-card ${selectedThemeId === theme.id ? 'is-selected' : ''}`} key={theme.id}><button type="button" className="appearance-color-theme-select" onClick={() => applyColorTheme(theme)}><span className="appearance-color-theme-swatches" aria-hidden="true">{[theme.palette.bg, theme.palette.surface, theme.palette.primary, theme.palette.accent].map(color => <i key={color} style={{ backgroundColor: color }} />)}</span><span><strong>{theme.name}</strong><small>{theme.builtIn ? 'Varsayılan tema' : 'Kayıtlı özel tema'}</small></span></button>{theme.builtIn ? <span className="appearance-color-theme-protected">Korunuyor</span> : <button type="button" className="appearance-color-theme-delete" disabled={busy} onClick={() => void deleteColorTheme(theme)} aria-label={`${theme.name} temasını sil`}>Sil</button>}</article>)}</div></div>
         <div className="appearance-color-grid">{appearanceColorTokenOptions.map(({ key, label, description }) => <label className="appearance-color-field" key={key}><span><b>{label}</b><small>{description}</small></span><span className="appearance-color-control"><input type="color" value={palette[key]} onChange={event => updateColor(key, event.target.value)} aria-label={`${label} rengi`} /><code>{palette[key].toUpperCase()}</code></span></label>)}</div>
       </section>
       <div className="appearance-preview" style={previewStyle}><small>Önizleme</small><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p></div>

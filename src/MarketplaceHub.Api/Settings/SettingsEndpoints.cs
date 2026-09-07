@@ -11,6 +11,9 @@ public static class SettingsEndpoints
     private const string ShippingLabelKey = "shipping-label";
     private const string AppearanceKey = "appearance";
     private const int MaximumJsonCharacters = 262_144;
+    private const int MaximumAppearanceColorThemes = 24;
+    private const string DefaultAppearanceColorThemeId = "default-dark";
+    private const string DefaultAppearanceColorThemeName = "Moda Zeyn ERP – Koyu Tema";
     private static readonly HashSet<string> AppearanceFontFamilies = new(StringComparer.OrdinalIgnoreCase) { "inter", "system", "segoe", "arial" };
     private static readonly HashSet<string> AppearanceFontSizes = new(StringComparer.OrdinalIgnoreCase) { "small", "normal", "large", "extra-large" };
     private static readonly HashSet<string> AppearanceThemeModes = new(StringComparer.OrdinalIgnoreCase) { "dark" };
@@ -100,12 +103,14 @@ public static class SettingsEndpoints
         var fontSize = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "fontSize") : null;
         var themeMode = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "themeMode") : null;
         var colors = NormalizeAppearanceColors(value);
+        var colorThemes = NormalizeAppearanceColorThemes(value);
         return new
         {
             fontFamily = AppearanceFontFamilies.Contains(fontFamily ?? string.Empty) ? fontFamily!.ToLowerInvariant() : "inter",
             fontSize = AppearanceFontSizes.Contains(fontSize ?? string.Empty) ? fontSize!.ToLowerInvariant() : "normal",
             themeMode = "dark",
-            colors
+            colors,
+            colorThemes
         };
     }
 
@@ -126,8 +131,40 @@ public static class SettingsEndpoints
             return false;
         }
 
-        normalized = new { fontFamily = fontFamily.ToLowerInvariant(), fontSize = fontSize.ToLowerInvariant(), themeMode = "dark", colors };
+        normalized = new { fontFamily = fontFamily.ToLowerInvariant(), fontSize = fontSize.ToLowerInvariant(), themeMode = "dark", colors, colorThemes = NormalizeAppearanceColorThemes(value) };
         return true;
+    }
+
+    private static List<object> NormalizeAppearanceColorThemes(JsonElement? value)
+    {
+        var themes = new List<object>
+        {
+            new { id = DefaultAppearanceColorThemeId, name = DefaultAppearanceColorThemeName, builtIn = true, palette = DefaultDarkAppearanceColors }
+        };
+        if (value is not { ValueKind: JsonValueKind.Object } || !value.Value.TryGetProperty("colorThemes", out var themesElement) || themesElement.ValueKind != JsonValueKind.Array)
+        {
+            return themes;
+        }
+
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { DefaultAppearanceColorThemeId };
+        foreach (var item in themesElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+            var id = ReadString(item, "id");
+            var name = ReadString(item, "name");
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) continue;
+            id = id.Trim();
+            name = name.Trim();
+            if (id.Length > 80 || name.Length > 60 || !ids.Add(id)) continue;
+
+            var palette = item.TryGetProperty("palette", out var paletteElement) && paletteElement.ValueKind == JsonValueKind.Object
+                ? NormalizeAppearancePaletteObject(paletteElement, DefaultDarkAppearanceColors)
+                : DefaultDarkAppearanceColors.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
+            themes.Add(new { id, name, builtIn = false, palette });
+            if (themes.Count >= MaximumAppearanceColorThemes) break;
+        }
+
+        return themes;
     }
 
     private static object NormalizeAppearanceColors(JsonElement? value)
@@ -140,6 +177,11 @@ public static class SettingsEndpoints
     private static Dictionary<string, string> NormalizeAppearancePalette(JsonElement? colors, string theme, IReadOnlyDictionary<string, string> defaults)
     {
         var palette = colors is { ValueKind: JsonValueKind.Object } && colors.Value.TryGetProperty(theme, out var property) && property.ValueKind == JsonValueKind.Object ? property : (JsonElement?)null;
+        return NormalizeAppearancePaletteObject(palette, defaults);
+    }
+
+    private static Dictionary<string, string> NormalizeAppearancePaletteObject(JsonElement? palette, IReadOnlyDictionary<string, string> defaults)
+    {
         var normalized = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var token in AppearanceColorTokens)
         {
