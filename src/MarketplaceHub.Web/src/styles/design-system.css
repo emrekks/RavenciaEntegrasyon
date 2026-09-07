@@ -709,6 +709,10 @@
   .integration-settings-modal { display: block; width: min(1120px, 100%); max-height: calc(100dvh - 32px); overflow: auto; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
   .integration-settings-modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5) var(--rv-space-6); border-bottom: 1px solid var(--rv-color-border); }
   .integration-detail-write-panel { margin-top: var(--rv-space-4); }
+  .integration-detail-summary > article { display: grid; align-content: start; gap: var(--rv-space-2); min-width: 0; }
+  .integration-detail-summary > article > :where(strong, p) { min-width: 0; overflow-wrap: anywhere; }
+  .integration-detail-summary > article > small { color: var(--rv-color-muted); }
+  .integration-detail-summary > article > p { margin: 0; color: var(--rv-color-muted); }
   .integration-detail-write-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); }
   .integration-detail-write-heading h2, .integration-detail-write-heading p { margin-bottom: var(--rv-space-1); }
   .integration-detail-write-status { flex: 0 0 auto; padding: 6px 10px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 999px; font-size: var(--rv-font-size-xs); font-weight: 800; white-space: nowrap; }
