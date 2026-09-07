@@ -147,7 +147,7 @@ function JobsIcon({ name }: { name: JobsIconName }) {
   if (name === 'price') return <svg {...common}><path d="M5 7.5 12 4l7 3.5v9L12 20l-7-3.5z" /><path d="M8.5 10.5h7M8.5 13.5h5" /></svg>
   if (name === 'order') return <svg {...common}><path d="m4 8 8-4 8 4-8 4zM4 8v8l8 4 8-4V8M12 12v8" /></svg>
   if (name === 'invoice') return <svg {...common}><path d="M6 3.5h9l3 3V20.5H6zM15 3.5v4h3M9 12h6M9 15.5h6" /></svg>
-  if (name === 'return') return <svg {...common}><path d="M7 4.5h10l3 3v12H4v-12l3-3Z" /><path d="M7 4.5v4h10v-4" /><path d="M10 15H4m0 0 3-3m-3 3 3 3" /></svg>
+  if (name === 'return') return <svg {...common}><path d="M7 4h8l4 4v12H5V8l2-4Z" /><path d="M7 4v4h8V4" /><path d="M14 14H7m0 0 3-3m-3 3 3 3" /></svg>
   if (name === 'product') return <svg {...common}><path d="m4 8 8-4 8 4-8 4zM4 8v8l8 4 8-4V8M8 10v8M16 10v8" /></svg>
   if (name === 'connection') return <svg {...common}><path d="M8 7V5a3 3 0 0 1 6 0v2M7 7h8v5a4 4 0 0 1-8 0zM12 16v3M9 20h6" /></svg>
   if (name === 'generic') return <svg {...common}><circle cx="12" cy="12" r="6" /><path d="M12 9v6M9 12h6" /></svg>
