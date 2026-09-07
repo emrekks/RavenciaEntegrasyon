@@ -543,6 +543,8 @@
   .marketplace-pricing-bar.selected { border-color: var(--rv-color-primary); }
   .marketplace-pricing-bar legend { display: contents; }
   .marketplace-pricing-bar legend > span:last-child, .marketplace-pricing-bar label { display: grid; min-width: 0; gap: 3px; }
+  .product-top-sidebar .marketplace-pricing-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .product-top-sidebar .marketplace-pricing-bar > button { grid-column: 1 / -1; justify-self: start; }
   .marketplace-pricing-bar legend > span:last-child small { color: var(--rv-color-muted); }
   .product-category-mapping-card { grid-column: 1 / -1; }
   .rich-text-editor { overflow: hidden; padding: 0; }
@@ -943,7 +945,7 @@
   .panel-attribute-record-main small, .panel-attribute-record-actions { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
   .panel-attribute-record-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--rv-space-1); }
   .panel-attribute-record-actions > button { min-height: 34px; padding-inline: var(--rv-space-2); }
-  .panel-attribute-record-actions > button[aria-label*="düzenle"], .panel-attribute-record-actions > button[aria-label*="sil"] { width: 34px; min-width: 34px; padding: 0; }
+  .panel-attribute-record-actions > button:not(.panel-attribute-category-button)[aria-label*="düzenle"], .panel-attribute-record-actions > button:not(.panel-attribute-category-button)[aria-label*="sil"] { width: 34px; min-width: 34px; padding: 0; }
   .panel-attribute-add-value { grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; }
   .panel-attribute-add-value .panel-attribute-sort-actions { display: flex; }
   .mapping-saved-header-tools { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(180px, 260px) auto; gap: var(--rv-space-2); align-items: center; min-width: min(100%, 620px); }
