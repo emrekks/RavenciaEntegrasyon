@@ -71,20 +71,20 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) { color-scheme: dark; }
   :root:not([data-theme]) {
-    --rv-color-bg: #0f1720;
-    --rv-color-surface: #1e2935;
-    --rv-color-surface-raised: #273746;
-    --rv-color-surface-soft: #314354;
-    --rv-color-border: #3a4b5d;
-    --rv-color-border-strong: #60758a;
-    --rv-color-ink: #f1f5f9;
-    --rv-color-muted: #cbd5e1;
-    --rv-color-subtle: #94a3b8;
-    --rv-color-primary: #cbd5e1;
-    --rv-color-primary-hover: #e2e8f0;
-    --rv-color-primary-soft: #2b3a4a;
-    --rv-color-accent: #38bdf8;
-    --rv-color-accent-soft: #123b52;
+    --rv-color-bg: #0b1120;
+    --rv-color-surface: #111a2e;
+    --rv-color-surface-raised: #18243d;
+    --rv-color-surface-soft: #223251;
+    --rv-color-border: #334567;
+    --rv-color-border-strong: #55709b;
+    --rv-color-ink: #eef4ff;
+    --rv-color-muted: #a9b8d6;
+    --rv-color-subtle: #7e91b4;
+    --rv-color-primary: #6ea8fe;
+    --rv-color-primary-hover: #8bbcff;
+    --rv-color-primary-soft: #1d3760;
+    --rv-color-accent: #4fd1c5;
+    --rv-color-accent-soft: #123d43;
     --rv-color-warning: #fbbf24;
     --rv-color-warning-soft: #4a3514;
     --rv-color-danger: #fb7185;
@@ -98,20 +98,20 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --rv-color-bg: #0f1720;
-  --rv-color-surface: #1e2935;
-  --rv-color-surface-raised: #273746;
-  --rv-color-surface-soft: #314354;
-  --rv-color-border: #3a4b5d;
-  --rv-color-border-strong: #60758a;
-  --rv-color-ink: #f1f5f9;
-  --rv-color-muted: #cbd5e1;
-  --rv-color-subtle: #94a3b8;
-  --rv-color-primary: #cbd5e1;
-  --rv-color-primary-hover: #e2e8f0;
-  --rv-color-primary-soft: #2b3a4a;
-  --rv-color-accent: #38bdf8;
-  --rv-color-accent-soft: #123b52;
+  --rv-color-bg: #0b1120;
+  --rv-color-surface: #111a2e;
+  --rv-color-surface-raised: #18243d;
+  --rv-color-surface-soft: #223251;
+  --rv-color-border: #334567;
+  --rv-color-border-strong: #55709b;
+  --rv-color-ink: #eef4ff;
+  --rv-color-muted: #a9b8d6;
+  --rv-color-subtle: #7e91b4;
+  --rv-color-primary: #6ea8fe;
+  --rv-color-primary-hover: #8bbcff;
+  --rv-color-primary-soft: #1d3760;
+  --rv-color-accent: #4fd1c5;
+  --rv-color-accent-soft: #123d43;
   --rv-color-warning: #fbbf24;
   --rv-color-warning-soft: #4a3514;
   --rv-color-danger: #fb7185;
