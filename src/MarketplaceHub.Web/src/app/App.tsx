@@ -34,8 +34,8 @@ function Shell({ me }: { me: Me }) {
     media.addEventListener('change', applyTheme)
     return () => media.removeEventListener('change', applyTheme)
   }, [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize, appearanceSettings.settings.themeMode, appearanceColorsKey])
-  const pageNames: Record<string, string> = { '/dashboard': 'Dashboard', '/products': 'Ürünler', '/products/new': 'Yeni ürün', '/orders': 'Siparişler', '/returns': 'İadeler', '/jobs': 'İşlem takibi', '/integrations': 'Platformlar', '/mappings/categories': 'Eşleştirme ayarları', '/settings': 'Sistem ayarları', '/settings/appearance': 'Görünüm ayarları' }
-  const pageName = pageNames[location.pathname] ?? (location.pathname.startsWith('/products/') ? 'Ürün detayları' : location.pathname.startsWith('/returns/') ? 'İade detayları' : 'Ravencia')
+  const pageNames: Record<string, string> = { '/dashboard': 'Dashboard', '/products': 'Ürünler', '/products/new': 'Yeni ürün', '/catalog/categories': 'Kategoriler', '/catalog/brands': 'Markalar', '/catalog/attributes': 'Özellikler', '/imports': 'İçe aktarımlar', '/inventory': 'Stok ve fiyat', '/shipments': 'Gönderiler', '/orders': 'Siparişler', '/returns': 'İadeler', '/jobs': 'İşlem takibi', '/integrations': 'Platformlar', '/mappings/categories': 'Eşleştirme ayarları', '/mappings/attributes': 'Özellik eşlemeleri', '/settings': 'Sistem ayarları', '/settings/appearance': 'Görünüm ayarları', '/settings/billing': 'Faturalandırma' }
+  const pageName = pageNames[location.pathname] ?? (location.pathname.startsWith('/products/') ? 'Ürün detayları' : location.pathname.startsWith('/returns/') ? 'İade detayları' : location.pathname.startsWith('/imports/') ? 'İçe aktarma ayrıntıları' : location.pathname.startsWith('/integrations/') ? 'Platform ayrıntıları' : location.pathname.startsWith('/shipments/') ? 'Gönderi ayrıntıları' : 'Ravencia')
   function expandSidebarOnHover() {
     if (sidebarHoverTimer.current !== null) window.clearTimeout(sidebarHoverTimer.current)
     setSidebarHoverExpanded(true)
