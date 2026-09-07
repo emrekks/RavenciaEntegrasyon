@@ -962,6 +962,7 @@
   .mapping-local-manager { position: relative; }
   .mapping-local-manager > summary { display: inline-flex; min-height: 34px; align-items: center; color: var(--rv-color-primary); font-size: var(--rv-font-size-sm); font-weight: 750; cursor: pointer; }
   .mapping-local-manager-dialog { display: grid; gap: var(--rv-space-4); margin-top: var(--rv-space-3); padding: var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .mapping-local-manager:not([open]) > .mapping-local-manager-dialog { display: none; }
   .mapping-local-manager-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-3); }
   .mapping-local-manager-dialog > header > div { display: grid; gap: 2px; }
   .mapping-local-manager-dialog > header small { color: var(--rv-color-muted); }
