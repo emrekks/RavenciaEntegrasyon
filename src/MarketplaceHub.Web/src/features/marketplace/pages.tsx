@@ -562,7 +562,7 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
 
   return (
     <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="workspace-modal single-order-sync-modal" role="dialog" aria-modal="true" aria-labelledby="order-sync-title" onMouseDown={e => e.stopPropagation()} style={{ maxWidth: '560px' }}>
+      <section className="workspace-modal single-order-sync-modal" role="dialog" aria-modal="true" aria-labelledby="order-sync-title" onMouseDown={e => e.stopPropagation()}>
         <header>
           <div>
             <h2 id="order-sync-title"><UiIcon name="sync" /> Sipariş Senkronizasyonu</h2>
@@ -570,9 +570,9 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
           </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Kapat"><UiIcon name="close" /></button>
         </header>
-        <form onSubmit={handleSubmit} style={{ padding: '0 24px 20px', display: 'grid', gap: '14px' }}>
+        <form className="single-order-sync-form" onSubmit={handleSubmit}>
           {!activeConnections.length && (
-            <div className="notice" role="alert" style={{ margin: 0, borderRadius: '8px', fontSize: '0.84rem' }}>
+            <div className="notice single-order-sync-notice" role="alert">
               ⚠️ Aktif Trendyol bağlantısı bulunamadı. Platformlar sayfasından bağlantınızı etkinleştirin.
             </div>
           )}
@@ -589,12 +589,12 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
             <button type="button" className={syncMode === 'changes' ? 'active' : ''} onClick={() => { setSyncMode('changes'); setErrorMsg('') }} disabled={isSubmitting}><UiIcon name="sync" /> Yeni siparişleri çek</button>
             <button type="button" className={syncMode === 'single' ? 'active' : ''} onClick={() => { setSyncMode('single'); setErrorMsg('') }} disabled={isSubmitting}><UiIcon name="search" /> Tekil sipariş çek</button>
           </div>
-          {syncMode === 'single' ? <label className="sync-order-number-field" style={{ display: 'grid', gap: '6px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Trendyol sipariş numarası</span>
-            <input type="text" inputMode="numeric" value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="Örn. 1014529381" disabled={isSubmitting} autoFocus style={{ padding: '10px 14px', borderRadius: '8px', fontSize: '0.95rem' }} />
+          {syncMode === 'single' ? <label className="sync-order-number-field">
+            <span>Trendyol sipariş numarası</span>
+            <input type="text" inputMode="numeric" value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="Örn. 1014529381" disabled={isSubmitting} autoFocus />
           </label> : <label className="sync-mode-option"><input type="checkbox" checked={fullScan} onChange={event => setFullScan(event.target.checked)} /><span><strong>Erişilebilir tüm siparişleri tara</strong><small>Kapalıyken yalnız yeni değişiklikler ve güncellemeler alınır.</small></span></label>}
-          {errorMsg && <p className="error" role="alert" style={{ margin: 0 }}>{errorMsg}</p>}
-          <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+          {errorMsg && <p className="error single-order-sync-error" role="alert">{errorMsg}</p>}
+          <footer className="single-order-sync-footer">
             <button type="button" className="secondary" onClick={onClose} disabled={isSubmitting}>İptal</button>
             <button type="submit" disabled={isSubmitting || !selectedConnectionIds.length}>
               {isSubmitting ? 'Senkronize ediliyor…' : syncMode === 'single' ? 'Tekil siparişi çek' : 'Siparişleri çek'}

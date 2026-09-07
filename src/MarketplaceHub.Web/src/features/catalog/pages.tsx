@@ -285,14 +285,17 @@ function BarcodeFillIcon() {
 
 function MediaOptionThumb({ option, selected, onClick }: { option: ProductMediaOption; selected: boolean; onClick: () => void }) {
   const [src, setSrc] = useState(option.url ?? '')
+  const [failed, setFailed] = useState(false)
   useEffect(() => {
     if (!option.file) return
     const objectUrl = URL.createObjectURL(option.file)
     setSrc(objectUrl)
+    setFailed(false)
     return () => URL.revokeObjectURL(objectUrl)
   }, [option.file])
   return <button type="button" className={`variant-media-option ${selected ? 'selected' : ''}`} aria-label={`${option.label}${selected ? ' seçimini kaldır' : ''}`} aria-pressed={selected} onClick={onClick}>
-    <span className="variant-media-option-image">{src ? <img src={src} alt="" /> : <VariantImageIcon />}</span>
+    <span className="variant-media-option-image">{src && !failed ? <img src={src} alt="" onError={() => setFailed(true)} /> : <VariantImageIcon />}</span>
+    <span className="variant-media-option-label" title={option.label}>{option.label}</span>
     <i aria-hidden="true">{selected ? <UiIcon name="check" /> : null}</i>
   </button>
 }
@@ -327,7 +330,7 @@ function VariantMediaPickerModal({
   const selectedGroup = groups?.find(group => group.id === selectedGroupId)
   const selectedValue = selectedGroup?.values.find(value => value.id === selectedValueId)
   return <div className="workspace-modal-backdrop variant-media-picker-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="workspace-modal variant-media-picker-modal" role="dialog" aria-modal="true" aria-labelledby="variant-media-picker-title" onMouseDown={event => event.stopPropagation()}>
+    <section className={`workspace-modal variant-media-picker-modal${mode === 'bulk' ? ' is-bulk' : ''}`} role="dialog" aria-modal="true" aria-labelledby="variant-media-picker-title" onMouseDown={event => event.stopPropagation()}>
       <header>
         <div><p className="eyebrow">VARYANT GÖRSELLERİ</p><h2 id="variant-media-picker-title">{mode === 'bulk' ? 'Seçeneklere görsel ata' : 'Varyant görsellerini seç'}</h2><p>{mode === 'bulk' ? 'Seçenek grubu ve değerini seçin; aynı değere sahip tüm varyantlara seçilen görselleri uygulayın.' : 'Ürün görsellerinden bu varyanta ait birden fazla görsel seçin. Sıra, ürün panelindeki görsel sırasına göre kaydedilir.'}</p></div>
         <button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button>
