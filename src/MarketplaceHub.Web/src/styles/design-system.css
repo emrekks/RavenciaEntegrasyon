@@ -462,6 +462,15 @@
   .product-category-mapping-card { grid-column: 1 / -1; }
   .rich-text-editor { overflow: hidden; padding: 0; }
   .rich-text-editor-head { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); border-bottom: 1px solid var(--rv-color-border); }
+  .rich-text-editor-head > div:first-child, .rich-text-editor-meta { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); }
+  .rich-text-mode-note { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 600; }
+  .rich-text-editor-meta { flex-wrap: wrap; justify-content: flex-end; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+  .rich-text-mode-switch { display: flex; gap: 2px; padding: 2px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }
+  .rich-text-mode-switch button { min-height: 32px; padding: 5px 10px; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: calc(var(--rv-radius-sm) - 2px); }
+  .rich-text-mode-switch button.active { color: #fff; background: var(--rv-color-primary); }
+  .rich-text-tool-group { display: flex; min-width: 0; align-items: center; gap: 2px; padding-right: var(--rv-space-1); border-right: 1px solid var(--rv-color-border); }
+  .rich-text-tool-group:last-child { border-right: 0; }
+  .rich-text-tool-group select { width: auto; min-width: 112px; min-height: 34px; }
   .rich-text-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--rv-space-1); padding: var(--rv-space-2); background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); }
   .rich-text-tool { display: inline-flex; min-height: 34px; align-items: center; gap: var(--rv-space-1); padding-inline: var(--rv-space-2); color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); }
   .rich-text-tool:hover { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
@@ -512,8 +521,9 @@
   .variant-header-action-menu button { display: flex; justify-content: space-between; gap: var(--rv-space-2); padding: var(--rv-space-3); color: inherit; background: transparent; border: 0; text-align: left; }
   .variant-header-action-menu button span { display: grid; gap: 2px; }
   .variant-header-action-menu p { margin: var(--rv-space-2); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
-  .product-publish-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(320px, .65fr); gap: var(--rv-space-5); align-items: start; }
-  .product-publish-main { display: grid; gap: var(--rv-space-4); }
+  .product-publish-layout { display: flex; width: 100%; min-width: 0; align-items: flex-start; gap: var(--rv-space-5); }
+  .product-publish-main { display: grid; flex: 1 1 0; min-width: 0; gap: var(--rv-space-4); }
+  .product-publish-step .publish-platform-grid { grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
   .publish-platform-card, .scheduled-publish-panel, .publish-checklist-panel { overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
   .publish-platform-card.selected { border-color: var(--rv-color-primary); box-shadow: 0 0 0 1px var(--rv-color-primary); }
   .publish-platform-card-head { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; width: 100%; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-4); color: var(--rv-color-ink); background: transparent; border: 0; text-align: left; }
@@ -532,7 +542,7 @@
   .scheduled-publish-panel summary > span { display: flex; align-items: center; gap: var(--rv-space-2); font-weight: 800; }
   .scheduled-publish-info { display: grid; gap: var(--rv-space-2); padding: 0 var(--rv-space-4) var(--rv-space-4); color: var(--rv-color-muted); }
   .scheduled-publish-info p { margin: 0; }
-  .publish-checklist-panel { position: sticky; top: calc(var(--rv-topbar-height) + 82px); }
+  .publish-checklist-panel { position: sticky; top: calc(var(--rv-topbar-height) + 82px); flex: 0 0 min(360px, 32%); min-width: 300px; }
   .publish-checklist-heading { display: flex; align-items: flex-start; gap: var(--rv-space-3); padding: var(--rv-space-5); border-bottom: 1px solid var(--rv-color-border); }
   .publish-checklist-heading > svg { color: var(--rv-color-primary); }
   .publish-checklist-heading h2, .publish-checklist-heading p { margin: 0; }
@@ -993,8 +1003,8 @@
   .product-toolbar .order-search { grid-column: 1 / -1; }
   .return-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .return-reference-filters .return-filter-actions { grid-column: 1 / -1; }
-  .product-publish-layout { grid-template-columns: 1fr; }
-  .publish-checklist-panel { position: static; }
+  .product-publish-layout { flex-direction: column; }
+  .publish-checklist-panel { position: static; width: 100%; min-width: 0; }
   .marketplace-pricing-bar { grid-template-columns: minmax(160px, 1fr) repeat(2, minmax(120px, .75fr)); }
   .marketplace-pricing-toggle { grid-column: 1 / -1; justify-self: end; }
   .rv-auth-header { width: min(100% - 32px, 1180px); }
@@ -1033,6 +1043,8 @@
   .product-step-grid, .product-basics-grid, .product-pricing-card .product-step-grid { grid-template-columns: 1fr; }
   .product-basics-grid .product-title-field, .product-basics-grid .product-brand-field, .wide { grid-column: auto; }
   .editor-section-title { margin-bottom: var(--rv-space-4); }
+  .rich-text-editor-head { align-items: flex-start; flex-direction: column; }
+  .rich-text-editor-meta { width: 100%; justify-content: space-between; }
   .marketplace-pricing-bars-head, .attribute-variant-action, .variant-filter-panel-head, .variant-table-toolbar, .product-submit-sticky { align-items: flex-start; flex-direction: column; }
   .marketplace-pricing-bar, .variant-filter-grid, .variant-bulk-editor { grid-template-columns: 1fr; }
   .marketplace-pricing-toggle { grid-column: auto; justify-self: stretch; }
