@@ -542,7 +542,7 @@
   .scheduled-publish-panel summary > span { display: flex; align-items: center; gap: var(--rv-space-2); font-weight: 800; }
   .scheduled-publish-info { display: grid; gap: var(--rv-space-2); padding: 0 var(--rv-space-4) var(--rv-space-4); color: var(--rv-color-muted); }
   .scheduled-publish-info p { margin: 0; }
-  .publish-checklist-panel { position: sticky; top: calc(var(--rv-topbar-height) + 82px); flex: 0 0 min(360px, 32%); min-width: 300px; }
+  .publish-checklist-panel { position: static; flex: 0 0 min(360px, 32%); min-width: 300px; }
   .publish-checklist-heading { display: flex; align-items: flex-start; gap: var(--rv-space-3); padding: var(--rv-space-5); border-bottom: 1px solid var(--rv-color-border); }
   .publish-checklist-heading > svg { color: var(--rv-color-primary); }
   .publish-checklist-heading h2, .publish-checklist-heading p { margin: 0; }
