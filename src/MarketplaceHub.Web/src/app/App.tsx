@@ -140,7 +140,6 @@ function Login() {
   }
 
   return <main className="cyber-login-page">
-    <div className="cyber-login-grid" aria-hidden="true" />
     <section className="cyber-login-story" aria-label="Ravencia operasyon merkezi">
       <div className="cyber-login-brand"><span>R</span><div><strong>RAVENCIA</strong><small>MARKETPLACEHUB</small></div></div>
       <div className="cyber-login-copy">
@@ -153,7 +152,6 @@ function Login() {
         <article><i /><div><strong>Asenkron senkronizasyon</strong><small>Pazaryeri güncellemeleri güvenli işlem kuyruğunda yürütülür.</small></div></article>
         <article><i className="violet" /><div><strong>İzlenebilir operasyon</strong><small>Her kritik işlem sonuç ve hata geçmişiyle takip edilir.</small></div></article>
       </div>
-      <div className="cyber-login-route" aria-hidden="true"><span>Pazaryeri</span><b /><i>R</i><b /><span>Yerel Veri</span></div>
     </section>
 
     <section className="cyber-login-panel">
