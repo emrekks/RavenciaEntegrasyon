@@ -27,13 +27,13 @@ export type AppearanceSettingsEnvelope = {
 export const defaultAppearanceSettings: AppearanceSettings = {
   fontFamily: 'inter',
   fontSize: 'normal',
-  themeMode: 'system',
+  themeMode: 'dark',
   colors: {
     light: {
       bg: '#f3f6fa', surface: '#ffffff', surfaceRaised: '#f8fbfd', surfaceSoft: '#eaf1f7', border: '#cbd9e5', borderStrong: '#9eb4c6', ink: '#10243a', muted: '#5b7186', subtle: '#7d91a3', primary: '#1677c8', primaryHover: '#0f62aa', primarySoft: '#e4f1ff', accent: '#0a9b8c', accentSoft: '#def7f1', warning: '#b7791f', warningSoft: '#fff4d8', danger: '#c53d52', dangerSoft: '#ffe8ed', info: '#326fbd'
     },
     dark: {
-      bg: '#0b1120', surface: '#111a2e', surfaceRaised: '#18243d', surfaceSoft: '#223251', border: '#334567', borderStrong: '#55709b', ink: '#eef4ff', muted: '#a9b8d6', subtle: '#7e91b4', primary: '#6ea8fe', primaryHover: '#8bbcff', primarySoft: '#1d3760', accent: '#4fd1c5', accentSoft: '#123d43', warning: '#fbbf24', warningSoft: '#4a3514', danger: '#fb7185', dangerSoft: '#4a202c', info: '#8bbcff'
+      bg: '#0a0f1a', surface: '#111827', surfaceRaised: '#1a2235', surfaceSoft: '#1d2638', border: '#1e2d45', borderStrong: '#243352', ink: '#f1f5f9', muted: '#94a3b8', subtle: '#64748b', primary: '#6366f1', primaryHover: '#4f46e5', primarySoft: '#292d67', accent: '#10b981', accentSoft: '#173c3a', warning: '#f59e0b', warningSoft: '#4a3514', danger: '#ef4444', dangerSoft: '#4a282c', info: '#3b82f6'
     }
   }
 }

@@ -20,7 +20,7 @@ public static class SettingsEndpoints
     };
     private static readonly IReadOnlyDictionary<string, string> DefaultDarkAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["bg"] = "#0b1120", ["surface"] = "#111a2e", ["surfaceRaised"] = "#18243d", ["surfaceSoft"] = "#223251", ["border"] = "#334567", ["borderStrong"] = "#55709b", ["ink"] = "#eef4ff", ["muted"] = "#a9b8d6", ["subtle"] = "#7e91b4", ["primary"] = "#6ea8fe", ["primaryHover"] = "#8bbcff", ["primarySoft"] = "#1d3760", ["accent"] = "#4fd1c5", ["accentSoft"] = "#123d43", ["warning"] = "#fbbf24", ["warningSoft"] = "#4a3514", ["danger"] = "#fb7185", ["dangerSoft"] = "#4a202c", ["info"] = "#8bbcff"
+        ["bg"] = "#0a0f1a", ["surface"] = "#111827", ["surfaceRaised"] = "#1a2235", ["surfaceSoft"] = "#1d2638", ["border"] = "#1e2d45", ["borderStrong"] = "#243352", ["ink"] = "#f1f5f9", ["muted"] = "#94a3b8", ["subtle"] = "#64748b", ["primary"] = "#6366f1", ["primaryHover"] = "#4f46e5", ["primarySoft"] = "#292d67", ["accent"] = "#10b981", ["accentSoft"] = "#173c3a", ["warning"] = "#f59e0b", ["warningSoft"] = "#4a3514", ["danger"] = "#ef4444", ["dangerSoft"] = "#4a282c", ["info"] = "#3b82f6"
     };
     private static readonly string[] AppearanceColorTokens = ["bg", "surface", "surfaceRaised", "surfaceSoft", "border", "borderStrong", "ink", "muted", "subtle", "primary", "primaryHover", "primarySoft", "accent", "accentSoft", "warning", "warningSoft", "danger", "dangerSoft", "info"];
 
@@ -108,7 +108,7 @@ public static class SettingsEndpoints
         {
             fontFamily = AppearanceFontFamilies.Contains(fontFamily ?? string.Empty) ? fontFamily!.ToLowerInvariant() : "inter",
             fontSize = AppearanceFontSizes.Contains(fontSize ?? string.Empty) ? fontSize!.ToLowerInvariant() : "normal",
-            themeMode = AppearanceThemeModes.Contains(themeMode ?? string.Empty) ? themeMode!.ToLowerInvariant() : "system",
+            themeMode = AppearanceThemeModes.Contains(themeMode ?? string.Empty) ? themeMode!.ToLowerInvariant() : "dark",
             colors
         };
     }
@@ -117,7 +117,7 @@ public static class SettingsEndpoints
     {
         var fontFamily = ReadString(value, "fontFamily");
         var fontSize = ReadString(value, "fontSize");
-        var themeMode = ReadString(value, "themeMode") ?? "system";
+        var themeMode = ReadString(value, "themeMode") ?? "dark";
         if (fontFamily is null || fontSize is null || !AppearanceFontFamilies.Contains(fontFamily) || !AppearanceFontSizes.Contains(fontSize) || !AppearanceThemeModes.Contains(themeMode))
         {
             normalized = new { };
