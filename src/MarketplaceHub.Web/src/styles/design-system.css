@@ -222,7 +222,7 @@
   .product-list-identity { grid-column: 3; display: grid; gap: 2px; }
   .product-list-identity > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .product-list-identity small, .product-list-platforms small, .product-list-status small { overflow: hidden; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
-  .product-list-variants { grid-column: 4; }
+  .product-list-variants { display: grid; grid-column: 4; gap: 2px; align-content: center; min-width: 0; }
   .product-list-price { grid-column: 5; }
   .product-list-stock { grid-column: 6; }
   .product-list-platforms { grid-column: 7; display: grid; justify-items: start; gap: 3px; }

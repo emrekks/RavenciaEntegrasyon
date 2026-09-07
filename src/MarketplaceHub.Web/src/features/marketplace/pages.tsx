@@ -1060,10 +1060,10 @@ function CategoryMappingWorkspace() {
       const picker = document.querySelector<HTMLElement>('.mapping-category-builder .mapping-reference-local > .panel-category-picker')
       if (!trigger || !picker) return
       const rect = trigger.getBoundingClientRect()
-      picker.style.setProperty('position', 'fixed', 'important')
-      picker.style.setProperty('top', `${Math.round(rect.bottom + 6)}px`, 'important')
-      picker.style.setProperty('left', `${Math.round(rect.left)}px`, 'important')
-      picker.style.setProperty('width', `${Math.round(rect.width)}px`, 'important')
+      picker.style.setProperty('position', 'fixed')
+      picker.style.setProperty('top', `${Math.round(rect.bottom + 6)}px`)
+      picker.style.setProperty('left', `${Math.round(rect.left)}px`)
+      picker.style.setProperty('width', `${Math.round(rect.width)}px`)
     }
     positionPicker()
     window.addEventListener('resize', positionPicker)
