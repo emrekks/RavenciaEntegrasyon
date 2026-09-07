@@ -11,14 +11,10 @@ import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFont
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
   const location = useLocation()
-  const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') === 'true')
-  const sidebarHoverTimer = useRef<number | null>(null)
-  const sidebarRef = useRef<HTMLElement>(null)
   const appearanceColorsKey = JSON.stringify(appearanceSettings.settings.colors)
   async function logout() { await api('/logout', { method: 'POST' }); window.location.replace(`/?signedOut=${Date.now()}`) }
-  const sidebarExpanded = sidebarPinned || sidebarHoverExpanded
-  const menuCollapsed = !sidebarExpanded
+  const menuCollapsed = !sidebarPinned
   useEffect(() => {
     document.documentElement.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[appearanceSettings.settings.fontFamily])
     document.documentElement.style.setProperty('--rv-font-scale', String(appearanceFontScale[appearanceSettings.settings.fontSize]))
@@ -32,56 +28,16 @@ function Shell({ me }: { me: Me }) {
   }, [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize, appearanceSettings.settings.themeMode, appearanceColorsKey])
   const pageNames: Record<string, string> = { '/dashboard': 'Dashboard', '/products': 'Ürünler', '/products/new': 'Yeni ürün', '/catalog/categories': 'Kategoriler', '/catalog/brands': 'Markalar', '/catalog/attributes': 'Özellikler', '/imports': 'İçe aktarımlar', '/inventory': 'Stok ve fiyat', '/shipments': 'Gönderiler', '/orders': 'Siparişler', '/returns': 'İadeler', '/invoices': 'Faturalar', '/jobs': 'İşlem takibi', '/integrations': 'Platformlar', '/mappings/categories': 'Eşleştirme ayarları', '/mappings/attributes': 'Özellik eşlemeleri', '/settings': 'Sistem ayarları', '/settings/appearance': 'Görünüm ayarları', '/settings/billing': 'Faturalandırma' }
   const pageName = pageNames[location.pathname] ?? (location.pathname.startsWith('/products/') ? 'Ürün detayları' : location.pathname.startsWith('/returns/') ? 'İade detayları' : location.pathname.startsWith('/imports/') ? 'İçe aktarma ayrıntıları' : location.pathname.startsWith('/integrations/') ? 'Platform ayrıntıları' : location.pathname.startsWith('/shipments/') ? 'Gönderi ayrıntıları' : 'Ravencia')
-  function clearSidebarHoverTimer() {
-    if (sidebarHoverTimer.current !== null) {
-      window.clearTimeout(sidebarHoverTimer.current)
-      sidebarHoverTimer.current = null
-    }
-  }
-  function expandSidebarOnHover() {
-    if (sidebarPinned) return
-    clearSidebarHoverTimer()
-    sidebarHoverTimer.current = window.setTimeout(() => {
-      sidebarHoverTimer.current = null
-      setSidebarHoverExpanded(true)
-    }, 180)
-  }
-  function expandSidebarOnFocus() {
-    clearSidebarHoverTimer()
-    setSidebarHoverExpanded(true)
-  }
-  function collapseSidebarOnLeave() {
-    if (sidebarPinned) return
-    clearSidebarHoverTimer()
-    sidebarHoverTimer.current = window.setTimeout(() => {
-      sidebarHoverTimer.current = null
-      setSidebarHoverExpanded(false)
-    }, 140)
-  }
   function toggleSidebarPinned() {
     const nextPinned = !sidebarPinned
     setSidebarPinned(nextPinned)
     localStorage.setItem('ravencia.sidebarPinned', String(nextPinned))
-    clearSidebarHoverTimer()
-    setSidebarHoverExpanded(nextPinned)
   }
-  useEffect(() => {
-    if (sidebarPinned) return
-    const collapseOnWindowBlur = () => {
-      clearSidebarHoverTimer()
-      setSidebarHoverExpanded(false)
-    }
-    window.addEventListener('blur', collapseOnWindowBlur)
-    return () => {
-      window.removeEventListener('blur', collapseOnWindowBlur)
-      clearSidebarHoverTimer()
-    }
-  }, [sidebarHoverExpanded, sidebarPinned])
   const icon = (name: UiIconName) => <UiIcon className="nav-icon" name={name} size={22} />
-  const item = (to: string, iconName: UiIconName, label: string, end = false) => <NavLink to={to} end={end}>{icon(iconName)}<span className="nav-label">{label}</span></NavLink>
-  return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarExpanded ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
-    <aside ref={sidebarRef} onPointerEnter={expandSidebarOnHover} onPointerLeave={collapseSidebarOnLeave} onFocus={expandSidebarOnFocus} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) collapseSidebarOnLeave() }}>
-      <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong><small>MarketplaceHub</small></div><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menü sabitlemesini kaldır' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menü sabitlendi' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button></div>
+  const item = (to: string, iconName: UiIconName, label: string, end = false) => <NavLink to={to} end={end} aria-label={label} title={label}>{icon(iconName)}<span className="nav-label">{label}</span></NavLink>
+  return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
+    <aside>
+      <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong><small>MarketplaceHub</small></div><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menü sabitlemesini kaldır' : 'Menüyü aç ve sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menü sabitlendi' : 'Menüyü aç ve sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button></div>
       <nav aria-label="Ana menü">{item('/dashboard', 'dashboard', 'Dashboard')}{item('/products', 'products', 'Ürünler')}{item('/orders', 'orders', 'Siparişler')}{item('/returns', 'returns', 'İadeler')}{item('/invoices', 'invoiceDue', 'Faturalar')}{item('/jobs', 'jobs', 'İşlem Takibi')}{item('/integrations', 'platforms', 'Platformlar')}{item('/mappings/categories', 'mappings', 'Eşleştirme Ayarları')}</nav>
       <div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Çıkış Yap</span></button></div>
     </aside>
