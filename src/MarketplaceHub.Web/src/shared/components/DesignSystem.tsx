@@ -91,7 +91,7 @@ export function Toolbar({ children, actions, className, ariaLabel = 'Sayfa araç
   return <section className={['rv-toolbar', className].filter(Boolean).join(' ')} aria-label={ariaLabel}><div className="rv-toolbar-content">{children}</div>{actions ? <div className="rv-toolbar-actions">{actions}</div> : null}</section>
 }
 
-export function Popover({ open, onOpenChange, trigger, children, ariaLabel = 'Açılır panel', align = 'end', className }: { open: boolean; onOpenChange: (open: boolean) => void; trigger: (props: { 'aria-expanded': boolean; 'aria-controls': string; onClick: () => void }) => ReactNode; children: ReactNode; ariaLabel?: string; align?: 'start' | 'end'; className?: string }) {
+export function Popover({ open, onOpenChange, trigger, children, ariaLabel = 'Açılır panel', align = 'end', className }: { open: boolean; onOpenChange: (open: boolean) => void; trigger: (props: { 'aria-expanded': boolean; 'aria-controls'?: string; onClick: () => void }) => ReactNode; children: ReactNode; ariaLabel?: string; align?: 'start' | 'end'; className?: string }) {
   const id = useId()
   const rootRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -105,7 +105,7 @@ export function Popover({ open, onOpenChange, trigger, children, ariaLabel = 'A�
       document.removeEventListener('keydown', closeOnEscape)
     }
   }, [onOpenChange, open])
-  return <div ref={rootRef} className={['rv-popover-root', className].filter(Boolean).join(' ')}>{trigger({ 'aria-expanded': open, 'aria-controls': id, onClick: () => onOpenChange(!open) })}{open ? <div id={id} className={`rv-popover rv-popover-${align}`} role="dialog" aria-label={ariaLabel}>{children}</div> : null}</div>
+  return <div ref={rootRef} className={['rv-popover-root', className].filter(Boolean).join(' ')}>{trigger({ 'aria-expanded': open, ...(open ? { 'aria-controls': id } : {}), onClick: () => onOpenChange(!open) })}{open ? <div id={id} className={`rv-popover rv-popover-${align}`} role="dialog" aria-label={ariaLabel}>{children}</div> : null}</div>
 }
 
 export function Tabs({ items, value, onChange, ariaLabel = 'Sekmeler' }: { items: Array<{ value: string; label: ReactNode; count?: ReactNode }>; value: string; onChange: (value: string) => void; ariaLabel?: string }) {
