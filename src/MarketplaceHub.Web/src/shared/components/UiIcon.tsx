@@ -41,6 +41,24 @@ export type UiIconName =
   | 'undo'
   | 'underline'
   | 'upload'
+  | 'dashboard'
+  | 'products'
+  | 'orders'
+  | 'returns'
+  | 'jobs'
+  | 'settings'
+  | 'platforms'
+  | 'mappings'
+  | 'logout'
+  | 'pin'
+  | 'pendingOrders'
+  | 'lateOrders'
+  | 'todayOrders'
+  | 'monthOrders'
+  | 'pendingReturns'
+  | 'invoiceDue'
+  | 'invoicePending'
+  | 'stock'
 
 type UiIconProps = {
   name: UiIconName
@@ -90,8 +108,26 @@ const paths: Record<UiIconName, ReactNode> = {
   undo: <><path d="M5 8v5h5" /><path d="M5 13a7 7 0 1 1 2 4" /></>,
   underline: <><path d="M7 5v6a5 5 0 0 0 10 0V5M5 20h14" /></>,
   upload: <><path d="M12 20V9m-4 4 4-4 4 4" /><path d="M5 4h14" /></>,
+  dashboard: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.8" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.8" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.8" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.8" /></>,
+  products: <><path d="M6 8h12l1 12H5L6 8Z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /><path d="M9 12h6" /></>,
+  orders: <><rect x="5" y="3.5" width="14" height="17" rx="2" /><path d="M9 3.5h6v3H9zM9 11h6M9 15h6M9 18h3" /></>,
+  returns: <><path d="M9 8H4v5" /><path d="M4 13a8 8 0 1 0 2.1-5.3" /><path d="m15 14 3 3-3 3M18 17h-5" /></>,
+  jobs: <><path d="M4 5h16M4 12h9M4 19h7" /><path d="m16 15 2 2 4-5" /></>,
+  settings: <><path d="M12 3.5v2M12 18.5v2M20.5 12h-2M5.5 12h-2M18 6l-1.4 1.4M7.4 16.6 6 18M18 18l-1.4-1.4M7.4 7.4 6 6" /><circle cx="12" cy="12" r="3.6" /><circle cx="12" cy="12" r="8.6" /></>,
+  platforms: <><rect x="3.5" y="4" width="7" height="7" rx="1.8" /><rect x="13.5" y="13" width="7" height="7" rx="1.8" /><path d="M10.5 7.5h2a4 4 0 0 1 4 4V13M14 10l2.5 2.5L19 10" /></>,
+  mappings: <><circle cx="6" cy="6" r="3" /><circle cx="18" cy="18" r="3" /><path d="m8.5 8.5 7 7M18 9V6h-3" /></>,
+  logout: <><path d="M9 3.5H5.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2H9M15 16l4-4-4-4M19 12H9" /></>,
+  pin: <><path d="M8 3.5h8M9 3.5v5l-3 3v2h12v-2l-3-3v-5M12 13.5v7" /></>,
+  pendingOrders: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01" /></>,
+  lateOrders: <><path d="m12 3.5 9 17H3l9-17Z" /><path d="M12 9v5M12 17.5h.01" /></>,
+  todayOrders: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16M8 14h3M8 17h5" /></>,
+  monthOrders: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16M8 14h8M8 17h5" /></>,
+  pendingReturns: <><path d="M9 8H4v5" /><path d="M4 13a8 8 0 1 0 2.1-5.3" /><path d="M13 16h6M16 13l3 3-3 3" /></>,
+  invoiceDue: <><path d="M6 3.5h9l3 3v14H6zM15 3.5v4h4M9 12h6" /><circle cx="16.5" cy="17" r="3.5" /><path d="M16.5 15.5V17l1 1" /></>,
+  invoicePending: <><path d="M6 3.5h12v18l-6-2-6 2V3.5Z" /><path d="M9 8h6M9 12h4" /><path d="M15.5 17h.01" /></>,
+  stock: <><path d="m4 8 8-4 8 4-8 4-8-4Z" /><path d="M4 8v8l8 4 8-4V8M12 12v8" /></>,
 }
 
 export function UiIcon({ name, className, size = 16, title }: UiIconProps) {
-  return <svg className={`ui-icon${className ? ` ${className}` : ''}`} viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" focusable="false" aria-hidden={title ? undefined : true} role={title ? 'img' : undefined}>{title && <title>{title}</title>}{paths[name]}</svg>
+  return <svg className={`ui-icon${className ? ` ${className}` : ''}`} viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" shapeRendering="geometricPrecision" preserveAspectRatio="xMidYMid meet" focusable="false" aria-hidden={title ? undefined : true} role={title ? 'img' : undefined}>{title && <title>{title}</title>}{paths[name]}</svg>
 }
