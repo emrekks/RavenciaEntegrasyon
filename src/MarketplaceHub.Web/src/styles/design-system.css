@@ -52,7 +52,7 @@
   .page-heading > div:first-child { min-width: 0; }
   .page-heading .lede { max-width: 760px; margin: 0; }
   .page-heading-actions, .dashboard-heading-actions, .returns-reference-heading-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--rv-space-2); }
-  .dashboard .page-heading { align-items: center; }
+  .dashboard .page-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .dashboard-heading-actions { min-width: 180px; }
   .dashboard-date { color: var(--rv-color-ink); font-size: var(--rv-font-size-lg); font-weight: 750; text-align: right; }
   .eyebrow { margin: 0 0 var(--rv-space-2); color: var(--rv-color-primary); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
@@ -515,8 +515,9 @@
 @media (max-width: 1200px) {
   .content { padding-inline: 28px; }
   .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dashboard-report-grid, .dashboard-bottom-grid { grid-template-columns: 1fr 1fr; }
-  .dashboard-revenue-panel { grid-column: 1 / -1; }
+  .dashboard-report-grid { grid-template-columns: 1fr; }
+  .dashboard-bottom-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-revenue-panel { grid-column: auto; }
   .integration-grid, .publish-platform-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .shipping-designer-workspace { grid-template-columns: minmax(190px, .8fr) minmax(360px, 1.4fr); }
   .shipping-designer-inspector { grid-column: 1 / -1; }
@@ -556,7 +557,7 @@
   .rv-user-chip { display: none; }
   .content { padding: 24px 16px 44px; }
   .page-heading { align-items: flex-start; flex-direction: column; gap: var(--rv-space-3); }
-  .dashboard .page-heading { align-items: flex-start; }
+  .dashboard .page-heading { display: flex; align-items: flex-start; }
   .page-heading-actions, .dashboard-heading-actions, .returns-reference-heading-actions { width: 100%; justify-content: flex-start; }
   .dashboard-report-grid, .dashboard-bottom-grid, .integration-grid, .publish-platform-grid { grid-template-columns: 1fr; }
   .dashboard-revenue-panel { grid-column: auto; }
