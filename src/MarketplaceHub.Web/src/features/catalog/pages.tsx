@@ -566,7 +566,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
         <div className="product-list-stock clickable-cell" title="Stoğu hızlı güncellemek için tıklayın" onClick={() => onQuickEdit('stock')}><strong>{totalStock}</strong></div>
         <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ''}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'}>TY<i /></span><small>{platformActive ? 'Eşleşti' : 'Eşleşmedi'}</small></div>
         <div className={`product-list-status ${status === 'ACTIVE' ? 'active' : 'inactive'}`}><Tag>{statusLabel}</Tag><small>{statusHint}</small></div>
-        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title={group.products.length > 1 ? 'Ürün grubundaki ilk kaydı düzenle' : 'Ürünü düzenle'}><UiIcon className="product-edit-icon" name="edit" /></Link><button type="button" className="product-delete-button" onClick={event => { event.stopPropagation(); onDelete() }} aria-label={`${product.title} ürün grubunu sil`} title={group.products.length > 1 ? 'Ürün grubundaki tüm kayıtları sil' : 'Ürünü sil'}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16m-10 0V4h4v3m-7 0 1 13h8l1-13m-5 4v6m4-6v6" /></svg></button><UiIcon className="product-more-icon" name="moreVertical" /></div>
+        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title={group.products.length > 1 ? 'Ürün grubundaki ilk kaydı düzenle' : 'Ürünü düzenle'}><UiIcon className="product-edit-icon" name="edit" /></Link><button type="button" className="product-delete-button" onClick={event => { event.stopPropagation(); onDelete() }} aria-label={`${product.title} ürün grubunu sil`} title={group.products.length > 1 ? 'Ürün grubundaki tüm kayıtları sil' : 'Ürünü sil'}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16m-10 0V4h4v3m-7 0 1 13h8l1-13m-5 4v6m4-6v6" /></svg></button></div>
       </div>
     </article>
 }
@@ -597,6 +597,7 @@ function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { 
 
 export function ProductsPage() {
   const client = useQueryClient(); const [search, setSearch] = useState(''); const [searchFilter, setSearchFilter] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('INCREMENTAL'); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>({})
+  const bulkMenuRef = useRef<HTMLDivElement>(null)
   const productFilters = useMemo<ProductListFilters>(() => ({ search: searchFilter, status, platform, stock }), [searchFilter, status, platform, stock])
   const productFilterKey = JSON.stringify(productFilters)
   const pageCursor = pageCursors[productFilterKey]?.[pageNumber] ?? null
@@ -638,6 +639,14 @@ export function ProductsPage() {
       return changed ? next : current
     })
   }, [products, selectedProductIds])
+  useEffect(() => {
+    if (!bulkOpen) return
+    const closeOnPointerDown = (event: MouseEvent) => { if (!bulkMenuRef.current?.contains(event.target as Node)) setBulkOpen(false) }
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setBulkOpen(false) }
+    document.addEventListener('mousedown', closeOnPointerDown)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => { document.removeEventListener('mousedown', closeOnPointerDown); document.removeEventListener('keydown', closeOnEscape) }
+  }, [bulkOpen])
   const allVisibleSelected = pageProductGroups.length > 0 && pageProductGroups.every(group => group.products.every(product => selectedProductIds.includes(product.id)))
   const hasMoreProductsToSelect = totalCount > pageProductGroups.length
   const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
@@ -786,8 +795,8 @@ export function ProductsPage() {
   return <Page className="products-page" title="Ürünler" eyebrow="Katalog" action={<div className="products-page-actions page-heading-actions"><button type="button" className="button-link product-import-trigger" onClick={openProductImport}><UiIcon name="download" /> Platformdan Ürün Çek</button><Link className="button-link product-create-trigger" to="/products/new"><UiIcon name="plus" /> Yeni Ürün Ekle</Link></div>}>
     <div className="product-metrics metrics"><article className="product-metric-total"><UiIcon name="layout" /><small>Toplam Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.totalCount ?? 0}</strong><span>katalog kaydı</span></article><article className="product-metric-active"><UiIcon name="check" /><small>Aktif Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.activeCount ?? 0}</strong><span>ürün</span></article><article className="product-metric-empty"><UiIcon name="alert" /><small>Stoksuz Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.outOfStockCount ?? 0}</strong><span>aksiyon gerekli</span></article><article className="product-metric-low"><UiIcon name="filter" /><small>Düşük Stoklu</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.lowStockCount ?? 0}</strong><span>5 ve altı</span></article></div>
     <div className="product-toolbar">
-      <div className="bulk-menu-shell">
-        <button type="button" className="bulk-action" aria-expanded={bulkOpen} aria-controls="products-bulk-action-menu" onClick={() => setBulkOpen(v => !v)}>
+      <div className="bulk-menu-shell" ref={bulkMenuRef}>
+        <button type="button" className="bulk-action" aria-expanded={bulkOpen} aria-haspopup="menu" aria-controls="products-bulk-action-menu" onClick={() => setBulkOpen(v => !v)}>
           Toplu işlemler {selectedProductIds.length > 0 ? `(${selectedProductCardCount} kart)` : ''} <UiIcon name="chevronDown" />
         </button>
         {bulkOpen && (
