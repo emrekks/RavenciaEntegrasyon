@@ -459,7 +459,7 @@ function AppearanceSettingsPage() {
 
   const previewStyle: CSSProperties = {
     fontFamily: appearanceFontFamilyCss[appearance.draft.fontFamily],
-    fontSize: `${appearanceFontScale[appearance.draft.fontSize]}rem`,
+    fontSize: 'var(--rv-font-size-md)',
     ...Object.fromEntries(appearanceColorTokenOptions.map(({ key }) => [appearanceColorCssVariable(key), appearance.draft.colors[colorTheme][key]]))
   }
 

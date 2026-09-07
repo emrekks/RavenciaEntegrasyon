@@ -81,7 +81,7 @@ export const appearanceFontSizeOptions: Array<{ value: AppearanceFontSize; label
 export const appearanceThemeModeOptions: Array<{ value: AppearanceThemeMode; label: string; description: string }> = [
   { value: 'system', label: 'Sistem', description: 'Cihazınızın açık/koyu tercihine uyar' },
   { value: 'light', label: 'Açık', description: 'Açık soğuk gri arayüzü kullanır' },
-  { value: 'dark', label: 'Koyu', description: 'Koyu slate arayüzü kullanır' }
+  { value: 'dark', label: 'Koyu', description: 'Gece laciverti arayüzü kullanır' }
 ]
 
 export const appearanceFontFamilyCss: Record<AppearanceFontFamily, string> = {
@@ -92,10 +92,10 @@ export const appearanceFontFamilyCss: Record<AppearanceFontFamily, string> = {
 }
 
 export const appearanceFontScale: Record<AppearanceFontSize, number> = {
-  small: 1.18,
-  normal: 1.32,
-  large: 1.48,
-  'extra-large': 1.68
+  small: 0.93,
+  normal: 1,
+  large: 1.1,
+  'extra-large': 1.2
 }
 
 const fontFamilies = new Set<AppearanceFontFamily>(appearanceFontFamilyOptions.map(option => option.value))
