@@ -796,7 +796,7 @@ export function ProductsPage() {
     <div className="product-metrics metrics"><article className="product-metric-total"><UiIcon name="layout" /><small>Toplam Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.totalCount ?? 0}</strong><span>katalog kaydı</span></article><article className="product-metric-active"><UiIcon name="check" /><small>Aktif Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.activeCount ?? 0}</strong><span>ürün</span></article><article className="product-metric-empty"><UiIcon name="alert" /><small>Stoksuz Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.outOfStockCount ?? 0}</strong><span>aksiyon gerekli</span></article><article className="product-metric-low"><UiIcon name="filter" /><small>Düşük Stoklu</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.lowStockCount ?? 0}</strong><span>5 ve altı</span></article></div>
     <div className="product-toolbar">
       <div className="bulk-menu-shell" ref={bulkMenuRef}>
-        <button type="button" className="bulk-action" aria-expanded={bulkOpen} aria-haspopup="menu" aria-controls="products-bulk-action-menu" onClick={() => setBulkOpen(v => !v)}>
+        <button type="button" className="bulk-action" aria-expanded={bulkOpen} aria-haspopup="menu" aria-controls={bulkOpen ? 'products-bulk-action-menu' : undefined} onClick={() => setBulkOpen(v => !v)}>
           Toplu işlemler {selectedProductIds.length > 0 ? `(${selectedProductCardCount} kart)` : ''} <UiIcon name="chevronDown" />
         </button>
         {bulkOpen && (
