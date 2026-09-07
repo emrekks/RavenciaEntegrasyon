@@ -165,6 +165,7 @@
   .dashboard-metrics strong, .product-metrics strong, .metrics strong { font-size: clamp(1.25rem, calc(1.75vw * var(--rv-font-scale, 1)), 1.625rem); line-height: 1.1; }
   .dashboard-report-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(320px, .85fr); gap: var(--rv-space-4); margin-top: var(--rv-space-4); }
   .dashboard-bottom-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(220px, .65fr) minmax(300px, 1fr); gap: var(--rv-space-4); margin-top: var(--rv-space-4); }
+  .dashboard-bottom-grid:has(> .dashboard-active-platform:only-child) { grid-template-columns: minmax(220px, .65fr); }
   .dashboard-revenue-controls { display: flex; flex-wrap: wrap; gap: var(--rv-space-2); }
   .dashboard-revenue-controls label, .dashboard-custom-range label, .dashboard-period-select { display: grid; gap: var(--rv-space-1); min-width: 132px; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
   .dashboard-revenue-summary { display: flex; align-items: baseline; gap: var(--rv-space-3); margin: var(--rv-space-5) 0; }

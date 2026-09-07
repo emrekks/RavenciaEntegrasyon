@@ -66,12 +66,31 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var startDay = TimeZoneInfo.ConvertTime(from, timezone).Date;
         var endDay = TimeZoneInfo.ConvertTime(to, timezone).Date;
         if (endDay < startDay) (startDay, endDay) = (endDay, startDay);
-        var rows = await db.DashboardRevenueDaily.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Day >= startDay && x.Day <= endDay && (string.IsNullOrWhiteSpace(platform) || platform == "ALL" || x.PlatformName == platform))
+        var rangeStart = UtcOffset(DateTime.SpecifyKind(startDay, DateTimeKind.Unspecified), timezone);
+        var rangeEnd = UtcOffset(DateTime.SpecifyKind(endDay.AddDays(1), DateTimeKind.Unspecified), timezone);
+        var connectionNames = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Status != "HIDDEN")
+            .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
+        var rows = await db.Orders.AsNoTracking()
+            .Where(x => x.TenantId == tenantId
+                && x.OrderedAt >= rangeStart
+                && x.OrderedAt < rangeEnd
+                && !new[] { "CANCELLED", "CANCELED", "RETURNED" }.Contains(x.DerivedStatus)
+                && (x.NetAmount > 0 || x.GrossAmount > 0)
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status)))
+            .Select(x => new { x.OrderedAt, x.ConnectionId, x.Currency, x.NetAmount, x.GrossAmount })
             .ToListAsync(cancellationToken);
-        var byDay = rows.GroupBy(x => x.Day.Date).ToDictionary(
+        if (!string.IsNullOrWhiteSpace(platform) && platform != "ALL")
+            rows = rows.Where(x => connectionNames.GetValueOrDefault(x.ConnectionId, "Belirtilmemiş") == platform).ToList();
+        var revenueRows = rows.Select(x => new
+        {
+            Day = TimeZoneInfo.ConvertTime(x.OrderedAt, timezone).Date,
+            x.Currency,
+            Amount = x.GrossAmount > 0 ? x.GrossAmount : x.NetAmount
+        });
+        var byDay = revenueRows.GroupBy(x => x.Day).ToDictionary(
             x => x.Key,
-            x => new DashboardRevenuePointView(x.Key, x.Sum(row => row.Amount), x.Sum(row => row.OrderCount), x.Select(row => row.Currency).FirstOrDefault() ?? "TRY"));
+            x => new DashboardRevenuePointView(x.Key, x.Sum(row => row.Amount), x.Count(), x.Select(row => row.Currency).FirstOrDefault() ?? "TRY"));
         var result = new List<DashboardRevenuePointView>((endDay - startDay).Days + 1);
         for (var day = startDay; day <= endDay; day = day.AddDays(1))
             result.Add(byDay.GetValueOrDefault(day) ?? new DashboardRevenuePointView(day, 0, 0, "TRY"));
