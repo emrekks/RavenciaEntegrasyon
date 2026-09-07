@@ -55,12 +55,12 @@ function useDialogSurface(open: boolean, onClose: () => void) {
   return surfaceRef
 }
 
-export function Button({ variant = 'primary', size = 'md', loading = false, className, disabled, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: ControlSize; loading?: boolean }) {
-  return <button {...props} className={['rv-button', `rv-button-${variant}`, `rv-button-${size}`, className].filter(Boolean).join(' ')} disabled={disabled || loading}>{loading ? 'İşleniyor…' : children}</button>
+export function Button({ variant = 'primary', size = 'md', loading = false, className, disabled, type = 'button', children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: ControlSize; loading?: boolean }) {
+  return <button {...props} type={type} className={['rv-button', `rv-button-${variant}`, `rv-button-${size}`, className].filter(Boolean).join(' ')} disabled={disabled || loading}>{loading ? 'İşleniyor…' : children}</button>
 }
 
-export function IconButton({ label, size = 'md', variant = 'ghost', children, className, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; size?: ControlSize; variant?: ButtonVariant }) {
-  return <button {...props} aria-label={label} title={props.title ?? label} className={['rv-icon-button', `rv-icon-button-${size}`, `rv-icon-button-${variant}`, className].filter(Boolean).join(' ')}>{children}</button>
+export function IconButton({ label, size = 'md', variant = 'ghost', type = 'button', children, className, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; size?: ControlSize; variant?: ButtonVariant }) {
+  return <button {...props} type={type} aria-label={label} title={props.title ?? label} className={['rv-icon-button', `rv-icon-button-${size}`, `rv-icon-button-${variant}`, className].filter(Boolean).join(' ')}>{children}</button>
 }
 
 export function TextField({ label, hint, error, required, className, ...props }: InputHTMLAttributes<HTMLInputElement> & FieldProps) {
