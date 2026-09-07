@@ -292,9 +292,10 @@ function dashboardAxisMoney(amount: number, currency = 'TRY') {
 function dashboardNiceAxisStep(maxValue: number, targetSteps = 10) {
   const roughStep = Math.max(1, maxValue) / targetSteps
   const magnitude = 10 ** Math.floor(Math.log10(roughStep))
-  const normalized = roughStep / magnitude
-  const factor = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10
-  return factor * magnitude
+  // Always round up to the next whole magnitude. A value just above a
+  // "nice" threshold must not double the chart range and make every bar look
+  // artificially small (for example ₺25.1K becoming a ₺50K axis).
+  return Math.ceil(roughStep / magnitude) * magnitude
 }
 
 function Dashboard({ me }: { me: Me }) {
