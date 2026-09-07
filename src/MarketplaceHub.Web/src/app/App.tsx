@@ -415,19 +415,29 @@ function AppearanceSettingsPage() {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [colorTheme, setColorTheme] = useState<AppearanceColorTheme>('dark')
+  const autosaveTimer = useRef<number | null>(null)
 
-  async function save() {
-    setBusy(true)
-    setMessage('')
-    try {
-      await appearance.save(appearance.draft)
-      setMessage('Görünüm ayarları hesabınıza kaydedildi.')
-    } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : 'Görünüm ayarları kaydedilemedi.')
-    } finally {
-      setBusy(false)
+  useEffect(() => {
+    if (!appearance.isDirty) return
+    if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current)
+    autosaveTimer.current = window.setTimeout(() => {
+      void (async () => {
+        setBusy(true)
+        setMessage('')
+        try {
+          await appearance.save(appearance.draft)
+          setMessage('Görünüm ayarları otomatik kaydedildi.')
+        } catch (reason) {
+          setMessage(reason instanceof Error ? reason.message : 'Görünüm ayarları kaydedilemedi.')
+        } finally {
+          setBusy(false)
+        }
+      })()
+    }, 450)
+    return () => {
+      if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current)
     }
-  }
+  }, [appearance.draft, appearance.isDirty])
 
   const previewStyle: CSSProperties = {
     fontFamily: appearanceFontFamilyCss[appearance.draft.fontFamily],
@@ -450,7 +460,6 @@ function AppearanceSettingsPage() {
       <button type="button" role="tab" aria-selected={false} onClick={() => navigate('/settings?tab=shipping')}>Kargo ayarları</button>
       <button type="button" role="tab" aria-selected={true} className="active">Görünüm</button>
     </div>
-    {message && <div className="notice" role="status">{message}</div>}
     {appearance.isError && <div className="error" role="alert">Hesap görünüm ayarları alınamadı; varsayılan görünüm gösteriliyor.</div>}
     <section className="panel appearance-settings-panel">
       <div className="panel-title"><div><h2>Okunabilirlik</h2><p>Tablo ve işlem ekranlarındaki yazıları hesabınız için özelleştirin.</p></div></div>
@@ -463,8 +472,8 @@ function AppearanceSettingsPage() {
         <div className="appearance-color-editor-heading"><div><h2>Renk paleti</h2><p>Her renk tokenını ayrı ayrı düzenleyin. Değişiklikler seçilen tema için kaydedilir.</p></div><div className="appearance-color-actions"><div className="rv-tabs appearance-color-theme-tabs" role="tablist" aria-label="Renk teması"><button type="button" role="tab" aria-selected={colorTheme === 'light'} className={colorTheme === 'light' ? 'is-active' : ''} onClick={() => setColorTheme('light')}>Açık tema</button><button type="button" role="tab" aria-selected={colorTheme === 'dark'} className={colorTheme === 'dark' ? 'is-active' : ''} onClick={() => setColorTheme('dark')}>Koyu tema</button></div><button type="button" className="rv-button rv-button-secondary rv-button-sm" onClick={() => appearance.setDraft({ ...appearance.draft, colors: { ...appearance.draft.colors, [colorTheme]: { ...defaultAppearanceSettings.colors[colorTheme] } } })}>Varsayılanlara dön</button></div></div>
         <div className="appearance-color-grid">{appearanceColorTokenOptions.map(({ key, label, description }) => <label className="appearance-color-field" key={key}><span><b>{label}</b><small>{description}</small></span><span className="appearance-color-control"><input type="color" value={palette[key]} onChange={event => updateColor(key, event.target.value)} aria-label={`${label} rengi`} /><code>{palette[key].toUpperCase()}</code></span></label>)}</div>
       </section>
+      <p className={`appearance-save-status ${busy ? 'is-saving' : message.includes('otomatik kaydedildi') ? 'is-saved' : message ? 'is-error' : ''}`} role="status" aria-live="polite">{busy ? 'Değişiklikler kaydediliyor…' : message || 'Değişiklikler otomatik kaydedilir.'}</p>
       <div className="appearance-preview" style={previewStyle}><small>Önizleme</small><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p></div>
-      <button type="button" onClick={() => void save()} disabled={busy}>{busy ? 'Kaydediliyor…' : 'Görünüm ayarlarını kaydet'}</button>
     </section>
   </section>
 }
