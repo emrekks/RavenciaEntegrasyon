@@ -13,11 +13,7 @@ public static class SettingsEndpoints
     private const int MaximumJsonCharacters = 262_144;
     private static readonly HashSet<string> AppearanceFontFamilies = new(StringComparer.OrdinalIgnoreCase) { "inter", "system", "segoe", "arial" };
     private static readonly HashSet<string> AppearanceFontSizes = new(StringComparer.OrdinalIgnoreCase) { "small", "normal", "large", "extra-large" };
-    private static readonly HashSet<string> AppearanceThemeModes = new(StringComparer.OrdinalIgnoreCase) { "system", "light", "dark" };
-    private static readonly IReadOnlyDictionary<string, string> DefaultLightAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["bg"] = "#f3f6fa", ["surface"] = "#ffffff", ["surfaceRaised"] = "#f8fbfd", ["surfaceSoft"] = "#eaf1f7", ["border"] = "#cbd9e5", ["borderStrong"] = "#9eb4c6", ["ink"] = "#10243a", ["muted"] = "#5b7186", ["subtle"] = "#7d91a3", ["primary"] = "#1677c8", ["primaryHover"] = "#0f62aa", ["primarySoft"] = "#e4f1ff", ["accent"] = "#0a9b8c", ["accentSoft"] = "#def7f1", ["warning"] = "#b7791f", ["warningSoft"] = "#fff4d8", ["danger"] = "#c53d52", ["dangerSoft"] = "#ffe8ed", ["info"] = "#326fbd"
-    };
+    private static readonly HashSet<string> AppearanceThemeModes = new(StringComparer.OrdinalIgnoreCase) { "dark" };
     private static readonly IReadOnlyDictionary<string, string> DefaultDarkAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["bg"] = "#0a0e1a", ["surface"] = "#111827", ["surfaceRaised"] = "#1a2235", ["surfaceSoft"] = "#1d2638", ["border"] = "#1e2d45", ["borderStrong"] = "#243352", ["ink"] = "#f1f5f9", ["muted"] = "#94a3b8", ["subtle"] = "#64748b", ["primary"] = "#6366f1", ["primaryHover"] = "#4f46e5", ["primarySoft"] = "#292d67", ["accent"] = "#10b981", ["accentSoft"] = "#173c3a", ["warning"] = "#f59e0b", ["warningSoft"] = "#4a3514", ["danger"] = "#ef4444", ["dangerSoft"] = "#4a282c", ["info"] = "#3b82f6"
@@ -108,7 +104,7 @@ public static class SettingsEndpoints
         {
             fontFamily = AppearanceFontFamilies.Contains(fontFamily ?? string.Empty) ? fontFamily!.ToLowerInvariant() : "inter",
             fontSize = AppearanceFontSizes.Contains(fontSize ?? string.Empty) ? fontSize!.ToLowerInvariant() : "normal",
-            themeMode = AppearanceThemeModes.Contains(themeMode ?? string.Empty) ? themeMode!.ToLowerInvariant() : "dark",
+            themeMode = "dark",
             colors
         };
     }
@@ -130,18 +126,15 @@ public static class SettingsEndpoints
             return false;
         }
 
-        normalized = new { fontFamily = fontFamily.ToLowerInvariant(), fontSize = fontSize.ToLowerInvariant(), themeMode = themeMode.ToLowerInvariant(), colors };
+        normalized = new { fontFamily = fontFamily.ToLowerInvariant(), fontSize = fontSize.ToLowerInvariant(), themeMode = "dark", colors };
         return true;
     }
 
     private static object NormalizeAppearanceColors(JsonElement? value)
     {
         var colors = value is { ValueKind: JsonValueKind.Object } && value.Value.TryGetProperty("colors", out var property) && property.ValueKind == JsonValueKind.Object ? property : (JsonElement?)null;
-        return new
-        {
-            light = NormalizeAppearancePalette(colors, "light", DefaultLightAppearanceColors),
-            dark = NormalizeAppearancePalette(colors, "dark", DefaultDarkAppearanceColors)
-        };
+        var dark = NormalizeAppearancePalette(colors, "dark", DefaultDarkAppearanceColors);
+        return new { dark };
     }
 
     private static Dictionary<string, string> NormalizeAppearancePalette(JsonElement? colors, string theme, IReadOnlyDictionary<string, string> defaults)
@@ -164,13 +157,13 @@ public static class SettingsEndpoints
             return true;
         }
 
-        if (colorsElement.ValueKind != JsonValueKind.Object || !TryNormalizeAppearancePalette(colorsElement, "light", DefaultLightAppearanceColors, out var light) || !TryNormalizeAppearancePalette(colorsElement, "dark", DefaultDarkAppearanceColors, out var dark))
+        if (colorsElement.ValueKind != JsonValueKind.Object || !TryNormalizeAppearancePalette(colorsElement, "dark", DefaultDarkAppearanceColors, out var dark))
         {
             colors = new { };
             return false;
         }
 
-        colors = new { light, dark };
+        colors = new { dark };
         return true;
     }
 

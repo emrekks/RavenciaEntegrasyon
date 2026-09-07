@@ -6,7 +6,7 @@ import { UiIcon, type UiIconName } from '../shared/components'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, InventoryPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, BillingSettingsPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
-import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, appearanceThemeModeOptions, defaultAppearanceSettings, useAppearanceSettings, type AppearanceColorTheme, type AppearanceSettings } from '../features/settings/appearance-settings'
+import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, appearanceThemeModeOptions, defaultAppearanceSettings, useAppearanceSettings, type AppearanceSettings } from '../features/settings/appearance-settings'
 
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
@@ -22,17 +22,13 @@ function Shell({ me }: { me: Me }) {
   useEffect(() => {
     document.documentElement.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[appearanceSettings.settings.fontFamily])
     document.documentElement.style.setProperty('--rv-font-scale', String(appearanceFontScale[appearanceSettings.settings.fontSize]))
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
     const applyTheme = () => {
-      const resolvedTheme = appearanceSettings.settings.themeMode === 'system' ? (media.matches ? 'dark' : 'light') : appearanceSettings.settings.themeMode
-      document.documentElement.dataset.theme = resolvedTheme
-      document.documentElement.dataset.themeMode = appearanceSettings.settings.themeMode
-      const palette = appearanceSettings.settings.colors[resolvedTheme]
+      document.documentElement.dataset.theme = 'dark'
+      document.documentElement.dataset.themeMode = 'dark'
+      const palette = appearanceSettings.settings.colors.dark
       appearanceColorTokenOptions.forEach(({ key }) => document.documentElement.style.setProperty(appearanceColorCssVariable(key), palette[key]))
     }
     applyTheme()
-    media.addEventListener('change', applyTheme)
-    return () => media.removeEventListener('change', applyTheme)
   }, [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize, appearanceSettings.settings.themeMode, appearanceColorsKey])
   const pageNames: Record<string, string> = { '/dashboard': 'Dashboard', '/products': 'Ürünler', '/products/new': 'Yeni ürün', '/catalog/categories': 'Kategoriler', '/catalog/brands': 'Markalar', '/catalog/attributes': 'Özellikler', '/imports': 'İçe aktarımlar', '/inventory': 'Stok ve fiyat', '/shipments': 'Gönderiler', '/orders': 'Siparişler', '/returns': 'İadeler', '/jobs': 'İşlem takibi', '/integrations': 'Platformlar', '/mappings/categories': 'Eşleştirme ayarları', '/mappings/attributes': 'Özellik eşlemeleri', '/settings': 'Sistem ayarları', '/settings/appearance': 'Görünüm ayarları', '/settings/billing': 'Faturalandırma' }
   const pageName = pageNames[location.pathname] ?? (location.pathname.startsWith('/products/') ? 'Ürün detayları' : location.pathname.startsWith('/returns/') ? 'İade detayları' : location.pathname.startsWith('/imports/') ? 'İçe aktarma ayrıntıları' : location.pathname.startsWith('/integrations/') ? 'Platform ayrıntıları' : location.pathname.startsWith('/shipments/') ? 'Gönderi ayrıntıları' : 'Ravencia')
@@ -460,7 +456,7 @@ function AppearanceSettingsPage() {
   const appearance = useAppearanceSettings()
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
-  const [colorTheme, setColorTheme] = useState<AppearanceColorTheme>('dark')
+  const colorTheme = 'dark' as const
   const savedAppearance = useRef(appearance.settings)
 
   useEffect(() => {
@@ -469,30 +465,24 @@ function AppearanceSettingsPage() {
 
   useEffect(() => {
     const root = document.documentElement
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
     const applyPreview = () => {
-      const resolvedTheme = appearance.draft.themeMode === 'system' ? (media.matches ? 'dark' : 'light') : appearance.draft.themeMode
-      root.dataset.theme = resolvedTheme
-      root.dataset.themeMode = appearance.draft.themeMode
+      root.dataset.theme = 'dark'
+      root.dataset.themeMode = 'dark'
       root.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[appearance.draft.fontFamily])
       root.style.setProperty('--rv-font-scale', String(appearanceFontScale[appearance.draft.fontSize]))
-      appearanceColorTokenOptions.forEach(({ key }) => root.style.setProperty(appearanceColorCssVariable(key), appearance.draft.colors[resolvedTheme][key]))
+      appearanceColorTokenOptions.forEach(({ key }) => root.style.setProperty(appearanceColorCssVariable(key), appearance.draft.colors.dark[key]))
     }
     applyPreview()
-    media.addEventListener('change', applyPreview)
-    return () => media.removeEventListener('change', applyPreview)
   }, [appearance.draft])
 
   useEffect(() => () => {
     const root = document.documentElement
     const saved = savedAppearance.current
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const resolvedTheme = saved.themeMode === 'system' ? (media.matches ? 'dark' : 'light') : saved.themeMode
-    root.dataset.theme = resolvedTheme
-    root.dataset.themeMode = saved.themeMode
+    root.dataset.theme = 'dark'
+    root.dataset.themeMode = 'dark'
     root.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[saved.fontFamily])
     root.style.setProperty('--rv-font-scale', String(appearanceFontScale[saved.fontSize]))
-    appearanceColorTokenOptions.forEach(({ key }) => root.style.setProperty(appearanceColorCssVariable(key), saved.colors[resolvedTheme][key]))
+    appearanceColorTokenOptions.forEach(({ key }) => root.style.setProperty(appearanceColorCssVariable(key), saved.colors.dark[key]))
   }, [])
 
   async function save() {
@@ -536,10 +526,10 @@ function AppearanceSettingsPage() {
       <div className="appearance-settings-grid">
         <label><span>Font tipi</span><select value={appearance.draft.fontFamily} onChange={event => appearance.setDraft({ ...appearance.draft, fontFamily: event.target.value as AppearanceSettings['fontFamily'] })}>{appearanceFontFamilyOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
         <label><span>Yazı boyutu</span><select value={appearance.draft.fontSize} onChange={event => appearance.setDraft({ ...appearance.draft, fontSize: event.target.value as AppearanceSettings['fontSize'] })}>{appearanceFontSizeOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></label>
-        <label><span>Tema</span><select value={appearance.draft.themeMode} onChange={event => appearance.setDraft({ ...appearance.draft, themeMode: event.target.value as AppearanceSettings['themeMode'] })}>{appearanceThemeModeOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></label>
+        <label><span>Tema</span><div className="appearance-theme-lock"><strong>{appearanceThemeModeOptions[0].label}</strong><small>{appearanceThemeModeOptions[0].description}</small></div></label>
       </div>
       <section className="appearance-color-editor">
-        <div className="appearance-color-editor-heading"><div><h2>Renk paleti</h2><p>Her renk tokenını ayrı ayrı düzenleyin. Değişiklikler seçilen tema için kaydedilir.</p></div><div className="appearance-color-actions"><div className="rv-tabs appearance-color-theme-tabs" role="tablist" aria-label="Renk teması"><button type="button" role="tab" aria-selected={colorTheme === 'light'} className={colorTheme === 'light' ? 'is-active' : ''} onClick={() => setColorTheme('light')}>Açık tema</button><button type="button" role="tab" aria-selected={colorTheme === 'dark'} className={colorTheme === 'dark' ? 'is-active' : ''} onClick={() => setColorTheme('dark')}>Koyu tema</button></div><button type="button" className="rv-button rv-button-secondary rv-button-sm" onClick={() => appearance.setDraft({ ...appearance.draft, colors: { ...appearance.draft.colors, [colorTheme]: { ...defaultAppearanceSettings.colors[colorTheme] } } })}>Varsayılanlara dön</button></div></div>
+        <div className="appearance-color-editor-heading"><div><h2>Moda Zeyn ERP – Koyu Tema</h2><p>Çalışma alanındaki tüm arayüz renkleri bu paletten gelir. Değişiklikler kaydetmeden önce anlık önizlenir.</p></div><div className="appearance-color-actions"><strong className="appearance-color-theme-label">Tek tema</strong><button type="button" className="rv-button rv-button-secondary rv-button-sm" onClick={() => appearance.setDraft({ ...appearance.draft, themeMode: 'dark', colors: { dark: { ...defaultAppearanceSettings.colors.dark } } })}>Varsayılanlara dön</button></div></div>
         <div className="appearance-color-grid">{appearanceColorTokenOptions.map(({ key, label, description }) => <label className="appearance-color-field" key={key}><span><b>{label}</b><small>{description}</small></span><span className="appearance-color-control"><input type="color" value={palette[key]} onChange={event => updateColor(key, event.target.value)} aria-label={`${label} rengi`} /><code>{palette[key].toUpperCase()}</code></span></label>)}</div>
       </section>
       <div className="appearance-preview" style={previewStyle}><small>Önizleme</small><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p></div>

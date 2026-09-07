@@ -4,8 +4,8 @@ import { hubApi } from '../../shared/api'
 
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
 export type AppearanceFontSize = 'small' | 'normal' | 'large' | 'extra-large'
-export type AppearanceThemeMode = 'system' | 'light' | 'dark'
-export type AppearanceColorTheme = 'light' | 'dark'
+export type AppearanceThemeMode = 'dark'
+export type AppearanceColorTheme = 'dark'
 export type AppearanceColorToken = 'bg' | 'surface' | 'surfaceRaised' | 'surfaceSoft' | 'border' | 'borderStrong' | 'ink' | 'muted' | 'subtle' | 'primary' | 'primaryHover' | 'primarySoft' | 'accent' | 'accentSoft' | 'warning' | 'warningSoft' | 'danger' | 'dangerSoft' | 'info'
 
 export type AppearancePalette = Record<AppearanceColorToken, string>
@@ -16,7 +16,7 @@ export type AppearanceSettings = {
   fontFamily: AppearanceFontFamily
   fontSize: AppearanceFontSize
   themeMode: AppearanceThemeMode
-  colors: AppearanceColors
+  colors: { dark: AppearancePalette }
 }
 
 export type AppearanceSettingsEnvelope = {
@@ -29,9 +29,6 @@ export const defaultAppearanceSettings: AppearanceSettings = {
   fontSize: 'normal',
   themeMode: 'dark',
   colors: {
-    light: {
-      bg: '#f3f6fa', surface: '#ffffff', surfaceRaised: '#f8fbfd', surfaceSoft: '#eaf1f7', border: '#cbd9e5', borderStrong: '#9eb4c6', ink: '#10243a', muted: '#5b7186', subtle: '#7d91a3', primary: '#1677c8', primaryHover: '#0f62aa', primarySoft: '#e4f1ff', accent: '#0a9b8c', accentSoft: '#def7f1', warning: '#b7791f', warningSoft: '#fff4d8', danger: '#c53d52', dangerSoft: '#ffe8ed', info: '#326fbd'
-    },
     dark: {
       bg: '#0a0e1a', surface: '#111827', surfaceRaised: '#1a2235', surfaceSoft: '#1d2638', border: '#1e2d45', borderStrong: '#243352', ink: '#f1f5f9', muted: '#94a3b8', subtle: '#64748b', primary: '#6366f1', primaryHover: '#4f46e5', primarySoft: '#292d67', accent: '#10b981', accentSoft: '#173c3a', warning: '#f59e0b', warningSoft: '#4a3514', danger: '#ef4444', dangerSoft: '#4a282c', info: '#3b82f6'
     }
@@ -79,9 +76,7 @@ export const appearanceFontSizeOptions: Array<{ value: AppearanceFontSize; label
 ]
 
 export const appearanceThemeModeOptions: Array<{ value: AppearanceThemeMode; label: string; description: string }> = [
-  { value: 'system', label: 'Sistem', description: 'Cihazınızın açık/koyu tercihine uyar' },
-  { value: 'light', label: 'Açık', description: 'Açık soğuk gri arayüzü kullanır' },
-  { value: 'dark', label: 'Koyu', description: 'Gece laciverti arayüzü kullanır' }
+  { value: 'dark', label: 'Moda Zeyn ERP – Koyu Tema', description: 'Çalışma alanının varsayılan ve tek arayüz teması' }
 ]
 
 export const appearanceFontFamilyCss: Record<AppearanceFontFamily, string> = {
@@ -111,12 +106,10 @@ function normalizePalette(value: unknown, fallback: AppearancePalette): Appearan
 }
 
 function normalizeColors(value: unknown): AppearanceColors {
-  if (!value || typeof value !== 'object') return { light: { ...defaultAppearanceSettings.colors.light }, dark: { ...defaultAppearanceSettings.colors.dark } }
+  if (!value || typeof value !== 'object') return { dark: { ...defaultAppearanceSettings.colors.dark } }
   const candidate = value as Partial<AppearanceColors>
-  return {
-    light: normalizePalette(candidate.light, defaultAppearanceSettings.colors.light),
-    dark: normalizePalette(candidate.dark, defaultAppearanceSettings.colors.dark)
-  }
+  const dark = normalizePalette(candidate.dark, defaultAppearanceSettings.colors.dark)
+  return { dark }
 }
 
 export function normalizeAppearanceSettings(value: unknown): AppearanceSettings {
