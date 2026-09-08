@@ -428,10 +428,6 @@
   .orders-reference-filter-shell, .returns-reference-filter-shell { display: grid; gap: var(--rv-space-3); margin-bottom: var(--rv-space-5); }
   .order-tabs, .return-reference-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(112px, 1fr); gap: var(--rv-space-1); overflow-x: auto; padding: var(--rv-space-1); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); scrollbar-width: thin; }
   .order-tabs button, .return-reference-tabs button { display: grid; min-width: 0; gap: 2px; min-height: 64px; padding: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-muted); background: transparent; border: 1px solid transparent; border-radius: var(--rv-radius-md); text-align: left; }
-  .orders-page .order-tabs button { grid-template-columns: auto auto; grid-template-rows: auto auto; align-content: center; justify-content: start; column-gap: var(--rv-space-1); border-color: var(--rv-color-border); }
-  .orders-page .order-tabs button > span { grid-column: 1 / -1; overflow: hidden; font-size: var(--rv-font-size-sm); line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
-  .orders-page .order-tabs button > b { grid-column: 1; font-variant-numeric: tabular-nums; line-height: 1.2; }
-  .orders-page .order-tabs button > small { grid-column: 2; align-self: center; line-height: 1.2; }
   .order-tabs button:hover, .return-reference-tabs button:hover { color: var(--rv-color-ink); border-color: var(--rv-color-border-strong); background: var(--rv-color-surface-raised); }
   .order-tabs button b, .return-reference-tabs button small { color: inherit; font-size: var(--rv-font-size-xs); }
   .return-reference-tabs button { border-color: var(--rv-color-border); }
