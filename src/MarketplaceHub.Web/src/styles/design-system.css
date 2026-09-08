@@ -175,6 +175,7 @@
   .notice { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-color: color-mix(in srgb, var(--rv-color-warning) 38%, transparent); }
   .success { color: var(--rv-color-accent); }
   .tag, .badge, .security-state { display: inline-flex; min-height: 24px; align-items: center; gap: var(--rv-space-1); padding: 0 var(--rv-space-2); color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border: 1px solid transparent; border-radius: 999px; font-size: var(--rv-font-size-xs); font-weight: 750; }
+  .badge { gap: 6px; padding: 3px 8px; border: 0; border-radius: 6px; font-size: 14px; font-weight: 500; line-height: 1.5; }
   .badge > i { width: 6px; height: 6px; flex: 0 0 6px; background: currentcolor; border-radius: 50%; }
   .security-state.enabled { color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-accent) 20%, var(--rv-color-surface-raised)); border-color: color-mix(in srgb, var(--rv-color-accent) 55%, var(--rv-color-border)); }
   .empty, .unknown { min-height: 160px; display: grid; place-items: center; padding: var(--rv-space-6); color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px dashed var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); text-align: center; }
@@ -1398,7 +1399,7 @@
   .rv-filter-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); flex: 1 1 620px; gap: var(--rv-space-3); }
   .rv-filter-actions { display: flex; flex-wrap: wrap; gap: var(--rv-space-2); }
   .rv-tab-count { display: inline-grid; min-width: 24px; min-height: 24px; place-items: center; padding-inline: var(--rv-space-1); background: var(--rv-color-surface-soft); border-radius: 999px; font-size: var(--rv-font-size-xs); }
-  .rv-badge { display: inline-flex; min-height: 24px; align-items: center; padding-inline: var(--rv-space-2); border: 1px solid transparent; border-radius: 999px; font-size: var(--rv-font-size-xs); font-weight: 750; }
+  .rv-badge { display: inline-flex; min-height: 24px; align-items: center; gap: 6px; padding: 3px 8px; border: 0; border-radius: 6px; font-size: 14px; font-weight: 500; line-height: 1.5; }
   .rv-badge-neutral { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border); }
   .rv-badge-info { color: var(--rv-color-info); background: var(--rv-color-primary-soft); }
   .rv-badge-success { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
@@ -1822,7 +1823,7 @@
   .rv-topbar-theme:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
   .rv-topbar-search.rv-topbar-search-icon { width: 44px; min-width: 44px; justify-content: center; padding-inline: 0; }
   .rv-topbar-search.rv-topbar-search-icon > span, .rv-topbar-search.rv-topbar-search-icon > kbd { display: none; }
-  .rv-badge > i { width: 6px; height: 6px; flex: 0 0 6px; margin-right: var(--rv-space-1); background: currentColor; border-radius: 50%; }
+  .rv-badge > i { width: 6px; height: 6px; flex: 0 0 6px; background: currentColor; border-radius: 50%; }
   .rv-button-loading-icon { animation: rv-spin .8s linear infinite; }
 
   /* The mapping workspace uses a stable card grid; value lists open in a
