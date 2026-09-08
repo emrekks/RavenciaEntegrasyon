@@ -53,14 +53,14 @@ function Shell({ me }: { me: Me }) {
   function handleSidebarMouseLeave() { if (!sidebarPinned) setSidebarHoverExpanded(false) }
   const icon = (name: UiIconName) => <UiIcon className="nav-icon" name={name} size={22} />
   const navigationCounts = navigationSummary.data?.metrics
-  const item = (to: string, iconName: UiIconName, label: string, end = false, count?: number) => {
-    const hasCount = typeof count === 'number' && count > 0
+  const item = (to: string, iconName: UiIconName, label: string, end = false, count?: number, showZeroCount = false) => {
+    const hasCount = typeof count === 'number' && (count > 0 || showZeroCount)
     const accessibleLabel = hasCount ? `${label}, ${count} bildirim` : label
     return <NavLink to={to} end={end} aria-label={accessibleLabel} title={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className="nav-count" aria-hidden="true">{count > 99 ? '99+' : count}</span>}</NavLink>
   }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
     { label: 'Çalışma alanı', items: [item('/dashboard', 'grid', 'Genel bakış', true), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.pendingOrders), item('/products', 'bag', 'Ürünler')] },
-    { label: 'Operasyon', items: [item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns), item('/invoices', 'invoice', 'Faturalar')] },
+    { label: 'Operasyon', items: [item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar')] },
     { label: 'Yönetim', items: [item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'bolt', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}><span className="nav-section-label">{group.label}</span>{group.items}</div>)}</>
