@@ -1679,6 +1679,7 @@
   .invoice-reference-tabs button, .jobs-reference-tabs button { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-content: center; gap: 2px var(--rv-space-2); text-align: left; }
   .invoice-reference-tabs button .status-tab-label, .jobs-reference-tabs button .status-tab-label { grid-column: 1 / -1; min-width: 0; overflow: hidden; font-size: var(--rv-font-size-sm); line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
   .invoice-reference-tabs button .status-tab-count, .jobs-reference-tabs button .status-tab-count { grid-column: 1; justify-self: start; font-size: var(--rv-font-size-xs); font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .jobs-reference-tabs button .jobs-reference-tab-count { min-width: 0; min-height: 0; padding: 0; color: inherit; background: transparent; border-radius: 0; }
   .rv-tabs button { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-content: center; gap: 2px var(--rv-space-2); text-align: center; }
   .rv-tabs button .rv-tab-label { grid-column: 1 / -1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rv-tabs button .rv-tab-count { grid-column: 1; justify-self: start; font-size: var(--rv-font-size-xs); font-variant-numeric: tabular-nums; line-height: 1.2; }
