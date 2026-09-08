@@ -1960,6 +1960,7 @@
 
 @media (max-width: 480px) {
   .products-page-actions { grid-template-columns: 1fr; }
+  .dashboard-metrics { grid-template-columns: 1fr; }
   .invoice-reference-metrics, .invoice-detail-summary, .return-detail-summary, .return-detail-product-facts, .recovery-code-grid { grid-template-columns: 1fr; }
   .invoice-draft-notice { grid-template-columns: 1fr; }
   .invoice-draft-notice > span { margin-inline: auto; }

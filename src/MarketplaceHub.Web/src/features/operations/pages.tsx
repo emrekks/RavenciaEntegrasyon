@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, type Me } from '../../shared/api'
-import { UiIcon } from '../../shared/components'
+import { Tabs, UiIcon } from '../../shared/components'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -284,11 +284,7 @@ export function JobsPage({ me }: { me: Me }) {
       </div>
     </div>
     <div className="jobs-reference-canvas">
-      <div className="jobs-reference-tabs" role="tablist" aria-label="İşlem kategorileri">
-        {categoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => (
-          <button type="button" role="tab" aria-selected={category === tab.key} className={category === tab.key ? 'active' : ''} key={tab.key} onClick={() => setCategory(tab.key)}><span className="status-tab-label">{tab.label}</span><small className="status-tab-count jobs-reference-tab-count">{categoryCounts.get(tab.key) ?? 0}</small></button>
-        ))}
-      </div>
+      <Tabs className="jobs-reference-tabs" ariaLabel="İşlem kategorileri" value={category} onChange={value => setCategory(value as JobCategory)} items={categoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: categoryCounts.get(tab.key) ?? 0 }))} />
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">
           <span className="success"><i aria-hidden="true" />Başarılı <strong>{statusSummary.success}</strong></span>

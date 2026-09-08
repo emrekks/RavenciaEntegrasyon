@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
-import { Busy, ErrorBox, UiIcon } from '../../shared/components'
+import { Busy, ErrorBox, Tabs, UiIcon } from '../../shared/components'
 
 type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
 type InvoiceWorkspaceLine = { sku: string; barcode: string | null; description: string; quantity: number; unitPrice: number; vatRate: number; imageUrl: string | null }
@@ -72,7 +72,7 @@ export function InvoicesPage() {
       <article className="invoice-metric-total"><small>Toplam paket</small><strong>{items.length}</strong><span>fatura çalışma alanı</span></article>
     </div>
     <div className="invoice-reference-filter-shell">
-      <div className="invoice-reference-tabs" role="tablist" aria-label="Fatura görünümleri">{tabs.map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}><span className="status-tab-label">{label}</span><b className="status-tab-count">{value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : counts.dueSoon}</b></button>)}</div>
+      <Tabs className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={value => setTab(value as typeof tab)} items={tabs.map(([value, label]) => ({ value, label, count: value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : counts.dueSoon }))} />
       <section className="invoice-reference-filters" aria-label="Fatura filtreleri">
         <label className="invoice-reference-search"><UiIcon name="search" /><input aria-label="Fatura ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></label>
         <label>Sipariş durumu<select value={status} onChange={event => setStatus(event.target.value)}><option value="ALL">Tümü</option><option value="NEW">Yeni</option><option value="PROCESSING">İşleme alınmış</option><option value="SHIPPED">Kargoya verilmiş</option><option value="DELIVERED">Teslim edilmiş</option><option value="CANCELLED">İptal edilmiş</option></select></label>

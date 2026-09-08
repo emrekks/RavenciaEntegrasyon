@@ -2,7 +2,7 @@ import { Suspense, useEffect, useRef, useState, type CSSProperties, type DragEve
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiRequestError, hubApi, type Me, type TenantOption } from '../shared/api'
-import { Drawer, UiIcon, type UiIconName } from '../shared/components'
+import { Drawer, Tabs, UiIcon, type UiIconName } from '../shared/components'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, InventoryPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, BillingSettingsPage, InvoiceDetailPage, InvoicesPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
@@ -320,13 +320,18 @@ function Dashboard({ me }: { me: Me }) {
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
 type SecuritySession = { id: string; state: string; current: boolean; issuedAt: string; lastSeenAt: string; expiresAt: string }
 type MfaSetup = { otpauthUri: string; qrSvg: string; expiresAt: string }
+type SettingsTabKey = 'security' | 'database' | 'shipping' | 'appearance'
+
+function SettingsTabs({ value, onChange }: { value: SettingsTabKey; onChange: (value: SettingsTabKey) => void }) {
+  return <Tabs className="settings-tabs" ariaLabel="Sistem ayarları" value={value} onChange={nextValue => onChange(nextValue as SettingsTabKey)} items={[{ value: 'security', label: 'Güvenlik ve oturumlar' }, { value: 'database', label: 'Veritabanı temizliği' }, { value: 'shipping', label: 'Kargo ayarları' }, { value: 'appearance', label: 'Görünüm' }]} />
+}
 
 function Security() {
   const client = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedSettingsTab = searchParams.get('tab')
-  const settingsTab: 'security' | 'database' | 'shipping' | 'appearance' = requestedSettingsTab === 'database' || requestedSettingsTab === 'shipping' || requestedSettingsTab === 'appearance' ? requestedSettingsTab : 'security'
-  function setSettingsTab(tab: 'security' | 'database' | 'shipping' | 'appearance') {
+  const settingsTab: SettingsTabKey = requestedSettingsTab === 'database' || requestedSettingsTab === 'shipping' || requestedSettingsTab === 'appearance' ? requestedSettingsTab : 'security'
+  function setSettingsTab(tab: SettingsTabKey) {
     setSearchParams(tab === 'security' ? {} : { tab })
   }
   const shippingSettings = useShippingLabelSettings()
@@ -539,12 +544,7 @@ function AppearanceSettingsPage() {
 
   return <section className="content security-page">
     <div className="page-heading"><div><p className="eyebrow">Ayarlar</p><h1>Sistem ayarları</h1><p className="lede">Güvenlik ve yerel operasyon verilerini tek ekranda yönetin.</p></div></div>
-<div className="rv-tabs" role="tablist">
-      <button type="button" role="tab" aria-selected={false} onClick={() => navigate('/settings')}>Güvenlik ve oturumlar</button>
-      <button type="button" role="tab" aria-selected={false} onClick={() => navigate('/settings?tab=database')}>Veritabanı temizliği</button>
-      <button type="button" role="tab" aria-selected={false} onClick={() => navigate('/settings?tab=shipping')}>Kargo ayarları</button>
-      <button type="button" role="tab" aria-selected={true} className="active">Görünüm</button>
-    </div>
+    <SettingsTabs value="appearance" onChange={tab => navigate(tab === 'security' ? '/settings' : `/settings?tab=${tab}`)} />
     {message && <div className="notice" role="status">{message}</div>}
     {appearance.isError && <div className="error" role="alert">Hesap görünüm ayarları alınamadı; varsayılan görünüm gösteriliyor.</div>}
     <section className="panel appearance-settings-panel">
