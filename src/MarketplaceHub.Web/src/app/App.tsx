@@ -296,11 +296,12 @@ function Dashboard({ me }: { me: Me }) {
     return { ...point, key: dashboardDateKey(date), label: index === 0 || date.getDate() === 1 ? `${date.getDate()} ${month}` : String(date.getDate()), fullLabel: date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) }
   })
   const maxRevenue = Math.max(1, ...revenueSeries.map(item => item.amount))
-  const revenueAxisStep = dashboardNiceAxisStep(maxRevenue, 5)
-  const revenueAxisMax = revenueAxisStep * 5
+  const revenueAxisStep = dashboardNiceAxisStep(maxRevenue, 6)
+  const revenueAxisSegments = Math.min(6, Math.max(1, Math.ceil(maxRevenue / revenueAxisStep)))
+  const revenueAxisMax = revenueAxisStep * revenueAxisSegments
   const revenueCurrency = revenueSeries.find(item => item.amount > 0)?.currency || revenueSeries[0]?.currency || 'TRY'
-  const revenueAxisTicks = Array.from({ length: 6 }, (_, index) => {
-    const ratio = index / 5
+  const revenueAxisTicks = Array.from({ length: revenueAxisSegments + 1 }, (_, index) => {
+    const ratio = index / revenueAxisSegments
     return { ratio, amount: revenueAxisMax * ratio, major: true }
   })
   const revenueTotal = revenueSeries.reduce((sum, item) => sum + item.amount, 0)
