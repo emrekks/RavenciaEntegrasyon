@@ -453,7 +453,7 @@
   .return-reference-head { position: static; margin: -1px -1px 0; border-radius: var(--rv-radius-lg) var(--rv-radius-lg) 0 0; }
   .return-reference-table > .return-reference-row { margin-top: 0; border-width: 0 0 1px; border-radius: 0; box-shadow: none; }
   .return-reference-table > .return-reference-row:last-child { border-bottom: 0; border-radius: 0 0 var(--rv-radius-lg) var(--rv-radius-lg); }
-  .return-reference-table > .return-reference-row:hover { border-color: var(--rv-color-border); background: var(--rv-color-surface-raised); box-shadow: inset 3px 0 var(--rv-color-primary); }
+  .return-reference-table > .return-reference-row:hover { border-color: var(--rv-color-border-strong); background: var(--rv-color-surface-raised); box-shadow: none; }
   .order-reference-grid > *, .return-reference-row > * { min-width: 0; padding: var(--rv-space-4) var(--rv-space-3); border-right: 1px solid var(--rv-color-border); }
   .order-reference-grid > *:last-child, .return-reference-row > *:last-child { border-right: 0; }
   .order-reference-row:hover, .return-reference-row:hover { border-color: var(--rv-color-border-strong); box-shadow: none; }
