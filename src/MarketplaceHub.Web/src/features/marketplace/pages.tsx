@@ -1028,7 +1028,17 @@ export function MappingPage() {
 function CategoryMappingWorkspace() {
   const client = useQueryClient()
   const [connectionId, setConnectionId] = useState(''); const [selectedPlatformCode, setSelectedPlatformCode] = useState<MappingPlatformCode>('TRENDYOL'); const [localId, setLocalId] = useState(''); const [externalId, setExternalId] = useState(''); const [notice, setNotice] = useState(''); const [categoryName, setCategoryName] = useState(''); const [categoryLibrarySearch, setCategoryLibrarySearch] = useState(''); const [categoryLibraryOpen, setCategoryLibraryOpen] = useState(false); const [categoryLibrarySort, setCategoryLibrarySort] = useState<'NAME_ASC' | 'NAME_DESC'>('NAME_ASC'); const [externalSearch, setExternalSearch] = useState(''); const [externalPickerOpen, setExternalPickerOpen] = useState(false); const [savedSearch, setSavedSearch] = useState(''); const [savedSort, setSavedSort] = useState<'NAME_ASC' | 'NAME_DESC'>('NAME_ASC'); const [advancedOpen, setAdvancedOpen] = useState(false); const [panelPickerOpen, setPanelPickerOpen] = useState(false); const [panelPickerSearch, setPanelPickerSearch] = useState(''); const [exportOpen, setExportOpen] = useState(false); const [exportSelection, setExportSelection] = useState<Record<MappingTransferScope, boolean>>({ categories: true, options: true, attributes: true, mappings: true }); const [transferOpen, setTransferOpen] = useState(false); const [transferBundle, setTransferBundle] = useState<MappingTransferBundle | null>(null); const [transferSelection, setTransferSelection] = useState<Record<MappingTransferScope, boolean>>({ categories: true, options: true, attributes: true, mappings: true }); const [transferBusy, setTransferBusy] = useState(false)
-  useScrollLock(exportOpen || transferOpen, true)
+  useScrollLock(exportOpen || transferOpen || advancedOpen, true)
+  useEffect(() => {
+    if (!advancedOpen) return
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setAdvancedOpen(false)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [advancedOpen])
   const connections = useQuery({ queryKey: ['connections', 'mapping'], queryFn: () => loadAllPages<Connection>('/connections') })
   const localCategories = useQuery({ queryKey: ['categories', 'mapping'], queryFn: () => loadAllPages<LocalCategory>('/catalog/categories') })
   const localAttributes = useQuery({ queryKey: ['attributes', 'mapping-builder'], queryFn: () => loadAllPages<LocalAttribute>('/catalog/attributes') })
