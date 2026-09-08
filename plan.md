@@ -120,7 +120,7 @@ Bu bölüm, 8 Eylül 2026 tarihli uygulama turunun durumunu kaydeder. Bir madde 
 - [x] Diğer sayfalar ve veri durumları
 - [ ] 1920/1024/768/390/360 responsive tarayıcı kontrolü
 - [x] Frontend/API build, test ve stil doğrulaması
-- [ ] Commit, push, production deploy ve sağlık kontrolü
+- [x] Commit, push, production deploy ve sağlık kontrolü
 
 ### Denetim notları
 
@@ -129,3 +129,4 @@ Bu bölüm, 8 Eylül 2026 tarihli uygulama turunun durumunu kaydeder. Bir madde 
 - Kontrol edilen rotalar: dashboard, ürün listesi ve detayı, siparişler, iadeler, entegrasyonlar, kategori/marka eşleştirmeleri, faturalar, arka plan işlemleri, ayarlar ve katalog/aktarımı/stok/gönderi sayfaları.
 - Yerel tarayıcı kanıtı `1280×720` ve `devicePixelRatio: 1` ölçüsündedir. Bu ortamda viewport değiştirme yetkisi olmadığı için 1920, 1024, 768, 390 ve 360 px gerçek tarayıcı doğrulaması tamamlanmış sayılmamıştır; CSS kırılım kuralları uygulanmış ve statik olarak taranmıştır.
 - Tüm kontrol edilen rotalarda `document.body.scrollWidth <= innerWidth` ve ana içerik taşması kontrolü sağlandı; açılışta hata/uyarı görünmedi. Sekmelerde ok tuşları, Home ve End; entegrasyon ayarlarında Escape ve gövde kaydırma kilidi doğrulandı.
+- `d8b2a53` commit'i `origin/main` üzerinde yayınlandı; sunucu aynı commit'i çalıştırıyor. `https://panel.ravencia.com/health/ready` HTTP 200 döndü, kök HTML ve güncel JavaScript asset'i HTTP 200 ile alındı; API, worker, Caddy ve PostgreSQL container'ları sağlıklı.
