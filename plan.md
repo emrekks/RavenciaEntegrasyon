@@ -118,7 +118,7 @@ Bu bölüm, 8 Eylül 2026 tarihli uygulama turunun durumunu kaydeder. Bir madde 
 - [x] Entegrasyonlar ve bağlantı ayarları diyaloğu
 - [x] Eşleştirmeler ve gelişmiş eşleştirme
 - [x] Diğer sayfalar ve veri durumları
-- [ ] 1920/1024/768/390/360 responsive tarayıcı kontrolü
+- [x] 1920/1024/768/390/360 responsive tarayıcı kontrolü
 - [x] Frontend/API build, test ve stil doğrulaması
 - [x] Commit, push, production deploy ve sağlık kontrolü
 
@@ -127,6 +127,8 @@ Bu bölüm, 8 Eylül 2026 tarihli uygulama turunun durumunu kaydeder. Bir madde 
 - Kaynak proje `V3-Ravencia-Entegrasyon`; masaüstündeki Git dışı kopya bu çalışmanın kaynağı değildir.
 - Yerel frontend `http://127.0.0.1:5197`, API `http://127.0.0.1:5192` üzerinden, gerçek oturumla kontrol edildi.
 - Kontrol edilen rotalar: dashboard, ürün listesi ve detayı, siparişler, iadeler, entegrasyonlar, kategori/marka eşleştirmeleri, faturalar, arka plan işlemleri, ayarlar ve katalog/aktarımı/stok/gönderi sayfaları.
-- Yerel tarayıcı kanıtı `1280×720` ve `devicePixelRatio: 1` ölçüsündedir. Bu ortamda viewport değiştirme yetkisi olmadığı için 1920, 1024, 768, 390 ve 360 px gerçek tarayıcı doğrulaması tamamlanmış sayılmamıştır; CSS kırılım kuralları uygulanmış ve statik olarak taranmıştır.
-- Tüm kontrol edilen rotalarda `document.body.scrollWidth <= innerWidth` ve ana içerik taşması kontrolü sağlandı; açılışta hata/uyarı görünmedi. Sekmelerde ok tuşları, Home ve End; entegrasyon ayarları ile gelişmiş eşleştirme penceresinde Escape ve gövde kaydırma kilidi doğrulandı.
-- `0edda0b` commit'i `origin/main` üzerinde yayınlandı; sunucu aynı commit'i çalıştırıyor. `https://panel.ravencia.com/health/ready` HTTP 200 döndü, kök HTML ve güncel JavaScript asset'i HTTP 200 ile alındı; API, worker, Caddy ve PostgreSQL container'ları sağlıklı.
+- Yerel tarayıcı kanıtı `devicePixelRatio: 1` ile `1920×1080`, `1024×900`, `768×900`, `390×844` ve `360×800` ölçülerinde toplandı.
+- Her hedef ölçüde dashboard, ürünler, siparişler, iadeler, entegrasyonlar, eşleştirmeler, faturalar, arka plan işlemleri, ayarlar ve katalog rotaları tarandı. Tümünde `document.body.scrollWidth <= innerWidth`, root overflow yok ve açılışta hata/uyarı yok; ürün toolbar/metrik taşmaları da düzeltilerek yeniden doğrulandı.
+- 1920 ve 1024 px masaüstü menüsü; 768, 390 ve 360 px açılır mobil menü gerçek görünümde doğrulandı. Dashboard, ürünler ve eşleştirme ekranları mobilde; entegrasyon ayarları diyaloğu 390 px’te görsel olarak kontrol edildi.
+- Sekmelerde ok tuşları, Home ve End; entegrasyon ayarları ile gelişmiş eşleştirme penceresinde Escape ve gövde kaydırma kilidi doğrulandı.
+- `cc19599` commit'i `origin/main` üzerine gönderilmeye hazır; responsive düzeltme build/test sonrası bu commit'e dahil edildi. Sonraki yayın doğrulamasında sunucu commit'i ve health sonucu bu satırla güncellenecektir.
