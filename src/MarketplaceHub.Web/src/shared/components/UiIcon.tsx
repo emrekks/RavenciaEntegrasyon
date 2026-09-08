@@ -8,6 +8,7 @@ export type UiIconName =
   | 'arrowLeft'
   | 'arrowRight'
   | 'barcode'
+  | 'bell'
   | 'bold'
   | 'calendar'
   | 'check'
@@ -25,9 +26,11 @@ export type UiIconName =
   | 'externalLink'
   | 'filter'
   | 'grid'
+  | 'help'
   | 'image'
   | 'italic'
   | 'layout'
+  | 'layers'
   | 'link'
   | 'list'
   | 'lock'
@@ -80,6 +83,7 @@ const paths: Record<UiIconName, ReactNode> = {
   arrowLeft: <path d="M19 12H5m6-6-6 6 6 6" />,
   arrowRight: <path d="M5 12h14m-6-6 6 6-6 6" />,
   barcode: <><path d="M4 5v14m3-14v14m3-11v8m4-11v14m3-14v14m3-11v8" /><path d="M3 5h18M3 19h18" opacity=".35" /></>,
+  bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
   bold: <path d="M8 5h5.2a3.3 3.3 0 0 1 0 6.6H8m0 0h5.8a3.7 3.7 0 0 1 0 7.4H8V5m0 0v14" />,
   calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4m8-4v4M4 9h16" /></>,
   check: <path d="m5 12.5 4.2 4.2L19 7" />,
@@ -97,9 +101,11 @@ const paths: Record<UiIconName, ReactNode> = {
   externalLink: <><path d="M14 5h5v5m0-5-8 8" /><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></>,
   filter: <path d="M4 6h16M7 12h10m-7 6h4" />,
   grid: <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>,
+  help: <><circle cx="12" cy="12" r="9" /><path d="M9.75 9a2.3 2.3 0 1 1 3.8 1.75c-.95.8-1.55 1.2-1.55 2.5M12 16.5h.01" /></>,
   image: <><rect x="4" y="5" width="16" height="14" rx="2" /><circle cx="9" cy="10" r="1.2" /><path d="m5 17 4.5-4 3 2.5 2.5-2 4 3.5" /></>,
   italic: <path d="M10 5h8M6 19h8M14 5 10 19" />,
   layout: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 10h16M10 10v10" /></>,
+  layers: <><path d="m12 4 8 4-8 4-8-4 8-4Z" /><path d="m4 12 8 4 8-4M4 16l8 4 8-4" /></>,
   link: <><path d="m9.5 14.5 5-5" /><path d="m7 17-1.2 1.2a3.3 3.3 0 0 1-4.7-4.7l3.4-3.4a3.3 3.3 0 0 1 4.7 0M17 7l1.2-1.2a3.3 3.3 0 0 1 4.7 4.7l-3.4 3.4a3.3 3.3 0 0 1-4.7 0" /></>,
   list: <><path d="M9 6h11M9 12h11M9 18h11" /><path d="M4 6h.01M4 12h.01M4 18h.01" /></>,
   lock: <><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
