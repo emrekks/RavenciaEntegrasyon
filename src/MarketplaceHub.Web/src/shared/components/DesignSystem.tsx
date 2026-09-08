@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
+import { UiIcon } from './UiIcon'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 export type ControlSize = 'sm' | 'md' | 'lg'
 export type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
 export type FieldProps = { label?: string; hint?: string; error?: string; required?: boolean }
-type DialogSurfaceProps = { open: boolean; title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; description?: ReactNode }
+type DialogSurfaceProps = { open: boolean; title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; description?: ReactNode; className?: string }
 
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
 
@@ -58,7 +59,7 @@ function useDialogSurface(open: boolean, onClose: () => void) {
 }
 
 export function Button({ variant = 'primary', size = 'md', loading = false, className, disabled, type = 'button', children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: ControlSize; loading?: boolean }) {
-  return <button {...props} type={type} className={['rv-button', `rv-button-${variant}`, `rv-button-${size}`, className].filter(Boolean).join(' ')} disabled={disabled || loading}>{loading ? 'İşleniyor…' : children}</button>
+  return <button {...props} type={type} className={['rv-button', `rv-button-${variant}`, `rv-button-${size}`, className].filter(Boolean).join(' ')} disabled={disabled || loading}>{loading ? <><UiIcon name="sync" className="rv-button-loading-icon" />İşleniyor…</> : children}</button>
 }
 
 export function IconButton({ label, size = 'md', variant = 'ghost', type = 'button', children, className, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; size?: ControlSize; variant?: ButtonVariant }) {
@@ -120,7 +121,7 @@ export function Tabs({ items, value, onChange, ariaLabel = 'Sekmeler', className
   }}><span className="rv-tab-label">{item.label}</span>{item.count !== undefined ? <span className="rv-tab-count">{item.count}</span> : null}</button>)}</div>
 }
 
-export function Badge({ tone = 'neutral', children }: { tone?: StatusTone; children: ReactNode }) { return <span className={`rv-badge rv-badge-${tone}`}>{children}</span> }
+export function Badge({ tone = 'neutral', children }: { tone?: StatusTone; children: ReactNode }) { return <span className={`rv-badge rv-badge-${tone}`}><i aria-hidden="true" />{children}</span> }
 export function StatusBadge({ tone, children }: { tone?: StatusTone; children: ReactNode }) { return <Badge tone={tone}>{children}</Badge> }
 
 export function MetricCard({ label, value, detail, icon }: { label: string; value: ReactNode; detail?: ReactNode; icon?: ReactNode }) {
@@ -137,19 +138,19 @@ export function Pagination({ page, hasNext, onPrevious, onNext }: { page: number
   return <nav className="rv-pagination" aria-label="Sayfalama"><Button variant="secondary" size="sm" onClick={onPrevious} disabled={page <= 1}>Önceki</Button><span>Sayfa {page}</span><Button variant="secondary" size="sm" onClick={onNext} disabled={!hasNext}>Sonraki</Button></nav>
 }
 
-export function Modal({ open, title, onClose, children, footer, description }: DialogSurfaceProps) {
+export function Modal({ open, title, onClose, children, footer, description, className }: DialogSurfaceProps) {
   const dialogRef = useDialogSurface(open, onClose)
   const titleId = useId()
   const descriptionId = useId()
   if (!open) return null
-  return <div className="rv-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><section ref={dialogRef} className="rv-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}>×</IconButton></header><div className="rv-modal-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</section></div>
+  return <div className="rv-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><section ref={dialogRef} className={['rv-modal', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}><UiIcon name="close" /></IconButton></header><div className="rv-modal-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</section></div>
 }
 
-export function Drawer({ open, title, onClose, children, footer, description }: DialogSurfaceProps) {
+export function Drawer({ open, title, onClose, children, footer, description, className }: DialogSurfaceProps) {
   const dialogRef = useDialogSurface(open, onClose)
   const titleId = useId()
   const descriptionId = useId()
-  return open ? <div className="rv-overlay rv-drawer-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><aside ref={dialogRef} className="rv-drawer" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}>×</IconButton></header><div className="rv-drawer-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</aside></div> : null
+  return open ? <div className="rv-overlay rv-drawer-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><aside ref={dialogRef} className={['rv-drawer', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}><UiIcon name="close" /></IconButton></header><div className="rv-drawer-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</aside></div> : null
 }
 
 export function Toast({ children, tone = 'info' }: { children: ReactNode; tone?: StatusTone }) { return <div className={`rv-toast rv-toast-${tone}`} role="status">{children}</div> }

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, type Me } from '../../shared/api'
-import { Tabs, UiIcon } from '../../shared/components'
+import { Tabs, UiIcon, type UiIconName } from '../../shared/components'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -139,19 +139,21 @@ function timeRangeLabel(value: JobTimeRange) {
 type JobsIconName = 'calendar' | 'chevron-down' | 'filter' | 'refresh' | 'search' | JobTypeIconName
 
 function JobsIcon({ name }: { name: JobsIconName }) {
-  const common = { className: `jobs-reference-icon jobs-reference-icon-${name}`, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, vectorEffect: 'non-scaling-stroke' as const, shapeRendering: 'geometricPrecision' as const, preserveAspectRatio: 'xMidYMid meet' as const, 'aria-hidden': true, focusable: false }
-  if (name === 'calendar') return <svg {...common}><rect x="3.5" y="4.5" width="17" height="16" rx="2" /><path d="M7.5 3.5v3M16.5 3.5v3M3.5 9h17M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01M16 17h.01" /></svg>
-  if (name === 'chevron-down') return <svg {...common}><path d="m7 9 5 5 5-5" /></svg>
-  if (name === 'filter') return <svg {...common}><path d="M4 5h16M7 12h10M10 19h4" /></svg>
-  if (name === 'search') return <svg {...common}><circle cx="10.5" cy="10.5" r="5.75" /><path d="m15 15 5 5" /></svg>
-  if (name === 'price') return <svg {...common}><path d="M5 7.5 12 4l7 3.5v9L12 20l-7-3.5z" /><path d="M8.5 10.5h7M8.5 13.5h5" /></svg>
-  if (name === 'order') return <svg {...common}><path d="m4 8 8-4 8 4-8 4zM4 8v8l8 4 8-4V8M12 12v8" /></svg>
-  if (name === 'invoice') return <svg {...common}><path d="M6 3.5h9l3 3V20.5H6zM15 3.5v4h3M9 12h6M9 15.5h6" /></svg>
-  if (name === 'return') return <svg {...common}><path d="M7 4h8l4 4v12H5V8l2-4Z" /><path d="M7 4v4h8V4" /><path d="M14 14H7m0 0 3-3m-3 3 3 3" /></svg>
-  if (name === 'product') return <svg {...common}><path d="m4 8 8-4 8 4-8 4zM4 8v8l8 4 8-4V8M8 10v8M16 10v8" /></svg>
-  if (name === 'connection') return <svg {...common}><path d="M8 7V5a3 3 0 0 1 6 0v2M7 7h8v5a4 4 0 0 1-8 0zM12 16v3M9 20h6" /></svg>
-  if (name === 'generic') return <svg {...common}><circle cx="12" cy="12" r="6" /><path d="M12 9v6M9 12h6" /></svg>
-  return <svg {...common}><path d="M20 11a8 8 0 0 0-14.8-4L4 9" /><path d="M4 5v4h4M4 13a8 8 0 0 0 14.8 4L20 15" /><path d="M20 19v-4h-4" /></svg>
+  const iconNames: Record<JobsIconName, UiIconName> = {
+    calendar: 'calendar',
+    'chevron-down': 'chevronDown',
+    filter: 'filter',
+    refresh: 'sync',
+    search: 'search',
+    price: 'box',
+    order: 'orders',
+    invoice: 'invoice',
+    return: 'returns',
+    product: 'bag',
+    connection: 'connect',
+    generic: 'spark',
+  }
+  return <UiIcon name={iconNames[name]} className={`jobs-reference-icon jobs-reference-icon-${name}`} size={18} />
 }
 
 function JobScanSummary({ scan }: { scan: JobScan }) {

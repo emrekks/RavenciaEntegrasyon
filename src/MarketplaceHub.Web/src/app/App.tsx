@@ -59,17 +59,17 @@ function Shell({ me }: { me: Me }) {
     return <NavLink to={to} end={end} aria-label={accessibleLabel} title={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className="nav-count" aria-hidden="true">{count > 99 ? '99+' : count}</span>}</NavLink>
   }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
-    { label: 'Çalışma alanı', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.pendingOrders), item('/products', 'products', 'Ürünler')] },
-    { label: 'Operasyon', items: [item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns), item('/invoices', 'invoiceDue', 'Faturalar')] },
-    { label: 'Yönetim', items: [item('/integrations', 'platforms', 'Entegrasyonlar'), item('/jobs', 'jobs', 'İşlem takibi'), item('/mappings/categories', 'mappings', 'Eşleştirmeler')] },
+    { label: 'Çalışma alanı', items: [item('/dashboard', 'grid', 'Genel bakış', true), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.pendingOrders), item('/products', 'bag', 'Ürünler')] },
+    { label: 'Operasyon', items: [item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns), item('/invoices', 'invoice', 'Faturalar')] },
+    { label: 'Yönetim', items: [item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'bolt', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}><span className="nav-section-label">{group.label}</span>{group.items}</div>)}</>
   const quickSearchItems: Array<{ to: string; label: string; description: string; icon: UiIconName }> = [
-    { to: '/dashboard', label: 'Genel bakış', description: 'Operasyon merkezini aç', icon: 'dashboard' },
-    { to: '/products', label: 'Ürünler', description: 'Kataloğu ve stokları yönet', icon: 'products' },
+    { to: '/dashboard', label: 'Genel bakış', description: 'Operasyon merkezini aç', icon: 'grid' },
+    { to: '/products', label: 'Ürünler', description: 'Kataloğu ve stokları yönet', icon: 'bag' },
     { to: '/orders', label: 'Siparişler', description: 'Sipariş akışını incele', icon: 'orders' },
-    { to: '/integrations', label: 'Entegrasyonlar', description: 'Platform bağlantılarını yönet', icon: 'platforms' },
-    { to: '/mappings/categories', label: 'Eşleştirmeler', description: 'Kategori ve özellik eşlemeleri', icon: 'mappings' },
+    { to: '/integrations', label: 'Entegrasyonlar', description: 'Platform bağlantılarını yönet', icon: 'connect' },
+    { to: '/mappings/categories', label: 'Eşleştirmeler', description: 'Kategori ve özellik eşlemeleri', icon: 'layers' },
     { to: '/settings', label: 'Sistem ayarları', description: 'Güvenlik ve görünüm ayarları', icon: 'settings' },
   ]
   return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
@@ -79,7 +79,7 @@ function Shell({ me }: { me: Me }) {
       <div className="sidebar-side-bottom"><div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}</div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong><small>Çalışma alanı sahibi</small></span><button type="button" className="sidebar-profile-logout" aria-label="Oturumdan çık" title="Oturumdan çık" onClick={() => void logout()}><UiIcon name="logout" size={18} /></button></div></div>
     </aside>
     <main>
-      <header className="rv-topbar"><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="list" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layout" size={16} /><span>Çalışma alanı</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><button className="rv-topbar-search" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={17} /><span>Bir sayfa veya işlem ara…</span><kbd>Ctrl K</kbd></button><Link className="rv-topbar-icon-link" to="/settings" aria-label="Yardım merkezi" title="Yardım merkezi"><UiIcon name="help" size={19} /></Link><Link className="rv-topbar-icon-link rv-topbar-notice" to="/jobs" aria-label="Bildirimler" title="Bildirimler"><UiIcon name="bell" size={19} /></Link><Link className="rv-topbar-profile" to="/settings" aria-label="Profil ayarlarını aç"><span className="rv-topbar-avatar">{initials}</span><span className="rv-topbar-profile-copy"><small>{displayName}</small><strong>Profil</strong></span></Link></div></header>
+      <header className="rv-topbar"><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Çalışma alanı</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><span className="rv-topbar-kit-version">UI KIT / 1.0</span><Link className="rv-topbar-theme" to="/settings?tab=appearance" aria-label="Görünüm ayarlarını aç" title="Görünüm ayarlarını aç"><UiIcon name="sun" size={18} /><span>Açık tema</span></Link><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
       <Modal open={quickSearchOpen} title="Hızlı arama" description="Bir sayfa veya işlem seçin." onClose={() => setQuickSearchOpen(false)}><div className="rv-command-list" role="listbox" aria-label="Hızlı arama sonuçları">{quickSearchItems.map(itemOption => <Link key={itemOption.to} className="rv-command-item" to={itemOption.to} onClick={() => setQuickSearchOpen(false)}><UiIcon name={itemOption.icon} size={20} /><span><strong>{itemOption.label}</strong><small>{itemOption.description}</small></span><UiIcon name="chevronRight" size={16} /></Link>)}</div></Modal>
       <Drawer open={mobileMenuOpen} title="Ravencia" description="Operasyon merkezi" onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}{item('/settings', 'settings', 'Sistem Ayarları', true)}<button className="rv-button rv-button-secondary" type="button" onClick={() => void logout()}>Çıkış yap</button></nav></Drawer>
       <Suspense fallback={<Status title="Ekran yükleniyor" />}><Routes><Route path="/dashboard" element={<Dashboard me={me} />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<AttributeMappingPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/invoices/:id" element={<InvoiceDetailPage />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings/appearance" element={<AppearanceSettingsPage />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense>
@@ -262,18 +262,18 @@ function dashboardDateKey(value: Date) {
 function dashboardDateInputValue(value = new Date()) { return dashboardDateKey(value) }
 function DashboardMetricIcon({ kind }: { kind: string }) {
   const icons: Record<string, UiIconName> = {
-    pending: 'pendingOrders',
-    late: 'lateOrders',
-    today: 'todayOrders',
-    month: 'monthOrders',
+    pending: 'clock',
+    late: 'alert',
+    today: 'calendar',
+    month: 'calendar',
     return: 'returns',
-    invoice: 'invoiceDue',
-    uninvoiced: 'invoicePending',
-    stock: 'stock',
-    revenue: 'invoiceDue',
+    invoice: 'invoice',
+    uninvoiced: 'invoice',
+    stock: 'box',
+    revenue: 'chart',
     orders: 'orders',
-    basket: 'todayOrders',
-    product: 'products',
+    basket: 'bag',
+    product: 'bag',
   }
   return <span className={`dashboard-metric-icon ${kind}`} aria-hidden="true"><UiIcon name={icons[kind] ?? 'pendingOrders'} size={22} /></span>
 }

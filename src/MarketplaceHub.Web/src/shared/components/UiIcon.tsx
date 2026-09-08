@@ -67,6 +67,34 @@ export type UiIconName =
   | 'invoiceDue'
   | 'invoicePending'
   | 'stock'
+  | 'bag'
+  | 'box'
+  | 'chart'
+  | 'truck'
+  | 'invoice'
+  | 'connect'
+  | 'arrowUp'
+  | 'trend'
+  | 'circleCheck'
+  | 'clock'
+  | 'users'
+  | 'spark'
+  | 'bolt'
+  | 'globe'
+  | 'chevrons'
+  | 'menu'
+  | 'moon'
+  | 'sun'
+  | 'monitor'
+  | 'card'
+  | 'shirt'
+  | 'shoe'
+  | 'watch'
+  | 'headphones'
+  | 'coffee'
+  | 'play'
+  | 'pause'
+  | 'target'
 
 type UiIconProps = {
   name: UiIconName
@@ -142,6 +170,34 @@ const paths: Record<UiIconName, ReactNode> = {
   invoiceDue: <><path d="M6 3.5h9l3 3v14H6zM15 3.5v4h4M9 12h6" /><circle cx="16.5" cy="17" r="3.5" /><path d="M16.5 15.5V17l1 1" /></>,
   invoicePending: <><path d="M6 3.5h12v18l-6-2-6 2V3.5Z" /><path d="M9 8h6M9 12h4" /><path d="M15.5 17h.01" /></>,
   stock: <><path d="m4 8 8-4 8 4-8 4-8-4Z" /><path d="M4 8v8l8 4 8-4V8M12 12v8" /></>,
+  bag: <><path d="M5 7h14l1 14H4L5 7Z" /><path d="M8 8V6a4 4 0 0 1 8 0v2" /></>,
+  box: <><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 5v10l9 5 9-5V8M12 13v10M7.5 5.5l9 5" /></>,
+  chart: <path d="M4 4v16h17M8 15l4-5 4 2 5-7" />,
+  truck: <><path d="M3 5h11v12H3zM14 9h4l3 4v4h-7" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></>,
+  invoice: <><path d="M5 3h10l4 4v14l-3-2-3 2-3-2-3 2-2-1V3Z" /><path d="M14 3v5h5M9 12h6M9 16h4" /></>,
+  connect: <><path d="m8 3 3 3-5 5-3-3m6 0 7 7m2-7 3 3-5 5-3-3M3 21l4-4M17 7l4-4" /></>,
+  arrowUp: <path d="m6 16 12-12M6 4h12v12" />,
+  trend: <path d="m3 17 6-6 4 3 8-10M15 4h6v6" />,
+  circleCheck: <><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></>,
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  users: <><circle cx="9" cy="8" r="3" /><path d="M2 21v-3a7 7 0 0 1 14 0v3M16 5a3 3 0 0 1 0 6m2 4a5 5 0 0 1 4 5" /></>,
+  spark: <path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z" />,
+  bolt: <path d="m13 2-9 12h7l-1 8 10-13h-8l1-7Z" />,
+  globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a20 20 0 0 1 0 18 20 20 0 0 1 0-18Z" /></>,
+  chevrons: <path d="m8 8 4-4 4 4M8 16l4 4 4-4" />,
+  menu: <path d="M4 6h16M4 12h16M4 18h16" />,
+  moon: <path d="M20 15a9 9 0 0 1-11-12 9 9 0 1 0 11 12Z" />,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1 1m12 12 1 1M5 19l1-1M18 6l1-1" /></>,
+  monitor: <><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8m-4-4v4" /></>,
+  card: <><rect x="2" y="4" width="20" height="16" rx="3" /><path d="M2 9h20M6 15h4" /></>,
+  shirt: <path d="m8 3-6 4 3 6 3-2v10h8V11l3 2 3-6-6-4a4 4 0 0 1-8 0Z" />,
+  shoe: <><path d="M3 9v9h18v-4l-8-3-3-6-3 4H3ZM3 18v3h18v-3M13 11l-1 3m4-2-1 3" /></>,
+  watch: <><rect x="6" y="6" width="12" height="12" rx="4" /><path d="M9 6V2h6v4M9 18v4h6v-4M12 9v3l2 1" /></>,
+  headphones: <path d="M3 14v-3a9 9 0 0 1 18 0v3M3 12h4v8H3v-8Zm14 0h4v8h-4v-8Z" />,
+  coffee: <><path d="M4 8h12v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V8Zm12 1h2a3 3 0 0 1 0 6h-2M7 2v3m5-3v3" /></>,
+  play: <path d="m8 4 12 8-12 8V4Z" />,
+  pause: <path d="M8 4v16M16 4v16" />,
+  target: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></>,
 }
 
 export function UiIcon({ name, className, size = 16, title }: UiIconProps) {
