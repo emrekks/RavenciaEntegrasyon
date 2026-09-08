@@ -98,7 +98,7 @@
   .app-shell.stitch-shell.sidebar-collapsed .brand.wordmark { display: none; }
   .app-shell.stitch-shell.sidebar-collapsed .nav-label { max-width: 0; opacity: 0; visibility: hidden; }
   .app-shell.stitch-shell.sidebar-collapsed .sidebar-brand-row { display: grid; grid-template-rows: 38px 26px; align-content: center; justify-items: center; row-gap: var(--rv-space-2); min-height: 82px; padding: 0 0 var(--rv-space-3); }
-  .app-shell.stitch-shell.sidebar-collapsed .sidebar-pin-toggle { display: inline-grid; width: 28px; height: 26px; margin: 0; }
+  .app-shell.stitch-shell.sidebar-collapsed .sidebar-pin-toggle { visibility: hidden; pointer-events: none; width: 28px; height: 26px; margin: 0; }
   .app-shell.stitch-shell > aside nav, .app-shell.stitch-shell > aside .settings-nav { display: grid; gap: var(--rv-space-1); }
   .app-shell.stitch-shell > aside nav { margin-top: var(--rv-space-6); }
   .app-shell.stitch-shell > aside .settings-nav { margin-top: auto; padding-top: var(--rv-space-5); border-top: 1px solid var(--rv-color-border); }
@@ -293,18 +293,22 @@
   .dashboard-revenue-axis span { position: absolute; right: 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); line-height: 1; transform: translateY(50%); }
   .dashboard-revenue-axis span:first-child { transform: none; }
   .dashboard-revenue-axis span:last-child { transform: translateY(-100%); }
-  .dashboard-revenue-plot { min-width: 0; overflow: hidden; border-bottom: 0; }
+  .dashboard-revenue-plot { min-width: 0; overflow: visible; border-bottom: 0; }
   .dashboard-revenue-plot-inner { position: relative; width: 100%; min-width: 0; height: 240px; min-height: 240px; }
   .dashboard-revenue-gridlines { position: absolute; inset: 0 0 28px; }
   .dashboard-revenue-gridlines i { position: absolute; left: 0; width: 100%; border-top: 1px dashed var(--rv-color-border); }
   .dashboard-revenue-gridlines i.is-major { border-top-style: solid; border-color: var(--rv-color-border-strong); }
-  .dashboard-revenue-columns { position: absolute; inset: 0 0 4px; display: grid; align-items: stretch; gap: clamp(1px, .45vw, 6px); padding: var(--rv-space-3) 0 0; }
-  .dashboard-revenue-column { display: grid; grid-template-rows: minmax(0, 1fr) 34px; height: 100%; align-items: end; justify-items: center; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: clamp(8px, .62vw, var(--rv-font-size-xs)); }
-  .dashboard-revenue-column > span { width: 100%; overflow: hidden; text-align: center; text-overflow: clip; white-space: nowrap; }
+  .dashboard-revenue-columns { position: absolute; inset: 0; display: grid; align-items: stretch; gap: clamp(1px, .45vw, 6px); padding: 0; }
+  .dashboard-revenue-column { min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) 28px; height: 100%; align-items: end; justify-items: center; gap: 0; color: var(--rv-color-muted); font-size: clamp(8px, .62vw, var(--rv-font-size-xs)); }
+  .dashboard-revenue-column > span { max-width: 100%; text-align: center; white-space: normal; line-height: 1.1; overflow-wrap: anywhere; }
   .dashboard-revenue-bar-wrap { display: flex; width: 100%; height: 100%; align-items: end; justify-content: center; }
   .dashboard-revenue-bar { position: relative; display: block; width: min(28px, 72%); min-height: 0; background: linear-gradient(180deg, var(--rv-color-primary), var(--rv-color-accent)); border-radius: var(--rv-radius-sm) var(--rv-radius-sm) 0 0; }
   .dashboard-revenue-hover { position: absolute; right: 50%; bottom: calc(100% + 8px); z-index: 2; display: none; width: max-content; max-width: 220px; padding: var(--rv-space-2); color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); box-shadow: var(--rv-shadow-md); transform: translateX(50%); }
   .dashboard-revenue-bar:hover .dashboard-revenue-hover, .dashboard-revenue-bar:focus .dashboard-revenue-hover { display: grid; gap: 2px; }
+  .dashboard-revenue-column:first-child .dashboard-revenue-hover { left: 0; right: auto; transform: none; }
+  .dashboard-revenue-column:last-child .dashboard-revenue-hover { right: 0; transform: none; }
+  button.clickable-cell { background: transparent; color: inherit; border: 0; border-radius: var(--rv-radius-sm); text-align: left; font: inherit; cursor: pointer; }
+  button.clickable-cell:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
   .dashboard-api-list, .dashboard-flow-list, .dashboard-product-list { display: grid; gap: 0; }
   .dashboard-api-list a, .dashboard-flow-list a, .dashboard-product-list a { display: flex; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-3) 0; border-bottom: 1px solid var(--rv-color-border); color: inherit; text-decoration: none; }
   .dashboard-api-list a:last-child, .dashboard-flow-list a:last-child, .dashboard-product-list a:last-child { border-bottom: 0; }
@@ -456,9 +460,13 @@
   .order-reference-meta { grid-column: 2; }
   .order-reference-buyer { grid-column: 3; }
   .order-reference-products { grid-column: 4; display: grid; gap: var(--rv-space-3); }
-  .order-reference-prices { grid-column: 5; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; justify-items: center; text-align: center; }
+  .order-reference-prices { grid-column: 5; grid-template-columns: minmax(0, 1fr); align-items: center; justify-items: center; text-align: center; }
   .order-reference-prices > strong { min-width: 0; text-align: center; }
   .order-reference-prices > strong:only-child { grid-column: 1 / -1; }
+  .order-reference-grid > *, .return-reference-row > * { grid-row: 1 / -1; }
+  .return-reference-row { grid-template-rows: repeat(var(--return-line-count, 1), auto); }
+  .order-reference-grid > .order-reference-products, .order-reference-grid > .order-reference-prices,
+  .return-reference-row > .order-reference-products, .return-reference-row > .order-reference-prices { grid-template-rows: subgrid; row-gap: 12px; align-content: stretch; }
   .order-reference-cargo { grid-column: 6; justify-items: center; text-align: center; }
   .order-reference-invoice { grid-column: 7; }
   .order-reference-actions { grid-column: 8; }
