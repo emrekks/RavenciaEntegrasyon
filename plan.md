@@ -106,7 +106,7 @@ API ve iş kurallarında değişiklik öngörülmez; çalışma arayüz bileşen
 Bu bölüm, 8 Eylül 2026 tarihli uygulama turunun durumunu kaydeder. Bir madde yalnızca kod ve gerçek tarayıcı kanıtı birlikte varsa `[x]` yapılır.
 
 - [x] Görsel yön ve varsayılan palet
-- [x] Ortak uygulama çerçevesi ve responsive menü (masaüstü kontrolü tamam; dar ekran maddesi aşağıda açık)
+- [x] Ortak uygulama çerçevesi ve responsive menü (masaüstü ve dar ekran kontrolü tamam)
 - [x] Tipografi, boşluk ve kontrol ölçüleri
 - [x] Ortak sekme ve sayaç davranışı
 - [x] Tablo, durum ve işlem hizaları
