@@ -21,7 +21,7 @@ function statusLabel(value: string) {
     'DUPLICATE SAFE': 'Çoklu işleme güvenli', DUPLICATE_SAFE: 'Çoklu işleme güvenli', AUTO: 'Otomatik', TEMELFATURA: 'Temel fatura', EARSIVFATURA: 'E-Arşiv fatura', MANUAL_UPLOAD: 'Elle yüklenen fatura belgesi', MARKETPLACE_DELIVERY: 'Pazaryeri teslimi'
   } as Record<string, string>)[normalized] ?? value
 }
-function Badge({ value }: { value: string }) { const normalized = value.trim().toUpperCase(); const tone = ['READY', 'ACCEPTED', 'COMPLETED', 'ACTIVE', 'SUPPORTED', 'CANCELLED', 'DELIVERED', 'SUCCESS'].includes(normalized) ? 'good' : ['UNKNOWN_RESULT', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'UNAPPROVED', 'UNKNOWN', 'CANCELLATION_PENDING', 'FAILED'].includes(normalized) ? 'warn' : 'neutral'; return <span className={`badge ${tone}`}>{statusLabel(value)}</span> }
+function Badge({ value }: { value: string }) { const normalized = value.trim().toUpperCase(); const tone = ['READY', 'ACCEPTED', 'COMPLETED', 'ACTIVE', 'SUPPORTED', 'CANCELLED', 'DELIVERED', 'SUCCESS'].includes(normalized) ? 'good' : ['UNKNOWN_RESULT', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'UNAPPROVED', 'UNKNOWN', 'CANCELLATION_PENDING', 'FAILED'].includes(normalized) ? 'warn' : 'neutral'; return <span className={`badge ${tone}`}><i aria-hidden="true" />{statusLabel(value)}</span> }
 function actionLabel(action: string) { return ({ SUBMIT: 'E-Faturam’a gönder', STAGE_CAPABILITY_PROBE: 'Stage mali canary çalıştır', RECONCILE: 'Durumu uzlaştır', DELIVER: 'Trendyol’a fatura linkini ilet', CANCEL: 'E-Arşiv iptal isteği', VALIDATE: 'Yerel doğrula' } as Record<string, string>)[action] ?? action }
 function addressLines(value: string | null | undefined) {
   if (!value) return []

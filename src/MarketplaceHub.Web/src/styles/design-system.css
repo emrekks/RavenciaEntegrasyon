@@ -174,7 +174,8 @@
   .error { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: color-mix(in srgb, var(--rv-color-danger) 38%, transparent); }
   .notice { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-color: color-mix(in srgb, var(--rv-color-warning) 38%, transparent); }
   .success { color: var(--rv-color-accent); }
-  .tag, .badge, .security-state { display: inline-flex; min-height: 24px; align-items: center; padding: 0 var(--rv-space-2); color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border: 1px solid transparent; border-radius: 999px; font-size: var(--rv-font-size-xs); font-weight: 750; }
+  .tag, .badge, .security-state { display: inline-flex; min-height: 24px; align-items: center; gap: var(--rv-space-1); padding: 0 var(--rv-space-2); color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border: 1px solid transparent; border-radius: 999px; font-size: var(--rv-font-size-xs); font-weight: 750; }
+  .badge > i { width: 6px; height: 6px; flex: 0 0 6px; background: currentcolor; border-radius: 50%; }
   .security-state.enabled { color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-accent) 20%, var(--rv-color-surface-raised)); border-color: color-mix(in srgb, var(--rv-color-accent) 55%, var(--rv-color-border)); }
   .empty, .unknown { min-height: 160px; display: grid; place-items: center; padding: var(--rv-space-6); color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px dashed var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); text-align: center; }
   .table-wrap, .data-table, .product-catalog-table, .order-reference-table, .return-reference-table, .invoice-reference-table, .jobs-reference-table, .mapping-saved-table { overflow-x: auto; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
@@ -1766,7 +1767,7 @@
 
   .reference-returns-page .return-reference-tabs button > small { color: inherit; font-size: var(--rv-font-size-xs); }
 
-  .badge.good { color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-accent) 20%, var(--rv-color-surface-raised)); border-color: color-mix(in srgb, var(--rv-color-accent) 48%, var(--rv-color-border)); }
+  .badge.good { color: var(--rv-color-accent); background: color-mix(in srgb, var(--rv-color-accent) 20%, var(--rv-color-surface-raised)); border-color: color-mix(in srgb, var(--rv-color-accent) 48%, var(--rv-color-border)); }
   .badge.warn { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-color: color-mix(in srgb, var(--rv-color-warning) 48%, var(--rv-color-border)); }
   .badge.neutral { color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border); }
   .return-reference-status { min-width: 0; align-content: center; justify-items: start; gap: 12px; padding: 8px; background: transparent; border: 0; }
