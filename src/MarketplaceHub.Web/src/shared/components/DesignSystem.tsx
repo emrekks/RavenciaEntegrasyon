@@ -109,7 +109,7 @@ export function Popover({ open, onOpenChange, trigger, children, ariaLabel = 'AÃ
 }
 
 export function Tabs({ items, value, onChange, ariaLabel = 'Sekmeler' }: { items: Array<{ value: string; label: ReactNode; count?: ReactNode }>; value: string; onChange: (value: string) => void; ariaLabel?: string }) {
-  return <div className="rv-tabs" role="tablist" aria-label={ariaLabel}>{items.map(item => <button key={item.value} type="button" role="tab" aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)}>{item.label}{item.count !== undefined ? <span className="rv-tab-count">{item.count}</span> : null}</button>)}</div>
+  return <div className="rv-tabs" role="tablist" aria-label={ariaLabel}>{items.map(item => <button key={item.value} type="button" role="tab" aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)}><span className="rv-tab-label">{item.label}</span>{item.count !== undefined ? <span className="rv-tab-count">{item.count}</span> : null}</button>)}</div>
 }
 
 export function Badge({ tone = 'neutral', children }: { tone?: StatusTone; children: ReactNode }) { return <span className={`rv-badge rv-badge-${tone}`}>{children}</span> }

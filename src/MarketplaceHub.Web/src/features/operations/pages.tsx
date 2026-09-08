@@ -286,7 +286,7 @@ export function JobsPage({ me }: { me: Me }) {
     <div className="jobs-reference-canvas">
       <div className="jobs-reference-tabs" role="tablist" aria-label="İşlem kategorileri">
         {categoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => (
-          <button type="button" role="tab" aria-selected={category === tab.key} className={category === tab.key ? 'active' : ''} key={tab.key} onClick={() => setCategory(tab.key)}><span>{tab.label}</span><small className="jobs-reference-tab-count">{categoryCounts.get(tab.key) ?? 0}</small></button>
+          <button type="button" role="tab" aria-selected={category === tab.key} className={category === tab.key ? 'active' : ''} key={tab.key} onClick={() => setCategory(tab.key)}><span className="status-tab-label">{tab.label}</span><small className="status-tab-count jobs-reference-tab-count">{categoryCounts.get(tab.key) ?? 0}</small></button>
         ))}
       </div>
       <div className="jobs-reference-toolbar">
