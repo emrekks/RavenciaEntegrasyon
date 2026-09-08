@@ -41,6 +41,7 @@ export type UiIconName =
   | 'shield'
   | 'sparkle'
   | 'sync'
+  | 'trash'
   | 'textColor'
   | 'undo'
   | 'underline'
@@ -112,6 +113,7 @@ const paths: Record<UiIconName, ReactNode> = {
   shield: <><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z" /><path d="m9 12 2 2 4-5" /></>,
   sparkle: <path d="m12 3 1.5 6.5L20 12l-6.5 1.5L12 20l-1.5-6.5L4 12l6.5-2.5L12 3Z" />,
   sync: <><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.2 9A7 7 0 0 1 18.5 7M17.8 15A7 7 0 0 1 5.5 17" /></>,
+  trash: <><path d="M4 7h16M10 4h4l1 3M7 7l1 13h8l1-13" /><path d="M10 11v5M14 11v5" /></>,
   textColor: <><path d="M7 18 12 5l5 13M9 14h6" /><path d="M4 20h16" /></>,
   undo: <><path d="M5 8v5h5" /><path d="M5 13a7 7 0 1 1 2 4" /></>,
   underline: <><path d="M7 5v6a5 5 0 0 0 10 0V5M5 20h14" /></>,

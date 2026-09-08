@@ -40,7 +40,7 @@
   --rv-topbar-height: 68px;
   --rv-content-max-width: 1600px;
   --rv-content-wide-max-width: 1760px;
-  --rv-page-padding-inline: clamp(20px, 3vw, 40px);
+  --rv-page-padding-inline: clamp(28px, 3.6vw, 56px);
   --rv-page-padding-block-start: 34px;
   --rv-page-padding-block-end: 60px;
   --rv-space-1: 4px;
