@@ -11,6 +11,7 @@ import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFont
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
   const location = useLocation()
+  const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -51,10 +52,15 @@ function Shell({ me }: { me: Me }) {
   function handleSidebarMouseEnter() { if (!sidebarPinned) setSidebarHoverExpanded(true) }
   function handleSidebarMouseLeave() { if (!sidebarPinned) setSidebarHoverExpanded(false) }
   const icon = (name: UiIconName) => <UiIcon className="nav-icon" name={name} size={22} />
-  const item = (to: string, iconName: UiIconName, label: string, end = false) => <NavLink to={to} end={end} aria-label={label} title={label}>{icon(iconName)}<span className="nav-label">{label}</span></NavLink>
+  const navigationCounts = navigationSummary.data?.metrics
+  const item = (to: string, iconName: UiIconName, label: string, end = false, count?: number) => {
+    const hasCount = typeof count === 'number' && count > 0
+    const accessibleLabel = hasCount ? `${label}, ${count} bildirim` : label
+    return <NavLink to={to} end={end} aria-label={accessibleLabel} title={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className="nav-count" aria-hidden="true">{count > 99 ? '99+' : count}</span>}</NavLink>
+  }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
-    { label: 'Çalışma alanı', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/orders', 'orders', 'Siparişler'), item('/products', 'products', 'Ürünler')] },
-    { label: 'Operasyon', items: [item('/returns', 'returns', 'İadeler'), item('/invoices', 'invoiceDue', 'Faturalar')] },
+    { label: 'Çalışma alanı', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.pendingOrders), item('/products', 'products', 'Ürünler')] },
+    { label: 'Operasyon', items: [item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns), item('/invoices', 'invoiceDue', 'Faturalar')] },
     { label: 'Yönetim', items: [item('/integrations', 'platforms', 'Entegrasyonlar'), item('/jobs', 'jobs', 'İşlem takibi'), item('/mappings/categories', 'mappings', 'Eşleştirmeler')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}><span className="nav-section-label">{group.label}</span>{group.items}</div>)}</>
@@ -244,7 +250,8 @@ type DashboardLowStock = { id: string; title: string; totalStock: number; primar
 type DashboardSyncStatus = { resourceType: string; label: string; kind: string; status: string; lastAttemptAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null }
 type DashboardBootstrap = { metrics: DashboardMetrics; lowStock: DashboardLowStock[]; sync: DashboardSyncStatus[]; platforms: { name: string; status: string }[]; generatedAt: string; version: number }
 type DashboardRevenuePoint = { day: string; amount: number; orderCount: number; currency: string }
-type DashboardRevenueRange = '1' | '3' | '7' | '14' | '30' | 'month' | 'custom'
+type DashboardRevenueRange = '7' | '30' | '90' | 'custom'
+type DashboardProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number; platforms: string[] }
 
 function dashboardDateKey(value: Date) {
   if (Number.isNaN(value.getTime())) return ''
@@ -263,20 +270,12 @@ function DashboardMetricIcon({ kind }: { kind: string }) {
     invoice: 'invoiceDue',
     uninvoiced: 'invoicePending',
     stock: 'stock',
+    revenue: 'invoiceDue',
+    orders: 'orders',
+    basket: 'todayOrders',
+    product: 'products',
   }
   return <span className={`dashboard-metric-icon ${kind}`} aria-hidden="true"><UiIcon name={icons[kind] ?? 'pendingOrders'} size={22} /></span>
-}
-
-function dashboardSyncTime(sync: DashboardSyncStatus | undefined) {
-  if (!sync || !sync.lastSuccessAt) return 'Kayıt yok'
-  const timestamp = new Date(sync.lastSuccessAt)
-  if (Number.isNaN(timestamp.getTime())) return 'Kayıt yok'
-  const minutes = Math.max(0, Math.floor((Date.now() - timestamp.getTime()) / 60_000))
-  if (minutes < 1) return 'Az önce'
-  if (minutes < 60) return `${minutes} dk önce`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} sa önce`
-  return timestamp.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) + ` ${timestamp.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`
 }
 
 function dashboardMoney(amount: number, currency = 'TRY') {
@@ -299,6 +298,41 @@ function dashboardNiceAxisStep(maxValue: number, targetSteps = 10) {
   return Math.ceil(roughStep / magnitude) * magnitude
 }
 
+function dashboardRevenueSeries(points: DashboardRevenuePoint[]) {
+  return points.map((point, index) => {
+    const date = new Date(point.day)
+    const month = date.toLocaleDateString('tr-TR', { month: 'short' }).replace(/\.$/, '')
+    return { ...point, key: dashboardDateKey(date), label: index === 0 || date.getDate() === 1 ? `${date.getDate()} ${month}` : String(date.getDate()), fullLabel: date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) }
+  })
+}
+
+function dashboardLinePath(points: Array<{ amount: number }>, maxValue: number) {
+  if (!points.length) return ''
+  const denominator = Math.max(1, points.length - 1)
+  return points.map((point, index) => {
+    const x = (index / denominator) * 100
+    const ratio = Math.min(1, Math.max(0, point.amount / Math.max(1, maxValue)))
+    const y = 100 - ratio * 100
+    return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
+  }).join(' ')
+}
+
+function dashboardAreaPath(points: Array<{ amount: number }>, maxValue: number) {
+  const line = dashboardLinePath(points, maxValue)
+  return line ? `${line} L 100 100 L 0 100 Z` : ''
+}
+
+function dashboardTrendLabel(current: number, previous: number) {
+  if (previous <= 0) return current > 0 ? 'Yeni dönem verisi' : 'Karşılaştırma yok'
+  const delta = ((current - previous) / previous) * 100
+  const direction = delta >= 0 ? '↗' : '↘'
+  return `${direction} %${Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} önceki döneme göre`
+}
+
+function dashboardTrendClass(current: number, previous: number) {
+  return previous > 0 && current < previous ? 'is-negative' : 'is-positive'
+}
+
 function Dashboard({ me }: { me: Me }) {
   const [revenueRange, setRevenueRange] = useState<DashboardRevenueRange>('30')
   const [revenueFrom, setRevenueFrom] = useState(() => dashboardDateInputValue())
@@ -306,29 +340,35 @@ function Dashboard({ me }: { me: Me }) {
   const [revenuePlatform, setRevenuePlatform] = useState('ALL')
   const dashboardRefreshOptions = { refetchInterval: 60_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 30_000 } as const
   const bootstrap = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), ...dashboardRefreshOptions })
-  const loading = bootstrap.isLoading
-  const now = new Date(); const metrics = bootstrap.data?.metrics
-  const revenuePlatformOptions = (bootstrap.data?.platforms ?? []).map(platform => platform.name)
+  const productSummary = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<DashboardProductSummary>('/products/summary'), ...dashboardRefreshOptions })
+  const now = new Date()
+  const revenuePlatformOptions = Array.from(new Set((bootstrap.data?.platforms ?? []).map(platform => platform.name)))
   const customFromDate = new Date(`${revenueFrom}T00:00:00`)
   const customToDate = new Date(`${revenueTo}T23:59:59.999`)
   const customStart = customFromDate <= customToDate ? customFromDate : customToDate
   const customEnd = customFromDate <= customToDate ? customToDate : customFromDate
   const revenueStart = revenueRange === 'custom'
     ? customStart
-    : revenueRange === 'month'
-      ? new Date(now.getFullYear(), now.getMonth(), 1)
-      : (() => { const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - (Number(revenueRange) - 1)); return date })()
+    : (() => { const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - (Number(revenueRange) - 1)); return date })()
   const revenueEnd = revenueRange === 'custom' ? customEnd : now
-  const revenueQuery = useQuery({ queryKey: ['dashboard-revenue-series', revenueRange, revenueFrom, revenueTo, revenuePlatform], queryFn: () => hubApi<DashboardRevenuePoint[]>(`/dashboard/revenue-series?from=${encodeURIComponent(revenueStart.toISOString())}&to=${encodeURIComponent(revenueEnd.toISOString())}&platform=${encodeURIComponent(revenuePlatform)}`), ...dashboardRefreshOptions })
-  const revenueSeries = (revenueQuery.data ?? []).map((point, index) => {
-    const date = new Date(point.day)
-    const month = date.toLocaleDateString('tr-TR', { month: 'short' }).replace(/\.$/, '')
-    return { ...point, key: dashboardDateKey(date), label: index === 0 || date.getDate() === 1 ? `${date.getDate()} ${month}` : String(date.getDate()), fullLabel: date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) }
+  const previousEnd = new Date(revenueStart.getTime() - 24 * 60 * 60 * 1000)
+  const previousStart = new Date(previousEnd.getTime() - Math.max(24 * 60 * 60 * 1000, revenueEnd.getTime() - revenueStart.getTime()))
+  const revenueRequest = (from: Date, to: Date, platform = 'ALL') => `/dashboard/revenue-series?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}&platform=${encodeURIComponent(platform)}`
+  const reportPeriodKey = `${revenueRange}:${revenueFrom}:${revenueTo}`
+  const revenueQuery = useQuery({ queryKey: ['dashboard-revenue-series', reportPeriodKey, revenuePlatform], queryFn: () => hubApi<DashboardRevenuePoint[]>(revenueRequest(revenueStart, revenueEnd, revenuePlatform)), ...dashboardRefreshOptions })
+  const previousRevenueQuery = useQuery({ queryKey: ['dashboard-revenue-series-previous', reportPeriodKey, revenuePlatform], queryFn: () => hubApi<DashboardRevenuePoint[]>(revenueRequest(previousStart, previousEnd, revenuePlatform)), ...dashboardRefreshOptions })
+  const channelRevenueQuery = useQuery({
+    queryKey: ['dashboard-channel-revenue', reportPeriodKey, revenuePlatformOptions],
+    queryFn: async () => Promise.all(revenuePlatformOptions.map(async platform => ({ platform, points: await hubApi<DashboardRevenuePoint[]>(revenueRequest(revenueStart, revenueEnd, platform)) }))),
+    enabled: revenuePlatformOptions.length > 0,
+    ...dashboardRefreshOptions,
   })
-  const maxRevenue = Math.max(1, ...revenueSeries.map(item => item.amount))
-  const revenueAxisStep = dashboardNiceAxisStep(maxRevenue, 6)
-  const revenueAxisSegments = Math.min(5, Math.max(1, Math.ceil(maxRevenue / revenueAxisStep)))
-  const revenueAxisMax = Math.max(maxRevenue, revenueAxisStep * revenueAxisSegments)
+  const revenueSeries = dashboardRevenueSeries(revenueQuery.data ?? [])
+  const previousRevenueSeries = dashboardRevenueSeries(previousRevenueQuery.data ?? [])
+  const chartMaxAmount = Math.max(1, ...revenueSeries.map(item => item.amount), ...previousRevenueSeries.map(item => item.amount))
+  const revenueAxisStep = dashboardNiceAxisStep(chartMaxAmount, 5)
+  const revenueAxisSegments = Math.min(5, Math.max(1, Math.ceil(chartMaxAmount / revenueAxisStep)))
+  const revenueAxisMax = Math.max(chartMaxAmount, revenueAxisStep * revenueAxisSegments)
   const revenueCurrency = revenueSeries.find(item => item.amount > 0)?.currency || revenueSeries[0]?.currency || 'TRY'
   const revenueAxisTicks = Array.from({ length: revenueAxisSegments + 1 }, (_, index) => {
     const ratio = index / revenueAxisSegments
@@ -336,13 +376,54 @@ function Dashboard({ me }: { me: Me }) {
   })
   const revenueTotal = revenueSeries.reduce((sum, item) => sum + item.amount, 0)
   const revenueOrderCount = revenueSeries.reduce((sum, item) => sum + item.orderCount, 0)
-  const syncRows = bootstrap.data?.sync ?? []
-  const latestSync = [...syncRows].sort((a, b) => new Date(b.lastSuccessAt ?? 0).getTime() - new Date(a.lastSuccessAt ?? 0).getTime())[0]
-  const errors = [bootstrap.error, revenueQuery.error].filter(Boolean)
-  return <section className="content dashboard"><div className="page-heading"><div><p className="eyebrow">Operasyon merkezi</p><h1>Genel Bakış</h1><p className="lede">Merhaba {me.displayName}. Günlük operasyonun önemli sinyalleri tek ekranda.</p></div><div className="dashboard-heading-actions"><span className="dashboard-date">{now.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div></div>
-    {errors.length > 0 && <div role="alert" className="error">Bazı operasyon verileri alınamadı; görünen metrikler kısmi olabilir.</div>}
-     <div className="metrics dashboard-metrics operational-metrics"><article><DashboardMetricIcon kind="pending" /><small>Bekleyen Sipariş</small><strong>{loading ? '—' : metrics?.pendingOrders ?? 0}</strong></article><article className={(metrics?.lateOrders ?? 0) ? 'danger-metric' : ''}><DashboardMetricIcon kind="late" /><small>Geciken Sipariş</small><strong>{loading ? '—' : metrics?.lateOrders ?? 0}</strong></article><article><DashboardMetricIcon kind="today" /><small>Bugünkü Sipariş</small><strong>{loading ? '—' : metrics?.todayOrders ?? 0}</strong></article><article><DashboardMetricIcon kind="month" /><small>Bu Ayki Sipariş</small><strong>{loading ? '—' : metrics?.monthOrders ?? 0}</strong></article><article><DashboardMetricIcon kind="return" /><small>Aksiyon Bekleyen İade</small><strong>{loading ? '—' : metrics?.pendingReturns ?? 0}</strong></article><article className={(metrics?.dueSoonInvoices ?? 0) ? 'warning-metric' : ''}><DashboardMetricIcon kind="invoice" /><small>Süresi Yaklaşan Fatura</small><strong>{loading ? '—' : metrics?.dueSoonInvoices ?? 0}</strong></article><article><DashboardMetricIcon kind="uninvoiced" /><small>Fatura bekliyor</small><strong>{loading ? '—' : metrics?.uninvoicedInvoices ?? 0}</strong></article><article><DashboardMetricIcon kind="stock" /><small>Düşük / Yok Stok</small><strong>{loading ? '—' : metrics?.lowStockProducts ?? 0}</strong></article></div>
-    <div className="dashboard-report-grid"><article className="panel dashboard-revenue-panel"><div className="panel-title"><div className="dashboard-revenue-heading"><h2>Satış Cirosu</h2><p>Seçilen dönemde gerçekleşen sipariş toplamı</p></div><div className="dashboard-revenue-summary"><strong>{dashboardMoney(revenueTotal, revenueCurrency)}</strong><span>{revenueOrderCount} sipariş</span></div><div className="dashboard-revenue-controls"><label className="dashboard-period-select"><span>Ciro dönemi</span><select aria-label="Ciro dönemi" value={revenueRange} onChange={event => setRevenueRange(event.target.value as DashboardRevenueRange)}><option value="1">Günlük</option><option value="3">Son 3 gün</option><option value="7">Son 7 gün</option><option value="14">Son 14 gün</option><option value="30">Son 30 gün</option><option value="month">Bu ay</option><option value="custom">Özel tarih</option></select></label><label><span>Platform</span><select aria-label="Ciro platformu" value={revenuePlatform} onChange={event => setRevenuePlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div></div>{revenueRange === 'custom' && <div className="dashboard-custom-range"><label><span>Başlangıç</span><input type="date" value={revenueFrom} max={revenueTo} onChange={event => setRevenueFrom(event.target.value)} /></label><label><span>Bitiş</span><input type="date" value={revenueTo} min={revenueFrom} onChange={event => setRevenueTo(event.target.value)} /></label></div>}<div className="dashboard-revenue-chart" aria-label="Günlük satış cirosu"><div className="dashboard-revenue-axis" aria-hidden="true"><div className="dashboard-revenue-axis-inner">{revenueAxisTicks.map(tick => <span key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }}>{dashboardAxisMoney(tick.amount, revenueCurrency)}</span>)}</div></div><div className="dashboard-revenue-plot"><div className="dashboard-revenue-plot-inner"><div className="dashboard-revenue-gridlines" aria-hidden="true">{revenueAxisTicks.map(tick => <i className="is-major" key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }} />)}</div><div className="dashboard-revenue-columns" style={{ gridTemplateColumns: `repeat(${Math.max(revenueSeries.length, 1)}, minmax(0, 1fr))` }}>{revenueSeries.map(point => <div className="dashboard-revenue-column" key={point.key}><div className="dashboard-revenue-bar-wrap"><span className="dashboard-revenue-bar" style={{ height: `${point.amount ? Math.max(4, point.amount / revenueAxisMax * 100) : 0}%` }} aria-label={`${point.fullLabel}: ${dashboardMoney(point.amount, point.currency)}, ${point.orderCount} sipariş`} tabIndex={0}><span className="dashboard-revenue-hover"><strong>{point.fullLabel}</strong><span>{dashboardMoney(point.amount, point.currency)} · {point.orderCount} sipariş</span></span></span></div><span>{point.label}</span></div>)}</div></div></div></div></article><article className="panel dashboard-api-panel"><div className="panel-title"><div><h2>Son senkronizasyonlar</h2><p>Sipariş, iade ve stok kayıtlarının güncel zamanı</p></div><Link className="dashboard-panel-link" to="/jobs">İşlem takibi <UiIcon name="arrowRight" /></Link></div><div className="dashboard-api-list dashboard-sync-list">{syncRows.map(row => <Link to="/jobs" key={row.resourceType}><span className={`dashboard-sync-icon ${row.kind}`} aria-hidden="true"><UiIcon name="sync" /></span><span><strong>{row.label}</strong><small>{row.status === 'SUCCEEDED' ? 'Başarılı senkronizasyon' : 'Henüz kayıt yok'}</small></span><b>{dashboardSyncTime(row)}</b></Link>)}</div><div className="dashboard-sync-meta"><UiIcon name="sync" /><span className="dashboard-sync-meta-copy"><strong>{latestSync ? `Son veri senkronizasyonu: ${dashboardSyncTime(latestSync)}` : 'Senkronizasyon kaydı yok'}</strong><small>Projection güncellemesi: {latestSync ? dashboardSyncTime(latestSync) : 'Kayıt yok'}</small></span></div></article></div>
+  const previousRevenueTotal = previousRevenueSeries.reduce((sum, item) => sum + item.amount, 0)
+  const previousRevenueOrderCount = previousRevenueSeries.reduce((sum, item) => sum + item.orderCount, 0)
+  const averageBasket = revenueOrderCount ? revenueTotal / revenueOrderCount : 0
+  const previousAverageBasket = previousRevenueOrderCount ? previousRevenueTotal / previousRevenueOrderCount : 0
+  const periodLabel = revenueRange === 'custom' ? 'Özel dönem' : `Son ${revenueRange} gün`
+  const chartCurrentPath = dashboardLinePath(revenueSeries, revenueAxisMax)
+  const chartPreviousPath = dashboardLinePath(previousRevenueSeries, revenueAxisMax)
+  const chartAreaPath = dashboardAreaPath(revenueSeries, revenueAxisMax)
+  const chartLabelStep = Math.max(1, Math.ceil(Math.max(revenueSeries.length, 1) / 6))
+  const productCount = productSummary.data?.activeCount ?? 0
+  const channelRows = (channelRevenueQuery.data ?? []).map(channel => {
+    const amount = channel.points.reduce((sum, point) => sum + point.amount, 0)
+    const orders = channel.points.reduce((sum, point) => sum + point.orderCount, 0)
+    return { ...channel, amount, orders }
+  }).filter(channel => channel.amount > 0 || channel.orders > 0)
+  const channelTotalAmount = channelRows.reduce((sum, channel) => sum + channel.amount, 0)
+  const channelTotalOrders = channelRows.reduce((sum, channel) => sum + channel.orders, 0)
+  const channelBasis = channelTotalAmount > 0 ? channelTotalAmount : channelTotalOrders
+  const channelColors = ['#9b7aff', '#59d6bd', '#79a4ff', '#f0b15a']
+  const channelRowsWithShare = channelRows.map((channel, index) => ({ ...channel, share: channelBasis > 0 ? ((channelTotalAmount > 0 ? channel.amount : channel.orders) / channelBasis) * 100 : 0, color: channelColors[index % channelColors.length] }))
+  const channelGradient = channelRowsWithShare.length ? `conic-gradient(${channelRowsWithShare.map((channel, index) => { const start = channelRowsWithShare.slice(0, index).reduce((sum, value) => sum + value.share, 0); return `${channel.color} ${start}% ${start + channel.share}%` }).join(', ')})` : 'conic-gradient(var(--rv-color-surface-soft) 0 100%)'
+  const errors = [bootstrap.error, productSummary.error, revenueQuery.error, previousRevenueQuery.error, channelRevenueQuery.error].filter(Boolean)
+  function downloadDashboardReport() {
+    const escapeCsv = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`
+    const rows = [
+      ['Tarih', 'Ciro', 'Sipariş', 'Para birimi'],
+      ...revenueSeries.map(point => [point.fullLabel, point.amount.toLocaleString('tr-TR', { maximumFractionDigits: 2 }), point.orderCount, point.currency]),
+    ]
+    const csv = `\uFEFF${rows.map(row => row.map(escapeCsv).join(';')).join('\r\n')}`
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `ravencia-dashboard-${dashboardDateKey(new Date())}.csv`
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+  return <section className="content dashboard"><div className="page-heading"><div><p className="eyebrow">Operasyon merkezi</p><h1>İyi ki geldiniz, {me.displayName} ✦</h1><p className="lede">İşinizin ritmini tek bir yerden takip edin.</p></div><div className="dashboard-heading-actions"><label className="dashboard-header-period"><span>Rapor dönemi</span><select aria-label="Rapor dönemi" value={revenueRange} onChange={event => setRevenueRange(event.target.value as DashboardRevenueRange)}><option value="7">Son 7 gün</option><option value="30">Son 30 gün</option><option value="90">Son 90 gün</option><option value="custom">Özel tarih</option></select></label><button type="button" className="dashboard-report-download" onClick={downloadDashboardReport} disabled={revenueQuery.isLoading}><UiIcon name="download" /> Raporu indir</button><span className="dashboard-date">{now.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div></div>
+    {errors.length > 0 && <div role="alert" className="error">Bazı rapor verileri alınamadı; görünen değerler kısmi olabilir.</div>}
+    <div className="dashboard-summary-grid">
+      <article className="dashboard-summary-card is-emphasis"><div className="dashboard-summary-card-head"><span>Toplam gelir</span><DashboardMetricIcon kind="revenue" /></div><strong>{revenueQuery.isLoading ? '—' : dashboardMoney(revenueTotal, revenueCurrency)}</strong><span className={`dashboard-summary-trend ${dashboardTrendClass(revenueTotal, previousRevenueTotal)}`}>{dashboardTrendLabel(revenueTotal, previousRevenueTotal)}</span><span className="dashboard-sparkline dashboard-sparkline-primary" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span></article>
+      <article className="dashboard-summary-card"><div className="dashboard-summary-card-head"><span>Toplam sipariş</span><DashboardMetricIcon kind="orders" /></div><strong>{revenueQuery.isLoading ? '—' : revenueOrderCount.toLocaleString('tr-TR')}</strong><span className={`dashboard-summary-trend ${dashboardTrendClass(revenueOrderCount, previousRevenueOrderCount)}`}>{dashboardTrendLabel(revenueOrderCount, previousRevenueOrderCount)}</span><span className="dashboard-sparkline dashboard-sparkline-accent" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span></article>
+      <article className="dashboard-summary-card"><div className="dashboard-summary-card-head"><span>Ortalama sepet</span><DashboardMetricIcon kind="basket" /></div><strong>{revenueQuery.isLoading ? '—' : dashboardMoney(averageBasket, revenueCurrency)}</strong><span className={`dashboard-summary-trend ${dashboardTrendClass(averageBasket, previousAverageBasket)}`}>{dashboardTrendLabel(averageBasket, previousAverageBasket)}</span><span className="dashboard-sparkline dashboard-sparkline-blue" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span></article>
+      <article className="dashboard-summary-card"><div className="dashboard-summary-card-head"><span>Aktif ürün</span><DashboardMetricIcon kind="product" /></div><strong>{productSummary.isLoading ? '—' : productCount.toLocaleString('tr-TR')}</strong><span className="dashboard-summary-trend is-neutral">Katalog durumu</span><span className="dashboard-sparkline dashboard-sparkline-green" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span></article>
+    </div>
+    <div className="dashboard-performance-grid">
+      <article className="panel dashboard-performance-card"><header className="dashboard-card-header"><div><h2>Gelir performansı</h2><p>Satışlarınızın büyük resmini görün.</p></div><div className="dashboard-segmented-control" role="group" aria-label="Gelir performansı dönemi">{(['7', '30', '90'] as const).map(value => <button type="button" key={value} className={revenueRange === value ? 'is-active' : ''} onClick={() => setRevenueRange(value)}>{value} gün</button>)}</div></header><div className="dashboard-performance-toolbar"><div className="dashboard-performance-total"><span>{periodLabel}</span><strong>{revenueQuery.isLoading ? '—' : dashboardMoney(revenueTotal, revenueCurrency)}</strong><small className={`dashboard-summary-trend ${dashboardTrendClass(revenueTotal, previousRevenueTotal)}`}>{dashboardTrendLabel(revenueTotal, previousRevenueTotal)}</small></div><label className="dashboard-platform-filter"><span>Platform</span><select aria-label="Gelir platformu" value={revenuePlatform} onChange={event => setRevenuePlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div>{revenueRange === 'custom' && <div className="dashboard-custom-range"><label><span>Başlangıç</span><input type="date" value={revenueFrom} max={revenueTo} onChange={event => setRevenueFrom(event.target.value)} /></label><label><span>Bitiş</span><input type="date" value={revenueTo} min={revenueFrom} onChange={event => setRevenueTo(event.target.value)} /></label></div>}<div className="dashboard-performance-chart" aria-label={`${periodLabel} gelir performansı grafiği`}><div className="dashboard-performance-gridlines" aria-hidden="true">{revenueAxisTicks.map(tick => <i key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }} />)}</div><div className="dashboard-performance-y-axis" aria-hidden="true">{revenueAxisTicks.map(tick => <span key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }}>{dashboardAxisMoney(tick.amount, revenueCurrency)}</span>)}</div>{chartCurrentPath ? <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Gelir performansı"><defs><linearGradient id="dashboard-performance-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--rv-color-primary)" stopOpacity=".34" /><stop offset="100%" stopColor="var(--rv-color-primary)" stopOpacity="0" /></linearGradient></defs>{chartAreaPath && <path className="dashboard-performance-area" d={chartAreaPath} fill="url(#dashboard-performance-area)" />}{chartPreviousPath && <path className="dashboard-performance-previous" d={chartPreviousPath} />}{<path className="dashboard-performance-line" d={chartCurrentPath} />}</svg> : <div className="dashboard-performance-empty">Bu dönem için gelir verisi bulunmuyor.</div>}<div className="dashboard-performance-x-axis" aria-hidden="true">{revenueSeries.map((point, index) => index === 0 || index === revenueSeries.length - 1 || index % chartLabelStep === 0 ? <span key={point.key} style={{ left: `${revenueSeries.length > 1 ? (index / (revenueSeries.length - 1)) * 100 : 0}%` }}>{point.label}</span> : null)}</div></div><footer className="dashboard-chart-legend"><span><i className="current" />Bu dönem</span><span><i className="previous" />Önceki dönem</span></footer></article>
+      <article className="panel dashboard-channel-card"><header className="dashboard-card-header"><div><h2>Satış kanalları</h2><p>Seçilen dönemin gelir dağılımı</p></div><Link className="dashboard-panel-link" to="/integrations">Kanalları yönet <UiIcon name="arrowRight" /></Link></header><div className="dashboard-channel-donut" style={{ background: channelGradient }}><div><span>Toplam sipariş</span><strong>{channelTotalOrders.toLocaleString('tr-TR')}</strong><small>{periodLabel}</small></div></div><div className="dashboard-channel-list">{channelRowsWithShare.length ? channelRowsWithShare.map(channel => <div key={channel.platform}><span><i style={{ background: channel.color }} />{channel.platform}</span><strong>%{channel.share.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</strong></div>) : <p className="dashboard-channel-empty">Bu dönem için kanal dağılımı bulunmuyor.</p>}</div><footer className="dashboard-channel-footer"><span>{channelRowsWithShare.length} kanal · {periodLabel}</span><Link to="/integrations">Bağlantıları yönet <UiIcon name="arrowRight" /></Link></footer></article>
+    </div>
   </section>
 }
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
