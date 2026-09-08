@@ -28,6 +28,7 @@
   a { color: var(--rv-color-primary); }
   code { font-family: var(--rv-font-mono); }
   :where(a, button, input, select, textarea, summary):focus-visible { outline: 3px solid color-mix(in srgb, var(--rv-color-primary) 48%, transparent); outline-offset: 2px; }
+  :where(input, select, textarea):focus, :where(input, select, textarea):focus-visible { outline: 0; outline-offset: 0; }
 }
 
 @layer layouts {
@@ -78,6 +79,7 @@
   .page-heading .lede { max-width: 760px; margin: 0; }
   .page-heading-actions, .dashboard-heading-actions, .returns-reference-heading-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--rv-space-2); }
   .dashboard .page-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .dashboard .page-heading .eyebrow { font-size: var(--rv-font-size-sm); font-weight: 850; letter-spacing: .1em; }
   .dashboard-heading-actions { min-width: 180px; }
   .dashboard-date { color: var(--rv-color-ink); font-size: var(--rv-font-size-lg); font-weight: 750; text-align: right; }
   .eyebrow { margin: 0 0 var(--rv-space-2); color: var(--rv-color-primary); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
@@ -178,6 +180,11 @@
   .tag, .badge, .security-state { display: inline-flex; min-height: 24px; align-items: center; gap: var(--rv-space-1); padding: 0 var(--rv-space-2); color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border: 1px solid transparent; border-radius: 999px; font-size: var(--rv-font-size-xs); font-weight: 750; }
   .badge { gap: 6px; padding: 3px 8px; border: 0; border-radius: 6px; font-size: 14px; font-weight: 500; line-height: 1.5; }
   .badge > i { width: 6px; height: 6px; flex: 0 0 6px; background: currentcolor; border-radius: 50%; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; border-radius: var(--rv-radius-sm); padding: 3px 8px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); font-size: 14px; font-weight: 500; line-height: 1.5; }
+  .pill.good { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
+  .pill.warn { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
+  .pill.bad { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+  .pill .dot { width: 6px; height: 6px; flex: 0 0 6px; background: currentcolor; border-radius: 50%; }
   .security-state.enabled { color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-accent) 20%, var(--rv-color-surface-raised)); border-color: color-mix(in srgb, var(--rv-color-accent) 55%, var(--rv-color-border)); }
   .empty, .unknown { min-height: 160px; display: grid; place-items: center; padding: var(--rv-space-6); color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px dashed var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); text-align: center; }
   .table-wrap, .data-table, .product-catalog-table, .order-reference-table, .return-reference-table, .invoice-reference-table, .jobs-reference-table, .mapping-saved-table { overflow-x: auto; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
@@ -488,11 +495,11 @@
   .product-list-price { grid-column: 5; }
   .product-list-stock { grid-column: 6; }
   .product-list-platforms { grid-column: 7; display: grid; justify-items: start; gap: 3px; }
-  .product-list-status { grid-column: 8; display: inline-flex; width: fit-content; max-width: 100%; min-height: 30px; align-items: center; gap: var(--rv-space-2); padding: 0 var(--rv-space-3); color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 999px; font-size: var(--rv-font-size-xs); font-weight: 750; }
+  .product-list-status { grid-column: 8; width: fit-content; max-width: 100%; min-height: 0; justify-self: center; box-sizing: border-box; }
   .product-status-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .product-list-actions { grid-column: 9; display: flex; align-items: center; gap: var(--rv-space-2); }
-  .product-list-actions a, .product-list-actions button { display: inline-grid; width: 40px; height: 40px; min-height: 40px; place-items: center; padding: 0; color: var(--rv-color-primary); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); transition: color 140ms ease, background 140ms ease, border-color 140ms ease, transform 140ms ease; }
-  .product-list-actions > a, .product-list-actions > button { flex: 0 0 40px; }
+  .product-list-actions a, .product-list-actions button { display: inline-grid; width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); transition: color 140ms ease, background 140ms ease, border-color 140ms ease, transform 140ms ease; }
+  .product-list-actions > a, .product-list-actions > button { flex: 0 0 44px; }
   .product-list-actions button { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: color-mix(in srgb, var(--rv-color-danger) 38%, var(--rv-color-border)); }
   .product-list-actions a:hover, .product-list-actions button:hover { transform: translateY(-1px); }
   .product-list-actions a:hover { color: #fff; background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
@@ -502,11 +509,7 @@
   .platform-state-icon::after { content: ''; position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: var(--rv-color-danger); border: 2px solid var(--rv-color-surface); border-radius: 50%; }
   .platform-state-icon.active { color: var(--rv-color-ink); background: var(--rv-color-accent-soft); border-color: var(--rv-color-accent); }
   .platform-state-icon.active::after { background: var(--rv-color-accent); }
-  .product-status-dot { display: inline-block; width: 10px; height: 10px; background: var(--rv-color-muted); border: 2px solid var(--rv-color-surface); border-radius: 50%; }
-  .product-list-status.active .product-status-dot { background: var(--rv-color-accent); }
-  .product-list-status.inactive .product-status-dot { background: var(--rv-color-warning); }
-  .product-list-status.active { color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-accent) 20%, var(--rv-color-surface-raised)); border-color: color-mix(in srgb, var(--rv-color-accent) 55%, var(--rv-color-border)); }
-  .product-list-status.inactive { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-color: color-mix(in srgb, var(--rv-color-warning) 55%, transparent); }
+  .product-status-dot { display: inline-block; width: 6px; height: 6px; flex: 0 0 6px; background: currentcolor; border: 0; border-radius: 50%; }
   .product-import-modal { width: min(720px, 100%); }
   .product-import-body { display: grid; gap: var(--rv-space-5); }
   .product-import-body fieldset { display: grid; gap: var(--rv-space-2); min-width: 0; margin: 0; padding: 0; border: 0; }
@@ -1587,7 +1590,7 @@
   .category-chip-list .category-chip-remove { width: 30px; padding: 0; border-left: 1px solid var(--rv-color-border); }
   .panel-attribute-modal { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: rgb(5 16 29 / 68%); backdrop-filter: blur(5px); }
   .panel-attribute-modal-card { display: grid; grid-template-rows: auto auto minmax(0, 1fr); width: min(720px, 100%); max-height: calc(100dvh - 32px); min-width: 0; overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
-  .panel-attribute-category-modal-card { grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(820px, 100%); }
+  .panel-attribute-category-modal-card { grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(820px, 100%); height: min(720px, calc(100dvh - 32px)); min-height: 0; }
   .panel-attribute-modal-card > header { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5) var(--rv-space-6); border-bottom: 1px solid var(--rv-color-border); }
   .panel-attribute-modal-card > header > div { display: grid; min-width: 0; gap: 3px; }
   .panel-attribute-modal-card > header strong { overflow-wrap: anywhere; }
@@ -1751,10 +1754,10 @@
   /* Shared interaction language for the revised workspace surfaces. */
 
   /* Canonical workspace navigation. */
-  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) { display: flex; width: 100%; min-width: 0; align-items: stretch; gap: 4px; overflow-x: auto; margin: 0 0 20px; padding: 0; background: transparent; border: 0; border-bottom: 1px solid var(--rv-color-border); border-radius: 0; scrollbar-width: thin; }
-  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a) { display: inline-flex; flex: 0 0 auto; width: auto; min-width: 0; min-height: 48px; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; color: var(--rv-color-muted); background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; box-shadow: none; font-size: var(--rv-font-size-sm); font-weight: 600; line-height: 1.4; white-space: nowrap; text-decoration: none; }
+  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) { display: flex; width: fit-content; max-width: 100%; min-width: 0; align-items: center; gap: 4px; overflow-x: auto; margin: 0 0 20px; padding: 4px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); scrollbar-width: thin; }
+  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a) { display: inline-flex; flex: 0 0 auto; width: auto; min-width: 0; min-height: 36px; align-items: center; justify-content: center; gap: 8px; padding: 6px 12px; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; font-size: var(--rv-font-size-sm); font-weight: 600; line-height: 1.4; white-space: nowrap; text-decoration: none; }
   :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: transparent; box-shadow: none; }
-  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):is(.active, .is-active, [aria-selected="true"]) { color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-primary) 9%, var(--rv-color-surface)); border-bottom-color: var(--rv-color-primary); box-shadow: none; }
+  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):is(.active, .is-active, [aria-selected="true"]) { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-bottom-color: transparent; box-shadow: 0 1px 4px rgb(0 0 0 / 12%); }
   :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) :is(.status-tab-label, .rv-tab-label) { color: inherit; font-size: inherit; font-weight: inherit; white-space: nowrap; }
   :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) :is(.status-tab-count, .rv-tab-count, .jobs-reference-tab-count) { display: inline-flex; min-width: 24px; min-height: 22px; align-items: center; justify-content: center; padding: 2px 6px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 6px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
   :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) .status-tab-unit { font-size: 11px; color: var(--rv-color-muted); }

@@ -560,7 +560,8 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
   const startingPrice = prices.length ? Math.min(...prices) : null
   const statuses = new Set(group.products.map(item => item.status))
   const status = statuses.size === 1 ? product.status : 'MIXED'
-  const statusLabel = status === 'ACTIVE' ? 'Satışta' : status === 'ARCHIVED' ? 'Kapalı' : status === 'MIXED' ? 'Karışık' : 'Taslak'
+  const statusLabel = status === 'ACTIVE' ? 'Tamamlandı' : status === 'ARCHIVED' ? 'Bekliyor' : status === 'MIXED' ? 'Hata' : 'Taslak'
+  const statusTone = status === 'ACTIVE' ? 'good' : status === 'ARCHIVED' ? 'warn' : status === 'MIXED' ? 'bad' : ''
   const variantDisplayGroups = productVariantDisplayGroups(group.variants.map(item => item.variant))
   const modelCode = group.products.map(item => item.modelCode).find(value => value?.trim()) ?? '—'
   return <article className="product-catalog-item color-variant-item product-group-card">
@@ -572,7 +573,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
         <button type="button" className="product-list-price clickable-cell" aria-label={`${product.title}: fiyatı düzenle`} onClick={() => onQuickEdit('price')}><strong>{money(startingPrice, product.currency)}</strong></button>
         <button type="button" className="product-list-stock clickable-cell" aria-label={`${product.title}: stoğu düzenle`} onClick={() => onQuickEdit('stock')}><strong>{totalStock}</strong></button>
         <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ' inactive'}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'} aria-label={platformActive ? 'Platform eşleşmesi var' : 'Platform eşleşmesi yok'}>TY<i /></span></div>
-        <div className={`product-list-status ${status === 'ACTIVE' ? 'active' : 'inactive'}`}><span className="product-status-dot" aria-hidden="true" /><span className="product-status-label">{statusLabel}</span></div>
+        <div className={`product-list-status pill ${statusTone}`.trim()}><span className="dot product-status-dot" aria-hidden="true" /><span className="product-status-label">{statusLabel}</span></div>
         <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title={group.products.length > 1 ? 'Ürün grubundaki ilk kaydı düzenle' : 'Ürünü düzenle'}><UiIcon className="product-action-icon" name="edit" /></Link><button type="button" className="product-delete-button" onClick={event => { event.stopPropagation(); onDelete() }} aria-label={`${product.title} ürün grubunu sil`} title={group.products.length > 1 ? 'Ürün grubundaki tüm kayıtları sil' : 'Ürünü sil'}><UiIcon className="product-action-icon" name="trash" /></button></div>
       </div>
     </article>
