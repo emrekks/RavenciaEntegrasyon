@@ -1730,7 +1730,8 @@
   .integration-grid, .publish-platform-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .shipping-designer-workspace { grid-template-columns: minmax(190px, .8fr) minmax(360px, 1.4fr); }
   .shipping-designer-inspector { grid-column: 1 / -1; }
-  .product-toolbar { grid-template-columns: minmax(140px, max-content) minmax(200px, 1fr) repeat(3, minmax(120px, .58fr)); }
+  .product-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .product-toolbar .order-search { grid-column: 1 / -1; }
   .orders-control-bar { grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(160px, .7fr)); }
   .orders-control-bar .orders-filter-reset { grid-column: 1 / -1; justify-self: start; }
   .product-top-layout { grid-template-columns: 1fr; }
@@ -1984,6 +1985,7 @@
   .rv-mobile-menu-toggle, .rv-icon-button { min-width: 44px; min-height: 44px; }
   .content, .rv-page { padding: 24px 16px 40px; }
   .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .product-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-metrics article { grid-template-columns: 1fr; min-height: 132px; gap: 6px; padding: 16px; }
   .dashboard-metric-icon { grid-row: auto; width: 36px; height: 36px; }
   .dashboard-metric-icon svg { width: 20px; height: 20px; }
