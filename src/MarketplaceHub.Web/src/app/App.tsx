@@ -6,7 +6,9 @@ import { Drawer, Modal, Tabs, UiIcon, type UiIconName } from '../shared/componen
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, InvoiceDetailPage, InvoicesPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
-import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, appearanceThemeModeOptions, defaultAppearanceColorTheme, useAppearanceSettings, type AppearanceSettings } from '../features/settings/appearance-settings'
+import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, appearanceThemeModeOptions, defaultAppearanceColorTheme, defaultLightPalette, useAppearanceSettings, type AppearanceSettings } from '../features/settings/appearance-settings'
+
+type VisualTheme = 'light' | 'dark'
 
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
@@ -16,6 +18,7 @@ function Shell({ me }: { me: Me }) {
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [quickSearchOpen, setQuickSearchOpen] = useState(false)
+  const [visualTheme, setVisualTheme] = useState<VisualTheme>(() => localStorage.getItem('ravencia.visualTheme') === 'dark' ? 'dark' : 'light')
   useEffect(() => { setMobileMenuOpen(false); setQuickSearchOpen(false) }, [location.pathname])
   useEffect(() => {
     const openQuickSearch = (event: KeyboardEvent) => {
@@ -32,13 +35,13 @@ function Shell({ me }: { me: Me }) {
     document.documentElement.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[appearanceSettings.settings.fontFamily])
     document.documentElement.style.setProperty('--rv-font-scale', String(appearanceFontScale[appearanceSettings.settings.fontSize]))
     const applyTheme = () => {
-      document.documentElement.dataset.theme = 'dark'
-      document.documentElement.dataset.themeMode = 'dark'
-      const palette = appearanceSettings.settings.colors.dark
+      document.documentElement.dataset.theme = visualTheme
+      document.documentElement.dataset.themeMode = visualTheme
+      const palette = visualTheme === 'light' ? defaultLightPalette : appearanceSettings.settings.colors.dark
       appearanceColorTokenOptions.forEach(({ key }) => document.documentElement.style.setProperty(appearanceColorCssVariable(key), palette[key]))
     }
     applyTheme()
-  }, [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize, appearanceSettings.settings.themeMode, appearanceColorsKey])
+  }, [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize, appearanceSettings.settings.themeMode, appearanceColorsKey, visualTheme])
   const pageNames: Record<string, string> = { '/dashboard': 'Genel bakış', '/products': 'Ürünler', '/products/new': 'Yeni ürün', '/catalog/categories': 'Kategoriler', '/catalog/brands': 'Markalar', '/catalog/attributes': 'Özellikler', '/imports': 'İçe aktarımlar', '/shipments': 'Gönderiler', '/orders': 'Siparişler', '/returns': 'İadeler', '/invoices': 'Faturalar', '/jobs': 'İşlem takibi', '/integrations': 'Platformlar', '/mappings/categories': 'Eşleştirme ayarları', '/mappings/attributes': 'Özellik eşlemeleri', '/settings': 'Sistem ayarları', '/settings/appearance': 'Görünüm ayarları' }
   const pageName = pageNames[location.pathname] ?? (location.pathname.startsWith('/products/') ? 'Ürün detayları' : location.pathname.startsWith('/returns/') ? 'İade detayları' : location.pathname.startsWith('/imports/') ? 'İçe aktarma ayrıntıları' : location.pathname.startsWith('/integrations/') ? 'Platform ayrıntıları' : location.pathname.startsWith('/shipments/') ? 'Gönderi ayrıntıları' : 'Ravencia')
   const displayName = me.displayName || me.email
@@ -63,7 +66,7 @@ function Shell({ me }: { me: Me }) {
     { label: 'Operasyon', items: [item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar')] },
     { label: 'Yönetim', items: [item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'bolt', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
   ]
-  const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}><span className="nav-section-label">{group.label}</span>{group.items}</div>)}</>
+  const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}>{group.items}</div>)}</>
   const quickSearchItems: Array<{ to: string; label: string; description: string; icon: UiIconName }> = [
     { to: '/dashboard', label: 'Genel bakış', description: 'Operasyon merkezini aç', icon: 'grid' },
     { to: '/products', label: 'Ürünler', description: 'Kataloğu ve stokları yönet', icon: 'bag' },
@@ -79,7 +82,7 @@ function Shell({ me }: { me: Me }) {
       <div className="sidebar-side-bottom"><div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}</div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong><small>Çalışma alanı sahibi</small></span><button type="button" className="sidebar-profile-logout" aria-label="Oturumdan çık" title="Oturumdan çık" onClick={() => void logout()}><UiIcon name="logout" size={18} /></button></div></div>
     </aside>
     <main>
-      <header className="rv-topbar"><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Çalışma alanı</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><span className="rv-topbar-kit-version">UI KIT / 1.0</span><Link className="rv-topbar-theme" to="/settings?tab=appearance" aria-label="Görünüm ayarlarını aç" title="Görünüm ayarlarını aç"><UiIcon name="sun" size={18} /><span>Açık tema</span></Link><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
+      <header className="rv-topbar"><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Çalışma alanı</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => { const nextTheme: VisualTheme = visualTheme === 'light' ? 'dark' : 'light'; setVisualTheme(nextTheme); localStorage.setItem('ravencia.visualTheme', nextTheme) }}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu tema' : 'Açık tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
       <Modal open={quickSearchOpen} title="Hızlı arama" description="Bir sayfa veya işlem seçin." onClose={() => setQuickSearchOpen(false)}><div className="rv-command-list" role="listbox" aria-label="Hızlı arama sonuçları">{quickSearchItems.map(itemOption => <Link key={itemOption.to} className="rv-command-item" to={itemOption.to} onClick={() => setQuickSearchOpen(false)}><UiIcon name={itemOption.icon} size={20} /><span><strong>{itemOption.label}</strong><small>{itemOption.description}</small></span><UiIcon name="chevronRight" size={16} /></Link>)}</div></Modal>
       <Drawer open={mobileMenuOpen} title="Ravencia" description="Operasyon merkezi" onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}{item('/settings', 'settings', 'Sistem Ayarları', true)}<button className="rv-button rv-button-secondary" type="button" onClick={() => void logout()}>Çıkış yap</button></nav></Drawer>
       <Suspense fallback={<Status title="Ekran yükleniyor" />}><Routes><Route path="/dashboard" element={<Dashboard me={me} />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<AttributeMappingPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/invoices/:id" element={<InvoiceDetailPage />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings/appearance" element={<AppearanceSettingsPage />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense>
@@ -263,19 +266,34 @@ function dashboardDateInputValue(value = new Date()) { return dashboardDateKey(v
 function DashboardMetricIcon({ kind }: { kind: string }) {
   const icons: Record<string, UiIconName> = {
     pending: 'clock',
+    pendingOrders: 'pendingOrders',
     late: 'alert',
+    lateOrders: 'lateOrders',
     today: 'calendar',
     month: 'calendar',
     return: 'returns',
+    pendingReturns: 'pendingReturns',
     invoice: 'invoice',
-    uninvoiced: 'invoice',
+    uninvoiced: 'invoicePending',
+    invoicePending: 'invoicePending',
+    invoiceDue: 'invoiceDue',
     stock: 'box',
+    lowStock: 'stock',
     revenue: 'chart',
     orders: 'orders',
     basket: 'bag',
     product: 'bag',
   }
   return <span className={`dashboard-metric-icon ${kind}`} aria-hidden="true"><UiIcon name={icons[kind] ?? 'pendingOrders'} size={22} /></span>
+}
+
+function DashboardSparkline({ className = '', flip = false }: { className?: string; flip?: boolean }) {
+  const path = flip ? 'M1 26 12 19 23 24 34 12 45 16 56 8 67 12 78 3 89 8 99 2' : 'M1 29 12 25 23 29 34 19 45 22 56 11 67 15 78 8 89 11 99 2'
+  return <svg className={`dashboard-sparkline ${className}`.trim()} viewBox="0 0 100 36" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="2" /></svg>
+}
+
+function DashboardOperationalCard({ kind, label, detail, value, to }: { kind: string; label: string; detail: string; value: number | null; to: string }) {
+  return <Link className={`dashboard-operational-card ${kind}`} to={to}><DashboardMetricIcon kind={kind} /><span className="dashboard-operational-copy"><strong>{value === null ? '—' : value.toLocaleString('tr-TR')}</strong><span>{label}</span><small>{detail}</small></span><UiIcon name="arrowRight" size={17} /></Link>
 }
 
 function dashboardMoney(amount: number, currency = 'TRY') {
@@ -289,12 +307,9 @@ function dashboardAxisMoney(amount: number, currency = 'TRY') {
   return `${sign}${prefix}${value.toLocaleString('tr-TR')}`
 }
 
-function dashboardNiceAxisStep(maxValue: number, targetSteps = 10) {
+function dashboardNiceAxisStep(maxValue: number, targetSteps = 4) {
   const roughStep = Math.max(1, maxValue) / targetSteps
   const magnitude = 10 ** Math.floor(Math.log10(roughStep))
-  // Always round up to the next whole magnitude. A value just above a
-  // "nice" threshold must not double the chart range and make every bar look
-  // artificially small (for example ₺25.1K becoming a ₺50K axis).
   return Math.ceil(roughStep / magnitude) * magnitude
 }
 
@@ -306,27 +321,54 @@ function dashboardRevenueSeries(points: DashboardRevenuePoint[]) {
   })
 }
 
+const dashboardChartLeft = 44
+const dashboardChartRight = 644
+const dashboardChartTop = 30
+const dashboardChartBottom = 180
+
+function dashboardChartY(amount: number, maxValue: number) {
+  const ratio = Math.min(1, Math.max(0, amount / Math.max(1, maxValue)))
+  return dashboardChartBottom - ratio * (dashboardChartBottom - dashboardChartTop)
+}
+
 function dashboardLinePath(points: Array<{ amount: number }>, maxValue: number) {
   if (!points.length) return ''
   const denominator = Math.max(1, points.length - 1)
   return points.map((point, index) => {
-    const x = (index / denominator) * 100
-    const ratio = Math.min(1, Math.max(0, point.amount / Math.max(1, maxValue)))
-    const y = 100 - ratio * 100
-    return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
+    const x = dashboardChartLeft + (index / denominator) * (dashboardChartRight - dashboardChartLeft)
+    return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${dashboardChartY(point.amount, maxValue).toFixed(2)}`
   }).join(' ')
 }
 
 function dashboardAreaPath(points: Array<{ amount: number }>, maxValue: number) {
   const line = dashboardLinePath(points, maxValue)
-  return line ? `${line} L 100 100 L 0 100 Z` : ''
+  return line ? `${line} L ${dashboardChartRight} ${dashboardChartBottom} L ${dashboardChartLeft} ${dashboardChartBottom} Z` : ''
+}
+
+function dashboardRangeDates(range: DashboardRevenueRange, from: string, to: string, now: Date) {
+  if (range === 'custom') {
+    const fromDate = new Date(`${from}T00:00:00`)
+    const toDate = new Date(`${to}T23:59:59.999`)
+    return fromDate <= toDate ? { start: fromDate, end: toDate } : { start: toDate, end: fromDate }
+  }
+  const start = new Date(now)
+  start.setHours(0, 0, 0, 0)
+  start.setDate(start.getDate() - (Number(range) - 1))
+  return { start, end: now }
+}
+
+function dashboardPreviousRange(start: Date, end: Date) {
+  const day = 24 * 60 * 60 * 1000
+  const previousEnd = new Date(start.getTime() - day)
+  const duration = Math.max(day, end.getTime() - start.getTime())
+  return { start: new Date(previousEnd.getTime() - duration), end: previousEnd }
 }
 
 function dashboardTrendLabel(current: number, previous: number) {
   if (previous <= 0) return current > 0 ? 'Yeni dönem verisi' : 'Karşılaştırma yok'
   const delta = ((current - previous) / previous) * 100
   const direction = delta >= 0 ? '↗' : '↘'
-  return `${direction} %${Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} önceki döneme göre`
+  return `${direction} %${Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`
 }
 
 function dashboardTrendClass(current: number, previous: number) {
@@ -334,58 +376,57 @@ function dashboardTrendClass(current: number, previous: number) {
 }
 
 function Dashboard({ me }: { me: Me }) {
-  const [revenueRange, setRevenueRange] = useState<DashboardRevenueRange>('30')
-  const [revenueFrom, setRevenueFrom] = useState(() => dashboardDateInputValue())
-  const [revenueTo, setRevenueTo] = useState(() => dashboardDateInputValue())
-  const [revenuePlatform, setRevenuePlatform] = useState('ALL')
+  const [reportRange, setReportRange] = useState<DashboardRevenueRange>('30')
+  const [reportFrom, setReportFrom] = useState(() => dashboardDateInputValue())
+  const [reportTo, setReportTo] = useState(() => dashboardDateInputValue())
+  const [chartRange, setChartRange] = useState<Exclude<DashboardRevenueRange, 'custom'>>('30')
+  const [chartPlatform, setChartPlatform] = useState('ALL')
   const dashboardRefreshOptions = { refetchInterval: 60_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 30_000 } as const
   const bootstrap = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), ...dashboardRefreshOptions })
   const productSummary = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<DashboardProductSummary>('/products/summary'), ...dashboardRefreshOptions })
   const now = new Date()
   const revenuePlatformOptions = Array.from(new Set((bootstrap.data?.platforms ?? []).map(platform => platform.name)))
-  const customFromDate = new Date(`${revenueFrom}T00:00:00`)
-  const customToDate = new Date(`${revenueTo}T23:59:59.999`)
-  const customStart = customFromDate <= customToDate ? customFromDate : customToDate
-  const customEnd = customFromDate <= customToDate ? customToDate : customFromDate
-  const revenueStart = revenueRange === 'custom'
-    ? customStart
-    : (() => { const date = new Date(now); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - (Number(revenueRange) - 1)); return date })()
-  const revenueEnd = revenueRange === 'custom' ? customEnd : now
-  const previousEnd = new Date(revenueStart.getTime() - 24 * 60 * 60 * 1000)
-  const previousStart = new Date(previousEnd.getTime() - Math.max(24 * 60 * 60 * 1000, revenueEnd.getTime() - revenueStart.getTime()))
+  const reportDates = dashboardRangeDates(reportRange, reportFrom, reportTo, now)
+  const chartDates = dashboardRangeDates(chartRange, reportFrom, reportTo, now)
+  const reportPreviousDates = dashboardPreviousRange(reportDates.start, reportDates.end)
+  const chartPreviousDates = dashboardPreviousRange(chartDates.start, chartDates.end)
   const revenueRequest = (from: Date, to: Date, platform = 'ALL') => `/dashboard/revenue-series?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}&platform=${encodeURIComponent(platform)}`
-  const reportPeriodKey = `${revenueRange}:${revenueFrom}:${revenueTo}`
-  const revenueQuery = useQuery({ queryKey: ['dashboard-revenue-series', reportPeriodKey, revenuePlatform], queryFn: () => hubApi<DashboardRevenuePoint[]>(revenueRequest(revenueStart, revenueEnd, revenuePlatform)), ...dashboardRefreshOptions })
-  const previousRevenueQuery = useQuery({ queryKey: ['dashboard-revenue-series-previous', reportPeriodKey, revenuePlatform], queryFn: () => hubApi<DashboardRevenuePoint[]>(revenueRequest(previousStart, previousEnd, revenuePlatform)), ...dashboardRefreshOptions })
+  const reportPeriodKey = `${reportRange}:${reportFrom}:${reportTo}`
+  const chartPeriodKey = chartRange
+  const reportRevenueQuery = useQuery({ queryKey: ['dashboard-revenue-series', reportPeriodKey], queryFn: () => hubApi<DashboardRevenuePoint[]>(revenueRequest(reportDates.start, reportDates.end)), ...dashboardRefreshOptions })
+  const previousReportRevenueQuery = useQuery({ queryKey: ['dashboard-revenue-series-previous', reportPeriodKey], queryFn: () => hubApi<DashboardRevenuePoint[]>(revenueRequest(reportPreviousDates.start, reportPreviousDates.end)), ...dashboardRefreshOptions })
+  const chartRevenueQuery = useQuery({ queryKey: ['dashboard-chart-revenue-series', chartPeriodKey, chartPlatform], queryFn: () => hubApi<DashboardRevenuePoint[]>(revenueRequest(chartDates.start, chartDates.end, chartPlatform)), ...dashboardRefreshOptions })
+  const previousChartRevenueQuery = useQuery({ queryKey: ['dashboard-chart-revenue-series-previous', chartPeriodKey, chartPlatform], queryFn: () => hubApi<DashboardRevenuePoint[]>(revenueRequest(chartPreviousDates.start, chartPreviousDates.end, chartPlatform)), ...dashboardRefreshOptions })
   const channelRevenueQuery = useQuery({
     queryKey: ['dashboard-channel-revenue', reportPeriodKey, revenuePlatformOptions],
-    queryFn: async () => Promise.all(revenuePlatformOptions.map(async platform => ({ platform, points: await hubApi<DashboardRevenuePoint[]>(revenueRequest(revenueStart, revenueEnd, platform)) }))),
+    queryFn: async () => Promise.all(revenuePlatformOptions.map(async platform => ({ platform, points: await hubApi<DashboardRevenuePoint[]>(revenueRequest(reportDates.start, reportDates.end, platform)) }))),
     enabled: revenuePlatformOptions.length > 0,
     ...dashboardRefreshOptions,
   })
-  const revenueSeries = dashboardRevenueSeries(revenueQuery.data ?? [])
-  const previousRevenueSeries = dashboardRevenueSeries(previousRevenueQuery.data ?? [])
-  const chartMaxAmount = Math.max(1, ...revenueSeries.map(item => item.amount), ...previousRevenueSeries.map(item => item.amount))
-  const revenueAxisStep = dashboardNiceAxisStep(chartMaxAmount, 5)
-  const revenueAxisSegments = Math.min(5, Math.max(1, Math.ceil(chartMaxAmount / revenueAxisStep)))
-  const revenueAxisMax = Math.max(chartMaxAmount, revenueAxisStep * revenueAxisSegments)
-  const revenueCurrency = revenueSeries.find(item => item.amount > 0)?.currency || revenueSeries[0]?.currency || 'TRY'
-  const revenueAxisTicks = Array.from({ length: revenueAxisSegments + 1 }, (_, index) => {
-    const ratio = index / revenueAxisSegments
-    return { ratio, amount: revenueAxisMax * ratio, major: true }
-  })
-  const revenueTotal = revenueSeries.reduce((sum, item) => sum + item.amount, 0)
-  const revenueOrderCount = revenueSeries.reduce((sum, item) => sum + item.orderCount, 0)
-  const previousRevenueTotal = previousRevenueSeries.reduce((sum, item) => sum + item.amount, 0)
-  const previousRevenueOrderCount = previousRevenueSeries.reduce((sum, item) => sum + item.orderCount, 0)
-  const averageBasket = revenueOrderCount ? revenueTotal / revenueOrderCount : 0
-  const previousAverageBasket = previousRevenueOrderCount ? previousRevenueTotal / previousRevenueOrderCount : 0
-  const periodLabel = revenueRange === 'custom' ? 'Özel dönem' : `Son ${revenueRange} gün`
-  const chartCurrentPath = dashboardLinePath(revenueSeries, revenueAxisMax)
-  const chartPreviousPath = dashboardLinePath(previousRevenueSeries, revenueAxisMax)
-  const chartAreaPath = dashboardAreaPath(revenueSeries, revenueAxisMax)
-  const chartLabelStep = Math.max(1, Math.ceil(Math.max(revenueSeries.length, 1) / 6))
+  const reportSeries = dashboardRevenueSeries(reportRevenueQuery.data ?? [])
+  const previousReportSeries = dashboardRevenueSeries(previousReportRevenueQuery.data ?? [])
+  const chartSeries = dashboardRevenueSeries(chartRevenueQuery.data ?? [])
+  const previousChartSeries = dashboardRevenueSeries(previousChartRevenueQuery.data ?? [])
+  const reportCurrency = reportSeries.find(item => item.amount > 0)?.currency || reportSeries[0]?.currency || 'TRY'
+  const chartCurrency = chartSeries.find(item => item.amount > 0)?.currency || chartSeries[0]?.currency || 'TRY'
+  const reportTotal = reportSeries.reduce((sum, item) => sum + item.amount, 0)
+  const reportOrderCount = reportSeries.reduce((sum, item) => sum + item.orderCount, 0)
+  const previousReportTotal = previousReportSeries.reduce((sum, item) => sum + item.amount, 0)
+  const previousReportOrderCount = previousReportSeries.reduce((sum, item) => sum + item.orderCount, 0)
+  const averageBasket = reportOrderCount ? reportTotal / reportOrderCount : 0
+  const previousAverageBasket = previousReportOrderCount ? previousReportTotal / previousReportOrderCount : 0
+  const reportPeriodLabel = reportRange === 'custom' ? 'Özel dönem' : `Son ${reportRange} gün`
+  const chartPeriodLabel = `Son ${chartRange} gün`
+  const chartMaxAmount = Math.max(1, ...chartSeries.map(item => item.amount), ...previousChartSeries.map(item => item.amount))
+  const chartAxisStep = dashboardNiceAxisStep(chartMaxAmount, 4)
+  const chartAxisMax = Math.max(chartMaxAmount, chartAxisStep * 4)
+  const chartCurrentPath = dashboardLinePath(chartSeries, chartAxisMax)
+  const chartPreviousPath = dashboardLinePath(previousChartSeries, chartAxisMax)
+  const chartAreaPath = dashboardAreaPath(chartSeries, chartAxisMax)
+  const chartLabelStep = Math.max(1, Math.ceil(Math.max(chartSeries.length, 1) / 6))
+  const chartGrid = [{ ratio: 1, y: 30 }, { ratio: 2 / 3, y: 80 }, { ratio: 1 / 3, y: 130 }, { ratio: 0, y: 180 }]
   const productCount = productSummary.data?.activeCount ?? 0
+  const dashboardMetrics = bootstrap.data?.metrics
   const channelRows = (channelRevenueQuery.data ?? []).map(channel => {
     const amount = channel.points.reduce((sum, point) => sum + point.amount, 0)
     const orders = channel.points.reduce((sum, point) => sum + point.orderCount, 0)
@@ -397,12 +438,12 @@ function Dashboard({ me }: { me: Me }) {
   const channelColors = ['#9b7aff', '#59d6bd', '#79a4ff', '#f0b15a']
   const channelRowsWithShare = channelRows.map((channel, index) => ({ ...channel, share: channelBasis > 0 ? ((channelTotalAmount > 0 ? channel.amount : channel.orders) / channelBasis) * 100 : 0, color: channelColors[index % channelColors.length] }))
   const channelGradient = channelRowsWithShare.length ? `conic-gradient(${channelRowsWithShare.map((channel, index) => { const start = channelRowsWithShare.slice(0, index).reduce((sum, value) => sum + value.share, 0); return `${channel.color} ${start}% ${start + channel.share}%` }).join(', ')})` : 'conic-gradient(var(--rv-color-surface-soft) 0 100%)'
-  const errors = [bootstrap.error, productSummary.error, revenueQuery.error, previousRevenueQuery.error, channelRevenueQuery.error].filter(Boolean)
+  const errors = [bootstrap.error, productSummary.error, reportRevenueQuery.error, previousReportRevenueQuery.error, chartRevenueQuery.error, previousChartRevenueQuery.error, channelRevenueQuery.error].filter(Boolean)
   function downloadDashboardReport() {
     const escapeCsv = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`
     const rows = [
       ['Tarih', 'Ciro', 'Sipariş', 'Para birimi'],
-      ...revenueSeries.map(point => [point.fullLabel, point.amount.toLocaleString('tr-TR', { maximumFractionDigits: 2 }), point.orderCount, point.currency]),
+      ...reportSeries.map(point => [point.fullLabel, point.amount.toLocaleString('tr-TR', { maximumFractionDigits: 2 }), point.orderCount, point.currency]),
     ]
     const csv = `\uFEFF${rows.map(row => row.map(escapeCsv).join(';')).join('\r\n')}`
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
@@ -412,17 +453,20 @@ function Dashboard({ me }: { me: Me }) {
     link.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 0)
   }
-  return <section className="content dashboard"><div className="page-heading"><div><p className="eyebrow">Operasyon merkezi</p><h1>İyi ki geldiniz, {me.displayName} ✦</h1><p className="lede">İşinizin ritmini tek bir yerden takip edin.</p></div><div className="dashboard-heading-actions"><label className="dashboard-header-period"><span>Rapor dönemi</span><select aria-label="Rapor dönemi" value={revenueRange} onChange={event => setRevenueRange(event.target.value as DashboardRevenueRange)}><option value="7">Son 7 gün</option><option value="30">Son 30 gün</option><option value="90">Son 90 gün</option><option value="custom">Özel tarih</option></select></label><button type="button" className="dashboard-report-download" onClick={downloadDashboardReport} disabled={revenueQuery.isLoading}><UiIcon name="download" /> Raporu indir</button><span className="dashboard-date">{now.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div></div>
+  return <section className="content dashboard">
+    <div className="page-heading"><div><p className="eyebrow">Operasyon merkezi</p><h1>İyi ki geldiniz, {me.displayName} ✦</h1><p className="lede">İşinizin ritmini tek bir yerden takip edin.</p></div><div className="dashboard-heading-actions"><div className="dashboard-report-controls"><label className="dashboard-header-period"><span>Rapor dönemi</span><select aria-label="Rapor dönemi" value={reportRange} onChange={event => setReportRange(event.target.value as DashboardRevenueRange)}><option value="7">Son 7 gün</option><option value="30">Son 30 gün</option><option value="90">Son 90 gün</option><option value="custom">Özel tarih</option></select></label><button type="button" className="dashboard-report-download" onClick={downloadDashboardReport} disabled={reportRevenueQuery.isLoading}><UiIcon name="download" /> Raporu indir</button></div><span className="dashboard-date">{now.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div></div>
+    {reportRange === 'custom' && <div className="dashboard-custom-range dashboard-report-custom-range"><label><span>Başlangıç</span><input type="date" value={reportFrom} max={reportTo} onChange={event => setReportFrom(event.target.value)} /></label><label><span>Bitiş</span><input type="date" value={reportTo} min={reportFrom} onChange={event => setReportTo(event.target.value)} /></label></div>}
     {errors.length > 0 && <div role="alert" className="error">Bazı rapor verileri alınamadı; görünen değerler kısmi olabilir.</div>}
     <div className="dashboard-summary-grid">
-      <article className="dashboard-summary-card is-emphasis"><div className="dashboard-summary-card-head"><span>Toplam gelir</span><DashboardMetricIcon kind="revenue" /></div><strong>{revenueQuery.isLoading ? '—' : dashboardMoney(revenueTotal, revenueCurrency)}</strong><span className={`dashboard-summary-trend ${dashboardTrendClass(revenueTotal, previousRevenueTotal)}`}>{dashboardTrendLabel(revenueTotal, previousRevenueTotal)}</span><span className="dashboard-sparkline dashboard-sparkline-primary" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span></article>
-      <article className="dashboard-summary-card"><div className="dashboard-summary-card-head"><span>Toplam sipariş</span><DashboardMetricIcon kind="orders" /></div><strong>{revenueQuery.isLoading ? '—' : revenueOrderCount.toLocaleString('tr-TR')}</strong><span className={`dashboard-summary-trend ${dashboardTrendClass(revenueOrderCount, previousRevenueOrderCount)}`}>{dashboardTrendLabel(revenueOrderCount, previousRevenueOrderCount)}</span><span className="dashboard-sparkline dashboard-sparkline-accent" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span></article>
-      <article className="dashboard-summary-card"><div className="dashboard-summary-card-head"><span>Ortalama sepet</span><DashboardMetricIcon kind="basket" /></div><strong>{revenueQuery.isLoading ? '—' : dashboardMoney(averageBasket, revenueCurrency)}</strong><span className={`dashboard-summary-trend ${dashboardTrendClass(averageBasket, previousAverageBasket)}`}>{dashboardTrendLabel(averageBasket, previousAverageBasket)}</span><span className="dashboard-sparkline dashboard-sparkline-blue" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span></article>
-      <article className="dashboard-summary-card"><div className="dashboard-summary-card-head"><span>Aktif ürün</span><DashboardMetricIcon kind="product" /></div><strong>{productSummary.isLoading ? '—' : productCount.toLocaleString('tr-TR')}</strong><span className="dashboard-summary-trend is-neutral">Katalog durumu</span><span className="dashboard-sparkline dashboard-sparkline-green" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></span></article>
+      <article className="dashboard-summary-card is-emphasis"><div className="dashboard-summary-card-head"><span>Toplam gelir</span><DashboardMetricIcon kind="revenue" /></div><strong>{reportRevenueQuery.isLoading ? '—' : dashboardMoney(reportTotal, reportCurrency)}</strong><span className={`dashboard-summary-trend ${dashboardTrendClass(reportTotal, previousReportTotal)}`}>{dashboardTrendLabel(reportTotal, previousReportTotal)}</span><DashboardSparkline className="dashboard-sparkline-primary" /></article>
+      <article className="dashboard-summary-card"><div className="dashboard-summary-card-head"><span>Toplam sipariş</span><DashboardMetricIcon kind="orders" /></div><strong>{reportRevenueQuery.isLoading ? '—' : reportOrderCount.toLocaleString('tr-TR')}</strong><span className={`dashboard-summary-trend ${dashboardTrendClass(reportOrderCount, previousReportOrderCount)}`}>{dashboardTrendLabel(reportOrderCount, previousReportOrderCount)}</span><DashboardSparkline className="dashboard-sparkline-accent" flip /></article>
+      <article className="dashboard-summary-card"><div className="dashboard-summary-card-head"><span>Ortalama sepet</span><DashboardMetricIcon kind="basket" /></div><strong>{reportRevenueQuery.isLoading ? '—' : dashboardMoney(averageBasket, reportCurrency)}</strong><span className={`dashboard-summary-trend ${dashboardTrendClass(averageBasket, previousAverageBasket)}`}>{dashboardTrendLabel(averageBasket, previousAverageBasket)}</span><DashboardSparkline className="dashboard-sparkline-blue" /></article>
+      <article className="dashboard-summary-card"><div className="dashboard-summary-card-head"><span>Aktif ürün</span><DashboardMetricIcon kind="product" /></div><strong>{productSummary.isLoading ? '—' : productCount.toLocaleString('tr-TR')}</strong><span className="dashboard-summary-trend is-neutral">Katalog durumu</span><DashboardSparkline className="dashboard-sparkline-green" flip /></article>
     </div>
+    <section className="dashboard-operational-section" aria-labelledby="dashboard-operational-title"><header className="dashboard-section-heading"><div><h2 id="dashboard-operational-title">Operasyon özeti</h2><p>Takip gerektiren sipariş, iade, fatura ve stok akışları.</p></div><Link className="dashboard-panel-link" to="/orders">Tüm işlemleri gör <UiIcon name="arrowRight" size={16} /></Link></header><div className="dashboard-operational-grid"><DashboardOperationalCard kind="pendingOrders" label="Bekleyen siparişler" detail="İşleme alınmayı bekliyor" value={bootstrap.isLoading ? null : dashboardMetrics?.pendingOrders ?? 0} to="/orders" /><DashboardOperationalCard kind="lateOrders" label="Geciken siparişler" detail="Süre aşımı olanlar" value={bootstrap.isLoading ? null : dashboardMetrics?.lateOrders ?? 0} to="/orders" /><DashboardOperationalCard kind="pendingReturns" label="Bekleyen iadeler" detail="İnceleme bekliyor" value={bootstrap.isLoading ? null : dashboardMetrics?.pendingReturns ?? 0} to="/returns" /><DashboardOperationalCard kind="invoicePending" label="Bekleyen faturalar" detail="Fatura kesilmesi gerekenler" value={bootstrap.isLoading ? null : dashboardMetrics?.uninvoicedInvoices ?? 0} to="/invoices" /><DashboardOperationalCard kind="invoiceDue" label="Yaklaşan faturalar" detail="Vadesi yaklaşanlar" value={bootstrap.isLoading ? null : dashboardMetrics?.dueSoonInvoices ?? 0} to="/invoices" /><DashboardOperationalCard kind="lowStock" label="Düşük stok" detail="Yenileme gerektiren ürünler" value={bootstrap.isLoading ? null : dashboardMetrics?.lowStockProducts ?? 0} to="/products" /></div></section>
     <div className="dashboard-performance-grid">
-      <article className="panel dashboard-performance-card"><header className="dashboard-card-header"><div><h2>Gelir performansı</h2><p>Satışlarınızın büyük resmini görün.</p></div><div className="dashboard-segmented-control" role="group" aria-label="Gelir performansı dönemi">{(['7', '30', '90'] as const).map(value => <button type="button" key={value} className={revenueRange === value ? 'is-active' : ''} onClick={() => setRevenueRange(value)}>{value} gün</button>)}</div></header><div className="dashboard-performance-toolbar"><div className="dashboard-performance-total"><span>{periodLabel}</span><strong>{revenueQuery.isLoading ? '—' : dashboardMoney(revenueTotal, revenueCurrency)}</strong><small className={`dashboard-summary-trend ${dashboardTrendClass(revenueTotal, previousRevenueTotal)}`}>{dashboardTrendLabel(revenueTotal, previousRevenueTotal)}</small></div><label className="dashboard-platform-filter"><span>Platform</span><select aria-label="Gelir platformu" value={revenuePlatform} onChange={event => setRevenuePlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div>{revenueRange === 'custom' && <div className="dashboard-custom-range"><label><span>Başlangıç</span><input type="date" value={revenueFrom} max={revenueTo} onChange={event => setRevenueFrom(event.target.value)} /></label><label><span>Bitiş</span><input type="date" value={revenueTo} min={revenueFrom} onChange={event => setRevenueTo(event.target.value)} /></label></div>}<div className="dashboard-performance-chart" aria-label={`${periodLabel} gelir performansı grafiği`}><div className="dashboard-performance-gridlines" aria-hidden="true">{revenueAxisTicks.map(tick => <i key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }} />)}</div><div className="dashboard-performance-y-axis" aria-hidden="true">{revenueAxisTicks.map(tick => <span key={tick.ratio} style={{ bottom: `${tick.ratio * 100}%` }}>{dashboardAxisMoney(tick.amount, revenueCurrency)}</span>)}</div>{chartCurrentPath ? <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Gelir performansı"><defs><linearGradient id="dashboard-performance-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--rv-color-primary)" stopOpacity=".34" /><stop offset="100%" stopColor="var(--rv-color-primary)" stopOpacity="0" /></linearGradient></defs>{chartAreaPath && <path className="dashboard-performance-area" d={chartAreaPath} fill="url(#dashboard-performance-area)" />}{chartPreviousPath && <path className="dashboard-performance-previous" d={chartPreviousPath} />}{<path className="dashboard-performance-line" d={chartCurrentPath} />}</svg> : <div className="dashboard-performance-empty">Bu dönem için gelir verisi bulunmuyor.</div>}<div className="dashboard-performance-x-axis" aria-hidden="true">{revenueSeries.map((point, index) => index === 0 || index === revenueSeries.length - 1 || index % chartLabelStep === 0 ? <span key={point.key} style={{ left: `${revenueSeries.length > 1 ? (index / (revenueSeries.length - 1)) * 100 : 0}%` }}>{point.label}</span> : null)}</div></div><footer className="dashboard-chart-legend"><span><i className="current" />Bu dönem</span><span><i className="previous" />Önceki dönem</span></footer></article>
-      <article className="panel dashboard-channel-card"><header className="dashboard-card-header"><div><h2>Satış kanalları</h2><p>Seçilen dönemin gelir dağılımı</p></div><Link className="dashboard-panel-link" to="/integrations">Kanalları yönet <UiIcon name="arrowRight" /></Link></header><div className="dashboard-channel-donut" style={{ background: channelGradient }}><div><span>Toplam sipariş</span><strong>{channelTotalOrders.toLocaleString('tr-TR')}</strong><small>{periodLabel}</small></div></div><div className="dashboard-channel-list">{channelRowsWithShare.length ? channelRowsWithShare.map(channel => <div key={channel.platform}><span><i style={{ background: channel.color }} />{channel.platform}</span><strong>%{channel.share.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</strong></div>) : <p className="dashboard-channel-empty">Bu dönem için kanal dağılımı bulunmuyor.</p>}</div><footer className="dashboard-channel-footer"><span>{channelRowsWithShare.length} kanal · {periodLabel}</span><Link to="/integrations">Bağlantıları yönet <UiIcon name="arrowRight" /></Link></footer></article>
+      <article className="panel dashboard-performance-card"><header className="dashboard-card-header"><div><h2>Gelir performansı</h2><p>Satışlarınızın büyük resmini görün.</p></div><div className="dashboard-performance-filters"><label className="dashboard-chart-period"><span>Dönem</span><select aria-label="Gelir performansı dönemi" value={chartRange} onChange={event => setChartRange(event.target.value as Exclude<DashboardRevenueRange, 'custom'>)}><option value="7">Son 7 gün</option><option value="30">Son 30 gün</option><option value="90">Son 90 gün</option></select></label><label className="dashboard-platform-filter"><span>Platform</span><select aria-label="Gelir platformu" value={chartPlatform} onChange={event => setChartPlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div></header><div className="dashboard-performance-toolbar"><div className="dashboard-performance-total"><span>{chartPlatform === 'ALL' ? chartPeriodLabel : `${chartPeriodLabel} · ${chartPlatform}`}</span><strong>{chartRevenueQuery.isLoading ? '—' : dashboardMoney(chartSeries.reduce((sum, item) => sum + item.amount, 0), chartCurrency)}</strong><small className={`dashboard-summary-trend ${dashboardTrendClass(chartSeries.reduce((sum, item) => sum + item.amount, 0), previousChartSeries.reduce((sum, item) => sum + item.amount, 0))}`}>{dashboardTrendLabel(chartSeries.reduce((sum, item) => sum + item.amount, 0), previousChartSeries.reduce((sum, item) => sum + item.amount, 0))}</small></div></div><div className="dashboard-performance-chart" aria-label={`${chartPeriodLabel} gelir performansı grafiği`} >{chartCurrentPath ? <svg viewBox="0 0 652 204" role="img" aria-label="Gelir performansı"><defs><linearGradient id="dashboard-performance-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--rv-color-primary)" stopOpacity=".34" /><stop offset="100%" stopColor="var(--rv-color-primary)" stopOpacity="0" /></linearGradient></defs>{chartGrid.map(tick => <g key={tick.y}><line className="dashboard-chart-grid" x1={dashboardChartLeft} x2={dashboardChartRight} y1={tick.y} y2={tick.y} /><text className="dashboard-chart-y" x="38" y={tick.y + 4} textAnchor="end">{dashboardAxisMoney(chartAxisMax * tick.ratio, chartCurrency)}</text></g>)}{chartAreaPath && <path className="dashboard-performance-area" d={chartAreaPath} fill="url(#dashboard-performance-area)" />}{chartPreviousPath && <path className="dashboard-performance-previous" d={chartPreviousPath} />}{<path className="dashboard-performance-line" d={chartCurrentPath} />}</svg> : <div className="dashboard-performance-empty">Bu dönem için gelir verisi bulunmuyor.</div>}<div className="dashboard-performance-x-axis" aria-hidden="true">{chartSeries.map((point, index) => index === 0 || index === chartSeries.length - 1 || index % chartLabelStep === 0 ? <span key={point.key} style={{ left: `${chartSeries.length > 1 ? (index / (chartSeries.length - 1)) * 100 : 0}%` }}>{point.label}</span> : null)}</div></div><footer className="dashboard-chart-legend"><span><i className="current" />Bu dönem</span><span><i className="previous" />Önceki dönem</span></footer></article>
+      <article className="panel dashboard-channel-card"><header className="dashboard-card-header"><div><h2>Satış kanalları</h2><p>Seçilen dönemin gelir dağılımı</p></div><Link className="dashboard-panel-link" to="/integrations">Kanalları yönet <UiIcon name="arrowRight" /></Link></header><div className="dashboard-channel-donut" style={{ background: channelGradient }}><div><span>Toplam sipariş</span><strong>{channelTotalOrders.toLocaleString('tr-TR')}</strong><small>{reportPeriodLabel}</small></div></div><div className="dashboard-channel-list">{channelRowsWithShare.length ? channelRowsWithShare.map(channel => <div key={channel.platform}><span><i style={{ background: channel.color }} />{channel.platform}</span><strong>%{channel.share.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</strong></div>) : <p className="dashboard-channel-empty">Bu dönem için kanal dağılımı bulunmuyor.</p>}</div><footer className="dashboard-channel-footer"><span>{channelRowsWithShare.length} kanal · {reportPeriodLabel}</span><Link to="/integrations">Bağlantıları yönet <UiIcon name="arrowRight" /></Link></footer></article>
     </div>
   </section>
 }
@@ -547,6 +591,7 @@ function AppearanceSettingsPage() {
   const [newThemeName, setNewThemeName] = useState('')
   const [selectedThemeId, setSelectedThemeId] = useState(defaultAppearanceColorTheme.id)
   const colorTheme = 'dark' as const
+  const visualTheme: VisualTheme = localStorage.getItem('ravencia.visualTheme') === 'dark' ? 'dark' : 'light'
   const savedAppearance = useRef(appearance.settings)
 
   useEffect(() => {
@@ -556,23 +601,26 @@ function AppearanceSettingsPage() {
   useEffect(() => {
     const root = document.documentElement
     const applyPreview = () => {
-      root.dataset.theme = 'dark'
-      root.dataset.themeMode = 'dark'
+      root.dataset.theme = visualTheme
+      root.dataset.themeMode = visualTheme
       root.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[appearance.draft.fontFamily])
       root.style.setProperty('--rv-font-scale', String(appearanceFontScale[appearance.draft.fontSize]))
-      appearanceColorTokenOptions.forEach(({ key }) => root.style.setProperty(appearanceColorCssVariable(key), appearance.draft.colors.dark[key]))
+      const palette = visualTheme === 'light' ? defaultLightPalette : appearance.draft.colors.dark
+      appearanceColorTokenOptions.forEach(({ key }) => root.style.setProperty(appearanceColorCssVariable(key), palette[key]))
     }
     applyPreview()
-  }, [appearance.draft])
+  }, [appearance.draft, visualTheme])
 
   useEffect(() => () => {
     const root = document.documentElement
     const saved = savedAppearance.current
-    root.dataset.theme = 'dark'
-    root.dataset.themeMode = 'dark'
+    const savedTheme: VisualTheme = localStorage.getItem('ravencia.visualTheme') === 'dark' ? 'dark' : 'light'
+    root.dataset.theme = savedTheme
+    root.dataset.themeMode = savedTheme
     root.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[saved.fontFamily])
     root.style.setProperty('--rv-font-scale', String(appearanceFontScale[saved.fontSize]))
-    appearanceColorTokenOptions.forEach(({ key }) => root.style.setProperty(appearanceColorCssVariable(key), saved.colors.dark[key]))
+    const palette = savedTheme === 'light' ? defaultLightPalette : saved.colors.dark
+    appearanceColorTokenOptions.forEach(({ key }) => root.style.setProperty(appearanceColorCssVariable(key), palette[key]))
   }, [])
 
   async function save() {
@@ -641,7 +689,7 @@ function AppearanceSettingsPage() {
   const previewStyle: CSSProperties = {
     fontFamily: appearanceFontFamilyCss[appearance.draft.fontFamily],
     fontSize: 'var(--rv-font-size-md)',
-    ...Object.fromEntries(appearanceColorTokenOptions.map(({ key }) => [appearanceColorCssVariable(key), appearance.draft.colors[colorTheme][key]]))
+    ...Object.fromEntries(appearanceColorTokenOptions.map(({ key }) => [appearanceColorCssVariable(key), (visualTheme === 'light' ? defaultLightPalette : appearance.draft.colors[colorTheme])[key]]))
   }
 
   const palette = appearance.draft.colors[colorTheme]
@@ -661,7 +709,7 @@ function AppearanceSettingsPage() {
       <div className="appearance-settings-grid">
         <label><span>Font tipi</span><select value={appearance.draft.fontFamily} onChange={event => appearance.setDraft({ ...appearance.draft, fontFamily: event.target.value as AppearanceSettings['fontFamily'] })}>{appearanceFontFamilyOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
         <label><span>Yazı boyutu</span><select value={appearance.draft.fontSize} onChange={event => appearance.setDraft({ ...appearance.draft, fontSize: event.target.value as AppearanceSettings['fontSize'] })}>{appearanceFontSizeOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></label>
-        <label><span>Tema</span><div className="appearance-theme-lock"><strong>{appearanceThemeModeOptions[0].label}</strong><small>{appearanceThemeModeOptions[0].description}</small></div></label>
+        <label><span>Tema</span><div className="appearance-theme-lock"><strong>{visualTheme === 'light' ? 'Ravencia — Beyaz' : appearanceThemeModeOptions[0].label}</strong><small>{visualTheme === 'light' ? 'Arayüz beyaz tema ile görüntüleniyor.' : appearanceThemeModeOptions[0].description}</small></div></label>
       </div>
       <section className="appearance-color-editor">
         <div className="appearance-color-editor-heading"><div><h2>Renk paleti</h2><p>Değişiklikler kaydetmeden önce anlık önizlenir. Hazır paletleri saklayabilir, daha sonra yeniden uygulayabilirsiniz.</p></div><div className="appearance-color-actions"><strong className="appearance-color-theme-label">{appearance.draft.colorThemes.find(theme => theme.id === selectedThemeId)?.name ?? defaultAppearanceColorTheme.name}</strong><button type="button" className="rv-button rv-button-secondary rv-button-sm" onClick={() => applyColorTheme(defaultAppearanceColorTheme)}>Varsayılanlara dön</button></div></div>

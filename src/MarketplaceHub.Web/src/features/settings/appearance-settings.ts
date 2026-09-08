@@ -36,6 +36,10 @@ const defaultDarkPalette: AppearancePalette = {
   bg: '#0b0d17', surface: '#131725', surfaceRaised: '#191e30', surfaceSoft: '#20263a', border: '#272e42', borderStrong: '#58617b', ink: '#f3f4fb', muted: '#abb3cb', subtle: '#919bb5', primary: '#7652e8', primaryHover: '#6740dc', primarySoft: '#28213e', accent: '#60d9bc', accentSoft: '#18382f', warning: '#f0c07d', warningSoft: '#3a3023', danger: '#f499ac', dangerSoft: '#3c2633', info: '#8bafff'
 }
 
+export const defaultLightPalette: AppearancePalette = {
+  bg: '#f5f7fb', surface: '#ffffff', surfaceRaised: '#f8faff', surfaceSoft: '#eef2f9', border: '#dbe1ee', borderStrong: '#b6c1d6', ink: '#192033', muted: '#5e6a82', subtle: '#7b879f', primary: '#6950df', primaryHover: '#563bc7', primarySoft: '#eee9ff', accent: '#118b76', accentSoft: '#dff7ef', warning: '#a66713', warningSoft: '#fff1d9', danger: '#b63f60', dangerSoft: '#ffe6ed', info: '#356ac5'
+}
+
 export const defaultAppearanceColorTheme: AppearanceColorThemeProfile = {
   id: 'default-dark',
   name: 'Ravencia — Grafit',
