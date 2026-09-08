@@ -11,6 +11,8 @@ const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]
 function useDialogSurface(open: boolean, onClose: () => void) {
   const surfaceRef = useRef<HTMLElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
+  const onCloseRef = useRef(onClose)
+  useEffect(() => { onCloseRef.current = onClose }, [onClose])
 
   useEffect(() => {
     if (!open) return
@@ -19,7 +21,7 @@ function useDialogSurface(open: boolean, onClose: () => void) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
-        onClose()
+        onCloseRef.current()
         return
       }
       if (event.key !== 'Tab') return
@@ -50,7 +52,7 @@ function useDialogSurface(open: boolean, onClose: () => void) {
       document.removeEventListener('keydown', onKeyDown)
       window.requestAnimationFrame(() => previousFocusRef.current?.focus())
     }
-  }, [onClose, open])
+  }, [open])
 
   return surfaceRef
 }
@@ -108,8 +110,14 @@ export function Popover({ open, onOpenChange, trigger, children, ariaLabel = 'AÃ
   return <div ref={rootRef} className={['rv-popover-root', className].filter(Boolean).join(' ')}>{trigger({ 'aria-expanded': open, ...(open ? { 'aria-controls': id } : {}), onClick: () => onOpenChange(!open) })}{open ? <div id={id} className={`rv-popover rv-popover-${align}`} role="dialog" aria-label={ariaLabel}>{children}</div> : null}</div>
 }
 
-export function Tabs({ items, value, onChange, ariaLabel = 'Sekmeler' }: { items: Array<{ value: string; label: ReactNode; count?: ReactNode }>; value: string; onChange: (value: string) => void; ariaLabel?: string }) {
-  return <div className="rv-tabs" role="tablist" aria-label={ariaLabel}>{items.map(item => <button key={item.value} type="button" role="tab" aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)}><span className="rv-tab-label">{item.label}</span>{item.count !== undefined ? <span className="rv-tab-count">{item.count}</span> : null}</button>)}</div>
+export function Tabs({ items, value, onChange, ariaLabel = 'Sekmeler', className }: { items: Array<{ value: string; label: ReactNode; count?: ReactNode }>; value: string; onChange: (value: string) => void; ariaLabel?: string; className?: string }) {
+  return <div className={['rv-tabs', className].filter(Boolean).join(' ')} role="tablist" aria-label={ariaLabel}>{items.map((item, index) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)} onKeyDown={event => {
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowRight' ? (index + 1) % items.length : event.key === 'ArrowLeft' ? (index - 1 + items.length) % items.length : -1
+    if (next < 0) return
+    event.preventDefault()
+    onChange(items[next].value)
+    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+  }}><span className="rv-tab-label">{item.label}</span>{item.count !== undefined ? <span className="rv-tab-count">{item.count}</span> : null}</button>)}</div>
 }
 
 export function Badge({ tone = 'neutral', children }: { tone?: StatusTone; children: ReactNode }) { return <span className={`rv-badge rv-badge-${tone}`}>{children}</span> }

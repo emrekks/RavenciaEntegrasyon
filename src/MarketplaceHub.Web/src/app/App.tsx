@@ -2,7 +2,7 @@ import { Suspense, useEffect, useRef, useState, type CSSProperties, type DragEve
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiRequestError, hubApi, type Me, type TenantOption } from '../shared/api'
-import { UiIcon, type UiIconName } from '../shared/components'
+import { Drawer, UiIcon, type UiIconName } from '../shared/components'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, InventoryPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, BillingSettingsPage, InvoiceDetailPage, InvoicesPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
@@ -11,12 +11,12 @@ import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFont
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
   const location = useLocation()
-  const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') === 'true')
-  const [sidebarHovered, setSidebarHovered] = useState(false)
-  const [sidebarFocusWithin, setSidebarFocusWithin] = useState(false)
+  const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') !== 'false')
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  useEffect(() => setMobileMenuOpen(false), [location.pathname])
   const appearanceColorsKey = JSON.stringify(appearanceSettings.settings.colors)
   async function logout() { await api('/logout', { method: 'POST' }); window.location.replace(`/?signedOut=${Date.now()}`) }
-  const menuExpanded = sidebarPinned || sidebarHovered || sidebarFocusWithin
+  const menuExpanded = sidebarPinned
   const menuCollapsed = !menuExpanded
   useEffect(() => {
     document.documentElement.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[appearanceSettings.settings.fontFamily])
@@ -38,14 +38,16 @@ function Shell({ me }: { me: Me }) {
   }
   const icon = (name: UiIconName) => <UiIcon className="nav-icon" name={name} size={22} />
   const item = (to: string, iconName: UiIconName, label: string, end = false) => <NavLink to={to} end={end} aria-label={label} title={label}>{icon(iconName)}<span className="nav-label">{label}</span></NavLink>
-  return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''} ${sidebarHovered ? 'sidebar-hovered' : ''}`}>
-    <aside aria-label="Ravencia ana menüsü" onMouseEnter={() => setSidebarHovered(true)} onMouseLeave={() => setSidebarHovered(false)} onPointerDownCapture={() => setSidebarFocusWithin(false)} onKeyDownCapture={() => setSidebarFocusWithin(true)} onFocusCapture={event => setSidebarFocusWithin(event.target.matches(':focus-visible'))} onBlurCapture={event => { const nextTarget = event.relatedTarget; if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) setSidebarFocusWithin(false) }}>
+  const navigation = <>{item('/dashboard', 'dashboard', 'Dashboard')}{item('/products', 'products', 'Ürünler')}{item('/orders', 'orders', 'Siparişler')}{item('/returns', 'returns', 'İadeler')}{item('/invoices', 'invoiceDue', 'Faturalar')}{item('/jobs', 'jobs', 'İşlem Takibi')}{item('/integrations', 'platforms', 'Platformlar')}{item('/mappings/categories', 'mappings', 'Eşleştirme Ayarları')}</>
+  return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
+    <aside aria-label="Ravencia ana menüsü">
       <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong><small>MarketplaceHub</small></div><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menü sabitlemesini kaldır' : 'Menüyü aç ve sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menü sabitlendi' : 'Menüyü aç ve sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button></div>
-      <nav aria-label="Ana menü">{item('/dashboard', 'dashboard', 'Dashboard')}{item('/products', 'products', 'Ürünler')}{item('/orders', 'orders', 'Siparişler')}{item('/returns', 'returns', 'İadeler')}{item('/invoices', 'invoiceDue', 'Faturalar')}{item('/jobs', 'jobs', 'İşlem Takibi')}{item('/integrations', 'platforms', 'Platformlar')}{item('/mappings/categories', 'mappings', 'Eşleştirme Ayarları')}</nav>
+      <nav aria-label="Ana menü">{navigation}</nav>
       <div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Çıkış Yap</span></button></div>
     </aside>
     <main>
-      <header className="rv-topbar"><div className="rv-topbar-context"><small>Ravencia / Operasyon Merkezi</small><strong>{pageName}</strong></div><div className="rv-topbar-actions"><span className="rv-user-chip"><small>Çalışma alanı</small><strong>{me.displayName || me.email}</strong></span></div></header>
+      <header className="rv-topbar"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="list" size={22} /></button><div className="rv-topbar-context"><small>Ravencia / Operasyon Merkezi</small><strong>{pageName}</strong></div><div className="rv-topbar-actions"><span className="rv-user-chip"><small>Çalışma alanı</small><strong>{me.displayName || me.email}</strong></span></div></header>
+      <Drawer open={mobileMenuOpen} title="Ravencia" description="Operasyon merkezi" onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}{item('/settings', 'settings', 'Sistem Ayarları', true)}<button className="rv-button rv-button-secondary" type="button" onClick={() => void logout()}>Çıkış yap</button></nav></Drawer>
       <Suspense fallback={<Status title="Ekran yükleniyor" />}><Routes><Route path="/dashboard" element={<Dashboard me={me} />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/inventory" element={<InventoryPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<AttributeMappingPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/invoices/:id" element={<InvoiceDetailPage />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/billing" element={<BillingSettingsPage />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings/appearance" element={<AppearanceSettingsPage />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense>
     </main>
   </div>
@@ -255,8 +257,8 @@ function dashboardMoney(amount: number, currency = 'TRY') {
 
 function dashboardAxisMoney(amount: number, currency = 'TRY') {
   const value = Math.abs(Math.round(amount)); const sign = amount < 0 ? '-' : ''; const prefix = currency === 'TRY' ? '₺' : `${currency || 'TRY'} `
-  if (value >= 1_000_000) return `${sign}${prefix}${Math.round(value / 1_000_000).toLocaleString('tr-TR')}m`
-  if (value >= 1_000) return `${sign}${prefix}${Math.round(value / 1_000).toLocaleString('tr-TR')}k`
+  if (value >= 1_000_000) return `${sign}${prefix}${(value / 1_000_000).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}m`
+  if (value >= 10_000) return `${sign}${prefix}${(value / 1_000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}k`
   return `${sign}${prefix}${value.toLocaleString('tr-TR')}`
 }
 

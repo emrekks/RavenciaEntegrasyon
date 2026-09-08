@@ -13,13 +13,13 @@ public static class SettingsEndpoints
     private const int MaximumJsonCharacters = 262_144;
     private const int MaximumAppearanceColorThemes = 24;
     private const string DefaultAppearanceColorThemeId = "default-dark";
-    private const string DefaultAppearanceColorThemeName = "Moda Zeyn ERP – Koyu Tema";
+    private const string DefaultAppearanceColorThemeName = "Ravencia — Grafit";
     private static readonly HashSet<string> AppearanceFontFamilies = new(StringComparer.OrdinalIgnoreCase) { "inter", "system", "segoe", "arial" };
     private static readonly HashSet<string> AppearanceFontSizes = new(StringComparer.OrdinalIgnoreCase) { "small", "normal", "large", "extra-large" };
     private static readonly HashSet<string> AppearanceThemeModes = new(StringComparer.OrdinalIgnoreCase) { "dark" };
     private static readonly IReadOnlyDictionary<string, string> DefaultDarkAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["bg"] = "#0a0e1a", ["surface"] = "#111827", ["surfaceRaised"] = "#1a2235", ["surfaceSoft"] = "#1d2638", ["border"] = "#1e2d45", ["borderStrong"] = "#243352", ["ink"] = "#f1f5f9", ["muted"] = "#94a3b8", ["subtle"] = "#64748b", ["primary"] = "#6366f1", ["primaryHover"] = "#4f46e5", ["primarySoft"] = "#292d67", ["accent"] = "#10b981", ["accentSoft"] = "#173c3a", ["warning"] = "#f59e0b", ["warningSoft"] = "#4a3514", ["danger"] = "#ef4444", ["dangerSoft"] = "#4a282c", ["info"] = "#3b82f6"
+        ["bg"] = "#101014", ["surface"] = "#18181f", ["surfaceRaised"] = "#202028", ["surfaceSoft"] = "#272730", ["border"] = "#303039", ["borderStrong"] = "#41414d", ["ink"] = "#f4f4f7", ["muted"] = "#aaaab9", ["subtle"] = "#858595", ["primary"] = "#8b5cf6", ["primaryHover"] = "#7c3aed", ["primarySoft"] = "#302443", ["accent"] = "#4adea0", ["accentSoft"] = "#1c332c", ["warning"] = "#f6c16b", ["warningSoft"] = "#382f22", ["danger"] = "#fb858b", ["dangerSoft"] = "#3c252b", ["info"] = "#83b4ff"
     };
     private static readonly string[] AppearanceColorTokens = ["bg", "surface", "surfaceRaised", "surfaceSoft", "border", "borderStrong", "ink", "muted", "subtle", "primary", "primaryHover", "primarySoft", "accent", "accentSoft", "warning", "warningSoft", "danger", "dangerSoft", "info"];
 

@@ -33,12 +33,12 @@ export type AppearanceSettingsEnvelope = {
 }
 
 const defaultDarkPalette: AppearancePalette = {
-  bg: '#0a0e1a', surface: '#111827', surfaceRaised: '#1a2235', surfaceSoft: '#1d2638', border: '#1e2d45', borderStrong: '#243352', ink: '#f1f5f9', muted: '#94a3b8', subtle: '#64748b', primary: '#6366f1', primaryHover: '#4f46e5', primarySoft: '#292d67', accent: '#10b981', accentSoft: '#173c3a', warning: '#f59e0b', warningSoft: '#4a3514', danger: '#ef4444', dangerSoft: '#4a282c', info: '#3b82f6'
+  bg: '#101014', surface: '#18181f', surfaceRaised: '#202028', surfaceSoft: '#272730', border: '#303039', borderStrong: '#41414d', ink: '#f4f4f7', muted: '#aaaab9', subtle: '#858595', primary: '#8b5cf6', primaryHover: '#7c3aed', primarySoft: '#302443', accent: '#4adea0', accentSoft: '#1c332c', warning: '#f6c16b', warningSoft: '#382f22', danger: '#fb858b', dangerSoft: '#3c252b', info: '#83b4ff'
 }
 
 export const defaultAppearanceColorTheme: AppearanceColorThemeProfile = {
   id: 'default-dark',
-  name: 'Moda Zeyn ERP – Koyu Tema',
+  name: 'Ravencia — Grafit',
   palette: { ...defaultDarkPalette },
   builtIn: true
 }
@@ -94,7 +94,7 @@ export const appearanceFontSizeOptions: Array<{ value: AppearanceFontSize; label
 ]
 
 export const appearanceThemeModeOptions: Array<{ value: AppearanceThemeMode; label: string; description: string }> = [
-  { value: 'dark', label: 'Moda Zeyn ERP – Koyu Tema', description: 'Çalışma alanının varsayılan ve tek arayüz teması' }
+  { value: 'dark', label: 'Ravencia — Grafit', description: 'Çalışma alanının varsayılan koyu teması' }
 ]
 
 export const appearanceFontFamilyCss: Record<AppearanceFontFamily, string> = {

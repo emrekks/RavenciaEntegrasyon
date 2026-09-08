@@ -54,7 +54,6 @@ public sealed class RequestSecurityMiddleware(RequestDelegate next)
         if (IsPilotLocalHttp(context))
         {
             return string.Equals(uri.Scheme, "http", StringComparison.OrdinalIgnoreCase)
-                && uri.Port == 5173
                 && (string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase) || string.Equals(uri.Host, "127.0.0.1", StringComparison.Ordinal));
         }
         return string.Equals(uri.Scheme, context.Request.Scheme, StringComparison.OrdinalIgnoreCase)
