@@ -4179,6 +4179,16 @@ button,
   to { transform: translateX(-50%); }
 }
 
+/* Give the ambient access composition room to breathe on wide desktop
+   displays without stretching the focused sign-in surface. */
+@media (min-width: 1440px) {
+  .rv-auth-header { width: min(calc(100% - 64px), 1840px); }
+  .rv-auth-stage { width: min(calc(100% - 64px), 1380px); }
+  .auth-signal-scene { width: min(calc(100vw - 64px), 1500px); }
+  .auth-signal-axis-horizontal { width: min(calc(100vw - 128px), 1460px); }
+  .auth-notification-center { width: min(calc(100% - 64px), 1760px); }
+}
+
 @media (max-width: 900px) {
   .auth-signal-scene { width: 760px; }
   .auth-signal-ring-three,
