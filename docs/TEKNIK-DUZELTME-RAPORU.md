@@ -2,7 +2,7 @@
 
 Tarih: 2026-09-10
 Kapsam: Kaynak kod incelemesi, migration/test uygulaması ve onaylı Stage dağıtımı
-Durum: Kritik veri doğruluğu ve dayanıklılık düzeltmeleri uygulandı. Tenant izolasyonu için ek migration ve gerçek PostgreSQL testleri eklendi; commit `d0d7851` Stage ortamına çekilip doğrulandı.
+Durum: Kritik veri doğruluğu ve dayanıklılık düzeltmeleri uygulandı. Tenant izolasyonu için ek migration ve gerçek PostgreSQL testleri eklendi; uygulama commit’i `d0d7851` Stage ortamına çekilip doğrulandı, ShellCheck düzeltmesi `7cc1c7c` ile CI başarılı oldu.
 
 ## Sonuç özeti
 
@@ -154,6 +154,7 @@ Dashboard snapshot ve bootstrap cevabına kuyruktaki en eski iş, son doğrulanm
 - CI .NET SDK sürümü `global.json` ile aynı `10.0.302` değerine sabitlendi.
 - Docker restore öncesinde tüm proje/test `packages.lock.json` dosyaları kopyalanıyor.
 - Onaylı Stage deploy akışı `d0d78516d3ee` revisionı için çalıştırıldı; migration containerı başarıyla tamamlandı, API/worker/Caddy yeniden başladı.
+- `backup.sh` içindeki ShellCheck `SC2155` uyarısı atama/export ayrımıyla giderildi; ShellCheck 0.11.0 temiz geçti.
 
 Yerel Windows ortamında WSL/bash çalışmadığı ve `shellcheck` kurulu olmadığı için bu iki komut yerelde başarıyla çalıştırılamadı. Kontrol CI Ubuntu runner’a bırakıldı.
 
@@ -219,6 +220,7 @@ Saf policy/HTTP kapsamı geçmiştir. PostgreSQL tenant unique/session testleri 
 | PostgreSQL tenant isolation testleri (yerel) | 3 test açık gerekçeyle atlandı; yerel DB şema yazma yetkisi yok |
 | Kritik hedefli backend test filtresi | Başarılı; 70/70 |
 | `dotnet format MarketplaceHub.sln --verify-no-changes --no-restore` | Başarılı |
+| ShellCheck 0.11.0 (backup ve deployment scriptleri) | Başarılı |
 | EF `migrations has-pending-model-changes` | Başarılı; pending model change yok |
 | `npm.cmd run typecheck` | Başarılı |
 | `npm.cmd run test:security` | Başarılı; 2/2 |
@@ -229,12 +231,13 @@ Saf policy/HTTP kapsamı geçmiştir. PostgreSQL tenant unique/session testleri 
 | PowerShell deploy shell line-ending kontrolü | Başarılı; tüm `.sh` dosyaları CRLF içermiyor |
 | Stage migration/deploy | Başarılı; `d0d78516d3ee`, migration container exit 0 |
 | Stage readiness ve frontend asset | Başarılı; readiness ve asset HTTP 200 |
+| GitHub Actions `Validate` (`7cc1c7c`) | Başarılı; ayrılmış PostgreSQL test servisi dahil tüm adımlar geçti |
 
 Çalıştırılamayan kontroller:
 
 - Yerel `bash -n`: Windows ortamında WSL/bash erişimi yok.
 - Yerel `shellcheck`: executable kurulu değil.
-- Gerçek PostgreSQL concurrency testleri: bu turda eklenmedi. Tenant unique/session integration testleri CI PostgreSQL servisine bağlandı ancak CI sonucu bu ortamda henüz gözlenmedi.
+- Gerçek PostgreSQL concurrency testleri: bu turda eklenmedi. Tenant unique/session integration testleri CI PostgreSQL servisine bağlandı ve `Validate` koşusunda geçti.
 - Gerçek Trendyol/Trendyol E-Faturam Stage smoke testi: credential ve dış yazma izni kullanılmadı.
 - Gerçek off-host backup transferi ve restore drill: hedef/credential bulunmadığı ve dış aktarım yetkisi olmadığı için yapılmadı.
 
@@ -275,7 +278,7 @@ Uygulama sırası: migration Stage deploy’ındaki migration containerında ça
 - [ ] Tenantlar arası API/export/job/SignalR negatif testleri eklenmeli.
 - [ ] Off-host backup hedefi, encryption-at-rest sağlayıcısı, retention, zamanlama ve alarm sahibi tanımlanmalı.
 - [ ] Restore drill; external writes kapalı, izole ağ ve gerçek secret değerleri loglanmadan çalıştırılmalı.
-- [ ] CI Ubuntu üzerinde `bash -n` ve `shellcheck` adımları başarılı görülmeli.
+- [x] CI Ubuntu üzerinde `bash -n` ve `shellcheck` adımları başarılı görüldü.
 - [ ] Production dış yazma bayrağı ve connection capability kontrolleri ayrı bir release gate olarak doğrulanmalı.
 
 Bu rapor, çalıştırılmayan kontroller için başarı iddiasında bulunmaz; kalan maddeler canlı/entegrasyon doğrulaması gerektirmektedir.
