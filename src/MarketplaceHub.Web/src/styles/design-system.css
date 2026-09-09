@@ -3929,17 +3929,21 @@ button,
 }
 
 .auth-notification-marquee { display: flex; width: max-content; animation: auth-notification-marquee 34s linear infinite; }
-.auth-notification-events { display: flex; align-items: center; gap: 30px; padding: 0 15px; }
-.auth-notification-event { --event-color: var(--rv-color-primary); display: inline-flex; align-items: center; gap: 7px; font-size: 10px; white-space: nowrap; }
+.auth-notification-events { display: flex; align-items: center; gap: 20px; padding: 0 18px; }
+.auth-notification-event { --event-color: var(--rv-color-primary); display: grid; min-width: 258px; grid-template-columns: 6px auto minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 10px; white-space: nowrap; }
 .auth-notification-event > i { width: 6px; height: 6px; flex: 0 0 6px; background: var(--event-color); border-radius: 50%; box-shadow: 0 0 10px color-mix(in srgb, var(--event-color) 46%, transparent); animation: auth-dot-breathe 2.8s ease-in-out infinite; }
 .auth-notification-event:nth-child(2) > i { animation-delay: -.8s; }
 .auth-notification-event:nth-child(3) > i { animation-delay: -1.6s; }
+.auth-notification-event:nth-child(4) > i { animation-delay: -2.4s; }
+.auth-notification-event:nth-child(5) > i { animation-delay: -.4s; }
+.auth-notification-event:nth-child(6) > i { animation-delay: -1.2s; }
 .auth-notification-event b { color: var(--rv-color-ink); font-weight: 500; }
-.auth-notification-event span { color: var(--rv-color-muted); }
-.auth-notification-event time { color: var(--rv-color-subtle); font-family: var(--rv-font-mono); font-size: 9px; }
+.auth-notification-event > span { min-width: 0; overflow: hidden; color: var(--rv-color-muted); text-overflow: ellipsis; }
+.auth-notification-event time { justify-self: end; color: var(--rv-color-subtle); font-family: var(--rv-font-mono); font-size: 9px; }
 .auth-notification-event.event-trendyol { --event-color: #f27a24; }
 .auth-notification-event.event-hepsiburada { --event-color: #f59b3d; }
 .auth-notification-event.event-shopify { --event-color: #95bf47; }
+.auth-notification-event.event-n11 { --event-color: #b978df; }
 .auth-notification-count { margin-right: 14px; padding: 5px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-size: 9px; font-weight: 500; white-space: nowrap; }
 .auth-notification-center:hover .auth-notification-marquee { animation-play-state: paused; }
 
