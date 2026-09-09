@@ -2956,10 +2956,9 @@ button,
 }
 
 .rv-auth-page::before {
-  background-image: linear-gradient(rgb(148 163 184 / 4%) 1px, transparent 1px), linear-gradient(90deg, rgb(148 163 184 / 4%) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse at 50% 34%, #000 0%, rgb(0 0 0 / 70%) 42%, transparent 82%);
-  opacity: .8;
+  background: radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--rv-color-primary) 9%, transparent), transparent 54%);
+  mask-image: none;
+  opacity: 1;
 }
 
 .rv-auth-page::after {
@@ -3037,6 +3036,108 @@ button,
   border-color: color-mix(in srgb, var(--rv-color-accent) 26%, var(--rv-color-border));
   box-shadow: 0 0 20px color-mix(in srgb, var(--rv-color-accent) 8%, transparent);
 }
+
+.rv-auth-system-status i,
+.rv-auth-login-top i,
+.rv-auth-footer i {
+  animation: rv-auth-status-pulse 2.4s ease-in-out infinite;
+}
+
+.rv-auth-integration-network {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  width: min(960px, calc(100vw - 32px));
+  height: 360px;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.rv-auth-network-label {
+  position: absolute;
+  top: 3%;
+  left: 50%;
+  color: color-mix(in srgb, var(--rv-color-primary) 62%, var(--rv-color-muted));
+  font-family: var(--rv-font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .18em;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.rv-auth-network-node,
+.rv-auth-network-api {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rv-space-2);
+  padding: 8px 11px;
+  color: var(--rv-color-muted);
+  background: color-mix(in srgb, var(--rv-color-surface) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--rv-color-border-strong) 74%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  font-family: var(--rv-font-ui);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.rv-auth-network-node .ui-icon,
+.rv-auth-network-api .ui-icon {
+  color: var(--rv-color-primary);
+}
+
+.rv-auth-network-node b,
+.rv-auth-network-api b {
+  font-weight: 500;
+}
+
+.rv-auth-network-node-trendyol { top: 23%; left: 7%; animation: rv-auth-node-drift 7s ease-in-out infinite; }
+.rv-auth-network-node-hepsiburada { top: 29%; right: 6%; animation: rv-auth-node-drift 8s ease-in-out -.9s infinite reverse; }
+.rv-auth-network-node-shopify { bottom: 13%; left: 11%; animation: rv-auth-node-drift 7.5s ease-in-out -2s infinite; }
+.rv-auth-network-node-n11 { right: 12%; bottom: 16%; animation: rv-auth-node-drift 8.5s ease-in-out -3s infinite reverse; }
+
+.rv-auth-network-api {
+  top: 43%;
+  left: 50%;
+  padding-inline: 13px;
+  color: var(--rv-color-ink);
+  background: color-mix(in srgb, var(--rv-color-primary-soft) 72%, var(--rv-color-surface));
+  border-color: color-mix(in srgb, var(--rv-color-primary) 44%, var(--rv-color-border));
+  box-shadow: 0 0 30px color-mix(in srgb, var(--rv-color-primary) 16%, transparent);
+  transform: translateX(-50%);
+}
+
+.rv-auth-network-api .ui-icon { animation: rv-spin 2.4s linear infinite; }
+
+.rv-auth-network-route {
+  position: absolute;
+  height: 1px;
+  overflow: visible;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--rv-color-primary) 58%, transparent), transparent);
+  transform-origin: left center;
+}
+
+.rv-auth-network-route i {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  background: var(--rv-color-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--rv-color-accent) 76%, transparent);
+  transform: translate(-50%, -50%);
+  animation: rv-auth-api-transfer 2.8s linear infinite;
+}
+
+.rv-auth-network-route-one { top: 47%; left: 19%; width: 31%; transform: rotate(16deg); }
+.rv-auth-network-route-two { top: 50%; right: 18%; width: 31%; transform: rotate(164deg); }
+.rv-auth-network-route-three { bottom: 28%; left: 23%; width: 28%; transform: rotate(-17deg); }
+.rv-auth-network-route-four { right: 22%; bottom: 29%; width: 28%; transform: rotate(197deg); }
+.rv-auth-network-route-two i,
+.rv-auth-network-route-four i { animation-delay: -1.4s; }
 
 .rv-auth-system-status i,
 .rv-auth-login-top i,
@@ -3268,6 +3369,56 @@ button,
   color: var(--rv-color-muted);
 }
 
+.rv-auth-activity-banner {
+  position: relative;
+  z-index: 1;
+  width: min(calc(100% - 48px), 1180px);
+  margin: auto auto 18px;
+  overflow: hidden;
+  padding: 10px 0;
+  background: color-mix(in srgb, var(--rv-color-surface) 80%, transparent);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-md);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 14%);
+}
+
+.rv-auth-activity-banner::before,
+.rv-auth-activity-banner::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: 64px;
+  content: '';
+  pointer-events: none;
+}
+
+.rv-auth-activity-banner::before { left: 0; background: linear-gradient(90deg, var(--rv-color-surface), transparent); }
+.rv-auth-activity-banner::after { right: 0; background: linear-gradient(270deg, var(--rv-color-surface), transparent); }
+
+.rv-auth-activity-track {
+  display: flex;
+  width: max-content;
+  align-items: center;
+  gap: 28px;
+  padding-inline: 22px;
+  color: var(--rv-color-muted);
+  font-family: var(--rv-font-ui);
+  font-size: 11px;
+  white-space: nowrap;
+  animation: rv-auth-marquee 30s linear infinite;
+}
+
+.rv-auth-activity-track > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.rv-auth-activity-track > span:not(.rv-auth-activity-heading) .ui-icon { color: var(--rv-color-primary); }
+.rv-auth-activity-heading { color: var(--rv-color-accent); font-family: var(--rv-font-mono); font-size: 9px; font-weight: 600; letter-spacing: .12em; }
+.rv-auth-activity-heading i { width: 6px; height: 6px; background: var(--rv-color-accent); border-radius: 50%; box-shadow: 0 0 12px color-mix(in srgb, var(--rv-color-accent) 70%, transparent); animation: rv-auth-status-pulse 2.4s ease-in-out infinite; }
+
 @media (max-width: 700px) {
   .rv-auth-header {
     width: min(100% - 32px, 1180px);
@@ -3310,13 +3461,53 @@ button,
   50% { opacity: .12; transform: scale(1.04); }
 }
 
+@keyframes rv-auth-status-pulse {
+  0%, 100% { opacity: .72; transform: scale(.86); box-shadow: 0 0 0 2px color-mix(in srgb, var(--rv-color-accent) 10%, transparent), 0 0 8px color-mix(in srgb, var(--rv-color-accent) 44%, transparent); }
+  50% { opacity: 1; transform: scale(1.12); box-shadow: 0 0 0 4px color-mix(in srgb, var(--rv-color-accent) 16%, transparent), 0 0 18px color-mix(in srgb, var(--rv-color-accent) 72%, transparent); }
+}
+
+@keyframes rv-auth-node-drift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -6px, 0); }
+}
+
+@keyframes rv-auth-api-transfer {
+  0% { left: 0; opacity: 0; transform: translate(-50%, -50%) scale(.75); }
+  12%, 78% { opacity: 1; }
+  100% { left: 100%; opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes rv-auth-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rv-auth-orb-one,
   .rv-auth-orb-two,
   .rv-auth-scanline,
   .rv-auth-hero-brand,
   .rv-auth-hero-brand::before,
-  .rv-auth-card-glow {
+  .rv-auth-card-glow,
+  .rv-auth-system-status i,
+  .rv-auth-login-top i,
+  .rv-auth-footer i,
+  .rv-auth-activity-heading i,
+  .rv-auth-network-node,
+  .rv-auth-network-api .ui-icon,
+  .rv-auth-network-route i,
+  .rv-auth-activity-track {
     animation: none;
   }
+}
+
+@media (max-width: 700px) {
+  .rv-auth-integration-network { top: 17%; height: 330px; opacity: .58; }
+  .rv-auth-network-label { display: none; }
+  .rv-auth-network-node { font-size: 10px; }
+  .rv-auth-network-node-trendyol { left: 0; }
+  .rv-auth-network-node-hepsiburada { right: 0; }
+  .rv-auth-network-node-shopify { left: 4%; }
+  .rv-auth-network-node-n11 { right: 4%; }
+  .rv-auth-activity-banner { width: min(calc(100% - 32px), 1180px); margin-bottom: 12px; }
 }
