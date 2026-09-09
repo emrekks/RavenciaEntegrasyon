@@ -2947,3 +2947,304 @@ button,
   min-height: var(--rv-control-height-md);
   box-sizing: border-box;
 }
+
+/* Authentication uses the same compact surfaces, spacing and type hierarchy
+   as the signed-in workspace. Keep the access flow branded without creating a
+   second visual system. */
+.rv-auth-page {
+  background: var(--rv-color-bg);
+}
+
+.rv-auth-page::before {
+  background: radial-gradient(circle at 50% 22%, color-mix(in srgb, var(--rv-color-primary) 10%, transparent), transparent 32%);
+  mask-image: none;
+  opacity: 1;
+}
+
+.rv-auth-page::after {
+  top: 14%;
+  width: min(520px, 86vw);
+  background: radial-gradient(circle, color-mix(in srgb, var(--rv-color-primary) 10%, transparent), transparent 68%);
+  filter: blur(34px);
+}
+
+.rv-auth-atmosphere {
+  display: none;
+}
+
+.rv-auth-header {
+  width: min(100% - 48px, 1180px);
+  min-height: 72px;
+  padding-top: 0;
+  border-bottom: 1px solid var(--rv-color-border);
+}
+
+.rv-auth-brand {
+  gap: var(--rv-space-3);
+}
+
+.rv-auth-brand-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  color: #fff;
+  background: var(--rv-color-primary);
+  border-radius: 10px;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--rv-color-primary) 28%, transparent);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.rv-auth-brand-name {
+  color: var(--rv-color-ink);
+  font-size: var(--rv-font-size-md);
+  font-weight: 600;
+}
+
+.rv-auth-system-status {
+  gap: var(--rv-space-2);
+  padding: 6px 10px;
+  color: var(--rv-color-muted);
+  border-radius: var(--rv-radius-md);
+  font-family: var(--rv-font-ui);
+  font-size: var(--rv-font-size-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.rv-auth-system-status i,
+.rv-auth-login-top i,
+.rv-auth-footer i {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-accent) 12%, transparent);
+}
+
+.rv-auth-stage {
+  width: min(100%, 520px);
+  padding: clamp(40px, 8vh, 72px) 24px 32px;
+  align-content: start;
+  gap: var(--rv-space-6);
+}
+
+.rv-auth-hero {
+  max-width: 440px;
+  text-align: left;
+}
+
+.rv-auth-kicker {
+  margin-bottom: var(--rv-space-3);
+  color: var(--rv-color-primary);
+  font-family: var(--rv-font-ui);
+  font-size: var(--rv-font-size-xs);
+  font-weight: 600;
+  letter-spacing: .1em;
+}
+
+.rv-auth-kicker i {
+  width: 20px;
+  background: var(--rv-color-primary);
+}
+
+.rv-auth-hero h1 {
+  margin: 0;
+  color: var(--rv-color-ink);
+  font-size: clamp(1.75rem, 4vw, 2.15rem);
+  font-weight: 700;
+  line-height: 1.14;
+  letter-spacing: -.04em;
+}
+
+.rv-auth-hero h1 em {
+  color: var(--rv-color-primary);
+  font-style: normal;
+}
+
+.rv-auth-lede {
+  max-width: 420px;
+  margin: var(--rv-space-3) 0 0;
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-md);
+  line-height: 1.55;
+}
+
+.rv-auth-login-shell {
+  width: 100%;
+  margin-top: 0;
+}
+
+.rv-auth-login-top {
+  margin: 0 2px var(--rv-space-2);
+  color: var(--rv-color-subtle);
+  font-family: var(--rv-font-ui);
+  font-size: var(--rv-font-size-xs);
+  font-weight: 500;
+  letter-spacing: .04em;
+}
+
+.rv-auth-login-top span {
+  gap: var(--rv-space-2);
+}
+
+.rv-auth-card {
+  padding: 24px;
+  background: var(--rv-color-surface);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-lg);
+  box-shadow: var(--rv-shadow-md);
+}
+
+.rv-auth-card::before {
+  right: 24px;
+  left: 24px;
+  width: auto;
+  background: var(--rv-color-primary);
+  opacity: .75;
+}
+
+.rv-auth-card-glow {
+  display: none;
+}
+
+.rv-auth-login-header {
+  justify-items: start;
+  text-align: left;
+}
+
+.rv-auth-login-header h2 {
+  color: var(--rv-color-ink);
+  font-size: var(--rv-font-size-xl);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.025em;
+}
+
+.rv-auth-login-header span {
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-sm);
+}
+
+.rv-auth-progress {
+  margin-top: var(--rv-space-4);
+}
+
+.rv-auth-progress span {
+  height: 2px;
+  background: var(--rv-color-border);
+}
+
+.rv-auth-progress span:first-child,
+.rv-auth-progress-step-2 span:nth-child(-n+2),
+.rv-auth-progress-step-3 span {
+  background: var(--rv-color-primary);
+}
+
+.rv-auth-form {
+  gap: var(--rv-space-4);
+  margin-top: var(--rv-space-4);
+}
+
+.rv-auth-field label,
+.rv-auth-label-row label {
+  color: var(--rv-color-ink);
+  font-weight: 600;
+}
+
+.rv-auth-control,
+.rv-auth-field > select {
+  min-height: var(--rv-control-height-md);
+  background: var(--rv-color-surface-raised);
+  border-color: var(--rv-color-border-strong);
+  border-radius: var(--rv-radius-md);
+}
+
+.rv-auth-control:focus-within {
+  background: var(--rv-color-surface-raised);
+  border-color: var(--rv-color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 16%, transparent);
+}
+
+.rv-auth-control input {
+  min-height: 42px;
+}
+
+.rv-auth-label-row button {
+  color: var(--rv-color-primary);
+  font-weight: 500;
+}
+
+.rv-auth-password-toggle:hover {
+  color: var(--rv-color-ink);
+  background: var(--rv-color-surface-soft);
+}
+
+.rv-auth-remember {
+  color: var(--rv-color-muted);
+  font-weight: 500;
+}
+
+.rv-auth-error {
+  border-radius: var(--rv-radius-md);
+}
+
+.rv-auth-submit {
+  min-height: var(--rv-control-height-md);
+  color: #fff;
+  background: var(--rv-color-primary);
+  border-radius: var(--rv-radius-md);
+  font-weight: 500;
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--rv-color-primary) 22%, transparent);
+}
+
+.rv-auth-submit:hover:not(:disabled) {
+  background: var(--rv-color-primary-hover);
+  filter: none;
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--rv-color-primary) 28%, transparent);
+  transform: translateY(-1px);
+}
+
+.rv-auth-footer {
+  color: var(--rv-color-subtle);
+  border-top-color: var(--rv-color-border);
+}
+
+.rv-auth-page-footer {
+  width: min(100% - 48px, 1180px);
+  margin-inline: auto;
+  padding: 16px 0 20px;
+  color: var(--rv-color-subtle);
+  border-top-color: var(--rv-color-border);
+  font-family: var(--rv-font-ui);
+  font-size: var(--rv-font-size-xs);
+  font-weight: 500;
+  letter-spacing: .06em;
+}
+
+@media (max-width: 700px) {
+  .rv-auth-header,
+  .rv-auth-page-footer {
+    width: min(100% - 32px, 1180px);
+  }
+
+  .rv-auth-header {
+    min-height: 64px;
+  }
+
+  .rv-auth-stage {
+    padding: 32px 16px 24px;
+    gap: var(--rv-space-5);
+  }
+
+  .rv-auth-hero h1 {
+    font-size: 1.7rem;
+  }
+
+  .rv-auth-card {
+    padding: 20px;
+  }
+
+  .rv-auth-page-footer {
+    padding-block: 12px 16px;
+  }
+}

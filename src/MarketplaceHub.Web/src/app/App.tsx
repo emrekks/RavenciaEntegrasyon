@@ -138,17 +138,13 @@ function AuthPageFrame({ ariaLabel, heroKicker, heroTitle, heroDescription, acce
   return <main className="rv-auth-page rv-auth-single">
     <div className="rv-auth-atmosphere" aria-hidden="true"><span className="rv-auth-orb rv-auth-orb-one" /><span className="rv-auth-orb rv-auth-orb-two" /><span className="rv-auth-scanline" /></div>
     <header className="rv-auth-header">
-      <div className="rv-auth-brand"><img className="rv-auth-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" /><img className="rv-auth-wordmark" src="/pack/brand/ravencia-wordmark-transparent.png" alt="Ravencia MarketplaceHub" /></div>
+      <div className="rv-auth-brand"><span className="rv-auth-brand-mark" aria-hidden="true">R</span><span className="rv-auth-brand-name">Ravencia</span></div>
       <span className="rv-auth-system-status"><i /> Sistem hazır</span>
     </header>
     <section className="rv-auth-stage" aria-label={ariaLabel}>
       <div className="rv-auth-hero">
         <p className="rv-auth-kicker"><span>{heroKicker}</span><i /></p>
-        <h1 className="sr-only">{heroTitle}</h1>
-        <div className="rv-auth-hero-brand" aria-label="Ravencia MarketplaceHub">
-          <img className="rv-auth-hero-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" />
-          <img className="rv-auth-hero-wordmark" src="/pack/brand/ravencia-wordmark-transparent.png" alt="Ravencia MarketplaceHub" />
-        </div>
+        <h1>{heroTitle}</h1>
         <p className="rv-auth-lede">{heroDescription}</p>
       </div>
       <div className="rv-auth-login-shell">
