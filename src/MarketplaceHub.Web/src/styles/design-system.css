@@ -4428,3 +4428,65 @@ small,
     transition: max-width 220ms var(--rv-ease-standard), opacity 140ms var(--rv-ease-standard), visibility 0s linear 0s;
   }
 }
+
+/* Final sidebar geometry: keep the left rail in one coordinate system while
+   the overlay grows only toward the right. The inner surfaces stay flush to
+   the rail so borders and active states do not jump when labels appear. */
+@media (min-width: 701px) {
+  .app-shell.stitch-shell.sidebar-collapsed > aside,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside {
+    padding-inline: 0;
+    transition: width 220ms var(--rv-ease-standard), box-shadow 220ms var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav, .sidebar-side-bottom),
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-brand-row,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-profile {
+    width: 100%;
+    margin-inline-start: 0;
+    margin-inline-end: 0;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-brand-row,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-profile {
+    padding-inline-start: 16px;
+    padding-inline-end: 0;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link),
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link),
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    align-items: center;
+    width: calc(100% - 23px);
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    margin-inline-start: 11.5px;
+    margin-inline-end: 0;
+    padding-inline-start: 10px;
+    padding-inline-end: 10px;
+    justify-content: initial;
+    column-gap: 0;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    column-gap: 12px;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile {
+    padding-inline-start: 16px;
+    padding-inline-end: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell.sidebar-collapsed > aside,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link),
+  .app-shell.stitch-shell.sidebar-collapsed > aside .brand.wordmark,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-profile-copy,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .nav-label,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .logout-label { transition: none; }
+}
