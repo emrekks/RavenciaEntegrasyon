@@ -3152,6 +3152,17 @@ button,
   background-color: rgba(24, 24, 31, 0.004);
 }
 
+.rv-auth-control input:-webkit-autofill,
+.rv-auth-control input:-webkit-autofill:hover,
+.rv-auth-control input:-webkit-autofill:focus,
+.rv-auth-control input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--rv-color-ink);
+  caret-color: var(--rv-color-ink);
+  background-color: transparent;
+  box-shadow: 0 0 0 1000px var(--rv-color-surface-raised) inset;
+  transition: background-color 9999s ease-out;
+}
+
 .rv-auth-label-row button {
   color: var(--rv-color-primary);
   font-weight: 500;
