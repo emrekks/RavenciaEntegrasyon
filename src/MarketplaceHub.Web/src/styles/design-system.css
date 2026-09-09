@@ -2988,11 +2988,8 @@ button,
   width: 38px;
   height: 38px;
   flex: 0 0 38px;
-  padding: 6px;
+  padding: 0;
   object-fit: contain;
-  background: var(--rv-color-primary);
-  border-radius: 10px;
-  box-shadow: 0 8px 20px color-mix(in srgb, var(--rv-color-primary) 28%, transparent);
 }
 
 .rv-auth-brand-name {
@@ -3044,11 +3041,8 @@ button,
   width: 76px;
   height: 76px;
   flex: 0 0 76px;
-  padding: 10px;
+  padding: 0;
   object-fit: contain;
-  background: var(--rv-color-primary);
-  border-radius: 18px;
-  box-shadow: 0 14px 30px color-mix(in srgb, var(--rv-color-primary) 28%, transparent);
 }
 
 .rv-auth-hero-wordmark {
@@ -3217,5 +3211,5 @@ button,
   }
 
   .rv-auth-hero-brand { min-height: 72px; gap: var(--rv-space-3); }
-  .rv-auth-hero-symbol { width: 58px; height: 58px; flex-basis: 58px; padding: 8px; border-radius: 14px; }
+  .rv-auth-hero-symbol { width: 58px; height: 58px; flex-basis: 58px; padding: 0; }
 }
