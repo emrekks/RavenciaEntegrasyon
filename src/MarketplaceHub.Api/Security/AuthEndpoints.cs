@@ -49,7 +49,7 @@ public static class AuthEndpoints
         await users.ResetAccessFailedCountAsync(user);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted);
         var state = user.ForcePasswordChange ? SessionState.PasswordChangeRequired : security.TotpState == TotpState.Enabled ? SessionState.MfaChallenge : SessionState.Active;
-        var memberships = await db.TenantMemberships.AsNoTracking().Where(x => x.UserId == user.Id && x.Status == RecordStatus.Active).OrderBy(x => x.CreatedAt).ToListAsync(context.RequestAborted);
+        var memberships = await ActiveTenantMemberships(db, user.Id).OrderBy(x => x.CreatedAt).ToListAsync(context.RequestAborted);
         var membership = request.TenantId is Guid requestedTenant
             ? memberships.SingleOrDefault(x => x.TenantId == requestedTenant)
             : memberships.Count == 1 ? memberships[0] : null;
@@ -57,7 +57,7 @@ public static class AuthEndpoints
         {
             if (memberships.Count == 0) return Results.Problem(statusCode: 403, title: "Kullanıcı için aktif çalışma alanı bulunamadı.", extensions: new Dictionary<string, object?> { ["code"] = "TENANT_NOT_AVAILABLE" });
             var tenantIds = memberships.Select(x => x.TenantId).ToArray();
-            var tenants = await db.Tenants.AsNoTracking().Where(x => tenantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, context.RequestAborted);
+            var tenants = await db.Tenants.AsNoTracking().Where(x => x.Status == RecordStatus.Active && tenantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, context.RequestAborted);
             return Results.Conflict(new { code = "TENANT_SELECTION_REQUIRED", tenants = memberships.Select(x => new { id = x.TenantId, displayName = tenants.GetValueOrDefault(x.TenantId)?.DisplayName ?? x.TenantId.ToString("D") }) });
         }
         var raw = TokenHasher.NewToken(); var now = time.GetUtcNow();
@@ -79,6 +79,8 @@ public static class AuthEndpoints
         var session = RequireSession(context, SessionState.PasswordChangeRequired, SessionState.Active); if (session is null) return Forbidden();
         if (request.NewPassword.Length is < 15 or > 64 || WeakPasswords.Contains(request.NewPassword)) return Results.Problem(statusCode: 400, title: "Password does not meet policy");
         var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null) return Forbidden();
+        if (session.TenantId is Guid currentTenantId && !await HasActiveTenantMembershipAsync(db, user.Id, currentTenantId, context.RequestAborted))
+            return Results.Problem(statusCode: 403, title: "Aktif çalışma alanı bulunamadı.");
         var result = await users.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
         if (!result.Succeeded) return Results.ValidationProblem(result.Errors.ToDictionary(x => x.Code, x => new[] { x.Description }));
         user.ForcePasswordChange = false; user.SessionVersion++;
@@ -87,7 +89,7 @@ public static class AuthEndpoints
         session.SessionVersion = user.SessionVersion; session.ReauthenticatedAt = time.GetUtcNow(); session.State = security.TotpState == TotpState.Enabled ? SessionState.MfaChallenge : SessionState.Active;
         if (session.TenantId is null)
         {
-            var membership = await db.TenantMemberships.AsNoTracking().Where(x => x.UserId == user.Id && x.Status == RecordStatus.Active).OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(context.RequestAborted);
+            var membership = await ActiveTenantMemberships(db, user.Id).OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(context.RequestAborted);
             if (membership is null) return Results.Problem(statusCode: 403, title: "Aktif çalışma alanı bulunamadı.");
             session.TenantId = membership.TenantId;
         }
@@ -112,7 +114,8 @@ public static class AuthEndpoints
     {
         var session = CurrentSession(context); if (session is null) return Results.Unauthorized();
         var user = await db.Users.AsNoTracking().SingleAsync(x => x.Id == session.UserId, context.RequestAborted);
-        return Results.Ok(new { user.Id, user.Email, user.DisplayName, role = context.User.FindFirstValue(ClaimTypes.Role), state = SessionStateWire(session.State), tenantId = session.State == SessionState.Active ? session.TenantId : null });
+        Guid? activeTenantId = session.State == SessionState.Active && Guid.TryParse(context.User.FindFirstValue("tenant_id"), out var tenantId) ? tenantId : null;
+        return Results.Ok(new { user.Id, user.Email, user.DisplayName, role = context.User.FindFirstValue(ClaimTypes.Role), state = SessionStateWire(session.State), tenantId = activeTenantId });
     }
 
     private static async Task<IResult> SecurityStatusAsync(HttpContext context, AppDbContext db)
@@ -180,6 +183,8 @@ public static class AuthEndpoints
     private static async Task<IResult> MfaChallengeAsync(CodeRequest request, HttpContext context, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
         var session = RequireSession(context, SessionState.MfaChallenge); if (session is null) return Forbidden();
+        if (session.TenantId is Guid currentTenantId && !await HasActiveTenantMembershipAsync(db, session.UserId, currentTenantId, context.RequestAborted))
+            return Results.Problem(statusCode: 403, title: "Aktif çalışma alanı bulunamadı.");
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
         var accepted = false;
         if (request.RecoveryCode is { Length: > 0 })
@@ -202,7 +207,7 @@ public static class AuthEndpoints
         if (!accepted) return Results.Problem(statusCode: 400, title: "Invalid MFA challenge");
         if (session.TenantId is null)
         {
-            var membership = await db.TenantMemberships.AsNoTracking().Where(x => x.UserId == session.UserId && x.Status == RecordStatus.Active).OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(context.RequestAborted);
+            var membership = await ActiveTenantMemberships(db, session.UserId).OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(context.RequestAborted);
             if (membership is null) return Results.Problem(statusCode: 403, title: "Aktif çalışma alanı bulunamadı.");
             session.TenantId = membership.TenantId;
         }
@@ -301,6 +306,12 @@ public static class AuthEndpoints
     private static UserSession? RequireSession(HttpContext context, params SessionState[] allowed) => CurrentSession(context) is { } session && allowed.Contains(session.State) ? session : null;
     private static UserSession? RequireRecentActive(HttpContext context, TimeProvider time) => RequireSession(context, SessionState.Active) is { ReauthenticatedAt: { } verified } session && verified >= time.GetUtcNow().AddMinutes(-10) ? session : null;
     private static IResult Forbidden() => Results.Problem(statusCode: 403, title: "Session state does not permit this operation");
+    private static IQueryable<TenantMembership> ActiveTenantMemberships(AppDbContext db, Guid userId) =>
+        db.TenantMemberships.AsNoTracking()
+            .Where(x => x.UserId == userId && x.Status == RecordStatus.Active)
+            .Join(db.Tenants.AsNoTracking().Where(x => x.Status == RecordStatus.Active), membership => membership.TenantId, tenant => tenant.Id, (membership, _) => membership);
+    private static Task<bool> HasActiveTenantMembershipAsync(AppDbContext db, Guid userId, Guid tenantId, CancellationToken cancellationToken) =>
+        ActiveTenantMemberships(db, userId).AnyAsync(x => x.TenantId == tenantId, cancellationToken);
     private static string NormalizeRecovery(string code) => code.Replace("-", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
     private static void SetSessionCookie(HttpResponse response, string token, DateTimeOffset expires) => response.Cookies.Append(SessionAuthMiddleware.CookieName(response.HttpContext), token, new CookieOptions { HttpOnly = true, Secure = SecureCookie(response.HttpContext), SameSite = SameSiteMode.Lax, Path = "/", Expires = expires });
     private static bool SecureCookie(HttpContext context) => !string.Equals(context.RequestServices.GetRequiredService<IConfiguration>()["MARKETPLACEHUB_ENVIRONMENT"], "PILOT_LOCAL", StringComparison.OrdinalIgnoreCase) || context.Request.IsHttps;

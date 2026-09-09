@@ -326,7 +326,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.Entity<OperationalIssue>(entity =>
         {
             entity.ToTable("operational_issues", "ops"); entity.HasKey(x => x.Id);
-            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(24); entity.HasIndex(x => x.DedupeKey).IsUnique();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(24); entity.HasIndex(x => new { x.TenantId, x.DedupeKey }).IsUnique();
         });
         builder.Entity<FeatureFlag>(entity =>
         {

@@ -30,7 +30,10 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
                     };
                     if (session.State == SessionState.Active && session.TenantId is Guid tenantId)
                     {
-                        var membership = await db.TenantMemberships.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.UserId == user.Id && x.Status == RecordStatus.Active, context.RequestAborted);
+                        var membership = await db.TenantMemberships.AsNoTracking()
+                            .Where(x => x.TenantId == tenantId && x.UserId == user.Id && x.Status == RecordStatus.Active)
+                            .Join(db.Tenants.AsNoTracking().Where(x => x.Status == RecordStatus.Active), membership => membership.TenantId, tenant => tenant.Id, (membership, _) => membership)
+                            .SingleOrDefaultAsync(context.RequestAborted);
                         if (membership is not null) { claims.Add(new("tenant_id", tenantId.ToString())); claims.Add(new(ClaimTypes.Role, membership.Role.ToString().ToUpperInvariant())); }
                     }
                     context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "ServerSession"));

@@ -12,6 +12,20 @@ permissions:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: marketplacehub_test
+          POSTGRES_USER: marketplacehub
+          POSTGRES_PASSWORD: development-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U marketplacehub -d marketplacehub_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +60,8 @@ jobs:
         run: dotnet build MarketplaceHub.sln --no-restore --configuration Release
 
       - name: Test backend
+        env:
+          MARKETPLACEHUB_TEST_CONNECTION: "Host=localhost;Port=5432;Database=marketplacehub_test;Username=marketplacehub;Password=development-only"
         run: dotnet test MarketplaceHub.sln --no-build --configuration Release
 
       - name: Verify EF model has no pending migration
