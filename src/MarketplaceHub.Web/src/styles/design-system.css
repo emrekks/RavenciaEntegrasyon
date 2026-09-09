@@ -56,6 +56,61 @@
   }
 }
 
+/* Keep the compact dashboard cards readable at the six-column breakpoint. */
+.app-shell.stitch-shell main .dashboard-operational-card {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 16px;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 112px;
+  padding: 12px;
+}
+
+.app-shell.stitch-shell main .dashboard-operational-card > .dashboard-metric-icon {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+}
+
+.app-shell.stitch-shell main .dashboard-operational-copy {
+  min-width: 0;
+}
+
+.app-shell.stitch-shell main .dashboard-operational-copy > span {
+  max-height: none;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.app-shell.stitch-shell main .dashboard-operational-card > .ui-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-value-row {
+  align-items: center;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-value-row > strong {
+  line-height: 1.1;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-value-row > .dashboard-summary-trend {
+  align-self: center;
+  line-height: 1;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-value-row .dashboard-trend-icon {
+  display: block;
+}
+
+@media (min-width: 701px) {
+  .app-shell.stitch-shell > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    font-size: 14px;
+    line-height: 1.3;
+  }
+}
+
 .dashboard-operational-card > .dashboard-metric-icon {
   background: transparent;
   border-color: transparent;
@@ -4111,4 +4166,265 @@ button,
   .auth-route-packet { display: none; }
   .auth-notification-viewport { overflow-x: auto; mask-image: none; }
   .auth-notification-events[aria-hidden="true"] { display: none; }
+}
+
+/* UI Kit geometry contract: shared type and control dimensions. Keep these
+   tokens and component rules together so route-specific styles cannot create
+   a second size system. */
+body {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+h1 {
+  font-size: clamp(26px, 2.4vw, 34px);
+  line-height: 1.18;
+  letter-spacing: -.045em;
+}
+
+h2 {
+  font-size: 19px;
+  line-height: 1.35;
+  letter-spacing: -.025em;
+}
+
+h3 { font-size: 16px; }
+
+small,
+.small { font-size: 14px; }
+
+.app-shell.stitch-shell main :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]), select, textarea) {
+  min-height: 46px;
+  padding: 11px 13px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-shell.stitch-shell main textarea { min-height: 96px; }
+
+.app-shell.stitch-shell main select { padding-right: 38px; }
+
+.app-shell.stitch-shell main input[type="checkbox"],
+.app-shell.stitch-shell main input[type="radio"],
+.rv-auth-page input[type="checkbox"],
+.rv-auth-page input[type="radio"] {
+  width: 17px;
+  height: 17px;
+  min-height: 17px;
+  flex: 0 0 17px;
+  margin: 0;
+}
+
+.app-shell.stitch-shell main :where(button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-icon-button)) {
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.rv-button:not(.rv-icon-button),
+.rv-topbar-theme,
+.rv-topbar-search {
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.rv-icon-button,
+.rv-topbar-search.rv-topbar-search-icon {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.app-shell.stitch-shell main :is(.searchable-select-trigger, .category-attribute-select-trigger, .variant-filter-select-trigger, .appearance-theme-trigger) {
+  min-height: 46px;
+  padding: 11px 13px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-shell.stitch-shell main :is(.searchable-select-options > button, .appearance-theme-menu > button, .integration-filter-menu button, .jobs-reference-range-menu button, .reference-menu-popover a, .reference-menu-popover button) {
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.app-shell.stitch-shell main :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs, .shipping-designer-format-tabs, .shipping-designer-inspector-tabs) {
+  height: auto;
+  min-height: 0;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.app-shell.stitch-shell main :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs, .shipping-designer-format-tabs, .shipping-designer-inspector-tabs) > :is(button, a) {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 5px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app-shell.stitch-shell main :is(.sync-mode-switch, .rich-text-mode-switch) > button {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 5px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.product-import-progress-track { height: 6px; }
+
+@media (min-width: 701px) {
+  /* The compact column stays fixed. Hover only reveals the overlay to the
+     right, so the icon rail, active background and page never slide. */
+  .app-shell.stitch-shell.sidebar-collapsed,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded {
+    grid-template-columns: var(--rv-sidebar-collapsed-width) minmax(0, 1fr);
+  }
+
+  .app-shell.stitch-shell > aside,
+  .app-shell.stitch-shell.sidebar-collapsed > aside,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside {
+    box-sizing: border-box;
+    transition: width 220ms var(--rv-ease-standard), padding-inline 220ms var(--rv-ease-standard), box-shadow 220ms var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell > aside {
+    width: var(--rv-sidebar-width);
+    padding-inline: var(--rv-space-4);
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside {
+    width: var(--rv-sidebar-collapsed-width);
+    max-width: var(--rv-sidebar-collapsed-width);
+    padding-inline: 0;
+    overflow-x: hidden;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside {
+    width: var(--rv-sidebar-width);
+    max-width: var(--rv-sidebar-width);
+    padding-inline: var(--rv-space-4);
+    overflow-x: hidden;
+    box-shadow: var(--rv-shadow-md);
+  }
+
+  .app-shell.stitch-shell > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding-inline-start: 6px;
+    padding-inline-end: 12px;
+    column-gap: 12px;
+    transition: color var(--rv-duration-fast) var(--rv-ease-standard), background var(--rv-duration-fast) var(--rv-ease-standard), border-color var(--rv-duration-fast) var(--rv-ease-standard), box-shadow var(--rv-duration-fast) var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    display: flex;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    margin-inline: auto;
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    border-width: 1px;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) .nav-icon-slot {
+    margin-inline: auto;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside .brand.wordmark,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-profile-copy,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .nav-label,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .logout-label {
+    display: block;
+    min-width: 0;
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    transition: max-width 220ms var(--rv-ease-standard), opacity 140ms var(--rv-ease-standard), visibility 0s linear 220ms;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .brand.wordmark,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile-copy,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .nav-label,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .logout-label {
+    display: block;
+    max-width: 190px;
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    justify-content: initial;
+    padding-inline-start: 6px;
+    padding-inline-end: 12px;
+    column-gap: 12px;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-brand-row,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-brand-row {
+    box-sizing: border-box;
+    padding-inline-start: 16px;
+    padding-inline-end: 0;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-profile,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile {
+    box-sizing: border-box;
+    justify-content: flex-start;
+    padding-inline-start: 16px;
+    padding-inline-end: 0;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile {
+    padding-inline: 0;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-pin-toggle { display: none; }
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-pin-toggle { display: inline-grid; }
+  .app-shell.stitch-shell.sidebar-collapsed > aside .nav-count { display: none; }
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .nav-count { display: inline-flex; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell > aside,
+  .app-shell.stitch-shell > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link),
+  .app-shell.stitch-shell.sidebar-collapsed > aside .brand.wordmark,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-profile-copy,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .nav-label,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .logout-label { transition: none; }
+}
+
+@media (min-width: 701px) {
+  /* Override the legacy hover block's transition:none so the active item and
+     its label reveal together with the sidebar instead of snapping. */
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    transition: color var(--rv-duration-fast) var(--rv-ease-standard), background var(--rv-duration-fast) var(--rv-ease-standard), border-color var(--rv-duration-fast) var(--rv-ease-standard), box-shadow var(--rv-duration-fast) var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .brand.wordmark,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile-copy,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .nav-label,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .logout-label {
+    transition: max-width 220ms var(--rv-ease-standard), opacity 140ms var(--rv-ease-standard), visibility 0s linear 0s;
+  }
 }
