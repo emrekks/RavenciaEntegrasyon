@@ -2,7 +2,7 @@
 
 Tarih: 2026-09-10
 Kapsam: Kaynak kod incelemesi, migration/test uygulaması ve onaylı Stage dağıtımı
-Durum: Kritik veri doğruluğu ve dayanıklılık düzeltmeleri uygulandı. Tenant izolasyonu için ek migration ve gerçek PostgreSQL testleri eklendi; uygulama commit’i `d0d7851` Stage ortamına çekilip doğrulandı, ShellCheck düzeltmesi `7cc1c7c` ile CI başarılı oldu. Lease yarış ve API idempotency tenant-scope testleri de eklendi; bu son testlerin CI kanıtı yeni doğrulama koşusunda alınacaktır.
+Durum: Kritik veri doğruluğu ve dayanıklılık düzeltmeleri uygulandı. Tenant izolasyonu için ek migration ve gerçek PostgreSQL testleri eklendi; uygulama commit’i `d0d7851` Stage ortamına çekilip doğrulandı, ShellCheck düzeltmesi `7cc1c7c` ile CI başarılı oldu. Lease yarış ve API idempotency tenant-scope testleri `2bbfabb` sonrası ayrılmış PostgreSQL CI servisiyle de başarıyla çalıştı.
 
 ## Sonuç özeti
 
@@ -122,7 +122,7 @@ Tenant filtreleri, composite foreign key’ler ve bağlantı-tenant kontrolleri 
 
 Oturum açma, parola değiştirme, MFA ve session claim üretimi artık hem aktif üyelik hem aktif tenant koşulunu arıyor. Pasif tenant session’ı tenant/role claim’i alamıyor ve `/me` yanıtı pasif tenantı geçerli çalışma alanı olarak göstermiyor.
 
-İzole PostgreSQL veritabanında aynı anahtarın farklı tenantlarda kullanılabildiği, aynı tenantta tekrarının reddedildiği, pasif/aktif tenant session claim davranışı ve iki worker’ın aynı işi tekil lease alması için testler eklendi. API idempotency kaydının da tenant kapsamı gerçek PostgreSQL üzerinde doğrulanıyor. Yerel uygulama veritabanında gerekli `iam`/`ops`/`integration` INSERT yetkisi bulunmadığı için bu beş test yerelde açık gerekçeyle atlanır; CI’a ayrılmış PostgreSQL servisiyle migration sonrası çalışacak şekilde eklendi.
+İzole PostgreSQL veritabanında aynı anahtarın farklı tenantlarda kullanılabildiği, aynı tenantta tekrarının reddedildiği, pasif/aktif tenant session claim davranışı ve iki worker’ın aynı işi tekil lease alması için testler eklendi. API idempotency kaydının da tenant kapsamı gerçek PostgreSQL üzerinde doğrulanıyor. Yerel uygulama veritabanında gerekli `iam`/`ops`/`integration` INSERT yetkisi bulunmadığı için bu beş test yerelde açık gerekçeyle atlanır; ayrılmış PostgreSQL CI servisiyle migration sonrası `2bbfabb` koşusunda başarıyla çalıştı.
 
 API/dosya/export/job/SignalR için tenantlar arası negatif integration test paketi bu turda tamamen tamamlanmadı; production güvenlik iddiası için ayrıca gereklidir.
 
@@ -232,12 +232,13 @@ Saf policy/HTTP kapsamı geçmiştir. PostgreSQL tenant unique/session testleri 
 | Stage migration/deploy | Başarılı; `d0d78516d3ee`, migration container exit 0 |
 | Stage readiness ve frontend asset | Başarılı; readiness ve asset HTTP 200 |
 | GitHub Actions `Validate` (`7cc1c7c`) | Başarılı; ayrılmış PostgreSQL test servisi dahil tüm adımlar geçti |
+| GitHub Actions `Validate` (`2bbfabb`) | Başarılı; lease yarışı ve idempotency tenant-scope testleri dahil tüm adımlar geçti |
 
 Çalıştırılamayan kontroller:
 
 - Yerel `bash -n`: Windows ortamında WSL/bash erişimi yok.
 - Yerel `shellcheck`: executable kurulu değil.
-- Yeni gerçek PostgreSQL lease/idempotency concurrency-scope testleri: eklendi; bu son değişiklik sonrası CI `Validate` koşusu bekleniyor. Yerelde dedicated test DB yazma yetkisi olmadığı için açık gerekçeyle atlanır.
+- Yeni gerçek PostgreSQL lease/idempotency tenant-scope testleri: `2bbfabb` CI `Validate` koşusunda başarıyla geçti. Yerelde dedicated test DB yazma yetkisi olmadığı için açık gerekçeyle atlanır.
 - Gerçek Trendyol/Trendyol E-Faturam Stage smoke testi: credential ve dış yazma izni kullanılmadı.
 - Gerçek off-host backup transferi ve restore drill: hedef/credential bulunmadığı ve dış aktarım yetkisi olmadığı için yapılmadı.
 
@@ -274,7 +275,8 @@ Uygulama sırası: migration Stage deploy’ındaki migration containerında ça
 - [ ] `REMOTE_AUTHORITATIVE` kararı her connection için iş sahibi tarafından açıkça onaylanmalı.
 - [ ] Gerçek Trendyol Stage hesabında sabit idempotency anahtarı ve provider sonucu doğrulanmalı.
 - [ ] Invoice delivery timeout/unknown durumu provider sorgusu veya order webhook ile uzlaştırılmalı.
-- [ ] Yeni PostgreSQL lease/idempotency testlerinin son commit ile CI kanıtı alınmalı; geniş API integration testleri ve commit sonrası kopma senaryosu ayrıca eklenmeli.
+- [x] PostgreSQL lease/idempotency testleri ayrılmış CI veritabanında çalıştırıldı ve geçti.
+- [ ] Geniş API integration testleri ve commit sonrası kopma senaryosu ayrıca eklenmeli.
 - [ ] Tenantlar arası API/export/job/SignalR negatif testleri eklenmeli.
 - [ ] Off-host backup hedefi, encryption-at-rest sağlayıcısı, retention, zamanlama ve alarm sahibi tanımlanmalı.
 - [ ] Restore drill; external writes kapalı, izole ağ ve gerçek secret değerleri loglanmadan çalıştırılmalı.
