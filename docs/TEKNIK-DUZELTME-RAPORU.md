@@ -98,7 +98,7 @@ Uygulanan çözüm:
 - Endpoint exception/500 sonrası yalnız idempotency durumu `UNKNOWN` olarak saklanmaya çalışılıyor; endpoint’in yarım tracked değişiklikleri yanlışlıkla ayrıca commit edilmiyor.
 - Unique yarışında yalnız beklenen PostgreSQL constraint yutuluyor; başka `DbUpdateException` maskelenmiyor.
 
-Bilinen sınır: Aynı DB transaction’ı dış pazaryeri çağrısına exactly-once sağlamaz. Kritik dış işlemler için sabit işlem anahtarı, outbox ve uzlaştırma gerekir. Gerçek HTTP/API middleware integration testi ve commit sonrası bağlantı kopması testi bu turda çalıştırılmadı; veritabanı idempotency tenant-scope testi eklendi.
+Bilinen sınır: Aynı DB transaction’ı dış pazaryeri çağrısına exactly-once sağlamaz. Kritik dış işlemler için sabit işlem anahtarı, outbox ve uzlaştırma gerekir. Gerçek HTTP sunucusu üzerinden API testi ve commit sonrası bağlantı kopması testi bu turda çalıştırılmadı; gerçek PostgreSQL üzerinde middleware replay/`UNKNOWN` akışı ile idempotency tenant-scope testi eklendi.
 
 ### 8. Ham HTML güven sınırı — doğrulandı, düzeltildi
 
@@ -122,7 +122,7 @@ Tenant filtreleri, composite foreign key’ler ve bağlantı-tenant kontrolleri 
 
 Oturum açma, parola değiştirme, MFA ve session claim üretimi artık hem aktif üyelik hem aktif tenant koşulunu arıyor. Pasif tenant session’ı tenant/role claim’i alamıyor ve `/me` yanıtı pasif tenantı geçerli çalışma alanı olarak göstermiyor.
 
-İzole PostgreSQL veritabanında aynı anahtarın farklı tenantlarda kullanılabildiği, aynı tenantta tekrarının reddedildiği, pasif/aktif tenant session claim davranışı ve iki worker’ın aynı işi tekil lease alması için testler eklendi. API idempotency kaydının da tenant kapsamı gerçek PostgreSQL üzerinde doğrulanıyor. Yerel uygulama veritabanında gerekli `iam`/`ops`/`integration` INSERT yetkisi bulunmadığı için bu beş test yerelde açık gerekçeyle atlanır; ayrılmış PostgreSQL CI servisiyle migration sonrası `2bbfabb` koşusunda başarıyla çalıştı.
+İzole PostgreSQL veritabanında aynı anahtarın farklı tenantlarda kullanılabildiği, aynı tenantta tekrarının reddedildiği, pasif/aktif tenant session claim davranışı ve iki worker’ın aynı işi tekil lease alması için testler eklendi. API idempotency kaydının tenant kapsamı, tamamlanmış yanıtın replay edilmesi ve endpoint hatası sonrası `UNKNOWN` kalıcılaştırması da gerçek PostgreSQL üzerinde doğrulanıyor. Yerel uygulama veritabanında gerekli `iam`/`ops`/`integration` INSERT yetkisi bulunmadığı için bu yedi test yerelde açık gerekçeyle atlanır; yeni commit CI’da migration sonrası çalıştırılacaktır.
 
 API/dosya/export/job/SignalR için tenantlar arası negatif integration test paketi bu turda tamamen tamamlanmadı; production güvenlik iddiası için ayrıca gereklidir.
 
@@ -206,7 +206,7 @@ Kullanıcının daha önce yaptığı frontend tema/UI değişiklikleri korunmu�
 - `DashboardMetricPolicyTests`: kuyruk durumu, bilinen rate-limit kodları ve dashboard iş kuralı sınıflandırmaları.
 - `sanitizeHtml.test.ts`: kötücül HTML ve geçerli rich text fixture’ları.
 - `TenantBoundaryModelTests`: operational issue unique indexinin tenant kapsamı.
-- `PostgreSqlTenantIsolationTests`: gerçek PostgreSQL tenant-scoped unique/session claim, idempotency tenant kapsamı ve iki worker lease yarışı; CI ayrılmış DB ile çalıştırır.
+- `PostgreSqlTenantIsolationTests`: gerçek PostgreSQL tenant-scoped unique/session claim, idempotency tenant kapsamı, replay/`UNKNOWN` middleware akışı ve iki worker lease yarışı; CI ayrılmış DB ile çalıştırır.
 
 Saf policy/HTTP kapsamı geçmiştir. PostgreSQL tenant unique/session testleri CI test servisine bağlandı; daha geniş transaction/FK/lease ve gerçek API middleware kapsamı ayrıca gereklidir.
 
@@ -215,7 +215,7 @@ Saf policy/HTTP kapsamı geçmiştir. PostgreSQL tenant unique/session testleri 
 | Kontrol | Sonuç |
 |---|---|
 | `dotnet build MarketplaceHub.sln -c Release --no-restore` | Başarılı; 0 warning, 0 error |
-| `dotnet test tests/MarketplaceHub.Application.Tests/MarketplaceHub.Application.Tests.csproj -c Release --no-restore` | Başarılı; 146 başarılı, 5 PostgreSQL testi yerel yetki nedeniyle açık gerekçeyle atlandı |
+| `dotnet test tests/MarketplaceHub.Application.Tests/MarketplaceHub.Application.Tests.csproj -c Release --no-restore` | Başarılı; 146 başarılı, 7 PostgreSQL testi yerel yetki nedeniyle açık gerekçeyle atlandı |
 | Tenant boundary model testi | Başarılı; composite unique index metadata’sı doğrulandı |
 | PostgreSQL tenant isolation testleri (yerel) | 3 test açık gerekçeyle atlandı; yerel DB şema yazma yetkisi yok |
 | Kritik hedefli backend test filtresi | Başarılı; 70/70 |
@@ -238,7 +238,7 @@ Saf policy/HTTP kapsamı geçmiştir. PostgreSQL tenant unique/session testleri 
 
 - Yerel `bash -n`: Windows ortamında WSL/bash erişimi yok.
 - Yerel `shellcheck`: executable kurulu değil.
-- Yeni gerçek PostgreSQL lease/idempotency tenant-scope testleri: `2bbfabb` CI `Validate` koşusunda başarıyla geçti. Yerelde dedicated test DB yazma yetkisi olmadığı için açık gerekçeyle atlanır.
+- Yeni gerçek PostgreSQL lease/idempotency middleware testleri: eklendi; bu son commit sonrası CI `Validate` kanıtı bekleniyor. Yerelde dedicated test DB yazma yetkisi olmadığı için açık gerekçeyle atlanır.
 - Gerçek Trendyol/Trendyol E-Faturam Stage smoke testi: credential ve dış yazma izni kullanılmadı.
 - Gerçek off-host backup transferi ve restore drill: hedef/credential bulunmadığı ve dış aktarım yetkisi olmadığı için yapılmadı.
 
@@ -275,8 +275,8 @@ Uygulama sırası: migration Stage deploy’ındaki migration containerında ça
 - [ ] `REMOTE_AUTHORITATIVE` kararı her connection için iş sahibi tarafından açıkça onaylanmalı.
 - [ ] Gerçek Trendyol Stage hesabında sabit idempotency anahtarı ve provider sonucu doğrulanmalı.
 - [ ] Invoice delivery timeout/unknown durumu provider sorgusu veya order webhook ile uzlaştırılmalı.
-- [x] PostgreSQL lease/idempotency testleri ayrılmış CI veritabanında çalıştırıldı ve geçti.
-- [ ] Geniş API integration testleri ve commit sonrası kopma senaryosu ayrıca eklenmeli.
+- [x] PostgreSQL lease/idempotency tenant-scope testleri ayrılmış CI veritabanında çalıştırıldı ve geçti.
+- [ ] Yeni middleware replay/`UNKNOWN` testlerinin CI kanıtı alınmalı; tam HTTP API integration ve commit sonrası kopma senaryosu ayrıca eklenmeli.
 - [ ] Tenantlar arası API/export/job/SignalR negatif testleri eklenmeli.
 - [ ] Off-host backup hedefi, encryption-at-rest sağlayıcısı, retention, zamanlama ve alarm sahibi tanımlanmalı.
 - [ ] Restore drill; external writes kapalı, izole ağ ve gerçek secret değerleri loglanmadan çalıştırılmalı.

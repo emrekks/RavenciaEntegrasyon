@@ -1,5 +1,7 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
+using MarketplaceHub.Api.Catalog;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
@@ -170,6 +172,86 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    [PostgreSqlFact]
+    public async Task IdempotencyMiddleware_ReplaysCompletedResponseFromPostgreSql()
+    {
+        var tenant = NewTenant("middleware-replay");
+        const string path = "/api/v1/catalog/products";
+        const string key = "middleware-replay-key";
+        const string requestBody = "{}";
+        const string responseBody = "{\"id\":\"replayed\"}";
+
+        await using var db = fixture.CreateContext();
+        try
+        {
+            db.Tenants.Add(tenant);
+            var record = NewIdempotencyRecord(tenant.Id, path, key);
+            record.RequestHash = ComputeRequestHash("POST", path, string.Empty, requestBody);
+            record.State = "COMPLETED";
+            record.ResponseStatus = StatusCodes.Status201Created;
+            record.ResponseBody = responseBody;
+            db.ApiIdempotencyRecords.Add(record);
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+
+            var context = NewIdempotencyHttpContext(path, key, requestBody);
+            var nextCalled = false;
+            var middleware = new IdempotencyMiddleware(_ =>
+            {
+                nextCalled = true;
+                return Task.CompletedTask;
+            });
+
+            await middleware.InvokeAsync(context, db, new FixedTenantContextAccessor(tenant.Id), fixture.TimeProvider);
+
+            Assert.False(nextCalled);
+            Assert.Equal(StatusCodes.Status201Created, context.Response.StatusCode);
+            Assert.Equal("true", context.Response.Headers["Idempotency-Replayed"].ToString());
+            context.Response.Body.Position = 0;
+            using var reader = new StreamReader(context.Response.Body, Encoding.UTF8, leaveOpen: true);
+            Assert.Equal(responseBody, await reader.ReadToEndAsync());
+        }
+        finally
+        {
+            await DeleteIdempotencyRecordsAndTenantsAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task IdempotencyMiddleware_PersistsUnknownAfterEndpointFailure()
+    {
+        var tenant = NewTenant("middleware-unknown");
+        const string path = "/api/v1/catalog/products";
+        const string key = "middleware-unknown-key";
+
+        await using var db = fixture.CreateContext();
+        try
+        {
+            db.Tenants.Add(tenant);
+            await db.SaveChangesAsync();
+
+            var context = NewIdempotencyHttpContext(path, key, "{\"title\":\"test\"}");
+            var middleware = new IdempotencyMiddleware(_ => throw new InvalidOperationException("simulated endpoint failure"));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => middleware.InvokeAsync(
+                context,
+                db,
+                new FixedTenantContextAccessor(tenant.Id),
+                fixture.TimeProvider));
+
+            db.ChangeTracker.Clear();
+            var persisted = await db.ApiIdempotencyRecords.SingleAsync(x => x.TenantId == tenant.Id && x.RouteTemplate == path && x.IdempotencyKey == key);
+            Assert.Equal("UNKNOWN", persisted.State);
+            Assert.Null(persisted.ResponseStatus);
+            Assert.Null(persisted.ResponseBody);
+            Assert.True(persisted.ExpiresAt > fixture.Now.AddDays(6));
+        }
+        finally
+        {
+            await DeleteIdempotencyRecordsAndTenantsAsync(tenant.Id);
+        }
+    }
+
     private static DefaultHttpContext NewHttpContext(string rawToken)
     {
         var context = new DefaultHttpContext
@@ -300,15 +382,41 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await db.Tenants.Where(x => x.Id == tenantId).ExecuteDeleteAsync();
     }
 
-    private async Task DeleteIdempotencyRecordsAndTenantsAsync(Guid firstTenantId, Guid secondTenantId)
+    private async Task DeleteIdempotencyRecordsAndTenantsAsync(Guid firstTenantId, Guid? secondTenantId = null)
     {
         await using var db = fixture.CreateContext();
         await db.ApiIdempotencyRecords
-            .Where(x => x.TenantId == firstTenantId || x.TenantId == secondTenantId)
+            .Where(x => x.TenantId == firstTenantId || (secondTenantId.HasValue && x.TenantId == secondTenantId.Value))
             .ExecuteDeleteAsync();
         await db.Tenants
-            .Where(x => x.Id == firstTenantId || x.Id == secondTenantId)
+            .Where(x => x.Id == firstTenantId || (secondTenantId.HasValue && x.Id == secondTenantId.Value))
             .ExecuteDeleteAsync();
+    }
+
+    private static DefaultHttpContext NewIdempotencyHttpContext(string path, string key, string body)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Method = HttpMethods.Post;
+        context.Request.Path = path;
+        context.Request.Headers["Idempotency-Key"] = key;
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body));
+        context.Response.Body = new MemoryStream();
+        return context;
+    }
+
+    private static string ComputeRequestHash(string method, string path, string query, string body)
+    {
+        var prefix = Encoding.UTF8.GetBytes($"{method}\n{path}\n{query}\n");
+        var bodyBytes = Encoding.UTF8.GetBytes(body);
+        var combined = new byte[prefix.Length + bodyBytes.Length];
+        prefix.CopyTo(combined, 0);
+        bodyBytes.CopyTo(combined, prefix.Length);
+        return Convert.ToHexString(SHA256.HashData(combined));
+    }
+
+    private sealed class FixedTenantContextAccessor(Guid tenantId) : ITenantContextAccessor
+    {
+        public TenantContext? Current { get; } = new(Guid.Empty, tenantId, "ADMIN");
     }
 }
 
