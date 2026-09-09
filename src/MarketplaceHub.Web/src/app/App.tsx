@@ -153,6 +153,29 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
       <span className="auth-aurora auth-aurora-primary" />
       <span className="auth-aurora auth-aurora-accent" />
       <div className="auth-signal-scene">
+        <svg className="auth-signal-routes" viewBox="0 0 940 940" preserveAspectRatio="xMidYMid meet">
+          <defs><filter id="auth-signal-packet-glow" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="2.5" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter></defs>
+          <g className="auth-signal-spirals">
+            <path className="auth-signal-spiral auth-signal-spiral-one" d="M470 470 C522 434 560 470 548 520 C534 577 448 596 402 548 C342 486 376 376 474 354 C590 328 662 462 606 566 C539 690 341 661 296 522 C242 353 383 220 555 264 C752 313 796 566 650 716" />
+            <path className="auth-signal-spiral auth-signal-spiral-two" d="M470 470 C430 508 390 474 404 430 C421 374 502 360 541 412 C590 477 537 573 449 580 C337 590 275 474 326 374 C391 245 590 254 679 372 C784 512 692 702 536 744" />
+          </g>
+          <g className="auth-signal-route-lines">
+            <path className="auth-route-line" d="M470 470 C410 445 325 372 88 280" />
+            <path className="auth-route-line" d="M470 470 C540 435 650 375 850 316" />
+            <path className="auth-route-line" d="M470 470 C405 515 300 605 108 674" />
+            <path className="auth-route-line" d="M470 470 C545 520 655 618 844 710" />
+            <path className="auth-route-line auth-route-line-platform" d="M88 280 C300 145 645 145 850 316" />
+            <path className="auth-route-line auth-route-line-platform" d="M108 674 C300 820 645 820 844 710" />
+          </g>
+          <g filter="url(#auth-signal-packet-glow)">
+            <circle className="auth-route-packet auth-route-packet-primary" r="3.25"><animateMotion dur="9.2s" begin="-1.4s" repeatCount="indefinite" path="M470 470 C410 445 325 372 88 280" /></circle>
+            <circle className="auth-route-packet auth-route-packet-accent" r="3"><animateMotion dur="10.8s" begin="-5.2s" repeatCount="indefinite" path="M470 470 C540 435 650 375 850 316" /></circle>
+            <circle className="auth-route-packet auth-route-packet-primary" r="2.75"><animateMotion dur="9.8s" begin="-7.6s" repeatCount="indefinite" path="M470 470 C405 515 300 605 108 674" /></circle>
+            <circle className="auth-route-packet auth-route-packet-accent" r="3.25"><animateMotion dur="11.6s" begin="-3.1s" repeatCount="indefinite" path="M470 470 C545 520 655 618 844 710" /></circle>
+            <circle className="auth-route-packet auth-route-packet-platform" r="2.5"><animateMotion dur="14s" begin="-4.8s" repeatCount="indefinite" path="M88 280 C300 145 645 145 850 316" /></circle>
+            <circle className="auth-route-packet auth-route-packet-platform" r="2.5"><animateMotion dur="15.4s" begin="-9.3s" repeatCount="indefinite" path="M108 674 C300 820 645 820 844 710" /></circle>
+          </g>
+        </svg>
         <span className="auth-signal-core" />
         <span className="auth-signal-axis auth-signal-axis-horizontal" />
         <span className="auth-signal-axis auth-signal-axis-vertical" />

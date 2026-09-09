@@ -3579,6 +3579,54 @@ button,
   transform: translate(-50%, -50%);
 }
 
+.auth-signal-routes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  pointer-events: none;
+}
+
+.auth-signal-spirals {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: auth-signal-spiral-turn 48s linear infinite;
+}
+
+.auth-signal-spiral {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 1.2;
+  stroke-dasharray: 2 13;
+  opacity: .52;
+}
+
+.auth-signal-spiral-one { stroke: color-mix(in srgb, var(--rv-color-primary) 60%, transparent); }
+.auth-signal-spiral-two { stroke: color-mix(in srgb, var(--rv-color-accent) 48%, transparent); stroke-dashoffset: -8; }
+
+.auth-route-line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-border));
+  stroke-width: 1;
+  stroke-dasharray: 2 18;
+  opacity: .52;
+  animation: auth-route-dash 7s linear infinite;
+}
+
+.auth-route-line-platform {
+  stroke: color-mix(in srgb, var(--rv-color-accent) 18%, var(--rv-color-border));
+  stroke-dasharray: 2 22;
+  animation-duration: 10s;
+  animation-direction: reverse;
+}
+
+.auth-route-packet { opacity: .9; }
+.auth-route-packet-primary { fill: var(--rv-color-primary); }
+.auth-route-packet-accent { fill: var(--rv-color-accent); }
+.auth-route-packet-platform { fill: color-mix(in srgb, var(--rv-color-primary) 54%, var(--rv-color-accent)); }
+
 .auth-signal-core {
   top: 50%;
   left: 50%;
@@ -3622,18 +3670,19 @@ button,
 
 .auth-signal-ring-one {
   width: 520px;
+  background: repeating-conic-gradient(from 16deg, color-mix(in srgb, var(--rv-color-primary) 54%, transparent) 0 1.2deg, transparent 1.2deg 10deg);
   animation: auth-signal-rotate 28s linear infinite;
 }
 
 .auth-signal-ring-two {
   width: 700px;
-  background: conic-gradient(from 210deg, transparent 0 20%, color-mix(in srgb, var(--rv-color-primary) 24%, transparent) 28%, transparent 36% 63%, color-mix(in srgb, var(--rv-color-accent) 28%, transparent) 70%, transparent 78%);
+  background: repeating-conic-gradient(from 210deg, color-mix(in srgb, var(--rv-color-accent) 40%, transparent) 0 1.1deg, transparent 1.1deg 13deg);
   animation: auth-signal-rotate-reverse 44s linear infinite;
 }
 
 .auth-signal-ring-three {
   width: 880px;
-  background: conic-gradient(from 110deg, transparent 0 31%, color-mix(in srgb, var(--rv-color-primary) 18%, transparent) 38%, transparent 45% 74%, color-mix(in srgb, var(--rv-color-accent) 20%, transparent) 80%, transparent 87%);
+  background: repeating-conic-gradient(from 110deg, color-mix(in srgb, var(--rv-color-primary) 38%, transparent) 0 1deg, transparent 1deg 16deg);
   animation: auth-signal-rotate 62s linear infinite;
 }
 
@@ -3785,6 +3834,14 @@ button,
   to { transform: translate(-50%, -50%) rotate(-360deg); }
 }
 
+@keyframes auth-signal-spiral-turn {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes auth-route-dash {
+  to { stroke-dashoffset: -160; }
+}
+
 @keyframes auth-pulse-orbit {
   to { transform: translate(-50%, -50%) rotate(360deg); }
 }
@@ -3891,6 +3948,7 @@ button,
   .auth-notification-count { display: none; }
   .auth-signal-ring-two,
   .auth-signal-pulse-one { opacity: .58; }
+  .auth-signal-route-lines .auth-route-line-platform { display: none; }
 }
 
 @media (min-width: 701px) and (max-height: 760px) {
@@ -3906,11 +3964,13 @@ button,
   .auth-signal-ring,
   .auth-signal-pulse,
   .auth-orbit-tag,
+  .auth-signal-spirals,
   .auth-focus-column .rv-auth-hero-brand,
   .auth-focus-column .rv-auth-card-glow,
   .auth-notification-label small i,
   .auth-notification-marquee { animation: none; }
   .auth-signal-pulse { display: none; }
+  .auth-route-packet { display: none; }
   .auth-notification-viewport { overflow-x: auto; mask-image: none; }
   .auth-notification-events[aria-hidden="true"] { display: none; }
 }
