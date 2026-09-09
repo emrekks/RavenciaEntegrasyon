@@ -6,9 +6,19 @@ import { Drawer, Modal, Tabs, UiIcon, type UiIconName } from '../shared/componen
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, InvoiceDetailPage, InvoicesPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
-import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, appearanceThemeModeOptions, defaultAppearanceColorTheme, defaultLightPalette, useAppearanceSettings, type AppearanceSettings } from '../features/settings/appearance-settings'
+import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultLightPalette, useAppearanceSettings, type AppearanceSettings } from '../features/settings/appearance-settings'
 
 type VisualTheme = 'light' | 'dark'
+const visualThemeChangeEvent = 'ravencia:visual-theme-change'
+
+function readVisualThemePreference(): VisualTheme {
+  return localStorage.getItem('ravencia.visualTheme') === 'dark' ? 'dark' : 'light'
+}
+
+function setVisualThemePreference(theme: VisualTheme) {
+  localStorage.setItem('ravencia.visualTheme', theme)
+  window.dispatchEvent(new CustomEvent<VisualTheme>(visualThemeChangeEvent, { detail: theme }))
+}
 
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
@@ -18,8 +28,16 @@ function Shell({ me }: { me: Me }) {
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [quickSearchOpen, setQuickSearchOpen] = useState(false)
-  const [visualTheme, setVisualTheme] = useState<VisualTheme>(() => localStorage.getItem('ravencia.visualTheme') === 'dark' ? 'dark' : 'light')
+  const [visualTheme, setVisualTheme] = useState<VisualTheme>(readVisualThemePreference)
   useEffect(() => { setMobileMenuOpen(false); setQuickSearchOpen(false) }, [location.pathname])
+  useEffect(() => {
+    const syncVisualTheme = (event: Event) => {
+      const nextTheme = (event as CustomEvent<VisualTheme>).detail
+      if (nextTheme === 'light' || nextTheme === 'dark') setVisualTheme(nextTheme)
+    }
+    window.addEventListener(visualThemeChangeEvent, syncVisualTheme)
+    return () => window.removeEventListener(visualThemeChangeEvent, syncVisualTheme)
+  }, [])
   useEffect(() => {
     const openQuickSearch = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setQuickSearchOpen(true) }
@@ -30,7 +48,10 @@ function Shell({ me }: { me: Me }) {
   const appearanceColorsKey = JSON.stringify(appearanceSettings.settings.colors)
   async function logout() { await api('/logout', { method: 'POST' }); window.location.replace(`/?signedOut=${Date.now()}`) }
   const menuExpanded = sidebarPinned || sidebarHoverExpanded
-  const menuCollapsed = !menuExpanded
+  // Hover expansion is an overlay state: the layout column stays collapsed so
+  // opening and closing the menu does not move the page underneath it.
+  const menuCollapsed = !sidebarPinned
+  const sidebarHovering = !sidebarPinned && sidebarHoverExpanded
   useEffect(() => {
     document.documentElement.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[appearanceSettings.settings.fontFamily])
     document.documentElement.style.setProperty('--rv-font-scale', String(appearanceFontScale[appearanceSettings.settings.fontSize]))
@@ -62,7 +83,7 @@ function Shell({ me }: { me: Me }) {
     return <NavLink to={to} end={end} aria-label={accessibleLabel} title={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className="nav-count" aria-hidden="true">{count > 99 ? '99+' : count}</span>}</NavLink>
   }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
-    { label: 'Çalışma alanı', items: [item('/dashboard', 'grid', 'Genel bakış', true), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.pendingOrders), item('/products', 'bag', 'Ürünler')] },
+    { label: 'Çalışma alanı', items: [item('/dashboard', 'grid', 'Genel bakış', true), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.pendingOrders)] },
     { label: 'Operasyon', items: [item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar')] },
     { label: 'Yönetim', items: [item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'bolt', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
   ]
@@ -75,17 +96,17 @@ function Shell({ me }: { me: Me }) {
     { to: '/mappings/categories', label: 'Eşleştirmeler', description: 'Kategori ve özellik eşlemeleri', icon: 'layers' },
     { to: '/settings', label: 'Sistem ayarları', description: 'Güvenlik ve görünüm ayarları', icon: 'settings' },
   ]
-  return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
+  return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHovering ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
     <aside aria-label="Ravencia ana menüsü" onMouseEnter={handleSidebarMouseEnter} onMouseLeave={handleSidebarMouseLeave}>
       <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong></div>{menuExpanded && <button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button>}</div>
       <nav aria-label="Ana menü">{navigation}</nav>
-      <div className="sidebar-side-bottom"><div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}</div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong><small>Çalışma alanı sahibi</small></span><button type="button" className="sidebar-profile-logout" aria-label="Oturumdan çık" title="Oturumdan çık" onClick={() => void logout()}><UiIcon name="logout" size={18} /></button></div></div>
+      <div className="sidebar-side-bottom"><div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" aria-label="Oturumu kapat" title="Oturumu kapat" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Oturumu kapat</span></button></div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong></span></div></div>
     </aside>
     <main>
-      <header className="rv-topbar"><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Çalışma alanı</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => { const nextTheme: VisualTheme = visualTheme === 'light' ? 'dark' : 'light'; setVisualTheme(nextTheme); localStorage.setItem('ravencia.visualTheme', nextTheme) }}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu tema' : 'Açık tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
+      <header className="rv-topbar"><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Operasyon Merkezi</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => setVisualThemePreference(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu tema' : 'Açık tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
       <Modal open={quickSearchOpen} title="Hızlı arama" description="Bir sayfa veya işlem seçin." onClose={() => setQuickSearchOpen(false)}><div className="rv-command-list" role="listbox" aria-label="Hızlı arama sonuçları">{quickSearchItems.map(itemOption => <Link key={itemOption.to} className="rv-command-item" to={itemOption.to} onClick={() => setQuickSearchOpen(false)}><UiIcon name={itemOption.icon} size={20} /><span><strong>{itemOption.label}</strong><small>{itemOption.description}</small></span><UiIcon name="chevronRight" size={16} /></Link>)}</div></Modal>
-      <Drawer open={mobileMenuOpen} title="Ravencia" description="Operasyon merkezi" onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}{item('/settings', 'settings', 'Sistem Ayarları', true)}<button className="rv-button rv-button-secondary" type="button" onClick={() => void logout()}>Çıkış yap</button></nav></Drawer>
-      <Suspense fallback={<Status title="Ekran yükleniyor" />}><Routes><Route path="/dashboard" element={<Dashboard />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<AttributeMappingPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/invoices/:id" element={<InvoiceDetailPage />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings/appearance" element={<AppearanceSettingsPage />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense>
+      <Drawer open={mobileMenuOpen} title="Ravencia" description="Operasyon merkezi" onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}{item('/settings', 'settings', 'Sistem Ayarları', true)}<button className="rv-button rv-button-secondary" type="button" onClick={() => void logout()}>Oturumu kapat</button></nav></Drawer>
+      <Suspense fallback={<DelayedStatus title="Ekran hazırlanıyor" />}><Routes><Route path="/dashboard" element={<Dashboard />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<AttributeMappingPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/invoices/:id" element={<InvoiceDetailPage />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings/appearance" element={<AppearanceSettingsPage />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense>
     </main>
   </div>
 }
@@ -104,7 +125,7 @@ export function App() {
   const authPreview = import.meta.env.DEV ? new URLSearchParams(window.location.search).get('authPreview') : null
   if (authPreview === 'password') return <ChangePassword />
   if (authPreview === 'mfa') return <MfaChallenge />
-  if (me.isLoading) return null
+  if (me.isLoading) return <DelayedStatus title="Çalışma alanı hazırlanıyor" />
   if (me.isError) return <Routes><Route path="*" element={<Login />} /></Routes>
   if (!me.data) return <Status title="Oturum bilgisi alınamadı" />
   if (me.data.state === 'PASSWORD_CHANGE_REQUIRED') return <ChangePassword />
@@ -252,7 +273,7 @@ type DashboardMetrics = { pendingOrders: number; lateOrders: number; todayOrders
 type DashboardLowStock = { id: string; title: string; totalStock: number; primaryImageUrl: string | null }
 type DashboardSyncStatus = { resourceType: string; label: string; kind: string; status: string; lastAttemptAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null }
 type DashboardBootstrap = { metrics: DashboardMetrics; lowStock: DashboardLowStock[]; sync: DashboardSyncStatus[]; platforms: { name: string; status: string }[]; generatedAt: string; version: number }
-type DashboardRevenuePoint = { day: string; amount: number; orderCount: number; currency: string }
+type DashboardRevenuePoint = { day: string; amount: number; orderCount: number; productQuantity: number; shipmentCount: number; currency: string }
 type DashboardRevenueRange = '7' | '30' | '90' | 'custom'
 type DashboardProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number; platforms: string[] }
 
@@ -266,19 +287,19 @@ function dashboardDateInputValue(value = new Date()) { return dashboardDateKey(v
 function DashboardMetricIcon({ kind }: { kind: string }) {
   const icons: Record<string, UiIconName> = {
     pending: 'clock',
-    pendingOrders: 'pendingOrders',
+    pendingOrders: 'clock',
     late: 'alert',
-    lateOrders: 'lateOrders',
+    lateOrders: 'truck',
     today: 'calendar',
     month: 'calendar',
     return: 'returns',
-    pendingReturns: 'pendingReturns',
+    pendingReturns: 'returns',
     invoice: 'invoice',
-    uninvoiced: 'invoicePending',
-    invoicePending: 'invoicePending',
-    invoiceDue: 'invoiceDue',
+    uninvoiced: 'invoice',
+    invoicePending: 'invoice',
+    invoiceDue: 'calendar',
     stock: 'box',
-    lowStock: 'stock',
+    lowStock: 'box',
     revenue: 'chart',
     orders: 'orders',
     basket: 'bag',
@@ -292,12 +313,16 @@ function DashboardSparkline({ className = '', flip = false }: { className?: stri
   return <svg className={`dashboard-sparkline ${className}`.trim()} viewBox="0 0 100 36" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="2" /></svg>
 }
 
-function DashboardOperationalCard({ kind, label, detail, value, to }: { kind: string; label: string; detail: string; value: number | null; to: string }) {
-  return <Link className={`dashboard-operational-card ${kind}`} to={to}><DashboardMetricIcon kind={kind} /><span className="dashboard-operational-copy"><strong>{value === null ? '—' : value.toLocaleString('tr-TR')}</strong><span>{label}</span><small>{detail}</small></span><UiIcon name="arrowRight" size={17} /></Link>
+function DashboardOperationalCard({ kind, label, value, to }: { kind: string; label: string; detail?: string; value: number | null; to: string }) {
+  return <Link className={`dashboard-operational-card ${kind}`} to={to}><DashboardMetricIcon kind={kind} /><span className="dashboard-operational-copy"><strong>{value === null ? '—' : value.toLocaleString('tr-TR')}</strong><span>{label}</span></span><UiIcon name="arrowRight" size={17} /></Link>
 }
 
 function dashboardMoney(amount: number, currency = 'TRY') {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: currency || 'TRY', maximumFractionDigits: 2 }).format(amount)
+}
+
+function dashboardQuantity(value: number) {
+  return value.toLocaleString('tr-TR', { maximumFractionDigits: 2 })
 }
 
 function dashboardAxisMoney(amount: number, currency = 'TRY') {
@@ -331,11 +356,15 @@ function dashboardChartY(amount: number, maxValue: number) {
   return dashboardChartBottom - ratio * (dashboardChartBottom - dashboardChartTop)
 }
 
+function dashboardChartX(index: number, pointCount: number) {
+  const denominator = Math.max(1, pointCount - 1)
+  return dashboardChartLeft + (index / denominator) * (dashboardChartRight - dashboardChartLeft)
+}
+
 function dashboardLinePath(points: Array<{ amount: number }>, maxValue: number) {
   if (!points.length) return ''
-  const denominator = Math.max(1, points.length - 1)
   return points.map((point, index) => {
-    const x = dashboardChartLeft + (index / denominator) * (dashboardChartRight - dashboardChartLeft)
+    const x = dashboardChartX(index, points.length)
     return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${dashboardChartY(point.amount, maxValue).toFixed(2)}`
   }).join(' ')
 }
@@ -343,6 +372,31 @@ function dashboardLinePath(points: Array<{ amount: number }>, maxValue: number) 
 function dashboardAreaPath(points: Array<{ amount: number }>, maxValue: number) {
   const line = dashboardLinePath(points, maxValue)
   return line ? `${line} L ${dashboardChartRight} ${dashboardChartBottom} L ${dashboardChartLeft} ${dashboardChartBottom} Z` : ''
+}
+
+function DashboardChartPoints({ points, maxValue, currency }: { points: ReturnType<typeof dashboardRevenueSeries>; maxValue: number; currency: string }) {
+  return <>{points.map((point, index) => {
+    const x = dashboardChartX(index, points.length)
+    const y = dashboardChartY(point.amount, maxValue)
+    const tooltipX = Math.min(Math.max(x - 88, dashboardChartLeft), dashboardChartRight - 176)
+    const tooltipY = Math.max(10, y - 122)
+    const productQuantity = point.productQuantity ?? 0
+    const shipmentCount = point.shipmentCount ?? 0
+    return <g className="dashboard-chart-point" key={point.key} tabIndex={0} role="group" aria-label={`${point.fullLabel}: ${point.orderCount} sipariş, ${dashboardQuantity(productQuantity)} adet ürün, ${shipmentCount} paket, ${dashboardMoney(point.amount, currency)} ciro`}>
+      <title>{`${point.fullLabel} · ${point.orderCount} sipariş · ${dashboardQuantity(productQuantity)} adet ürün · ${shipmentCount} paket · ${dashboardMoney(point.amount, currency)}`}</title>
+      <circle className="dashboard-chart-point-hit" cx={x} cy={y} r="12" />
+      <circle className="dashboard-chart-point-dot" cx={x} cy={y} r="3" />
+      <foreignObject className="dashboard-chart-point-tooltip" x={tooltipX} y={tooltipY} width="176" height="116">
+        <div className="dashboard-chart-tooltip">
+          <strong>{point.fullLabel}</strong>
+          <span><i />Sipariş <b>{point.orderCount.toLocaleString('tr-TR')}</b></span>
+          <span><i />Ürün <b>{dashboardQuantity(productQuantity)} adet</b></span>
+          <span><i />Kargo <b>{shipmentCount.toLocaleString('tr-TR')} paket</b></span>
+          <span><i />Ciro <b>{dashboardMoney(point.amount, currency)}</b></span>
+        </div>
+      </foreignObject>
+    </g>
+  })}</>
 }
 
 function dashboardRangeDates(range: DashboardRevenueRange, from: string, to: string, now: Date) {
@@ -365,10 +419,10 @@ function dashboardPreviousRange(start: Date, end: Date) {
 }
 
 function dashboardTrendLabel(current: number, previous: number) {
-  if (previous <= 0) return current > 0 ? 'Yeni dönem verisi' : 'Karşılaştırma yok'
+  if (previous <= 0) return current > 0 ? '+%100 vs' : '+%0 vs'
   const delta = ((current - previous) / previous) * 100
-  const direction = delta >= 0 ? '↗' : '↘'
-  return `${direction} %${Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`
+  const sign = delta >= 0 ? '+' : '-'
+  return `${sign}%${Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} vs`
 }
 
 function dashboardTrendClass(current: number, previous: number) {
@@ -454,10 +508,10 @@ function Dashboard() {
     window.setTimeout(() => URL.revokeObjectURL(url), 0)
   }
   return <section className="content dashboard" aria-label="Dashboard">
-    <div className="page-heading"><div><p className="eyebrow">Dashboard</p></div><div className="dashboard-heading-actions"><div className="dashboard-report-controls"><label className="dashboard-header-period"><span className="sr-only">Rapor dönemi</span><span className="dashboard-period-control"><UiIcon name="calendar" size={18} /><select aria-label="Rapor dönemi" value={reportRange} onChange={event => setReportRange(event.target.value as DashboardRevenueRange)}><option value="7">Son 7 gün</option><option value="30">Son 30 gün</option><option value="90">Son 90 gün</option><option value="custom">Özel tarih</option></select></span></label><button type="button" className="dashboard-report-download" onClick={downloadDashboardReport} disabled={reportRevenueQuery.isLoading}><UiIcon name="download" size={18} /> Raporu indir</button></div><span className="dashboard-date">{now.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div></div>
+    <div className="page-heading"><div><p className="eyebrow">OPERASYON MERKEZİ</p><h1>Genel bakış</h1><p className="lede">Satış, sipariş ve operasyon akışınızı tek ekrandan takip edin.</p></div><div className="dashboard-heading-actions"><div className="dashboard-report-controls"><label className="dashboard-header-period"><span className="sr-only">Rapor dönemi</span><span className="dashboard-period-control"><UiIcon name="calendar" size={18} /><select aria-label="Rapor dönemi" value={reportRange} onChange={event => setReportRange(event.target.value as DashboardRevenueRange)}><option value="7">Son 7 gün</option><option value="30">Son 30 gün</option><option value="90">Son 90 gün</option><option value="custom">Özel tarih</option></select></span></label><button type="button" className="dashboard-report-download" onClick={downloadDashboardReport} disabled={reportRevenueQuery.isLoading}><UiIcon name="download" size={18} /> Raporu indir</button></div></div></div>
     {reportRange === 'custom' && <div className="dashboard-custom-range dashboard-report-custom-range"><label><span>Başlangıç</span><input type="date" value={reportFrom} max={reportTo} onChange={event => setReportFrom(event.target.value)} /></label><label><span>Bitiş</span><input type="date" value={reportTo} min={reportFrom} onChange={event => setReportTo(event.target.value)} /></label></div>}
     {errors.length > 0 && <div role="alert" className="error">Bazı rapor verileri alınamadı; görünen değerler kısmi olabilir.</div>}
-    <section className="dashboard-operational-section" aria-labelledby="dashboard-operational-title"><header className="dashboard-section-heading"><div><h2 id="dashboard-operational-title">Operasyon özeti</h2><p>Takip gerektiren sipariş, iade, fatura ve stok akışları.</p></div><Link className="dashboard-panel-link" to="/orders">Tüm işlemleri gör <UiIcon name="arrowRight" size={16} /></Link></header><div className="dashboard-operational-grid"><DashboardOperationalCard kind="pendingOrders" label="Bekleyen siparişler" detail="İşleme alınmayı bekliyor" value={bootstrap.isLoading ? null : dashboardMetrics?.pendingOrders ?? 0} to="/orders?status=NEW" /><DashboardOperationalCard kind="lateOrders" label="Geciken siparişler" detail="Süre aşımı olanlar" value={bootstrap.isLoading ? null : dashboardMetrics?.lateOrders ?? 0} to="/orders" /><DashboardOperationalCard kind="pendingReturns" label="Bekleyen iadeler" detail="İnceleme bekliyor" value={bootstrap.isLoading ? null : dashboardMetrics?.pendingReturns ?? 0} to="/returns" /><DashboardOperationalCard kind="invoicePending" label="Bekleyen faturalar" detail="Fatura kesilmesi gerekenler" value={bootstrap.isLoading ? null : dashboardMetrics?.uninvoicedInvoices ?? 0} to="/invoices" /><DashboardOperationalCard kind="invoiceDue" label="Yaklaşan faturalar" detail="Vadesi yaklaşanlar" value={bootstrap.isLoading ? null : dashboardMetrics?.dueSoonInvoices ?? 0} to="/invoices" /><DashboardOperationalCard kind="lowStock" label="Düşük stok" detail="Yenileme gerektiren ürünler" value={bootstrap.isLoading ? null : dashboardMetrics?.lowStockProducts ?? 0} to="/products" /></div></section>
+    <section className="dashboard-operational-section" aria-labelledby="dashboard-operational-title"><header className="dashboard-section-heading"><div><h2 id="dashboard-operational-title">Operasyon özeti</h2><p>Takip gerektiren sipariş, iade, fatura ve stok akışları.</p></div></header><div className="dashboard-operational-grid"><DashboardOperationalCard kind="pendingOrders" label="Bekleyen siparişler" detail="İşleme alınmayı bekliyor" value={bootstrap.isLoading ? null : dashboardMetrics?.pendingOrders ?? 0} to="/orders?status=NEW" /><DashboardOperationalCard kind="lateOrders" label="Geciken siparişler" detail="Süre aşımı olanlar" value={bootstrap.isLoading ? null : dashboardMetrics?.lateOrders ?? 0} to="/orders" /><DashboardOperationalCard kind="pendingReturns" label="Bekleyen iadeler" detail="İnceleme bekliyor" value={bootstrap.isLoading ? null : dashboardMetrics?.pendingReturns ?? 0} to="/returns" /><DashboardOperationalCard kind="invoicePending" label="Bekleyen faturalar" detail="Fatura kesilmesi gerekenler" value={bootstrap.isLoading ? null : dashboardMetrics?.uninvoicedInvoices ?? 0} to="/invoices" /><DashboardOperationalCard kind="invoiceDue" label="Yaklaşan faturalar" detail="Vadesi yaklaşanlar" value={bootstrap.isLoading ? null : dashboardMetrics?.dueSoonInvoices ?? 0} to="/invoices" /><DashboardOperationalCard kind="lowStock" label="Düşük stok" detail="Yenileme gerektiren ürünler" value={bootstrap.isLoading ? null : dashboardMetrics?.lowStockProducts ?? 0} to="/products" /></div></section>
     <div className="dashboard-summary-grid">
       <article className="dashboard-summary-card is-emphasis"><div className="dashboard-summary-card-head"><span>Toplam gelir</span><DashboardMetricIcon kind="revenue" /></div><strong>{reportRevenueQuery.isLoading ? '—' : dashboardMoney(reportTotal, reportCurrency)}</strong><span className={`dashboard-summary-trend ${dashboardTrendClass(reportTotal, previousReportTotal)}`}>{dashboardTrendLabel(reportTotal, previousReportTotal)}</span><DashboardSparkline className="dashboard-sparkline-primary" /></article>
       <article className="dashboard-summary-card"><div className="dashboard-summary-card-head"><span>Toplam sipariş</span><DashboardMetricIcon kind="orders" /></div><strong>{reportRevenueQuery.isLoading ? '—' : reportOrderCount.toLocaleString('tr-TR')}</strong><span className={`dashboard-summary-trend ${dashboardTrendClass(reportOrderCount, previousReportOrderCount)}`}>{dashboardTrendLabel(reportOrderCount, previousReportOrderCount)}</span><DashboardSparkline className="dashboard-sparkline-accent" flip /></article>
@@ -465,7 +519,7 @@ function Dashboard() {
       <article className="dashboard-summary-card"><div className="dashboard-summary-card-head"><span>Aktif ürün</span><DashboardMetricIcon kind="product" /></div><strong>{productSummary.isLoading ? '—' : productCount.toLocaleString('tr-TR')}</strong><span className="dashboard-summary-trend is-neutral">Katalog durumu</span><DashboardSparkline className="dashboard-sparkline-green" flip /></article>
     </div>
     <div className="dashboard-performance-grid">
-      <article className="panel dashboard-performance-card"><header className="dashboard-card-header"><div><h2>Gelir performansı</h2><p>Satışlarınızın büyük resmini görün.</p></div><div className="dashboard-performance-filters"><label className="dashboard-chart-period"><span>Dönem</span><select aria-label="Gelir performansı dönemi" value={chartRange} onChange={event => setChartRange(event.target.value as Exclude<DashboardRevenueRange, 'custom'>)}><option value="7">Son 7 gün</option><option value="30">Son 30 gün</option><option value="90">Son 90 gün</option></select></label><label className="dashboard-platform-filter"><span>Platform</span><select aria-label="Gelir platformu" value={chartPlatform} onChange={event => setChartPlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div></header><div className="dashboard-performance-toolbar"><div className="dashboard-performance-total"><span>{chartPlatform === 'ALL' ? chartPeriodLabel : `${chartPeriodLabel} · ${chartPlatform}`}</span><strong>{chartRevenueQuery.isLoading ? '—' : dashboardMoney(chartSeries.reduce((sum, item) => sum + item.amount, 0), chartCurrency)}</strong><small className={`dashboard-summary-trend ${dashboardTrendClass(chartSeries.reduce((sum, item) => sum + item.amount, 0), previousChartSeries.reduce((sum, item) => sum + item.amount, 0))}`}>{dashboardTrendLabel(chartSeries.reduce((sum, item) => sum + item.amount, 0), previousChartSeries.reduce((sum, item) => sum + item.amount, 0))}</small></div></div><div className="dashboard-performance-chart" aria-label={`${chartPeriodLabel} gelir performansı grafiği`} >{chartCurrentPath ? <svg viewBox="0 0 652 204" role="img" aria-label="Gelir performansı"><defs><linearGradient id="dashboard-performance-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--rv-color-primary)" stopOpacity=".34" /><stop offset="100%" stopColor="var(--rv-color-primary)" stopOpacity="0" /></linearGradient></defs>{chartGrid.map(tick => <g key={tick.y}><line className="dashboard-chart-grid" x1={dashboardChartLeft} x2={dashboardChartRight} y1={tick.y} y2={tick.y} /><text className="dashboard-chart-y" x="38" y={tick.y + 4} textAnchor="end">{dashboardAxisMoney(chartAxisMax * tick.ratio, chartCurrency)}</text></g>)}{chartAreaPath && <path className="dashboard-performance-area" d={chartAreaPath} fill="url(#dashboard-performance-area)" />}{chartPreviousPath && <path className="dashboard-performance-previous" d={chartPreviousPath} />}{<path className="dashboard-performance-line" d={chartCurrentPath} />}</svg> : <div className="dashboard-performance-empty">Bu dönem için gelir verisi bulunmuyor.</div>}<div className="dashboard-performance-x-axis" aria-hidden="true">{chartSeries.map((point, index) => index === 0 || index === chartSeries.length - 1 || index % chartLabelStep === 0 ? <span key={point.key} style={{ left: `${chartSeries.length > 1 ? (index / (chartSeries.length - 1)) * 100 : 0}%` }}>{point.label}</span> : null)}</div></div><footer className="dashboard-chart-legend"><span><i className="current" />Bu dönem</span><span><i className="previous" />Önceki dönem</span></footer></article>
+      <article className="panel dashboard-performance-card"><header className="dashboard-card-header"><div><h2>Gelir performansı</h2><p>Satışlarınızın büyük resmini görün.</p></div><div className="dashboard-performance-filters"><label className="dashboard-chart-period"><span>Dönem</span><select aria-label="Gelir performansı dönemi" value={chartRange} onChange={event => setChartRange(event.target.value as Exclude<DashboardRevenueRange, 'custom'>)}><option value="7">Son 7 gün</option><option value="30">Son 30 gün</option><option value="90">Son 90 gün</option></select></label><label className="dashboard-platform-filter"><span>Platform</span><select aria-label="Gelir platformu" value={chartPlatform} onChange={event => setChartPlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div></header><div className="dashboard-performance-toolbar"><div className="dashboard-performance-total"><span>{chartPlatform === 'ALL' ? chartPeriodLabel : `${chartPeriodLabel} · ${chartPlatform}`}</span><strong>{chartRevenueQuery.isLoading ? '—' : dashboardMoney(chartSeries.reduce((sum, item) => sum + item.amount, 0), chartCurrency)}</strong><small className={`dashboard-summary-trend ${dashboardTrendClass(chartSeries.reduce((sum, item) => sum + item.amount, 0), previousChartSeries.reduce((sum, item) => sum + item.amount, 0))}`}>{dashboardTrendLabel(chartSeries.reduce((sum, item) => sum + item.amount, 0), previousChartSeries.reduce((sum, item) => sum + item.amount, 0))}</small></div></div><div className="dashboard-performance-chart" aria-label={`${chartPeriodLabel} gelir performansı grafiği`} >{chartCurrentPath ? <svg viewBox="0 0 652 204" role="img" aria-label="Gelir performansı"><defs><linearGradient id="dashboard-performance-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--rv-color-primary)" stopOpacity=".34" /><stop offset="100%" stopColor="var(--rv-color-primary)" stopOpacity="0" /></linearGradient></defs>{chartGrid.map(tick => <g key={tick.y}><line className="dashboard-chart-grid" x1={dashboardChartLeft} x2={dashboardChartRight} y1={tick.y} y2={tick.y} /><text className="dashboard-chart-y" x="38" y={tick.y + 4} textAnchor="end">{dashboardAxisMoney(chartAxisMax * tick.ratio, chartCurrency)}</text></g>)}{chartAreaPath && <path className="dashboard-performance-area" d={chartAreaPath} fill="url(#dashboard-performance-area)" />}{chartPreviousPath && <path className="dashboard-performance-previous" d={chartPreviousPath} />}{<path className="dashboard-performance-line" d={chartCurrentPath} />}<DashboardChartPoints points={chartSeries} maxValue={chartAxisMax} currency={chartCurrency} /></svg> : <div className="dashboard-performance-empty">Bu dönem için gelir verisi bulunmuyor.</div>}<div className="dashboard-performance-x-axis" aria-hidden="true">{chartSeries.map((point, index) => index === 0 || index === chartSeries.length - 1 || index % chartLabelStep === 0 ? <span key={point.key} style={{ left: `${chartSeries.length > 1 ? (index / (chartSeries.length - 1)) * 100 : 0}%` }}>{point.label}</span> : null)}</div></div><footer className="dashboard-chart-legend"><span><i className="current" />Bu dönem</span><span><i className="previous" />Önceki dönem</span></footer></article>
       <article className="panel dashboard-channel-card"><header className="dashboard-card-header"><div><h2>Satış kanalları</h2><p>Seçilen dönemin gelir dağılımı</p></div><Link className="dashboard-panel-link" to="/integrations">Kanalları yönet <UiIcon name="arrowRight" /></Link></header><div className="dashboard-channel-donut" style={{ background: channelGradient }}><div><span>Toplam sipariş</span><strong>{channelTotalOrders.toLocaleString('tr-TR')}</strong><small>{reportPeriodLabel}</small></div></div><div className="dashboard-channel-list">{channelRowsWithShare.length ? channelRowsWithShare.map(channel => <div key={channel.platform}><span><i style={{ background: channel.color }} />{channel.platform}</span><strong>%{channel.share.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</strong></div>) : <p className="dashboard-channel-empty">Bu dönem için kanal dağılımı bulunmuyor.</p>}</div><footer className="dashboard-channel-footer"><span>{channelRowsWithShare.length} kanal · {reportPeriodLabel}</span><Link to="/integrations">Bağlantıları yönet <UiIcon name="arrowRight" /></Link></footer></article>
     </div>
   </section>
@@ -568,7 +622,7 @@ function Security() {
     }
   }
 
-  if (settingsTab === 'database') return <section className="content security-page"><div className="page-heading"><div><p className="eyebrow">Ayarlar</p><h1>Sistem ayarları</h1><p className="lede">Güvenlik ve yerel operasyon verilerini tek ekranda yönetin.</p></div></div><div className="settings-tabs" role="tablist"><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('security')}>Güvenlik ve oturumlar</button><button type="button" role="tab" aria-selected={true} className="active">Veritabanı temizliği</button><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('shipping')}>Kargo ayarları</button><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('appearance')}>Görünüm</button></div>{message && <div className="notice" role="status">{message}</div>}<div className="panel database-reset-panel"><div className="database-reset-intro"><span className="security-state">Yetkili İşlemi</span><h2>Yerel veritabanı listelerini sıfırla</h2><p>Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir. Her başlığın kapsam ve bağlı kayıt ayrıntılarını görebilirsiniz.</p></div><div className="database-scope-groups"><section className="database-scope-group"><div><h3>Katalog</h3><p>Ürün kataloğunda kullanılan temel listeleri temizleyin.</p></div><div className="database-scope-list">{['PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES', 'BRANDS'].map(resetScopeOption)}</div></section><section className="database-scope-group"><div><h3>Ürün seçenekleri</h3><p>Ürün seçeneklerini ve seçenek değerlerini temizleyin.</p></div><div className="database-scope-list">{['OPTIONS'].map(resetScopeOption)}</div></section><section className="database-scope-group"><div><h3>Operasyon</h3><p>İşlem ve satış kayıtlarını temizleyin.</p></div><div className="database-scope-list">{['ORDERS', 'RETURNS', 'INVOICES'].map(resetScopeOption)}</div></section></div><label className="database-confirmation">Onay için <b>Verileri sil</b> yazın<input value={resetConfirmation} onChange={event => setResetConfirmation(event.target.value)} /></label><button type="button" className="destructive" disabled={!resetScopes.length || resetConfirmation !== 'Verileri sil' || resetBusy} onClick={() => void resetOperationalData()}>{resetBusy ? 'Temizleniyor…' : 'Seçili listeleri kalıcı sil'}</button></div></section>
+  if (settingsTab === 'database') return <section className="content security-page"><div className="page-heading"><div><p className="eyebrow">Ayarlar</p><h1>Sistem ayarları</h1><p className="lede">Güvenlik ve yerel operasyon verilerini tek ekranda yönetin.</p></div></div><div className="settings-tabs" role="tablist"><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('security')}>Güvenlik ve oturumlar</button><button type="button" role="tab" aria-selected={true} className="active">Veritabanı temizliği</button><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('shipping')}>Kargo ayarları</button><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('appearance')}>Görünüm</button></div>{message && <div className="notice" role="status">{message}</div>}<div className="panel database-reset-panel"><div className="database-reset-intro"><span className="security-state">Yetkili İşlemi</span><h2>Yerel veritabanı listelerini sıfırla</h2><p>Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir. Her başlığın kapsam ve bağlı kayıt ayrıntılarını görebilirsiniz.</p></div><div className="database-scope-groups"><section className="database-scope-group"><div><h3>Katalog</h3><p>Ürün kataloğunda kullanılan temel listeleri temizleyin.</p></div><div className="database-scope-list">{['PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES', 'BRANDS'].map(resetScopeOption)}</div></section><section className="database-scope-group"><div><h3>Ürün seçenekleri</h3><p>Ürün seçeneklerini ve seçenek değerlerini temizleyin.</p></div><div className="database-scope-list">{['OPTIONS'].map(resetScopeOption)}</div></section><section className="database-scope-group"><div><h3>Operasyon</h3><p>İşlem ve satış kayıtlarını temizleyin.</p></div><div className="database-scope-list">{['ORDERS', 'RETURNS', 'INVOICES'].map(resetScopeOption)}</div></section></div><label className="database-confirmation">Onay için <b>Verileri sil</b> yazın<input value={resetConfirmation} onChange={event => setResetConfirmation(event.target.value)} /></label><div className="settings-sticky-actions"><button type="button" className="destructive" disabled={!resetScopes.length || resetConfirmation !== 'Verileri sil' || resetBusy} onClick={() => void resetOperationalData()}>{resetBusy ? 'Temizleniyor…' : 'Seçili listeleri kalıcı sil'}</button></div></div></section>
 
   async function deleteClosedSessions() {
     if (!window.confirm('Tüm kapalı oturum kayıtları silinsin mi?')) return
@@ -577,10 +631,10 @@ function Security() {
   }
 
   const legacySettingsTab = settingsTab as string; if (settingsTab === 'appearance') return <AppearanceSettingsPage />; if (settingsTab === 'shipping') return <section className="content security-page"><div className="page-heading"><div><p className="eyebrow">Ayarlar</p><h1>Sistem ayarları</h1><p className="lede">Etiket ölçüsü ve yazdırma düzenini yönetin.</p></div></div><div className="settings-tabs" role="tablist"><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('security')}>Güvenlik ve oturumlar</button><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('database')}>Veritabanı temizliği</button><button type="button" role="tab" aria-selected={true} className="active">Kargo ayarları</button><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('appearance')}>Görünüm</button></div>{message && <div className="shipping-settings-toast" role="status">{message}</div>}{shippingSettings.isError && !shippingSettings.settings && <div className="error" role="alert">Hesap kargo ayarları alınamadı; geçici yerel ayarlar gösteriliyor.</div>}<ShippingLabelSettingsPanel settings={labelSettings} onChange={shippingSettings.setSettings} onSave={saveLabelSettings} /></section>
-  return <section className="content security-page"><div className="page-heading"><div><p className="eyebrow">Ayarlar</p><h1>Sistem ayarları</h1><p className="lede">Güvenlik ve yerel operasyon verilerini tek ekrandan yönetin.</p></div></div><div className="settings-tabs" role="tablist"><button type="button" role="tab" aria-selected={settingsTab === 'security'} className={settingsTab === 'security' ? 'active' : ''} onClick={() => setSettingsTab('security')}>Güvenlik ve oturumlar</button><button type="button" role="tab" aria-selected={legacySettingsTab === 'database'} className={legacySettingsTab === 'database' ? 'active' : ''} onClick={() => setSettingsTab('database')}>Veritabanı temizliği</button><button type="button" role="tab" aria-selected={legacySettingsTab === 'shipping'} className={legacySettingsTab === 'shipping' ? 'active' : ''} onClick={() => setSettingsTab('shipping')}>Kargo ayarları</button><button type="button" role="tab" aria-selected={legacySettingsTab === 'appearance'} className={legacySettingsTab === 'appearance' ? 'active' : ''} onClick={() => setSettingsTab('appearance')}>Görünüm</button></div>{message && <div className="notice" role="status">{message}</div>}{settingsTab === 'security' && <>{status.isLoading ? <Status title="Güvenlik durumu yükleniyor" /> : status.isError || !status.data ? <div role="alert" className="error">Güvenlik durumu alınamadı.</div> : <div className="panel security-authenticator-card"><div><span className={`security-state ${status.data.totpState === 'ENABLED' ? 'enabled' : ''}`}>{status.data.totpState === 'ENABLED' ? 'Etkin' : 'Kapalı'}</span><h2>Authenticator</h2><p>Giriş sırasında telefonunuzdaki tek kullanımlık kodla hesabınızı koruyun.</p><small>Kalan kurtarma kodu: <strong>{status.data.recoveryCodesRemaining}</strong></small></div>{status.data.totpState === 'ENABLED' ? <span className="security-check" aria-label="Authenticator etkin"><UiIcon name="check" /></span> : <button type="button" onClick={() => { setMessage(''); setMfaStep('password') }}>Authenticator’ı etkinleştir</button>}</div>}
-     <div className="panel security-sessions-card"><div className="panel-title"><div><h2>Oturumlar</h2><p>Hesabınıza bağlı cihazları ve son etkinliklerini görüntüleyin.</p></div><div className="session-bulk-actions">{activeOtherSessions.length > 0 && <button type="button" className="secondary danger-outline" onClick={() => void revokeOthers()}>Diğer tüm oturumları kapat</button>}{closedSessions.length > 0 && <button type="button" className="secondary danger-outline" onClick={() => void deleteClosedSessions()}>Kapalı oturumları sil</button>}</div></div>{sessions.isLoading ? <p>Yükleniyor…</p> : sessions.isError || !sessions.data ? <div role="alert" className="error">Oturumlar alınamadı.</div> : <ul className="sessions">{sessions.data.map(session => <li key={session.id} className={session.current ? 'current' : ''}><span className="session-device-icon" aria-hidden="true"><UiIcon name={session.current ? 'check' : 'grid'} /></span><span><strong>{session.current ? 'Bu cihaz' : 'Diğer oturum'}</strong><small>{session.state === 'ACTIVE' ? 'Aktif' : 'Sonlandırıldı'} · Son etkinlik {new Date(session.lastSeenAt).toLocaleString('tr-TR')}</small><small>Bitiş {new Date(session.expiresAt).toLocaleString('tr-TR')}</small></span>{session.current ? <b>Mevcut oturum</b> : session.state === 'ACTIVE' ? <button type="button" className="secondary danger-outline" onClick={() => void revokeSession(session.id)}>Oturumu sonlandır</button> : <button type="button" className="secondary danger-outline" onClick={() => void deleteSession(session.id)}>Kaydı sil</button>}</li>)}</ul>}</div>
+  return <section className="content security-page"><div className="page-heading"><div><p className="eyebrow">Ayarlar</p><h1>Sistem ayarları</h1><p className="lede">Güvenlik ve yerel operasyon verilerini tek ekrandan yönetin.</p></div></div><div className="settings-tabs" role="tablist"><button type="button" role="tab" aria-selected={settingsTab === 'security'} className={settingsTab === 'security' ? 'active' : ''} onClick={() => setSettingsTab('security')}>Güvenlik ve oturumlar</button><button type="button" role="tab" aria-selected={legacySettingsTab === 'database'} className={legacySettingsTab === 'database' ? 'active' : ''} onClick={() => setSettingsTab('database')}>Veritabanı temizliği</button><button type="button" role="tab" aria-selected={legacySettingsTab === 'shipping'} className={legacySettingsTab === 'shipping' ? 'active' : ''} onClick={() => setSettingsTab('shipping')}>Kargo ayarları</button><button type="button" role="tab" aria-selected={legacySettingsTab === 'appearance'} className={legacySettingsTab === 'appearance' ? 'active' : ''} onClick={() => setSettingsTab('appearance')}>Görünüm</button></div>{message && <div className="notice" role="status">{message}</div>}{settingsTab === 'security' && <>{status.isLoading ? <DelayedStatus title="Güvenlik durumu yükleniyor" /> : status.isError || !status.data ? <div role="alert" className="error">Güvenlik durumu alınamadı.</div> : <div className="panel security-authenticator-card"><div><span className={`security-state ${status.data.totpState === 'ENABLED' ? 'enabled' : ''}`}>{status.data.totpState === 'ENABLED' ? 'Etkin' : 'Kapalı'}</span><h2>Authenticator</h2><p>Giriş sırasında telefonunuzdaki tek kullanımlık kodla hesabınızı koruyun.</p><small>Kalan kurtarma kodu: <strong>{status.data.recoveryCodesRemaining}</strong></small></div>{status.data.totpState === 'ENABLED' ? <span className="security-check" aria-label="Authenticator etkin"><UiIcon name="check" /></span> : <button type="button" onClick={() => { setMessage(''); setMfaStep('password') }}>Authenticator’ı etkinleştir</button>}</div>}
+     <div className="panel security-sessions-card"><div className="panel-title"><div><h2>Oturumlar</h2><p>Hesabınıza bağlı cihazları ve son etkinliklerini görüntüleyin.</p></div><div className="session-bulk-actions">{activeOtherSessions.length > 0 && <button type="button" className="secondary danger-outline" onClick={() => void revokeOthers()}>Diğer tüm oturumları kapat</button>}{closedSessions.length > 0 && <button type="button" className="secondary danger-outline" onClick={() => void deleteClosedSessions()}>Kapalı oturumları sil</button>}</div></div>{sessions.isLoading ? <p>Yükleniyor…</p> : sessions.isError || !sessions.data ? <div role="alert" className="error">Oturumlar alınamadı.</div> : <ul className="sessions">{sessions.data.map(session => <li key={session.id} className={session.current ? 'current' : ''}><span className="session-device-icon" aria-hidden="true"><UiIcon name={session.current ? 'check' : 'grid'} /></span><span><strong>{session.current ? 'Bu cihaz' : 'Diğer oturum'}</strong><small>{session.state === 'ACTIVE' ? 'Aktif' : 'Sonlandırıldı'} · Son etkinlik {new Date(session.lastSeenAt).toLocaleString('tr-TR')}</small><small>Bitiş {new Date(session.expiresAt).toLocaleString('tr-TR')}</small></span>{session.current ? <b>Mevcut oturum</b> : session.state === 'ACTIVE' ? <button type="button" className="secondary danger-outline" onClick={() => void revokeSession(session.id)}>Oturumu sonlandır</button> : <button type="button" className="secondary danger-outline session-delete-action" onClick={() => void deleteSession(session.id)}>Kaydı sil</button>}</li>)}</ul>}</div>
     {mfaStep !== 'closed' && <div className="workspace-modal-backdrop" role="presentation"><section className="workspace-modal security-modal" role="dialog" aria-modal="true" aria-labelledby="mfa-title"><header><div><h2 id="mfa-title">Authenticator kurulumu</h2><p>{mfaStep === 'password' ? 'Önce hesabın size ait olduğunu doğrulayın.' : mfaStep === 'verify' ? 'QR kodu uygulamanıza ekleyip üretilen kodu girin.' : 'Kurtarma kodlarını şimdi güvenli bir yerde saklayın.'}</p></div><button className="modal-close" type="button" aria-label="Kapat" onClick={() => setMfaStep('closed')}><UiIcon name="close" /></button></header>{mfaStep === 'password' && <form className="security-modal-body" onSubmit={prepareMfa}><label>Mevcut parola<input name="password" type="password" autoComplete="current-password" required /></label><button disabled={busy}>{busy ? 'Doğrulanıyor…' : 'Devam et'}</button></form>}{mfaStep === 'verify' && setup && <form className="security-modal-body mfa-verify" onSubmit={confirmMfa}><img src={`data:image/svg+xml;utf8,${encodeURIComponent(setup.qrSvg)}`} alt="Authenticator QR kodu" /><div><p>QR kodu Google Authenticator, Microsoft Authenticator veya uyumlu uygulamanızla tarayın.</p><details><summary>Kurulum anahtarını elle göster</summary><code>{setup.otpauthUri}</code></details><label>6 haneli doğrulama kodu<input name="code" inputMode="numeric" pattern="[0-9]{6}" autoComplete="one-time-code" required /></label><button disabled={busy}>{busy ? 'Kontrol ediliyor…' : 'Etkinleştir'}</button></div></form>}{mfaStep === 'recovery' && <div className="security-modal-body"><div className="recovery-code-grid">{recoveryCodes.map(code => <code key={code}>{code}</code>)}</div><p>Bu kodlar yalnızca bir kez gösterilir. Her kod tek kullanımlıktır.</p><button type="button" onClick={() => setMfaStep('closed')}>Kodları sakladım</button></div>}{message && <div className="error security-modal-error" role="alert">{message}</div>}</section></div>}</>}
-    {legacySettingsTab === 'database' && <div className="panel database-reset-panel"><div className="database-reset-intro"><span className="security-state">Yetkili İşlemi</span><h2>Yerel veritabanı listelerini sıfırla</h2><p>Seçilen kayıtlar yalnız bu hesabın yerel veritabanından silinir. Bağlı alt kayıtlar güvenli sırayla temizlenir.</p></div><div className="database-scope-groups"><section className="database-scope-group"><div><h3>Katalog</h3><p>Ürün kataloğunda kullanılan temel listeleri temizleyin.</p></div><div className="database-scope-list">{[['PRODUCTS','Ürünler listesi'],['CATEGORIES','Kategori listesi'],['BRANDS','Marka listesi']].map(([scope,label]) => <label key={scope}><input type="checkbox" checked={resetScopes.includes(scope)} onChange={event => toggleResetScope(scope, event.target.checked)} /><span><strong>{label}</strong><small>Yerel kayıtları ve bağlı alt kayıtları temizle</small></span></label>)}</div></section><section className="database-scope-group"><div><h3>Ürün seçenekleri</h3><p>Ürün seçeneklerini ve seçenek değerlerini temizleyin.</p></div><div className="database-scope-list">{[['OPTIONS','Seçenekler listesi']].map(([scope,label]) => <label key={scope}><input type="checkbox" checked={resetScopes.includes(scope)} onChange={event => toggleResetScope(scope, event.target.checked)} /><span><strong>{label}</strong><small>Ürün seçeneklerini ve bağlı değerleri temizle</small></span></label>)}</div></section><section className="database-scope-group"><div><h3>Operasyon</h3><p>İşlem ve satış kayıtlarını temizleyin.</p></div><div className="database-scope-list">{[['ORDERS','Siparişler listesi'],['RETURNS','İadeler listesi'],['INVOICES','Faturalar listesi']].map(([scope,label]) => <label key={scope}><input type="checkbox" checked={resetScopes.includes(scope)} onChange={event => toggleResetScope(scope, event.target.checked)} /><span><strong>{label}</strong><small>Yerel kayıtları ve bağlı alt kayıtları temizle</small></span></label>)}</div></section></div><label className="database-confirmation">Onay için <b>Verileri sil</b> yazın<input value={resetConfirmation} onChange={event => setResetConfirmation(event.target.value)} /></label><button type="button" className="destructive" disabled={!resetScopes.length || resetConfirmation !== 'Verileri sil' || resetBusy} onClick={() => void resetOperationalData()}>{resetBusy ? 'Temizleniyor…' : 'Seçili listeleri kalıcı sil'}</button></div>}
+    {legacySettingsTab === 'database' && <div className="panel database-reset-panel"><div className="database-reset-intro"><span className="security-state">Yetkili İşlemi</span><h2>Yerel veritabanı listelerini sıfırla</h2><p>Seçilen kayıtlar yalnız bu hesabın yerel veritabanından silinir. Bağlı alt kayıtlar güvenli sırayla temizlenir.</p></div><div className="database-scope-groups"><section className="database-scope-group"><div><h3>Katalog</h3><p>Ürün kataloğunda kullanılan temel listeleri temizleyin.</p></div><div className="database-scope-list">{[['PRODUCTS','Ürünler listesi'],['CATEGORIES','Kategori listesi'],['BRANDS','Marka listesi']].map(([scope,label]) => <label key={scope}><input type="checkbox" checked={resetScopes.includes(scope)} onChange={event => toggleResetScope(scope, event.target.checked)} /><span><strong>{label}</strong><small>Yerel kayıtları ve bağlı alt kayıtları temizle</small></span></label>)}</div></section><section className="database-scope-group"><div><h3>Ürün seçenekleri</h3><p>Ürün seçeneklerini ve seçenek değerlerini temizleyin.</p></div><div className="database-scope-list">{[['OPTIONS','Seçenekler listesi']].map(([scope,label]) => <label key={scope}><input type="checkbox" checked={resetScopes.includes(scope)} onChange={event => toggleResetScope(scope, event.target.checked)} /><span><strong>{label}</strong><small>Ürün seçeneklerini ve bağlı değerleri temizle</small></span></label>)}</div></section><section className="database-scope-group"><div><h3>Operasyon</h3><p>İşlem ve satış kayıtlarını temizleyin.</p></div><div className="database-scope-list">{[['ORDERS','Siparişler listesi'],['RETURNS','İadeler listesi'],['INVOICES','Faturalar listesi']].map(([scope,label]) => <label key={scope}><input type="checkbox" checked={resetScopes.includes(scope)} onChange={event => toggleResetScope(scope, event.target.checked)} /><span><strong>{label}</strong><small>Yerel kayıtları ve bağlı alt kayıtları temizle</small></span></label>)}</div></section></div><label className="database-confirmation">Onay için <b>Verileri sil</b> yazın<input value={resetConfirmation} onChange={event => setResetConfirmation(event.target.value)} /></label><div className="settings-sticky-actions"><button type="button" className="destructive" disabled={!resetScopes.length || resetConfirmation !== 'Verileri sil' || resetBusy} onClick={() => void resetOperationalData()}>{resetBusy ? 'Temizleniyor…' : 'Seçili listeleri kalıcı sil'}</button></div></div>}
   </section>
 }
 
@@ -589,10 +643,23 @@ function AppearanceSettingsPage() {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [newThemeName, setNewThemeName] = useState('')
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false)
   const [selectedThemeId, setSelectedThemeId] = useState(defaultAppearanceColorTheme.id)
   const colorTheme = 'dark' as const
-  const visualTheme: VisualTheme = localStorage.getItem('ravencia.visualTheme') === 'dark' ? 'dark' : 'light'
+  const [visualTheme, setVisualTheme] = useState<VisualTheme>(readVisualThemePreference)
   const savedAppearance = useRef(appearance.settings)
+
+  useEffect(() => {
+    const syncVisualTheme = (event: Event) => {
+      const nextTheme = (event as CustomEvent<VisualTheme>).detail
+      if (nextTheme === 'light' || nextTheme === 'dark') {
+        setVisualTheme(nextTheme)
+        setSelectedThemeId(nextTheme === 'light' ? 'default-light' : defaultAppearanceColorTheme.id)
+      }
+    }
+    window.addEventListener(visualThemeChangeEvent, syncVisualTheme)
+    return () => window.removeEventListener(visualThemeChangeEvent, syncVisualTheme)
+  }, [])
 
   useEffect(() => {
     savedAppearance.current = appearance.settings
@@ -637,9 +704,16 @@ function AppearanceSettingsPage() {
   }
 
   function applyColorTheme(theme: typeof appearance.draft.colorThemes[number]) {
+    setVisualThemePreference('dark')
     setSelectedThemeId(theme.id)
     appearance.setDraft({ ...appearance.draft, themeMode: 'dark', colors: { dark: { ...theme.palette } } })
     setMessage(`${theme.name} önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.`)
+  }
+
+  function applyLightTheme() {
+    setSelectedThemeId('default-light')
+    setVisualThemePreference('light')
+    setMessage('Ravencia — Aydınlık önizlemeye uygulandı.')
   }
 
   async function saveColorTheme() {
@@ -686,6 +760,13 @@ function AppearanceSettingsPage() {
     }
   }
 
+  const selectableThemes: Array<{ id: string; label: string; description: string; mode: VisualTheme; profile: typeof defaultAppearanceColorTheme | null }> = [
+    { id: 'default-light', label: 'Ravencia — Aydınlık', description: 'Açık çalışma alanı görünümü', mode: 'light', profile: null },
+    { id: defaultAppearanceColorTheme.id, label: defaultAppearanceColorTheme.name, description: defaultAppearanceColorTheme.builtIn ? 'Çalışma alanının varsayılan koyu teması' : 'Kayıtlı özel tema', mode: 'dark', profile: defaultAppearanceColorTheme },
+    ...appearance.draft.colorThemes.filter(theme => !theme.builtIn).map(theme => ({ id: theme.id, label: theme.name, description: 'Kayıtlı özel tema', mode: 'dark' as const, profile: theme }))
+  ]
+  const activeSelectableTheme = selectableThemes.find(theme => theme.id === (visualTheme === 'light' ? 'default-light' : selectedThemeId)) ?? selectableThemes[0]
+  const activeThemeLabel = visualTheme === 'light' ? 'Ravencia — Aydınlık' : appearance.draft.colorThemes.find(theme => theme.id === selectedThemeId)?.name ?? defaultAppearanceColorTheme.name
   const previewStyle: CSSProperties = {
     fontFamily: appearanceFontFamilyCss[appearance.draft.fontFamily],
     fontSize: 'var(--rv-font-size-md)',
@@ -709,15 +790,15 @@ function AppearanceSettingsPage() {
       <div className="appearance-settings-grid">
         <label><span>Font tipi</span><select value={appearance.draft.fontFamily} onChange={event => appearance.setDraft({ ...appearance.draft, fontFamily: event.target.value as AppearanceSettings['fontFamily'] })}>{appearanceFontFamilyOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
         <label><span>Yazı boyutu</span><select value={appearance.draft.fontSize} onChange={event => appearance.setDraft({ ...appearance.draft, fontSize: event.target.value as AppearanceSettings['fontSize'] })}>{appearanceFontSizeOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></label>
-        <label><span>Tema</span><div className="appearance-theme-lock"><strong>{visualTheme === 'light' ? 'Ravencia — Beyaz' : appearanceThemeModeOptions[0].label}</strong><small>{visualTheme === 'light' ? 'Arayüz beyaz tema ile görüntüleniyor.' : appearanceThemeModeOptions[0].description}</small></div></label>
+        <div className="appearance-theme-field"><span>Tema</span><div className="appearance-theme-picker" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setThemeMenuOpen(false) }}><button type="button" className="appearance-theme-trigger" aria-label="Arayüz teması" aria-haspopup="listbox" aria-expanded={themeMenuOpen} onClick={() => setThemeMenuOpen(value => !value)} onKeyDown={event => { if (event.key === 'Escape') setThemeMenuOpen(false) }}><span>{activeSelectableTheme ? `${activeSelectableTheme.label} — ${activeSelectableTheme.description}` : 'Tema seçin'}</span><UiIcon name="chevronDown" /></button>{themeMenuOpen && <div className="appearance-theme-menu" role="listbox" aria-label="Arayüz teması seçenekleri">{selectableThemes.map(theme => <button type="button" role="option" aria-selected={theme.id === activeSelectableTheme?.id} key={theme.id} onMouseDown={event => event.preventDefault()} onClick={() => { if (theme.mode === 'light') applyLightTheme(); else if (theme.profile) applyColorTheme(theme.profile); setThemeMenuOpen(false) }}><strong>{theme.label}</strong><small>{theme.description}</small></button>)}</div>}</div></div>
       </div>
       <section className="appearance-color-editor">
-        <div className="appearance-color-editor-heading"><div><h2>Renk paleti</h2><p>Değişiklikler kaydetmeden önce anlık önizlenir. Hazır paletleri saklayabilir, daha sonra yeniden uygulayabilirsiniz.</p></div><div className="appearance-color-actions"><strong className="appearance-color-theme-label">{appearance.draft.colorThemes.find(theme => theme.id === selectedThemeId)?.name ?? defaultAppearanceColorTheme.name}</strong><button type="button" className="rv-button rv-button-secondary rv-button-sm" onClick={() => applyColorTheme(defaultAppearanceColorTheme)}>Varsayılanlara dön</button></div></div>
+        <div className="appearance-color-editor-heading"><div><h2>Renk paleti</h2><p>Değişiklikler kaydetmeden önce anlık önizlenir. Hazır paletleri saklayabilir, daha sonra yeniden uygulayabilirsiniz.</p></div><div className="appearance-color-actions"><strong className="appearance-color-theme-label">{activeThemeLabel}</strong></div></div>
         <div className="appearance-color-themes" aria-label="Kayıtlı renk temaları"><div className="appearance-color-themes-heading"><div><h3>Kayıtlı temalar</h3><p>Varsayılan tema korunur ve silinemez.</p></div><div className="appearance-color-theme-create"><input value={newThemeName} maxLength={60} placeholder="Yeni tema adı" aria-label="Yeni tema adı" onChange={event => setNewThemeName(event.target.value)} /><button type="button" className="rv-button rv-button-primary rv-button-sm" disabled={busy || !newThemeName.trim()} onClick={() => void saveColorTheme()}>Renk temasını kaydet</button></div></div><div className="appearance-color-theme-list">{appearance.draft.colorThemes.map(theme => <article className={`appearance-color-theme-card ${selectedThemeId === theme.id ? 'is-selected' : ''}`} key={theme.id}><button type="button" className="appearance-color-theme-select" onClick={() => applyColorTheme(theme)}><span className="appearance-color-theme-swatches" aria-hidden="true">{[theme.palette.bg, theme.palette.surface, theme.palette.primary, theme.palette.accent].map(color => <i key={color} style={{ backgroundColor: color }} />)}</span><span><strong>{theme.name}</strong><small>{theme.builtIn ? 'Varsayılan tema' : 'Kayıtlı özel tema'}</small></span></button>{theme.builtIn ? <span className="appearance-color-theme-protected">Korunuyor</span> : <button type="button" className="appearance-color-theme-delete" disabled={busy} onClick={() => void deleteColorTheme(theme)} aria-label={`${theme.name} temasını sil`}>Sil</button>}</article>)}</div></div>
         <div className="appearance-color-grid">{appearanceColorTokenOptions.map(({ key, label, description }) => <label className="appearance-color-field" key={key}><span><b>{label}</b><small>{description}</small></span><span className="appearance-color-control"><input type="color" value={palette[key]} onChange={event => updateColor(key, event.target.value)} aria-label={`${label} rengi`} /><code>{palette[key].toUpperCase()}</code></span></label>)}</div>
       </section>
       <div className="appearance-preview" style={previewStyle}><small>Önizleme</small><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p></div>
-      <button type="button" onClick={() => void save()} disabled={busy}>{busy ? 'Kaydediliyor…' : 'Görünüm ayarlarını kaydet'}</button>
+      <div className="settings-sticky-actions appearance-settings-actions"><button type="button" className="rv-button rv-button-secondary" onClick={() => applyColorTheme(defaultAppearanceColorTheme)} disabled={busy}>Varsayılanlara dön</button><button type="button" className="rv-button rv-button-primary" onClick={() => void save()} disabled={busy}>{busy ? 'Kaydediliyor…' : 'Görünüm ayarlarını kaydet'}</button></div>
     </section>
   </section>
 }
@@ -926,7 +1007,7 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
         <aside className="shipping-designer-inspector"><div className="shipping-designer-panel-heading"><span>Özellikler</span><small>{activeBlock ? `Seçili: ${activeBlock.title}` : 'Bir alan seçin'}</small></div><nav className="shipping-designer-inspector-tabs" role="tablist"><button type="button" className={designerTab === 'general' ? 'is-active' : ''} onClick={() => setDesignerTab('general')}>Genel</button><button type="button" className={designerTab === 'text' ? 'is-active' : ''} onClick={() => setDesignerTab('text')}>Yazı</button><button type="button" className={designerTab === 'barcode' ? 'is-active' : ''} onClick={() => setDesignerTab('barcode')}>Barkod</button></nav>{!activeBlock ? <div className="shipping-designer-empty">Düzenlemek için kâğıt üzerindeki bir bloğa tıklayın.</div> : <div className="shipping-designer-inspector-body">{designerTab === 'general' && <><label>Blok türü<select value={activeBlock.kind} onChange={event => { const kind = event.target.value as ShippingLabelBlockKind; const catalog = shippingLabelBlockCatalog.find(item => item.kind === kind); if (catalog) updateBlock(activeBlock.id, { kind, title: kind === 'custom' ? activeBlock.title : catalog.label, fields: [...catalog.fields], text: kind === 'custom' ? activeBlock.text : '' }) }}>{shippingLabelBlockCatalog.map(item => <option key={item.kind} value={item.kind}>{item.label}</option>)}</select></label><label>Hizalama<select value={activeBlock.align} onChange={event => updateBlock(activeBlock.id, { align: event.target.value as ShippingLabelAlignment })}><option value="left">Sol</option><option value="center">Orta</option><option value="right">Sağ</option></select></label><div className="shipping-designer-position-grid">{numberPositionField('Sol %', 'x', positionFor(activeBlock, layout.indexOf(activeBlock)).x)}{numberPositionField('Üst %', 'y', positionFor(activeBlock, layout.indexOf(activeBlock)).y)}{numberPositionField('Genişlik %', 'width', positionFor(activeBlock, layout.indexOf(activeBlock)).width)}{numberPositionField('Yükseklik %', 'height', positionFor(activeBlock, layout.indexOf(activeBlock)).height)}</div><label>Alana ekle<select value="" onChange={event => { if (event.target.value) toggleField(activeBlock, event.target.value as ShippingLabelField) }}><option value="">Bir alan seçin…</option>{shippingLabelFields.filter(item => !activeBlock.fields.includes(item.id)).map(item => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label><div className="shipping-designer-field-chips">{activeBlock.fields.length ? activeBlock.fields.map(field => <button type="button" key={field} onClick={() => toggleField(activeBlock, field)}>{shippingLabelFields.find(item => item.id === field)?.label}<UiIcon name="close" /></button>) : <span>Alan eklenmedi</span>}</div></>}{designerTab === 'text' && <><label>Yazı hizası<select value={activeBlock.align} onChange={event => updateBlock(activeBlock.id, { align: event.target.value as ShippingLabelAlignment })}><option value="left">Sol</option><option value="center">Orta</option><option value="right">Sağ</option></select></label><label>Yazı boyutu (px)<input type="number" min={8} max={72} value={fontSizeDraft} onChange={event => setFontSizeDraft(event.target.value)} onBlur={() => commitFontSize(fontSizeDraft)} onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }} /></label><p className="shipping-designer-help">Yazı rengi sabit olarak siyahtır.</p>{activeBlock.kind === 'custom' && <label>Metin<textarea value={activeBlock.text} maxLength={500} rows={8} onChange={event => updateBlock(activeBlock.id, { text: event.target.value })} /></label>}<p className="shipping-designer-help">Alanların gerçek değerleri sipariş yazdırılırken otomatik doldurulur.</p></>}{designerTab === 'barcode' && <div className="shipping-designer-barcode-settings"><strong>{activeBlock.kind === 'packageBarcode' ? 'Paket barkodu' : activeBlock.kind === 'trackingBarcode' ? 'Takip barkodu' : 'Barkod ayarı'}</strong><p>Barkod genişliği tuvaldeki blok genişliğine göre otomatik ölçeklenir. Modül aralıkları tarayıcı okunabilirliğini korur.</p><label>Alan<select value={activeBlock.fields[0] ?? ''} onChange={event => { if (event.target.value) updateBlock(activeBlock.id, { fields: [event.target.value as ShippingLabelField] }) }}><option value="">Alan seçin…</option>{shippingLabelFields.filter(field => field.id === 'trackingNumber' || field.id === 'packageNumber').map(field => <option value={field.id} key={field.id}>{field.label}</option>)}</select></label></div>}<button type="button" className="shipping-designer-delete" onClick={() => removeBlock(activeBlock.id)}>Bloğu kaldır</button></div>}</aside>
       </div>
     </section>
-    <div className="shipping-settings-actions"><button type="button" onClick={onSave}>Ayarları kaydet</button></div>
+    <div className="settings-sticky-actions shipping-settings-actions"><button type="button" onClick={onSave}>Ayarları kaydet</button></div>
   </div>
 }
 
@@ -942,18 +1023,30 @@ function ShippingPreviewBlock({ block }: { block: ShippingLabelBlock }) {
 
 function Status({ title, detail }: { title: string; detail?: string }) {
   return (
-    <div className="rv-splash-screen" role="status">
-       <div className="rv-splash-logo-container">
-          <img src="/pack/brand/ravencia-symbol-transparent.png" alt="" className="rv-splash-symbol" />
-       </div>
-       <div className="rv-splash-wordmark-container">
-          <img src="/pack/brand/ravencia-wordmark-transparent.png" alt="Ravencia" className="rv-splash-wordmark" />
-       </div>
-       <div className="rv-splash-loading-bar">
-          <div className="rv-splash-loading-progress"></div>
-       </div>
-       <strong className="rv-splash-text">{title}</strong>
-       {detail && <p className="rv-splash-detail">{detail}</p>}
+    <div className="rv-splash-screen" role="status" aria-live="polite">
+      <div className="rv-splash-card">
+        <div className="rv-splash-brand" aria-label="Ravencia"><img className="rv-splash-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" /><img className="rv-splash-wordmark" src="/pack/brand/ravencia-wordmark-transparent.png" alt="Ravencia MarketplaceHub" /></div>
+        <div className="rv-splash-copy"><span className="rv-splash-kicker">OPERASYON MERKEZİ</span><h1>{title}</h1><p>{detail ?? 'Çalışma alanınız hazırlanıyor.'}</p></div>
+        <div className="rv-splash-loading-bar" aria-hidden="true"><span className="rv-splash-loading-progress" /></div>
+        <div className="rv-splash-skeleton" aria-hidden="true">
+          <div className="rv-splash-skeleton-heading"><span className="rv-splash-skeleton-line line-wide" /><span className="rv-splash-skeleton-line line-short" /></div>
+          <div className="rv-splash-skeleton-grid">
+            <div className="rv-splash-skeleton-card"><span className="rv-splash-skeleton-media" /><span className="rv-splash-skeleton-line line-wide" /><span className="rv-splash-skeleton-line line-short" /></div>
+            <div className="rv-splash-skeleton-card"><span className="rv-splash-skeleton-media" /><span className="rv-splash-skeleton-line line-medium" /><span className="rv-splash-skeleton-line line-short" /></div>
+            <div className="rv-splash-skeleton-card is-wide"><span className="rv-splash-skeleton-media" /><span className="rv-splash-skeleton-line line-wide" /><span className="rv-splash-skeleton-line line-medium" /></div>
+          </div>
+        </div>
+        <small className="rv-splash-detail">Güvenli bağlantı kuruluyor</small>
+      </div>
     </div>
   )
+}
+
+function DelayedStatus({ title, detail, delayMs = 450 }: { title: string; detail?: string; delayMs?: number }) {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setVisible(true), delayMs)
+    return () => window.clearTimeout(timer)
+  }, [delayMs])
+  return <div className={`rv-loading-deferred${visible ? ' is-visible' : ''}`} aria-hidden={!visible}><Status title={title} detail={detail} /></div>
 }

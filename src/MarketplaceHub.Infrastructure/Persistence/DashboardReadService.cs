@@ -78,7 +78,19 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                 && !new[] { "CANCELLED", "CANCELED", "RETURNED" }.Contains(x.DerivedStatus)
                 && (x.NetAmount > 0 || x.GrossAmount > 0)
                 && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status)))
-            .Select(x => new { x.OrderedAt, x.ConnectionId, x.Currency, x.NetAmount, x.GrossAmount })
+            .Select(x => new
+            {
+                x.OrderedAt,
+                x.ConnectionId,
+                x.Currency,
+                x.NetAmount,
+                x.GrossAmount,
+                ProductQuantity = db.OrderLines
+                    .Where(line => line.TenantId == x.TenantId && line.OrderId == x.Id)
+                    .Select(line => (decimal?)line.OrderedQuantity)
+                    .Sum() ?? 0,
+                ShipmentCount = db.ShipmentPackages.Count(package => package.TenantId == x.TenantId && package.OrderId == x.Id),
+            })
             .ToListAsync(cancellationToken);
         if (!string.IsNullOrWhiteSpace(platform) && platform != "ALL")
             rows = rows.Where(x => connectionNames.GetValueOrDefault(x.ConnectionId, "Belirtilmemiş") == platform).ToList();
@@ -86,14 +98,22 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         {
             Day = TimeZoneInfo.ConvertTime(x.OrderedAt, timezone).Date,
             x.Currency,
-            Amount = x.GrossAmount > 0 ? x.GrossAmount : x.NetAmount
+            Amount = x.GrossAmount > 0 ? x.GrossAmount : x.NetAmount,
+            x.ProductQuantity,
+            x.ShipmentCount,
         });
         var byDay = revenueRows.GroupBy(x => x.Day).ToDictionary(
             x => x.Key,
-            x => new DashboardRevenuePointView(x.Key, x.Sum(row => row.Amount), x.Count(), x.Select(row => row.Currency).FirstOrDefault() ?? "TRY"));
+            x => new DashboardRevenuePointView(
+                x.Key,
+                x.Sum(row => row.Amount),
+                x.Count(),
+                x.Sum(row => row.ProductQuantity),
+                x.Sum(row => row.ShipmentCount),
+                x.Select(row => row.Currency).FirstOrDefault() ?? "TRY"));
         var result = new List<DashboardRevenuePointView>((endDay - startDay).Days + 1);
         for (var day = startDay; day <= endDay; day = day.AddDays(1))
-            result.Add(byDay.GetValueOrDefault(day) ?? new DashboardRevenuePointView(day, 0, 0, "TRY"));
+            result.Add(byDay.GetValueOrDefault(day) ?? new DashboardRevenuePointView(day, 0, 0, 0, 0, "TRY"));
         return result;
     }
 

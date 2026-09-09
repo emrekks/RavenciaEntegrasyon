@@ -19,7 +19,7 @@
   --rv-color-danger: #f499ac;
   --rv-color-danger-soft: #3c2633;
   --rv-color-info: #8bafff;
-  --rv-color-sidebar: #0e101c;
+  --rv-color-sidebar: #18181f;
   --rv-font-ui: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --rv-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --rv-font-size-xs: 0.75rem;
@@ -36,14 +36,14 @@
   --rv-icon-size-sm: 16px;
   --rv-icon-size-md: 20px;
   --rv-icon-size-lg: 24px;
-  --rv-sidebar-width: 248px;
-  --rv-sidebar-collapsed-width: 76px;
-  --rv-topbar-height: 80px;
+  --rv-sidebar-width: 224px;
+  --rv-sidebar-collapsed-width: 68px;
+  --rv-topbar-height: 72px;
   --rv-content-max-width: 1620px;
   --rv-content-wide-max-width: 1760px;
   --rv-page-padding-inline: clamp(24px, 2.2vw, 40px);
-  --rv-page-padding-block-start: 28px;
-  --rv-page-padding-block-end: 60px;
+  --rv-page-padding-block-start: var(--rv-page-padding-inline);
+  --rv-page-padding-block-end: var(--rv-page-padding-inline);
   --rv-space-1: 4px;
   --rv-space-2: 8px;
   --rv-space-3: 12px;

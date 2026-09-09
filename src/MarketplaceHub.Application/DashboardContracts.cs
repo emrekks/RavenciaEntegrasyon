@@ -25,7 +25,13 @@ public sealed record DashboardBootstrapView(
     DateTimeOffset GeneratedAt,
     long Version);
 
-public sealed record DashboardRevenuePointView(DateTime Day, decimal Amount, int OrderCount, string Currency);
+public sealed record DashboardRevenuePointView(
+    DateTime Day,
+    decimal Amount,
+    int OrderCount,
+    decimal ProductQuantity,
+    int ShipmentCount,
+    string Currency);
 
 public interface IDashboardReadService
 {

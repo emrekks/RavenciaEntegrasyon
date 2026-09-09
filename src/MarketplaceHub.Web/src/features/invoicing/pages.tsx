@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
 import { Busy, ErrorBox, Tabs, UiIcon } from '../../shared/components'
+import { statusLabel } from '../../shared/status-labels'
 
 type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
 type InvoiceWorkspaceLine = { sku: string; barcode: string | null; description: string; quantity: number; unitPrice: number; vatRate: number; imageUrl: string | null }
@@ -11,16 +12,6 @@ type InvoiceDetail = Invoice & { orderId: string; packageId: string | null; prov
 type Connection = { id: string; platformCode: string; displayName: string; status: string; hasCredential: boolean }
 
 function idempotency() { return crypto.randomUUID() }
-function statusLabel(value: string) {
-  const normalized = value.trim().toUpperCase()
-  return ({
-    READY: 'Hazır', ACCEPTED: 'Kabul edildi', COMPLETED: 'Tamamlandı', ACTIVE: 'Aktif', SUPPORTED: 'Destekleniyor', CANCELLED: 'İptal edildi',
-    UNKNOWN_RESULT: 'Bilinmeyen sonuç', VALIDATION_FAILED: 'Doğrulama başarısız', MANUAL_REVIEW: 'Manuel inceleme', UNAPPROVED: 'Onaylanmadı', UNKNOWN: 'Bilinmiyor', CANCELLATION_PENDING: 'İptal bekliyor',
-    NEW: 'Yeni', PROCESSING: 'İşleme alındı', READY_TO_SHIP: 'Kargoya hazır', SHIPPED: 'Kargoda', UNDELIVERED: 'Teslim edilemedi', DELIVERED: 'Teslim edildi', RETURNED: 'İade edildi', RETURN_IN_TRANSIT: 'İade kargoda',
-    SUCCESS: 'Başarılı', FAILED: 'Başarısız', IN_PROGRESS: 'Devam ediyor', RUNNING: 'Çalışıyor',
-    'DUPLICATE SAFE': 'Çoklu işleme güvenli', DUPLICATE_SAFE: 'Çoklu işleme güvenli', AUTO: 'Otomatik', TEMELFATURA: 'Temel fatura', EARSIVFATURA: 'E-Arşiv fatura', MANUAL_UPLOAD: 'Elle yüklenen fatura belgesi', MARKETPLACE_DELIVERY: 'Pazaryeri teslimi'
-  } as Record<string, string>)[normalized] ?? value
-}
 function Badge({ value }: { value: string }) { const normalized = value.trim().toUpperCase(); const tone = ['READY', 'ACCEPTED', 'COMPLETED', 'ACTIVE', 'SUPPORTED', 'CANCELLED', 'DELIVERED', 'SUCCESS'].includes(normalized) ? 'good' : ['UNKNOWN_RESULT', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'UNAPPROVED', 'UNKNOWN', 'CANCELLATION_PENDING', 'FAILED'].includes(normalized) ? 'warn' : 'neutral'; return <span className={`badge ${tone}`}><i aria-hidden="true" />{statusLabel(value)}</span> }
 function actionLabel(action: string) { return ({ SUBMIT: 'E-Faturam’a gönder', STAGE_CAPABILITY_PROBE: 'Stage mali canary çalıştır', RECONCILE: 'Durumu uzlaştır', DELIVER: 'Trendyol’a fatura linkini ilet', CANCEL: 'E-Arşiv iptal isteği', VALIDATE: 'Yerel doğrula' } as Record<string, string>)[action] ?? action }
 function addressLines(value: string | null | undefined) {
@@ -73,7 +64,7 @@ export function InvoicesPage() {
     <div className="invoice-reference-filter-shell">
       <Tabs className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={value => setTab(value as typeof tab)} items={tabs.map(([value, label]) => ({ value, label, count: value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : counts.dueSoon }))} />
       <section className="invoice-reference-filters" aria-label="Fatura filtreleri">
-        <label className="invoice-reference-search"><UiIcon name="search" /><input aria-label="Fatura ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></label>
+        <label className="invoice-reference-search"><span>Fatura ara</span><span className="invoice-reference-search-control"><UiIcon name="search" /><input aria-label="Fatura ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></span></label>
         <label>Sipariş durumu<select value={status} onChange={event => setStatus(event.target.value)}><option value="ALL">Tümü</option><option value="NEW">Yeni</option><option value="PROCESSING">İşleme alınmış</option><option value="SHIPPED">Kargoya verilmiş</option><option value="DELIVERED">Teslim edilmiş</option><option value="CANCELLED">İptal edilmiş</option></select></label>
       </section>
     </div>

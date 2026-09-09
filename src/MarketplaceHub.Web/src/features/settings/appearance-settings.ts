@@ -6,7 +6,7 @@ export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
 export type AppearanceFontSize = 'small' | 'normal' | 'large' | 'extra-large'
 export type AppearanceThemeMode = 'dark'
 export type AppearanceColorTheme = 'dark'
-export type AppearanceColorToken = 'bg' | 'surface' | 'surfaceRaised' | 'surfaceSoft' | 'border' | 'borderStrong' | 'ink' | 'muted' | 'subtle' | 'primary' | 'primaryHover' | 'primarySoft' | 'accent' | 'accentSoft' | 'warning' | 'warningSoft' | 'danger' | 'dangerSoft' | 'info'
+export type AppearanceColorToken = 'bg' | 'sidebar' | 'surface' | 'surfaceRaised' | 'surfaceSoft' | 'border' | 'borderStrong' | 'ink' | 'muted' | 'subtle' | 'primary' | 'primaryHover' | 'primarySoft' | 'accent' | 'accentSoft' | 'warning' | 'warningSoft' | 'danger' | 'dangerSoft' | 'info'
 
 export type AppearancePalette = Record<AppearanceColorToken, string>
 
@@ -33,11 +33,11 @@ export type AppearanceSettingsEnvelope = {
 }
 
 const defaultDarkPalette: AppearancePalette = {
-  bg: '#0b0d17', surface: '#131725', surfaceRaised: '#191e30', surfaceSoft: '#20263a', border: '#272e42', borderStrong: '#58617b', ink: '#f3f4fb', muted: '#abb3cb', subtle: '#919bb5', primary: '#7652e8', primaryHover: '#6740dc', primarySoft: '#28213e', accent: '#60d9bc', accentSoft: '#18382f', warning: '#f0c07d', warningSoft: '#3a3023', danger: '#f499ac', dangerSoft: '#3c2633', info: '#8bafff'
+  bg: '#0b0d17', sidebar: '#18181f', surface: '#131725', surfaceRaised: '#191e30', surfaceSoft: '#20263a', border: '#272e42', borderStrong: '#58617b', ink: '#f3f4fb', muted: '#abb3cb', subtle: '#919bb5', primary: '#7652e8', primaryHover: '#6740dc', primarySoft: '#28213e', accent: '#60d9bc', accentSoft: '#18382f', warning: '#f0c07d', warningSoft: '#3a3023', danger: '#f499ac', dangerSoft: '#3c2633', info: '#8bafff'
 }
 
 export const defaultLightPalette: AppearancePalette = {
-  bg: '#f5f7fb', surface: '#ffffff', surfaceRaised: '#f8faff', surfaceSoft: '#eef2f9', border: '#dbe1ee', borderStrong: '#b6c1d6', ink: '#192033', muted: '#5e6a82', subtle: '#7b879f', primary: '#6950df', primaryHover: '#563bc7', primarySoft: '#eee9ff', accent: '#118b76', accentSoft: '#dff7ef', warning: '#a66713', warningSoft: '#fff1d9', danger: '#b63f60', dangerSoft: '#ffe6ed', info: '#356ac5'
+  bg: '#f5f7fb', sidebar: '#ffffff', surface: '#ffffff', surfaceRaised: '#f8faff', surfaceSoft: '#eef2f9', border: '#dbe1ee', borderStrong: '#b6c1d6', ink: '#192033', muted: '#5e6a82', subtle: '#7b879f', primary: '#6950df', primaryHover: '#563bc7', primarySoft: '#eee9ff', accent: '#118b76', accentSoft: '#dff7ef', warning: '#a66713', warningSoft: '#fff1d9', danger: '#b63f60', dangerSoft: '#ffe6ed', info: '#356ac5'
 }
 
 export const defaultAppearanceColorTheme: AppearanceColorThemeProfile = {
@@ -59,6 +59,7 @@ export const defaultAppearanceSettings: AppearanceSettings = {
 
 export const appearanceColorTokenOptions: Array<{ key: AppearanceColorToken; label: string; description: string }> = [
   { key: 'bg', label: 'Arka plan', description: 'Sayfanın ana zemini' },
+  { key: 'sidebar', label: 'Menü zemini', description: 'Ana menünün zemini' },
   { key: 'surface', label: 'Yüzey', description: 'Kart ve panel zemini' },
   { key: 'surfaceRaised', label: 'Yükseltilmiş yüzey', description: 'Alan ve kontrol zemini' },
   { key: 'surfaceSoft', label: 'Yumuşak yüzey', description: 'İkincil yüzey ve rozet zemini' },
