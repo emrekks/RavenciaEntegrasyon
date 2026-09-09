@@ -2925,6 +2925,10 @@ button,
     visibility: visible;
   }
 
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    column-gap: var(--rv-space-4);
+  }
+
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .nav-count {
     display: inline-flex;
   }
