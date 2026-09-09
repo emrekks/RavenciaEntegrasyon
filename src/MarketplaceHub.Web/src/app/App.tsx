@@ -400,6 +400,7 @@ const dashboardChartLeft = 44
 const dashboardChartRight = 644
 const dashboardChartTop = 30
 const dashboardChartBottom = 180
+const dashboardChartTooltipWidth = 152
 
 function dashboardChartY(amount: number, maxValue: number) {
   const ratio = Math.min(1, Math.max(0, amount / Math.max(1, maxValue)))
@@ -428,7 +429,7 @@ function DashboardChartPoints({ points, maxValue, currency }: { points: ReturnTy
   return <>{points.map((point, index) => {
     const x = dashboardChartX(index, points.length)
     const y = dashboardChartY(point.amount, maxValue)
-    const tooltipX = Math.min(Math.max(x - 88, dashboardChartLeft), dashboardChartRight - 176)
+    const tooltipX = Math.min(Math.max(x - dashboardChartTooltipWidth / 2, dashboardChartLeft), dashboardChartRight - dashboardChartTooltipWidth)
     const tooltipY = Math.max(10, y - 122)
     const productQuantity = point.productQuantity ?? 0
     const shipmentCount = point.shipmentCount ?? 0
@@ -436,7 +437,7 @@ function DashboardChartPoints({ points, maxValue, currency }: { points: ReturnTy
       <title>{`${point.fullLabel} · ${point.orderCount} sipariş · ${dashboardQuantity(productQuantity)} adet ürün · ${shipmentCount} paket · ${dashboardMoney(point.amount, currency)}`}</title>
       <circle className="dashboard-chart-point-hit" cx={x} cy={y} r="12" />
       <circle className="dashboard-chart-point-dot" cx={x} cy={y} r="3" />
-      <foreignObject className="dashboard-chart-point-tooltip" x={tooltipX} y={tooltipY} width="176" height="116">
+      <foreignObject className="dashboard-chart-point-tooltip" x={tooltipX} y={tooltipY} width={dashboardChartTooltipWidth} height="116">
         <div className="dashboard-chart-tooltip">
           <strong>{point.fullLabel}</strong>
           <span><i />Sipariş <b>{point.orderCount.toLocaleString('tr-TR')}</b></span>
