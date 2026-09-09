@@ -184,15 +184,13 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
             <footer className="rv-auth-footer"><span><i /> TLS şifreli bağlantı</span><small>{footerMeta}</small></footer>
           </div>
         </div>
-        <div className="auth-activity-capsule" aria-label="Canlı operasyon bildirimleri">
-          <span className="auth-activity-signal"><UiIcon name="bell" size={16} /><i /></span>
-          <span className="auth-activity-kicker">CANLI AKIŞ</span>
-          <span className="auth-activity-copy" aria-hidden="true">
-            {authActivity.map(item => <span className={`auth-activity-item activity-${item.tone}`} key={item.id}><i /><b>{item.platform}</b><span>{item.message}</span><time>{item.time}</time></span>)}
-          </span>
-        </div>
       </div>
     </section>
+    <div className="auth-notification-center" aria-label="Canlı entegrasyon bildirimleri">
+      <div className="auth-notification-label"><UiIcon name="bell" size={17} /><span><strong>Bildirim merkezi</strong><small><i /> Canlı akış</small></span></div>
+      <div className="auth-notification-viewport"><div className="auth-notification-marquee">{[0, 1].map(copy => <div className="auth-notification-events" key={copy} aria-hidden={copy === 1 ? true : undefined}>{authActivity.map(item => <span className={`auth-notification-event event-${item.tone}`} key={item.id}><i /><b>{item.platform}</b><span>{item.message}</span><time>{item.time}</time></span>)}</div>)}</div></div>
+      <span className="auth-notification-count">3 yeni</span>
+    </div>
   </main>
 }
 
