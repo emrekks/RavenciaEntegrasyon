@@ -111,11 +111,6 @@
   }
 }
 
-.dashboard-operational-card > .dashboard-metric-icon {
-  background: transparent;
-  border-color: transparent;
-}
-
 @media (max-width: 700px) {
   .dashboard .page-heading > div:first-child { min-height: auto; }
 }
@@ -523,10 +518,10 @@
   .dashboard-health-item > strong { min-width: 0; overflow-wrap: anywhere; font-size: var(--rv-font-size-lg); font-variant-numeric: tabular-nums; line-height: 1.15; }
   .dashboard-health-item > small { min-height: 2.7em; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); line-height: 1.35; }
   .dashboard-channel-card { grid-template-rows: auto auto minmax(0, 1fr) auto; }
-  .dashboard-channel-donut { position: relative; display: grid; width: 190px; height: 190px; place-items: center; margin: var(--rv-space-4) auto var(--rv-space-5); border-radius: 50%; }
-  .dashboard-channel-donut::before { position: absolute; width: 126px; height: 126px; content: ''; background: var(--rv-color-surface); border-radius: 50%; }
-  .dashboard-channel-donut > div { position: relative; z-index: 1; display: grid; gap: 2px; text-align: center; }
-  .dashboard-channel-donut span, .dashboard-channel-donut small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+  .dashboard-channel-donut { position: relative; display: grid; width: min(220px, calc(100% - var(--rv-space-4))); height: auto; aspect-ratio: 1; place-items: center; margin: var(--rv-space-4) auto var(--rv-space-5); border-radius: 50%; }
+  .dashboard-channel-donut::before { position: absolute; width: min(150px, calc(100% - var(--rv-space-6))); height: auto; aspect-ratio: 1; content: ''; background: var(--rv-color-surface); border-radius: 50%; }
+  .dashboard-channel-donut > div { position: relative; z-index: 1; display: grid; min-width: min(132px, calc(100% - var(--rv-space-6))); gap: 2px; text-align: center; }
+  .dashboard-channel-donut span, .dashboard-channel-donut small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); white-space: nowrap; }
   .dashboard-channel-donut strong { font-size: var(--rv-font-size-2xl); font-variant-numeric: tabular-nums; }
   .dashboard-channel-list { display: grid; align-content: start; gap: var(--rv-space-3); }
   .dashboard-channel-list > div { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); }
@@ -2531,8 +2526,10 @@
 }
 
 @media (max-width: 600px) {
-  .settings-sticky-actions { bottom: var(--rv-space-2); justify-content: stretch; }
-  .settings-sticky-actions > button { flex: 1 1 0; }
+  .settings-sticky-actions { bottom: var(--rv-space-2); justify-content: stretch; flex-wrap: wrap; }
+  .settings-sticky-copy,
+  .settings-sticky-actions::before { flex: 1 1 100%; min-width: 0; }
+  .settings-sticky-actions > button { flex: 1 1 0; min-width: 0; }
   .database-reset-panel > .settings-sticky-actions { justify-content: stretch; }
 }
 
@@ -4663,6 +4660,10 @@ small,
 @media (min-width: 701px) {
   /* Pinned and hover-expanded navigation share one 224px content rail. The
      collapsed state still keeps its 68px grid column and only clips the rail. */
+  .app-shell.stitch-shell > aside .sidebar-pin-toggle {
+    margin-right: var(--rv-space-2);
+  }
+
   .app-shell.stitch-shell.sidebar-pinned > aside {
     padding-inline: 12px;
   }
@@ -4691,6 +4692,7 @@ small,
     height: 30px;
     min-height: 30px;
     margin-left: auto;
+    margin-right: var(--rv-space-2);
   }
 
   .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link).active::before {
@@ -4825,8 +4827,8 @@ small,
 /* Brand/integration detail surfaces use the same theme-aware panel layers and
    a narrower filter menu so it does not dominate the page. */
 .app-shell.stitch-shell main .integration-filter-menu {
-  width: min(340px, calc(100vw - 32px));
-  max-width: min(340px, calc(100vw - 32px));
+  width: min(320px, calc(100vw - 32px));
+  max-width: min(320px, calc(100vw - 32px));
   padding: var(--rv-space-3);
 }
 
@@ -4834,6 +4836,7 @@ small,
 .app-shell.stitch-shell main .reference-menu-popover :is(a, button) {
   justify-content: flex-start;
   text-align: left;
+  padding-inline: var(--rv-space-3);
 }
 
 /* Date controls should occupy their complete filter-grid track, including
@@ -4892,6 +4895,27 @@ small,
   gap: var(--rv-space-2);
 }
 
+.app-shell.stitch-shell main .security-page :is(
+  .database-reset-intro,
+  .security-authenticator-card > div,
+  .appearance-settings-panel > .panel-title > div,
+  .shipping-settings-intro
+) {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: var(--rv-space-2);
+}
+
+.app-shell.stitch-shell main .security-page :is(
+  .database-reset-intro,
+  .security-authenticator-card > div,
+  .appearance-settings-panel > .panel-title > div,
+  .shipping-settings-intro
+) > :is(h2, p) {
+  margin: 0;
+}
+
 .app-shell.stitch-shell main .database-scope-groups {
   margin-block: var(--rv-space-6);
 }
@@ -4939,11 +4963,48 @@ small,
   margin: 0;
 }
 
+.app-shell.stitch-shell main .shipping-designer-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--rv-space-3);
+}
+
+.app-shell.stitch-shell main .shipping-designer-toolbar > div:first-child {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.app-shell.stitch-shell main .shipping-designer-toolbar > .shipping-designer-format-tabs {
+  grid-column: 2;
+  grid-row: 1;
+  width: auto;
+  margin-left: 0;
+  justify-self: end;
+  align-self: end;
+}
+
+.app-shell.stitch-shell main .shipping-designer-toolbar > .shipping-designer-template-actions {
+  grid-column: 1;
+  grid-row: 2;
+  margin-top: 0;
+  justify-self: end;
+  align-self: center;
+}
+
+.app-shell.stitch-shell main .shipping-designer-toolbar > button {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+  align-self: center;
+}
+
 .app-shell.stitch-shell main .shipping-designer-template-actions {
   display: flex;
   align-items: center;
   gap: var(--rv-space-2);
-  margin-top: var(--rv-space-5);
+  margin-top: 0;
 }
 
 .app-shell.stitch-shell main .shipping-designer-template-actions select {
@@ -4981,6 +5042,31 @@ small,
     flex-wrap: wrap;
   }
 
+  .app-shell.stitch-shell main .shipping-designer-toolbar {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .app-shell.stitch-shell main .shipping-designer-toolbar > div:first-child,
+  .app-shell.stitch-shell main .shipping-designer-toolbar > .shipping-designer-format-tabs,
+  .app-shell.stitch-shell main .shipping-designer-toolbar > .shipping-designer-template-actions,
+  .app-shell.stitch-shell main .shipping-designer-toolbar > button {
+    grid-column: 1;
+    justify-self: stretch;
+  }
+
+  .app-shell.stitch-shell main .shipping-designer-toolbar > div:first-child { grid-row: 1; }
+  .app-shell.stitch-shell main .shipping-designer-toolbar > .shipping-designer-format-tabs {
+    grid-row: 2;
+    width: 100%;
+    margin-left: 0;
+  }
+  .app-shell.stitch-shell main .shipping-designer-toolbar > .shipping-designer-template-actions { grid-row: 3; }
+  .app-shell.stitch-shell main .shipping-designer-toolbar > button {
+    grid-row: 4;
+    width: 100%;
+  }
+
   .app-shell.stitch-shell main .shipping-designer-template-actions select {
     min-width: 0;
     flex: 1 1 100%;
@@ -5006,4 +5092,40 @@ small,
 
 .app-shell.stitch-shell main .appearance-settings-actions::before {
   content: 'Görünüm ayarlarını uygula\A Değişiklikleri hesabınıza kaydetmeden önce önizleyin.';
+}
+
+@media (max-width: 900px) {
+  .app-shell.stitch-shell main .shipping-designer-toolbar {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .app-shell.stitch-shell main .shipping-designer-toolbar > div:first-child,
+  .app-shell.stitch-shell main .shipping-designer-toolbar > .shipping-designer-format-tabs,
+  .app-shell.stitch-shell main .shipping-designer-toolbar > .shipping-designer-template-actions,
+  .app-shell.stitch-shell main .shipping-designer-toolbar > button {
+    grid-column: 1;
+    justify-self: stretch;
+  }
+
+  .app-shell.stitch-shell main .shipping-designer-toolbar > div:first-child { grid-row: 1; }
+  .app-shell.stitch-shell main .shipping-designer-toolbar > .shipping-designer-format-tabs {
+    grid-row: 2;
+    width: 100%;
+    margin-left: 0;
+  }
+  .app-shell.stitch-shell main .shipping-designer-toolbar > .shipping-designer-template-actions {
+    grid-row: 3;
+    width: 100%;
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+  .app-shell.stitch-shell main .shipping-designer-toolbar > button {
+    grid-row: 4;
+    width: 100%;
+  }
+  .app-shell.stitch-shell main .shipping-designer-toolbar > .shipping-designer-template-actions select {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
 }

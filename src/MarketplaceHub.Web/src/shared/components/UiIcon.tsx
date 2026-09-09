@@ -97,6 +97,7 @@ export type UiIconName =
   | 'play'
   | 'pause'
   | 'target'
+  | 'warehouse'
 
 type UiIconProps = {
   name: UiIconName
@@ -156,11 +157,11 @@ const paths: Record<UiIconName, ReactNode> = {
   undo: <><path d="M5 8v5h5" /><path d="M5 13a7 7 0 1 1 2 4" /></>,
   underline: <><path d="M7 5v6a5 5 0 0 0 10 0V5M5 20h14" /></>,
   upload: <><path d="M12 20V9m-4 4 4-4 4 4" /><path d="M5 4h14" /></>,
-  dashboard: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.8" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.8" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.8" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.8" /></>,
+  dashboard: <><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></>,
   products: <><path d="M6 8h12l1 12H5L6 8Z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /><path d="M9 12h6" /></>,
-  orders: <><rect x="5" y="3.5" width="14" height="17" rx="2" /><path d="M9 3.5h6v3H9zM9 11h6M9 15h6M9 18h3" /></>,
-  returns: <><path d="M7 4h8l4 4v12H5V8l2-4Z" /><path d="M7 4v4h8V4" /><path d="M14 14H7m0 0 3-3m-3 3 3 3" /></>,
-  jobs: <><path d="M4 5h16M4 12h9M4 19h7" /><path d="m16 15 2 2 4-5" /></>,
+  orders: <><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /><path d="M12 22V12" /><path d="m3.29 7 8.71 5 8.71-5" /><path d="m7.5 4.27 9 5.15" /></>,
+  returns: <g transform="scale(0.046875)" stroke="currentColor" strokeWidth="16"><path d="M8 135 218 14 427 135 218 255 8 135Z" /><path d="M8 135V377L218 498 427 377" /><path d="M218 255V498" /><path d="M427 135V268" /><path d="M82 177 291 56" /><path d="M143 212 352 91" /><path d="M82 177V273L143 308V212" /><path d="M357 230 265 308 357 376V341C416 341 455 370 455 416C455 451 434 476 398 489C462 479 504 434 504 376C504 307 453 264 357 264Z" /></g>,
+  jobs: <><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5V19A9 3 0 0 0 15 21.84" /><path d="M21 5V8" /><path d="M21 12L18 17H22L19 22" /><path d="M3 12A9 3 0 0 0 14.59 14.87" /></>,
   settings: <><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></>,
   platforms: <><rect x="3.5" y="4" width="7" height="7" rx="1.8" /><rect x="13.5" y="13" width="7" height="7" rx="1.8" /><path d="M10.5 7.5h2a4 4 0 0 1 4 4V13M14 10l2.5 2.5L19 10" /></>,
   mappings: <><circle cx="6" cy="6" r="3" /><circle cx="18" cy="18" r="3" /><path d="m8.5 8.5 7 7M18 9V6h-3" /></>,
@@ -179,7 +180,7 @@ const paths: Record<UiIconName, ReactNode> = {
   chart: <path d="M4 4v16h17M8 15l4-5 4 2 5-7" />,
   truck: <><path d="M3 5h11v12H3zM14 9h4l3 4v4h-7" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></>,
   invoice: <><path d="M5 3h10l4 4v14l-3-2-3 2-3-2-3 2-2-1V3Z" /><path d="M14 3v5h5M9 12h6M9 16h4" /></>,
-  connect: <><path d="m8 3 3 3-5 5-3-3m6 0 7 7m2-7 3 3-5 5-3-3M3 21l4-4M17 7l4-4" /></>,
+  connect: <><path d="M17 19a1 1 0 0 1-1-1v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2a1 1 0 0 1-1 1z" /><path d="M17 21v-2" /><path d="M19 14V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V10" /><path d="M21 21v-2" /><path d="M3 5V3" /><path d="M4 10a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2a2 2 0 0 1-2 2z" /><path d="M7 5V3" /></>,
   arrowUp: <path d="m6 16 12-12M6 4h12v12" />,
   trend: <path d="m3 17 6-6 4 3 8-10M15 4h6v6" />,
   circleCheck: <><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></>,
@@ -202,6 +203,7 @@ const paths: Record<UiIconName, ReactNode> = {
   play: <path d="m8 4 12 8-12 8V4Z" />,
   pause: <path d="M8 4v16M16 4v16" />,
   target: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></>,
+  warehouse: <><path d="M18 21V10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v11" /><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 1.132-1.803l7.95-3.974a2 2 0 0 1 1.837 0l7.948 3.974A2 2 0 0 1 22 8z" /><path d="M6 13h12" /><path d="M6 17h12" /></>,
 }
 
 export function UiIcon({ name, className, size = 16, title }: UiIconProps) {
