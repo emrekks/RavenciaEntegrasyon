@@ -3622,10 +3622,15 @@ button,
   animation-direction: reverse;
 }
 
-.auth-route-packet { opacity: .9; }
+.auth-route-packet {
+  opacity: .9;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: auth-dot-breathe 2.8s ease-in-out infinite;
+}
 .auth-route-packet-primary { fill: var(--rv-color-primary); }
-.auth-route-packet-accent { fill: var(--rv-color-accent); }
-.auth-route-packet-platform { fill: color-mix(in srgb, var(--rv-color-primary) 54%, var(--rv-color-accent)); }
+.auth-route-packet-accent { fill: var(--rv-color-accent); animation-delay: -1.15s; }
+.auth-route-packet-platform { fill: color-mix(in srgb, var(--rv-color-primary) 54%, var(--rv-color-accent)); animation-delay: -2.1s; }
 
 .auth-signal-core {
   top: 50%;
@@ -3704,6 +3709,7 @@ button,
   background: var(--pulse-color, var(--rv-color-primary));
   border-radius: 50%;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--pulse-color, var(--rv-color-primary)) 10%, transparent), 0 0 18px color-mix(in srgb, var(--pulse-color, var(--rv-color-primary)) 74%, transparent);
+  animation: auth-dot-breathe 2.8s ease-in-out infinite;
 }
 
 .auth-signal-pulse-one {
@@ -3716,6 +3722,8 @@ button,
   width: 788px;
   animation: auth-pulse-orbit-reverse 21s linear infinite;
 }
+
+.auth-signal-pulse-two::before { animation-delay: -1.35s; }
 
 .auth-orbit-tag {
   --tag-color: var(--rv-color-primary);
@@ -3740,8 +3748,10 @@ button,
   height: 5px;
   flex: 0 0 5px;
   background: var(--tag-color);
+  color: var(--tag-color);
   border-radius: 50%;
   box-shadow: 0 0 10px color-mix(in srgb, var(--tag-color) 64%, transparent);
+  animation: auth-dot-breathe 2.8s ease-in-out infinite;
 }
 
 .auth-orbit-tag b { color: var(--rv-color-ink); font-weight: 500; }
@@ -3750,6 +3760,9 @@ button,
 .auth-orbit-tag-hepsiburada { --tag-color: #f59b3d; top: 32%; right: 0; animation-delay: -1.6s; }
 .auth-orbit-tag-shopify { --tag-color: #95bf47; bottom: 27%; left: 3%; animation-delay: -3.2s; }
 .auth-orbit-tag-n11 { --tag-color: #b978df; right: 5%; bottom: 23%; animation-delay: -4.8s; }
+.auth-orbit-tag-hepsiburada > i { animation-delay: -.7s; }
+.auth-orbit-tag-shopify > i { animation-delay: -1.4s; }
+.auth-orbit-tag-n11 > i { animation-delay: -2.1s; }
 
 .rv-auth-stage {
   z-index: 2;
@@ -3870,6 +3883,11 @@ button,
   50% { opacity: .075; filter: blur(130px); }
 }
 
+@keyframes auth-dot-breathe {
+  0%, 100% { opacity: .58; transform: scale(.72); }
+  50% { opacity: 1; transform: scale(1.18); }
+}
+
 .auth-notification-center {
   position: relative;
   z-index: 2;
@@ -3913,7 +3931,9 @@ button,
 .auth-notification-marquee { display: flex; width: max-content; animation: auth-notification-marquee 34s linear infinite; }
 .auth-notification-events { display: flex; align-items: center; gap: 30px; padding: 0 15px; }
 .auth-notification-event { --event-color: var(--rv-color-primary); display: inline-flex; align-items: center; gap: 7px; font-size: 10px; white-space: nowrap; }
-.auth-notification-event > i { width: 6px; height: 6px; flex: 0 0 6px; background: var(--event-color); border-radius: 50%; box-shadow: 0 0 10px color-mix(in srgb, var(--event-color) 46%, transparent); }
+.auth-notification-event > i { width: 6px; height: 6px; flex: 0 0 6px; background: var(--event-color); border-radius: 50%; box-shadow: 0 0 10px color-mix(in srgb, var(--event-color) 46%, transparent); animation: auth-dot-breathe 2.8s ease-in-out infinite; }
+.auth-notification-event:nth-child(2) > i { animation-delay: -.8s; }
+.auth-notification-event:nth-child(3) > i { animation-delay: -1.6s; }
 .auth-notification-event b { color: var(--rv-color-ink); font-weight: 500; }
 .auth-notification-event span { color: var(--rv-color-muted); }
 .auth-notification-event time { color: var(--rv-color-subtle); font-family: var(--rv-font-mono); font-size: 9px; }
@@ -3967,7 +3987,9 @@ button,
   .auth-signal-spirals,
   .auth-focus-column .rv-auth-hero-brand,
   .auth-focus-column .rv-auth-card-glow,
+  .auth-orbit-tag > i,
   .auth-notification-label small i,
+  .auth-notification-event > i,
   .auth-notification-marquee { animation: none; }
   .auth-signal-pulse { display: none; }
   .auth-route-packet { display: none; }
