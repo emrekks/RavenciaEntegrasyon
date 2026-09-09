@@ -3780,15 +3780,17 @@ button,
 }
 
 .auth-focus-column .rv-auth-hero-brand {
-  min-height: 68px;
-  margin: 0;
-  gap: 14px;
+  min-height: 92px;
+  margin: -14px 0 -8px;
+  gap: 20px;
+  position: relative;
+  top: -8px;
   animation: auth-brand-float 8s ease-in-out infinite;
 }
 
 .auth-focus-column .rv-auth-hero-brand::before { display: none; }
-.auth-focus-column .rv-auth-hero-symbol { width: 58px; height: 58px; flex-basis: 58px; filter: none; }
-.auth-focus-column .rv-auth-hero-wordmark { width: 202px; filter: none; }
+.auth-focus-column .rv-auth-hero-symbol { width: 87px; height: 87px; flex-basis: 87px; filter: none; }
+.auth-focus-column .rv-auth-hero-wordmark { width: 303px; filter: none; }
 
 .auth-focus-column .rv-auth-login-shell {
   width: 100%;
@@ -3890,7 +3892,8 @@ button,
   z-index: 2;
   display: grid;
   width: min(calc(100% - 48px), 1120px);
-  min-height: 58px;
+  height: 48px;
+  min-height: 48px;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   margin: 0 auto 18px;
@@ -3927,7 +3930,7 @@ button,
 
 .auth-notification-marquee { display: flex; width: max-content; animation: auth-notification-marquee 34s linear infinite; }
 .auth-notification-events { display: flex; align-items: center; gap: 20px; padding: 0 18px; }
-.auth-notification-event { --event-color: var(--rv-color-primary); display: grid; min-width: 258px; grid-template-columns: 6px auto minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 10px; white-space: nowrap; }
+.auth-notification-event { --event-color: var(--rv-color-primary); display: flex; min-width: 258px; align-items: center; gap: 8px; font-size: 10px; white-space: nowrap; }
 .auth-notification-event > i { width: 6px; height: 6px; flex: 0 0 6px; background: var(--event-color); border-radius: 50%; box-shadow: 0 0 10px color-mix(in srgb, var(--event-color) 46%, transparent); animation: auth-dot-breathe 2.8s ease-in-out infinite; }
 .auth-notification-event:nth-child(2) > i { animation-delay: -.8s; }
 .auth-notification-event:nth-child(3) > i { animation-delay: -1.6s; }
@@ -3935,8 +3938,8 @@ button,
 .auth-notification-event:nth-child(5) > i { animation-delay: -.4s; }
 .auth-notification-event:nth-child(6) > i { animation-delay: -1.2s; }
 .auth-notification-event b { color: var(--rv-color-ink); font-weight: 500; }
-.auth-notification-event > span { min-width: 0; overflow: hidden; color: var(--rv-color-muted); text-overflow: ellipsis; }
-.auth-notification-event time { justify-self: end; color: var(--rv-color-subtle); font-family: var(--rv-font-mono); font-size: 9px; }
+.auth-notification-event > span { min-width: 0; max-width: 178px; overflow: hidden; color: var(--rv-color-muted); text-overflow: ellipsis; }
+.auth-notification-event time { flex: 0 0 auto; margin-left: 2px; color: var(--rv-color-subtle); font-family: var(--rv-font-mono); font-size: 9px; }
 .auth-notification-event.event-trendyol { --event-color: #f27a24; }
 .auth-notification-event.event-hepsiburada { --event-color: #f59b3d; }
 .auth-notification-event.event-shopify { --event-color: #95bf47; }
