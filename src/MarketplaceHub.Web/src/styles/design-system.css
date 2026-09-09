@@ -3589,31 +3589,34 @@ button,
   pointer-events: none;
 }
 
-.auth-signal-spirals {
+.auth-signal-orbits {
   transform-box: view-box;
   transform-origin: center;
-  animation: auth-signal-spiral-turn 48s linear infinite;
+  animation: auth-signal-orbits-turn 72s linear infinite;
 }
 
-.auth-signal-spiral {
+.auth-signal-orbit {
   fill: none;
   stroke-linecap: round;
   stroke-width: 1.2;
-  opacity: .52;
+  vector-effect: non-scaling-stroke;
+  opacity: .42;
 }
 
-.auth-signal-spiral-one { stroke: color-mix(in srgb, var(--rv-color-primary) 60%, transparent); }
-.auth-signal-spiral-two { stroke: color-mix(in srgb, var(--rv-color-accent) 48%, transparent); }
+.auth-signal-orbit-primary { stroke: color-mix(in srgb, var(--rv-color-primary) 58%, transparent); }
+.auth-signal-orbit-accent { stroke: color-mix(in srgb, var(--rv-color-accent) 48%, transparent); }
 
 .auth-route-line {
   fill: none;
   stroke: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-border));
   stroke-width: 1;
-  opacity: .52;
+  stroke-linecap: round;
+  opacity: .38;
 }
 
 .auth-route-line-platform {
   stroke: color-mix(in srgb, var(--rv-color-accent) 18%, var(--rv-color-border));
+  opacity: .24;
 }
 
 .auth-route-packet {
@@ -3841,7 +3844,7 @@ button,
   to { transform: translate(-50%, -50%) rotate(-360deg); }
 }
 
-@keyframes auth-signal-spiral-turn {
+@keyframes auth-signal-orbits-turn {
   to { transform: rotate(360deg); }
 }
 
@@ -3982,7 +3985,7 @@ button,
   .auth-signal-ring,
   .auth-signal-pulse,
   .auth-orbit-tag,
-  .auth-signal-spirals,
+  .auth-signal-orbits,
   .auth-focus-column .rv-auth-hero-brand,
   .auth-focus-column .rv-auth-card-glow,
   .auth-orbit-tag > i,

@@ -158,9 +158,10 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
       <div className="auth-signal-scene">
         <svg className="auth-signal-routes" viewBox="0 0 940 940" preserveAspectRatio="xMidYMid meet">
           <defs><filter id="auth-signal-packet-glow" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="2.5" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter></defs>
-          <g className="auth-signal-spirals">
-            <path className="auth-signal-spiral auth-signal-spiral-one" d="M470 470 C522 434 560 470 548 520 C534 577 448 596 402 548 C342 486 376 376 474 354 C590 328 662 462 606 566 C539 690 341 661 296 522 C242 353 383 220 555 264 C752 313 796 566 650 716" />
-            <path className="auth-signal-spiral auth-signal-spiral-two" d="M470 470 C430 508 390 474 404 430 C421 374 502 360 541 412 C590 477 537 573 449 580 C337 590 275 474 326 374 C391 245 590 254 679 372 C784 512 692 702 536 744" />
+          <g className="auth-signal-orbits">
+            <ellipse className="auth-signal-orbit auth-signal-orbit-primary" cx="470" cy="470" rx="356" ry="164" />
+            <ellipse className="auth-signal-orbit auth-signal-orbit-accent" cx="470" cy="470" rx="356" ry="236" transform="rotate(60 470 470)" />
+            <ellipse className="auth-signal-orbit auth-signal-orbit-primary" cx="470" cy="470" rx="356" ry="236" transform="rotate(-60 470 470)" />
           </g>
           <g className="auth-signal-route-lines">
             <path className="auth-route-line" d="M470 470 C410 445 325 372 88 280" />
@@ -180,11 +181,6 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
           </g>
         </svg>
         <span className="auth-signal-core" />
-        <span className="auth-signal-axis auth-signal-axis-horizontal" />
-        <span className="auth-signal-axis auth-signal-axis-vertical" />
-        <span className="auth-signal-ring auth-signal-ring-one" />
-        <span className="auth-signal-ring auth-signal-ring-two" />
-        <span className="auth-signal-ring auth-signal-ring-three" />
         <span className="auth-signal-pulse auth-signal-pulse-one" />
         <span className="auth-signal-pulse auth-signal-pulse-two" />
         {authPlatforms.map(platform => <span className={`auth-orbit-tag auth-orbit-tag-${platform.id}`} key={platform.id}><i /><b>{platform.name}</b><small>bağlı</small></span>)}
