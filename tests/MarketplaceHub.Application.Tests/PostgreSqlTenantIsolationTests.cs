@@ -102,6 +102,74 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await transaction.RollbackAsync();
     }
 
+    [PostgreSqlFact]
+    public async Task JobLease_IsExclusive_WhenTwoWorkersRace()
+    {
+        var tenant = NewTenant("lease-tenant");
+        var job = NewJob(tenant.Id);
+
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.Add(job);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            LeasedJob?[] leases;
+            await using (var firstDb = fixture.CreateContext())
+            await using (var secondDb = fixture.CreateContext())
+            {
+                var firstWorker = new JobLeaseService(firstDb, fixture.TokenHasher, fixture.TimeProvider);
+                var secondWorker = new JobLeaseService(secondDb, fixture.TokenHasher, fixture.TimeProvider);
+                leases = await Task.WhenAll(
+                    firstWorker.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None),
+                    secondWorker.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None));
+            }
+
+            Assert.Single(leases, lease => lease is not null);
+            Assert.Single(leases, lease => lease is null);
+
+            await using var verification = fixture.CreateContext();
+            var persisted = await verification.IntegrationJobs.SingleAsync(x => x.Id == job.Id);
+            Assert.Equal(JobStatus.Leased, persisted.Status);
+            Assert.Equal(1, persisted.AttemptCount);
+            Assert.Equal(1, await verification.JobAttempts.CountAsync(x => x.JobId == job.Id));
+        }
+        finally
+        {
+            await DeleteJobAndTenantAsync(job.Id, tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task ApiIdempotencyKey_IsScopedToTenant_ButDuplicateWithinTenantIsRejected()
+    {
+        var firstTenant = NewTenant("idempotency-a");
+        var secondTenant = NewTenant("idempotency-b");
+        const string route = "/api/v1/catalog/products";
+        const string key = "same-idempotency-key";
+
+        await using var db = fixture.CreateContext();
+        try
+        {
+            db.Tenants.AddRange(firstTenant, secondTenant);
+            db.ApiIdempotencyRecords.AddRange(
+                NewIdempotencyRecord(firstTenant.Id, route, key),
+                NewIdempotencyRecord(secondTenant.Id, route, key));
+            await db.SaveChangesAsync();
+
+            db.ChangeTracker.Clear();
+            db.ApiIdempotencyRecords.Add(NewIdempotencyRecord(firstTenant.Id, route, key));
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+        finally
+        {
+            await DeleteIdempotencyRecordsAndTenantsAsync(firstTenant.Id, secondTenant.Id);
+        }
+    }
+
     private static DefaultHttpContext NewHttpContext(string rawToken)
     {
         var context = new DefaultHttpContext
@@ -188,6 +256,60 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         LastSeenAt = DateTimeOffset.UtcNow,
         OccurrenceCount = 1
     };
+
+    private static IntegrationJob NewJob(Guid tenantId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var suffix = Guid.NewGuid().ToString("N");
+        return new IntegrationJob
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            JobType = "TEST_LEASE",
+            PayloadJson = "{}",
+            PayloadVersion = 1,
+            PayloadHash = "test-payload-hash",
+            JobDedupKey = $"lease-{suffix}",
+            EffectIdempotencyKey = $"effect-{suffix}",
+            Priority = 1,
+            Status = JobStatus.Pending,
+            AvailableAt = now.AddMinutes(-1),
+            MaxAttempts = 3,
+            CorrelationId = $"corr-{suffix}",
+            CreatedAt = now,
+            Version = 1
+        };
+    }
+
+    private static ApiIdempotencyRecord NewIdempotencyRecord(Guid tenantId, string route, string key) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        RouteTemplate = route,
+        IdempotencyKey = key,
+        RequestHash = "test-request-hash",
+        State = "IN_PROGRESS",
+        CreatedAt = DateTimeOffset.UtcNow,
+        ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
+    };
+
+    private async Task DeleteJobAndTenantAsync(Guid jobId, Guid tenantId)
+    {
+        await using var db = fixture.CreateContext();
+        await db.IntegrationJobs.Where(x => x.Id == jobId).ExecuteDeleteAsync();
+        await db.Tenants.Where(x => x.Id == tenantId).ExecuteDeleteAsync();
+    }
+
+    private async Task DeleteIdempotencyRecordsAndTenantsAsync(Guid firstTenantId, Guid secondTenantId)
+    {
+        await using var db = fixture.CreateContext();
+        await db.ApiIdempotencyRecords
+            .Where(x => x.TenantId == firstTenantId || x.TenantId == secondTenantId)
+            .ExecuteDeleteAsync();
+        await db.Tenants
+            .Where(x => x.Id == firstTenantId || x.Id == secondTenantId)
+            .ExecuteDeleteAsync();
+    }
 }
 
 public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
