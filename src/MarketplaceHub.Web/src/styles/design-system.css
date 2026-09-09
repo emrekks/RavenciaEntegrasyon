@@ -3201,8 +3201,16 @@ button,
 }
 
 .rv-auth-control input {
+  display: block;
   min-height: 42px;
+  align-self: center;
+  line-height: 1.2;
   background-color: rgba(24, 24, 31, 0.004);
+}
+
+.rv-auth-control > .ui-icon {
+  align-self: center;
+  margin: 0;
 }
 
 .rv-auth-control input:-webkit-autofill,
