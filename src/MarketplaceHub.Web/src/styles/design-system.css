@@ -2999,7 +2999,8 @@ button,
 }
 
 .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
-  padding-inline-start: 12px;
+  /* Keep the expanded labels on the same fixed icon rail as the collapsed menu. */
+  padding-inline-start: 6px;
   padding-inline-end: 12px;
   border-width: 1px;
 }
