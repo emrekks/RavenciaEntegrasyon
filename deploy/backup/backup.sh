@@ -2,7 +2,8 @@
 set -eu
 umask 077
 test -r "${POSTGRES_PASSWORD_FILE:?missing POSTGRES_PASSWORD_FILE}"
-export PGPASSWORD="$(cat "$POSTGRES_PASSWORD_FILE")"
+PGPASSWORD="$(cat "$POSTGRES_PASSWORD_FILE")"
+export PGPASSWORD
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 target="/backup/$stamp"
 mkdir "$target"
