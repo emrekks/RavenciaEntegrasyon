@@ -4429,13 +4429,14 @@ small,
   }
 }
 
-/* Final sidebar geometry: keep the left rail in one coordinate system while
-   the overlay grows only toward the right. The inner surfaces stay flush to
-   the rail so borders and active states do not jump when labels appear. */
+/* Final sidebar geometry: keep one fixed icon rail while the overlay grows
+   only toward the right. Links keep the same layout in both states; the
+   aside clips the unused part of the link when it is collapsed. */
 @media (min-width: 701px) {
   .app-shell.stitch-shell.sidebar-collapsed > aside,
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside {
     padding-inline: 0;
+    overflow-x: hidden;
     transition: width 220ms var(--rv-ease-standard), box-shadow 220ms var(--rv-ease-standard);
   }
 
@@ -4456,11 +4457,12 @@ small,
   .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link),
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link),
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    position: relative;
     display: grid;
     grid-template-columns: 22px minmax(0, 1fr) auto;
     align-items: center;
-    width: calc(100% - 23px);
-    min-width: 44px;
+    width: 224px;
+    min-width: 224px;
     height: 44px;
     min-height: 44px;
     margin-inline-start: 11.5px;
@@ -4468,11 +4470,44 @@ small,
     padding-inline-start: 10px;
     padding-inline-end: 10px;
     justify-content: initial;
-    column-gap: 0;
+    column-gap: 12px;
+    overflow: visible;
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    isolation: isolate;
   }
 
-  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
-    column-gap: 12px;
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before {
+    position: absolute;
+    z-index: 0;
+    inset: 0 auto 0 0;
+    width: 44px;
+    content: '';
+    pointer-events: none;
+    border: 1px solid transparent;
+    border-radius: var(--rv-radius-md);
+    transition: width 220ms var(--rv-ease-standard), background 160ms var(--rv-ease-standard), border-color 160ms var(--rv-ease-standard), box-shadow 160ms var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link).active::before {
+    background: var(--rv-color-primary);
+    border-color: var(--rv-color-primary);
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--rv-color-primary) 24%, transparent);
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link):hover:not(.active)::before {
+    background: var(--rv-color-surface-soft);
+    border-color: var(--rv-color-border-strong);
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before {
+    width: 224px;
   }
 
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile {
