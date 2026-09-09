@@ -6,13 +6,13 @@ import { Drawer, Modal, Tabs, UiIcon, type UiIconName } from '../shared/componen
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, InvoiceDetailPage, InvoicesPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
-import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultLightPalette, useAppearanceSettings, type AppearanceSettings } from '../features/settings/appearance-settings'
+import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultAppearanceSettings, defaultLightPalette, useAppearanceSettings, type AppearanceSettings } from '../features/settings/appearance-settings'
 
 type VisualTheme = 'light' | 'dark'
 const visualThemeChangeEvent = 'ravencia:visual-theme-change'
 
 function readVisualThemePreference(): VisualTheme {
-  return localStorage.getItem('ravencia.visualTheme') === 'dark' ? 'dark' : 'light'
+  return localStorage.getItem('ravencia.visualTheme') === 'light' ? 'light' : 'dark'
 }
 
 function setVisualThemePreference(theme: VisualTheme) {
@@ -75,7 +75,7 @@ function Shell({ me }: { me: Me }) {
   }
   function handleSidebarMouseEnter() { if (!sidebarPinned) setSidebarHoverExpanded(true) }
   function handleSidebarMouseLeave() { if (!sidebarPinned) setSidebarHoverExpanded(false) }
-  const icon = (name: UiIconName) => <UiIcon className="nav-icon" name={name} size={22} />
+  const icon = (name: UiIconName) => <span className="nav-icon-slot" aria-hidden="true"><UiIcon className="nav-icon" name={name} size={22} /></span>
   const navigationCounts = navigationSummary.data?.metrics
   const item = (to: string, iconName: UiIconName, label: string, end = false, count?: number, showZeroCount = false) => {
     const hasCount = typeof count === 'number' && (count > 0 || showZeroCount)
@@ -84,7 +84,7 @@ function Shell({ me }: { me: Me }) {
   }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
     { label: 'Çalışma alanı', items: [item('/dashboard', 'grid', 'Genel bakış', true), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.pendingOrders)] },
-    { label: 'Operasyon', items: [item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar')] },
+    { label: 'Operasyon', items: [item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar', false, navigationCounts?.uninvoicedInvoices ?? 0, true)] },
     { label: 'Yönetim', items: [item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'bolt', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}>{group.items}</div>)}</>
@@ -100,7 +100,7 @@ function Shell({ me }: { me: Me }) {
     <aside aria-label="Ravencia ana menüsü" onMouseEnter={handleSidebarMouseEnter} onMouseLeave={handleSidebarMouseLeave}>
       <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong></div>{menuExpanded && <button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button>}</div>
       <nav aria-label="Ana menü">{navigation}</nav>
-      <div className="sidebar-side-bottom"><div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" aria-label="Oturumu kapat" title="Oturumu kapat" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Oturumu kapat</span></button></div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong></span></div></div>
+      <div className="sidebar-side-bottom"><div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" aria-label="Oturumu kapat" title="Oturumu kapat" onClick={() => void logout()}>{icon('logout')}<span className="logout-label">Oturumu kapat</span></button></div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong></span></div></div>
     </aside>
     <main>
       <header className="rv-topbar"><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Operasyon Merkezi</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => setVisualThemePreference(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu tema' : 'Açık tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
@@ -681,7 +681,7 @@ function AppearanceSettingsPage() {
   useEffect(() => () => {
     const root = document.documentElement
     const saved = savedAppearance.current
-    const savedTheme: VisualTheme = localStorage.getItem('ravencia.visualTheme') === 'dark' ? 'dark' : 'light'
+    const savedTheme: VisualTheme = localStorage.getItem('ravencia.visualTheme') === 'light' ? 'light' : 'dark'
     root.dataset.theme = savedTheme
     root.dataset.themeMode = savedTheme
     root.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[saved.fontFamily])
@@ -708,6 +708,18 @@ function AppearanceSettingsPage() {
     setSelectedThemeId(theme.id)
     appearance.setDraft({ ...appearance.draft, themeMode: 'dark', colors: { dark: { ...theme.palette } } })
     setMessage(`${theme.name} önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.`)
+  }
+
+  function applyDefaultAppearance() {
+    const defaults: AppearanceSettings = {
+      ...defaultAppearanceSettings,
+      colors: { dark: { ...defaultAppearanceSettings.colors.dark } },
+      colorThemes: appearance.draft.colorThemes.map(theme => ({ ...theme, palette: { ...theme.palette } }))
+    }
+    setVisualThemePreference('dark')
+    setSelectedThemeId(defaultAppearanceColorTheme.id)
+    appearance.setDraft(defaults)
+    setMessage('Varsayılan görünüm önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.')
   }
 
   function applyLightTheme() {
@@ -798,7 +810,7 @@ function AppearanceSettingsPage() {
         <div className="appearance-color-grid">{appearanceColorTokenOptions.map(({ key, label, description }) => <label className="appearance-color-field" key={key}><span><b>{label}</b><small>{description}</small></span><span className="appearance-color-control"><input type="color" value={palette[key]} onChange={event => updateColor(key, event.target.value)} aria-label={`${label} rengi`} /><code>{palette[key].toUpperCase()}</code></span></label>)}</div>
       </section>
       <div className="appearance-preview" style={previewStyle}><small>Önizleme</small><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p></div>
-      <div className="settings-sticky-actions appearance-settings-actions"><button type="button" className="rv-button rv-button-secondary" onClick={() => applyColorTheme(defaultAppearanceColorTheme)} disabled={busy}>Varsayılanlara dön</button><button type="button" className="rv-button rv-button-primary" onClick={() => void save()} disabled={busy}>{busy ? 'Kaydediliyor…' : 'Görünüm ayarlarını kaydet'}</button></div>
+      <div className="settings-sticky-actions appearance-settings-actions"><button type="button" className="rv-button rv-button-secondary" onClick={applyDefaultAppearance} disabled={busy}>Varsayılanlara dön</button><button type="button" className="rv-button rv-button-primary" onClick={() => void save()} disabled={busy}>{busy ? 'Kaydediliyor…' : 'Görünüm ayarlarını kaydet'}</button></div>
     </section>
   </section>
 }

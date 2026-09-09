@@ -2774,9 +2774,49 @@ button,
 
 @media (min-width: 701px) {
   /* Keep one fixed icon rail for collapsed, hover-expanded, and pinned states.
-     Only the text columns are toggled, so opening the rail cannot shift an
-     icon, badge, avatar, or the active background. */
+     The desktop aside uses a 16px outer inset. Full-width links therefore use
+     a 12px inner inset (16 + 12 = 28px); the compact rail uses the equivalent
+     28px link inset. Labels are the only columns that appear or disappear. */
   .app-shell.stitch-shell.sidebar-collapsed > aside {
+    box-sizing: border-box;
+    width: var(--rv-sidebar-collapsed-width);
+    max-width: var(--rv-sidebar-collapsed-width);
+    padding-inline: 0;
+    transition: none;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside {
+    width: var(--rv-sidebar-width);
+    max-width: var(--rv-sidebar-width);
+    padding-inline: var(--rv-space-4);
+    overflow-x: hidden;
+  }
+
+  .app-shell.stitch-shell > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    justify-content: initial;
+    padding-inline: var(--rv-space-3);
+    column-gap: var(--rv-space-3);
+    text-align: left;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    padding-inline-start: 28px;
+    padding-inline-end: 12px;
+  }
+
+  .app-shell.stitch-shell > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) .nav-icon {
+    margin: 0;
+  }
+
+  .app-shell.stitch-shell:not(.sidebar-collapsed) > aside .sidebar-brand-row,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-brand-row {
+    justify-content: flex-start;
     box-sizing: border-box;
     padding-inline: 0;
   }
@@ -2784,32 +2824,8 @@ button,
   .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-brand-row {
     justify-content: flex-start;
     box-sizing: border-box;
-    padding-inline-start: 24px;
+    padding-inline-start: 16px;
     padding-inline-end: 0;
-  }
-
-  .app-shell.stitch-shell > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
-    display: grid;
-    grid-template-columns: 22px minmax(0, 1fr) auto;
-    align-items: center;
-    column-gap: var(--rv-space-3);
-    box-sizing: border-box;
-    justify-content: initial;
-    text-align: left;
-  }
-
-  .app-shell.stitch-shell:not(.sidebar-collapsed) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
-    padding-inline-start: var(--rv-space-3);
-    padding-inline-end: var(--rv-space-3);
-  }
-
-  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
-    padding-inline-start: 28px;
-    padding-inline-end: 6px;
-  }
-
-  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) .nav-icon {
-    margin: 0;
   }
 
   .app-shell.stitch-shell.sidebar-collapsed > aside .brand.wordmark,
@@ -2823,7 +2839,7 @@ button,
   .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-profile {
     justify-content: flex-start;
     box-sizing: border-box;
-    padding-inline-start: 24px;
+    padding-inline-start: 16px;
     padding-inline-end: 0;
   }
 
@@ -2834,6 +2850,7 @@ button,
 
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .nav-label {
     display: block;
+    min-width: 0;
     max-width: 190px;
     opacity: 1;
     visibility: visible;
@@ -2847,36 +2864,75 @@ button,
     display: inline-grid;
   }
 
+  .app-shell.stitch-shell:not(.sidebar-collapsed) > aside .sidebar-profile,
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile {
     justify-content: flex-start;
-  }
-
-  /* Match the pinned geometry even though the hover panel is rendered over
-     the compact layout. These selectors intentionally mirror the earlier
-     hover rules so the fixed rail wins without changing the page column. */
-  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside {
     padding-inline: 0;
   }
 
-  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-brand-row {
-    padding-inline-start: 24px;
-    padding-inline-end: 0;
-  }
-
-  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
-    padding-inline-start: 28px;
-    padding-inline-end: 6px;
-  }
-
-  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile {
-    padding-inline-start: 24px;
-    padding-inline-end: 0;
-  }
-
-  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-side-bottom {
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .logout-link .nav-label {
     display: block;
-    width: 100%;
+    max-width: 190px;
+    opacity: 1;
+    visibility: visible;
   }
+}
+
+/* Keep the icon in one physical slot while labels are toggled independently. */
+.app-shell.stitch-shell > aside .nav-icon-slot {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+}
+
+.app-shell.stitch-shell > aside .nav-icon-slot .nav-icon {
+  margin: 0;
+}
+
+.app-shell.stitch-shell > aside .logout-label {
+  display: block;
+  min-width: 0;
+  max-width: 190px;
+  overflow: hidden;
+  opacity: 1;
+  text-overflow: ellipsis;
+  visibility: visible;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed > aside .logout-label {
+  display: none;
+  max-width: 0;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .logout-label {
+  display: block;
+  max-width: 190px;
+  opacity: 1;
+  visibility: visible;
+}
+
+/* The legacy hover rule narrows the logout button to the compact rail. Keep
+   its hover geometry identical to the other expanded navigation links. */
+.app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .logout-link {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+  padding-inline-start: 12px;
+  padding-inline-end: 12px;
+  border-width: 1px;
+}
+
+.app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+  width: 100%;
+  border-width: 1px;
 }
 
 /* Button labels use one consistent medium weight throughout the workspace. */

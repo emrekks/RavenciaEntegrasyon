@@ -19,7 +19,7 @@ public static class SettingsEndpoints
     private static readonly HashSet<string> AppearanceThemeModes = new(StringComparer.OrdinalIgnoreCase) { "dark" };
     private static readonly IReadOnlyDictionary<string, string> DefaultDarkAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["bg"] = "#0b0d17", ["sidebar"] = "#18181f", ["surface"] = "#131725", ["surfaceRaised"] = "#191e30", ["surfaceSoft"] = "#20263a", ["border"] = "#272e42", ["borderStrong"] = "#58617b", ["ink"] = "#f3f4fb", ["muted"] = "#abb3cb", ["subtle"] = "#919bb5", ["primary"] = "#7652e8", ["primaryHover"] = "#6740dc", ["primarySoft"] = "#28213e", ["accent"] = "#60d9bc", ["accentSoft"] = "#18382f", ["warning"] = "#f0c07d", ["warningSoft"] = "#3a3023", ["danger"] = "#f499ac", ["dangerSoft"] = "#3c2633", ["info"] = "#8bafff"
+        ["bg"] = "#101014", ["sidebar"] = "#18181f", ["surface"] = "#18181f", ["surfaceRaised"] = "#202028", ["surfaceSoft"] = "#272730", ["border"] = "#303039", ["borderStrong"] = "#41414d", ["ink"] = "#f4f4f7", ["muted"] = "#aaaab9", ["subtle"] = "#858595", ["primary"] = "#8b5cf6", ["primaryHover"] = "#7c3aed", ["primarySoft"] = "#302443", ["accent"] = "#4adea0", ["accentSoft"] = "#1c332c", ["warning"] = "#f6c16b", ["warningSoft"] = "#382f22", ["danger"] = "#fb858b", ["dangerSoft"] = "#3c252b", ["info"] = "#83b4ff"
     };
     private static readonly string[] AppearanceColorTokens = ["bg", "sidebar", "surface", "surfaceRaised", "surfaceSoft", "border", "borderStrong", "ink", "muted", "subtle", "primary", "primaryHover", "primarySoft", "accent", "accentSoft", "warning", "warningSoft", "danger", "dangerSoft", "info"];
 
@@ -106,7 +106,7 @@ public static class SettingsEndpoints
         var colorThemes = NormalizeAppearanceColorThemes(value);
         return new
         {
-            fontFamily = AppearanceFontFamilies.Contains(fontFamily ?? string.Empty) ? fontFamily!.ToLowerInvariant() : "system",
+            fontFamily = AppearanceFontFamilies.Contains(fontFamily ?? string.Empty) ? fontFamily!.ToLowerInvariant() : "inter",
             fontSize = AppearanceFontSizes.Contains(fontSize ?? string.Empty) ? fontSize!.ToLowerInvariant() : "normal",
             themeMode = "dark",
             colors,
