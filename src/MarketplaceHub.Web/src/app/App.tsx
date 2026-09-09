@@ -134,24 +134,25 @@ export function App() {
   return <Shell me={me.data} />
 }
 
+const authPlatforms = [
+  { id: 'trendyol', name: 'Trendyol', mark: 'T' },
+  { id: 'hepsiburada', name: 'Hepsiburada', mark: 'HB' },
+  { id: 'shopify', name: 'Shopify', mark: 'S' },
+  { id: 'n11', name: 'n11', mark: 'N' },
+] as const
+
+const authActivity = [
+  { id: 'order', platform: 'Trendyol', message: 'Yeni sipariş alındı', time: 'Az önce', tone: 'trendyol' },
+  { id: 'stock', platform: 'Hepsiburada', message: 'Stok senkronize edildi', time: '1 dk', tone: 'hepsiburada' },
+  { id: 'product', platform: 'Shopify', message: 'Ürün aktarımı tamamlandı', time: '2 dk', tone: 'shopify' },
+] as const
+
 function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDescription, progressStep = 1, children, footerMeta = 'Ravencia Workspace' }: { ariaLabel: string; accessLabel: string; accessMeta: string; cardTitle: string; cardDescription: string; progressStep?: 1 | 2 | 3; children: ReactNode; footerMeta?: string }) {
   return <main className="rv-auth-page rv-auth-single">
     <div className="rv-auth-atmosphere" aria-hidden="true">
-      <span className="rv-auth-orb rv-auth-orb-one" />
-      <span className="rv-auth-orb rv-auth-orb-two" />
-      <span className="rv-auth-scanline" />
-      <div className="rv-auth-integration-network">
-        <span className="rv-auth-network-label">ENTEGRASYON PLATFORMLARI</span>
-        <span className="rv-auth-network-node rv-auth-network-node-trendyol"><UiIcon name="connect" size={16} /><b>Trendyol</b></span>
-        <span className="rv-auth-network-node rv-auth-network-node-hepsiburada"><UiIcon name="layers" size={16} /><b>Hepsiburada</b></span>
-        <span className="rv-auth-network-node rv-auth-network-node-shopify"><UiIcon name="box" size={16} /><b>Shopify</b></span>
-        <span className="rv-auth-network-node rv-auth-network-node-n11"><UiIcon name="sync" size={16} /><b>n11</b></span>
-        <span className="rv-auth-network-api"><UiIcon name="sync" size={18} /><b>API AKIŞI</b></span>
-        <span className="rv-auth-network-route rv-auth-network-route-one"><i /></span>
-        <span className="rv-auth-network-route rv-auth-network-route-two"><i /></span>
-        <span className="rv-auth-network-route rv-auth-network-route-three"><i /></span>
-        <span className="rv-auth-network-route rv-auth-network-route-four"><i /></span>
-      </div>
+      <span className="auth-ambient-glow auth-ambient-glow-one" />
+      <span className="auth-ambient-glow auth-ambient-glow-two" />
+      <span className="auth-ambient-orbit" />
     </div>
     <header className="rv-auth-header">
       <div className="rv-auth-brand"><img className="rv-auth-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" /><span className="rv-auth-brand-name">Ravencia</span></div>
@@ -163,6 +164,21 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
           <img className="rv-auth-hero-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" />
           <img className="rv-auth-hero-wordmark" src="/pack/brand/ravencia-wordmark-transparent.png" alt="Ravencia" />
         </div>
+        <section className="auth-integration-console" aria-label="Entegrasyon ağı önizlemesi">
+          <header className="auth-console-header">
+            <div><p><i /> CANLI ENTEGRASYON AĞI</p><h2>Tüm kanallar senkronize</h2></div>
+            <span><UiIcon name="bolt" size={15} /> API hazır</span>
+          </header>
+          <div className="auth-console-map">
+            <svg viewBox="0 0 440 240" preserveAspectRatio="none" aria-hidden="true">
+              <path className="auth-console-route-base" d="M112 52 C160 52 166 102 220 120 M328 52 C280 52 274 102 220 120 M112 188 C160 188 166 138 220 120 M328 188 C280 188 274 138 220 120" />
+              <path className="auth-console-route-flow" d="M112 52 C160 52 166 102 220 120 M328 52 C280 52 274 102 220 120 M112 188 C160 188 166 138 220 120 M328 188 C280 188 274 138 220 120" />
+            </svg>
+            {authPlatforms.map(platform => <span className={`auth-console-node node-${platform.id}`} key={platform.id}><b>{platform.mark}</b><span><strong>{platform.name}</strong><small><i /> Bağlı</small></span></span>)}
+            <span className="auth-console-core"><span><UiIcon name="sync" size={20} /></span><strong>Ravencia Core</strong><small>API Gateway</small></span>
+          </div>
+          <footer className="auth-console-metrics"><span><b>4</b><small>bağlı kanal</small></span><span><b>Aktif</b><small>API durumu</small></span><span><b>Anlık</b><small>senkronizasyon</small></span></footer>
+        </section>
       </div>
       <div className="rv-auth-login-shell">
         <div className="rv-auth-login-top"><span><i /> {accessLabel}</span><span>{accessMeta}</span></div>
@@ -175,19 +191,10 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
         </div>
       </div>
     </section>
-    <div className="rv-auth-activity-banner" aria-label="Canlı entegrasyon akışı">
-      <div className="rv-auth-activity-track" aria-hidden="true">
-        <span className="rv-auth-activity-heading"><i /> CANLI AKIŞ</span>
-        <span><UiIcon name="box" size={15} /> Trendyol’dan yeni sipariş geldi</span>
-        <span><UiIcon name="sync" size={15} /> API aktarımı tamamlandı</span>
-        <span><UiIcon name="layers" size={15} /> Hepsiburada stokları güncellendi</span>
-        <span><UiIcon name="connect" size={15} /> Shopify bağlantısı aktif</span>
-        <span className="rv-auth-activity-heading"><i /> CANLI AKIŞ</span>
-        <span><UiIcon name="box" size={15} /> Trendyol’dan yeni sipariş geldi</span>
-        <span><UiIcon name="sync" size={15} /> API aktarımı tamamlandı</span>
-        <span><UiIcon name="layers" size={15} /> Hepsiburada stokları güncellendi</span>
-        <span><UiIcon name="connect" size={15} /> Shopify bağlantısı aktif</span>
-      </div>
+    <div className="auth-notification-center" aria-label="Örnek entegrasyon bildirimleri">
+      <div className="auth-notification-label"><UiIcon name="bell" size={17} /><span><strong>Bildirim merkezi</strong><small><i /> Canlı akış</small></span></div>
+      <div className="auth-notification-viewport"><div className="auth-notification-marquee">{[0, 1].map(copy => <div className="auth-notification-events" key={copy} aria-hidden={copy === 1 ? true : undefined}>{authActivity.map(item => <span className={`auth-notification-event event-${item.tone}`} key={item.id}><i /><b>{item.platform}</b><span>{item.message}</span><time>{item.time}</time></span>)}</div>)}</div></div>
+      <span className="auth-notification-count">3 yeni</span>
     </div>
   </main>
 }
