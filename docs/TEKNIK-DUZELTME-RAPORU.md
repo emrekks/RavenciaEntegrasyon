@@ -1,14 +1,14 @@
 # Teknik Düzeltme ve Doğrulama Raporu
 
-Tarih: 2026-09-09
-Kapsam: Kaynak kod incelemesi, sınırlı ve geri alınabilir kod/migration/test hazırlığı
-Durum: Kritik veri doğruluğu ve dayanıklılık düzeltmeleri uygulandı; canlı ortam doğrulaması yapılmadı.
+Tarih: 2026-09-10
+Kapsam: Kaynak kod incelemesi, migration/test uygulaması ve onaylı Stage dağıtımı
+Durum: Kritik veri doğruluğu ve dayanıklılık düzeltmeleri uygulandı. Tenant izolasyonu için ek migration ve gerçek PostgreSQL testleri eklendi; commit `d0d7851` Stage ortamına çekilip doğrulandı.
 
 ## Sonuç özeti
 
-Kaynak kodda 1, 2, 3, 5, 6, 7, 8, 13 ve 14 numaralı bulgular doğrulandı ve bu turda kod değişikliği yapıldı. 4 ve 15 numaralı bulgular koşula bağlı/eksik kapsam olarak ele alındı. 9 ve 10 için mevcut korumalar korundu; eksik negatif veya operasyonel testler ayrıca belirtilmiştir. 11 ve 12 için yeni entegrasyon veya büyük refactor yapılmadı.
+Kaynak kodda 1, 2, 3, 5, 6, 7, 8, 10, 13 ve 14 numaralı bulgular doğrulandı ve kod değişikliği yapıldı. 4 ve 15 numaralı bulgular koşula bağlı/eksik kapsam olarak ele alındı. 9 için mevcut korumalar korundu; eksik operasyonel adımlar ayrıca belirtilmiştir. 11 ve 12 için yeni entegrasyon veya büyük refactor yapılmadı.
 
-Bu çalışma sırasında canlı pazaryeri yazması, gerçek fatura işlemi, production migrationı, veri silme/toplu dönüşüm veya dış yedek hedefe aktarım yapılmadı.
+Bu çalışma sırasında canlı pazaryeri yazması, gerçek fatura işlemi, veri silme/toplu dönüşüm veya dış yedek hedefe aktarım yapılmadı. Yeni migration yalnız onaylı Stage dağıtımında çalıştırıldı; dış yazma bayrağı kapalı kaldı.
 
 ## Bulgular ve uygulanan düzeltmeler
 
@@ -116,11 +116,15 @@ Import preview ve apply akışında ürün açıklaması için sunucu tarafında
 
 Anahtar silme veya döndürme yapılmadı. Gerçek secret rotasyonu ve off-host key saklama operasyon prosedürüdür.
 
-### 10. Tenant korumaları — mevcut korumalar var, eksik negatif test riski sürüyor
+### 10. Tenant korumaları — doğrulandı, düzeltildi; negatif test kapsamı genişletildi
 
-Tenant filtreleri, composite foreign key’ler ve bağlantı-tenant kontrolleri korunuyor. Bu turda izolasyonu gevşeten global filtre veya varsayılan tenant bypass’ı eklenmedi.
+Tenant filtreleri, composite foreign key’ler ve bağlantı-tenant kontrolleri korunuyor. Operasyonel issue tekilleştirmesindeki global `DedupeKey` unique indexi tenant + anahtar composite indexiyle değiştirildi; aksi halde iki tenant aynı hata anahtarını kullanamıyordu.
 
-API/dosya/export/job/SignalR için tenantlar arası negatif integration test paketi bu repoda hazır olmadığı için eklenmedi; production güvenlik iddiası için gereklidir.
+Oturum açma, parola değiştirme, MFA ve session claim üretimi artık hem aktif üyelik hem aktif tenant koşulunu arıyor. Pasif tenant session’ı tenant/role claim’i alamıyor ve `/me` yanıtı pasif tenantı geçerli çalışma alanı olarak göstermiyor.
+
+İzole PostgreSQL veritabanında aynı anahtarın farklı tenantlarda kullanılabildiği, aynı tenantta tekrarının reddedildiği ve pasif/aktif tenant session claim davranışı için testler eklendi. Yerel uygulama veritabanında gerekli `iam`/`ops` INSERT yetkisi bulunmadığı için bu üç test yerelde açık gerekçeyle atlanır; CI’a ayrılmış PostgreSQL servisiyle migration sonrası çalışacak şekilde eklendi.
+
+API/dosya/export/job/SignalR için tenantlar arası negatif integration test paketi bu turda tamamen tamamlanmadı; production güvenlik iddiası için ayrıca gereklidir.
 
 ### 11. Adaptör seçimi — bulgu koşula bağlı, kapsam korunarak ertelendi
 
@@ -149,7 +153,7 @@ Dashboard snapshot ve bootstrap cevabına kuyruktaki en eski iş, son doğrulanm
 - CI’a `bash -n` ve `shellcheck` adımı eklendi.
 - CI .NET SDK sürümü `global.json` ile aynı `10.0.302` değerine sabitlendi.
 - Docker restore öncesinde tüm proje/test `packages.lock.json` dosyaları kopyalanıyor.
-- Deployment çalıştırılmadı.
+- Onaylı Stage deploy akışı `d0d78516d3ee` revisionı için çalıştırıldı; migration containerı başarıyla tamamlandı, API/worker/Caddy yeniden başladı.
 
 Yerel Windows ortamında WSL/bash çalışmadığı ve `shellcheck` kurulu olmadığı için bu iki komut yerelde başarıyla çalıştırılamadı. Kontrol CI Ubuntu runner’a bırakıldı.
 
@@ -174,6 +178,9 @@ Eksikler: şifreli off-host hedef, gerçek zamanlama, retention politikası ve a
 - `src/MarketplaceHub.Infrastructure/Persistence/InvoicingJobProcessor.cs`: append-only history + mutable delivery state.
 - `src/MarketplaceHub.Infrastructure/Persistence/{AppDbContext,InvoicingModelConfiguration,CatalogModelConfiguration,InventoryService}.cs`: model ve projection bağlantıları.
 - `src/MarketplaceHub.Infrastructure/Persistence/ScheduledJobProducer.cs`: scheduler kapsamı ve dar unique-race handling.
+- `src/MarketplaceHub.Api/Security/AuthEndpoints.cs`, `SessionAuthMiddleware.cs`: aktif tenant + aktif üyelik sınırı.
+- `src/MarketplaceHub.Infrastructure/Persistence/Migrations/20260909212509_ScopeOperationalIssueDedupeByTenant.*`: tenant-scoped operational issue unique indexi.
+- `tests/MarketplaceHub.Application.Tests/{TenantBoundaryModelTests,PostgreSqlTenantIsolationTests}.cs`: model ve gerçek PostgreSQL tenant regresyonları.
 - `src/MarketplaceHub.Infrastructure/Persistence/Migrations/20260909193951_AddMarketplaceDeliveryState.*`: fatura delivery state migrationı.
 - `src/MarketplaceHub.Infrastructure/Persistence/Migrations/20260909200648_AddInventoryRemoteObservation.*`: uzak stok gözlem migrationı.
 - `src/MarketplaceHub.Infrastructure/Persistence/Migrations/20260909203704_AddDashboardOperationalObservability.*`: dashboard operasyon metriği migrationı.
@@ -197,15 +204,19 @@ Kullanıcının daha önce yaptığı frontend tema/UI değişiklikleri korunmu�
 - `InvoiceDeliveryFailurePolicyTests`: belirsiz delivery hatalarının otomatik retry’a dönmemesi.
 - `DashboardMetricPolicyTests`: kuyruk durumu, bilinen rate-limit kodları ve dashboard iş kuralı sınıflandırmaları.
 - `sanitizeHtml.test.ts`: kötücül HTML ve geçerli rich text fixture’ları.
+- `TenantBoundaryModelTests`: operational issue unique indexinin tenant kapsamı.
+- `PostgreSqlTenantIsolationTests`: gerçek PostgreSQL unique ve session claim izolasyonu; CI ayrılmış DB ile çalıştırır.
 
-Bu testlerin saf policy/HTTP kapsamı geçmiştir. PostgreSQL transaction/unique/FK/lease ve gerçek API middleware entegrasyon testleri ayrı test ortamı gerektirir.
+Saf policy/HTTP kapsamı geçmiştir. PostgreSQL tenant unique/session testleri CI test servisine bağlandı; daha geniş transaction/FK/lease ve gerçek API middleware kapsamı ayrıca gereklidir.
 
 ## Çalıştırılan kontroller ve sonuçlar
 
 | Kontrol | Sonuç |
 |---|---|
 | `dotnet build MarketplaceHub.sln -c Release --no-restore` | Başarılı; 0 warning, 0 error |
-| `dotnet test MarketplaceHub.sln -c Release --no-build` | Başarılı; 145/145 |
+| `dotnet test MarketplaceHub.sln -c Release --no-build` | Başarılı; 146 başarılı, 3 PostgreSQL testi açık gerekçeyle atlandı |
+| Tenant boundary model testi | Başarılı; composite unique index metadata’sı doğrulandı |
+| PostgreSQL tenant isolation testleri (yerel) | 3 test açık gerekçeyle atlandı; yerel DB şema yazma yetkisi yok |
 | Kritik hedefli backend test filtresi | Başarılı; 70/70 |
 | `dotnet format MarketplaceHub.sln --verify-no-changes --no-restore` | Başarılı |
 | EF `migrations has-pending-model-changes` | Başarılı; pending model change yok |
@@ -216,18 +227,20 @@ Bu testlerin saf policy/HTTP kapsamı geçmiştir. PostgreSQL transaction/unique
 | `npm.cmd audit --omit=dev --audit-level=high` | Başarılı; 0 vulnerability |
 | `git diff --check` | Başarılı |
 | PowerShell deploy shell line-ending kontrolü | Başarılı; tüm `.sh` dosyaları CRLF içermiyor |
+| Stage migration/deploy | Başarılı; `d0d78516d3ee`, migration container exit 0 |
+| Stage readiness ve frontend asset | Başarılı; readiness ve asset HTTP 200 |
 
 Çalıştırılamayan kontroller:
 
 - Yerel `bash -n`: Windows ortamında WSL/bash erişimi yok.
 - Yerel `shellcheck`: executable kurulu değil.
-- Gerçek PostgreSQL concurrency/integration testleri: testcontainers veya CI PostgreSQL test servisi mevcut değil.
+- Gerçek PostgreSQL concurrency testleri: bu turda eklenmedi. Tenant unique/session integration testleri CI PostgreSQL servisine bağlandı ancak CI sonucu bu ortamda henüz gözlenmedi.
 - Gerçek Trendyol/Trendyol E-Faturam Stage smoke testi: credential ve dış yazma izni kullanılmadı.
 - Gerçek off-host backup transferi ve restore drill: hedef/credential bulunmadığı ve dış aktarım yetkisi olmadığı için yapılmadı.
 
 ## Migration etkisi ve geri dönüş notu
 
-Hazırlanan migrationlar production veritabanında çalıştırılmadı.
+Hazırlanan migrationlar production veritabanında çalıştırılmadı. Tenant index migrationı onaylı Stage dağıtımında uygulandı ve veritabanı indexi bağımsız olarak doğrulandı.
 
 1. `20260909193951_AddMarketplaceDeliveryState`
    - `billing.marketplace_deliveries.ExternalIdempotencyKey` nullable kolonu ekler.
@@ -244,15 +257,21 @@ Hazırlanan migrationlar production veritabanında çalıştırılmadı.
    - Sayaç alanları `0` varsayılanıyla geriye dönük mevcut snapshot satırlarını destekler.
    - Down işlemi yalnız bu dashboard alanlarını kaldırır; sipariş, stok, iş veya fatura verisini silmez.
 
-Uygulama sırası: önce production dışı restore/staging veritabanında migration + smoke test, sonra backup doğrulaması, ardından kontrollü production bakım penceresi. Bu görevde `database update` çalıştırılmadı.
+4. `20260909212509_ScopeOperationalIssueDedupeByTenant`
+   - `ops.operational_issues` üzerindeki global `DedupeKey` unique indexini kaldırır.
+   - Tenant + `DedupeKey` composite unique indexi ekler; tenantlar arası aynı operasyonel issue anahtarına izin verirken aynı tenant içindeki duplicate kaydı engeller.
+   - Down işlemi tenantlar arası aynı anahtarı yeniden yasaklar; yalnız kontrollü bakım penceresinde değerlendirilmelidir.
+
+Uygulama sırası: migration Stage deploy’ındaki migration containerında çalıştırıldı; health ve index kontrolleri geçmiştir. Production bakım penceresi, backup doğrulaması ve daha geniş smoke testler yine ayrı release gate olarak kalır.
 
 ## Dış yazmalar açılmadan önce kontrol listesi
 
-- [ ] Migrationlar yedek alınmış izole/staging veritabanında uygulanıp rollback planı doğrulanmalı.
+- [x] Tenant index migrationı Stage’de uygulanmış; temel health/index kontrolleri geçmiştir.
+- [ ] Production migrationı öncesi yedek alınmış izole veritabanında rollback planı doğrulanmalı.
 - [ ] `REMOTE_AUTHORITATIVE` kararı her connection için iş sahibi tarafından açıkça onaylanmalı.
 - [ ] Gerçek Trendyol Stage hesabında sabit idempotency anahtarı ve provider sonucu doğrulanmalı.
 - [ ] Invoice delivery timeout/unknown durumu provider sorgusu veya order webhook ile uzlaştırılmalı.
-- [ ] PostgreSQL concurrency testleri ve API integration testleri CI’da çalışır hale getirilmeli.
+- [ ] PostgreSQL concurrency testleri ve geniş API integration testleri CI’da çalışır hale getirilmeli; bu turdaki tenant unique/session testleri CI servisine bağlandı.
 - [ ] Tenantlar arası API/export/job/SignalR negatif testleri eklenmeli.
 - [ ] Off-host backup hedefi, encryption-at-rest sağlayıcısı, retention, zamanlama ve alarm sahibi tanımlanmalı.
 - [ ] Restore drill; external writes kapalı, izole ağ ve gerçek secret değerleri loglanmadan çalıştırılmalı.
