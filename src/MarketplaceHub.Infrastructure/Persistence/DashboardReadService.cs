@@ -48,7 +48,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             .ToListAsync(cancellationToken);
         var pendingByPlatform = JsonSerializer.Deserialize<Dictionary<string, int>>(snapshot.PendingByPlatformJson) ?? [];
         return new(
-            new DashboardMetricsView(snapshot.PendingOrders, snapshot.LateOrders, snapshot.TodayOrders, snapshot.TodayProductQuantity, snapshot.MonthOrders, snapshot.MonthProductQuantity, snapshot.PendingReturns, snapshot.DueSoonInvoices, snapshot.UninvoicedInvoices, snapshot.LowStockProducts, snapshot.ActiveConnections, pendingByPlatform),
+            new DashboardMetricsView(snapshot.PendingOrders, snapshot.LateOrders, snapshot.TodayOrders, snapshot.TodayProductQuantity, snapshot.MonthOrders, snapshot.MonthProductQuantity, snapshot.PendingReturns, snapshot.DueSoonInvoices, snapshot.UninvoicedInvoices, snapshot.LowStockProducts, snapshot.ActiveConnections, pendingByPlatform, snapshot.OldestQueuedJobAt, snapshot.LastVerifiedSynchronizationAt, snapshot.DeadJobCount, snapshot.ManualReviewJobCount, snapshot.RecentJobCount, snapshot.RecentRateLimitJobCount, snapshot.OldestStockObservationAt),
             lowStock,
             sync,
             platforms,
@@ -125,6 +125,31 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var now = timeProvider.GetUtcNow();
         var timezone = ResolveTimezone(tenant.Timezone);
         var localNow = TimeZoneInfo.ConvertTime(now, timezone);
+        var rateLimitWindowStart = now.AddHours(-DashboardMetricPolicy.OperationalRateLimitWindowHours);
+        var oldestQueuedJobAt = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
+            .OrderBy(x => x.CreatedAt)
+            .Select(x => (DateTimeOffset?)x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        var lastVerifiedSynchronizationAt = await db.SyncCursors.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.LastSuccessAt != null)
+            .OrderByDescending(x => x.LastSuccessAt)
+            .Select(x => x.LastSuccessAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        var deadJobCount = await db.IntegrationJobs.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.Status == JobStatus.Dead, cancellationToken);
+        var manualReviewJobCount = await db.IntegrationJobs.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.Status == JobStatus.ManualReview, cancellationToken);
+        // Keep the denominator as all jobs created in the window. Counting
+        // only rows with an error code would turn the rate-limit metric into
+        // an error-only ratio and make a healthy queue look saturated.
+        var recentJobs = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.CreatedAt >= rateLimitWindowStart)
+            .Select(x => x.LastErrorCode)
+            .ToListAsync(cancellationToken);
+        var oldestStockObservationAt = await db.InventoryItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ObservedRemoteAt != null)
+            .OrderBy(x => x.ObservedRemoteAt)
+            .Select(x => x.ObservedRemoteAt)
+            .FirstOrDefaultAsync(cancellationToken);
         var todayStart = UtcOffset(DateTime.SpecifyKind(localNow.Date, DateTimeKind.Unspecified), timezone);
         var monthStart = UtcOffset(new DateTime(localNow.Year, localNow.Month, 1), timezone);
         var pendingOrdersQuery = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId
@@ -262,6 +287,13 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         snapshot.LowStockProducts = lowProducts.Count;
         snapshot.ActiveConnections = await db.PlatformConnections.AsNoTracking().CountAsync(x => x.TenantId == tenantId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(x.Status), cancellationToken);
         snapshot.PendingByPlatformJson = JsonSerializer.Serialize(pendingByPlatform);
+        snapshot.OldestQueuedJobAt = oldestQueuedJobAt;
+        snapshot.LastVerifiedSynchronizationAt = lastVerifiedSynchronizationAt;
+        snapshot.DeadJobCount = deadJobCount;
+        snapshot.ManualReviewJobCount = manualReviewJobCount;
+        snapshot.RecentJobCount = recentJobs.Count;
+        snapshot.RecentRateLimitJobCount = recentJobs.Count(DashboardMetricPolicy.IsRateLimitError);
+        snapshot.OldestStockObservationAt = oldestStockObservationAt;
         snapshot.UpdatedAt = now;
 
         var oldRevenue = await db.DashboardRevenueDaily.Where(x => x.TenantId == tenantId).ToListAsync(cancellationToken);

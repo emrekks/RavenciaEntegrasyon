@@ -144,7 +144,7 @@ function JobsIcon({ name }: { name: JobsIconName }) {
     calendar: 'calendar',
     'chevron-down': 'chevronDown',
     filter: 'filter',
-    refresh: 'sync',
+    refresh: 'refresh',
     search: 'search',
     price: 'box',
     order: 'orders',

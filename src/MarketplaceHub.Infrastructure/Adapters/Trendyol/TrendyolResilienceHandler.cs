@@ -21,6 +21,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
     {
         await state.Concurrency.WaitAsync(cancellationToken);
         var halfOpen = false;
+        var resultRecorded = false;
         var circuitKey = CircuitKeyFor(request);
         try
         {
@@ -34,20 +35,27 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                 var statusCode = (int)response.StatusCode;
                 var circuitSucceeded = statusCode < 500 && statusCode is not (408 or 429);
                 RecordResult(circuitKey, circuitSucceeded, halfOpen);
+                resultRecorded = true;
                 return response;
             }
             catch (HttpRequestException)
             {
                 RecordResult(circuitKey, false, halfOpen);
+                resultRecorded = true;
                 throw;
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 RecordResult(circuitKey, false, halfOpen);
+                resultRecorded = true;
                 throw;
             }
         }
-        finally { state.Concurrency.Release(); }
+        finally
+        {
+            if (halfOpen && !resultRecorded) ReleaseHalfOpen(circuitKey);
+            state.Concurrency.Release();
+        }
     }
 
     private bool TryEnterCircuit(string circuitKey, out bool halfOpen)
@@ -82,6 +90,14 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
             circuit.ConsecutiveFailures++;
             if (halfOpen || circuit.ConsecutiveFailures >= Math.Clamp(options.CircuitFailureThreshold, 2, 50))
                 circuit.OpenUntil = timeProvider.GetUtcNow().Add(options.CircuitBreakDuration <= TimeSpan.Zero ? TimeSpan.FromSeconds(30) : options.CircuitBreakDuration);
+        }
+    }
+
+    private void ReleaseHalfOpen(string circuitKey)
+    {
+        lock (state.SyncRoot)
+        {
+            state.CircuitFor(circuitKey).HalfOpenRequestActive = false;
         }
     }
 

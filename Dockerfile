@@ -3,10 +3,15 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0.302@sha256:ed034a8bf0b24ded0cbbac07e17825
 WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props MarketplaceHub.sln ./
 COPY src/MarketplaceHub.Api/MarketplaceHub.Api.csproj src/MarketplaceHub.Api/
+COPY src/MarketplaceHub.Api/packages.lock.json src/MarketplaceHub.Api/
 COPY src/MarketplaceHub.Application/MarketplaceHub.Application.csproj src/MarketplaceHub.Application/
+COPY src/MarketplaceHub.Application/packages.lock.json src/MarketplaceHub.Application/
 COPY src/MarketplaceHub.Domain/MarketplaceHub.Domain.csproj src/MarketplaceHub.Domain/
+COPY src/MarketplaceHub.Domain/packages.lock.json src/MarketplaceHub.Domain/
 COPY src/MarketplaceHub.Infrastructure/MarketplaceHub.Infrastructure.csproj src/MarketplaceHub.Infrastructure/
+COPY src/MarketplaceHub.Infrastructure/packages.lock.json src/MarketplaceHub.Infrastructure/
 COPY src/MarketplaceHub.Worker/MarketplaceHub.Worker.csproj src/MarketplaceHub.Worker/
+COPY src/MarketplaceHub.Worker/packages.lock.json src/MarketplaceHub.Worker/
 COPY tests/MarketplaceHub.Application.Tests/MarketplaceHub.Application.Tests.csproj tests/MarketplaceHub.Application.Tests/
 COPY tests/MarketplaceHub.Application.Tests/packages.lock.json tests/MarketplaceHub.Application.Tests/
 RUN dotnet restore MarketplaceHub.sln --locked-mode

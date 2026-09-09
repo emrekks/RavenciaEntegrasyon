@@ -66,6 +66,38 @@ public sealed class TrendyolResilienceHandlerTests
         Assert.Equal(2, downstream.RequestCount);
     }
 
+    [Fact]
+    public async Task CallerCancellationDuringHalfOpenAttempt_ReleasesHalfOpenOwnership()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.Parse("2026-09-09T10:00:00Z"));
+        var options = Options.Create(new TrendyolOptions
+        {
+            MaxConcurrency = 1,
+            RequestsPerInterval = 100,
+            RequestInterval = TimeSpan.FromMilliseconds(1),
+            CircuitFailureThreshold = 1,
+            CircuitBreakDuration = TimeSpan.FromMinutes(1)
+        });
+        var state = new TrendyolResilienceState(options);
+        using var downstream = new BlockingHandler();
+        using var resilience = new TrendyolResilienceHandler(options, clock, state) { InnerHandler = downstream };
+        using var client = new HttpClient(resilience);
+
+        using var first = await client.GetAsync("https://unit.test/first");
+        Assert.Equal(HttpStatusCode.InternalServerError, first.StatusCode);
+
+        clock.Advance(TimeSpan.FromMinutes(1));
+        using var cancellation = new CancellationTokenSource();
+        var halfOpen = client.GetAsync("https://unit.test/half-open", cancellation.Token);
+        await downstream.WaitUntilEntered;
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => halfOpen);
+
+        using var recovered = await client.GetAsync("https://unit.test/recovered");
+        Assert.Equal(HttpStatusCode.OK, recovered.StatusCode);
+        Assert.Equal(3, downstream.RequestCount);
+    }
+
     private sealed class SequenceHandler(params HttpStatusCode[] statuses) : HttpMessageHandler
     {
         private int requestCount;
@@ -78,5 +110,34 @@ public sealed class TrendyolResilienceHandlerTests
             var status = statuses[Math.Min(requestNumber - 1, statuses.Length - 1)];
             return Task.FromResult(new HttpResponseMessage(status));
         }
+    }
+
+    private sealed class BlockingHandler : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int requestCount;
+
+        public int RequestCount => requestCount;
+        public Task WaitUntilEntered => entered.Task;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var requestNumber = Interlocked.Increment(ref requestCount);
+            if (requestNumber == 1) return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+            if (requestNumber == 2)
+            {
+                entered.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
+    }
+
+    private sealed class ManualTimeProvider(DateTimeOffset initial) : TimeProvider
+    {
+        private DateTimeOffset utcNow = initial;
+
+        public override DateTimeOffset GetUtcNow() => utcNow;
+        public void Advance(TimeSpan duration) => utcNow = utcNow.Add(duration);
     }
 }

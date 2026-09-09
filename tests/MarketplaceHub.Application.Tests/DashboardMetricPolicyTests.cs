@@ -78,4 +78,18 @@ public sealed class DashboardMetricPolicyTests
     [Theory]
     [InlineData(ShipmentPackageStatus.Cancelled)]
     public void CancelledPackagesAreNotInvoiceEligible(ShipmentPackageStatus status) => Assert.False(DashboardMetricPolicy.IsInvoiceEligiblePackage(status));
+
+    [Theory]
+    [InlineData(JobStatus.Pending)]
+    [InlineData(JobStatus.Leased)]
+    [InlineData(JobStatus.RetryScheduled)]
+    public void ActiveQueueStatusesAreObservable(JobStatus status) => Assert.True(DashboardMetricPolicy.IsQueuedJobStatus(status));
+
+    [Theory]
+    [InlineData("REMOTE_RATE_LIMITED")]
+    [InlineData("EFATURAM_RATE_LIMITED")]
+    public void KnownRateLimitErrorsAreCounted(string errorCode) => Assert.True(DashboardMetricPolicy.IsRateLimitError(errorCode));
+
+    [Fact]
+    public void UnknownErrorsAreNotCountedAsRateLimits() => Assert.False(DashboardMetricPolicy.IsRateLimitError("REMOTE_SERVER_ERROR"));
 }

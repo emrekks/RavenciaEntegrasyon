@@ -19,7 +19,26 @@ public static class SettingsEndpoints
     private static readonly HashSet<string> AppearanceThemeModes = new(StringComparer.OrdinalIgnoreCase) { "dark" };
     private static readonly IReadOnlyDictionary<string, string> DefaultDarkAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["bg"] = "#101014", ["sidebar"] = "#18181f", ["surface"] = "#18181f", ["surfaceRaised"] = "#202028", ["surfaceSoft"] = "#272730", ["border"] = "#303039", ["borderStrong"] = "#41414d", ["ink"] = "#f4f4f7", ["muted"] = "#aaaab9", ["subtle"] = "#858595", ["primary"] = "#8b5cf6", ["primaryHover"] = "#7c3aed", ["primarySoft"] = "#302443", ["accent"] = "#4adea0", ["accentSoft"] = "#1c332c", ["warning"] = "#f6c16b", ["warningSoft"] = "#382f22", ["danger"] = "#fb858b", ["dangerSoft"] = "#3c252b", ["info"] = "#83b4ff"
+        ["bg"] = "#101014",
+        ["sidebar"] = "#18181f",
+        ["surface"] = "#18181f",
+        ["surfaceRaised"] = "#202028",
+        ["surfaceSoft"] = "#272730",
+        ["border"] = "#303039",
+        ["borderStrong"] = "#41414d",
+        ["ink"] = "#f4f4f7",
+        ["muted"] = "#aaaab9",
+        ["subtle"] = "#858595",
+        ["primary"] = "#8b5cf6",
+        ["primaryHover"] = "#7c3aed",
+        ["primarySoft"] = "#302443",
+        ["accent"] = "#4adea0",
+        ["accentSoft"] = "#1c332c",
+        ["warning"] = "#f6c16b",
+        ["warningSoft"] = "#382f22",
+        ["danger"] = "#fb858b",
+        ["dangerSoft"] = "#3c252b",
+        ["info"] = "#83b4ff"
     };
     private static readonly string[] AppearanceColorTokens = ["bg", "sidebar", "surface", "surfaceRaised", "surfaceSoft", "border", "borderStrong", "ink", "muted", "subtle", "primary", "primaryHover", "primarySoft", "accent", "accentSoft", "warning", "warningSoft", "danger", "dangerSoft", "info"];
 

@@ -5,6 +5,7 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -58,8 +59,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             // A lifecycle scan is the exception: one pending lifecycle job may
             // wait behind the hot order stream, otherwise a continuously busy
             // stream can starve status refreshes forever.
+            var reservationKey = $"{row.Policy.TenantId:N}:{row.Connection.Id:N}:{executionGroup}";
             if ((active && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)
-                || (reservedExecutionGroups.Contains(executionGroup) && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)) continue;
+                || (reservedExecutionGroups.Contains(reservationKey) && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)) continue;
             var latest = await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
@@ -71,7 +73,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var bucket = now.ToUnixTimeSeconds() / interval;
             var dedup = $"{definition.Value.DedupPrefix}:{bucket}";
             if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.JobType == definition.Value.JobType && x.JobDedupKey == dedup, cancellationToken)) continue;
-            reservedExecutionGroups.Add(executionGroup);
+            reservedExecutionGroups.Add(reservationKey);
             if (canQueueOrderBackgroundBehindOrderLane) backgroundOrderReservations.Add(row.Connection.Id);
             db.IntegrationJobs.Add(NewJob(row.Policy.TenantId, row.Connection.Id, definition.Value.JobType, dedup, definition.Value.PayloadJson, now, $"scheduler-{Guid.NewGuid():N}"));
             added++;
@@ -94,7 +96,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             await db.SaveChangesAsync(cancellationToken);
             return added;
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception) when (IsExpectedDedupRace(exception))
         {
             // Another worker may have won the unique dedup race. Clear pending tracked rows;
             // the next scheduler pass will observe the committed jobs.
@@ -257,6 +259,16 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     };
 
     private int ConfigInt(string key, int fallback, int minimum, int maximum) => Math.Clamp(configuration.GetValue(key, fallback), minimum, maximum);
+
+    private static bool IsExpectedDedupRace(DbUpdateException exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_jobs_TenantId_JobType_JobDedupKey" }) return true;
+        }
+
+        return false;
+    }
 
     private static IntegrationJob NewJob(Guid tenantId, Guid? connectionId, string type, string dedup, string payload, DateTimeOffset availableAt, string correlationId) => new()
     {

@@ -436,7 +436,7 @@
   .dashboard-metrics strong, .product-metrics strong, .metrics strong { font-size: clamp(1.25rem, calc(1.75vw * var(--rv-font-scale, 1)), 1.625rem); line-height: 1.1; }
   .dashboard-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--rv-space-4); margin-top: var(--rv-space-5); }
   .dashboard-summary-card { position: relative; display: grid; min-width: 0; min-height: 164px; align-content: start; gap: var(--rv-space-2); padding: var(--rv-space-5); overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
-  .dashboard-summary-card.is-emphasis { background: linear-gradient(145deg, color-mix(in srgb, var(--rv-color-primary) 15%, var(--rv-color-surface)), var(--rv-color-surface)); border-color: color-mix(in srgb, var(--rv-color-primary) 55%, var(--rv-color-border)); }
+  .dashboard-summary-card.is-emphasis { background: linear-gradient(145deg, color-mix(in srgb, var(--rv-color-primary) 9%, var(--rv-color-surface)), var(--rv-color-surface)); border-color: color-mix(in srgb, var(--rv-color-primary) 42%, var(--rv-color-border)); }
   .dashboard-summary-card-head { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--rv-space-3); color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
   .dashboard-summary-card-head > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dashboard-summary-card .dashboard-metric-icon { display: inline-grid; width: 32px; height: 32px; flex: 0 0 32px; grid-row: auto; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); }
@@ -515,6 +515,13 @@
   .dashboard-operational-copy > span { display: block; max-height: 2.6em; overflow: hidden; font-size: var(--rv-font-size-sm); font-weight: 750; line-height: 1.3; overflow-wrap: anywhere; }
   .dashboard-operational-copy small { overflow: hidden; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
   .dashboard-operational-card > .ui-icon { flex: 0 0 auto; color: var(--rv-color-muted); }
+  .dashboard-health-panel { display: grid; gap: var(--rv-space-4); margin-top: var(--rv-space-5); }
+  .dashboard-health-panel .dashboard-section-heading { margin-bottom: 0; }
+  .dashboard-health-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--rv-space-3); }
+  .dashboard-health-item { display: grid; min-width: 0; gap: var(--rv-space-2); padding: var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .dashboard-health-item > span { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; line-height: 1.35; }
+  .dashboard-health-item > strong { min-width: 0; overflow-wrap: anywhere; font-size: var(--rv-font-size-lg); font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .dashboard-health-item > small { min-height: 2.7em; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); line-height: 1.35; }
   .dashboard-channel-card { grid-template-rows: auto auto minmax(0, 1fr) auto; }
   .dashboard-channel-donut { position: relative; display: grid; width: 190px; height: 190px; place-items: center; margin: var(--rv-space-4) auto var(--rv-space-5); border-radius: 50%; }
   .dashboard-channel-donut::before { position: absolute; width: 126px; height: 126px; content: ''; background: var(--rv-color-surface); border-radius: 50%; }
@@ -943,9 +950,10 @@
   .invoice-reference-filter-shell { display: grid; gap: var(--rv-space-3); margin-top: var(--rv-space-4); }
   .invoice-reference-filters { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(180px, 260px); align-items: end; }
   .invoice-reference-filters > label:not(.invoice-reference-search) { display: grid; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
-  .invoice-reference-search { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); }
-  .invoice-reference-search .ui-icon { width: 18px; height: 18px; flex: 0 0 18px; color: var(--rv-color-muted); }
-  .invoice-reference-search input { min-width: 0; flex: 1 1 auto; }
+  .invoice-reference-search { display: grid; min-width: 0; gap: var(--rv-space-1); }
+  .invoice-reference-search-control { position: relative; display: block; min-width: 0; width: 100%; }
+  .invoice-reference-search-control > .ui-icon { position: absolute; top: 50%; left: var(--rv-space-3); z-index: 1; width: 18px; height: 18px; color: var(--rv-color-muted); pointer-events: none; transform: translateY(-50%); }
+  .invoice-reference-search-control input { width: 100%; min-width: 0; padding-left: 40px; }
   .invoice-reference-workspace { min-width: 0; margin-top: var(--rv-space-4); padding: var(--rv-space-5); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
   .invoice-reference-workspace > header { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--rv-space-4); margin-bottom: var(--rv-space-4); }
   .invoice-reference-workspace > header h2, .invoice-reference-workspace > header p { margin-bottom: var(--rv-space-1); }
@@ -1474,6 +1482,12 @@
   .rv-auth-label-row { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); }
   .rv-auth-label-row button { min-height: 24px; padding: 0; color: var(--rv-auth-primary); background: transparent; border: 0; font-size: var(--rv-font-size-xs); font-weight: 600; }
   .rv-auth-label-row button:hover { color: var(--rv-auth-accent); }
+  .rv-auth-card-top-action { position: relative; display: flex; justify-content: flex-start; margin: -4px 0 18px; }
+  .rv-auth-back { display: inline-flex; min-height: 36px; align-items: center; gap: var(--rv-space-2); padding: 0 var(--rv-space-3); color: var(--rv-auth-muted); background: color-mix(in srgb, var(--rv-auth-surface-raised) 78%, transparent); border: 1px solid var(--rv-auth-border-strong); border-radius: var(--rv-radius-md); box-shadow: 0 8px 18px rgb(0 0 0 / 12%); font-size: var(--rv-font-size-xs); font-weight: 650; transition: color .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+  .rv-auth-back:hover:not(:disabled) { color: var(--rv-auth-ink); background: color-mix(in srgb, var(--rv-auth-primary) 12%, var(--rv-auth-surface-raised)); border-color: var(--rv-auth-primary); box-shadow: 0 10px 22px color-mix(in srgb, var(--rv-auth-primary) 14%, transparent); transform: translateY(-1px); }
+  .rv-auth-back:focus-visible { outline: 3px solid color-mix(in srgb, var(--rv-auth-primary) 48%, transparent); outline-offset: 2px; }
+  .rv-auth-back:disabled { cursor: wait; opacity: .68; }
+  .rv-auth-back .ui-icon { width: 16px; height: 16px; }
   .rv-auth-password-toggle { display: inline-grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; padding: 0; color: var(--rv-auth-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); }
   .rv-auth-password-toggle:hover { color: var(--rv-auth-ink); background: color-mix(in srgb, var(--rv-auth-surface-soft) 88%, transparent); }
   .rv-auth-password-toggle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
@@ -1708,12 +1722,15 @@
   .category-library-search-control { position: relative; min-width: 0; }
   .category-library-search-control input { padding-right: 42px; }
   .category-library-search-toggle { position: absolute; top: 50%; right: var(--rv-space-2); display: inline-grid; width: 30px; height: 30px; min-height: 30px; place-items: center; padding: 0; color: var(--rv-color-muted); background: transparent; border: 0; transform: translateY(-50%); }
-  .category-library-search-toggle span { width: 9px; height: 9px; border: 1px solid currentColor; border-radius: 50%; }
+  .category-library-search-toggle span { position: relative; display: block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 50%; }
+  .category-library-search-toggle span::after { position: absolute; right: -4px; bottom: -2px; width: 5px; height: 1.5px; background: currentColor; content: ''; transform: rotate(45deg); transform-origin: left center; }
   .category-chip-list { display: flex; flex-wrap: wrap; gap: var(--rv-space-2); max-height: 220px; overflow: auto; }
   .category-chip-list > span { display: inline-flex; align-items: center; max-width: 100%; overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 999px; }
-  .category-chip-list > span.active { color: #fff; border-color: var(--rv-color-primary); background: var(--rv-color-primary); }
+  .category-chip-list > span.active { color: var(--rv-color-ink); border-color: var(--rv-color-primary); background: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-surface-raised)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-primary) 24%, transparent); }
   .category-chip-list button { min-height: 30px; padding-inline: var(--rv-space-3); color: inherit; background: transparent; border: 0; white-space: nowrap; }
   .category-chip-list .category-chip-remove { width: 30px; padding: 0; border-left: 1px solid var(--rv-color-border); }
+  .category-chip-list > span.active .category-chip-remove { color: var(--rv-color-muted); border-left-color: color-mix(in srgb, var(--rv-color-primary) 36%, var(--rv-color-border)); }
+  .category-chip-list > span.active .category-chip-remove:hover { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
   .panel-attribute-modal { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: rgb(5 16 29 / 68%); backdrop-filter: blur(5px); }
   .panel-attribute-modal-card { display: grid; grid-template-rows: auto auto minmax(0, 1fr); width: min(720px, 100%); max-height: calc(100dvh - 32px); min-width: 0; overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
   .panel-attribute-category-modal-card { grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(820px, 100%); height: min(720px, calc(100dvh - 32px)); min-height: 0; }
@@ -2088,6 +2105,7 @@
   .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-operational-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dashboard-health-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .dashboard-performance-grid { grid-template-columns: 1fr; }
   .invoice-reference-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-report-grid { grid-template-columns: 1fr; }
@@ -2158,6 +2176,7 @@
   .appearance-settings-grid, .appearance-color-grid, .appearance-color-theme-list, .database-scope-group, .product-layout-grid { grid-template-columns: 1fr; }
   .dashboard-performance-grid { grid-template-columns: 1fr; }
   .dashboard-operational-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-performance-filters { width: 100%; justify-content: flex-end; }
   .appearance-color-themes-heading { align-items: stretch; flex-direction: column; }
   .appearance-color-theme-create { width: 100%; }
@@ -2211,6 +2230,7 @@
   .dashboard-report-download { width: 100%; padding-inline: var(--rv-space-2); }
   .dashboard-date { text-align: right; }
   .dashboard-operational-grid { grid-template-columns: 1fr; }
+  .dashboard-health-grid { grid-template-columns: 1fr; }
   .dashboard-section-heading { align-items: flex-start; flex-direction: column; }
   .dashboard-card-header { flex-direction: column; }
   .dashboard-performance-filters { justify-content: stretch; }
@@ -2416,7 +2436,7 @@
   background-size: 14px 14px;
 }
 .app-shell.stitch-shell main .dashboard-period-control::after { right: var(--rv-space-3); }
-.app-shell.stitch-shell main .dashboard-header-period select { background-image: none; }
+.app-shell.stitch-shell main .dashboard-header-period select { background-image: none; padding-inline: 40px 32px; }
 
 .appearance-theme-field { display: grid; gap: var(--rv-space-2); }
 .appearance-theme-picker { position: relative; min-width: 0; }
@@ -2741,9 +2761,11 @@ button,
 .jobs-reference-refresh { border-radius: 4px; box-shadow: 0 8px 18px color-mix(in srgb, var(--rv-color-primary) 24%, transparent); }
 .jobs-reference-refresh:hover:not(:disabled) { border-radius: 4px; }
 .mapping-saved-header-tools .mapping-platform-tabs { border-bottom: 1px solid var(--rv-color-border); }
+.platform-category-create > label { display: grid; align-content: start; gap: var(--rv-space-2); }
 .invoice-reference-search { display: grid; align-items: stretch; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
-.invoice-reference-search-control { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); }
-.invoice-reference-search-control input { min-width: 0; flex: 1 1 auto; }
+.invoice-reference-search-control { position: relative; display: block; min-width: 0; width: 100%; }
+.invoice-reference-search-control > .ui-icon { position: absolute; top: 50%; left: var(--rv-space-3); z-index: 1; width: 18px; height: 18px; color: var(--rv-color-muted); pointer-events: none; transform: translateY(-50%); }
+.app-shell.stitch-shell main .invoice-reference-search-control input { width: 100%; min-width: 0; padding-left: 40px; }
 .jobs-reference-toolbar-actions { flex: 0 1 440px; }
 .jobs-reference-search { flex: 1 1 280px; max-width: 360px; }
 
@@ -2831,6 +2853,7 @@ button,
 .database-reset-panel > .settings-sticky-actions::before { content: 'Seçili listeleri kalıcı olarak temizle\A Bu işlem geri alınamaz; önce onay metnini girin.'; display: block; min-width: 0; flex: 1 1 auto; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); line-height: 1.45; white-space: pre-line; }
 .mapping-reference-heading-actions > span { display: inline-flex; min-height: 28px; align-items: center; padding: 0 10px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border: 1px solid color-mix(in srgb, var(--rv-color-primary) 38%, var(--rv-color-border)); border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .mapping-category-builder .mapping-reference-local { display: contents; }
+.mapping-category-builder .mapping-local-manager { display: none; }
 .mapping-category-builder .mapping-local-manager { grid-column: 1 / -1; grid-row: 1; }
 .mapping-category-builder .mapping-reference-local > label { grid-column: 1; grid-row: 2; }
 .mapping-category-builder .mapping-reference-target { grid-column: 2; grid-row: 2; }
@@ -2845,6 +2868,39 @@ button,
 .brand-mapping-pair-grid > .mapping-side.local .mapping-side-head small::after { content: 'İlk adımda ürün kataloğunuzdaki yerel markayı seçin. Ardından sağdaki güncel pazar yeri referansından karşılığını belirleyerek eşleştirmeyi kaydedin.'; font-size: var(--rv-font-size-xs); }
 .brand-mapping-pair-grid > .mapping-side.local .searchable-select-trigger { min-height: var(--rv-control-height-md); border-color: var(--rv-color-border-strong); background: var(--rv-color-surface-raised); }
 .panel-library-section .panel-attribute-create { grid-template-columns: minmax(190px, .9fr) minmax(260px, 1.25fr) auto; gap: var(--rv-space-3); }
+.mapping-local-category-builder { display: grid; gap: var(--rv-space-4); }
+.mapping-local-category-builder .mapping-section-heading { margin-bottom: 0; }
+.mapping-local-category-builder .mapping-local-manager-dialog-standalone { margin-top: 0; padding: 0; background: transparent; border: 0; }
+.mapping-local-category-builder .category-library-list { display: flex; max-height: 220px; flex-wrap: wrap; gap: var(--rv-space-2); overflow: auto; }
+.mapping-local-category-builder .category-library-list > span { display: flex; width: fit-content; max-width: 100%; min-width: 0; align-items: center; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }
+.mapping-local-category-builder .category-library-list > span.active { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
+.mapping-local-category-builder .category-library-list > span > button:first-child { min-width: 0; flex: 1 1 auto; justify-content: flex-start; overflow: hidden; padding: var(--rv-space-2) var(--rv-space-3); color: inherit; background: transparent; border: 0; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.mapping-local-category-builder .category-library-remove { display: inline-grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; padding: 0; color: var(--rv-color-muted); background: transparent; border: 0; border-left: 1px solid var(--rv-color-border); border-radius: 0 var(--rv-radius-sm) var(--rv-radius-sm) 0; }
+.mapping-local-category-builder .category-library-remove:hover { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+.mapping-saved-header-tools .mapping-sort-button { box-sizing: border-box; width: 64px; min-width: 64px; height: var(--rv-control-height-md); min-height: var(--rv-control-height-md); justify-content: center; padding-inline: var(--rv-space-2); white-space: nowrap; }
+.mapping-saved-card > footer > div button { box-sizing: border-box; width: 36px; min-width: 36px; height: 36px; min-height: 36px; flex: 0 0 36px; padding: 0; }
+.mapping-local-category-builder .category-library-remove, .brand-library-list .category-chip-remove { box-sizing: border-box; width: 30px; min-width: 30px; height: 30px; min-height: 30px; flex: 0 0 30px; margin: 1px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); background: var(--rv-color-surface-raised); }
+.mapping-local-category-builder .category-library-remove:hover, .brand-library-list .category-chip-remove:hover { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: color-mix(in srgb, var(--rv-color-danger) 42%, var(--rv-color-border)); }
+
+/* Keep compact utility controls from inheriting the workspace's 44px action height. */
+.app-shell.stitch-shell main .mapping-saved-card > footer > div > button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  flex: 0 0 36px;
+  padding: 0;
+}
+
+.app-shell.stitch-shell main .mapping-local-category-builder .category-library-list > span > .category-library-remove,
+.app-shell.stitch-shell main .brand-library-list .category-chip-remove {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  flex: 0 0 30px;
+  padding: 0;
+}
 
 @media (max-width: 768px) {
   .shipping-settings-actions { margin-inline: -16px; margin-bottom: -16px; padding-inline: 16px; }
@@ -3790,7 +3846,7 @@ button,
   opacity: .9;
   transform-box: fill-box;
   transform-origin: center;
-  animation: auth-dot-breathe 2.8s ease-in-out infinite;
+  animation: auth-route-packet-pulse 2.8s ease-in-out infinite;
 }
 .auth-route-packet-primary { fill: var(--rv-color-primary); }
 .auth-route-packet-accent { fill: var(--rv-color-accent); animation-delay: -1.15s; }
@@ -3951,7 +4007,7 @@ button,
   margin: -14px 0 -8px;
   gap: 20px;
   position: relative;
-  top: -8px;
+  top: -20px;
   animation: auth-brand-float 8s ease-in-out infinite;
 }
 
@@ -4054,6 +4110,14 @@ button,
   50% { opacity: 1; transform: scale(1.18); }
 }
 
+/* animateMotion owns the packet position. Keep the pulse on opacity only so
+   CSS cannot override the SVG transform and pull the dots away from their
+   route paths. */
+@keyframes auth-route-packet-pulse {
+  0%, 100% { opacity: .58; }
+  50% { opacity: 1; }
+}
+
 .auth-notification-center {
   position: relative;
   z-index: 2;
@@ -4122,7 +4186,9 @@ button,
   .auth-signal-scene { width: 760px; }
   .auth-signal-ring-three,
   .auth-signal-pulse-two,
-  .auth-orbit-tag { display: none; }
+  .auth-orbit-tag,
+  .auth-signal-route-lines,
+  .auth-route-packet { display: none; }
   .auth-signal-axis-horizontal { width: 720px; }
 }
 
@@ -4359,7 +4425,7 @@ small,
     overflow: hidden;
     opacity: 0;
     visibility: hidden;
-    transition: max-width 220ms var(--rv-ease-standard), opacity 140ms var(--rv-ease-standard), visibility 0s linear 220ms;
+    transition: max-width 420ms var(--rv-ease-standard), opacity 240ms var(--rv-ease-standard), visibility 0s linear 420ms;
   }
 
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .brand.wordmark,
@@ -4425,7 +4491,7 @@ small,
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile-copy,
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .nav-label,
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .logout-label {
-    transition: max-width 220ms var(--rv-ease-standard), opacity 140ms var(--rv-ease-standard), visibility 0s linear 0s;
+    transition: max-width 420ms var(--rv-ease-standard), opacity 240ms var(--rv-ease-standard), visibility 0s linear 0s;
   }
 }
 
@@ -4433,11 +4499,26 @@ small,
    only toward the right. Links keep the same layout in both states; the
    aside clips the unused part of the link when it is collapsed. */
 @media (min-width: 701px) {
+  .app-shell.stitch-shell,
+  .app-shell.stitch-shell.sidebar-collapsed,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded,
+  .app-shell.stitch-shell.sidebar-pinned {
+    transition: grid-template-columns 420ms var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell > aside {
+    transition: width 420ms var(--rv-ease-standard), padding-inline 420ms var(--rv-ease-standard), box-shadow 420ms var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell .rv-topbar {
+    transition: left 420ms var(--rv-ease-standard);
+  }
+
   .app-shell.stitch-shell.sidebar-collapsed > aside,
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside {
     padding-inline: 0;
     overflow-x: hidden;
-    transition: width 220ms var(--rv-ease-standard), box-shadow 220ms var(--rv-ease-standard);
+    transition: width 420ms var(--rv-ease-standard), padding-inline 420ms var(--rv-ease-standard), box-shadow 420ms var(--rv-ease-standard);
   }
 
   .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav, .sidebar-side-bottom),
@@ -4487,7 +4568,7 @@ small,
     pointer-events: none;
     border: 1px solid transparent;
     border-radius: var(--rv-radius-md);
-    transition: width 220ms var(--rv-ease-standard), background 160ms var(--rv-ease-standard), border-color 160ms var(--rv-ease-standard), box-shadow 160ms var(--rv-ease-standard);
+    transition: width 420ms var(--rv-ease-standard), background 200ms var(--rv-ease-standard), border-color 200ms var(--rv-ease-standard), box-shadow 200ms var(--rv-ease-standard);
   }
 
   .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) > * {
@@ -4514,6 +4595,11 @@ small,
     padding-inline-start: 16px;
     padding-inline-end: 0;
   }
+
+  .app-shell.stitch-shell > aside .sidebar-profile-copy {
+    justify-items: start;
+    text-align: left;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4524,4 +4610,400 @@ small,
   .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-profile-copy,
   .app-shell.stitch-shell.sidebar-collapsed > aside .nav-label,
   .app-shell.stitch-shell.sidebar-collapsed > aside .logout-label { transition: none; }
+}
+
+/* Final workspace pass: keep page boundaries, controls and settings surfaces
+   on the same visual grid across routes. */
+.app-shell.stitch-shell > main > :is(.content, .rv-page) {
+  box-sizing: border-box;
+  width: min(100%, var(--rv-content-max-width));
+  margin-inline: auto;
+  padding: var(--rv-page-padding-inline);
+}
+
+.app-shell.stitch-shell > main > :is(.content.f3, .rv-page-wide) {
+  max-width: var(--rv-content-wide-max-width);
+}
+
+.app-shell.stitch-shell main .brand-library-panel {
+  color: var(--rv-color-ink);
+  background: color-mix(in srgb, var(--rv-color-surface-raised) 88%, var(--rv-color-primary-soft));
+  border-color: var(--rv-color-border-strong);
+  box-shadow: var(--rv-shadow-sm);
+}
+
+.app-shell.stitch-shell main .brand-library-panel .brand-library-list {
+  background: var(--rv-color-surface);
+  border-color: var(--rv-color-border);
+}
+
+.app-shell.stitch-shell main .brand-library-panel .brand-library-list > span {
+  color: var(--rv-color-ink);
+  background: var(--rv-color-surface-raised);
+  border-color: var(--rv-color-border);
+}
+
+.app-shell.stitch-shell main .brand-library-panel .brand-library-list > span.active {
+  color: var(--rv-color-ink);
+  background: color-mix(in srgb, var(--rv-color-primary) 14%, var(--rv-color-surface-raised));
+  border-color: color-mix(in srgb, var(--rv-color-primary) 72%, var(--rv-color-border));
+}
+
+/* The mapping item keeps the same purple identity while using a quieter
+   gradient so the active state remains legible in both sidebar modes. */
+.app-shell.stitch-shell > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link).active {
+  color: #fff;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--rv-color-primary) 82%, transparent),
+    color-mix(in srgb, var(--rv-color-primary) 68%, transparent));
+  border-color: color-mix(in srgb, var(--rv-color-primary) 68%, var(--rv-color-border));
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--rv-color-primary) 12%, transparent);
+}
+
+@media (min-width: 701px) {
+  /* Pinned and hover-expanded navigation share one 224px content rail. The
+     collapsed state still keeps its 68px grid column and only clips the rail. */
+  .app-shell.stitch-shell.sidebar-pinned > aside {
+    padding-inline: 12px;
+  }
+
+  .app-shell.stitch-shell.sidebar-pinned > aside .sidebar-brand-row,
+  .app-shell.stitch-shell.sidebar-pinned > aside .sidebar-profile {
+    box-sizing: border-box;
+    padding-inline-start: 4px;
+    padding-inline-end: 0;
+  }
+
+  .app-shell.stitch-shell.sidebar-pinned > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    box-sizing: border-box;
+    width: 224px;
+    min-width: 224px;
+    margin-inline: 0;
+    padding-inline: 10px;
+    column-gap: 12px;
+  }
+
+  .app-shell.stitch-shell.sidebar-pinned > aside .sidebar-pin-toggle,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-pin-toggle {
+    box-sizing: border-box;
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    min-height: 30px;
+    margin-left: auto;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link).active::before {
+    background: linear-gradient(90deg,
+      color-mix(in srgb, var(--rv-color-primary) 82%, transparent),
+      color-mix(in srgb, var(--rv-color-primary) 68%, transparent));
+    border-color: color-mix(in srgb, var(--rv-color-primary) 68%, var(--rv-color-border));
+    box-shadow: 0 5px 12px color-mix(in srgb, var(--rv-color-primary) 12%, transparent);
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link),
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before,
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-pin-toggle {
+    transition-duration: 420ms;
+    transition-timing-function: var(--rv-ease-standard);
+  }
+}
+
+/* Dashboard operational cards use a larger icon block so the glyph spans the
+   same visual height as its value and label. */
+.app-shell.stitch-shell main .dashboard-operational-card {
+  grid-template-columns: 44px minmax(0, 1fr) 20px;
+  column-gap: 12px;
+}
+
+.app-shell.stitch-shell main .dashboard-operational-card > .dashboard-metric-icon {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+}
+
+.app-shell.stitch-shell main .dashboard-operational-card > .dashboard-metric-icon .ui-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.app-shell.stitch-shell main .dashboard-operational-card > .ui-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Table hover follows the full row, including the rightmost action column,
+   without creating a bright card-shaped flash. */
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row {
+  width: 100%;
+  background: var(--rv-color-surface);
+  transition: background var(--rv-duration-fast) var(--rv-ease-standard), border-color var(--rv-duration-fast) var(--rv-ease-standard);
+}
+
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row:hover,
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row:hover > .order-reference-grid {
+  background: color-mix(in srgb, var(--rv-color-primary) 5%, var(--rv-color-surface));
+}
+
+.app-shell.stitch-shell main .order-number-copy {
+  box-sizing: border-box;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  flex: 0 0 30px;
+  padding: 0;
+}
+
+.app-shell.stitch-shell main .order-number-copy > .ui-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.app-shell.stitch-shell main .orders-sync-action .orders-sync-icon,
+.app-shell.stitch-shell main .orders-export-icon {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
+}
+
+/* Invoice controls keep their text on one line and align table headings to
+   the same left/center grid used by the row content. */
+.app-shell.stitch-shell main .invoices-reference-heading-actions {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--rv-space-3);
+}
+
+.app-shell.stitch-shell main .invoice-reference-details-trigger {
+  min-height: 36px;
+  align-items: center;
+  gap: var(--rv-space-2);
+  padding: 6px 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell main .invoice-reference-details-trigger > .ui-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.app-shell.stitch-shell main .invoice-reference-head > * {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* Jobs toolbar controls use the same 44px action size as the surrounding
+   controls, while the refreshed icon remains crisp and quiet. */
+.app-shell.stitch-shell main .jobs-reference-status-summary {
+  row-gap: var(--rv-space-2);
+  column-gap: var(--rv-space-6);
+}
+
+.app-shell.stitch-shell main .jobs-reference-refresh {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border-radius: var(--rv-radius-md);
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--rv-color-primary) 12%, transparent);
+}
+
+.app-shell.stitch-shell main .jobs-reference-refresh .jobs-reference-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.app-shell.stitch-shell main .jobs-reference-refresh:hover:not(:disabled) {
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--rv-color-primary) 18%, transparent);
+}
+
+/* Brand/integration detail surfaces use the same theme-aware panel layers and
+   a narrower filter menu so it does not dominate the page. */
+.app-shell.stitch-shell main .integration-filter-menu {
+  width: min(340px, calc(100vw - 32px));
+  max-width: min(340px, calc(100vw - 32px));
+  padding: var(--rv-space-3);
+}
+
+/* Keep the action labels anchored to the same left edge as the menu content. */
+.app-shell.stitch-shell main .reference-menu-popover :is(a, button) {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* Date controls should occupy their complete filter-grid track, including
+   the native calendar affordance area. */
+.app-shell.stitch-shell main .return-reference-filters > input[type="date"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  justify-self: stretch;
+}
+
+.app-shell.stitch-shell main .integration-settings-modal > header {
+  padding: var(--rv-space-5) var(--rv-space-6);
+}
+
+.app-shell.stitch-shell main .integration-settings-modal > .integration-inline-workspace {
+  display: grid;
+  align-content: start;
+  gap: var(--rv-space-5);
+  padding: var(--rv-space-6);
+}
+
+.app-shell.stitch-shell main .integration-settings-modal .integration-detail-summary,
+.app-shell.stitch-shell main .integration-settings-modal .integration-detail-write-panel,
+.app-shell.stitch-shell main .integration-settings-modal .integration-detail-summary > article {
+  min-width: 0;
+}
+
+.app-shell.stitch-shell main .integration-settings-modal .integration-detail-write-panel {
+  margin-top: 0;
+  padding: var(--rv-space-5);
+}
+
+/* All settings tabs share one labelled content rhythm and one sticky action
+   surface; shipping no longer breaks out through negative margins. */
+.app-shell.stitch-shell main .security-page > .panel,
+.app-shell.stitch-shell main .security-page > .notice,
+.app-shell.stitch-shell main .security-page > .shipping-settings-toast {
+  box-sizing: border-box;
+}
+
+.app-shell.stitch-shell main .security-page .security-state {
+  min-height: 28px;
+  padding-inline: 10px;
+  border-color: color-mix(in srgb, var(--rv-color-primary) 36%, var(--rv-color-border));
+  background: color-mix(in srgb, var(--rv-color-primary) 10%, var(--rv-color-surface-raised));
+}
+
+.app-shell.stitch-shell main .security-page .security-state.enabled {
+  background: color-mix(in srgb, var(--rv-color-accent) 14%, var(--rv-color-surface-raised));
+}
+
+.app-shell.stitch-shell main .appearance-settings-panel > .panel-title > div {
+  display: grid;
+  justify-items: start;
+  gap: var(--rv-space-2);
+}
+
+.app-shell.stitch-shell main .database-scope-groups {
+  margin-block: var(--rv-space-6);
+}
+
+.app-shell.stitch-shell main .database-confirmation {
+  max-width: 420px;
+  margin-top: var(--rv-space-6);
+  padding-top: var(--rv-space-5);
+  border-top: 1px solid var(--rv-color-border);
+}
+
+.app-shell.stitch-shell main .settings-sticky-actions {
+  box-sizing: border-box;
+  min-height: 68px;
+  align-items: center;
+  gap: var(--rv-space-4);
+  margin-top: var(--rv-space-5);
+  margin-inline: 0;
+  margin-bottom: 0;
+  padding: var(--rv-space-3) var(--rv-space-4);
+  background: color-mix(in srgb, var(--rv-color-surface) 96%, transparent);
+  border-radius: var(--rv-radius-md);
+  box-shadow: var(--rv-shadow-sm);
+}
+
+.app-shell.stitch-shell main .settings-sticky-actions::before {
+  display: none;
+}
+
+.app-shell.stitch-shell main .shipping-settings-actions {
+  bottom: var(--rv-space-4);
+}
+
+.app-shell.stitch-shell main .shipping-settings-intro {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: var(--rv-space-2);
+  padding-bottom: var(--rv-space-5);
+  border-bottom: 1px solid var(--rv-color-border);
+}
+
+.app-shell.stitch-shell main .shipping-settings-intro > h2,
+.app-shell.stitch-shell main .shipping-settings-intro > p {
+  margin: 0;
+}
+
+.app-shell.stitch-shell main .shipping-designer-template-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--rv-space-2);
+  margin-top: var(--rv-space-5);
+}
+
+.app-shell.stitch-shell main .shipping-designer-template-actions select {
+  min-width: 270px;
+}
+
+.app-shell.stitch-shell main .shipping-designer-format-tabs {
+  align-self: end;
+}
+
+.app-shell.stitch-shell main .shipping-designer-workspace {
+  margin-top: var(--rv-space-4);
+  padding-top: var(--rv-space-4);
+  border-top: 1px solid var(--rv-color-border);
+}
+
+@media (max-width: 768px) {
+  .app-shell.stitch-shell > main > :is(.content, .rv-page) {
+    width: 100%;
+    margin-inline: 0;
+    padding: var(--rv-space-4);
+  }
+
+  .app-shell.stitch-shell main .invoices-reference-heading-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .app-shell.stitch-shell main .integration-settings-modal > .integration-inline-workspace {
+    padding: var(--rv-space-4);
+  }
+
+  .app-shell.stitch-shell main .shipping-designer-template-actions {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .app-shell.stitch-shell main .shipping-designer-template-actions select {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+}
+
+/* Settings tabs that do not carry inline helper copy still use the same
+   labelled sticky action treatment. */
+.app-shell.stitch-shell main .database-reset-panel > .settings-sticky-actions::before,
+.app-shell.stitch-shell main .appearance-settings-actions::before {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-xs);
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.app-shell.stitch-shell main .database-reset-panel > .settings-sticky-actions::before {
+  content: 'Seçili listeleri kalıcı olarak temizle\A Bu işlem geri alınamaz; önce onay metnini girin.';
+}
+
+.app-shell.stitch-shell main .appearance-settings-actions::before {
+  content: 'Görünüm ayarlarını uygula\A Değişiklikleri hesabınıza kaydetmeden önce önizleyin.';
 }

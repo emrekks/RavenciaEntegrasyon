@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 
 export type UiIconName =
   | 'alert'
+  | 'addCategory'
   | 'alignCenter'
   | 'alignLeft'
   | 'alignRight'
@@ -40,6 +41,7 @@ export type UiIconName =
   | 'paragraph'
   | 'plus'
   | 'redo'
+  | 'refresh'
   | 'search'
   | 'shield'
   | 'sparkle'
@@ -105,6 +107,7 @@ type UiIconProps = {
 
 const paths: Record<UiIconName, ReactNode> = {
   alert: <><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5m0 3.25h.01" /></>,
+  addCategory: <path fill="currentColor" stroke="none" fillRule="evenodd" clipRule="evenodd" d="M3.75 4.5 4.5 3.75h6l.75.75v6l-.75.75h-6l-.75-.75v-6Zm1.5.75v4.5h4.5v-4.5h-4.5Zm8.25-1.5-.75.75v6l.75.75h6l.75-.75v-6l-.75-.75h-6Zm.75 1.5h4.5v4.5h-4.5v-4.5Zm3 15h-1.5v-3h-3v-1.5h3v-3h1.5v3h3v1.5h-3v3Zm-12.75-7.5-.75.75v6l.75.75h6l.75-.75v-6l-.75-.75h-6Zm.75 1.5h4.5v4.5h-4.5v-4.5Z" />,
   alignCenter: <><path d="M5 6h14M8 10h8M5 14h14M8 18h8" /></>,
   alignLeft: <><path d="M5 6h14M5 10h10M5 14h14M5 18h10" /></>,
   alignRight: <><path d="M5 6h14M9 10h10M5 14h14M9 18h10" /></>,
@@ -143,6 +146,7 @@ const paths: Record<UiIconName, ReactNode> = {
   paragraph: <><path d="M5 5h10a4 4 0 0 1 0 8H9" /><path d="M9 5v14M13 5v14" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   redo: <><path d="M19 8v5h-5" /><path d="M19 13a7 7 0 1 0-2 4" /></>,
+  refresh: <><path d="M20 11a8 8 0 0 0-14.7-4L4 9" /><path d="M4 4v5h5" /><path d="M4 13a8 8 0 0 0 14.7 4L20 15" /><path d="M20 20v-5h-5" /></>,
   search: <><circle cx="10.8" cy="10.8" r="6.3" /><path d="m16 16 4 4" /></>,
   shield: <><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z" /><path d="m9 12 2 2 4-5" /></>,
   sparkle: <path d="m12 3 1.5 6.5L20 12l-6.5 1.5L12 20l-1.5-6.5L4 12l6.5-2.5L12 3Z" />,

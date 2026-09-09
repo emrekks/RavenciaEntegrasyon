@@ -83,9 +83,7 @@ function Shell({ me }: { me: Me }) {
     return <NavLink to={to} end={end} aria-label={accessibleLabel} title={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className="nav-count" aria-hidden="true">{count > 99 ? '99+' : count}</span>}</NavLink>
   }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
-    { label: 'Çalışma alanı', items: [item('/dashboard', 'grid', 'Genel bakış', true), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.pendingOrders, true)] },
-    { label: 'Operasyon', items: [item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar', false, navigationCounts?.uninvoicedInvoices ?? 0, true)] },
-    { label: 'Yönetim', items: [item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'bolt', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
+    { label: 'Ana menü', items: [item('/dashboard', 'grid', 'Genel bakış', true), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.pendingOrders, true), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar', false, navigationCounts?.uninvoicedInvoices ?? 0, true), item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'bolt', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}>{group.items}</div>)}</>
   const quickSearchItems: Array<{ to: string; label: string; description: string; icon: UiIconName }> = [
@@ -150,7 +148,7 @@ const authActivity = [
   { id: 'price', platform: 'Hepsiburada', message: 'Fiyat listesi senkronize edildi', time: '8 dk', tone: 'hepsiburada' },
 ] as const
 
-function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDescription, progressStep = 1, children, footerMeta = 'Ravencia Workspace' }: { ariaLabel: string; accessLabel: string; accessMeta: string; cardTitle: string; cardDescription: string; progressStep?: 1 | 2 | 3; children: ReactNode; footerMeta?: string }) {
+function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDescription, progressStep = 1, children, footerMeta = 'Ravencia Workspace', topAction }: { ariaLabel: string; accessLabel: string; accessMeta: string; cardTitle: string; cardDescription: string; progressStep?: 1 | 2 | 3; children: ReactNode; footerMeta?: string; topAction?: ReactNode }) {
   return <main className="rv-auth-page rv-auth-single">
     <div className="rv-auth-atmosphere" aria-hidden="true">
       <span className="auth-aurora auth-aurora-primary" />
@@ -164,25 +162,23 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
             <ellipse className="auth-signal-orbit auth-signal-orbit-primary" cx="470" cy="470" rx="356" ry="236" transform="rotate(-60 470 470)" />
           </g>
           <g className="auth-signal-route-lines">
-            <path className="auth-route-line" d="M470 470 C410 445 325 372 88 280" />
-            <path className="auth-route-line" d="M470 470 C540 435 650 375 850 316" />
-            <path className="auth-route-line" d="M470 470 C405 515 300 605 108 674" />
-            <path className="auth-route-line" d="M470 470 C545 520 655 618 844 710" />
-            <path className="auth-route-line auth-route-line-platform" d="M88 280 C300 145 645 145 850 316" />
-            <path className="auth-route-line auth-route-line-platform" d="M108 674 C300 820 645 820 844 710" />
+            <path id="auth-route-line-core-left" className="auth-route-line" d="M470 470 C410 445 325 372 88 280" />
+            <path id="auth-route-line-core-right" className="auth-route-line" d="M470 470 C540 435 650 375 850 316" />
+            <path id="auth-route-line-core-bottom-left" className="auth-route-line" d="M470 470 C405 515 300 605 108 674" />
+            <path id="auth-route-line-core-bottom-right" className="auth-route-line" d="M470 470 C545 520 655 618 844 710" />
+            <path id="auth-route-line-platform-top" className="auth-route-line auth-route-line-platform" d="M88 280 C300 145 645 145 850 316" />
+            <path id="auth-route-line-platform-bottom" className="auth-route-line auth-route-line-platform" d="M108 674 C300 820 645 820 844 710" />
           </g>
           <g filter="url(#auth-signal-packet-glow)">
-            <circle className="auth-route-packet auth-route-packet-primary" r="3.25"><animateMotion dur="9.2s" begin="-1.4s" repeatCount="indefinite" path="M470 470 C410 445 325 372 88 280" /></circle>
-            <circle className="auth-route-packet auth-route-packet-accent" r="3"><animateMotion dur="10.8s" begin="-5.2s" repeatCount="indefinite" path="M470 470 C540 435 650 375 850 316" /></circle>
-            <circle className="auth-route-packet auth-route-packet-primary" r="2.75"><animateMotion dur="9.8s" begin="-7.6s" repeatCount="indefinite" path="M470 470 C405 515 300 605 108 674" /></circle>
-            <circle className="auth-route-packet auth-route-packet-accent" r="3.25"><animateMotion dur="11.6s" begin="-3.1s" repeatCount="indefinite" path="M470 470 C545 520 655 618 844 710" /></circle>
-            <circle className="auth-route-packet auth-route-packet-platform" r="2.5"><animateMotion dur="14s" begin="-4.8s" repeatCount="indefinite" path="M88 280 C300 145 645 145 850 316" /></circle>
-            <circle className="auth-route-packet auth-route-packet-platform" r="2.5"><animateMotion dur="15.4s" begin="-9.3s" repeatCount="indefinite" path="M108 674 C300 820 645 820 844 710" /></circle>
+            <circle className="auth-route-packet auth-route-packet-primary" r="3.25"><animateMotion dur="9.2s" begin="-1.4s" repeatCount="indefinite"><mpath href="#auth-route-line-core-left" /></animateMotion></circle>
+            <circle className="auth-route-packet auth-route-packet-accent" r="3"><animateMotion dur="10.8s" begin="-5.2s" repeatCount="indefinite"><mpath href="#auth-route-line-core-right" /></animateMotion></circle>
+            <circle className="auth-route-packet auth-route-packet-primary" r="2.75"><animateMotion dur="9.8s" begin="-7.6s" repeatCount="indefinite"><mpath href="#auth-route-line-core-bottom-left" /></animateMotion></circle>
+            <circle className="auth-route-packet auth-route-packet-accent" r="3.25"><animateMotion dur="11.6s" begin="-3.1s" repeatCount="indefinite"><mpath href="#auth-route-line-core-bottom-right" /></animateMotion></circle>
+            <circle className="auth-route-packet auth-route-packet-platform" r="2.5"><animateMotion dur="14s" begin="-4.8s" repeatCount="indefinite"><mpath href="#auth-route-line-platform-top" /></animateMotion></circle>
+            <circle className="auth-route-packet auth-route-packet-platform" r="2.5"><animateMotion dur="15.4s" begin="-9.3s" repeatCount="indefinite"><mpath href="#auth-route-line-platform-bottom" /></animateMotion></circle>
           </g>
         </svg>
         <span className="auth-signal-core" />
-        <span className="auth-signal-pulse auth-signal-pulse-one" />
-        <span className="auth-signal-pulse auth-signal-pulse-two" />
         {authPlatforms.map(platform => <span className={`auth-orbit-tag auth-orbit-tag-${platform.id}`} key={platform.id}><i /><b>{platform.name}</b><small>bağlı</small></span>)}
       </div>
     </div>
@@ -200,6 +196,7 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
           <div className="rv-auth-login-top"><span><i /> {accessLabel}</span><span>{accessMeta}</span></div>
           <div className="rv-auth-card">
             <div className="rv-auth-card-glow" aria-hidden="true" />
+            {topAction && <div className="rv-auth-card-top-action">{topAction}</div>}
             <header className="rv-auth-login-header"><div><h2>{cardTitle}</h2><span>{cardDescription}</span></div></header>
             <div className={`rv-auth-progress rv-auth-progress-step-${progressStep}`} aria-hidden="true"><span /></div>
             {children}
@@ -296,6 +293,11 @@ function MfaChallenge() {
   const [mode, setMode] = useState<'code' | 'recovery'>('code')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  async function backToLogin() {
+    setLeaving(true)
+    try { await api('/logout', { method: 'POST' }) } finally { window.location.replace(`/?signedOut=${Date.now()}`) }
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
@@ -310,7 +312,7 @@ function MfaChallenge() {
       setLoading(false)
     }
   }
-  return <AuthPageFrame ariaLabel="Ravencia iki adımlı doğrulama" accessLabel="Kimlik doğrulama" accessMeta="3 / 3" cardTitle="Erişiminizi doğrulayın" cardDescription={mode === 'code' ? 'Authenticator uygulamanızdaki 6 haneli kodu girin.' : 'Tek kullanımlık kurtarma kodlarınızdan birini girin.'} progressStep={3} footerMeta="Doğrulama koruması etkin">
+  return <AuthPageFrame ariaLabel="Ravencia iki adımlı doğrulama" accessLabel="Kimlik doğrulama" accessMeta="3 / 3" cardTitle="Erişiminizi doğrulayın" cardDescription={mode === 'code' ? 'Authenticator uygulamanızdaki 6 haneli kodu girin.' : 'Tek kullanımlık kurtarma kodlarınızdan birini girin.'} progressStep={3} footerMeta="Doğrulama koruması etkin" topAction={<button type="button" className="rv-auth-back" onClick={() => void backToLogin()} disabled={leaving}><UiIcon name="arrowLeft" size={16} />{leaving ? 'Giriş ekranına dönülüyor…' : 'Giriş ekranına dön'}</button>}>
     <div className="rv-auth-choice" role="tablist" aria-label="Doğrulama yöntemi"><button type="button" role="tab" aria-selected={mode === 'code'} className={mode === 'code' ? 'is-active' : ''} onClick={() => { setMode('code'); setError('') }}>Authenticator kodu</button><button type="button" role="tab" aria-selected={mode === 'recovery'} className={mode === 'recovery' ? 'is-active' : ''} onClick={() => { setMode('recovery'); setError('') }}>Kurtarma kodu</button></div>
     <form className="rv-auth-form rv-auth-mfa-form" onSubmit={submit}>
       {mode === 'code' ? <div className="rv-auth-field"><label htmlFor="mfa-code">6 haneli doğrulama kodu</label><div className="rv-auth-control"><UiIcon name="shield" /><input id="mfa-code" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} required autoFocus placeholder="000000" /></div></div> : <div className="rv-auth-field"><label htmlFor="mfa-recovery">Kurtarma kodu</label><div className="rv-auth-control"><UiIcon name="lock" /><input id="mfa-recovery" name="recovery" autoComplete="off" required autoFocus placeholder="Kurtarma kodunu girin" /></div></div>}
@@ -319,7 +321,7 @@ function MfaChallenge() {
     </form>
   </AuthPageFrame>
 }
-type DashboardMetrics = { pendingOrders: number; lateOrders: number; todayOrders: number; todayProductQuantity: number; monthOrders: number; monthProductQuantity: number; pendingReturns: number; dueSoonInvoices: number; uninvoicedInvoices: number; lowStockProducts: number; activeConnections: number; pendingByPlatform: Record<string, number> }
+type DashboardMetrics = { pendingOrders: number; lateOrders: number; todayOrders: number; todayProductQuantity: number; monthOrders: number; monthProductQuantity: number; pendingReturns: number; dueSoonInvoices: number; uninvoicedInvoices: number; lowStockProducts: number; activeConnections: number; pendingByPlatform: Record<string, number>; oldestQueuedJobAt?: string | null; lastVerifiedSynchronizationAt?: string | null; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number; recentRateLimitJobCount?: number; oldestStockObservationAt?: string | null }
 type DashboardLowStock = { id: string; title: string; totalStock: number; primaryImageUrl: string | null }
 type DashboardSyncStatus = { resourceType: string; label: string; kind: string; status: string; lastAttemptAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null }
 type DashboardBootstrap = { metrics: DashboardMetrics; lowStock: DashboardLowStock[]; sync: DashboardSyncStatus[]; platforms: { name: string; status: string }[]; generatedAt: string; version: number }
@@ -334,6 +336,24 @@ function dashboardDateKey(value: Date) {
 }
 
 function dashboardDateInputValue(value = new Date()) { return dashboardDateKey(value) }
+function dashboardAgeLabel(timestamp: string | null | undefined) {
+  if (!timestamp) return 'Veri yok'
+  const parsed = new Date(timestamp)
+  if (Number.isNaN(parsed.getTime())) return 'Veri yok'
+  const minutes = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 60000))
+  if (minutes < 1) return 'Şimdi'
+  if (minutes < 60) return `${minutes} dk önce`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return `${hours} sa önce`
+  return `${Math.floor(hours / 24)} gün önce`
+}
+
+function dashboardDateTimeLabel(timestamp: string | null | undefined) {
+  if (!timestamp) return 'Henüz ölçüm yok'
+  const parsed = new Date(timestamp)
+  return Number.isNaN(parsed.getTime()) ? 'Henüz ölçüm yok' : parsed.toLocaleString('tr-TR')
+}
+
 function DashboardMetricIcon({ kind }: { kind: string }) {
   const icons: Record<string, UiIconName> = {
     pending: 'clock',
@@ -537,6 +557,8 @@ function Dashboard() {
   const chartGrid = [{ ratio: 1, y: 30 }, { ratio: 2 / 3, y: 80 }, { ratio: 1 / 3, y: 130 }, { ratio: 0, y: 180 }]
   const productCount = productSummary.data?.activeCount ?? 0
   const dashboardMetrics = bootstrap.data?.metrics
+  const recentJobCount = dashboardMetrics?.recentJobCount ?? 0
+  const recentRateLimitRate = recentJobCount > 0 ? ((dashboardMetrics?.recentRateLimitJobCount ?? 0) / recentJobCount) * 100 : null
   const channelRows = (channelRevenueQuery.data ?? []).map(channel => {
     const amount = channel.points.reduce((sum, point) => sum + point.amount, 0)
     const orders = channel.points.reduce((sum, point) => sum + point.orderCount, 0)
@@ -568,6 +590,7 @@ function Dashboard() {
     {reportRange === 'custom' && <div className="dashboard-custom-range dashboard-report-custom-range"><label><span>Başlangıç</span><input type="date" value={reportFrom} max={reportTo} onChange={event => setReportFrom(event.target.value)} /></label><label><span>Bitiş</span><input type="date" value={reportTo} min={reportFrom} onChange={event => setReportTo(event.target.value)} /></label></div>}
     {errors.length > 0 && <div role="alert" className="error">Bazı rapor verileri alınamadı; görünen değerler kısmi olabilir.</div>}
     <section className="dashboard-operational-section" aria-labelledby="dashboard-operational-title"><header className="dashboard-section-heading"><div><h2 id="dashboard-operational-title">Operasyon özeti</h2><p>Takip gerektiren sipariş, iade, fatura ve stok akışları.</p></div></header><div className="dashboard-section-bridge dashboard-section-bridge-operational" aria-hidden="true"><span /><small>OPERASYON METRİKLERİ</small><span /></div><div className="dashboard-operational-grid"><DashboardOperationalCard kind="pendingOrders" label="Bekleyen siparişler" detail="İşleme alınmayı bekliyor" value={bootstrap.isLoading ? null : dashboardMetrics?.pendingOrders ?? 0} to="/orders?status=NEW" /><DashboardOperationalCard kind="lateOrders" label="Geciken siparişler" detail="Süre aşımı olanlar" value={bootstrap.isLoading ? null : dashboardMetrics?.lateOrders ?? 0} to="/orders" /><DashboardOperationalCard kind="pendingReturns" label="Bekleyen iadeler" detail="İnceleme bekliyor" value={bootstrap.isLoading ? null : dashboardMetrics?.pendingReturns ?? 0} to="/returns" /><DashboardOperationalCard kind="invoicePending" label="Bekleyen faturalar" detail="Fatura kesilmesi gerekenler" value={bootstrap.isLoading ? null : dashboardMetrics?.uninvoicedInvoices ?? 0} to="/invoices" /><DashboardOperationalCard kind="invoiceDue" label="Yaklaşan faturalar" detail="Vadesi yaklaşanlar" value={bootstrap.isLoading ? null : dashboardMetrics?.dueSoonInvoices ?? 0} to="/invoices" /><DashboardOperationalCard kind="lowStock" label="Düşük stok" detail="Yenileme gerektiren ürünler" value={bootstrap.isLoading ? null : dashboardMetrics?.lowStockProducts ?? 0} to="/products" /></div></section>
+    <section className="panel dashboard-health-panel" aria-labelledby="dashboard-health-title"><header className="dashboard-section-heading"><div><h2 id="dashboard-health-title">İşlem sağlığı</h2><p>Kuyruk, senkronizasyon ve gözlem verileri · son 24 saat</p></div></header><div className="dashboard-health-grid"><article className="dashboard-health-item"><span>Kuyruk yaşı</span><strong>{dashboardAgeLabel(dashboardMetrics?.oldestQueuedJobAt)}</strong><small>{dashboardDateTimeLabel(dashboardMetrics?.oldestQueuedJobAt)}</small></article><article className="dashboard-health-item"><span>Son doğrulanmış senkronizasyon</span><strong>{dashboardAgeLabel(dashboardMetrics?.lastVerifiedSynchronizationAt)}</strong><small>{dashboardDateTimeLabel(dashboardMetrics?.lastVerifiedSynchronizationAt)}</small></article><article className="dashboard-health-item"><span>Dead işler</span><strong>{(dashboardMetrics?.deadJobCount ?? 0).toLocaleString('tr-TR')}</strong><small>Kalıcı olarak durdurulan işler</small></article><article className="dashboard-health-item"><span>Manuel inceleme</span><strong>{(dashboardMetrics?.manualReviewJobCount ?? 0).toLocaleString('tr-TR')}</strong><small>Operatör kararı bekleyen işler</small></article><article className="dashboard-health-item"><span>429 oranı · 24 saat</span><strong>{recentRateLimitRate === null ? '—' : `%${recentRateLimitRate.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`}</strong><small>{(dashboardMetrics?.recentRateLimitJobCount ?? 0).toLocaleString('tr-TR')} / {recentJobCount.toLocaleString('tr-TR')} iş</small></article><article className="dashboard-health-item"><span>Eski stok gözlemi</span><strong>{dashboardAgeLabel(dashboardMetrics?.oldestStockObservationAt)}</strong><small>{dashboardDateTimeLabel(dashboardMetrics?.oldestStockObservationAt)}</small></article></div></section>
     <div className="dashboard-section-bridge" aria-hidden="true"><span /><small>PERFORMANS METRİKLERİ</small><span /></div>
     <div className="dashboard-summary-grid">
       <article className="dashboard-summary-card is-emphasis"><div className="dashboard-summary-card-head"><span>Toplam gelir</span><DashboardMetricIcon kind="revenue" /></div><div className="dashboard-summary-value-row"><strong>{reportRevenueQuery.isLoading ? '—' : dashboardMoney(reportTotal, reportCurrency)}</strong><span className={`dashboard-summary-trend ${dashboardTrendClass(reportTotal, previousReportTotal)}`}><DashboardTrendIcon current={reportTotal} previous={previousReportTotal} />{dashboardTrendLabel(reportTotal, previousReportTotal)}</span></div><DashboardSparkline className="dashboard-sparkline-primary" /></article>
@@ -856,7 +879,7 @@ function AppearanceSettingsPage() {
     {message && <div className="notice" role="status">{message}</div>}
     {appearance.isError && <div className="error" role="alert">Hesap görünüm ayarları alınamadı; varsayılan görünüm gösteriliyor.</div>}
     <section className="panel appearance-settings-panel">
-      <div className="panel-title"><div><h2>Okunabilirlik</h2><p>Tablo ve işlem ekranlarındaki yazıları hesabınız için özelleştirin.</p></div></div>
+      <div className="panel-title"><div><span className="security-state">Görünüm ayarları</span><h2>Okunabilirlik</h2><p>Tablo ve işlem ekranlarındaki yazıları hesabınız için özelleştirin.</p></div></div>
       <div className="appearance-settings-grid">
         <label><span>Font tipi</span><select value={appearance.draft.fontFamily} onChange={event => appearance.setDraft({ ...appearance.draft, fontFamily: event.target.value as AppearanceSettings['fontFamily'] })}>{appearanceFontFamilyOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
         <label><span>Yazı boyutu</span><select value={appearance.draft.fontSize} onChange={event => appearance.setDraft({ ...appearance.draft, fontSize: event.target.value as AppearanceSettings['fontSize'] })}>{appearanceFontSizeOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></label>

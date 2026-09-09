@@ -176,6 +176,7 @@ public sealed class MarketplaceDelivery
     public Guid? PackageId { get; set; }
     public int AttemptNumber { get; set; }
     public required string IdempotencyKey { get; set; }
+    public string? ExternalIdempotencyKey { get; set; }
     public required string RequestHash { get; set; }
     public required string DeliveryType { get; set; }
     public required string Status { get; set; }
@@ -183,4 +184,24 @@ public sealed class MarketplaceDelivery
     public string? ErrorCode { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
+}
+
+public sealed class MarketplaceDeliveryState
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid InvoiceId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public Guid? PackageId { get; set; }
+    public int AttemptNumber { get; set; }
+    public required string ExternalIdempotencyKey { get; set; }
+    public required string RequestHash { get; set; }
+    public required string DeliveryType { get; set; }
+    public required string Status { get; set; }
+    public string? ExternalReference { get; set; }
+    public string? ErrorCode { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public long Version { get; set; } = 1;
 }

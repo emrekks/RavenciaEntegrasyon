@@ -1,3 +1,8 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using MarketplaceHub.Domain;
+
 namespace MarketplaceHub.Application;
 
 public static class SynchronizationCadence
@@ -88,10 +93,63 @@ public static class MarketplaceSyncHealthPolicy
 public static class OrderInventoryReservationPolicy
 {
     public static decimal DesiredQuantity(decimal orderedQuantity, decimal cancelledQuantity)
+        => DesiredQuantity(orderedQuantity, cancelledQuantity, 0m, true);
+
+    public static decimal DesiredQuantity(
+        decimal orderedQuantity,
+        decimal cancelledQuantity,
+        decimal shippedQuantity,
+        bool reservationEnabled)
     {
-        if (orderedQuantity < 0 || cancelledQuantity < 0) throw new ArgumentOutOfRangeException(nameof(orderedQuantity));
-        return Math.Max(0, orderedQuantity - Math.Min(orderedQuantity, cancelledQuantity));
+        if (orderedQuantity < 0 || cancelledQuantity < 0 || shippedQuantity < 0)
+            throw new ArgumentOutOfRangeException(nameof(orderedQuantity));
+        if (!reservationEnabled) return 0m;
+
+        var afterCancellation = Math.Max(0m, orderedQuantity - Math.Min(orderedQuantity, cancelledQuantity));
+        var consumed = Math.Min(afterCancellation, shippedQuantity);
+        return Math.Max(0m, afterCancellation - consumed);
     }
+
+    public static bool IsReservationEnabled(ConnectionInventoryPolicy? policy, string? rawStatus)
+    {
+        if (policy is null) return true;
+        if (string.Equals(policy.ReservationMode?.Trim(), "NONE", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(policy.ReservationMode?.Trim(), "DISABLED", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var status = rawStatus?.Trim() ?? string.Empty;
+        if (ContainsStatus(policy.ReleaseOnStatuses, status)) return false;
+        return string.IsNullOrWhiteSpace(policy.ReserveOnStatuses)
+            || ContainsStatus(policy.ReserveOnStatuses, status);
+    }
+
+    private static bool ContainsStatus(string? configuredStatuses, string rawStatus)
+    {
+        if (string.IsNullOrWhiteSpace(configuredStatuses) || string.IsNullOrWhiteSpace(rawStatus)) return false;
+        return configuredStatuses
+            .Split([',', ';', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(status => string.Equals(status, rawStatus, StringComparison.OrdinalIgnoreCase));
+    }
+}
+
+public static class InventoryAuthorityPolicy
+{
+    public const string Central = "CENTRAL";
+    public const string RemoteObservation = "REMOTE_OBSERVATION";
+    public const string RemoteAuthoritative = "REMOTE_AUTHORITATIVE";
+
+    public static string Normalize(string? value) => value?.Trim().ToUpperInvariant() switch
+    {
+        RemoteObservation => RemoteObservation,
+        RemoteAuthoritative => RemoteAuthoritative,
+        _ => Central
+    };
+
+    // Remote-authoritative mode is an explicit compatibility escape hatch. It
+    // is never inferred from a missing/unknown policy, so catalog imports cannot
+    // silently replace local physical stock.
+    public static bool ShouldApplyRemoteQuantityToOnHand(string? authorityMode) =>
+        Normalize(authorityMode) == RemoteAuthoritative;
 }
 
 public static class ProductImportMergePolicy
@@ -134,4 +192,32 @@ public static class StockProjectionOutboxPolicy
 {
     public static string DedupKey(Guid connectionId, Guid variantId, long projectionVersion) =>
         $"stock-projection:{connectionId:N}:{variantId:N}:v{projectionVersion}";
+}
+
+public static class PriceInventoryOutboxPolicy
+{
+    public static bool IsCurrent(PriceInventoryPushLine line, long projectionVersion, long priceVersion) =>
+        line.ProjectionVersion == projectionVersion && line.PriceVersion == priceVersion;
+
+    public static string DedupKey(Guid connectionId, IEnumerable<PriceInventoryPushLine> lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+
+        var revision = string.Join("\n", lines
+            .OrderBy(line => line.OfferId)
+            .ThenBy(line => line.VariantId)
+            .Select(line => string.Join('|',
+                line.VariantId.ToString("N"),
+                line.OfferId.ToString("N"),
+                line.Barcode,
+                line.Quantity.ToString("0.####", CultureInfo.InvariantCulture),
+                line.ListPrice.ToString("0.####", CultureInfo.InvariantCulture),
+                line.SalePrice.ToString("0.####", CultureInfo.InvariantCulture),
+                line.Currency,
+                line.ProjectionVersion.ToString(CultureInfo.InvariantCulture),
+                line.PriceVersion.ToString(CultureInfo.InvariantCulture),
+                line.PriceHash)));
+        var revisionHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(revision)));
+        return $"price-inventory:{connectionId:N}:revision:{revisionHash}";
+    }
 }

@@ -4,6 +4,7 @@ public static class DashboardMetricPolicy
 {
     public const int InvoiceReminderStartDays = 5;
     public const int InvoiceDueDays = 7;
+    public const int OperationalRateLimitWindowHours = 24;
 
     // Dashboard metrics must use the same connection lifecycle as the rest of
     // the active panel. Hidden and deleted connection history is not live data.
@@ -44,6 +45,12 @@ public static class DashboardMetricPolicy
         var age = now - deliveredAt;
         return age >= TimeSpan.FromDays(InvoiceReminderStartDays) && age < TimeSpan.FromDays(InvoiceDueDays);
     }
+
+    public static bool IsQueuedJobStatus(JobStatus status) =>
+        status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled;
+
+    public static bool IsRateLimitError(string? errorCode) =>
+        errorCode is "REMOTE_RATE_LIMITED" or "EFATURAM_RATE_LIMITED";
 }
 
 /// <summary>
@@ -66,6 +73,13 @@ public sealed class DashboardSnapshot
     public int LowStockProducts { get; set; }
     public int ActiveConnections { get; set; }
     public string PendingByPlatformJson { get; set; } = "{}";
+    public DateTimeOffset? OldestQueuedJobAt { get; set; }
+    public DateTimeOffset? LastVerifiedSynchronizationAt { get; set; }
+    public int DeadJobCount { get; set; }
+    public int ManualReviewJobCount { get; set; }
+    public int RecentJobCount { get; set; }
+    public int RecentRateLimitJobCount { get; set; }
+    public DateTimeOffset? OldestStockObservationAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
 }

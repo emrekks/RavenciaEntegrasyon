@@ -99,6 +99,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<InvoiceDocument> InvoiceDocuments => Set<InvoiceDocument>();
     public DbSet<InvoiceSubmissionAttempt> InvoiceSubmissionAttempts => Set<InvoiceSubmissionAttempt>();
     public DbSet<MarketplaceDelivery> MarketplaceDeliveries => Set<MarketplaceDelivery>();
+    public DbSet<MarketplaceDeliveryState> MarketplaceDeliveryStates => Set<MarketplaceDeliveryState>();
     public DbSet<DashboardSnapshot> DashboardSnapshots => Set<DashboardSnapshot>();
     public DbSet<DashboardRevenueDaily> DashboardRevenueDaily => Set<DashboardRevenueDaily>();
     public DbSet<DashboardLowStockProjection> DashboardLowStockProjections => Set<DashboardLowStockProjection>();
@@ -178,6 +179,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         InvoiceLine value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
         InvoiceDocument value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
         MarketplaceDelivery value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
+        MarketplaceDeliveryState value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, value.Version),
         PlatformConnection value => (value.TenantId, "connections", "PlatformConnection", value.Id, value.Version),
         _ => null
     };
@@ -355,6 +357,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.ToTable("snapshot", "dashboard"); entity.HasKey(x => x.TenantId);
             entity.Property(x => x.PendingByPlatformJson).HasColumnType("jsonb");
+            entity.Property(x => x.RecentJobCount).HasDefaultValue(0);
+            entity.Property(x => x.RecentRateLimitJobCount).HasDefaultValue(0);
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });

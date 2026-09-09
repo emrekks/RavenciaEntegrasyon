@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
 import { UiIcon, type UiIconName } from '../../shared/components'
+import { sanitizeRichText } from '../../shared/security/sanitizeHtml'
 import { productStatusLabel, productStatusTone, statusLabel } from '../../shared/status-labels'
 
 type Versioned = { id: string; version: number }
@@ -895,16 +896,17 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
   const plainTextLength = value.replace(/<[^>]*>/g, '').trim().length
 
   useEffect(() => {
-    if (!htmlMode && visualEditor.current && lastValue.current !== value) visualEditor.current.innerHTML = value
+    if (!htmlMode && visualEditor.current && lastValue.current !== value) visualEditor.current.innerHTML = sanitizeRichText(value)
     lastValue.current = value
   }, [htmlMode, value])
 
   useEffect(() => {
-    if (!htmlMode && visualEditor.current) visualEditor.current.innerHTML = value
+    if (!htmlMode && visualEditor.current) visualEditor.current.innerHTML = sanitizeRichText(value)
   }, [htmlMode])
 
   function syncVisualValue() {
-    const next = visualEditor.current?.innerHTML ?? ''
+    const next = sanitizeRichText(visualEditor.current?.innerHTML ?? '')
+    if (visualEditor.current && visualEditor.current.innerHTML !== next) visualEditor.current.innerHTML = next
     lastValue.current = next
     onChange(next === '<br>' ? '' : next)
   }
@@ -942,7 +944,7 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
       <div className="rich-text-tool-group" aria-label="İçerik ekle"><select aria-label="Yazı boyutu" defaultValue="" disabled={htmlMode} onChange={event => { const map: Record<string, string> = { '12': '2', '15': '3', '19': '5' }; runCommand('fontSize', map[event.target.value] ?? '3'); event.currentTarget.value = '' }}><option value="" disabled>Yazı boyutu</option><option value="12">Küçük</option><option value="15">Normal</option><option value="19">Büyük</option></select><RichTextTool icon="list" label="Madde listesi" onClick={() => runCommand('insertUnorderedList')} disabled={htmlMode} /><RichTextTool icon="paragraph" label="Paragraf" onClick={() => runCommand('formatBlock', 'p')} disabled={htmlMode} /><RichTextTool icon="textColor" label="Metin rengi" onClick={() => runCommand('foreColor', '#7652e8')} disabled={htmlMode} /><RichTextTool icon="link" label="Bağlantı ekle" onClick={insertLink} disabled={htmlMode} /><RichTextTool icon="image" label="Görsel ekle" onClick={insertImage} disabled={htmlMode} /></div>
       <div className="rich-text-tool-group" aria-label="Düzenleme"><RichTextTool icon="undo" label="Geri al" onClick={() => runCommand('undo')} disabled={htmlMode} /><RichTextTool icon="redo" label="Yinele" onClick={() => runCommand('redo')} disabled={htmlMode} /><RichTextTool icon="clearFormatting" label="Biçimi temizle" onClick={clearFormatting} disabled={htmlMode} /></div>
     </div>
-    {htmlMode ? <textarea className="rich-text-html-editor" value={value} onChange={event => { lastValue.current = event.target.value; onChange(event.target.value) }} aria-label="Açıklama HTML kodu" placeholder="<p>Ürünün öne çıkan özelliklerini anlatın…</p>" spellCheck={false} /> : <div ref={visualEditor} className="rich-text-canvas" contentEditable role="textbox" aria-multiline="true" aria-label="Açıklama" data-placeholder="Ürünün öne çıkan özelliklerini anlatın…" suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: value }} onInput={syncVisualValue} />}
+    {htmlMode ? <textarea className="rich-text-html-editor" value={value} onChange={event => { lastValue.current = event.target.value; onChange(event.target.value) }} aria-label="Açıklama HTML kodu" placeholder="<p>Ürünün öne çıkan özelliklerini anlatın…</p>" spellCheck={false} /> : <div ref={visualEditor} className="rich-text-canvas" contentEditable role="textbox" aria-multiline="true" aria-label="Açıklama" data-placeholder="Ürünün öne çıkan özelliklerini anlatın…" suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: sanitizeRichText(value) }} onInput={syncVisualValue} />}
     <div className="rich-text-editor-foot"><span>{htmlMode ? 'HTML olarak düzenleyin; Görsel seçeneğine dönünce biçimlendirilmiş çıktı burada görünür.' : 'Metni biçimlendirin veya HTML seçeneğiyle kaynak kodunu düzenleyin.'}</span><UiIcon name="command" /></div>
   </div>
 }
@@ -1673,11 +1675,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       // requirements are still loading (or failed). The edit form may be saved
       // without optional mapping data.
       const shouldPersistAttributes = !editProductId || Boolean(form.categoryId && requirements.isSuccess)
+      const safeDescription = sanitizeRichText(form.description)
       const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : Number(form.desi) || 1, options: row.options, attributes: Object.entries(row.attributeValueIds).map(([attributeId, valueId], attributeIndex) => ({ attributeId, valueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: index * 100 + attributeIndex })) })
       const existingVariantIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
       const product = productToEdit.data
-        ? await hubApi<Product>(`/products/${productToEdit.data.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${productToEdit.data.version}"` }, body: JSON.stringify({ title: form.title, status: form.status, description: form.description, brandId: form.brandId || null, categoryId: form.categoryId || null, ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}), variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload), variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({ id: row.key, sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null, sortOrder: rows.findIndex(candidate => candidate.key === row.key) })) }) })
-        : await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ title: form.title, status: form.status, description: form.description, brandId: form.brandId || null, categoryId: form.categoryId || null, attributes: globalAttributes, variants: rows.map(variantPayload) }) })
+        ? await hubApi<Product>(`/products/${productToEdit.data.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${productToEdit.data.version}"` }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}), variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload), variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({ id: row.key, sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null, sortOrder: rows.findIndex(candidate => candidate.key === row.key) })) }) })
+        : await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, attributes: globalAttributes, variants: rows.map(variantPayload) }) })
       productCreated = product; setCreated(product); const completed = ['ürün']; const warnings: string[] = []
       const mediaUrlsToPersist = editProductId && form.mediaUrls.trim() === initialEditMediaUrl.current.trim() ? [] : mediaUrls
       if (editProductId && form.mediaUrls.trim() !== initialEditMediaUrl.current.trim()) await hubApi(`/files/product-media?productId=${encodeURIComponent(product.id)}`, { method: 'DELETE', headers: { 'Idempotency-Key': key() } })

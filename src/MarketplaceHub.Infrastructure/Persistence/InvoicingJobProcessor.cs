@@ -193,15 +193,26 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var orderSnapshot = package is null
             ? null
             : await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.CustomerSnapshotJson).SingleOrDefaultAsync(cancellationToken);
-        var permanentUrl = await db.InvoiceDocuments.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null).OrderByDescending(x => x.CreatedAt).Select(x => x.PermanentUrl).FirstOrDefaultAsync(cancellationToken);
-        if (package is null || string.IsNullOrWhiteSpace(permanentUrl) || !Uri.TryCreate(permanentUrl, UriKind.Absolute, out var link) || link.Scheme != Uri.UriSchemeHttps) return false;
+        if (package is null) return false;
 
-        var submitted = await db.MarketplaceDeliveries
-            .Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.Status == "SUBMITTED" && x.ExternalReference != null)
-            .OrderByDescending(x => x.AttemptNumber)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (submitted is not null)
+        var state = await LoadDeliveryState(tenantId, invoice.Id, cancellationToken);
+        if (state?.Status == "CONFIRMED") return true;
+        if (invoice.Status == InvoiceStatus.Completed && state is null) return true;
+        if (invoice.Status == InvoiceStatus.Completed
+            && state is not null
+            && state.Status is not "CONFIRMED" and not "FAILED" and not "UNKNOWN")
         {
+            // The order/package invoice observation is the definitive source
+            // for this marketplace delivery. Do not let a queued retry
+            // downgrade a completed invoice back to pending.
+            AppendDeliveryHistory(state, "CONFIRMED", state.ExternalReference, null, timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        if (state?.Status == "SUBMITTED")
+        {
+            if (string.IsNullOrWhiteSpace(state.ExternalReference))
+                throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_REFERENCE_MISSING", "Gönderilmiş fatura bağlantısı için uzak referans bulunamadı; yeniden gönderim yapılmadı."));
             // A previous 201 only proves that Trendyol accepted the link
             // submission. Keep it pending until order stream/webhook data
             // reports invoiceStatus=Invoiced or Rejected.
@@ -212,6 +223,19 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             await db.SaveChangesAsync(cancellationToken);
             return true;
         }
+        if (state?.Status == "CONFIRMATION_RETRYABLE")
+        {
+            invoice.Status = InvoiceStatus.MarketplacePending;
+            await db.SaveChangesAsync(cancellationToken);
+            return await ConfirmDelivery(tenantId, invoice, package, state, correlationId, cancellationToken);
+        }
+        if (state?.Status == "FAILED")
+            throw new JobProcessingException(JobExecutionResult.Blocked("DELIVERY_ALREADY_FAILED", "Önceki fatura bağlantısı teslimi kalıcı olarak reddedildi; yeni dış işlem başlatılmadı."));
+        if (state?.Status == "UNKNOWN")
+            throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_RESULT_UNKNOWN", "Fatura bağlantısı sonucu kesinleşmedi; kurtarma/uzlaştırma tamamlanmadan yeniden gönderim yapılmadı."));
+
+        var permanentUrl = await db.InvoiceDocuments.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null).OrderByDescending(x => x.CreatedAt).Select(x => x.PermanentUrl).FirstOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(permanentUrl) || !Uri.TryCreate(permanentUrl, UriKind.Absolute, out var link) || link.Scheme != Uri.UriSchemeHttps) return false;
 
         var payload = JsonSerializer.Serialize(new
         {
@@ -222,32 +246,73 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             micro = IsMicroExport(orderSnapshot)
         });
         var requestHash = Hash(payload);
-        var delivery = await db.MarketplaceDeliveries
-            .Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.Status == "RETRYABLE_FAILURE")
-            .OrderByDescending(x => x.AttemptNumber)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (delivery is not null && !string.Equals(delivery.RequestHash, requestHash, StringComparison.Ordinal))
+        if (state is not null && !string.Equals(state.RequestHash, requestHash, StringComparison.Ordinal))
             throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_RETRY_PAYLOAD_CHANGED", "Önceki belirsiz teslim denemesinden sonra fatura bağlantısı payloadı değişti."));
-        if (delivery is null)
+
+        var now = timeProvider.GetUtcNow();
+        if (state is null)
         {
-            var attemptNumber = await db.MarketplaceDeliveries.CountAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id, cancellationToken) + 1;
-            delivery = new MarketplaceDelivery { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, ConnectionId = package.ConnectionId, PackageId = package.Id, AttemptNumber = attemptNumber, IdempotencyKey = $"delivery:{invoice.Id:N}:{attemptNumber}", RequestHash = requestHash, DeliveryType = "LINK", Status = "STARTED", CreatedAt = timeProvider.GetUtcNow() };
-            db.MarketplaceDeliveries.Add(delivery);
+            state = new MarketplaceDeliveryState
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                InvoiceId = invoice.Id,
+                ConnectionId = package.ConnectionId,
+                PackageId = package.Id,
+                ExternalIdempotencyKey = $"delivery:{invoice.Id:N}",
+                RequestHash = requestHash,
+                DeliveryType = "LINK",
+                Status = "STARTED",
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            db.MarketplaceDeliveryStates.Add(state);
         }
-        else
+
+        AppendDeliveryHistory(state, "STARTED", null, null, now);
+        await db.SaveChangesAsync(cancellationToken);
+
+        AdapterResult<InvoiceDeliveryResult> result;
+        try
         {
-            delivery.Status = "STARTED";
-            delivery.CompletedAt = null;
-            delivery.ErrorCode = null;
+            result = await marketplace.DeliverAsync(Context(tenantId, package.ConnectionId, correlationId, state.ExternalIdempotencyKey), new(package.ExternalPackageId, state.DeliveryType, payload, state.RequestHash), cancellationToken);
         }
-        var result = await marketplace.DeliverAsync(Context(tenantId, package.ConnectionId, correlationId, delivery.IdempotencyKey), new(package.ExternalPackageId, delivery.DeliveryType, payload, delivery.RequestHash), cancellationToken);
-        delivery.ExternalReference = result.Value?.ExternalReference;
-        delivery.ErrorCode = result.Error?.Code;
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            AppendDeliveryHistory(state, "UNKNOWN", null, "DELIVERY_TIMEOUT", timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_TIMEOUT", "Fatura bağlantısı isteği zaman aşımına uğradı; aynı dış işlem anahtarıyla uzlaştırma yapılmadan yeniden gönderilmedi.", state.ExternalIdempotencyKey));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            AppendDeliveryHistory(state, "UNKNOWN", null, "DELIVERY_CANCELLED", timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
+        catch (Exception)
+        {
+            AppendDeliveryHistory(state, "UNKNOWN", null, "DELIVERY_RESULT_UNKNOWN", timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_RESULT_UNKNOWN", "Fatura bağlantısı sonucu kesinleşmedi; aynı dış işlem körlemesine tekrarlanmadı."));
+        }
+
         if (!result.IsSuccess)
         {
-            delivery.Status = result.Error!.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit or AdapterErrorClass.Remote5xx ? "RETRYABLE_FAILURE" : "FAILED";
-            delivery.CompletedAt = timeProvider.GetUtcNow();
-            invoice.Status = result.Error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit or AdapterErrorClass.Remote5xx ? InvoiceStatus.MarketplacePending : InvoiceStatus.MarketplaceFailed;
+            var disposition = InvoiceDeliveryFailurePolicy.Classify(result.Error!.Class);
+            if (disposition == InvoiceDeliveryFailureDisposition.Unknown)
+            {
+                AppendDeliveryHistory(state, "UNKNOWN", result.Value?.ExternalReference, result.Error.Code, timeProvider.GetUtcNow());
+                invoice.Status = InvoiceStatus.MarketplacePending;
+                invoice.LastErrorCode = result.Error.Code;
+                invoice.UpdatedAt = timeProvider.GetUtcNow();
+                invoice.Version++;
+                await db.SaveChangesAsync(CancellationToken.None);
+                throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_RESULT_UNKNOWN", "Fatura bağlantısı sonucu kesinleşmedi; aynı dış işlem körlemesine tekrarlanmadı.", result.Error.RemoteRequestId ?? state.ExternalIdempotencyKey));
+            }
+
+            var status = disposition == InvoiceDeliveryFailureDisposition.Retry ? "RETRYABLE_FAILURE" : "FAILED";
+            AppendDeliveryHistory(state, status, result.Value?.ExternalReference, result.Error.Code, timeProvider.GetUtcNow());
+            invoice.Status = disposition == InvoiceDeliveryFailureDisposition.Retry ? InvoiceStatus.MarketplacePending : InvoiceStatus.MarketplaceFailed;
             invoice.LastErrorCode = result.Error.Code;
             invoice.UpdatedAt = timeProvider.GetUtcNow();
             invoice.Version++;
@@ -255,35 +320,96 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             throw JobProcessingException.FromAdapter(result.Error!);
         }
 
-        delivery.Status = "SUBMITTED";
+        AppendDeliveryHistory(state, "SUBMITTED", result.Value?.ExternalReference, null, timeProvider.GetUtcNow());
         invoice.Status = InvoiceStatus.MarketplacePending;
         invoice.LastErrorCode = null;
         invoice.UpdatedAt = timeProvider.GetUtcNow();
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
-        return await ConfirmDelivery(tenantId, invoice, package, delivery, correlationId, cancellationToken);
+        return await ConfirmDelivery(tenantId, invoice, package, state, correlationId, cancellationToken);
     }
 
-    private async Task<bool> ConfirmDelivery(Guid tenantId, Invoice invoice, ShipmentPackage package, MarketplaceDelivery delivery, string correlationId, CancellationToken cancellationToken)
+    private async Task<MarketplaceDeliveryState?> LoadDeliveryState(Guid tenantId, Guid invoiceId, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(delivery.ExternalReference))
+        var state = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoiceId, cancellationToken);
+        if (state is not null) return state;
+
+        // Bootstrap existing append-only attempts without rewriting them. New
+        // processing uses the separate mutable state row from this point on.
+        var latest = await db.MarketplaceDeliveries.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.InvoiceId == invoiceId)
+            .OrderByDescending(x => x.AttemptNumber)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (latest is null) return null;
+
+        state = new MarketplaceDeliveryState
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = latest.TenantId,
+            InvoiceId = latest.InvoiceId,
+            ConnectionId = latest.ConnectionId,
+            PackageId = latest.PackageId,
+            AttemptNumber = latest.AttemptNumber,
+            ExternalIdempotencyKey = latest.ExternalIdempotencyKey ?? latest.IdempotencyKey,
+            RequestHash = latest.RequestHash,
+            DeliveryType = latest.DeliveryType,
+            Status = latest.Status,
+            ExternalReference = latest.ExternalReference,
+            ErrorCode = latest.ErrorCode,
+            CreatedAt = latest.CreatedAt,
+            UpdatedAt = latest.CreatedAt,
+            CompletedAt = latest.CompletedAt
+        };
+        db.MarketplaceDeliveryStates.Add(state);
+        return state;
+    }
+
+    private MarketplaceDelivery AppendDeliveryHistory(MarketplaceDeliveryState state, string status, string? externalReference, string? errorCode, DateTimeOffset now)
+    {
+        var sequence = state.AttemptNumber + 1;
+        var entry = new MarketplaceDelivery
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = state.TenantId,
+            InvoiceId = state.InvoiceId,
+            ConnectionId = state.ConnectionId,
+            PackageId = state.PackageId,
+            AttemptNumber = sequence,
+            IdempotencyKey = $"delivery-event:{state.Id:N}:{sequence}",
+            ExternalIdempotencyKey = state.ExternalIdempotencyKey,
+            RequestHash = state.RequestHash,
+            DeliveryType = state.DeliveryType,
+            Status = status,
+            ExternalReference = externalReference ?? state.ExternalReference,
+            ErrorCode = errorCode,
+            CreatedAt = now,
+            CompletedAt = status == "STARTED" ? null : now
+        };
+        db.MarketplaceDeliveries.Add(entry);
+        state.AttemptNumber = sequence;
+        state.Status = status;
+        state.ExternalReference = entry.ExternalReference;
+        state.ErrorCode = errorCode;
+        state.CompletedAt = status is "FAILED" or "CONFIRMED" ? now : null;
+        state.UpdatedAt = now;
+        state.Version++;
+        return entry;
+    }
+
+    private async Task<bool> ConfirmDelivery(Guid tenantId, Invoice invoice, ShipmentPackage package, MarketplaceDeliveryState state, string correlationId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(state.ExternalReference))
             throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_REFERENCE_MISSING", "Gönderilmiş fatura bağlantısı için uzak referans bulunamadı."));
 
-        var confirmation = await marketplace.QueryDeliveryAsync(Context(tenantId, package.ConnectionId, correlationId, $"delivery-confirm:{delivery.Id:N}"), new(delivery.ExternalReference), cancellationToken);
+        var confirmation = await marketplace.QueryDeliveryAsync(Context(tenantId, package.ConnectionId, correlationId, $"delivery-confirm:{state.Id:N}"), new(state.ExternalReference), cancellationToken);
         if (!confirmation.IsSuccess)
         {
-            delivery.ErrorCode = confirmation.Error!.Code;
-            invoice.LastErrorCode = confirmation.Error.Code;
-            invoice.UpdatedAt = timeProvider.GetUtcNow();
-            invoice.Version++;
-            await db.SaveChangesAsync(cancellationToken);
-            if (confirmation.Error.Class == AdapterErrorClass.NotSupported)
+            if (confirmation.Error!.Class == AdapterErrorClass.NotSupported)
             {
                 // Trendyol exposes the definitive state through the order
                 // package invoiceStatus/webhook flow, not a delivery query.
                 // Do not fail the job or mark the invoice complete here.
-                delivery.Status = "SUBMITTED";
-                delivery.ErrorCode = null;
+                AppendDeliveryHistory(state, "SUBMITTED", state.ExternalReference, null, timeProvider.GetUtcNow());
                 invoice.Status = InvoiceStatus.MarketplacePending;
                 invoice.LastErrorCode = null;
                 invoice.UpdatedAt = timeProvider.GetUtcNow();
@@ -291,28 +417,37 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 await db.SaveChangesAsync(cancellationToken);
                 return true;
             }
+            AppendDeliveryHistory(state, "CONFIRMATION_RETRYABLE", state.ExternalReference, confirmation.Error.Code, timeProvider.GetUtcNow());
+            invoice.LastErrorCode = confirmation.Error.Code;
+            invoice.UpdatedAt = timeProvider.GetUtcNow();
+            invoice.Version++;
+            await db.SaveChangesAsync(cancellationToken);
             throw JobProcessingException.FromAdapter(confirmation.Error);
         }
 
         var deliveryStatus = NormalizeRemoteStatus(confirmation.Value!.RawStatus);
         if (!confirmation.Value.IsTerminal)
-            throw new JobProcessingException(JobExecutionResult.Retry("DELIVERY_REMOTE_PENDING", "Fatura linki Trendyol tarafında işlenmeye devam ediyor.", TimeSpan.FromMinutes(2), delivery.ExternalReference));
-        if (!AcceptedDeliveryStatuses.Contains(deliveryStatus))
         {
-            delivery.Status = "FAILED";
-            delivery.ErrorCode = $"REMOTE_{deliveryStatus}";
-            delivery.CompletedAt = timeProvider.GetUtcNow();
-            invoice.Status = InvoiceStatus.MarketplaceFailed;
-            invoice.LastErrorCode = delivery.ErrorCode;
+            AppendDeliveryHistory(state, "CONFIRMATION_RETRYABLE", state.ExternalReference, null, timeProvider.GetUtcNow());
+            invoice.LastErrorCode = null;
             invoice.UpdatedAt = timeProvider.GetUtcNow();
             invoice.Version++;
             await db.SaveChangesAsync(cancellationToken);
-            throw new JobProcessingException(JobExecutionResult.Blocked(delivery.ErrorCode, "Trendyol fatura bağlantısı teslimini reddetti.", delivery.ExternalReference));
+            throw new JobProcessingException(JobExecutionResult.Retry("DELIVERY_REMOTE_PENDING", "Fatura linki Trendyol tarafında işlenmeye devam ediyor.", TimeSpan.FromMinutes(2), state.ExternalReference));
+        }
+        if (!AcceptedDeliveryStatuses.Contains(deliveryStatus))
+        {
+            var errorCode = $"REMOTE_{deliveryStatus}";
+            AppendDeliveryHistory(state, "FAILED", state.ExternalReference, errorCode, timeProvider.GetUtcNow());
+            invoice.Status = InvoiceStatus.MarketplaceFailed;
+            invoice.LastErrorCode = errorCode;
+            invoice.UpdatedAt = timeProvider.GetUtcNow();
+            invoice.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            throw new JobProcessingException(JobExecutionResult.Blocked(errorCode, "Trendyol fatura bağlantısı teslimini reddetti.", state.ExternalReference));
         }
 
-        delivery.Status = "CONFIRMED";
-        delivery.ErrorCode = null;
-        delivery.CompletedAt = timeProvider.GetUtcNow();
+        AppendDeliveryHistory(state, "CONFIRMED", state.ExternalReference, null, timeProvider.GetUtcNow());
         invoice.Status = InvoiceStatus.Completed;
         invoice.LastErrorCode = null;
         invoice.UpdatedAt = timeProvider.GetUtcNow();

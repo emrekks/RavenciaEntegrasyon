@@ -64,7 +64,7 @@ export function InvoicesPage() {
     <div className="invoice-reference-filter-shell">
       <Tabs className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={value => setTab(value as typeof tab)} items={tabs.map(([value, label]) => ({ value, label, count: value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : counts.dueSoon }))} />
       <section className="invoice-reference-filters" aria-label="Fatura filtreleri">
-        <label className="invoice-reference-search"><span>Fatura ara</span><span className="invoice-reference-search-control"><UiIcon name="search" /><input aria-label="Fatura ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></span></label>
+        <label className="invoice-reference-search"><span>Fatura ara</span><span className="invoice-reference-search-control"><UiIcon name="search" size={18} /><input aria-label="Fatura ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></span></label>
         <label>Sipariş durumu<select value={status} onChange={event => setStatus(event.target.value)}><option value="ALL">Tümü</option><option value="NEW">Yeni</option><option value="PROCESSING">İşleme alınmış</option><option value="SHIPPED">Kargoya verilmiş</option><option value="DELIVERED">Teslim edilmiş</option><option value="CANCELLED">İptal edilmiş</option></select></label>
       </section>
     </div>

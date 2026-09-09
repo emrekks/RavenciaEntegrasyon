@@ -17,7 +17,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
                     join variant in db.ProductVariants.AsNoTracking() on new { item.TenantId, Id = item.VariantId } equals new { variant.TenantId, variant.Id }
                     where item.TenantId == tenantId && (afterId == Guid.Empty || item.Id.CompareTo(afterId) > 0)
                     orderby item.Id
-                    select new InventoryItemView(item.Id, item.VariantId, variant.Sku, item.LocationCode, item.OnHand, item.Reserved, item.Available, item.ProjectionVersion, item.ReconciledAt, item.Version);
+                    select new InventoryItemView(item.Id, item.VariantId, variant.Sku, item.LocationCode, item.OnHand, item.Reserved, item.Available, item.ProjectionVersion, item.ReconciledAt, item.Version, item.ObservedRemoteQuantity, item.ObservedRemoteAt);
         var rows = await query.Take(limit + 1).ToListAsync(cancellationToken);
         return Page(rows, limit, x => x.Id);
     }
@@ -172,7 +172,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
-        var draft = build.Value!; var dedup = $"price-inventory:{connectionId:N}:{draft.PayloadHash}";
+        var draft = build.Value!; var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
@@ -197,7 +197,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
-    private static InventoryItemView Map(InventoryItem value, string sku) => new(value.Id, value.VariantId, sku, value.LocationCode, value.OnHand, value.Reserved, value.Available, value.ProjectionVersion, value.ReconciledAt, value.Version);
+    private static InventoryItemView Map(InventoryItem value, string sku) => new(value.Id, value.VariantId, sku, value.LocationCode, value.OnHand, value.Reserved, value.Available, value.ProjectionVersion, value.ReconciledAt, value.Version, value.ObservedRemoteQuantity, value.ObservedRemoteAt);
     private static ChannelOfferView Map(ChannelOffer value) => new(value.Id, value.ConnectionId, value.VariantId, value.ListPrice, value.SalePrice, value.Currency, value.VatRate, value.VatInclusion, value.RoundingMode, value.SafetyStock, value.Status, value.PriceVersion, value.Version);
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);

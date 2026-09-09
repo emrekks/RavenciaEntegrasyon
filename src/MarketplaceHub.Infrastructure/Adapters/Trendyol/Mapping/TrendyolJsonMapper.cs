@@ -81,15 +81,40 @@ public static class TrendyolJsonMapper
         if (matches.Count == 0) return null;
 
         var latest = matches.OrderByDescending(x => x.LastModifiedAt).First();
-        var packages = matches
-            .SelectMany(x => x.Packages)
-            .GroupBy(x => x.ExternalPackageId, StringComparer.Ordinal)
-            .Select(group => group.OrderByDescending(x => x.OccurredAt).First())
+        var packageCandidates = matches
+            .SelectMany(match => match.Packages.Select(package => new { Match = match, Package = package }))
+            .GroupBy(x => x.Package.ExternalPackageId, StringComparer.Ordinal)
+            .Select(group => group
+                .OrderByDescending(x => x.Package.OccurredAt)
+                .ThenByDescending(x => x.Match.LastModifiedAt)
+                .First())
             .ToList();
-        var lines = matches
-            .SelectMany(x => x.Lines)
-            .GroupBy(x => x.ExternalLineId, StringComparer.Ordinal)
-            .Select(group => group.OrderByDescending(x => x.Quantity).First())
+        var packages = packageCandidates.Select(x => x.Package).ToList();
+        var replacedPackageIds = packages
+            .Where(package => !string.IsNullOrWhiteSpace(package.OriginExternalPackageId)
+                && packages.Any(candidate => string.Equals(candidate.ExternalPackageId, package.OriginExternalPackageId, StringComparison.Ordinal)))
+            .Select(package => package.OriginExternalPackageId!)
+            .ToHashSet(StringComparer.Ordinal);
+        var currentPackageCandidates = packageCandidates
+            .Where(candidate => !replacedPackageIds.Contains(candidate.Package.ExternalPackageId))
+            .ToList();
+        var lines = currentPackageCandidates
+            .SelectMany(candidate => candidate.Match.Lines.Select(line => new { candidate, line }))
+            .GroupBy(x => x.line.ExternalLineId, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var metadata = group
+                    .OrderByDescending(x => x.candidate.Package.OccurredAt)
+                    .ThenByDescending(x => x.candidate.Match.LastModifiedAt)
+                    .Select(x => x.line)
+                    .First();
+                var quantity = group.Sum(x => x.candidate.Package.Allocations
+                    .Where(allocation => string.Equals(allocation.ExternalLineId, x.line.ExternalLineId, StringComparison.Ordinal))
+                    .Select(allocation => allocation.AllocatedQuantity)
+                    .DefaultIfEmpty(x.line.Quantity)
+                    .Sum());
+                return metadata with { Quantity = quantity };
+            })
             .ToList();
 
         return latest with

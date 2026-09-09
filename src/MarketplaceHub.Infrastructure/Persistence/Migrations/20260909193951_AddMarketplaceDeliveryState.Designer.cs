@@ -3,6 +3,7 @@ using System;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260909193951_AddMarketplaceDeliveryState")]
+    partial class AddMarketplaceDeliveryState
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -985,14 +988,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<int>("ActiveConnections")
                         .HasColumnType("integer");
 
-                    b.Property<int>("DeadJobCount")
-                        .HasColumnType("integer");
-
                     b.Property<int>("DueSoonInvoices")
                         .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset?>("LastVerifiedSynchronizationAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("LateOrders")
                         .HasColumnType("integer");
@@ -1000,20 +997,11 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<int>("LowStockProducts")
                         .HasColumnType("integer");
 
-                    b.Property<int>("ManualReviewJobCount")
-                        .HasColumnType("integer");
-
                     b.Property<int>("MonthOrders")
                         .HasColumnType("integer");
 
                     b.Property<decimal>("MonthProductQuantity")
                         .HasColumnType("numeric");
-
-                    b.Property<DateTimeOffset?>("OldestQueuedJobAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset?>("OldestStockObservationAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PendingByPlatformJson")
                         .IsRequired()
@@ -1024,16 +1012,6 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("PendingReturns")
                         .HasColumnType("integer");
-
-                    b.Property<int>("RecentJobCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
-                    b.Property<int>("RecentRateLimitJobCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
 
                     b.Property<int>("TodayOrders")
                         .HasColumnType("integer");
@@ -1811,13 +1789,6 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
-                    b.Property<DateTimeOffset?>("ObservedRemoteAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<decimal?>("ObservedRemoteQuantity")
-                        .HasPrecision(19, 4)
-                        .HasColumnType("numeric(19,4)");
-
                     b.Property<decimal>("OnHand")
                         .HasPrecision(19, 4)
                         .HasColumnType("numeric(19,4)");
@@ -1845,8 +1816,6 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "Available");
-
-                    b.HasIndex("TenantId", "ObservedRemoteAt");
 
                     b.HasIndex("TenantId", "VariantId", "LocationCode")
                         .IsUnique();
@@ -4528,31 +4497,6 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("tenants", "iam");
                 });
 
-            modelBuilder.Entity("MarketplaceHub.Domain.TenantSetting", b =>
-                {
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Key")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ValueJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint");
-
-                    b.HasKey("TenantId", "Key");
-
-                    b.ToTable("tenant_settings", "iam");
-                });
-
             modelBuilder.Entity("MarketplaceHub.Domain.TenantMembership", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4593,6 +4537,31 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("tenant_memberships", "iam");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.TenantSetting", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ValueJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("TenantId", "Key");
+
+                    b.ToTable("tenant_settings", "iam");
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.UserSecurity", b =>

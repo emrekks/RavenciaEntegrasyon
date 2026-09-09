@@ -152,7 +152,7 @@ public interface IImportService
     Task<ServiceResult<string>> BuildErrorsCsvAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken);
 }
 
-public sealed record InventoryItemView(Guid Id, Guid VariantId, string Sku, string LocationCode, decimal OnHand, decimal Reserved, decimal Available, long ProjectionVersion, DateTimeOffset? ReconciledAt, long Version);
+public sealed record InventoryItemView(Guid Id, Guid VariantId, string Sku, string LocationCode, decimal OnHand, decimal Reserved, decimal Available, long ProjectionVersion, DateTimeOffset? ReconciledAt, long Version, decimal? ObservedRemoteQuantity = null, DateTimeOffset? ObservedRemoteAt = null);
 public sealed record LedgerEntryView(Guid Id, string MovementType, decimal QuantityDelta, string SourceType, string SourceId, DateTimeOffset OccurredAt, string CorrelationId);
 public sealed record StockAdjustmentCommand(decimal QuantityDelta, string Reason, string SourceEventId);
 public sealed record ChannelOfferView(Guid Id, Guid ConnectionId, Guid VariantId, decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, long PriceVersion, long Version);

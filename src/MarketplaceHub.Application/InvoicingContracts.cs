@@ -34,6 +34,28 @@ public sealed record InvoiceDeliveryResult(string ExternalReference, string RawS
 public sealed record ExternalInvoiceDeliveryReference(string ExternalReference);
 public sealed record InvoiceDeliveryStatus(string ExternalReference, string RawStatus, bool IsTerminal);
 
+public enum InvoiceDeliveryFailureDisposition
+{
+    Retry,
+    Unknown,
+    Failed
+}
+
+public static class InvoiceDeliveryFailurePolicy
+{
+    public static InvoiceDeliveryFailureDisposition Classify(AdapterErrorClass errorClass) => errorClass switch
+    {
+        // A rate-limit response explicitly rejects the request before a
+        // delivery result is returned, so retrying is safe for this adapter.
+        AdapterErrorClass.RateLimit => InvoiceDeliveryFailureDisposition.Retry,
+        // Trendyol has no delivery-status query for this flow and the
+        // adapter does not advertise a provider idempotency header. A network
+        // timeout, 5xx, or conflict may have happened after remote execution.
+        AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.BusinessConflict => InvoiceDeliveryFailureDisposition.Unknown,
+        _ => InvoiceDeliveryFailureDisposition.Failed
+    };
+}
+
 public interface IInvoiceProviderPort
 {
     Task<AdapterResult<ConnectionIdentity>> TestConnectionAsync(AdapterContext context, CancellationToken cancellationToken);

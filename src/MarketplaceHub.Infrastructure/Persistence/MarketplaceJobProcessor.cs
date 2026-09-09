@@ -866,7 +866,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (inventory.Count != variantIds.Length) return JobExecutionResult.ManualReview("PRICE_INVENTORY_STATE_INCOMPLETE", "Fiyat-stok uzlaştırmasında MAIN stok projection kayıtları eksik.");
         foreach (var line in payload.Lines)
         {
-            if (offers[line.OfferId].PriceVersion != line.PriceVersion || inventory[line.VariantId].ProjectionVersion != line.ProjectionVersion)
+            if (!PriceInventoryOutboxPolicy.IsCurrent(line, inventory[line.VariantId].ProjectionVersion, offers[line.OfferId].PriceVersion))
                 return JobExecutionResult.Blocked("PRICE_INVENTORY_SUPERSEDED", "Batch sonucu alınırken fiyat veya stok daha yeni bir sürüme geçti; eski sonuç güncel kayda uygulanmadı.");
         }
         var lineByBarcode = operation.Value.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ExternalKey)).GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.Last(), StringComparer.OrdinalIgnoreCase);
@@ -1528,6 +1528,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // Product import is read-only on Trendyol and writes only to the local catalog.
         // Keep it restricted to operational connections and recognised environments.
         if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED")) return false;
+        var inventoryPolicy = await db.ConnectionInventoryPolicies.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
 
         var fullScan = ReadBoolean(payloadJson, "full");
         var receivedProducts = 0;
@@ -1669,7 +1671,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, cancellationToken);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken);
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
                 }
@@ -2379,7 +2381,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized, cancellationToken);
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, CancellationToken cancellationToken)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -2460,7 +2462,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var importedVariants = new List<ProductVariant>(snapshot.Variants.Count);
             foreach (var (remote, sortOrder) in snapshot.Variants.Select((remote, index) => (remote, index)))
             {
-                var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, sortOrder, categoryContext, now, cancellationToken);
+                var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, sortOrder, categoryContext, inventoryPolicy, now, cancellationToken);
                 if (importedVariant is not null) importedVariants.Add(importedVariant);
             }
             if (categoryContext is not null && importedVariants.Count > 0)
@@ -2640,7 +2642,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return category;
     }
 
-    private async Task<ProductVariant?> UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, int sortOrder, CategoryAttributeContext? categoryContext, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<ProductVariant?> UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, int sortOrder, CategoryAttributeContext? categoryContext, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var sku = Short(string.IsNullOrWhiteSpace(remote.Sku) ? remote.Barcode ?? remote.ExternalVariantId : remote.Sku, 160);
         var skuNormalized = NormalizeCatalogKey(sku, 160);
@@ -2694,7 +2696,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         await UpsertCatalogOptions(tenantId, connectionId, product.Id, variant.Id, remote.Options, categoryContext, cancellationToken);
         if (categoryContext is not null)
             await UpsertProductAttributeAssignments(tenantId, connectionId, product, variant, remote.Options, categoryContext, cancellationToken);
-        await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, now, cancellationToken);
+        await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken);
         if (remote.ImageUrls is not null)
             await UpsertCatalogMedia(tenantId, product, variant.Id, remote.ImageUrls, $"{product.Title} · {optionSignature}", cancellationToken);
         return variant;
@@ -2747,11 +2749,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             ? $"id:{variant.ExternalVariantId}"
             : $"sku:{NormalizeCatalogKey(variant.Sku, 160)}";
 
-    private async Task UpsertCatalogOfferAndInventory(Guid tenantId, Guid connectionId, ProductVariant variant, RemoteCatalogVariant remote, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task UpsertCatalogOfferAndInventory(Guid tenantId, Guid connectionId, ProductVariant variant, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken)
     {
         if (remote.StockQuantity is decimal stockQuantity)
         {
-            var onHand = decimal.Round(Math.Max(0m, stockQuantity), 4, MidpointRounding.ToEven);
+            var observedRemoteQuantity = decimal.Round(Math.Max(0m, stockQuantity), 4, MidpointRounding.ToEven);
+            var applyRemoteQuantityToOnHand = InventoryAuthorityPolicy.ShouldApplyRemoteQuantityToOnHand(inventoryPolicy?.AuthorityMode);
             var inventory = db.InventoryItems.Local.FirstOrDefault(x => x.TenantId == tenantId && x.VariantId == variant.Id && x.LocationCode == "MAIN")
                 ?? await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variant.Id && x.LocationCode == "MAIN", cancellationToken);
             if (inventory is null)
@@ -2762,25 +2765,35 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     TenantId = tenantId,
                     VariantId = variant.Id,
                     LocationCode = "MAIN",
-                    OnHand = onHand,
+                    // A catalog read is an observation, not proof of local
+                    // physical stock. Only the explicit compatibility mode may
+                    // seed/overwrite OnHand from the remote quantity.
+                    OnHand = applyRemoteQuantityToOnHand ? observedRemoteQuantity : 0m,
                     Reserved = 0,
-                    Available = onHand,
+                    Available = applyRemoteQuantityToOnHand ? observedRemoteQuantity : 0m,
+                    ObservedRemoteQuantity = observedRemoteQuantity,
+                    ObservedRemoteAt = now,
                     ReconciledAt = now,
                     ProjectionVersion = 1,
                     Version = 1
                 });
             }
-            else if (inventory.OnHand != onHand)
+            else
             {
-                inventory.OnHand = onHand;
-                inventory.Available = InventoryProjection.Available(onHand, inventory.Reserved);
+                var reconciliationWasMissing = inventory.ReconciledAt is null;
+                var projectionChanged = applyRemoteQuantityToOnHand && inventory.OnHand != observedRemoteQuantity;
+                var observationChanged = inventory.ObservedRemoteQuantity != observedRemoteQuantity;
+                if (projectionChanged)
+                {
+                    inventory.OnHand = observedRemoteQuantity;
+                    inventory.Available = InventoryProjection.Available(inventory.OnHand, inventory.Reserved);
+                    inventory.ProjectionVersion++;
+                }
+                inventory.ObservedRemoteQuantity = observedRemoteQuantity;
+                inventory.ObservedRemoteAt = now;
                 inventory.ReconciledAt = now;
-                inventory.ProjectionVersion++;
-                inventory.Version++;
-            }
-            else if (inventory.ReconciledAt is null)
-            {
-                inventory.ReconciledAt = now;
+                if (projectionChanged || observationChanged || reconciliationWasMissing)
+                    inventory.Version++;
             }
         }
 
@@ -2806,7 +2819,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 VatRate = vatRate,
                 VatInclusion = "INCLUDED",
                 RoundingMode = "HALF_EVEN",
-                SafetyStock = 0,
+                SafetyStock = decimal.Round(Math.Max(0m, inventoryPolicy?.DefaultSafetyStock ?? 0m), 4, MidpointRounding.ToEven),
                 Status = status,
                 PriceVersion = 1,
                 Version = 1
@@ -3184,8 +3197,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken)
     {
         if (remotes.Count == 0) return;
+        // The stream is package-shaped: one order can occur once per package.
+        // Merge the page before materializing the order so split-package line
+        // quantities are summed instead of the last package overwriting them.
+        var mergedRemotes = remotes
+            .Where(remote => !string.IsNullOrWhiteSpace(remote.ExternalOrderId))
+            .GroupBy(remote => remote.ExternalOrderId, StringComparer.Ordinal)
+            .Select(group => TrendyolJsonMapper.MergeOrderPackages(group, group.Key) ?? group.OrderByDescending(remote => remote.LastModifiedAt).First())
+            .ToList();
+        if (mergedRemotes.Count == 0) return;
         var batch = new OrderIngestionBatch();
-        var externalIds = remotes.Select(x => x.ExternalOrderId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.Ordinal).ToArray();
+        var externalIds = mergedRemotes.Select(x => x.ExternalOrderId).ToArray();
         var orders = await db.Orders.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalIds.Contains(x.ExternalOrderId)).ToListAsync(cancellationToken);
         foreach (var order in orders) batch.OrdersByExternalId[order.ExternalOrderId] = order;
         var orderIds = orders.Select(x => x.Id).ToArray();
@@ -3210,7 +3232,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         var variantIds = await ResolveOrderLineVariantIds(tenantId, remotes.SelectMany(x => x.Lines).ToList(), cancellationToken);
         foreach (var pair in variantIds) batch.VariantIdsByKey[pair.Key] = pair.Value;
-        foreach (var remote in remotes) await UpsertOrder(tenantId, connectionId, remote, cancellationToken, batch, saveChanges: false);
+        foreach (var remote in mergedRemotes) await UpsertOrder(tenantId, connectionId, remote, cancellationToken, batch, saveChanges: false);
         await ProjectOrderReservations(tenantId, connectionId, batch.ReservationSources, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -3234,6 +3256,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 return;
             }
         }
+        var now = timeProvider.GetUtcNow();
+        var order = batch?.OrdersByExternalId.GetValueOrDefault(remote.ExternalOrderId)
+            ?? await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId
+                && x.ConnectionId == connectionId
+                && x.ExternalOrderId == remote.ExternalOrderId, cancellationToken);
         var allocatedLineIds = remote.Packages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
         if (remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
         {
@@ -3241,8 +3268,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return;
         }
-        foreach (var remotePackage in remote.Packages) if (!PackageIngestionSafety.TryNormalizeAll(remoteLineQuantities, remotePackage.Allocations, ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus), out _)) { var rejectedEventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); await RecordIssue(tenantId, $"package-quantity:{connectionId}:{rejectedEventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken); if (saveChanges) await db.SaveChangesAsync(cancellationToken); return; }
-        var now = timeProvider.GetUtcNow(); var order = batch?.OrdersByExternalId.GetValueOrDefault(remote.ExternalOrderId) ?? await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalOrderId == remote.ExternalOrderId, cancellationToken);
+        // A new order must arrive as a complete package aggregate. Once the
+        // order already exists, a later stream page may contain only one
+        // sibling package; that fragment is validated per package below and
+        // merged with the persisted projection instead of being rejected as an
+        // incomplete order.
+        if (order is null && !PackageIngestionSafety.TryNormalizeOrder(remoteLineQuantities, remote.Packages, out _))
+        {
+            var rejectedEventId = remote.Packages.Count > 0
+                ? PackageIngestionSafety.EventId(remote.Packages[0].ExternalPackageId, remote.Packages[0].OccurredAt)
+                : remote.ExternalOrderId;
+            await RecordIssue(tenantId, $"package-quantity:{connectionId}:{rejectedEventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Paket miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken);
+            if (saveChanges) await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
         if (order is not null)
         {
             var repairCandidates = batch is not null
@@ -3303,7 +3342,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     ? barcodeVariant
                     : skuKey is not null && variantIdsByKey.TryGetValue(skuKey, out var skuVariant) ? skuVariant : null;
             }
-            line.Sku = remoteLine.Sku; line.Barcode = remoteLine.Barcode; line.TitleSnapshot = remoteLine.Title; line.SourceSnapshotJson = remoteLine.SourceSnapshotJson; line.OrderedQuantity = remoteLine.Quantity; line.UnitPrice = remoteLine.UnitPrice; line.VatRate = remoteLine.VatRate; line.RawStatus = remoteLine.RawStatus; if (db.Entry(line).State != EntityState.Added) line.Version++; lines[remoteLine.ExternalLineId] = line;
+            var orderedQuantity = db.Entry(line).State == EntityState.Added
+                ? remoteLine.Quantity
+                : Math.Max(line.OrderedQuantity, remoteLine.Quantity);
+            line.Sku = remoteLine.Sku; line.Barcode = remoteLine.Barcode; line.TitleSnapshot = remoteLine.Title; line.SourceSnapshotJson = remoteLine.SourceSnapshotJson; line.OrderedQuantity = orderedQuantity; line.UnitPrice = remoteLine.UnitPrice; line.VatRate = remoteLine.VatRate; line.RawStatus = remoteLine.RawStatus; if (db.Entry(line).State != EntityState.Added) line.Version++; lines[remoteLine.ExternalLineId] = line;
             linesByExternalId[remoteLine.ExternalLineId] = line;
             if (!string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}") linesBySnapshot[remoteLine.SourceSnapshotJson] = line;
         }
@@ -3345,8 +3387,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (accept)
             {
                 package.OriginExternalPackageId = remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now }); knownEventIds.Add(eventId);
-                foreach (var remoteAllocation in remotePackage.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; line.CancelledQuantity = Math.Max(line.CancelledQuantity, allocation.CancelledQuantity); line.ShippedQuantity = Math.Max(line.ShippedQuantity, allocation.ShippedQuantity); line.DeliveredQuantity = Math.Max(line.DeliveredQuantity, allocation.DeliveredQuantity); line.ReturnedQuantity = Math.Max(line.ReturnedQuantity, allocation.ReturnedQuantity); } }
+                foreach (var remoteAllocation in remotePackage.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; } }
             }
+        }
+        var projectedLineQuantities = PackageLineProjectionPolicy.Recalculate(packagesByExternalId.Values.ToList(), allocationsByKey.Values.ToList());
+        foreach (var line in lines.Values)
+        {
+            if (!projectedLineQuantities.TryGetValue(line.Id, out var projection)) continue;
+            line.CancelledQuantity = projection.CancelledQuantity;
+            line.ShippedQuantity = projection.ShippedQuantity;
+            line.DeliveredQuantity = projection.DeliveredQuantity;
+            line.ReturnedQuantity = projection.ReturnedQuantity;
         }
         var persistedStatuses = batch is not null
             ? packagesByExternalId.Values.Select(x => x.Status).ToList()
@@ -3440,6 +3491,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var sources = sourceLines.Where(source => source.Line.VariantId is not null).GroupBy(source => source.Line.Id).Select(group => group.Last()).ToList();
         var lines = sources.Select(source => source.Line).ToList();
         if (lines.Count == 0) return;
+        var inventoryPolicy = await db.ConnectionInventoryPolicies.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
         var modifiedAtByLine = sources.ToDictionary(source => source.Line.Id, source => source.ModifiedAt);
         var variantIds = lines.Select(line => line.VariantId!.Value).Distinct().ToArray();
         var items = await db.InventoryItems
@@ -3455,6 +3508,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .Where(x => x.TenantId == tenantId && x.SourceType == "ORDER_LINE" && itemIds.Contains(x.InventoryItemId) && sourceIds.Contains(x.SourceId))
                 .ToListAsync(cancellationToken);
         var reservationsByKey = reservations.ToDictionary(x => (x.InventoryItemId, x.SourceId), x => x);
+        Dictionary<string, decimal> shippedLedger = itemIds.Length == 0
+            ? new(StringComparer.Ordinal)
+            : await db.StockLedgerEntries.AsNoTracking()
+                .Where(x => x.TenantId == tenantId
+                    && x.MovementType == "ORDER_SHIPPED"
+                    && sourceIds.Contains(x.SourceId))
+                .GroupBy(x => x.SourceId)
+                .Select(group => new { SourceId = group.Key, Quantity = -group.Sum(x => x.QuantityDelta) })
+                .ToDictionaryAsync(x => x.SourceId, x => Math.Max(0m, x.Quantity), StringComparer.Ordinal, cancellationToken);
         var now = timeProvider.GetUtcNow();
         var outbox = new Dictionary<string, (Guid VariantId, string EventId)>(StringComparer.Ordinal);
         foreach (var line in lines)
@@ -3462,9 +3524,64 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var variantId = line.VariantId!.Value;
             if (!itemsByVariant.TryGetValue(variantId, out var item)) continue;
             var sourceId = line.Id.ToString("D");
-            var desired = OrderInventoryReservationPolicy.DesiredQuantity(line.OrderedQuantity, line.CancelledQuantity);
             reservationsByKey.TryGetValue((item.Id, sourceId), out var reservation);
             var current = reservation is { Status: ReservationStatus.Active } ? reservation.Quantity : 0m;
+            var reservationEnabled = OrderInventoryReservationPolicy.IsReservationEnabled(inventoryPolicy, line.RawStatus);
+            var targetShipped = Math.Min(
+                Math.Max(0m, line.OrderedQuantity),
+                Math.Max(line.ShippedQuantity, line.DeliveredQuantity));
+            var consumedShipped = shippedLedger.GetValueOrDefault(sourceId);
+            var shipmentDelta = Math.Max(0m, targetShipped - consumedShipped);
+            var eventId = $"{line.Id:N}:{modifiedAtByLine[line.Id].ToUnixTimeMilliseconds()}";
+
+            // A first observation of an already-shipped historical order has no
+            // local reservation to consume. This avoids rewriting the opening
+            // physical-stock baseline. Once a local reservation exists, a
+            // shipment consumes it exactly once through the ledger.
+            if (shipmentDelta > 0 && reservation is { Status: ReservationStatus.Active })
+            {
+                if (inventoryPolicy?.NegativeStockAllowed != true && item.OnHand - shipmentDelta < 0)
+                {
+                    await RecordIssue(
+                        tenantId,
+                        $"stock-shipment-consumption:{line.Id:N}",
+                        "STOCK_SHIPMENT_CONSUMPTION_BLOCKED",
+                        "Sevk edilen miktar fiziksel stoktan düşülemedi; negatif stok politikası kapalı olduğu için rezervasyon korunuyor.",
+                        cancellationToken);
+                }
+                else
+                {
+                    item.OnHand = decimal.Round(item.OnHand - shipmentDelta, 4, MidpointRounding.ToEven);
+                    item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
+                    item.ProjectionVersion++;
+                    item.Version++;
+                    shippedLedger[sourceId] = targetShipped;
+                    var shipmentEventId = $"{line.Id:N}:shipped:{targetShipped.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
+                    db.StockLedgerEntries.Add(new StockLedgerEntry
+                    {
+                        Id = Guid.CreateVersion7(),
+                        TenantId = tenantId,
+                        InventoryItemId = item.Id,
+                        MovementType = "ORDER_SHIPPED",
+                        QuantityDelta = -shipmentDelta,
+                        SourceType = "ORDER_LINE",
+                        SourceId = sourceId,
+                        SourceEventId = shipmentEventId,
+                        IdempotencyKey = $"order-shipment:{shipmentEventId}",
+                        OccurredAt = modifiedAtByLine[line.Id],
+                        RecordedAt = now,
+                        CorrelationId = $"order:{line.OrderId:N}"
+                    });
+                    outbox[StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion)] = (variantId, shipmentEventId);
+                    consumedShipped = targetShipped;
+                }
+            }
+
+            var desired = OrderInventoryReservationPolicy.DesiredQuantity(
+                line.OrderedQuantity,
+                line.CancelledQuantity,
+                consumedShipped,
+                reservationEnabled);
             if (current == desired) continue;
             if (reservation is null && desired > 0)
             {
@@ -3483,9 +3600,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
             item.ProjectionVersion++;
             item.Version++;
-            var eventId = $"{line.Id:N}:{modifiedAtByLine[line.Id].ToUnixTimeMilliseconds()}:{desired}";
-            db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = delta > 0 ? "ORDER_RESERVED" : "ORDER_RESERVATION_RELEASED", QuantityDelta = -delta, SourceType = "ORDER_LINE", SourceId = sourceId, SourceEventId = eventId, IdempotencyKey = $"order-reservation:{eventId}", OccurredAt = modifiedAtByLine[line.Id], RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}" });
-            outbox[StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion)] = (variantId, eventId);
+            var reservationEventId = $"{eventId}:{desired.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
+            db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = delta > 0 ? "ORDER_RESERVED" : "ORDER_RESERVATION_RELEASED", QuantityDelta = -delta, SourceType = "ORDER_LINE", SourceId = sourceId, SourceEventId = reservationEventId, IdempotencyKey = $"order-reservation:{reservationEventId}", OccurredAt = modifiedAtByLine[line.Id], RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}" });
+            outbox[StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion)] = (variantId, reservationEventId);
         }
         if (outbox.Count == 0) return;
         var dedupKeys = outbox.Keys.ToArray();
@@ -3516,7 +3633,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, variantId);
         if (!build.Succeeded) return JobExecutionResult.Blocked(build.Error!.Code, build.Error.Message);
         var draft = build.Value!;
-        var dedup = $"price-inventory:{connectionId:N}:{draft.PayloadHash}";
+        var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
         if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken)) return JobExecutionResult.Success();
         var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
         var jobPayload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId));
@@ -3684,11 +3801,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .ToListAsync(cancellationToken);
         foreach (var candidate in variants)
         {
-            await DispatchStockProjection(tenantId, connectionId, JsonSerializer.Serialize(new { variantId = candidate.VariantId }), correlationId, cancellationToken);
-            var item = await db.InventoryItems.SingleAsync(x => x.TenantId == tenantId && x.Id == candidate.Id, cancellationToken);
-            item.ReconciledAt = timeProvider.GetUtcNow();
-            item.Version++;
-            await db.SaveChangesAsync(cancellationToken);
+            var result = await DispatchStockProjection(tenantId, connectionId, JsonSerializer.Serialize(new { variantId = candidate.VariantId }), correlationId, cancellationToken);
+            if (!result.Succeeded)
+            {
+                if (result.Kind == JobCompletionKind.Retry)
+                    throw new JobProcessingException(result);
+                return false;
+            }
+
+            // ReconciledAt is an observation watermark, not an enqueue
+            // timestamp. It is updated only when a remote catalog read
+            // observes stock; a disabled, blocked, or merely queued write must
+            // remain visible as stale until that observation exists.
         }
         return true;
     }

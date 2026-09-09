@@ -12,7 +12,14 @@ public sealed record DashboardMetricsView(
     int UninvoicedInvoices,
     int LowStockProducts,
     int ActiveConnections,
-    IReadOnlyDictionary<string, int> PendingByPlatform);
+    IReadOnlyDictionary<string, int> PendingByPlatform,
+    DateTimeOffset? OldestQueuedJobAt = null,
+    DateTimeOffset? LastVerifiedSynchronizationAt = null,
+    int DeadJobCount = 0,
+    int ManualReviewJobCount = 0,
+    int RecentJobCount = 0,
+    int RecentRateLimitJobCount = 0,
+    DateTimeOffset? OldestStockObservationAt = null);
 
 public sealed record DashboardLowStockView(Guid Id, string Title, decimal TotalStock, string? PrimaryImageUrl);
 public sealed record DashboardPlatformView(string Name, string Status);
