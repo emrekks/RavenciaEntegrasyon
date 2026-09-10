@@ -46,13 +46,37 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             .OrderBy(x => x.DisplayName)
             .Select(x => new DashboardPlatformView(x.DisplayName, x.Status))
             .ToListAsync(cancellationToken);
-        var newAndProcessingOrders = await db.Orders.AsNoTracking()
-            .CountAsync(x => x.TenantId == tenantId
+        var now = timeProvider.GetUtcNow();
+        var connectionNames = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(x.Status))
+            .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
+        var operationalOrderRows = await db.Orders.AsNoTracking()
+            .Where(x => x.TenantId == tenantId
                 && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
-                && (x.DerivedStatus == "NEW" || x.DerivedStatus == "PROCESSING"), cancellationToken);
-        var pendingByPlatform = JsonSerializer.Deserialize<Dictionary<string, int>>(snapshot.PendingByPlatformJson) ?? [];
+                && (DashboardMetricPolicy.PendingOrderStatuses.Contains(x.DerivedStatus)
+                    || (DashboardMetricPolicy.LateOrderStatuses.Contains(x.DerivedStatus) && x.ShipmentDueAt != null && x.ShipmentDueAt < now)))
+            .Select(x => new { x.ConnectionId, x.DerivedStatus, x.ShipmentDueAt })
+            .ToListAsync(cancellationToken);
+        var newAndProcessingOrders = operationalOrderRows.Count(x => x.DerivedStatus is "NEW" or "PROCESSING");
+        var pendingByPlatform = operationalOrderRows
+            .Where(x => DashboardMetricPolicy.PendingOrderStatuses.Contains(x.DerivedStatus))
+            .GroupBy(x => connectionNames.GetValueOrDefault(x.ConnectionId, "Belirtilmemiş"))
+            .ToDictionary(x => x.Key, x => x.Count());
+        var lateByPlatform = operationalOrderRows
+            .Where(x => DashboardMetricPolicy.LateOrderStatuses.Contains(x.DerivedStatus) && x.ShipmentDueAt != null && x.ShipmentDueAt < now)
+            .GroupBy(x => connectionNames.GetValueOrDefault(x.ConnectionId, "Belirtilmemiş"))
+            .ToDictionary(x => x.Key, x => x.Count());
+        var pendingReturnConnections = await db.ReturnClaims.AsNoTracking()
+            .Where(x => x.TenantId == tenantId
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
+                && DashboardMetricPolicy.PendingReturnStatuses.Contains(x.Status))
+            .Select(x => x.ConnectionId)
+            .ToListAsync(cancellationToken);
+        var pendingReturnsByPlatform = pendingReturnConnections
+            .GroupBy(connectionId => connectionNames.GetValueOrDefault(connectionId, "Belirtilmemiş"))
+            .ToDictionary(x => x.Key, x => x.Count());
         return new(
-            new DashboardMetricsView(snapshot.PendingOrders, snapshot.LateOrders, snapshot.TodayOrders, snapshot.TodayProductQuantity, snapshot.MonthOrders, snapshot.MonthProductQuantity, snapshot.PendingReturns, snapshot.DueSoonInvoices, snapshot.UninvoicedInvoices, snapshot.LowStockProducts, snapshot.ActiveConnections, pendingByPlatform, snapshot.OldestQueuedJobAt, snapshot.LastVerifiedSynchronizationAt, snapshot.DeadJobCount, snapshot.ManualReviewJobCount, snapshot.RecentJobCount, snapshot.RecentRateLimitJobCount, snapshot.OldestStockObservationAt, newAndProcessingOrders),
+            new DashboardMetricsView(snapshot.PendingOrders, snapshot.LateOrders, snapshot.TodayOrders, snapshot.TodayProductQuantity, snapshot.MonthOrders, snapshot.MonthProductQuantity, snapshot.PendingReturns, snapshot.DueSoonInvoices, snapshot.UninvoicedInvoices, snapshot.LowStockProducts, snapshot.ActiveConnections, pendingByPlatform, snapshot.OldestQueuedJobAt, snapshot.LastVerifiedSynchronizationAt, snapshot.DeadJobCount, snapshot.ManualReviewJobCount, snapshot.RecentJobCount, snapshot.RecentRateLimitJobCount, snapshot.OldestStockObservationAt, newAndProcessingOrders, lateByPlatform, pendingReturnsByPlatform),
             lowStock,
             sync,
             platforms,
