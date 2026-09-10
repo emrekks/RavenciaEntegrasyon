@@ -11,6 +11,7 @@ export type ShippingLabelBlock = {
   align: ShippingLabelAlignment
   text: string
   fontSize?: number
+  rotation?: number
   position?: ShippingLabelBlockPosition
 }
 
@@ -137,6 +138,11 @@ function boundedNumber(value: unknown, fallback: number, min: number, max: numbe
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback
 }
 
+function normalizedRotation(value: unknown) {
+  const number = boundedNumber(value, 0, -360, 360)
+  return ((Math.round(number / 90) * 90) % 360 + 360) % 360
+}
+
 function safeBlock(raw: unknown, index: number): ShippingLabelBlock | null {
   if (typeof raw === 'string') {
     const catalog = catalogByKind.get(raw as ShippingLabelBlockKind)
@@ -159,7 +165,7 @@ function safeBlock(raw: unknown, index: number): ShippingLabelBlock | null {
   } : fallbackPosition
   position.width = Math.min(position.width, 100 - position.x)
   position.height = Math.min(position.height, 100 - position.y)
-  return { id, kind, title: typeof value.title === 'string' && value.title.trim() ? value.title.trim().slice(0, 120) : catalog.label, fields, align, text: typeof value.text === 'string' ? value.text.slice(0, 500) : '', fontSize: boundedNumber(value.fontSize, 14, 8, 72), position }
+  return { id, kind, title: typeof value.title === 'string' && value.title.trim() ? value.title.trim().slice(0, 120) : catalog.label, fields, align, text: typeof value.text === 'string' ? value.text.slice(0, 500) : '', fontSize: boundedNumber(value.fontSize, 14, 8, 72), rotation: normalizedRotation(value.rotation), position }
 }
 
 function normalizeLayout(value: unknown, fallback: ShippingLabelBlock[]) {

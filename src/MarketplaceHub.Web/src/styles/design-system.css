@@ -6666,6 +6666,60 @@ small,
   }
 }
 
+/* Keep template actions flush with the editor heading on desktop, and expose
+   rotation as a compact control below the inspector without covering fields. */
+@media (min-width: 901px) {
+  .app-shell.stitch-shell main .shipping-designer-toolbar > .shipping-designer-template-actions {
+    justify-self: start;
+    margin-left: 0;
+  }
+}
+
+.app-shell.stitch-shell main .shipping-designer-rotation-control {
+  grid-column: 3;
+  display: grid;
+  gap: var(--rv-space-3);
+  min-width: 0;
+  padding: var(--rv-space-4);
+  color: var(--rv-color-ink);
+  background: var(--rv-color-surface);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-md);
+}
+
+.app-shell.stitch-shell main .shipping-designer-rotation-head,
+.app-shell.stitch-shell main .shipping-designer-rotation-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--rv-space-2);
+}
+
+.app-shell.stitch-shell main .shipping-designer-rotation-head {
+  justify-content: space-between;
+  font-size: var(--rv-font-size-sm);
+  font-weight: 700;
+}
+
+.app-shell.stitch-shell main .shipping-designer-rotation-head output {
+  color: var(--rv-color-primary);
+  font-family: var(--rv-font-mono);
+  font-size: var(--rv-font-size-xs);
+  font-weight: 800;
+}
+
+.app-shell.stitch-shell main .shipping-designer-rotation-actions > button {
+  flex: 1 1 0;
+  min-height: 36px;
+  padding-inline: var(--rv-space-2);
+}
+
+@media (max-width: 900px) {
+  .app-shell.stitch-shell main .shipping-designer-rotation-control {
+    grid-column: 1;
+    width: 100%;
+  }
+}
+
 /* Final sidebar interaction pass: keep the pin control on the same right
    edge as navigation counters, hide labels immediately on close, and let the
    rail itself take a slightly calmer route. */
