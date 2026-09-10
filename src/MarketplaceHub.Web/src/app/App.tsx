@@ -373,7 +373,7 @@ function DashboardMetricIcon({ kind }: { kind: string }) {
     lowStock: 'warehouse',
     revenue: 'chart',
     orders: 'orders',
-    basket: 'bag',
+    basket: 'cart',
     product: 'bag',
   }
   return <span className={`dashboard-metric-icon ${kind}`} aria-hidden="true"><UiIcon name={icons[kind] ?? 'pendingOrders'} size={22} /></span>

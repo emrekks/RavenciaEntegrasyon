@@ -93,6 +93,7 @@ export type UiIconName =
   | 'sun'
   | 'monitor'
   | 'card'
+  | 'cart'
   | 'shirt'
   | 'shoe'
   | 'watch'
@@ -204,6 +205,7 @@ const paths: Record<UiIconName, ReactNode> = {
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1 1m12 12 1 1M5 19l1-1M18 6l1-1" /></>,
   monitor: <><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8m-4-4v4" /></>,
   card: <><rect x="2" y="4" width="20" height="16" rx="3" /><path d="M2 9h20M6 15h4" /></>,
+  cart: <path d="M6.29977 5H21L19 12H7.37671M20 16H8L6 3H3M9 20C9 20.5523 8.55228 21 8 21C7.44772 21 7 20.5523 7 20C7 19.4477 7.44772 19 8 19C8.55228 19 9 19.4477 9 20ZM20 20C20 20.5523 19.5523 21 19 21C18.4477 21 18 20.5523 18 20C18 19.4477 18.4477 19 19 19C19.5523 19 20 19.4477 20 20Z" />,
   shirt: <path d="m8 3-6 4 3 6 3-2v10h8V11l3 2 3-6-6-4a4 4 0 0 1-8 0Z" />,
   shoe: <><path d="M3 9v9h18v-4l-8-3-3-6-3 4H3ZM3 18v3h18v-3M13 11l-1 3m4-2-1 3" /></>,
   watch: <><rect x="6" y="6" width="12" height="12" rx="4" /><path d="M9 6V2h6v4M9 18v4h6v-4M12 9v3l2 1" /></>,
