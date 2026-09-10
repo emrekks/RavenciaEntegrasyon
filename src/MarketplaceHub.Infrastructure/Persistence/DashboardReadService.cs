@@ -46,9 +46,13 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             .OrderBy(x => x.DisplayName)
             .Select(x => new DashboardPlatformView(x.DisplayName, x.Status))
             .ToListAsync(cancellationToken);
+        var newAndProcessingOrders = await db.Orders.AsNoTracking()
+            .CountAsync(x => x.TenantId == tenantId
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
+                && (x.DerivedStatus == "NEW" || x.DerivedStatus == "PROCESSING"), cancellationToken);
         var pendingByPlatform = JsonSerializer.Deserialize<Dictionary<string, int>>(snapshot.PendingByPlatformJson) ?? [];
         return new(
-            new DashboardMetricsView(snapshot.PendingOrders, snapshot.LateOrders, snapshot.TodayOrders, snapshot.TodayProductQuantity, snapshot.MonthOrders, snapshot.MonthProductQuantity, snapshot.PendingReturns, snapshot.DueSoonInvoices, snapshot.UninvoicedInvoices, snapshot.LowStockProducts, snapshot.ActiveConnections, pendingByPlatform, snapshot.OldestQueuedJobAt, snapshot.LastVerifiedSynchronizationAt, snapshot.DeadJobCount, snapshot.ManualReviewJobCount, snapshot.RecentJobCount, snapshot.RecentRateLimitJobCount, snapshot.OldestStockObservationAt),
+            new DashboardMetricsView(snapshot.PendingOrders, snapshot.LateOrders, snapshot.TodayOrders, snapshot.TodayProductQuantity, snapshot.MonthOrders, snapshot.MonthProductQuantity, snapshot.PendingReturns, snapshot.DueSoonInvoices, snapshot.UninvoicedInvoices, snapshot.LowStockProducts, snapshot.ActiveConnections, pendingByPlatform, snapshot.OldestQueuedJobAt, snapshot.LastVerifiedSynchronizationAt, snapshot.DeadJobCount, snapshot.ManualReviewJobCount, snapshot.RecentJobCount, snapshot.RecentRateLimitJobCount, snapshot.OldestStockObservationAt, newAndProcessingOrders),
             lowStock,
             sync,
             platforms,

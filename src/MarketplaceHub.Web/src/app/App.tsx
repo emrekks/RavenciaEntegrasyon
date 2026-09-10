@@ -47,7 +47,6 @@ function Shell({ me }: { me: Me }) {
   }, [])
   const appearanceColorsKey = JSON.stringify(appearanceSettings.settings.colors)
   async function logout() { await api('/logout', { method: 'POST' }); window.location.replace(`/?signedOut=${Date.now()}`) }
-  const menuExpanded = sidebarPinned || sidebarHoverExpanded
   // Hover expansion is an overlay state: the layout column stays collapsed so
   // opening and closing the menu does not move the page underneath it.
   const menuCollapsed = !sidebarPinned
@@ -79,11 +78,13 @@ function Shell({ me }: { me: Me }) {
   const navigationCounts = navigationSummary.data?.metrics
   const item = (to: string, iconName: UiIconName, label: string, end = false, count?: number, showZeroCount = false) => {
     const hasCount = typeof count === 'number' && (count > 0 || showZeroCount)
-    const accessibleLabel = hasCount ? `${label}, ${count} bildirim` : label
-    return <NavLink to={to} end={end} aria-label={accessibleLabel} title={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className="nav-count" aria-hidden="true">{count > 99 ? '99+' : count}</span>}</NavLink>
+    const accessibleCount = typeof count === 'number' && count > 999 ? '999 üzeri' : count?.toLocaleString('tr-TR')
+    const visibleCount = typeof count === 'number' && count > 999 ? '999' : count?.toLocaleString('tr-TR')
+    const accessibleLabel = hasCount ? `${label}, ${accessibleCount} bildirim` : label
+    return <NavLink to={to} end={end} aria-label={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className="nav-count" aria-hidden="true">{visibleCount}</span>}</NavLink>
   }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
-    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.pendingOrders, true), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar', false, navigationCounts?.uninvoicedInvoices ?? 0, true), item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'jobs', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
+    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.newAndProcessingOrders ?? navigationCounts?.pendingOrders, true), item('/returns', 'box', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar', false, navigationCounts?.dueSoonInvoices ?? 0, true), item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'jobs', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}>{group.items}</div>)}</>
   const quickSearchItems: Array<{ to: string; label: string; description: string; icon: UiIconName }> = [
@@ -96,7 +97,7 @@ function Shell({ me }: { me: Me }) {
   ]
   return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHovering ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
     <aside aria-label="Ravencia ana menüsü" onMouseEnter={handleSidebarMouseEnter} onMouseLeave={handleSidebarMouseLeave}>
-      <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong></div>{menuExpanded && <button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button>}</div>
+      <div className="sidebar-brand-row"><div className="stitch-brand-mark" aria-hidden="true">R</div><div className="brand wordmark"><strong>Ravencia</strong></div><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button></div>
       <nav aria-label="Ana menü">{navigation}</nav>
       <div className="sidebar-side-bottom"><div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" aria-label="Oturumu kapat" title="Oturumu kapat" onClick={() => void logout()}>{icon('logout')}<span className="logout-label">Oturumu kapat</span></button></div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong></span></div></div>
     </aside>
@@ -321,7 +322,7 @@ function MfaChallenge() {
     </form>
   </AuthPageFrame>
 }
-type DashboardMetrics = { pendingOrders: number; lateOrders: number; todayOrders: number; todayProductQuantity: number; monthOrders: number; monthProductQuantity: number; pendingReturns: number; dueSoonInvoices: number; uninvoicedInvoices: number; lowStockProducts: number; activeConnections: number; pendingByPlatform: Record<string, number>; oldestQueuedJobAt?: string | null; lastVerifiedSynchronizationAt?: string | null; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number; recentRateLimitJobCount?: number; oldestStockObservationAt?: string | null }
+type DashboardMetrics = { pendingOrders: number; newAndProcessingOrders?: number; lateOrders: number; todayOrders: number; todayProductQuantity: number; monthOrders: number; monthProductQuantity: number; pendingReturns: number; dueSoonInvoices: number; uninvoicedInvoices: number; lowStockProducts: number; activeConnections: number; pendingByPlatform: Record<string, number>; oldestQueuedJobAt?: string | null; lastVerifiedSynchronizationAt?: string | null; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number; recentRateLimitJobCount?: number; oldestStockObservationAt?: string | null }
 type DashboardLowStock = { id: string; title: string; totalStock: number; primaryImageUrl: string | null }
 type DashboardSyncStatus = { resourceType: string; label: string; kind: string; status: string; lastAttemptAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null }
 type DashboardBootstrap = { metrics: DashboardMetrics; lowStock: DashboardLowStock[]; sync: DashboardSyncStatus[]; platforms: { name: string; status: string }[]; generatedAt: string; version: number }
@@ -454,7 +455,6 @@ function DashboardChartPoints({ points, maxValue, currency }: { points: ReturnTy
     const productQuantity = point.productQuantity ?? 0
     const shipmentCount = point.shipmentCount ?? 0
     return <g className="dashboard-chart-point" key={point.key} tabIndex={0} role="group" aria-label={`${point.fullLabel}: ${point.orderCount} sipariş, ${dashboardQuantity(productQuantity)} adet ürün, ${shipmentCount} paket, ${dashboardMoney(point.amount, currency)} ciro`}>
-      <title>{`${point.fullLabel} · ${point.orderCount} sipariş · ${dashboardQuantity(productQuantity)} adet ürün · ${shipmentCount} paket · ${dashboardMoney(point.amount, currency)}`}</title>
       <circle className="dashboard-chart-point-hit" cx={x} cy={y} r="12" />
       <circle className="dashboard-chart-point-dot" cx={x} cy={y} r="3" />
       <foreignObject className="dashboard-chart-point-tooltip" x={tooltipX} y={tooltipY} width={dashboardChartTooltipWidth} height="116">
@@ -614,6 +614,56 @@ function SettingsTabs({ value, onChange }: { value: SettingsTabKey; onChange: (v
   return <Tabs className="settings-tabs" ariaLabel="Sistem ayarları" value={value} onChange={nextValue => onChange(nextValue as SettingsTabKey)} items={[{ value: 'security', label: 'Güvenlik ve oturumlar' }, { value: 'database', label: 'Veritabanı temizliği' }, { value: 'shipping', label: 'Kargo ayarları' }, { value: 'appearance', label: 'Görünüm' }]} />
 }
 
+function SettingsStickyActions({ className = '', children }: { className?: string; children: ReactNode }) {
+  const anchorRef = useRef<HTMLDivElement>(null)
+  const actionsRef = useRef<HTMLDivElement>(null)
+  const [isFloating, setIsFloating] = useState(false)
+  const [anchorHeight, setAnchorHeight] = useState(0)
+  const [floatingStyle, setFloatingStyle] = useState<CSSProperties>()
+
+  useEffect(() => {
+    let frame = 0
+    const update = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        const anchor = anchorRef.current
+        const actions = actionsRef.current
+        if (!anchor || !actions) return
+        const anchorRect = anchor.getBoundingClientRect()
+        const nextFloating = anchorRect.bottom > window.innerHeight
+        const nextHeight = nextFloating ? actions.getBoundingClientRect().height : 0
+        setIsFloating(current => current === nextFloating ? current : nextFloating)
+        setAnchorHeight(current => Math.abs(current - nextHeight) < 1 ? current : nextHeight)
+        if (nextFloating) {
+          setFloatingStyle(current => current && Math.abs((current.left as number) - anchorRect.left) < 1 && Math.abs((current.width as number) - anchorRect.width) < 1 ? current : { left: anchorRect.left, width: anchorRect.width, bottom: 0 })
+        } else {
+          setFloatingStyle(undefined)
+        }
+      })
+    }
+    update()
+    window.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update)
+    if (observer) {
+      if (anchorRef.current) observer.observe(anchorRef.current)
+      if (actionsRef.current) observer.observe(actionsRef.current)
+    }
+    return () => {
+      window.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+      observer?.disconnect()
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [])
+
+  const floatingReady = isFloating && Boolean(floatingStyle)
+  return <div ref={anchorRef} className={`settings-sticky-actions-anchor${className ? ` ${className}-anchor` : ''}`} style={anchorHeight ? { minHeight: anchorHeight } : undefined}>
+    <div ref={actionsRef} className={`settings-sticky-actions${className ? ` ${className}` : ''}${floatingReady ? ' is-floating' : ''}`} style={floatingReady ? floatingStyle : undefined}>{children}</div>
+  </div>
+}
+
 function Security() {
   const client = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -703,7 +753,7 @@ function Security() {
     }
   }
 
-  if (settingsTab === 'database') return <section className="content security-page"><div className="page-heading"><div><p className="eyebrow">Ayarlar</p><h1>Sistem ayarları</h1><p className="lede">Güvenlik ve yerel operasyon verilerini tek ekranda yönetin.</p></div></div><div className="settings-tabs" role="tablist"><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('security')}>Güvenlik ve oturumlar</button><button type="button" role="tab" aria-selected={true} className="active">Veritabanı temizliği</button><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('shipping')}>Kargo ayarları</button><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('appearance')}>Görünüm</button></div>{message && <div className="notice" role="status">{message}</div>}<div className="panel database-reset-panel"><div className="database-reset-intro"><span className="security-state">Yetkili İşlemi</span><h2>Yerel veritabanı listelerini sıfırla</h2><p>Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir. Her başlığın kapsam ve bağlı kayıt ayrıntılarını görebilirsiniz.</p></div><div className="database-scope-groups"><section className="database-scope-group"><div><h3>Katalog</h3><p>Ürün kataloğunda kullanılan temel listeleri temizleyin.</p></div><div className="database-scope-list">{['PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES', 'BRANDS'].map(resetScopeOption)}</div></section><section className="database-scope-group"><div><h3>Ürün seçenekleri</h3><p>Ürün seçeneklerini ve seçenek değerlerini temizleyin.</p></div><div className="database-scope-list">{['OPTIONS'].map(resetScopeOption)}</div></section><section className="database-scope-group"><div><h3>Operasyon</h3><p>İşlem ve satış kayıtlarını temizleyin.</p></div><div className="database-scope-list">{['ORDERS', 'RETURNS', 'INVOICES'].map(resetScopeOption)}</div></section></div><label className="database-confirmation">Onay için <b>Verileri sil</b> yazın<input value={resetConfirmation} onChange={event => setResetConfirmation(event.target.value)} /></label><div className="settings-sticky-actions"><button type="button" className="destructive" disabled={!resetScopes.length || resetConfirmation !== 'Verileri sil' || resetBusy} onClick={() => void resetOperationalData()}>{resetBusy ? 'Temizleniyor…' : 'Seçili listeleri kalıcı sil'}</button></div></div></section>
+  if (settingsTab === 'database') return <section className="content security-page"><div className="page-heading"><div><p className="eyebrow">Ayarlar</p><h1>Sistem ayarları</h1><p className="lede">Güvenlik ve yerel operasyon verilerini tek ekranda yönetin.</p></div></div><div className="settings-tabs" role="tablist"><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('security')}>Güvenlik ve oturumlar</button><button type="button" role="tab" aria-selected={true} className="active">Veritabanı temizliği</button><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('shipping')}>Kargo ayarları</button><button type="button" role="tab" aria-selected={false} onClick={() => setSettingsTab('appearance')}>Görünüm</button></div>{message && <div className="notice" role="status">{message}</div>}<div className="panel database-reset-panel"><div className="database-reset-intro"><span className="security-state">Yetkili İşlemi</span><h2>Yerel veritabanı listelerini sıfırla</h2><p>Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir. Her başlığın kapsam ve bağlı kayıt ayrıntılarını görebilirsiniz.</p></div><div className="database-scope-groups"><section className="database-scope-group"><div><h3>Katalog</h3><p>Ürün kataloğunda kullanılan temel listeleri temizleyin.</p></div><div className="database-scope-list">{['PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES', 'BRANDS'].map(resetScopeOption)}</div></section><section className="database-scope-group"><div><h3>Ürün seçenekleri</h3><p>Ürün seçeneklerini ve seçenek değerlerini temizleyin.</p></div><div className="database-scope-list">{['OPTIONS'].map(resetScopeOption)}</div></section><section className="database-scope-group"><div><h3>Operasyon</h3><p>İşlem ve satış kayıtlarını temizleyin.</p></div><div className="database-scope-list">{['ORDERS', 'RETURNS', 'INVOICES'].map(resetScopeOption)}</div></section></div><label className="database-confirmation">Onay için <b>Verileri sil</b> yazın<input value={resetConfirmation} onChange={event => setResetConfirmation(event.target.value)} /></label><SettingsStickyActions><div className="settings-sticky-copy"><strong>Seçili listeleri kalıcı olarak temizle</strong><span>Bu işlem seçtiğiniz kayıtları geri alınamayacak şekilde kaldırır. Önce onay metnini girin.</span></div><button type="button" className="destructive" disabled={!resetScopes.length || resetConfirmation !== 'Verileri sil' || resetBusy} onClick={() => void resetOperationalData()}>{resetBusy ? 'Temizleniyor…' : 'Seçili listeleri kalıcı sil'}</button></SettingsStickyActions></div></section>
 
   async function deleteClosedSessions() {
     if (!window.confirm('Tüm kapalı oturum kayıtları silinsin mi?')) return
@@ -883,7 +933,7 @@ function AppearanceSettingsPage() {
       <div className="appearance-settings-grid">
         <label><span>Font tipi</span><select value={appearance.draft.fontFamily} onChange={event => appearance.setDraft({ ...appearance.draft, fontFamily: event.target.value as AppearanceSettings['fontFamily'] })}>{appearanceFontFamilyOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
         <label><span>Yazı boyutu</span><select value={appearance.draft.fontSize} onChange={event => appearance.setDraft({ ...appearance.draft, fontSize: event.target.value as AppearanceSettings['fontSize'] })}>{appearanceFontSizeOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}</select></label>
-        <div className="appearance-theme-field"><span>Tema</span><div className="appearance-theme-picker" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setThemeMenuOpen(false) }}><button type="button" className="appearance-theme-trigger" aria-label="Arayüz teması" aria-haspopup="listbox" aria-expanded={themeMenuOpen} onClick={() => setThemeMenuOpen(value => !value)} onKeyDown={event => { if (event.key === 'Escape') setThemeMenuOpen(false) }}><span>{activeSelectableTheme ? `${activeSelectableTheme.label} — ${activeSelectableTheme.description}` : 'Tema seçin'}</span><UiIcon name="chevronDown" /></button>{themeMenuOpen && <div className="appearance-theme-menu" role="listbox" aria-label="Arayüz teması seçenekleri">{selectableThemes.map(theme => <button type="button" role="option" aria-selected={theme.id === activeSelectableTheme?.id} key={theme.id} onMouseDown={event => event.preventDefault()} onClick={() => { if (theme.mode === 'light') applyLightTheme(); else if (theme.profile) applyColorTheme(theme.profile); setThemeMenuOpen(false) }}><strong>{theme.label}</strong><small>{theme.description}</small></button>)}</div>}</div></div>
+        <div className="appearance-theme-field"><span>Tema</span><div className="appearance-theme-picker" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setThemeMenuOpen(false) }}><button type="button" className="appearance-theme-trigger" aria-label="Arayüz teması" aria-haspopup="listbox" aria-expanded={themeMenuOpen} onClick={() => setThemeMenuOpen(value => !value)} onKeyDown={event => { if (event.key === 'Escape') setThemeMenuOpen(false) }}><span>{activeSelectableTheme ? `${activeSelectableTheme.label} — ${activeSelectableTheme.description}` : 'Tema seçin'}</span><UiIcon name="chevronDown" /></button>{themeMenuOpen && <div className="appearance-theme-menu" role="listbox" aria-label="Arayüz teması seçenekleri">{selectableThemes.map(theme => <button type="button" role="option" aria-selected={theme.id === activeSelectableTheme?.id} key={theme.id} onMouseDown={event => event.preventDefault()} onClick={() => { if (theme.mode === 'light') applyLightTheme(); else if (theme.profile) applyColorTheme(theme.profile); setThemeMenuOpen(false) }}><span className="appearance-theme-menu-copy"><strong>{theme.label}</strong><small>{theme.description}</small></span></button>)}</div>}</div></div>
       </div>
       <section className="appearance-color-editor">
         <div className="appearance-color-editor-heading"><div><h2>Renk paleti</h2><p>Değişiklikler kaydetmeden önce anlık önizlenir. Hazır paletleri saklayabilir, daha sonra yeniden uygulayabilirsiniz.</p></div><div className="appearance-color-actions"><strong className="appearance-color-theme-label">{activeThemeLabel}</strong></div></div>
@@ -891,7 +941,7 @@ function AppearanceSettingsPage() {
         <div className="appearance-color-grid">{appearanceColorTokenOptions.map(({ key, label, description }) => <label className="appearance-color-field" key={key}><span><b>{label}</b><small>{description}</small></span><span className="appearance-color-control"><input type="color" value={palette[key]} onChange={event => updateColor(key, event.target.value)} aria-label={`${label} rengi`} /><code>{palette[key].toUpperCase()}</code></span></label>)}</div>
       </section>
       <div className="appearance-preview" style={previewStyle}><small>Önizleme</small><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p></div>
-      <div className="settings-sticky-actions appearance-settings-actions"><button type="button" className="rv-button rv-button-secondary" onClick={applyDefaultAppearance} disabled={busy}>Varsayılanlara dön</button><button type="button" className="rv-button rv-button-primary" onClick={() => void save()} disabled={busy}>{busy ? 'Kaydediliyor…' : 'Görünüm ayarlarını kaydet'}</button></div>
+      <SettingsStickyActions className="appearance-settings-actions"><div className="settings-sticky-copy"><strong>Görünüm ayarlarını uygula</strong><span>Değişiklikleri hesabınıza kaydetmeden önce önizleyin.</span></div><button type="button" className="rv-button rv-button-secondary" onClick={applyDefaultAppearance} disabled={busy}>Varsayılanlara dön</button><button type="button" className="rv-button rv-button-primary" onClick={() => void save()} disabled={busy}>{busy ? 'Kaydediliyor…' : 'Görünüm ayarlarını kaydet'}</button></SettingsStickyActions>
     </section>
   </section>
 }
@@ -1100,7 +1150,7 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
         <aside className="shipping-designer-inspector"><div className="shipping-designer-panel-heading"><span>Özellikler</span><small>{activeBlock ? `Seçili: ${activeBlock.title}` : 'Bir alan seçin'}</small></div><nav className="shipping-designer-inspector-tabs" role="tablist"><button type="button" className={designerTab === 'general' ? 'is-active' : ''} onClick={() => setDesignerTab('general')}>Genel</button><button type="button" className={designerTab === 'text' ? 'is-active' : ''} onClick={() => setDesignerTab('text')}>Yazı</button><button type="button" className={designerTab === 'barcode' ? 'is-active' : ''} onClick={() => setDesignerTab('barcode')}>Barkod</button></nav>{!activeBlock ? <div className="shipping-designer-empty">Düzenlemek için kâğıt üzerindeki bir bloğa tıklayın.</div> : <div className="shipping-designer-inspector-body">{designerTab === 'general' && <><label>Blok türü<select value={activeBlock.kind} onChange={event => { const kind = event.target.value as ShippingLabelBlockKind; const catalog = shippingLabelBlockCatalog.find(item => item.kind === kind); if (catalog) updateBlock(activeBlock.id, { kind, title: kind === 'custom' ? activeBlock.title : catalog.label, fields: [...catalog.fields], text: kind === 'custom' ? activeBlock.text : '' }) }}>{shippingLabelBlockCatalog.map(item => <option key={item.kind} value={item.kind}>{item.label}</option>)}</select></label><label>Hizalama<select value={activeBlock.align} onChange={event => updateBlock(activeBlock.id, { align: event.target.value as ShippingLabelAlignment })}><option value="left">Sol</option><option value="center">Orta</option><option value="right">Sağ</option></select></label><div className="shipping-designer-position-grid">{numberPositionField('Sol %', 'x', positionFor(activeBlock, layout.indexOf(activeBlock)).x)}{numberPositionField('Üst %', 'y', positionFor(activeBlock, layout.indexOf(activeBlock)).y)}{numberPositionField('Genişlik %', 'width', positionFor(activeBlock, layout.indexOf(activeBlock)).width)}{numberPositionField('Yükseklik %', 'height', positionFor(activeBlock, layout.indexOf(activeBlock)).height)}</div><label>Alana ekle<select value="" onChange={event => { if (event.target.value) toggleField(activeBlock, event.target.value as ShippingLabelField) }}><option value="">Bir alan seçin…</option>{shippingLabelFields.filter(item => !activeBlock.fields.includes(item.id)).map(item => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label><div className="shipping-designer-field-chips">{activeBlock.fields.length ? activeBlock.fields.map(field => <button type="button" key={field} onClick={() => toggleField(activeBlock, field)}>{shippingLabelFields.find(item => item.id === field)?.label}<UiIcon name="close" /></button>) : <span>Alan eklenmedi</span>}</div></>}{designerTab === 'text' && <><label>Yazı hizası<select value={activeBlock.align} onChange={event => updateBlock(activeBlock.id, { align: event.target.value as ShippingLabelAlignment })}><option value="left">Sol</option><option value="center">Orta</option><option value="right">Sağ</option></select></label><label>Yazı boyutu (px)<input type="number" min={8} max={72} value={fontSizeDraft} onChange={event => setFontSizeDraft(event.target.value)} onBlur={() => commitFontSize(fontSizeDraft)} onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }} /></label><p className="shipping-designer-help">Yazı rengi sabit olarak siyahtır.</p>{activeBlock.kind === 'custom' && <label>Metin<textarea value={activeBlock.text} maxLength={500} rows={8} onChange={event => updateBlock(activeBlock.id, { text: event.target.value })} /></label>}<p className="shipping-designer-help">Alanların gerçek değerleri sipariş yazdırılırken otomatik doldurulur.</p></>}{designerTab === 'barcode' && <div className="shipping-designer-barcode-settings"><strong>{activeBlock.kind === 'packageBarcode' ? 'Paket barkodu' : activeBlock.kind === 'trackingBarcode' ? 'Takip barkodu' : 'Barkod ayarı'}</strong><p>Barkod genişliği tuvaldeki blok genişliğine göre otomatik ölçeklenir. Modül aralıkları tarayıcı okunabilirliğini korur.</p><label>Alan<select value={activeBlock.fields[0] ?? ''} onChange={event => { if (event.target.value) updateBlock(activeBlock.id, { fields: [event.target.value as ShippingLabelField] }) }}><option value="">Alan seçin…</option>{shippingLabelFields.filter(field => field.id === 'trackingNumber' || field.id === 'packageNumber').map(field => <option value={field.id} key={field.id}>{field.label}</option>)}</select></label></div>}<button type="button" className="shipping-designer-delete" onClick={() => removeBlock(activeBlock.id)}>Bloğu kaldır</button></div>}</aside>
       </div>
     </section>
-    <div className="settings-sticky-actions shipping-settings-actions"><div className="settings-sticky-copy"><strong>Etiket düzenini yayınla</strong><span>Gönderici bilgileri ve kâğıt yerleşimi tüm yazdırma akışlarında kullanılır.</span></div><button type="button" onClick={onSave}>Ayarları kaydet</button></div>
+    <SettingsStickyActions className="shipping-settings-actions"><div className="settings-sticky-copy"><strong>Etiket düzenini yayınla</strong><span>Gönderici bilgileri ve kâğıt yerleşimi tüm yazdırma akışlarında kullanılır.</span></div><button type="button" onClick={onSave}>Ayarları kaydet</button></SettingsStickyActions>
   </div>
 }
 

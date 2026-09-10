@@ -37,9 +37,10 @@
   --rv-icon-size-sm: 16px;
   --rv-icon-size-md: 20px;
   --rv-icon-size-lg: 24px;
-  --rv-sidebar-width: 248px;
+  --rv-sidebar-width: 232px;
+  --rv-sidebar-rail-width: 208px;
   --rv-sidebar-collapsed-width: 68px;
-  --rv-topbar-height: 80px;
+  --rv-topbar-height: 70px;
   --rv-content-max-width: 1620px;
   --rv-content-wide-max-width: 1620px;
   --rv-page-padding-inline: 32px;

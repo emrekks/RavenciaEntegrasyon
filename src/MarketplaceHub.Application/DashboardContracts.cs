@@ -19,7 +19,8 @@ public sealed record DashboardMetricsView(
     int ManualReviewJobCount = 0,
     int RecentJobCount = 0,
     int RecentRateLimitJobCount = 0,
-    DateTimeOffset? OldestStockObservationAt = null);
+    DateTimeOffset? OldestStockObservationAt = null,
+    int NewAndProcessingOrders = 0);
 
 public sealed record DashboardLowStockView(Guid Id, string Title, decimal TotalStock, string? PrimaryImageUrl);
 public sealed record DashboardPlatformView(string Name, string Status);

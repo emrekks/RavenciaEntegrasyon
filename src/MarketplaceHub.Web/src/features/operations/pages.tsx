@@ -143,7 +143,7 @@ function JobsIcon({ name }: { name: JobsIconName }) {
   const iconNames: Record<JobsIconName, UiIconName> = {
     calendar: 'calendar',
     'chevron-down': 'chevronDown',
-    filter: 'filter',
+    filter: 'listSortAscending',
     refresh: 'refresh',
     search: 'search',
     price: 'box',
@@ -195,6 +195,28 @@ export function JobsPage({ me }: { me: Me }) {
   const [filterOpen, setFilterOpen] = useState(false)
   const [timeRange, setTimeRange] = useState<JobTimeRange>('24h')
   const [timeRangeOpen, setTimeRangeOpen] = useState(false)
+  useEffect(() => {
+    if (!filterOpen && !timeRangeOpen) return
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) return
+      if (!event.target.closest('.jobs-reference-range-wrap') && !event.target.closest('.jobs-reference-filter-wrap')) {
+        setFilterOpen(false)
+        setTimeRangeOpen(false)
+      }
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setFilterOpen(false)
+        setTimeRangeOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [filterOpen, timeRangeOpen])
   const [pageSize, setPageSize] = useState(20)
   const [pageNumber, setPageNumber] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)

@@ -56,6 +56,183 @@
   }
 }
 
+/* Product editor polish: keep the navigation in normal flow and make the
+   editor controls behave consistently with the rest of the workspace. */
+.app-shell.stitch-shell main .product-page-heading {
+  align-items: flex-start;
+}
+
+.app-shell.stitch-shell main .product-page-heading-copy {
+  display: grid;
+  min-width: 0;
+  justify-items: start;
+  gap: var(--rv-space-3);
+}
+
+.app-shell.stitch-shell main .product-heading-back {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-height: 34px;
+  align-items: center;
+  gap: var(--rv-space-2);
+  padding: 7px 11px;
+  color: var(--rv-color-primary);
+  background: var(--rv-color-primary-soft);
+  border: 1px solid color-mix(in srgb, var(--rv-color-primary) 38%, var(--rv-color-border));
+  border-radius: var(--rv-radius-sm);
+  font-size: var(--rv-font-size-xs);
+  font-weight: 850;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell main .product-heading-back:hover {
+  color: #fff;
+  background: var(--rv-color-primary);
+  border-color: var(--rv-color-primary);
+}
+
+.app-shell.stitch-shell main .product-heading-back .ui-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.app-shell.stitch-shell main .product-page-heading-title {
+  min-width: 0;
+}
+
+.app-shell.stitch-shell main .product-add-wizardbar {
+  position: static;
+  top: auto;
+  z-index: auto;
+  padding-block: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.app-shell.stitch-shell main .product-top-layout {
+  align-items: stretch;
+}
+
+.app-shell.stitch-shell main .product-top-layout > .product-basics-card,
+.app-shell.stitch-shell main .product-top-layout > .product-top-sidebar,
+.app-shell.stitch-shell main .product-top-sidebar > .product-pricing-card {
+  height: 100%;
+}
+
+.app-shell.stitch-shell main .product-top-layout > .product-basics-card,
+.app-shell.stitch-shell main .product-top-sidebar > .product-pricing-card {
+  box-sizing: border-box;
+}
+
+.app-shell.stitch-shell main .rich-text-html-editor {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 220px;
+  min-height: 220px;
+  max-height: none;
+  resize: none;
+  overflow: auto;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.app-shell.stitch-shell main .product-submit-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--rv-z-sticky);
+  background: color-mix(in srgb, var(--rv-color-surface) 94%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.app-shell.stitch-shell main .variant-table-header-with-action {
+  justify-content: flex-start;
+  gap: var(--rv-space-1);
+}
+
+.app-shell.stitch-shell main .variant-header-action {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  color: var(--rv-color-primary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--rv-radius-sm);
+}
+
+.app-shell.stitch-shell main .variant-header-action:hover,
+.app-shell.stitch-shell main .variant-header-action:focus-visible {
+  color: var(--rv-color-ink);
+  background: transparent;
+  border-color: transparent;
+}
+
+.app-shell.stitch-shell main .variant-header-action-icon {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+}
+
+.app-shell.stitch-shell main .variant-table-head,
+.app-shell.stitch-shell main .variant-table-row {
+  column-gap: var(--rv-space-2);
+}
+
+.app-shell.stitch-shell main .variant-table-row {
+  position: relative;
+  transition: transform 180ms ease, opacity 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.app-shell.stitch-shell main .variant-table-row.is-dragging {
+  z-index: 1;
+  opacity: .68;
+  transform: scale(.995);
+  background: var(--rv-color-primary-soft);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--rv-color-primary) 18%, transparent);
+}
+
+.app-shell.stitch-shell main .variant-table-row.is-drag-target {
+  background: color-mix(in srgb, var(--rv-color-primary) 10%, var(--rv-color-surface));
+  box-shadow: inset 0 2px 0 var(--rv-color-primary), inset 0 -2px 0 var(--rv-color-primary);
+}
+
+.app-shell.stitch-shell main .variant-row-lead:active {
+  cursor: grabbing;
+}
+
+.app-shell.stitch-shell main .variant-media-cell {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+}
+
+.app-shell.stitch-shell main .variant-media-button {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  color: var(--rv-color-primary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--rv-radius-sm);
+}
+
+.app-shell.stitch-shell main .variant-media-button:hover,
+.app-shell.stitch-shell main .variant-media-button:focus-visible {
+  color: var(--rv-color-ink);
+  background: transparent;
+  border-color: transparent;
+}
+
+.app-shell.stitch-shell main .variant-media-button .variant-media-icon {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2;
+}
+
 /* Keep the compact dashboard cards readable at the six-column breakpoint. */
 .app-shell.stitch-shell main .dashboard-operational-card {
   display: grid;
@@ -881,13 +1058,6 @@
   .mapping-advanced-tools[open] > summary > i { transform: rotate(180deg); }
   .mapping-advanced-tools > div { padding: 0 var(--rv-space-5) var(--rv-space-5); }
   .mapping-popup-content { min-width: 0; padding-top: var(--rv-space-4); border-top: 1px solid var(--rv-color-border); }
-  .mapping-advanced-launcher { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: var(--rv-space-4); margin-top: var(--rv-space-4); padding: var(--rv-space-4) var(--rv-space-5); color: var(--rv-color-ink); background: linear-gradient(135deg, var(--rv-color-surface), var(--rv-color-surface-raised)); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); text-align: left; }
-  .mapping-advanced-launcher:hover { border-color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
-  .mapping-advanced-launcher > span:first-child { display: grid; min-width: 0; gap: 3px; }
-  .mapping-advanced-launcher strong { font-size: var(--rv-font-size-md); }
-  .mapping-advanced-launcher small { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); font-weight: 500; }
-  .mapping-advanced-launcher-icon { display: inline-grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); }
-  .mapping-advanced-launcher-icon .ui-icon { width: 16px; height: 16px; }
   .mapping-advanced-backdrop { padding: clamp(12px, 3vw, 32px); }
   .mapping-advanced-modal { width: min(1180px, 100%); max-height: min(900px, calc(100dvh - 32px)); }
   .mapping-advanced-modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5) var(--rv-space-6); border-bottom: 1px solid var(--rv-color-border); }
@@ -1098,8 +1268,8 @@
   .product-add-page > .page-lede { max-width: 820px; margin: calc(var(--rv-space-4) * -1) 0 var(--rv-space-5); }
   .product-add-wizardbar { position: sticky; top: var(--rv-topbar-height); z-index: calc(var(--rv-z-sticky) - 1); margin-bottom: var(--rv-space-5); padding-block: var(--rv-space-2); background: color-mix(in srgb, var(--rv-color-bg) 92%, transparent); backdrop-filter: blur(12px); }
   .product-add-stepper { max-width: 720px; }
-  .product-add-progress { display: grid; grid-template-columns: minmax(0, 1fr) 44px minmax(0, .72fr); align-items: center; }
-  .product-add-progress > i { height: 1px; background: var(--rv-color-border-strong); }
+  .product-add-progress { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-4); align-items: center; }
+  .product-add-progress > i { display: none; }
   .product-add-progress button { display: flex; min-width: 0; min-height: 48px; align-items: center; gap: var(--rv-space-2); padding: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); box-shadow: none; text-align: left; }
   .product-add-progress button > span { display: grid; flex: 0 0 28px; width: 28px; height: 28px; place-items: center; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 50%; font-size: var(--rv-font-size-xs); }
   .product-add-progress button > strong { min-width: 0; overflow: hidden; font-size: var(--rv-font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
@@ -1968,6 +2138,8 @@
   .mapping-saved-table table { border-collapse: separate; border-spacing: 0; }
   .mapping-saved-table th, .mapping-saved-table td { vertical-align: middle; }
   .mapping-saved-table th:last-child, .mapping-saved-table td:last-child { text-align: right; }
+  .mapping-saved-table td.mapping-empty-table-cell { padding: 0; text-align: center; }
+  .mapping-saved-table td.mapping-empty-table-cell .mapping-table-empty { min-height: 140px; margin: 0; border: 0; border-radius: 0; }
   .mapping-saved-table td:nth-child(2), .mapping-saved-table td:nth-child(4) { white-space: nowrap; }
   .mapping-row-actions { min-width: max-content; justify-content: flex-end; }
   .mapping-table-status, .trendyol-badge { display: inline-flex; min-height: 30px; align-items: center; gap: var(--rv-space-1); padding: 0 var(--rv-space-2); color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 999px; font-size: var(--rv-font-size-xs); font-weight: 800; white-space: nowrap; }
@@ -2093,6 +2265,18 @@
   .technical-text, .technical-field { font-family: var(--rv-font-mono); }
   .clickable-cell, .clickable-thumb { cursor: pointer; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+}
+
+/* Wide desktop composition for 1600px+ workspaces, including 1920×1080. */
+@media (min-width: 1600px) {
+  :root {
+    --rv-content-max-width: 1760px;
+    --rv-content-wide-max-width: 1840px;
+  }
+
+  .content.f3, .rv-page-wide {
+    width: min(100%, var(--rv-content-wide-max-width));
+  }
 }
 
 @media (max-width: 1200px) {
@@ -2499,7 +2683,6 @@
 .mapping-section-heading h2 .ui-icon, .mapping-saved-card > header h2 .ui-icon { flex: 0 0 18px; }
 .mapping-saved-card > header { margin-bottom: 0; }
 .mapping-saved-table { margin-top: var(--rv-space-5); }
-.mapping-advanced-launcher { margin-top: 0; }
 
 :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):is(.active, .is-active, [aria-selected="true"]) {
   color: var(--rv-color-ink);
@@ -2856,7 +3039,7 @@ button,
 .mapping-category-builder .mapping-reference-target { grid-column: 2; grid-row: 2; }
 .mapping-category-platform-tabs { width: 100%; margin: 0; }
 .mapping-category-platform-tabs > button { min-height: 34px; }
-.mapping-category-builder .mapping-target-controls > select { display: none; }
+.mapping-category-builder > .mapping-category-platform-tabs { margin-top: var(--rv-space-3); margin-bottom: var(--rv-space-3); }
 .mapping-category-builder .mapping-target-controls { gap: var(--rv-space-2); }
 .brand-library-list .category-chip-remove { width: 24px; min-width: 24px; height: 24px; min-height: 24px; color: var(--rv-color-muted); background: transparent; border-left-color: var(--rv-color-border); border-radius: 0 var(--rv-radius-sm) var(--rv-radius-sm) 0; }
 .brand-library-list .category-chip-remove:hover { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
@@ -2921,15 +3104,44 @@ button,
 .dashboard-performance-chart > svg { width: 100%; }
 .dashboard-chart-point { cursor: crosshair; outline: none; }
 .dashboard-chart-point-hit { fill: transparent; }
-.dashboard-chart-point-dot { fill: var(--rv-color-primary); stroke: var(--rv-color-surface); stroke-width: 2; opacity: .12; vector-effect: non-scaling-stroke; transition: opacity var(--rv-duration-fast) var(--rv-ease-standard), r var(--rv-duration-fast) var(--rv-ease-standard); }
+.dashboard-chart-point-dot { fill: var(--rv-color-primary); stroke: var(--rv-color-surface); stroke-width: 2; opacity: 0; vector-effect: non-scaling-stroke; transition: opacity var(--rv-duration-fast) var(--rv-ease-standard), r var(--rv-duration-fast) var(--rv-ease-standard); }
 .dashboard-chart-point-tooltip { overflow: visible; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--rv-duration-fast) var(--rv-ease-standard), visibility var(--rv-duration-fast) var(--rv-ease-standard); }
 .dashboard-chart-point:hover .dashboard-chart-point-dot, .dashboard-chart-point:focus .dashboard-chart-point-dot { opacity: 1; r: 4; }
 .dashboard-chart-point:hover .dashboard-chart-point-tooltip, .dashboard-chart-point:focus .dashboard-chart-point-tooltip { opacity: 1; visibility: visible; }
 .dashboard-chart-tooltip { display: grid; gap: 4px; width: 152px; padding: 8px 10px; color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-surface) 94%, transparent); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); box-shadow: var(--rv-shadow-lg); font-size: 10px; line-height: 1.25; text-align: left; }
 .dashboard-chart-tooltip > strong { margin-bottom: 2px; color: var(--rv-color-ink); font-size: 11px; font-weight: 600; }
-.dashboard-chart-tooltip > span { display: flex; align-items: center; justify-content: flex-start; gap: 8px; color: var(--rv-color-muted); }
+.dashboard-chart-tooltip > span { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: baseline; gap: 4px; color: var(--rv-color-muted); }
 .dashboard-chart-tooltip > span i { display: none; }
-.dashboard-chart-tooltip > span b { margin-left: 8px; color: var(--rv-color-ink); font-weight: 600; white-space: nowrap; }
+.dashboard-chart-tooltip > span b { margin-left: 0; color: var(--rv-color-ink); font-weight: 600; text-align: left; white-space: nowrap; }
+
+/* Dashboard controls share one physical height, and the performance chart
+   gets enough vertical room to remain legible on wider screens. */
+.app-shell.stitch-shell main .dashboard-report-controls :is(.dashboard-header-period select, .dashboard-report-download) {
+  box-sizing: border-box;
+  height: 44px;
+  min-height: 44px;
+}
+
+@media (min-width: 701px) {
+  .app-shell.stitch-shell main .dashboard-performance-chart {
+    height: 320px;
+  }
+}
+
+@media (min-width: 1201px) {
+  .app-shell.stitch-shell main .dashboard-performance-grid {
+    grid-template-columns: minmax(0, 1.5fr) minmax(360px, .85fr);
+  }
+}
+
+/* The mapping page keeps its content cards, but no longer adds a full-page
+   panel behind them. */
+.app-shell.stitch-shell main > .content.mapping-page.mapping-workspace {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
 .rv-loading-feedback { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--rv-space-3); min-width: min(100%, 320px); padding: var(--rv-space-4); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-sm); }
 .rv-loading-feedback-icon { display: grid; width: 32px; height: 32px; place-items: center; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 50%; }
 .rv-loading-feedback-icon .ui-icon { animation: rv-spin .9s linear infinite; }
@@ -3060,6 +3272,123 @@ button,
     opacity: 1;
     visibility: visible;
   }
+}
+
+/* Returns use the same continuous, fully ruled grid as the reference Orders
+   table. Keep the stronger line visible in both themes while preserving the
+   existing eight-column returns layout. */
+.app-shell.stitch-shell main .return-reference-table {
+  border-color: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .return-reference-table > .return-reference-head,
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row {
+  border-color: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .return-reference-table > .return-reference-head > *,
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row > * {
+  border-right-color: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .return-reference-table > .return-reference-head > *:last-child,
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row > *:last-child {
+  border-right-color: transparent;
+}
+
+.app-shell.stitch-shell main .return-reference-row .order-reference-products > article {
+  border-bottom-color: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .return-reference-table .return-reference-status {
+  justify-items: center;
+  text-align: center;
+}
+
+/* Orders use the same continuous grid treatment and centered actions as returns. */
+.app-shell.stitch-shell main .order-reference-table {
+  border-color: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .order-reference-table > .order-reference-head,
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row {
+  border-color: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .order-reference-table > .order-reference-head > *,
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row > .order-reference-grid > * {
+  border-right-color: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .order-reference-table > .order-reference-head > *:last-child,
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row > .order-reference-grid > *:last-child {
+  border-right-color: transparent;
+}
+
+.app-shell.stitch-shell main .order-reference-table .order-reference-products > article {
+  border-bottom-color: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .order-reference-table .order-reference-actions {
+  justify-items: center;
+  text-align: center;
+}
+
+.app-shell.stitch-shell main .order-reference-table .order-reference-actions .row-menu-trigger {
+  margin-inline: auto;
+}
+
+/* Keep row menus inside the viewport and prevent invoice actions from
+   widening or visually spilling into an adjacent order row. */
+.app-shell.stitch-shell main .order-reference-row.menu-open {
+  position: relative;
+  z-index: var(--rv-z-dropdown);
+}
+
+.app-shell.stitch-shell main .order-reference-invoice .row-menu {
+  width: 100%;
+  min-width: 0;
+}
+
+.app-shell.stitch-shell main .order-reference-invoice .row-menu-trigger {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.app-shell.stitch-shell main .order-reference-invoice .row-popover {
+  width: min(240px, calc(100vw - 32px));
+  min-width: 0;
+  max-width: calc(100vw - 32px);
+  max-height: min(260px, calc(100dvh - 32px));
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+/* Reference product media always uses the 2:3 frame; the image fills that
+   frame instead of retaining a narrower source ratio. */
+.app-shell.stitch-shell main .order-reference-products .reference-product-media {
+  width: 100%;
+  max-width: 84px;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 2 / 3;
+}
+
+.app-shell.stitch-shell main .order-reference-products .product-image-button,
+.app-shell.stitch-shell main .order-reference-products .reference-product-placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: 2 / 3;
+}
+
+.app-shell.stitch-shell main .order-reference-products .product-image-button > img {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  object-position: center;
 }
 
 /* Keep the icon in one physical slot while labels are toggled independently. */
@@ -4432,7 +4761,7 @@ small,
     overflow: hidden;
     opacity: 0;
     visibility: hidden;
-    transition: max-width 420ms var(--rv-ease-standard), opacity 240ms var(--rv-ease-standard), visibility 0s linear 420ms;
+    transition: max-width 620ms var(--rv-ease-standard), opacity 320ms var(--rv-ease-standard), visibility 0s linear 620ms;
   }
 
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .brand.wordmark,
@@ -4498,7 +4827,7 @@ small,
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile-copy,
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .nav-label,
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .logout-label {
-    transition: max-width 420ms var(--rv-ease-standard), opacity 240ms var(--rv-ease-standard), visibility 0s linear 0s;
+    transition: max-width 620ms var(--rv-ease-standard), opacity 320ms var(--rv-ease-standard), visibility 0s linear 0s;
   }
 }
 
@@ -4510,22 +4839,22 @@ small,
   .app-shell.stitch-shell.sidebar-collapsed,
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded,
   .app-shell.stitch-shell.sidebar-pinned {
-    transition: grid-template-columns 420ms var(--rv-ease-standard);
+    transition: grid-template-columns 620ms var(--rv-ease-standard);
   }
 
   .app-shell.stitch-shell > aside {
-    transition: width 420ms var(--rv-ease-standard), padding-inline 420ms var(--rv-ease-standard), box-shadow 420ms var(--rv-ease-standard);
+    transition: width 620ms var(--rv-ease-standard), padding-inline 620ms var(--rv-ease-standard), box-shadow 620ms var(--rv-ease-standard);
   }
 
   .app-shell.stitch-shell .rv-topbar {
-    transition: left 420ms var(--rv-ease-standard);
+    transition: left 620ms var(--rv-ease-standard);
   }
 
   .app-shell.stitch-shell.sidebar-collapsed > aside,
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside {
     padding-inline: 0;
     overflow-x: hidden;
-    transition: width 420ms var(--rv-ease-standard), padding-inline 420ms var(--rv-ease-standard), box-shadow 420ms var(--rv-ease-standard);
+    transition: width 620ms var(--rv-ease-standard), padding-inline 620ms var(--rv-ease-standard), box-shadow 620ms var(--rv-ease-standard);
   }
 
   .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav, .sidebar-side-bottom),
@@ -4549,8 +4878,8 @@ small,
     display: grid;
     grid-template-columns: 22px minmax(0, 1fr) auto;
     align-items: center;
-    width: 224px;
-    min-width: 224px;
+    width: var(--rv-sidebar-rail-width);
+    min-width: var(--rv-sidebar-rail-width);
     height: 44px;
     min-height: 44px;
     margin-inline-start: 11.5px;
@@ -4575,7 +4904,7 @@ small,
     pointer-events: none;
     border: 1px solid transparent;
     border-radius: var(--rv-radius-md);
-    transition: width 420ms var(--rv-ease-standard), background 200ms var(--rv-ease-standard), border-color 200ms var(--rv-ease-standard), box-shadow 200ms var(--rv-ease-standard);
+    transition: width 620ms var(--rv-ease-standard), background 200ms var(--rv-ease-standard), border-color 200ms var(--rv-ease-standard), box-shadow 200ms var(--rv-ease-standard);
   }
 
   .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) > * {
@@ -4595,7 +4924,7 @@ small,
   }
 
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before {
-    width: 224px;
+    width: var(--rv-sidebar-rail-width);
   }
 
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile {
@@ -4668,7 +4997,7 @@ small,
 }
 
 @media (min-width: 701px) {
-  /* Pinned and hover-expanded navigation share one 224px content rail. The
+  /* Pinned and hover-expanded navigation share one 208px content rail. The
      collapsed state still keeps its 68px grid column and only clips the rail. */
   .app-shell.stitch-shell > aside .sidebar-pin-toggle {
     margin-right: var(--rv-space-2);
@@ -4687,11 +5016,28 @@ small,
 
   .app-shell.stitch-shell.sidebar-pinned > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
     box-sizing: border-box;
-    width: 224px;
-    min-width: 224px;
+    width: var(--rv-sidebar-rail-width);
+    min-width: var(--rv-sidebar-rail-width);
     margin-inline: 0;
     padding-inline: 10px;
     column-gap: 12px;
+  }
+
+  /* Keep pinning visually continuous with the hover-expanded state so the
+     icon rail does not jump while the page column becomes fixed. */
+  .app-shell.stitch-shell.sidebar-pinned > aside {
+    padding-inline: 0;
+  }
+
+  .app-shell.stitch-shell.sidebar-pinned > aside .sidebar-brand-row,
+  .app-shell.stitch-shell.sidebar-pinned > aside .sidebar-profile {
+    padding-inline-start: 16px;
+    padding-inline-end: 0;
+  }
+
+  .app-shell.stitch-shell.sidebar-pinned > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    margin-inline-start: 11.5px;
+    margin-inline-end: 0;
   }
 
   .app-shell.stitch-shell.sidebar-pinned > aside .sidebar-pin-toggle,
@@ -4716,7 +5062,7 @@ small,
   .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link),
   .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before,
   .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-pin-toggle {
-    transition-duration: 420ms;
+    transition-duration: 620ms;
     transition-timing-function: var(--rv-ease-standard);
   }
 }
@@ -4813,7 +5159,7 @@ small,
    controls, while the refreshed icon remains crisp and quiet. */
 .app-shell.stitch-shell main .jobs-reference-status-summary {
   row-gap: var(--rv-space-2);
-  column-gap: var(--rv-space-6);
+  column-gap: calc(var(--rv-space-6) * 1.5);
 }
 
 .app-shell.stitch-shell main .jobs-reference-refresh {
@@ -4903,6 +5249,68 @@ small,
   display: grid;
   justify-items: start;
   gap: var(--rv-space-2);
+}
+
+/* Keep the theme picker options on one shared text rail so the selected and
+   unselected rows do not appear to jump horizontally. */
+.app-shell.stitch-shell main .appearance-theme-menu {
+  box-sizing: border-box;
+  gap: 4px;
+  padding: 8px;
+}
+
+.app-shell.stitch-shell main .appearance-theme-menu > button {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 62px;
+  box-sizing: border-box;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  align-items: center;
+  justify-items: stretch;
+  gap: 2px;
+  padding: 9px 12px;
+  text-align: left;
+}
+
+.app-shell.stitch-shell main .appearance-theme-menu > button > :is(strong, small) {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell main .appearance-theme-menu > button {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  text-align: left;
+}
+
+.app-shell.stitch-shell main .appearance-theme-menu > button > .appearance-theme-menu-copy {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 2px;
+  justify-items: stretch;
+  text-align: left;
+}
+
+.app-shell.stitch-shell main .appearance-theme-menu > button > .appearance-theme-menu-copy > :is(strong, small) {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-shell.stitch-shell main .security-page :is(
@@ -5083,6 +5491,49 @@ small,
   }
 }
 
+/* Product list controls: keep desktop actions compact and reserve space for
+   the search icon so it never collides with the query text. */
+@media (min-width: 701px) {
+  .products-page-actions {
+    width: auto;
+    max-width: 100%;
+    grid-template-columns: repeat(2, max-content);
+  }
+
+  .products-page-actions > .button-link {
+    width: auto;
+    padding-inline: var(--rv-space-3);
+  }
+}
+
+.app-shell.stitch-shell main .product-toolbar .order-search {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.app-shell.stitch-shell main .product-toolbar .order-search > .ui-icon {
+  position: absolute;
+  top: 50%;
+  left: var(--rv-space-3);
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  color: var(--rv-color-muted);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.app-shell.stitch-shell main .product-toolbar .order-search > input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  padding-inline: 42px var(--rv-space-3);
+}
+
 /* Settings tabs that do not carry inline helper copy still use the same
    labelled sticky action treatment. */
 .app-shell.stitch-shell main .database-reset-panel > .settings-sticky-actions::before,
@@ -5138,4 +5589,532 @@ small,
     min-width: 0;
     flex: 1 1 100%;
   }
+}
+
+/* Final interaction pass: keep compact action controls crisp and predictable. */
+.app-shell.stitch-shell main .reference-menu-trigger {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  border-radius: 4px;
+}
+
+.app-shell.stitch-shell main .reference-menu-trigger .ui-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.app-shell.stitch-shell main .jobs-reference-table .jobs-reference-status {
+  display: inline-flex;
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+  align-items: center;
+  gap: var(--rv-space-2);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: var(--rv-font-size-sm);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell main .jobs-reference-table td:last-child {
+  justify-content: center;
+  text-align: center;
+}
+
+.app-shell.stitch-shell main .jobs-reference-table .jobs-reference-row-action {
+  margin-inline: auto;
+}
+
+/* Sidebar labels and active-item geometry should snap immediately when the
+   compact rail is entered or left. */
+@media (min-width: 701px) {
+  .app-shell.stitch-shell,
+  .app-shell.stitch-shell.sidebar-collapsed,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded,
+  .app-shell.stitch-shell.sidebar-pinned,
+  .app-shell.stitch-shell .rv-topbar,
+  .app-shell.stitch-shell > aside,
+  .app-shell.stitch-shell.sidebar-collapsed > aside,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside,
+  .app-shell.stitch-shell > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link),
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before,
+  .app-shell.stitch-shell > aside .brand.wordmark,
+  .app-shell.stitch-shell > aside .nav-label,
+  .app-shell.stitch-shell > aside .sidebar-profile-copy,
+  .app-shell.stitch-shell > aside .logout-label,
+  .app-shell.stitch-shell > aside .sidebar-pin-toggle {
+    transition: none;
+  }
+}
+
+@media (min-width: 1600px) {
+  .app-shell.stitch-shell > main > :is(.content.f3, .rv-page-wide) {
+    width: min(100%, var(--rv-content-wide-max-width));
+  }
+}
+
+/* Product catalogue and editor refinements from the latest review. */
+.app-shell.stitch-shell main .product-catalog-row > .product-row-select {
+  justify-self: center;
+  align-self: center;
+  margin: 0;
+}
+
+.app-shell.stitch-shell main .platform-state-icon {
+  overflow: visible;
+}
+
+.app-shell.stitch-shell main .platform-state-logo {
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.app-shell.stitch-shell main .product-metric-low .product-metric-icon {
+  color: var(--rv-color-danger);
+  background: var(--rv-color-danger-soft);
+  border: 1px solid color-mix(in srgb, var(--rv-color-danger) 34%, var(--rv-color-border));
+}
+
+@media (min-width: 701px) {
+  .app-shell.stitch-shell main .marketplace-pricing-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "legend legend"
+      "list-price sale-price"
+      "toggle toggle";
+    align-items: end;
+    gap: var(--rv-space-3);
+  }
+
+  .app-shell.stitch-shell main .marketplace-pricing-bar > legend {
+    display: grid;
+    grid-area: legend;
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: center;
+    gap: var(--rv-space-3);
+    min-width: 0;
+  }
+
+  .app-shell.stitch-shell main .marketplace-pricing-bar > legend > span:last-child {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .app-shell.stitch-shell main .marketplace-pricing-bar > label:nth-of-type(1) { grid-area: list-price; }
+  .app-shell.stitch-shell main .marketplace-pricing-bar > label:nth-of-type(2) { grid-area: sale-price; }
+  .app-shell.stitch-shell main .marketplace-pricing-bar > button { grid-area: toggle; justify-self: start; }
+}
+
+@media (max-width: 700px) {
+  .app-shell.stitch-shell main .marketplace-pricing-bar {
+    grid-template-columns: 1fr;
+    gap: var(--rv-space-3);
+  }
+
+  .app-shell.stitch-shell main .marketplace-pricing-bar > legend,
+  .app-shell.stitch-shell main .marketplace-pricing-bar > label:nth-of-type(1),
+  .app-shell.stitch-shell main .marketplace-pricing-bar > label:nth-of-type(2),
+  .app-shell.stitch-shell main .marketplace-pricing-bar > button {
+    grid-column: 1;
+  }
+
+  .app-shell.stitch-shell main .marketplace-pricing-bar > legend {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: center;
+    gap: var(--rv-space-3);
+  }
+}
+
+/* Keep the two editor steps equal and separated on desktop. */
+@media (min-width: 701px) {
+  .app-shell.stitch-shell main .product-add-progress {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--rv-space-4);
+  }
+
+  .app-shell.stitch-shell main .product-add-progress > i { display: none; }
+}
+
+/* Header labels may wrap inside their own grid cell instead of painting over
+   the adjacent order column. */
+.app-shell.stitch-shell main .order-reference-head > * {
+  min-width: 0;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: break-word;
+  line-height: 1.25;
+}
+
+.app-shell.stitch-shell main .order-reference-head > strong {
+  display: flex;
+  align-items: center;
+}
+
+.app-shell.stitch-shell main .order-reference-head > .order-column-filter {
+  overflow: visible;
+}
+
+.app-shell.stitch-shell main .variant-table-editor > .empty.small {
+  min-height: 132px;
+  border: 0;
+  border-radius: var(--rv-radius-lg);
+}
+
+/* Keep the catalogue in the same structured workspace language as invoices. */
+.app-shell.stitch-shell main .product-catalog-workspace {
+  min-width: 0;
+  margin-top: var(--rv-space-4);
+  padding: var(--rv-space-5);
+  background: var(--rv-color-surface);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-lg);
+}
+
+.app-shell.stitch-shell main .product-catalog-workspace-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--rv-space-4);
+  margin-bottom: var(--rv-space-4);
+}
+
+.app-shell.stitch-shell main .product-catalog-workspace-head h2,
+.app-shell.stitch-shell main .product-catalog-workspace-head p {
+  margin: 0;
+}
+
+.app-shell.stitch-shell main .product-catalog-workspace-head h2 {
+  font-size: var(--rv-font-size-md);
+}
+
+.app-shell.stitch-shell main .product-catalog-workspace-head p {
+  margin-top: var(--rv-space-1);
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-sm);
+}
+
+.app-shell.stitch-shell main .product-catalog-workspace .product-catalog-scroll {
+  margin-top: 0;
+}
+
+/* Page size, range and navigation each get a stable column. */
+.app-shell.stitch-shell main .product-pagination {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  min-height: 64px;
+  align-items: center;
+  gap: var(--rv-space-4);
+  margin-top: var(--rv-space-3);
+  padding: var(--rv-space-3) var(--rv-space-5);
+  color: var(--rv-color-muted);
+  background: var(--rv-color-surface);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-lg);
+}
+
+.app-shell.stitch-shell main .product-pagination > .invoice-reference-page-size {
+  margin: 0;
+}
+
+.app-shell.stitch-shell main .product-pagination > span {
+  min-width: 0;
+  text-align: left;
+}
+
+.app-shell.stitch-shell main .product-pagination > .product-pagination-controls {
+  justify-self: end;
+}
+
+/* The order search icon must reserve its own input space even when the
+   generic control styles are loaded after the page-specific rules. */
+.app-shell.stitch-shell main .orders-page .orders-control-bar .order-search-control > .ui-icon {
+  left: 14px;
+  pointer-events: none;
+}
+
+.app-shell.stitch-shell main .orders-page .orders-control-bar .order-search-control > input {
+  box-sizing: border-box;
+  padding-left: 44px;
+}
+
+/* Product image preview: compact header, title first, and variant context
+   next to the model information. */
+.app-shell.stitch-shell main .product-image-modal-header {
+  padding: 16px 56px 13px var(--rv-space-5);
+}
+
+.app-shell.stitch-shell main .product-image-modal-header > div {
+  gap: 2px;
+}
+
+.app-shell.stitch-shell main .product-image-modal-variant {
+  margin: 0;
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-sm);
+}
+
+.app-shell.stitch-shell main .product-image-modal-variant span {
+  color: var(--rv-color-ink);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .app-shell.stitch-shell main .product-catalog-workspace {
+    padding: var(--rv-space-4);
+  }
+
+  .app-shell.stitch-shell main .product-catalog-workspace-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-shell.stitch-shell main .product-pagination {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+    gap: var(--rv-space-3);
+  }
+
+  .app-shell.stitch-shell main .product-pagination > span {
+    text-align: left;
+  }
+
+  .app-shell.stitch-shell main .product-pagination > .product-pagination-controls {
+    justify-self: stretch;
+  }
+}
+
+/* Restore the requested slide when the menu changes between compact and
+   pinned states. */
+@media (min-width: 701px) {
+  .app-shell.stitch-shell,
+  .app-shell.stitch-shell.sidebar-collapsed,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded,
+  .app-shell.stitch-shell.sidebar-pinned {
+    transition: grid-template-columns 620ms var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell .rv-topbar {
+    transition: left 620ms var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell > aside,
+  .app-shell.stitch-shell.sidebar-collapsed > aside,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside {
+    transition: width 620ms var(--rv-ease-standard), padding-inline 620ms var(--rv-ease-standard), box-shadow 620ms var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link) {
+    transition: color var(--rv-duration-fast) var(--rv-ease-standard), background var(--rv-duration-fast) var(--rv-ease-standard), border-color var(--rv-duration-fast) var(--rv-ease-standard), box-shadow var(--rv-duration-fast) var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label) {
+    transition: max-width 620ms var(--rv-ease-standard), opacity 320ms var(--rv-ease-standard), visibility 0s linear 620ms;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label) {
+    transition-delay: 0s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell,
+  .app-shell.stitch-shell .rv-topbar,
+  .app-shell.stitch-shell > aside,
+  .app-shell.stitch-shell.sidebar-collapsed > aside,
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside,
+  .app-shell.stitch-shell > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link),
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label) {
+    transition: none;
+  }
+}
+
+/* Courier logos use a dedicated transparent slot so every asset keeps its
+   full proportions without an extra coloured tile behind it. */
+.app-shell.stitch-shell main .courier-options .carrier-card {
+  grid-template-columns: auto 46px minmax(0, 1fr);
+}
+
+.app-shell.stitch-shell main .courier-options .carrier-card-icon {
+  display: grid;
+  width: 46px;
+  height: 40px;
+  place-items: center;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  border-radius: 0;
+}
+
+.app-shell.stitch-shell main .courier-options .carrier-card-icon > .cargo-provider-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background: transparent;
+}
+
+/* Settings actions float as a full-width viewport bar until their natural
+   anchor reaches the viewport, then return to a compact in-flow surface. */
+.app-shell.stitch-shell main .settings-sticky-actions-anchor {
+  min-width: 0;
+  margin-top: var(--rv-space-5);
+}
+
+.app-shell.stitch-shell main .settings-sticky-actions-anchor > .settings-sticky-actions {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 0 0 auto;
+  transition: width 320ms var(--rv-ease-standard), max-width 320ms var(--rv-ease-standard), border-radius 320ms var(--rv-ease-standard), box-shadow 320ms var(--rv-ease-standard), transform 320ms var(--rv-ease-standard);
+}
+
+.app-shell.stitch-shell main .settings-sticky-actions-anchor > .settings-sticky-actions::before {
+  display: none;
+  content: none;
+}
+
+.app-shell.stitch-shell main .settings-sticky-actions-anchor > .settings-sticky-actions.is-floating {
+  position: fixed;
+  z-index: var(--rv-z-sticky);
+  margin: 0;
+  max-width: none;
+  border-radius: var(--rv-radius-md);
+  box-shadow: var(--rv-shadow-lg);
+}
+
+.app-shell.stitch-shell main .settings-sticky-actions-anchor.shipping-settings-actions-anchor {
+  margin-top: var(--rv-space-5);
+}
+
+.app-shell.stitch-shell main .settings-sticky-actions-anchor > .shipping-settings-actions {
+  bottom: auto;
+  margin-inline: 0;
+  margin-bottom: 0;
+  border-radius: var(--rv-radius-md);
+}
+
+@media (max-width: 600px) {
+  .app-shell.stitch-shell main .settings-sticky-actions-anchor > .settings-sticky-actions {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell main .settings-sticky-actions-anchor > .settings-sticky-actions {
+    transition: none;
+  }
+}
+
+/* Keep the compact menu's closing path reversible: labels, badges and the
+   pin control stay mounted while their width and opacity return to the rail. */
+@media (min-width: 701px) {
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-brand-row {
+    gap: 0;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label) {
+    display: block;
+    max-width: 0;
+    opacity: 0;
+    visibility: hidden;
+    transition: max-width 620ms var(--rv-ease-standard), opacity 320ms var(--rv-ease-standard), visibility 0s linear 620ms;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside .sidebar-pin-toggle {
+    display: inline-grid;
+    width: 0;
+    min-width: 0;
+    max-width: 0;
+    margin-inline: 0;
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: width 620ms var(--rv-ease-standard), max-width 620ms var(--rv-ease-standard), opacity 320ms var(--rv-ease-standard), visibility 0s linear 620ms, margin 620ms var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed > aside .nav-count {
+    display: inline-flex;
+    width: 0;
+    min-width: 0;
+    max-width: 0;
+    padding-inline: 0;
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    transform: scale(.75);
+    pointer-events: none;
+    transition: width 620ms var(--rv-ease-standard), max-width 620ms var(--rv-ease-standard), opacity 320ms var(--rv-ease-standard), visibility 0s linear 620ms, transform 320ms var(--rv-ease-standard);
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-brand-row {
+    gap: var(--rv-space-3);
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label) {
+    max-width: 190px;
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-pin-toggle {
+    width: 30px;
+    min-width: 30px;
+    max-width: 30px;
+    margin-left: auto;
+    margin-right: var(--rv-space-2);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .nav-count {
+    width: auto;
+    min-width: 22px;
+    max-width: 48px;
+    padding-inline: 5px;
+    opacity: 1;
+    visibility: visible;
+    transform: scale(1);
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+}
+
+/* The summary values share one explicit 24px scale across all four cards. */
+.app-shell.stitch-shell main .dashboard-summary-card .dashboard-summary-value-row > strong,
+.app-shell.stitch-shell main .dashboard-summary-card > strong {
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+/* Give the platform state a clear frame while letting the marketplace mark
+   use the available space without cropping its artwork. */
+.app-shell.stitch-shell main .platform-state-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--rv-radius-md);
+}
+
+.app-shell.stitch-shell main .platform-state-logo {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  border-radius: 7px;
 }
