@@ -7775,3 +7775,60 @@ small,
     transition: none;
   }
 }
+
+/* Keep the return mark's box identical to Orders while retaining the two
+   surrounding cycle arrows. The icon is a regular 24px stroke icon now, so
+   it no longer inherits the oversized stroke used by the former filled mark. */
+.app-shell.stitch-shell .ui-icon-returns > g {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The sidebar opens as an overlay. Keep its brand rail in one horizontal
+   coordinate system so the logo and pin do not drift during expansion. */
+@media (min-width: 701px) {
+  .app-shell.stitch-shell > aside .sidebar-brand-row {
+    justify-content: flex-start;
+    box-sizing: border-box;
+    padding-inline-start: 16px;
+    padding-inline-end: 0;
+    transition: none;
+  }
+
+  .app-shell.stitch-shell > aside .stitch-brand-mark {
+    flex: 0 0 38px;
+    margin-inline: 0;
+    transform: none;
+    transition: none;
+  }
+
+  .app-shell.stitch-shell > aside .sidebar-pin-toggle {
+    flex: 0 0 30px;
+    margin-left: auto;
+    transform: none;
+    transition: none;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-hover-expanded) > aside .sidebar-pin-toggle {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-pin-toggle,
+  .app-shell.stitch-shell:not(.sidebar-collapsed) > aside .sidebar-pin-toggle {
+    visibility: visible;
+    pointer-events: auto;
+  }
+}
+
+/* The chart point is an information target, not a link or control. Keep the
+   native arrow cursor while the tooltip is revealed. */
+.app-shell.stitch-shell main .dashboard-chart-point,
+.app-shell.stitch-shell main .dashboard-chart-point-hit,
+.app-shell.stitch-shell main .dashboard-chart-point-tooltip {
+  cursor: default;
+}

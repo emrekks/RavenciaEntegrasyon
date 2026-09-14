@@ -438,7 +438,10 @@ const dashboardChartRight = 644
 const dashboardChartTop = 30
 const dashboardChartBottom = 180
 const dashboardChartTooltipWidth = 310
-const dashboardChartTooltipHeight = 174
+// Keep the foreignObject tall enough for the full information card so its
+// visual bottom can remain above the hovered chart point.
+const dashboardChartTooltipHeight = 194
+const dashboardChartTooltipGap = 10
 
 function dashboardChartY(amount: number, maxValue: number) {
   const ratio = Math.min(1, Math.max(0, amount / Math.max(1, maxValue)))
@@ -468,7 +471,9 @@ function DashboardChartPoints({ points, maxValue, currency }: { points: ReturnTy
     const x = dashboardChartX(index, points.length)
     const y = dashboardChartY(point.amount, maxValue)
     const tooltipX = Math.min(Math.max(x - dashboardChartTooltipWidth / 2, dashboardChartLeft), dashboardChartRight - dashboardChartTooltipWidth)
-    const tooltipY = Math.max(8, y - dashboardChartTooltipHeight - 8)
+    // Let the card lift slightly beyond the SVG's top inset. This keeps its
+    // lower edge above low chart points instead of leaving it on the cursor.
+    const tooltipY = Math.max(-14, y - dashboardChartTooltipHeight - dashboardChartTooltipGap)
     const productQuantity = point.productQuantity ?? 0
     const shipmentCount = point.shipmentCount ?? 0
     const yesterdayPoint = index > 0 ? points[index - 1] : point.yesterdayPoint

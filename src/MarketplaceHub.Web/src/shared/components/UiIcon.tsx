@@ -218,8 +218,9 @@ const paths: Record<UiIconName, ReactNode> = {
   equal: <><line x1="5" x2="19" y1="9" y2="9" /><line x1="5" x2="19" y1="15" y2="15" /></>,
 }
 
-// Keep the pending-return alias on the same SVG so every return surface uses
-// the shared return-box-cycle mark.
+// Keep the box geometry identical to Orders while retaining the surrounding
+// cycle arrows on every return surface.
+paths.returns = <g fill="none"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /><path d="M12 22V12" /><path d="m3.29 7 8.71 5 8.71-5" /><path d="m7.5 4.27 9 5.15" /><path d="M5.5 8.6a8 8 0 0 1 12.8-3.1" /><path d="M18.3 3.5v4h-4" /><path d="M18.5 15.4a8 8 0 0 1-12.8 3.1" /><path d="M5.7 20.5v-4h4" /></g>
 paths.pendingReturns = paths.returns
 
 export function UiIcon({ name, className, size = 16, title }: UiIconProps) {
