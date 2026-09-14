@@ -2635,11 +2635,15 @@
   appearance: none;
   -webkit-appearance: none;
   padding-right: 38px;
+  text-align: left;
+  text-align-last: left;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23919bb5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-position: right 12px center;
   background-repeat: no-repeat;
   background-size: 14px 14px;
 }
+.app-shell.stitch-shell main select option { text-align: left; }
+.app-shell.stitch-shell main .mapping-page :is(.searchable-select-trigger, .panel-category-picker-trigger, .searchable-select-options > button, .panel-category-picker [role="option"]) { text-align: left; }
 .app-shell.stitch-shell main .dashboard-period-control::after { right: var(--rv-space-3); }
 .app-shell.stitch-shell main .dashboard-header-period select { background-image: none; padding-inline: 40px 32px; }
 
