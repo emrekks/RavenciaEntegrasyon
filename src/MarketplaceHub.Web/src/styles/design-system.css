@@ -640,7 +640,7 @@
   .dashboard-card-header > div:first-child { min-width: 0; }
   .dashboard-card-header h2 { margin-bottom: var(--rv-space-1); }
   .dashboard-card-header p { margin: 0; }
-  .dashboard .page-heading { margin-bottom: var(--rv-space-5); align-items: start; }
+  .dashboard .page-heading { margin-bottom: var(--rv-space-5); padding-bottom: var(--rv-space-5); border-bottom: 0; align-items: start; }
   .dashboard-heading-actions { display: grid; min-width: max-content; grid-template-columns: auto; justify-items: end; align-items: end; gap: var(--rv-space-2); }
   .dashboard-report-controls { display: flex; align-items: center; justify-content: flex-end; gap: var(--rv-space-2); }
   .dashboard-header-period, .dashboard-platform-filter { display: grid; min-width: 128px; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
