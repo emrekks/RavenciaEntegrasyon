@@ -8053,11 +8053,11 @@ small,
 .app-shell.stitch-shell main .return-reference-table > .return-reference-row + .return-reference-row {
   margin-top: var(--rv-space-2);
   border: 1px solid var(--rv-color-border-strong);
-  border-radius: var(--rv-radius-lg);
+  border-radius: 0;
   box-shadow: var(--rv-shadow-sm);
 }
 
 .app-shell.stitch-shell main .return-reference-table > .return-reference-row + .return-reference-row:last-child {
   border-bottom: 1px solid var(--rv-color-border-strong);
-  border-radius: var(--rv-radius-lg);
+  border-radius: 0;
 }
