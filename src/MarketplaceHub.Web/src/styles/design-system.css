@@ -7849,7 +7849,7 @@ small,
 }
 
 /* Complete the compact reference fixes from the review pass. Category rows
-   keep their order while filling two balanced columns, and the picker stays
+   keep their order while filling four balanced columns, and the picker stays
    in a fixed viewport surface so opening it cannot move the page. */
 .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list {
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -7861,6 +7861,65 @@ small,
 .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list > span {
   height: 100%;
   min-height: 40px;
+}
+
+/* Brand entries use the same full-width library cards as panel categories. */
+.app-shell.stitch-shell main .brand-library-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: minmax(40px, auto);
+  align-items: stretch;
+  max-height: 136px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: var(--rv-space-1);
+}
+
+.app-shell.stitch-shell main .brand-library-list > span {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.app-shell.stitch-shell main .brand-library-list > span > button:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  overflow: hidden;
+  padding: var(--rv-space-2) var(--rv-space-3);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell main .brand-library-list .category-chip-remove {
+  display: inline-grid;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  flex: 0 0 28px;
+  margin: 0 var(--rv-space-1) 0 0;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+}
+
+@media (max-width: 768px) {
+  .app-shell.stitch-shell main .brand-library-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .app-shell.stitch-shell main .brand-library-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 .app-shell.stitch-shell main .mapping-category-builder .mapping-reference-local > .panel-category-picker {
