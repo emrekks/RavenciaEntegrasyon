@@ -8003,3 +8003,43 @@ small,
     max-height: 136px;
   }
 }
+
+/* Returns: keep the product/price separator on one shared baseline and make
+   the individual order groups easier to scan. */
+.app-shell.stitch-shell main .return-reference-row .order-reference-prices {
+  align-items: stretch;
+  justify-items: stretch;
+}
+
+.app-shell.stitch-shell main .return-reference-row .order-reference-prices > strong {
+  align-self: stretch;
+  justify-self: stretch;
+  min-height: 0;
+  margin-inline: calc(var(--rv-space-3) * -1);
+}
+
+.app-shell.stitch-shell main .return-reference-row .order-reference-products > article:not(:last-child) {
+  position: relative;
+}
+
+.app-shell.stitch-shell main .return-reference-row .order-reference-products > article:not(:last-child)::after {
+  position: absolute;
+  right: calc(-1 * (var(--rv-space-3) + 2px));
+  bottom: -1px;
+  left: 0;
+  height: 1px;
+  content: "";
+  background: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row + .return-reference-row {
+  margin-top: var(--rv-space-2);
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: var(--rv-radius-lg);
+  box-shadow: var(--rv-shadow-sm);
+}
+
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row + .return-reference-row:last-child {
+  border-bottom: 1px solid var(--rv-color-border-strong);
+  border-radius: var(--rv-radius-lg);
+}
