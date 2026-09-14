@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, type Me } from '../../shared/api'
-import { Tabs, UiIcon, type UiIconName } from '../../shared/components'
+import { Pagination, Tabs, UiIcon, type UiIconName } from '../../shared/components'
 import { statusLabel } from '../../shared/status-labels'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
@@ -166,10 +166,10 @@ function JobScanSummary({ scan }: { scan: JobScan }) {
         <p>{scan.detail}</p>
       </div>
       <div className="jobs-reference-scan-facts">
-        {scan.window && <p><small>Kapsam</small><strong>{scan.window}</strong></p>}
-        <p><small>Planlanan aralık</small><strong>{scan.plannedIntervalLabel ?? 'Manuel / isteğe bağlı'}</strong></p>
-        {scan.actualIntervalLabel && <p><small>Önceki taramadan geçen</small><strong>{scan.actualIntervalLabel}</strong></p>}
-        {scan.previousScheduledAt && <p><small>Önceki planlama</small><strong>{formatOptionalJobTime(scan.previousScheduledAt)}</strong></p>}
+        {scan.window && <p><small>Kapsam:</small><strong>{scan.window}</strong></p>}
+        <p><small>Planlanan aralık:</small><strong>{scan.plannedIntervalLabel ?? 'Manuel / isteğe bağlı'}</strong></p>
+        {scan.actualIntervalLabel && <p><small>Önceki taramadan geçen:</small><strong>{scan.actualIntervalLabel}</strong></p>}
+        {scan.previousScheduledAt && <p><small>Önceki planlama:</small><strong>{formatOptionalJobTime(scan.previousScheduledAt)}</strong></p>}
       </div>
     </div>
   </section>
@@ -275,10 +275,6 @@ export function JobsPage({ me }: { me: Me }) {
     cancelled: rangeFiltered.filter(job => job.status === 'CANCELLED').length
   }), [rangeFiltered])
   const categoryCounts = useMemo(() => new Map(categoryTabs.map(tab => [tab.key, rangeFiltered.filter(job => tab.match(job.jobType)).length])), [rangeFiltered])
-  const pageNumbers = useMemo(() => {
-    const pages = new Set([1, totalPages, currentPage, Math.max(1, currentPage - 1), Math.min(totalPages, currentPage + 1)])
-    return [...pages].sort((a, b) => a - b)
-  }, [currentPage, totalPages])
   const refreshJobs = () => {
     void Promise.all([
       client.invalidateQueries({ queryKey: ['jobs'] }),
@@ -339,11 +335,7 @@ export function JobsPage({ me }: { me: Me }) {
           })}
           {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={6}>Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.</td></tr>}
         </tbody></table></div>
-        {filtered.length > 0 && <div className="jobs-reference-pagination"><strong>Toplam {filtered.length.toLocaleString('tr-TR')} kayıt</strong><div className="jobs-reference-page-buttons">
-           <button type="button" aria-label="Önceki sayfa" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}><UiIcon name="chevronLeft" /></button>
-          {pageNumbers.map((page, index) => <Fragment key={page}>{index > 0 && page - pageNumbers[index - 1] > 1 && <span aria-hidden="true">…</span>}<button type="button" className={page === currentPage ? 'active' : ''} aria-current={page === currentPage ? 'page' : undefined} onClick={() => setPageNumber(page)}>{page}</button></Fragment>)}
-           <button type="button" aria-label="Sonraki sayfa" disabled={currentPage >= totalPages} onClick={() => setPageNumber(value => Math.min(totalPages, value + 1))}><UiIcon name="chevronRight" /></button>
-        </div></div>}
+        {filtered.length > 0 && <div className="jobs-reference-pagination"><strong>Toplam {filtered.length.toLocaleString('tr-TR')} kayıt</strong><Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={() => setPageNumber(value => Math.min(totalPages, value + 1))} /></div>}
       </>}
     </div>
     {selectedId && <div className="job-detail-backdrop jobs-reference-drawer-backdrop" role="presentation" onMouseDown={() => setSelectedId(null)}><aside className="job-detail-drawer jobs-reference-drawer panel" role="dialog" aria-modal="true" aria-labelledby="job-detail-title" onMouseDown={event => event.stopPropagation()}>

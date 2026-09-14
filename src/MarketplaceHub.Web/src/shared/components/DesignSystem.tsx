@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
+import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
 import { UiIcon, type UiIconName } from './UiIcon'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
@@ -139,8 +139,31 @@ export function DataTable<T>({ columns, rows, getRowKey, empty }: { columns: Arr
   return <div className="rv-table-scroll"><table className="rv-table"><thead><tr>{columns.map(column => <th key={column.key} style={column.width ? { width: column.width } : undefined}>{column.header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={getRowKey(row, index)}>{columns.map(column => <td key={column.key}>{column.render(row)}</td>)}</tr>)}</tbody></table></div>
 }
 
-export function Pagination({ page, hasNext, onPrevious, onNext }: { page: number; hasNext: boolean; onPrevious: () => void; onNext: () => void }) {
-  return <nav className="rv-pagination" aria-label="Sayfalama"><Button variant="secondary" size="sm" onClick={onPrevious} disabled={page <= 1}>Önceki</Button><span>Sayfa {page}</span><Button variant="secondary" size="sm" onClick={onNext} disabled={!hasNext}>Sonraki</Button></nav>
+export function Pagination({ page, totalPages, hasNext, onPageChange, onPrevious, onNext, disabled = false, className, ariaLabel = 'Sayfalama' }: { page: number; totalPages: number; hasNext?: boolean; onPageChange: (page: number) => void; onPrevious: () => void; onNext: () => void; disabled?: boolean; className?: string; ariaLabel?: string }) {
+  const safeTotalPages = Math.max(1, totalPages)
+  const safePage = Math.min(Math.max(1, page), safeTotalPages)
+  const [draftPage, setDraftPage] = useState(String(safePage))
+  useEffect(() => setDraftPage(String(safePage)), [safePage])
+  const readDraftPage = () => {
+    const parsed = Number.parseInt(draftPage, 10)
+    return Math.min(Math.max(1, Number.isFinite(parsed) ? parsed : safePage), safeTotalPages)
+  }
+  const commitDraftPage = () => {
+    const nextPage = readDraftPage()
+    setDraftPage(String(nextPage))
+    if (nextPage !== safePage) onPageChange(nextPage)
+  }
+  const goPrevious = () => {
+    const draft = readDraftPage()
+    if (draft !== safePage) { commitDraftPage(); return }
+    onPrevious()
+  }
+  const goNext = () => {
+    const draft = readDraftPage()
+    if (draft !== safePage) { commitDraftPage(); return }
+    onNext()
+  }
+  return <nav className={['rv-pagination', className].filter(Boolean).join(' ')} aria-label={ariaLabel}><Button variant="secondary" size="sm" onClick={goPrevious} disabled={disabled || safePage <= 1}>Önceki</Button><label className="rv-pagination-jump"><span>Sayfa</span><input type="number" inputMode="numeric" min={1} max={safeTotalPages} value={draftPage} onChange={event => setDraftPage(event.target.value)} onBlur={commitDraftPage} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commitDraftPage(); event.currentTarget.blur() } }} aria-label="Sayfa numarası" disabled={disabled} /><span aria-hidden="true"> / {safeTotalPages}</span></label><Button variant="secondary" size="sm" onClick={goNext} disabled={disabled || !(hasNext ?? safePage < safeTotalPages)}>Sonraki</Button></nav>
 }
 
 export function Modal({ open, title, onClose, children, footer, description, className }: DialogSurfaceProps) {

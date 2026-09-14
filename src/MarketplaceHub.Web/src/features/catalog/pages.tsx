@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
-import { Callout, UiIcon, type UiIconName } from '../../shared/components'
+import { Callout, Pagination, UiIcon, type UiIconName } from '../../shared/components'
 import { sanitizeRichText } from '../../shared/security/sanitizeHtml'
 import { productStatusLabel, productStatusTone, statusLabel } from '../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
@@ -517,6 +517,11 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
     window.requestAnimationFrame(updatePosition)
   }
 
+  function showTooltip() {
+    setOpen(true)
+    window.requestAnimationFrame(updatePosition)
+  }
+
   useEffect(() => {
     if (!open) return
     updatePosition()
@@ -537,7 +542,7 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
   }, [groups.length, open])
 
   return <>
-    <div ref={triggerRef} className="product-list-variants product-variant-hover" tabIndex={0} role="button" aria-expanded={open} aria-label={`${catalogCount} seçenek, ${count} varyant. Varyant bilgilerini görmek için tıklayın`} title="Varyant bilgilerini görmek için tıklayın" onClick={toggleTooltip} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleTooltip() } }}>
+    <div ref={triggerRef} className="product-list-variants product-variant-hover" tabIndex={0} role="button" aria-expanded={open} aria-label={`${catalogCount} seçenek, ${count} varyant. Varyant bilgilerini görmek için üzerine gelin veya tıklayın`} title="Varyant bilgilerini görmek için üzerine gelin veya tıklayın" onMouseEnter={showTooltip} onMouseLeave={() => setOpen(false)} onFocus={showTooltip} onBlur={() => setOpen(false)} onClick={event => { if (event.detail > 0) showTooltip(); else toggleTooltip() }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleTooltip() } }}>
       <strong>{catalogCount} seçenek</strong><span>{count} varyant</span>
     </div>
     {open && createPortal(
@@ -608,6 +613,7 @@ function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { 
 
 export function ProductsPage() {
   const client = useQueryClient(); const [search, setSearch] = useState(''); const [searchFilter, setSearchFilter] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('INCREMENTAL'); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>({})
+  const [pageJumping, setPageJumping] = useState(false)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
   const productFilters = useMemo<ProductListFilters>(() => ({ search: searchFilter, status, platform, stock }), [searchFilter, status, platform, stock])
   const productFilterKey = JSON.stringify(productFilters)
@@ -740,6 +746,29 @@ export function ProductsPage() {
     setPageNumber(nextPage)
   }
 
+  async function goToPage(nextPage: number) {
+    const target = Math.min(Math.max(1, nextPage), totalPages)
+    if (pageJumping || target === currentPage) return
+    if (target === 1 || pageCursors[productFilterKey]?.[target] !== undefined) { setPageNumber(target); return }
+    setPageJumping(true)
+    try {
+      let cursor = pageCursors[productFilterKey]?.[2] ?? null
+      for (let page = 2; page <= target; page += 1) {
+        const knownCursor = pageCursors[productFilterKey]?.[page]
+        if (knownCursor !== undefined) { cursor = knownCursor; continue }
+        const result = await fetchProductPage(pageSize, productFilters, cursor)
+        if (!result.nextCursor) return
+        cursor = result.nextCursor
+        setPageCursors(current => ({ ...current, [productFilterKey]: { ...(current[productFilterKey] ?? {}), [page]: result.nextCursor } }))
+      }
+      setPageNumber(target)
+    } catch (err) {
+      showProductToast(err instanceof Error ? err.message : 'İstenen ürün sayfası yüklenemedi.', 'error')
+    } finally {
+      setPageJumping(false)
+    }
+  }
+
   async function bulkSetProductStatus(newStatus: 'ACTIVE' | 'ARCHIVED') {
     setBulkOpen(false)
     const targetCount = selectedProductIds.length
@@ -859,7 +888,7 @@ export function ProductsPage() {
         </div>
       </div>
     )}
-    {totalCount > 0 && <div className="order-pagination product-pagination"><span>Toplam {totalCount.toLocaleString('tr-TR')} ürün kartından {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)} arası gösteriliyor · Bu sayfada {pageProductGroups.length} kart</span><div className="product-pagination-controls"><button type="button" aria-label="Önceki sayfa" disabled={currentPage <= 1} onClick={() => setPageNumber(value => Math.max(1, value - 1))}><UiIcon name="chevronLeft" /></button><b>Sayfa {currentPage} / {totalPages}</b><button type="button" aria-label="Sonraki sayfa" disabled={currentPage >= totalPages || !nextPageCursor} onClick={goToNextPage}><UiIcon name="chevronRight" /></button></div></div>}
+    {totalCount > 0 && <div className="order-pagination product-pagination"><span>Toplam {totalCount.toLocaleString('tr-TR')} ürün kartından {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)} arası gösteriliyor · Bu sayfada {pageProductGroups.length} kart</span><Pagination className="product-pagination-controls" page={currentPage} totalPages={totalPages} hasNext={currentPage < totalPages && Boolean(nextPageCursor)} onPageChange={goToPage} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={goToNextPage} disabled={query.isFetching || pageJumping} /></div>}
     </section>
    {quickEdit && <ProductQuickEditModal products={selectedProducts} connections={connections} mode={quickEdit.mode} onChanged={refresh} onResult={showProductToast} onClose={() => setQuickEdit(null)} />}
     {deleteRequest && <ProductDeleteConfirmModal request={deleteRequest} deleting={deletingProducts} onClose={() => setDeleteRequest(null)} onConfirm={() => void confirmProductDelete()} />}
