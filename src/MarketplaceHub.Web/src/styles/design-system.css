@@ -7568,3 +7568,10 @@ small,
     align-self: center;
   }
 }
+
+/* The final status column still needs a visible rule when the returns table
+   is wider than the viewport and is scrolled horizontally. */
+.app-shell.stitch-shell main .return-reference-table > .return-reference-head > *:last-child,
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row > *:last-child {
+  border-right: 1px solid var(--rv-color-border-strong);
+}
