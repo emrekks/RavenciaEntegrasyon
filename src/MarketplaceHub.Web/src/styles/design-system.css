@@ -7712,7 +7712,7 @@ small,
 /* The active-product card has no secondary status line, so keep its empty
    lower area from making the card unnecessarily tall. */
 .app-shell.stitch-shell main .dashboard-summary-card-compact {
-  min-height: 136px;
+  min-height: 175px;
   padding-bottom: 16px;
   align-self: start;
 }
