@@ -7852,7 +7852,7 @@ small,
    keep their order while filling two balanced columns, and the picker stays
    in a fixed viewport surface so opening it cannot move the page. */
 .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-auto-rows: minmax(40px, auto);
   align-items: stretch;
   max-height: 136px;
