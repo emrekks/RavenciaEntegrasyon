@@ -220,7 +220,7 @@ const paths: Record<UiIconName, ReactNode> = {
 
 // Keep the larger package above a separate oval return arrow so the two
 // symbols remain legible without touching at navigation size.
-paths.returns = <g fill="none"><path d="m4.7 5.1 7.3-3.6 7.3 3.6v7.8L12 16.5l-7.3-3.6z" /><path d="m4.7 5.1 7.3 3.7 7.3-3.7" /><path d="M12 8.8v7.7" /><path d="M18.9 19.4A7.8 7.8 0 0 1 6.6 18.8" /><path d="M6.6 18.8H9.6" /><path d="M6.6 18.8V21.8" /></g>
+paths.returns = <g fill="none"><path d="m4.7 5.1 7.3-3.6 7.3 3.6v7.8L12 16.5l-7.3-3.6z" /><path d="m4.7 5.1 7.3 3.7 7.3-3.7" /><path d="M12 8.8v7.7" /><path d="M19.1 20.5A8.4 8.4 0 0 1 6.2 19.6" /><path d="M6.2 19.6H9.4" /><path d="M6.2 19.6V22.7" /></g>
 paths.pendingReturns = paths.returns
 
 export function UiIcon({ name, className, size = 16, title }: UiIconProps) {
