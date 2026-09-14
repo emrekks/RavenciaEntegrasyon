@@ -7709,6 +7709,18 @@ small,
   z-index: 0;
 }
 
+/* The active-product card has no secondary status line, so keep its empty
+   lower area from making the card unnecessarily tall. */
+.app-shell.stitch-shell main .dashboard-summary-card-compact {
+  min-height: 136px;
+  padding-bottom: 16px;
+  align-self: start;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-card-compact .dashboard-sparkline {
+  bottom: 14px;
+}
+
 .app-shell.stitch-shell main .dashboard-summary-card-with-platforms:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 78%, transparent);
   outline-offset: 2px;
