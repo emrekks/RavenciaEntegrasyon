@@ -7712,11 +7712,46 @@ small,
 }
 
 .app-shell.stitch-shell main .dashboard-summary-card-with-platforms .dashboard-summary-platform-list {
+  position: absolute;
+  top: calc(var(--rv-space-5) + 72px);
+  right: var(--rv-space-5);
+  left: var(--rv-space-5);
+  z-index: 2;
+  box-sizing: border-box;
+  max-height: calc(100% - 110px);
+  margin-top: 0;
+  padding: 10px 12px;
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--rv-color-surface) 96%, transparent);
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: var(--rv-radius-sm);
+  box-shadow: var(--rv-shadow-lg);
+  backdrop-filter: blur(10px);
   opacity: 0;
   pointer-events: none;
   transform: translateY(-4px);
   transition: opacity .16s ease, transform .16s ease, visibility 0s linear .16s;
   visibility: hidden;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-card-with-platforms .dashboard-summary-platform-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-card-with-platforms .dashboard-summary-platform-list::-webkit-scrollbar-thumb {
+  background: var(--rv-color-border-strong);
+  border-radius: 999px;
+}
+
+/* The supplied return-box-cycle mark uses filled paths whose source stroke is
+   too fine at the 19px navigation size. Keep the same shape and reinforce
+   its path edges so it has the same visual weight as the other menu icons. */
+.app-shell.stitch-shell .ui-icon-returns > g {
+  stroke: currentColor;
+  stroke-width: 64;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: none;
 }
 
 .app-shell.stitch-shell main .dashboard-summary-card-with-platforms:hover,

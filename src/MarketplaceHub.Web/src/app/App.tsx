@@ -388,7 +388,7 @@ type DashboardPlatformShare = { platform: string; color: string; amount: number;
 
 function DashboardPlatformDistribution({ rows, valueKey, label }: { rows: DashboardPlatformShare[]; valueKey: 'amount' | 'orders'; label: string }) {
   const visibleRows = rows.filter(row => row[valueKey] > 0)
-  return <div className="dashboard-summary-platform-list" aria-label={label}>
+  return <div className="dashboard-summary-platform-list" role="tooltip" aria-label={label}>
     {visibleRows.length ? visibleRows.map(row => <span key={row.platform}><i style={{ background: row.color }} /><span className="dashboard-summary-platform-name" title={row.platform}>{row.platform}</span><b>{valueKey === 'amount' ? dashboardMoney(row.amount) : `${row.orders.toLocaleString('tr-TR')} adet`}</b></span>) : <small>Platform dağılımı yok</small>}
   </div>
 }
