@@ -218,6 +218,10 @@ const paths: Record<UiIconName, ReactNode> = {
   equal: <><line x1="5" x2="19" y1="9" y2="9" /><line x1="5" x2="19" y1="15" y2="15" /></>,
 }
 
+// Keep the pending-return alias on the same SVG so every return surface uses
+// the shared return-box-cycle mark.
+paths.pendingReturns = paths.returns
+
 export function UiIcon({ name, className, size = 16, title }: UiIconProps) {
   return <svg className={`ui-icon${className ? ` ${className}` : ''}`} viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" shapeRendering="geometricPrecision" preserveAspectRatio="xMidYMid meet" focusable="false" aria-hidden={title ? undefined : true} role={title ? 'img' : undefined}>{title && <title>{title}</title>}{paths[name]}</svg>
 }

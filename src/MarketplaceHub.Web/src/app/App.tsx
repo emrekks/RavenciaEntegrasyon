@@ -84,7 +84,7 @@ function Shell({ me }: { me: Me }) {
     return <NavLink to={to} end={end} aria-label={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className="nav-count" aria-hidden="true">{visibleCount}</span>}</NavLink>
   }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
-    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.newAndProcessingOrders ?? navigationCounts?.pendingOrders, true), item('/returns', 'box', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar', false, navigationCounts?.dueSoonInvoices ?? 0, true), item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'jobs', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
+    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.newAndProcessingOrders ?? navigationCounts?.pendingOrders, true), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar', false, navigationCounts?.dueSoonInvoices ?? 0, true), item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'jobs', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}>{group.items}</div>)}</>
   const quickSearchItems: Array<{ to: string; label: string; description: string; icon: UiIconName }> = [
