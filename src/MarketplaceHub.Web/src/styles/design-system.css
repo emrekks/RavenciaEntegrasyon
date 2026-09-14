@@ -1975,7 +1975,7 @@
   .jobs-reference-table-scroll { overflow-x: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
   .jobs-reference-table { display: block; width: 100%; min-width: 980px; margin: 0; border: 0; border-collapse: separate; border-spacing: 0; }
   .jobs-reference-table thead, .jobs-reference-table tbody { display: block; }
-  .jobs-reference-table thead tr, .jobs-reference-table tbody .jobs-reference-row, .jobs-reference-table tbody > tr:not(.jobs-reference-row) { display: grid; grid-template-columns: minmax(260px, 2fr) minmax(130px, .9fr) minmax(90px, .6fr) minmax(170px, 1.1fr) minmax(230px, 1.35fr) minmax(112px, .8fr); align-items: stretch; }
+  .jobs-reference-table thead tr, .jobs-reference-table tbody .jobs-reference-row, .jobs-reference-table tbody > tr:not(.jobs-reference-row) { display: grid; grid-template-columns: minmax(240px, 1.9fr) minmax(150px, 1.05fr) minmax(86px, .6fr) minmax(164px, 1.05fr) minmax(190px, 1.1fr) minmax(104px, .75fr); align-items: stretch; }
   .jobs-reference-table th, .jobs-reference-table td { display: flex; min-width: 0; align-items: center; min-height: 60px; padding: var(--rv-space-3) var(--rv-space-4); border-bottom: 1px solid var(--rv-color-border); }
   .jobs-reference-table th { min-height: 48px; background: var(--rv-color-surface-raised); }
   .jobs-reference-table th:not(:last-child), .jobs-reference-table td:not(:last-child) { border-right: 1px solid var(--rv-color-border); }
