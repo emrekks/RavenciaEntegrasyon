@@ -1,3 +1,4 @@
+import { Callout } from './DesignSystem'
 import { UiIcon } from './UiIcon'
 
 export function Busy({ text = 'Veriler yükleniyor…' }: { text?: string }) {
@@ -5,5 +6,5 @@ export function Busy({ text = 'Veriler yükleniyor…' }: { text?: string }) {
 }
 
 export function ErrorBox({ error }: { error: unknown }) {
-  return <div role="alert" className="error">{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</div>
+  return <Callout tone="danger">{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</Callout>
 }
