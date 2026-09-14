@@ -8005,9 +8005,14 @@ small,
 }
 
 /* Returns: the table edge is the only rule needed after the final status
-   column; remove the duplicate inner edge. */
+   column; remove the duplicate inner edge from the preceding column. */
 .app-shell.stitch-shell main .return-reference-table > .return-reference-head > *:last-child,
 .app-shell.stitch-shell main .return-reference-table > .return-reference-row > *:last-child {
+  border-right: 0;
+}
+
+.app-shell.stitch-shell main .return-reference-table > .return-reference-head > *:nth-last-child(2),
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row > *:nth-last-child(2) {
   border-right: 0;
 }
 
