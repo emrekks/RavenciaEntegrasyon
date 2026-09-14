@@ -8062,3 +8062,45 @@ small,
   border-bottom: 1px solid var(--rv-color-border-strong);
   border-radius: 0;
 }
+
+/* Orders and invoices use the same readable reference-table rhythm as
+   returns: a single outer frame, stronger shared rules, and a small gap
+   between separate records without adding a second rounded card edge. */
+.app-shell.stitch-shell main .invoice-reference-table {
+  border-color: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-head,
+.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row {
+  border-color: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-head > *,
+.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row > * {
+  border-right-color: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-head > *:last-child,
+.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row > *:last-child {
+  border-right: 0;
+}
+
+.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row {
+  border-bottom-color: var(--rv-color-border-strong);
+  border-radius: 0;
+}
+
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row + .order-reference-row,
+.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row + .invoice-reference-row {
+  margin-top: var(--rv-space-2);
+  border: 1px solid var(--rv-color-border-strong);
+  border-left: 0;
+  border-radius: 0;
+  box-shadow: var(--rv-shadow-sm);
+}
+
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row + .order-reference-row:last-child,
+.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row + .invoice-reference-row:last-child {
+  border-bottom: 1px solid var(--rv-color-border-strong);
+  border-radius: 0;
+}
