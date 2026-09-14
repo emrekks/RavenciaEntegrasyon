@@ -7273,6 +7273,107 @@ small,
   }
 }
 
+/* Dashboard summary cards keep the amount and trend on one readable line. */
+.app-shell.stitch-shell main .dashboard-summary-value-row {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: var(--rv-space-2);
+  flex-wrap: nowrap;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-value-row > strong {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-value-row > .dashboard-summary-trend {
+  min-width: max-content;
+  flex: 0 0 auto;
+  justify-self: auto;
+  white-space: nowrap;
+}
+
+/* Platform labels are allowed to use the full row instead of being reduced to
+   an unreadable two- or three-character ellipsis. */
+.app-shell.stitch-shell main .dashboard-summary-platform-list {
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-platform-list > span {
+  grid-template-columns: 7px minmax(0, 1fr) auto;
+  gap: var(--rv-space-2);
+  font-size: var(--rv-font-size-xs);
+  line-height: 1.3;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-platform-list > span > i {
+  width: 7px;
+  height: 7px;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-platform-list > span > .dashboard-summary-platform-name {
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.app-shell.stitch-shell main .dashboard-summary-platform-list > span > b {
+  max-width: none;
+  font-size: var(--rv-font-size-xs);
+  white-space: nowrap;
+}
+
+/* Chart detail popovers are intentionally larger than the compact card text. */
+.app-shell.stitch-shell main .dashboard-chart-tooltip {
+  width: 310px;
+  padding: 13px 15px;
+  gap: 8px;
+  font-size: var(--rv-font-size-sm);
+  line-height: 1.35;
+}
+
+.app-shell.stitch-shell main .dashboard-chart-tooltip > strong {
+  font-size: var(--rv-font-size-md);
+}
+
+.app-shell.stitch-shell main .dashboard-chart-tooltip-compare-head,
+.app-shell.stitch-shell main .dashboard-chart-tooltip-compare-row {
+  grid-template-columns: 58px minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 10px;
+}
+
+.app-shell.stitch-shell main .dashboard-chart-tooltip-compare-head {
+  font-size: var(--rv-font-size-xs);
+}
+
+.app-shell.stitch-shell main .dashboard-chart-tooltip-compare-row > b {
+  font-size: var(--rv-font-size-xs);
+}
+
+/* Product and price columns share the same subgrid row breaks in returns. */
+.app-shell.stitch-shell main .return-reference-row .order-reference-prices > strong {
+  display: flex;
+  min-width: 0;
+  min-height: 130px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: var(--rv-space-3);
+  border-bottom: 1px solid var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .return-reference-row .order-reference-prices > strong:last-child,
+.app-shell.stitch-shell main .return-reference-row .order-reference-prices > strong:only-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 /* Integration settings: keep connection identity, automation and credentials
    visually separate so an operator can understand the safe path at a glance. */
 .app-shell.stitch-shell main .integration-detail-section {

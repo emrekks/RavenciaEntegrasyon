@@ -389,7 +389,7 @@ type DashboardPlatformShare = { platform: string; color: string; amount: number;
 function DashboardPlatformDistribution({ rows, valueKey, label }: { rows: DashboardPlatformShare[]; valueKey: 'amount' | 'orders'; label: string }) {
   const visibleRows = rows.filter(row => row[valueKey] > 0)
   return <div className="dashboard-summary-platform-list" aria-label={label}>
-    {visibleRows.length ? visibleRows.map(row => <span key={row.platform}><i style={{ background: row.color }} /><span title={row.platform}>{row.platform}</span><b>{valueKey === 'amount' ? dashboardMoney(row.amount) : `${row.orders.toLocaleString('tr-TR')} adet`}</b></span>) : <small>Platform dağılımı yok</small>}
+    {visibleRows.length ? visibleRows.map(row => <span key={row.platform}><i style={{ background: row.color }} /><span className="dashboard-summary-platform-name" title={row.platform}>{row.platform}</span><b>{valueKey === 'amount' ? dashboardMoney(row.amount) : `${row.orders.toLocaleString('tr-TR')} adet`}</b></span>) : <small>Platform dağılımı yok</small>}
   </div>
 }
 
@@ -437,8 +437,8 @@ const dashboardChartLeft = 44
 const dashboardChartRight = 644
 const dashboardChartTop = 30
 const dashboardChartBottom = 180
-const dashboardChartTooltipWidth = 278
-const dashboardChartTooltipHeight = 154
+const dashboardChartTooltipWidth = 310
+const dashboardChartTooltipHeight = 174
 
 function dashboardChartY(amount: number, maxValue: number) {
   const ratio = Math.min(1, Math.max(0, amount / Math.max(1, maxValue)))
