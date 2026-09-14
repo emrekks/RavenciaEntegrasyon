@@ -102,6 +102,8 @@ public static class DependencyInjection
         services.AddSingleton<IPrivateFileStorage>(new PrivateFileStorage(filesRoot));
         services.Configure<BootstrapOptions>(configuration.GetSection("Bootstrap"));
         services.AddScoped<BootstrapService>();
+        services.Configure<LocalDevelopmentSeedOptions>(configuration.GetSection("LocalDevelopmentSeed"));
+        services.AddScoped<LocalDevelopmentSeedService>();
         return services;
     }
 
