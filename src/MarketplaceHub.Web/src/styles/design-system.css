@@ -1536,7 +1536,9 @@
   .publish-platform-card-head { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; width: 100%; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-4); color: var(--rv-color-ink); background: transparent; border: 0; text-align: left; }
   .publish-platform-card-head > span:nth-child(2) { display: grid; gap: 2px; }
   .publish-platform-card-head small { color: var(--rv-color-muted); }
-  .publish-platform-mark { display: grid; width: 38px; height: 38px; place-items: center; color: #fff; background: var(--rv-color-primary); border-radius: var(--rv-radius-md); font-weight: 900; }
+  .publish-platform-mark { display: grid; width: 38px; height: 38px; place-items: center; overflow: hidden; color: #fff; background: var(--rv-color-primary); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); font-weight: 900; }
+  .publish-platform-logo { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
+  .publish-platform-logo.platform-logo-trendyol { object-fit: cover; }
   .publish-platform-toggle { width: 38px; padding: 3px; background: var(--rv-color-border-strong); border-radius: 999px; }
   .publish-platform-toggle b { display: block; width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: transform .18s ease; }
   .publish-platform-toggle.on { background: var(--rv-color-accent); }
@@ -1813,9 +1815,9 @@
   .reference-integration-brand { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-3); }
   .reference-integration-brand > div { display: grid; min-width: 0; gap: var(--rv-space-1); }
   .reference-integration-brand h2 { overflow: hidden; margin: 0; text-overflow: ellipsis; white-space: nowrap; }
-  .reference-provider-logo { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; color: #fff; background: #f27a19; border-radius: 12px; font-family: var(--rv-font-mono); font-size: var(--rv-font-size-sm); font-weight: 900; }
-  .reference-provider-logo.trendyol { object-fit: cover; }
-  .reference-provider-logo.efaturam { background: linear-gradient(135deg, #7b65f6, #4f9dff); }
+  .reference-provider-logo { display: block; width: 42px; height: 42px; flex: 0 0 42px; object-fit: contain; object-position: center; border: 1px solid var(--rv-color-border-strong); border-radius: 12px; background: var(--rv-color-surface-raised); }
+  .reference-provider-logo.platform-logo-trendyol { object-fit: cover; }
+  .reference-provider-logo.platform-logo-trendyol-efaturam { padding: 3px; background: #fff; }
   .reference-connection-state { display: inline-flex; align-items: center; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
   .reference-connection-state i { width: 7px; height: 7px; flex: 0 0 7px; background: currentColor; border-radius: 50%; }
   .reference-connection-state.connected { color: var(--rv-color-accent); }
@@ -2060,7 +2062,8 @@
   .panel-library-section .panel-attribute-records > article { min-height: 58px; padding: var(--rv-space-3) var(--rv-space-4); }
   .mapping-saved-card > header { flex-direction: column; align-items: stretch; }
   .mapping-saved-header-tools { width: 100%; min-width: 0; grid-template-columns: minmax(220px, 1fr) auto; }
-  .mapping-platform-logo { display: block; width: 42px; height: 42px; flex: 0 0 42px; object-fit: contain; border-radius: var(--rv-radius-sm); }
+  .mapping-platform-logo { display: block; width: 42px; height: 42px; flex: 0 0 42px; object-fit: contain; object-position: center; border-radius: var(--rv-radius-sm); }
+  .mapping-platform-logo.platform-logo-trendyol { object-fit: cover; }
   .embedded-attribute-grid, .mapping-unified-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-4); align-items: start; }
   .mapping-attributes-grid > * { min-width: 0; }
   .mapping-advanced-modal { width: min(1040px, 100%); }
@@ -7370,8 +7373,8 @@ small,
 }
 
 .app-shell.stitch-shell main .dashboard-summary-card-with-platforms {
-  min-height: 214px;
-  padding-bottom: 68px;
+  min-height: 200px;
+  padding-bottom: 56px;
 }
 
 .app-shell.stitch-shell main .dashboard-summary-platform-list {
@@ -7399,8 +7402,8 @@ small,
 
 @media (max-width: 700px) {
   .app-shell.stitch-shell main .dashboard-summary-card-with-platforms {
-    min-height: 204px;
-    padding-bottom: 64px;
+    min-height: 194px;
+    padding-bottom: 56px;
   }
 }
 
@@ -7743,17 +7746,6 @@ small,
   border-radius: 999px;
 }
 
-/* The supplied return-box-cycle mark uses filled paths whose source stroke is
-   too fine at the 19px navigation size. Keep the same shape and reinforce
-   its path edges so it has the same visual weight as the other menu icons. */
-.app-shell.stitch-shell .ui-icon-returns > g {
-  stroke: currentColor;
-  stroke-width: 64;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: none;
-}
-
 .app-shell.stitch-shell main .dashboard-summary-card-with-platforms:hover,
 .app-shell.stitch-shell main .dashboard-summary-card-with-platforms:focus-visible,
 .app-shell.stitch-shell main .dashboard-summary-card-with-platforms:focus-within {
@@ -7776,16 +7768,21 @@ small,
   }
 }
 
-/* Keep the return mark's box identical to Orders while retaining the two
-   surrounding cycle arrows. The icon is a regular 24px stroke icon now, so
-   it no longer inherits the oversized stroke used by the former filled mark. */
+/* Keep the return mark clear at navigation size with a regular 24px stroke
+   icon and enough breathing room from its purple navigation tile. */
 .app-shell.stitch-shell .ui-icon-returns > g {
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 1.9;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
+}
+
+.app-shell.stitch-shell > aside .ui-icon-returns {
+  width: 24px;
+  height: 24px;
+  flex-basis: 22px;
 }
 
 /* The sidebar opens as an overlay. Keep its brand rail in one horizontal
@@ -7831,4 +7828,107 @@ small,
 .app-shell.stitch-shell main .dashboard-chart-point-hit,
 .app-shell.stitch-shell main .dashboard-chart-point-tooltip {
   cursor: default;
+}
+
+/* Allow the higher chart detail card to extend above the chart viewport while
+   remaining inside the performance panel. */
+.app-shell.stitch-shell main .dashboard-performance-chart {
+  overflow: visible;
+}
+
+/* Complete the compact reference fixes from the review pass. Category rows
+   keep their order while filling two balanced columns, and the picker stays
+   in a fixed viewport surface so opening it cannot move the page. */
+.app-shell.stitch-shell main .mapping-local-category-builder .category-library-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(40px, auto);
+  align-items: stretch;
+  max-height: 136px;
+}
+
+.app-shell.stitch-shell main .mapping-local-category-builder .category-library-list > span {
+  height: 100%;
+  min-height: 40px;
+}
+
+.app-shell.stitch-shell main .mapping-category-builder .mapping-reference-local > .panel-category-picker {
+  position: fixed;
+  overscroll-behavior: contain;
+}
+
+/* Edit/remove controls in the attribute library and job detail actions share
+   one predictable square hit area. */
+.app-shell.stitch-shell main .panel-attribute-record-actions > button:not(.panel-attribute-category-button),
+.app-shell.stitch-shell main .jobs-reference-table .jobs-reference-row-action {
+  box-sizing: border-box;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  flex: 0 0 44px;
+  padding: 0;
+  place-items: center;
+}
+
+.app-shell.stitch-shell main .jobs-reference-table .jobs-reference-row-action .ui-icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* The table status already has its own <i> dot. The shared error callout
+   decoration must not add a second ring or let the label paint outside its
+   status cell. */
+.app-shell.stitch-shell main .jobs-reference-table .jobs-reference-status {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell main .jobs-reference-table .jobs-reference-status.error::before {
+  display: none;
+  content: none;
+}
+
+.app-shell.stitch-shell main .return-reference-table > .return-reference-head > .order-column-filter {
+  align-self: stretch;
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 100%;
+}
+
+/* Keep the order header as a grid all the way down to its cells; only the
+   filter's two internal pieces need their own small layout. */
+.app-shell.stitch-shell main .order-reference-table > .order-reference-head {
+  display: grid;
+}
+
+.app-shell.stitch-shell main .order-reference-table > .order-reference-head > strong {
+  display: grid;
+  align-items: center;
+}
+
+.app-shell.stitch-shell main .order-reference-table > .order-reference-head > .order-column-filter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+/* The stepper follows the left product-information column on desktop and
+   returns to the full content width when that column stacks responsively. */
+.app-shell.stitch-shell main .product-add-stepper {
+  width: 100%;
+  max-width: none;
+}
+
+@media (min-width: 1201px) {
+  .app-shell.stitch-shell main .product-add-stepper {
+    width: calc(66.82% - 13.36px);
+  }
+}
+
+@media (max-width: 520px) {
+  .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list {
+    grid-template-columns: 1fr;
+    max-height: 136px;
+  }
 }

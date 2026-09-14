@@ -24,6 +24,7 @@ function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
   const location = useLocation()
   const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
+  const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace'], queryFn: () => hubApi<Array<{ isDueSoon: boolean }>>('/invoice-workspace'), staleTime: 30_000, refetchOnWindowFocus: true })
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -76,6 +77,7 @@ function Shell({ me }: { me: Me }) {
   function handleSidebarMouseLeave() { if (!sidebarPinned) setSidebarHoverExpanded(false) }
   const icon = (name: UiIconName) => <span className="nav-icon-slot" aria-hidden="true"><UiIcon className="nav-icon" name={name} size={22} /></span>
   const navigationCounts = navigationSummary.data?.metrics
+  const invoiceDueSoonCount = invoiceWorkspaceSummary.data ? invoiceWorkspaceSummary.data.filter(item => item.isDueSoon).length : navigationCounts?.dueSoonInvoices ?? 0
   const item = (to: string, iconName: UiIconName, label: string, end = false, count?: number, showZeroCount = false) => {
     const hasCount = typeof count === 'number' && (count > 0 || showZeroCount)
     const accessibleCount = typeof count === 'number' && count > 999 ? '999 üzeri' : count?.toLocaleString('tr-TR')
@@ -84,7 +86,7 @@ function Shell({ me }: { me: Me }) {
     return <NavLink to={to} end={end} aria-label={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className="nav-count" aria-hidden="true">{visibleCount}</span>}</NavLink>
   }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
-    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.newAndProcessingOrders ?? navigationCounts?.pendingOrders, true), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar', false, navigationCounts?.dueSoonInvoices ?? 0, true), item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'jobs', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
+    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, navigationCounts?.newAndProcessingOrders ?? navigationCounts?.pendingOrders, true), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar', false, invoiceDueSoonCount, true), item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'jobs', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}>{group.items}</div>)}</>
   const quickSearchItems: Array<{ to: string; label: string; description: string; icon: UiIconName }> = [
@@ -441,7 +443,8 @@ const dashboardChartTooltipWidth = 310
 // Keep the foreignObject tall enough for the full information card so its
 // visual bottom can remain above the hovered chart point.
 const dashboardChartTooltipHeight = 194
-const dashboardChartTooltipGap = 10
+const dashboardChartTooltipGap = 26
+type DashboardChartViewport = { svgTop: number; svgHeight: number }
 
 function dashboardChartY(amount: number, maxValue: number) {
   const ratio = Math.min(1, Math.max(0, amount / Math.max(1, maxValue)))
@@ -466,14 +469,17 @@ function dashboardAreaPath(points: Array<{ amount: number }>, maxValue: number) 
   return line ? `${line} L ${dashboardChartRight} ${dashboardChartBottom} L ${dashboardChartLeft} ${dashboardChartBottom} Z` : ''
 }
 
-function DashboardChartPoints({ points, maxValue, currency }: { points: ReturnType<typeof dashboardRevenueSeries>; maxValue: number; currency: string }) {
+function DashboardChartPoints({ points, maxValue, currency, chartViewport }: { points: ReturnType<typeof dashboardRevenueSeries>; maxValue: number; currency: string; chartViewport: DashboardChartViewport | null }) {
   return <>{points.map((point, index) => {
     const x = dashboardChartX(index, points.length)
     const y = dashboardChartY(point.amount, maxValue)
     const tooltipX = Math.min(Math.max(x - dashboardChartTooltipWidth / 2, dashboardChartLeft), dashboardChartRight - dashboardChartTooltipWidth)
-    // Let the card lift slightly beyond the SVG's top inset. This keeps its
-    // lower edge above low chart points instead of leaving it on the cursor.
-    const tooltipY = Math.max(-14, y - dashboardChartTooltipHeight - dashboardChartTooltipGap)
+    const chartScale = chartViewport ? chartViewport.svgHeight / 204 : 0
+    const pointViewportY = chartViewport ? chartViewport.svgTop + y * chartScale : 0
+    const tooltipViewportHeight = dashboardChartTooltipHeight * chartScale
+    const tooltipViewportGap = dashboardChartTooltipGap * chartScale
+    const tooltipFitsAbove = chartViewport ? pointViewportY - tooltipViewportHeight - tooltipViewportGap >= 12 : false
+    const tooltipY = tooltipFitsAbove ? y - dashboardChartTooltipHeight - dashboardChartTooltipGap : y + dashboardChartTooltipGap
     const productQuantity = point.productQuantity ?? 0
     const shipmentCount = point.shipmentCount ?? 0
     const yesterdayPoint = index > 0 ? points[index - 1] : point.yesterdayPoint
@@ -539,6 +545,8 @@ function Dashboard() {
   const [reportTo, setReportTo] = useState(() => dashboardDateInputValue())
   const [chartRange, setChartRange] = useState<Exclude<DashboardRevenueRange, 'custom'>>('30')
   const [chartPlatform, setChartPlatform] = useState('ALL')
+  const performanceChartRef = useRef<HTMLDivElement>(null)
+  const [chartViewport, setChartViewport] = useState<DashboardChartViewport | null>(null)
   const dashboardRefreshOptions = { refetchInterval: 60_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 30_000 } as const
   const bootstrap = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), ...dashboardRefreshOptions })
   const productSummary = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<DashboardProductSummary>('/products/summary'), ...dashboardRefreshOptions })
@@ -581,6 +589,32 @@ function Dashboard() {
   const chartCurrentPath = dashboardLinePath(chartSeries, chartAxisMax)
   const chartPreviousPath = dashboardLinePath(previousChartSeries, chartAxisMax)
   const chartAreaPath = dashboardAreaPath(chartSeries, chartAxisMax)
+  const hasChart = Boolean(chartCurrentPath)
+  useEffect(() => {
+    let frame = 0
+    const measureChart = () => {
+      const svg = performanceChartRef.current?.querySelector('svg')
+      const rect = svg?.getBoundingClientRect()
+      if (!rect || rect.height <= 0) {
+        setChartViewport(null)
+        return
+      }
+      const nextViewport = { svgTop: rect.top, svgHeight: rect.height }
+      setChartViewport(current => current && Math.abs(current.svgTop - nextViewport.svgTop) < 0.5 && Math.abs(current.svgHeight - nextViewport.svgHeight) < 0.5 ? current : nextViewport)
+    }
+    const scheduleMeasure = () => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(measureChart)
+    }
+    scheduleMeasure()
+    window.addEventListener('resize', scheduleMeasure)
+    window.addEventListener('scroll', scheduleMeasure, { passive: true })
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', scheduleMeasure)
+      window.removeEventListener('scroll', scheduleMeasure)
+    }
+  }, [hasChart, chartPlatform, chartRange, chartSeries.length])
   const chartLabelStep = Math.max(1, Math.ceil(Math.max(chartSeries.length, 1) / 6))
   const chartGrid = Array.from({ length: 6 }, (_, index) => {
     const ratio = 1 - index / 5
@@ -632,7 +666,7 @@ function Dashboard() {
     </div>
     <div className="dashboard-section-bridge dashboard-section-bridge-detail" aria-hidden="true"><span /><small>DETAYLI GÖRÜNÜM</small><span /></div>
     <div className="dashboard-performance-grid">
-      <article className="panel dashboard-performance-card"><header className="dashboard-card-header"><div><h2>Gelir performansı</h2><p>Satışlarınızın büyük resmini görün.</p></div><div className="dashboard-performance-filters"><label className="dashboard-chart-period"><span>Dönem</span><select aria-label="Gelir performansı dönemi" value={chartRange} onChange={event => setChartRange(event.target.value as Exclude<DashboardRevenueRange, 'custom'>)}><option value="7">Son 7 gün</option><option value="30">Son 30 gün</option><option value="90">Son 90 gün</option></select></label><label className="dashboard-platform-filter"><span>Platform</span><select aria-label="Gelir platformu" value={chartPlatform} onChange={event => setChartPlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div></header><div className="dashboard-performance-toolbar"><div className="dashboard-performance-total"><span>{chartPlatform === 'ALL' ? chartPeriodLabel : `${chartPeriodLabel} · ${chartPlatform}`}</span><strong>{chartRevenueQuery.isLoading ? '—' : dashboardMoney(chartSeries.reduce((sum, item) => sum + item.amount, 0), chartCurrency)}</strong><small className={`dashboard-summary-trend ${dashboardTrendClass(chartSeries.reduce((sum, item) => sum + item.amount, 0), previousChartSeries.reduce((sum, item) => sum + item.amount, 0))}`}><DashboardTrendIcon current={chartSeries.reduce((sum, item) => sum + item.amount, 0)} previous={previousChartSeries.reduce((sum, item) => sum + item.amount, 0)} />{dashboardTrendLabel(chartSeries.reduce((sum, item) => sum + item.amount, 0), previousChartSeries.reduce((sum, item) => sum + item.amount, 0))}</small></div></div><div className="dashboard-performance-chart" aria-label={`${chartPeriodLabel} gelir performansı grafiği`} >{chartCurrentPath ? <svg viewBox="0 0 652 204" role="img" aria-label="Gelir performansı"><defs><linearGradient id="dashboard-performance-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--rv-color-primary)" stopOpacity=".34" /><stop offset="100%" stopColor="var(--rv-color-primary)" stopOpacity="0" /></linearGradient></defs>{chartGrid.map(tick => <g key={tick.y}><line className="dashboard-chart-grid" x1={dashboardChartLeft} x2={dashboardChartRight} y1={tick.y} y2={tick.y} /><text className="dashboard-chart-y" x="38" y={tick.y + 4} textAnchor="end">{dashboardAxisMoney(chartAxisMax * tick.ratio, chartCurrency)}</text></g>)}{chartAreaPath && <path className="dashboard-performance-area" d={chartAreaPath} fill="url(#dashboard-performance-area)" />}{chartPreviousPath && <path className="dashboard-performance-previous" d={chartPreviousPath} />}{<path className="dashboard-performance-line" d={chartCurrentPath} />}<DashboardChartPoints points={chartSeries} maxValue={chartAxisMax} currency={chartCurrency} /></svg> : <div className="dashboard-performance-empty">Bu dönem için gelir verisi bulunmuyor.</div>}<div className="dashboard-performance-x-axis" aria-hidden="true">{chartSeries.map((point, index) => index === 0 || index === chartSeries.length - 1 || index % chartLabelStep === 0 ? <span key={point.key} style={{ left: `${chartSeries.length > 1 ? (index / (chartSeries.length - 1)) * 100 : 0}%` }}>{point.label}</span> : null)}</div></div><footer className="dashboard-chart-legend"><span><i className="current" />Bu dönem</span><span><i className="previous" />Önceki dönem</span></footer></article>
+      <article className="panel dashboard-performance-card"><header className="dashboard-card-header"><div><h2>Gelir performansı</h2><p>Satışlarınızın büyük resmini görün.</p></div><div className="dashboard-performance-filters"><label className="dashboard-chart-period"><span>Dönem</span><select aria-label="Gelir performansı dönemi" value={chartRange} onChange={event => setChartRange(event.target.value as Exclude<DashboardRevenueRange, 'custom'>)}><option value="7">Son 7 gün</option><option value="30">Son 30 gün</option><option value="90">Son 90 gün</option></select></label><label className="dashboard-platform-filter"><span>Platform</span><select aria-label="Gelir platformu" value={chartPlatform} onChange={event => setChartPlatform(event.target.value)}><option value="ALL">Tüm platformlar</option>{revenuePlatformOptions.map(platform => <option value={platform} key={platform}>{platform}</option>)}</select></label></div></header><div className="dashboard-performance-toolbar"><div className="dashboard-performance-total"><span>{chartPlatform === 'ALL' ? chartPeriodLabel : `${chartPeriodLabel} · ${chartPlatform}`}</span><strong>{chartRevenueQuery.isLoading ? '—' : dashboardMoney(chartSeries.reduce((sum, item) => sum + item.amount, 0), chartCurrency)}</strong><small className={`dashboard-summary-trend ${dashboardTrendClass(chartSeries.reduce((sum, item) => sum + item.amount, 0), previousChartSeries.reduce((sum, item) => sum + item.amount, 0))}`}><DashboardTrendIcon current={chartSeries.reduce((sum, item) => sum + item.amount, 0)} previous={previousChartSeries.reduce((sum, item) => sum + item.amount, 0)} />{dashboardTrendLabel(chartSeries.reduce((sum, item) => sum + item.amount, 0), previousChartSeries.reduce((sum, item) => sum + item.amount, 0))}</small></div></div><div ref={performanceChartRef} className="dashboard-performance-chart" aria-label={`${chartPeriodLabel} gelir performansı grafiği`} >{chartCurrentPath ? <svg viewBox="0 0 652 204" role="img" aria-label="Gelir performansı"><defs><linearGradient id="dashboard-performance-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--rv-color-primary)" stopOpacity=".34" /><stop offset="100%" stopColor="var(--rv-color-primary)" stopOpacity="0" /></linearGradient></defs>{chartGrid.map(tick => <g key={tick.y}><line className="dashboard-chart-grid" x1={dashboardChartLeft} x2={dashboardChartRight} y1={tick.y} y2={tick.y} /><text className="dashboard-chart-y" x="38" y={tick.y + 4} textAnchor="end">{dashboardAxisMoney(chartAxisMax * tick.ratio, chartCurrency)}</text></g>)}{chartAreaPath && <path className="dashboard-performance-area" d={chartAreaPath} fill="url(#dashboard-performance-area)" />}{chartPreviousPath && <path className="dashboard-performance-previous" d={chartPreviousPath} />}{<path className="dashboard-performance-line" d={chartCurrentPath} />}<DashboardChartPoints points={chartSeries} maxValue={chartAxisMax} currency={chartCurrency} chartViewport={chartViewport} /></svg> : <div className="dashboard-performance-empty">Bu dönem için gelir verisi bulunmuyor.</div>}<div className="dashboard-performance-x-axis" aria-hidden="true">{chartSeries.map((point, index) => index === 0 || index === chartSeries.length - 1 || index % chartLabelStep === 0 ? <span key={point.key} style={{ left: `${chartSeries.length > 1 ? (index / (chartSeries.length - 1)) * 100 : 0}%` }}>{point.label}</span> : null)}</div></div><footer className="dashboard-chart-legend"><span><i className="current" />Bu dönem</span><span><i className="previous" />Önceki dönem</span></footer></article>
       <article className="panel dashboard-channel-card"><header className="dashboard-card-header"><div><h2>Satış kanalları</h2><p>Seçilen dönemin gelir dağılımı</p></div><Link className="dashboard-panel-link" to="/integrations">Kanalları yönet <UiIcon name="arrowRight" /></Link></header><div className="dashboard-channel-donut" style={{ background: channelGradient }}><div><span>Toplam sipariş</span><strong>{channelTotalOrders.toLocaleString('tr-TR')}</strong><small>{reportPeriodLabel}</small></div></div><div className="dashboard-channel-list">{channelRowsWithShare.length ? channelRowsWithShare.map(channel => <div key={channel.platform}><span><i style={{ background: channel.color }} />{channel.platform}</span><strong>%{channel.share.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</strong></div>) : <p className="dashboard-channel-empty">Bu dönem için kanal dağılımı bulunmuyor.</p>}</div><footer className="dashboard-channel-footer"><span>{channelRowsWithShare.length} kanal · {reportPeriodLabel}</span><Link to="/integrations">Bağlantıları yönet <UiIcon name="arrowRight" /></Link></footer></article>
     </div>
   </section>
