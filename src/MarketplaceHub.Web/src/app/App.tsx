@@ -395,7 +395,7 @@ function DashboardPlatformDistribution({ rows, valueKey, label }: { rows: Dashbo
 
 function DashboardOperationalCard({ kind, label, value, to, platformCounts }: { kind: string; label: string; detail?: string; value: number | null; to: string; platformCounts?: Record<string, number> }) {
   const platformRows = Object.entries(platformCounts ?? {}).filter(([, count]) => count > 0).sort((left, right) => right[1] - left[1])
-  return <Link className={`dashboard-operational-card ${kind}`} to={to}><DashboardMetricIcon kind={kind} /><span className="dashboard-operational-copy"><strong>{value === null ? '—' : value.toLocaleString('tr-TR')}</strong><span>{label}</span></span><UiIcon name="arrowRight" size={17} /><div className="dashboard-operational-platform-tooltip" role="tooltip"><strong>Platform dağılımı</strong>{platformRows.length ? <div>{platformRows.map(([platform, count]) => <span key={platform}><span title={platform}>{platform}</span><b>{count.toLocaleString('tr-TR')}</b></span>)}</div> : <small>Platform bazlı veri yok</small>}</div></Link>
+  return <Link className={`dashboard-operational-card ${kind}`} to={to}><DashboardMetricIcon kind={kind} /><span className="dashboard-operational-copy"><strong>{value === null ? '—' : value.toLocaleString('tr-TR')}</strong><span>{label}</span></span><UiIcon name="arrowRight" size={17} />{platformRows.length ? <div className="dashboard-operational-platform-tooltip" role="tooltip"><div>{platformRows.map(([platform, count]) => <span key={platform}><span title={platform}>{platform}</span><b>{count.toLocaleString('tr-TR')}</b></span>)}</div></div> : null}</Link>
 }
 
 function dashboardMoney(amount: number, currency = 'TRY') {
