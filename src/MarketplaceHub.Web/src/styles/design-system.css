@@ -941,7 +941,7 @@
   .return-reference-row .order-reference-prices { grid-column: 4; }
   .return-reference-row .order-reference-cargo { grid-column: 5; }
   .return-reference-row .order-reference-invoice { grid-column: 6; }
-  .return-reference-row > span:nth-last-child(2) { grid-column: 7; display: flex; align-items: center; }
+  .return-reference-row .return-reference-reason { grid-column: 7; display: flex; align-items: center; }
   .return-reference-row .return-reference-status { grid-column: 8; }
   .return-reference-status { display: grid; align-content: center; gap: var(--rv-space-2); }
   .return-reference-status { justify-items: stretch; }
@@ -8198,6 +8198,61 @@ small,
 .app-shell.stitch-shell main .return-reference-table > .return-reference-head > *:nth-last-child(2),
 .app-shell.stitch-shell main .return-reference-table > .return-reference-row > *:nth-last-child(2) {
   border-right: 0;
+}
+
+/* Returns: divider rules must span the complete record, including the
+   columns whose cells are vertically merged across multiple products. */
+.app-shell.stitch-shell main .return-reference-row .return-reference-reason {
+  grid-column: 7;
+  display: flex;
+  align-items: center;
+}
+
+.return-reference-row > .return-row-divider {
+  grid-column: 1 / -1;
+  align-self: end;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--rv-color-border);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.return-reference-row .order-reference-products > article,
+.return-reference-row .order-reference-prices > strong {
+  border-bottom: 0;
+}
+
+.app-shell.stitch-shell main .return-reference-row > .return-row-divider {
+  border-top-color: var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .return-reference-row .order-reference-products > article:not(:last-child)::after {
+  display: none;
+}
+
+.app-shell.stitch-shell main .return-reference-row .order-reference-products > article,
+.app-shell.stitch-shell main .return-reference-row .order-reference-prices > strong {
+  border-bottom: 0;
+}
+
+.return-decision-help,
+.return-decision-hint,
+.return-decision-error {
+  display: block;
+  margin: 0;
+  font-size: var(--rv-font-size-xs);
+  line-height: 1.5;
+}
+
+.return-decision-help,
+.return-decision-hint {
+  color: var(--rv-color-muted);
+}
+
+.return-decision-error {
+  color: var(--rv-color-danger);
 }
 
 .app-shell.stitch-shell main :is(.order-reference-table, .return-reference-table) .invoice-no-discount .order-invoice-payable {
