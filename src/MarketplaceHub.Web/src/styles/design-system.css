@@ -8226,8 +8226,8 @@ small,
 
 .return-reference-table > .return-reference-head,
 .return-reference-table > .return-reference-row {
-  width: max-content;
-  min-width: 100%;
+  width: max(100%, 1284px);
+  min-width: max(100%, 1284px);
 }
 
 .app-shell.stitch-shell main .return-reference-row > .return-row-divider {
