@@ -1321,7 +1321,10 @@
   .product-basics-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .product-basics-grid .product-title-field, .product-basics-grid .product-brand-field, .wide { grid-column: 1 / -1; }
   .product-basics-grid .product-title-field { grid-column: span 3; }
-  .product-basics-grid .product-brand-field { grid-column: span 2; }
+  .product-basics-grid .product-brand-field { grid-column: span 1; }
+  .product-basics-grid .product-category-field { grid-column: span 2; }
+  .product-identifiers-grid { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(140px, .75fr); gap: var(--rv-space-4); min-width: 0; }
+  .product-identifiers-grid .desi-input-field { min-width: 0; }
   .product-step-grid label, .product-media-url-field { display: grid; min-width: 0; gap: var(--rv-space-2); color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); font-weight: 700; }
   .desi-inline-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--rv-space-2); }
   .desi-inline-control button { min-width: 92px; }
@@ -1444,6 +1447,7 @@
   .variant-table-editor { overflow-x: auto; padding: 0; }
   .variant-table-head, .variant-table-row { display: grid; grid-template-columns: 54px minmax(180px, 1.35fr) minmax(145px, 1fr) minmax(145px, 1fr) 90px 110px 110px 94px 70px; min-width: 1110px; align-items: center; }
   .variant-table-head { min-height: 46px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); font-size: var(--rv-font-size-xs); font-weight: 800; text-transform: uppercase; }
+  .variant-table-head > span:first-child { text-align: center; }
   .variant-table-head > *, .variant-table-row > * { min-width: 0; margin: 0; padding: var(--rv-space-2); }
   .variant-table-row { min-height: 62px; border-bottom: 1px solid var(--rv-color-border); }
   .variant-table-row:last-child { border-bottom: 0; }
@@ -2492,7 +2496,8 @@
   .product-add-progress > i { display: none; }
   .product-add-progress button { width: 100%; }
   .product-step-grid, .product-basics-grid, .product-pricing-card .product-step-grid { grid-template-columns: 1fr; }
-  .product-basics-grid .product-title-field, .product-basics-grid .product-brand-field, .wide { grid-column: auto; }
+  .product-basics-grid .product-title-field, .product-basics-grid .product-brand-field, .product-basics-grid .product-category-field, .wide { grid-column: auto; }
+  .product-identifiers-grid { grid-template-columns: 1fr; }
   .category-attribute-field { grid-template-columns: 1fr; align-items: stretch; }
   .category-attribute-field-head { align-items: flex-start; }
   .attribute-variant-action { grid-template-columns: 1fr; align-items: stretch; }
@@ -2651,6 +2656,7 @@
 }
 .app-shell.stitch-shell main select option { text-align: left; }
 .app-shell.stitch-shell main .mapping-page :is(.searchable-select-trigger, .panel-category-picker-trigger, .searchable-select-options > button, .panel-category-picker [role="option"]) { text-align: left; }
+.app-shell.stitch-shell main .mapping-page .searchable-select-options > button { justify-content: flex-start; justify-items: start; text-align: left; }
 .app-shell.stitch-shell main .mapping-page .panel-category-picker [role="option"] { justify-content: start; justify-items: start; text-align: left; }
 .app-shell.stitch-shell main .mapping-page .panel-category-picker > div:first-child > button { box-sizing: border-box; width: 36px; min-width: 36px; height: 36px; min-height: 36px; flex: 0 0 36px; padding: 0; border-radius: var(--rv-radius-sm); }
 .app-shell.stitch-shell main .dashboard-period-control::after { right: var(--rv-space-3); }
@@ -5194,6 +5200,24 @@ small,
   box-shadow: none;
 }
 
+.app-shell.stitch-shell main .mapping-local-brand-builder .brand-library-panel-standalone {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.app-shell.stitch-shell main .brand-mapping-console {
+  display: grid;
+  gap: var(--rv-space-4);
+}
+
+.app-shell.stitch-shell main .brand-mapping-console > .mapping-section-heading {
+  margin-bottom: 0;
+}
+
 .app-shell.stitch-shell main .brand-library-panel .brand-library-list {
   background: var(--rv-color-surface);
   border-color: var(--rv-color-border);
@@ -5201,14 +5225,56 @@ small,
 
 .app-shell.stitch-shell main .brand-library-panel .brand-library-list > span {
   color: var(--rv-color-ink);
-  background: var(--rv-color-surface-raised);
+  background: var(--rv-color-surface);
   border-color: var(--rv-color-border);
 }
 
 .app-shell.stitch-shell main .brand-library-panel .brand-library-list > span.active {
   color: var(--rv-color-ink);
-  background: color-mix(in srgb, var(--rv-color-primary) 14%, var(--rv-color-surface-raised));
-  border-color: color-mix(in srgb, var(--rv-color-primary) 72%, var(--rv-color-border));
+  background: var(--rv-color-primary-soft);
+  border-color: var(--rv-color-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-primary) 18%, transparent);
+}
+
+/* Keep the category matcher visually explicit like the brand matcher: the
+   center rail identifies the relationship between the two selections. */
+.app-shell.stitch-shell main .mapping-category-builder .mapping-reference-grid {
+  grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
+  grid-template-rows: auto 73px;
+  align-items: start;
+}
+
+.app-shell.stitch-shell main .mapping-category-builder .mapping-reference-local > label,
+.app-shell.stitch-shell main .mapping-category-builder .mapping-reference-target {
+  align-self: start;
+}
+
+.app-shell.stitch-shell main .mapping-category-builder .mapping-reference-target {
+  grid-column: 3;
+}
+
+.app-shell.stitch-shell main .mapping-category-builder .mapping-link-rail {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+  transform: translateY(var(--rv-space-3));
+}
+
+@media (max-width: 768px) {
+  .app-shell.stitch-shell main .mapping-category-builder .mapping-reference-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.stitch-shell main .mapping-category-builder .mapping-reference-target {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .app-shell.stitch-shell main .mapping-category-builder .mapping-link-rail {
+    grid-column: auto;
+    grid-row: auto;
+    transform: none;
+  }
 }
 
 /* The mapping item keeps the same purple identity while using a quieter
@@ -6086,12 +6152,26 @@ small,
 
 .app-shell.stitch-shell main .rv-pagination-jump > input {
   box-sizing: border-box;
-  width: 58px;
-  min-width: 58px;
-  min-height: var(--rv-control-height-sm);
-  padding-inline: var(--rv-space-2);
+  width: 42px;
+  min-width: 42px;
+  height: 32px;
+  min-height: 32px;
+  padding-inline: 6px;
+  border-radius: var(--rv-radius-sm);
+  background: color-mix(in srgb, var(--rv-color-surface-raised) 34%, transparent);
+  opacity: 1;
+  font-size: 0.8125rem;
+  font-weight: 700;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.app-shell.stitch-shell main .rv-pagination-jump > input::-webkit-inner-spin-button,
+.app-shell.stitch-shell main .rv-pagination-jump > input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
 }
 
 .app-shell.stitch-shell main .order-pagination > .pagination-controls.rv-pagination,
@@ -7969,6 +8049,21 @@ small,
   .app-shell.stitch-shell main .brand-library-list {
     grid-template-columns: 1fr;
   }
+}
+
+/* Brand and category library entries share the same 44px control rhythm. */
+.app-shell.stitch-shell main .brand-library-list {
+  grid-auto-rows: 44px;
+}
+
+.app-shell.stitch-shell main .brand-library-list > span,
+.app-shell.stitch-shell main .mapping-local-category-builder .category-library-list > span {
+  height: 44px;
+  min-height: 44px;
+}
+
+.app-shell.stitch-shell main .mapping-local-category-builder .category-library-list {
+  grid-auto-rows: 44px;
 }
 
 .app-shell.stitch-shell main .mapping-category-builder .mapping-reference-local > .panel-category-picker {
