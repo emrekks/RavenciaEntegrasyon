@@ -23,6 +23,7 @@ type Variant = Versioned & {
 type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
   variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null; familyMediaUrls?: string[]
+  platformStatuses?: Array<{ platform: string; status: string }>
   attributes?: Array<{ attributeId: string; valueId: string | null; textValue: string | null; numberValue: number | null; booleanValue: boolean | null; sortOrder: number }>
   options?: Array<{ id: string; label: string; values: Array<{ id: string; label: string }> }>
   mediaUrls?: string[]
@@ -562,7 +563,16 @@ function ProductCatalogImage({ url, title, onClick }: { url: string | null; titl
 
 function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick, onDelete }: { group: ProductGroup; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void; onDelete: () => void }) {
   const product = group.primary
-  const platformActive = group.products.some(item => Boolean(item.activePlatforms?.length))
+  const platformStatuses = group.products.flatMap(item => item.platformStatuses ?? [])
+  const platformConfigured = platformStatuses.length > 0 || group.products.some(item => Boolean(item.activePlatforms?.length))
+  const normalizedPlatformStatuses = platformStatuses.map(item => item.status.trim().toLocaleUpperCase('tr-TR'))
+  const platformPublished = platformConfigured && group.products.every(item => {
+    const statuses = item.platformStatuses ?? []
+    return statuses.length > 0 && statuses.every(status => status.status.trim().toLocaleUpperCase('tr-TR') === 'LIVE')
+  })
+  const platformHasError = normalizedPlatformStatuses.some(item => ['REJECTED', 'PARTIAL_REJECTED', 'MANUAL_REVIEW', 'LOCKED', 'BLACKLISTED'].includes(item))
+  const platformState = platformPublished ? 'active' : platformHasError ? 'error' : platformConfigured ? 'processing' : 'inactive'
+  const platformLabel = platformState === 'active' ? 'Platformda yayınlandı' : platformState === 'processing' ? 'Yayın işlemi sürüyor' : platformState === 'error' ? 'Platform yayını başarısız veya incelemede' : 'Platformla eşleşmedi'
   const totalStock = group.products.reduce((sum, item) => sum + item.totalStock, 0)
   const prices = group.products.map(item => item.startingPrice).filter((price): price is number => price != null)
   const startingPrice = prices.length ? Math.min(...prices) : null
@@ -580,7 +590,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
         <ProductVariantHover count={group.variants.length} catalogCount={group.products.length} groups={variantDisplayGroups} />
         <button type="button" className="product-list-price clickable-cell" aria-label={`${product.title}: fiyatı düzenle`} onClick={() => onQuickEdit('price')}><strong>{money(startingPrice, product.currency)}</strong></button>
         <button type="button" className="product-list-stock clickable-cell" aria-label={`${product.title}: stoğu düzenle`} onClick={() => onQuickEdit('stock')}><strong>{totalStock}</strong></button>
-        <div className="product-list-platforms"><span className={`platform-state-icon${platformActive ? ' active' : ' inactive'}`} title={platformActive ? 'Platformla eşleşti' : 'Platformla eşleşmedi'} aria-label={platformActive ? 'Platform eşleşmesi var' : 'Platform eşleşmesi yok'}><img className={`platform-state-logo ${platformLogoClass('TRENDYOL')}`} src={platformLogoSource('TRENDYOL')!} alt="" /><i /></span></div>
+        <div className="product-list-platforms"><span className={`platform-state-icon ${platformState}`} title={platformLabel} aria-label={platformLabel}><img className={`platform-state-logo ${platformLogoClass('TRENDYOL')}`} src={platformLogoSource('TRENDYOL')!} alt="" /><i /></span></div>
         <div className={`product-list-status pill ${statusTone}`.trim()}><span className="dot product-status-dot" aria-hidden="true" /><span className="product-status-label">{statusLabel}</span></div>
         <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title={group.products.length > 1 ? 'Ürün grubundaki ilk kaydı düzenle' : 'Ürünü düzenle'}><UiIcon className="product-action-icon" name="edit" /></Link><button type="button" className="product-delete-button" onClick={event => { event.stopPropagation(); onDelete() }} aria-label={`${product.title} ürün grubunu sil`} title={group.products.length > 1 ? 'Ürün grubundaki tüm kayıtları sil' : 'Ürünü sil'}><UiIcon className="product-action-icon" name="trash" /></button></div>
       </div>

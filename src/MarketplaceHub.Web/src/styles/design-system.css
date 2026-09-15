@@ -821,6 +821,9 @@
   .platform-state-icon::after { content: ''; position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: var(--rv-color-danger); border: 2px solid var(--rv-color-surface); border-radius: 50%; }
   .platform-state-icon.active { color: var(--rv-color-ink); background: var(--rv-color-accent-soft); border-color: var(--rv-color-accent); }
   .platform-state-icon.active::after { background: var(--rv-color-accent); }
+  .platform-state-icon.processing { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 12%, var(--rv-color-surface-raised)); border-color: color-mix(in srgb, var(--rv-color-warning) 60%, var(--rv-color-border-strong)); }
+  .platform-state-icon.processing::after { background: var(--rv-color-warning); }
+  .platform-state-icon.error { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: color-mix(in srgb, var(--rv-color-danger) 60%, var(--rv-color-border-strong)); }
   .product-status-dot { display: inline-block; width: 6px; height: 6px; flex: 0 0 6px; background: currentcolor; border: 0; border-radius: 50%; }
   .product-import-modal { width: min(720px, 100%); }
   .product-import-body { display: grid; gap: var(--rv-space-5); }
