@@ -12,6 +12,18 @@ type InvoiceDetail = Invoice & { orderId: string; packageId: string | null; prov
 type Connection = { id: string; platformCode: string; displayName: string; status: string; hasCredential: boolean }
 
 function idempotency() { return crypto.randomUUID() }
+async function waitForInvoiceCompletion(invoiceId: string) {
+  const successfulStatuses = new Set(['ACCEPTED', 'COMPLETED'])
+  const failedStatuses = new Set(['REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED', 'CANCELLED', 'CANCELLED_LOCAL'])
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const invoice = await hubApi<InvoiceDetail>(`/invoices/${invoiceId}`)
+    const normalizedStatus = invoice.status.trim().toUpperCase()
+    if (successfulStatuses.has(normalizedStatus)) return invoice
+    if (failedStatuses.has(normalizedStatus)) throw new Error(`Fatura oluşturma başarısız: ${statusLabel(invoice.status)}${invoice.lastErrorCode ? ` (${invoice.lastErrorCode})` : ''}`)
+    if (attempt < 119) await new Promise(resolve => window.setTimeout(resolve, 2000))
+  }
+  throw new Error('Fatura sağlayıcıda hâlâ işleniyor. İşlem arka planda devam ediyor; lütfen İşlem takibi ekranından sonucu kontrol edin.')
+}
 function Badge({ value }: { value: string }) { const normalized = value.trim().toUpperCase(); const tone = ['READY', 'ACCEPTED', 'COMPLETED', 'ACTIVE', 'SUPPORTED', 'CANCELLED', 'DELIVERED', 'SUCCESS'].includes(normalized) ? 'good' : ['UNKNOWN_RESULT', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'UNAPPROVED', 'UNKNOWN', 'CANCELLATION_PENDING', 'FAILED'].includes(normalized) ? 'warn' : 'neutral'; return <span className={`badge ${tone}`}><i aria-hidden="true" />{statusLabel(value)}</span> }
 function actionLabel(action: string) { return ({ SUBMIT: 'E-Faturam’a gönder', STAGE_CAPABILITY_PROBE: 'Stage mali canary çalıştır', RECONCILE: 'Durumu uzlaştır', DELIVER: 'Trendyol’a fatura linkini ilet', CANCEL: 'E-Arşiv iptal isteği', VALIDATE: 'Yerel doğrula' } as Record<string, string>)[action] ?? action }
 function addressLines(value: string | null | undefined) {
@@ -37,7 +49,7 @@ export function InvoicesPage() {
   const query = useQuery({ queryKey: ['invoice-workspace'], queryFn: () => hubApi<InvoiceWorkspace[]>('/invoice-workspace') })
   const connections = useQuery({ queryKey: ['connections', 'billing-workspace'], queryFn: () => loadAllPages<Connection>('/connections') })
   const provider = connections.data?.items.find(x => x.platformCode === 'TRENDYOL_EFATURAM' && (x.status === 'ACTIVE' || x.status === 'VERIFIED'))
-  const create = useMutation({ mutationFn: async (item: InvoiceWorkspace) => { if (!provider) throw new Error('Aktif Trendyol E-Faturam bağlantısı gereklidir.'); const invoice = await hubApi<InvoiceDetail>('/invoices', { method: 'POST', headers: { 'Idempotency-Key': `invoice:${item.orderId}:${item.packageId}` }, body: JSON.stringify({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: provider.id, originalInvoiceId: null }) }); const ready = await hubApi<InvoiceDetail>(`/invoices/${invoice.id}/validate`, { method: 'POST', headers: { 'If-Match': `"v${invoice.version}"` } }); await hubApi(`/invoices/${invoice.id}/submit-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-submit:${invoice.id}`, 'If-Match': `"v${ready.version}"` }, body: JSON.stringify({ password: '', confirmed: false }) }); return invoice }, onMutate: item => setMessage(`#${item.orderNumber} için fatura oluşturuluyor…`), onSuccess: async () => { setMessage('Fatura oluşturma kuyruğa alındı. Sağlayıcı yanıtı işleniyor.'); await client.invalidateQueries({ queryKey: ['invoice-workspace'] }) }, onError: error => setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.') })
+  const create = useMutation({ mutationFn: async (item: InvoiceWorkspace) => { if (!provider) throw new Error('Aktif Trendyol E-Faturam bağlantısı gereklidir.'); const invoice = await hubApi<InvoiceDetail>('/invoices', { method: 'POST', headers: { 'Idempotency-Key': `invoice:${item.orderId}:${item.packageId}` }, body: JSON.stringify({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: provider.id, originalInvoiceId: null }) }); const ready = await hubApi<InvoiceDetail>(`/invoices/${invoice.id}/validate`, { method: 'POST', headers: { 'If-Match': `"v${invoice.version}"` } }); await hubApi(`/invoices/${invoice.id}/submit-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-submit:${invoice.id}`, 'If-Match': `"v${ready.version}"` }, body: JSON.stringify({ password: '', confirmed: false }) }); setMessage(`#${item.orderNumber} için fatura sağlayıcıda işleniyor…`); return waitForInvoiceCompletion(invoice.id) }, onMutate: item => setMessage(`#${item.orderNumber} için fatura oluşturuluyor…`), onSuccess: async () => { setMessage('Fatura başarıyla oluşturuldu.'); await client.invalidateQueries({ queryKey: ['invoice-workspace'] }) }, onError: error => setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.') })
   const items = query.data ?? []; const normalized = search.trim().toLocaleLowerCase('tr-TR')
   const visible = items.filter(item => {
     const tabMatch = tab === 'UNINVOICED' ? item.canCreateInvoice : tab === 'INVOICED' ? !item.canCreateInvoice : item.isDueSoon
