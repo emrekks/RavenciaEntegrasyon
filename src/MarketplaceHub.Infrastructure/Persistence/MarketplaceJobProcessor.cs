@@ -2089,7 +2089,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             requirement.Version++;
         }
 
-        var attributeMapping = await db.AttributeMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == attribute.Id && x.ScopeExternalId == remoteCategory.ExternalId, cancellationToken);
+        // Several marketplace fields (for example the real color slicer and
+        // Web Color) can intentionally share the same panel attribute. When
+        // both are materialized before the current save batch is flushed, the
+        // database query cannot see the first pending mapping. Check the local
+        // change tracker first so the unique (tenant, connection, attribute,
+        // category) mapping is updated instead of inserted twice.
+        var attributeMapping = db.AttributeMappings.Local.FirstOrDefault(x =>
+                x.TenantId == tenantId
+                && x.ConnectionId == connectionId
+                && x.LocalId == attribute.Id
+                && x.ScopeExternalId == remoteCategory.ExternalId)
+            ?? await db.AttributeMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == attribute.Id && x.ScopeExternalId == remoteCategory.ExternalId, cancellationToken);
         if (attributeMapping is null)
             db.AttributeMappings.Add(new AttributeMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = attributeSnapshot.Id, LocalId = attribute.Id, ScopeExternalId = remoteCategory.ExternalId, ExternalId = remoteAttribute.ExternalId, Status = "VERIFIED", VerifiedAt = timeProvider.GetUtcNow(), Version = 1 });
         else
