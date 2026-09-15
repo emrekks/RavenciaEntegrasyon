@@ -8224,6 +8224,12 @@ small,
   border-bottom: 0;
 }
 
+.return-reference-table > .return-reference-head,
+.return-reference-table > .return-reference-row {
+  width: max-content;
+  min-width: 100%;
+}
+
 .app-shell.stitch-shell main .return-reference-row > .return-row-divider {
   border-top-color: var(--rv-color-border-strong);
 }
