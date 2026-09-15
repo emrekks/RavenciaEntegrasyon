@@ -135,6 +135,32 @@ public sealed class PackageIngestionSafetyTests
         Assert.Equal(2m, normalized["line-1"].ActiveAllocatedQuantity);
     }
 
+    [Fact]
+    public void PackageIdentityGuardRejectsTheSamePackageAcrossDifferentOrders()
+    {
+        var occurredAt = DateTimeOffset.Parse("2026-09-09T10:00:00Z");
+        var package = new RemotePackage("duplicate-package", null, "Delivered", occurredAt, null, null, []);
+        var first = new RemoteOrder("order-1", "order-1", occurredAt, occurredAt, "TRY", 0, 0, 0, "{}", "{}", "{}", [], [package], "{}");
+        var second = first with { ExternalOrderId = "order-2", OrderNumber = "order-2" };
+
+        var conflict = Assert.Single(OrderPackageIdentityGuard.FindConflicts([first, second]));
+
+        Assert.Equal("duplicate-package", conflict.ExternalPackageId);
+        Assert.Equal("order-1", conflict.FirstOrderId);
+        Assert.Equal("order-2", conflict.ConflictingOrderId);
+    }
+
+    [Fact]
+    public void PackageIdentityGuardAllowsSplitPackagesWithinTheSameOrder()
+    {
+        var occurredAt = DateTimeOffset.Parse("2026-09-09T10:00:00Z");
+        var package = new RemotePackage("same-package", null, "Delivered", occurredAt, null, null, []);
+        var first = new RemoteOrder("order-1", "order-1", occurredAt, occurredAt, "TRY", 0, 0, 0, "{}", "{}", "{}", [], [package], "{}");
+        var replay = first with { LastModifiedAt = occurredAt.AddMinutes(1) };
+
+        Assert.Empty(OrderPackageIdentityGuard.FindConflicts([first, replay]));
+    }
+
     private static ShipmentPackage Package(string externalId, DateTimeOffset occurredAt, string? origin = null) => new()
     {
         Id = Guid.NewGuid(),

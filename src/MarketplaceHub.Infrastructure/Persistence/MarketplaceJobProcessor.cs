@@ -3244,6 +3244,50 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Select(group => TrendyolJsonMapper.MergeOrderPackages(group, group.Key) ?? group.OrderByDescending(remote => remote.LastModifiedAt).First())
             .ToList();
         if (mergedRemotes.Count == 0) return;
+        var conflictingPackages = OrderPackageIdentityGuard.FindConflicts(mergedRemotes);
+        var conflictedOrderIds = conflictingPackages
+            .SelectMany(conflict => new[] { conflict.FirstOrderId, conflict.ConflictingOrderId })
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var conflict in conflictingPackages)
+            await RecordIssue(
+                tenantId,
+                $"order-package-identity:{connectionId}:{conflict.ExternalPackageId}",
+                "ORDER_PACKAGE_ID_CONFLICT",
+                $"Paket kimliği {conflict.ExternalPackageId} birden fazla siparişe bağlandı; çakışan siparişler bu taramada uygulanmadı.",
+                cancellationToken);
+
+        var remotePackageOwners = mergedRemotes
+            .SelectMany(remote => remote.Packages.Select(package => new { package.ExternalPackageId, remote.ExternalOrderId }))
+            .Where(x => !string.IsNullOrWhiteSpace(x.ExternalPackageId))
+            .GroupBy(x => x.ExternalPackageId, StringComparer.Ordinal)
+            .ToDictionary(x => x.Key, x => x.First().ExternalOrderId, StringComparer.Ordinal);
+        var candidatePackageIds = remotePackageOwners.Keys.ToArray();
+        if (candidatePackageIds.Length > 0)
+        {
+            var persistedPackageOwners = await (from package in db.ShipmentPackages.AsNoTracking()
+                                                join order in db.Orders.AsNoTracking()
+                                                    on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                                                where package.TenantId == tenantId
+                                                    && package.ConnectionId == connectionId
+                                                    && candidatePackageIds.Contains(package.ExternalPackageId)
+                                                select new { package.ExternalPackageId, order.ExternalOrderId })
+                .ToListAsync(cancellationToken);
+            foreach (var owner in persistedPackageOwners)
+            {
+                if (!remotePackageOwners.TryGetValue(owner.ExternalPackageId, out var remoteOrderId)
+                    || string.Equals(owner.ExternalOrderId, remoteOrderId, StringComparison.Ordinal)) continue;
+                conflictedOrderIds.Add(remoteOrderId);
+                await RecordIssue(
+                    tenantId,
+                    $"order-package-identity:{connectionId}:{owner.ExternalPackageId}",
+                    "ORDER_PACKAGE_ID_CONFLICT",
+                    $"Paket kimliği {owner.ExternalPackageId} mevcut siparişle çakıştı; çakışan sipariş bu taramada uygulanmadı.",
+                    cancellationToken);
+            }
+        }
+        if (conflictedOrderIds.Count > 0)
+            mergedRemotes = mergedRemotes.Where(remote => !conflictedOrderIds.Contains(remote.ExternalOrderId)).ToList();
+        if (mergedRemotes.Count == 0) return;
         var batch = new OrderIngestionBatch();
         var externalIds = mergedRemotes.Select(x => x.ExternalOrderId).ToArray();
         var orders = await db.Orders.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalIds.Contains(x.ExternalOrderId)).ToListAsync(cancellationToken);
