@@ -2075,7 +2075,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
         }
 
-        var requirement = await db.CategoryAttributeRequirements.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == category.Id && x.AttributeId == attribute.Id, cancellationToken);
+        // The same canonical option can be represented by multiple marketplace
+        // fields. Reuse a requirement already added in this import context
+        // before querying the database, otherwise two pending inserts can
+        // violate the category/attribute uniqueness constraint on SaveChanges.
+        var requirement = db.CategoryAttributeRequirements.Local.FirstOrDefault(x =>
+                x.TenantId == tenantId
+                && x.CategoryId == category.Id
+                && x.AttributeId == attribute.Id)
+            ?? await db.CategoryAttributeRequirements.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == category.Id && x.AttributeId == attribute.Id, cancellationToken);
         var role = requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
         if (requirement is null)
             db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = category.Id, AttributeId = attribute.Id, IsRequired = remoteAttribute.IsRequired == true, AllowsCustomValue = remoteAttribute.AllowsCustomValue == true, IsPanelScoped = true, DisplayOrder = remoteAttribute.SortOrder ?? 0, Role = role, Version = 1 });
