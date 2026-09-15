@@ -64,13 +64,37 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     }
 
     [Fact]
-    public void MapperRejectsOrderLineWithMissingCommercialFields()
+    public void MapperReportsInvalidOrderPackageWithoutBlockingThePage()
     {
         const string json = """
             {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1}]}]}
             """;
 
-        Assert.Throws<System.Text.Json.JsonException>(() => TrendyolJsonMapper.Orders(json));
+        var result = TrendyolJsonMapper.Orders(json);
+
+        Assert.Empty(result.Items);
+        var issue = Assert.Single(result.Issues!);
+        Assert.Equal("ORDER_PACKAGE_INVALID", issue.Code);
+        Assert.Equal("pkg-1", issue.Identity);
+        Assert.Contains("unit price", issue.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void MapperKeepsValidPackagesWhenAnotherPackageIsMalformed()
+    {
+        const string json = """
+            {"content":[
+              {"id":"bad-pkg","orderNumber":"ord-1","status":"Created","lines":[{"lineId":"bad-line","stockCode":"SKU-BAD","productName":"Bad","quantity":1}]},
+              {"id":"good-pkg","orderNumber":"ord-2","status":"Created","lines":[{"lineId":"good-line","stockCode":"SKU-GOOD","productName":"Good","quantity":1,"lineItemPrice":10,"vatRate":20}]}
+            ]}
+            """;
+
+        var result = TrendyolJsonMapper.Orders(json);
+
+        Assert.Single(result.Items);
+        Assert.Equal("good-pkg", result.Items[0].Packages[0].ExternalPackageId);
+        var issue = Assert.Single(result.Issues!);
+        Assert.Equal("bad-pkg", issue.Identity);
     }
 
     [Fact]

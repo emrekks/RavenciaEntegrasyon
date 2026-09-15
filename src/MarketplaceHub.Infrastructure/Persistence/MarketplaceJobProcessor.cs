@@ -1359,6 +1359,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
             foreach (var _ in result.Value!.Items) TrackReceived();
+            foreach (var issue in result.Value.Issues ?? [])
+                await RecordIssue(tenantId, $"order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
             await UpsertOrders(tenantId, connectionId, result.Value!.Items, cancellationToken);
             if (result.Value.HasMore)
             {
@@ -1660,6 +1662,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (jobId is { } orderingJob)
             await UpdateProductSyncProgressAsync(tenantId, orderingJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "model sırası hazır; aktarım başlıyor", receivedProducts), cancellationToken);
 
+        var productSaveBatchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:Products:ImportSaveBatchSize", 10), 1, 50);
+        var importedModelCount = 0;
         foreach (var modelSnapshots in CatalogImportOrdering.GroupByModel(pendingCatalogSnapshots))
         {
             foreach (var snapshot in modelSnapshots
@@ -1671,7 +1675,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false);
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
                 }
@@ -1705,10 +1709,22 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                         : (int?)null;
                     await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "model ürünü işleniyor", receivedProducts), cancellationToken);
                 }
+
+                importedModelCount++;
+                if (importedModelCount % productSaveBatchSize == 0)
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                    // Keep long catalog scans bounded. Attribute/category
+                    // contexts contain tracked entities, so rebuild them after
+                    // clearing the batch rather than using detached entities.
+                    db.ChangeTracker.Clear();
+                    categoryContexts.Clear();
+                    importedAttributeLibrary.Clear();
+                }
             }
         }
 
-        db.ChangeTracker.Clear();
+        await db.SaveChangesAsync(cancellationToken);
         var completedCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
         completedCursor.OpaqueCursor = null;
         // Approved-products supports a modified-date filter. Keep a short
@@ -2381,7 +2397,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized, cancellationToken);
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -2490,7 +2506,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             link.LastError = null;
         }
         link.Version++;
-        await db.SaveChangesAsync(cancellationToken);
+        if (saveChanges)
+            await db.SaveChangesAsync(cancellationToken);
         return !preserveLocal;
     }
 
@@ -3178,6 +3195,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         string raw; string externalMessageId; try { using var payload = JsonDocument.Parse(payloadJson); raw = payload.RootElement.GetProperty("rawJson").GetString() ?? ""; externalMessageId = payload.RootElement.GetProperty("externalMessageId").GetString() ?? ""; } catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException) { return false; }
         AdapterPageResult<RemoteOrder> page; try { page = TrendyolJsonMapper.Orders(raw); } catch (JsonException) { return false; }
+        foreach (var issue in page.Issues ?? [])
+            await RecordIssue(tenantId, $"order-webhook-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
         if (configuration.GetValue("Marketplace:PersistOrderSnapshots", true))
             await UpsertOrders(tenantId, connectionId, page.Items, cancellationToken);
         var inbox = await db.InboxMessages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Source == "TRENDYOL_WEBHOOK" && x.ExternalMessageId == externalMessageId, cancellationToken); if (inbox is not null) inbox.ProcessedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return true;

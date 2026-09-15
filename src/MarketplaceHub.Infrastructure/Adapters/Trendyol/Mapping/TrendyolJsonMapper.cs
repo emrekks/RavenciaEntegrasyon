@@ -10,10 +10,13 @@ public static class TrendyolJsonMapper
     {
         using var document = JsonDocument.Parse(json); var root = document.RootElement;
         var rows = new List<RemoteOrder>();
+        var issues = new List<AdapterPageIssue>();
         foreach (var package in Content(root))
         {
             var externalPackageId = Text(package, "id", "shipmentPackageId", "packageId"); var orderNumber = Text(package, "orderNumber");
             if (string.IsNullOrWhiteSpace(externalPackageId) || string.IsNullOrWhiteSpace(orderNumber)) continue;
+            try
+            {
             var lines = new List<RemoteOrderLine>(); var allocations = new List<RemotePackageAllocation>();
             if (package.TryGetProperty("lines", out var lineArray) && lineArray.ValueKind == JsonValueKind.Array)
             {
@@ -56,6 +59,14 @@ public static class TrendyolJsonMapper
             rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
                 CustomerSnapshot(package),
                 ObjectSnapshot(package, "shipmentAddress"), ObjectSnapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText(), dueAt));
+            }
+            catch (JsonException exception)
+            {
+                // A malformed package must not block every other package in
+                // the page. It is not projected; the issue is carried with
+                // the successful page for the worker to record.
+                issues.Add(new("ORDER_PACKAGE_INVALID", externalPackageId, $"Sipariş paketi {externalPackageId} içeri alınmadı: {exception.Message}"));
+            }
         }
         var next = NullText(root, "nextCursor");
         var hasMore = Bool(root, "hasMore");
@@ -69,7 +80,7 @@ public static class TrendyolJsonMapper
                 hasMore = true;
             }
         }
-        return new(rows, next, hasMore);
+        return new(rows, next, hasMore, null, issues);
     }
 
     public static RemoteOrder? MergeOrderPackages(IEnumerable<RemoteOrder> candidates, string externalOrderId)

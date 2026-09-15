@@ -245,7 +245,7 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
                 : next.AnchorEnd - OrderWindowSpan;
             var hasMore = mapped.HasMore || nextEnd >= historyStart;
             return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(
-                new(mapped.Items, hasMore ? OrderWindowCursorValue(next) : null, hasMore), response.RateLimit);
+                new(mapped.Items, hasMore ? OrderWindowCursorValue(next) : null, hasMore, null, mapped.Issues), response.RateLimit);
         }
         catch (JsonException exception)
         {
@@ -259,6 +259,7 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         if (string.IsNullOrWhiteSpace(externalOrderId)) return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Contract());
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Configuration());
         var normalizedOrderNumber = externalOrderId.Trim();
+        AdapterPageIssue? firstPageIssue = null;
         foreach (var storeFrontCode in TrendyolReadStorefronts.ReturnOrderCodes)
         {
             var lookupFilters = $"orderNumber={Uri.EscapeDataString(normalizedOrderNumber)}&page=0&size=200";
@@ -278,6 +279,7 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
                 try
                 {
                     var page = TrendyolJsonMapper.Orders(response.Value!);
+                    firstPageIssue ??= page.Issues?.FirstOrDefault();
                     var order = TrendyolJsonMapper.MergeOrderPackages(page.Items, normalizedOrderNumber);
                     if (order is not null) return AdapterResult<RemoteOrder>.Success(order, response.RateLimit);
                 }
@@ -289,6 +291,8 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
             }
         }
 
+        if (firstPageIssue is not null)
+            return AdapterResult<RemoteOrder>.Failure(new(AdapterErrorClass.ContractViolation, firstPageIssue.Code, firstPageIssue.Message, null, null, null));
         return AdapterResult<RemoteOrder>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_ORDER_NOT_FOUND", "Platform siparişi bulunamadı.", 404, null, null));
     }
 
