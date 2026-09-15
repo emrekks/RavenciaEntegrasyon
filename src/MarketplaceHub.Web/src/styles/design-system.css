@@ -8209,12 +8209,13 @@ small,
 }
 
 .return-reference-row > .return-row-divider {
-  grid-column: 1 / -1;
+  grid-column: 3 / 5;
   align-self: end;
   min-width: 0;
   padding: 0;
   border: 0;
   border-top: 1px solid var(--rv-color-border);
+  border-right: 0;
   pointer-events: none;
   z-index: 1;
 }
@@ -8259,6 +8260,10 @@ small,
 
 .return-decision-error {
   color: var(--rv-color-danger);
+}
+
+.return-reference-row > .return-reference-status {
+  border-right: 0;
 }
 
 .app-shell.stitch-shell main :is(.order-reference-table, .return-reference-table) .invoice-no-discount .order-invoice-payable {
