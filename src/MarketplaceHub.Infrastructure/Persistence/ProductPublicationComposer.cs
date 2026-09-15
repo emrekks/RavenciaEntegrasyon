@@ -218,6 +218,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
                 ["categoryId"] = externalCategoryId,
                 ["quantity"] = checked((int)Math.Min(int.MaxValue, Math.Floor(publishable))),
                 ["stockCode"] = variant.Sku.Trim(),
+                ["dimensionalWeight"] = variant.Desi ?? 1m,
                 ["origin"] = string.IsNullOrWhiteSpace(profile.Origin) ? null : profile.Origin.Trim().ToUpperInvariant(),
                 ["listPrice"] = offer.ListPrice,
                 ["salePrice"] = offer.SalePrice,

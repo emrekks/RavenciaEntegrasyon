@@ -55,6 +55,7 @@ internal sealed class ProductUpdateComposer(AppDbContext db)
                 {
                     ["barcode"] = Text(item, "barcode"),
                     ["stockCode"] = Text(item, "stockCode"),
+                    ["dimensionalWeight"] = Clone(item, "dimensionalWeight"),
                     ["origin"] = Clone(item, "origin"),
                     ["vatRate"] = Clone(item, "vatRate"),
                 });
