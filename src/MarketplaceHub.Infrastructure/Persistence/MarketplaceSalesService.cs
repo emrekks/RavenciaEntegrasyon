@@ -686,7 +686,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (claim is null) return NotFound<ReturnDetailView>();
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claim.OrderId, cancellationToken);
         if (order is null) return NotFound<ReturnDetailView>();
-        var actions = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken) && claim.Status == ReturnClaimStatus.ActionRequired
+        var actions = claim.Status == ReturnClaimStatus.InTransit
+            ? ["RECEIVE"]
+            : await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken) && claim.Status == ReturnClaimStatus.ActionRequired
             ? ReturnActions
             : await CapabilityValues(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, "allowedActions", cancellationToken);
         var approvedAt = claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
@@ -733,6 +735,35 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     }
 
     public Task<ServiceResult<Guid>> EnqueueReturnSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ReturnRead, MarketplaceJobTypes.ReturnSync, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken);
+
+    public async Task<ServiceResult<ReturnDetailView>> MarkReturnReceivedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"), cancellationToken);
+        if (claim is null) return NotFound<ReturnDetailView>();
+        if (claim.Version != expectedVersion) return Precondition<ReturnDetailView>(claim.Version);
+        if (claim.Status != ReturnClaimStatus.InTransit) return ServiceResult<ReturnDetailView>.Fail("RETURN_RECEIPT_NOT_ALLOWED", "Teslim alındı işlemi yalnız kargodaki iadeler için kullanılabilir.", 409);
+        if (!ReturnClaimStateMachine.CanTransition(claim.Status, ReturnClaimStatus.ActionRequired)) return ServiceResult<ReturnDetailView>.Fail("RETURN_STATE_CONFLICT", "İade durumu aksiyon bekliyor durumuna geçirilemedi.", 409);
+
+        var now = timeProvider.GetUtcNow();
+        claim.Status = ReturnClaimStatus.ActionRequired;
+        claim.RawStatus = "RECEIVED_BY_SELLER";
+        claim.UpdatedAt = now;
+        claim.Version++;
+        db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = tenantId,
+            ActorUserId = userId,
+            Action = "RETURN_RECEIVED_BY_SELLER",
+            TargetType = "ReturnClaim",
+            TargetId = claimId.ToString("D"),
+            Reason = "Kargo fiziksel olarak teslim alındı; iade inceleme aksiyonları açıldı.",
+            CorrelationId = correlationId,
+            CreatedAt = now
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        return await ReturnAsync(tenantId, claimId, cancellationToken);
+    }
 
     public async Task<ServiceResult<Guid>> EnqueueReturnActionAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, ReturnDecisionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {

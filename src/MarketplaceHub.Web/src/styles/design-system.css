@@ -1232,6 +1232,17 @@
   .return-detail-modal > header { position: sticky; top: 0; z-index: 1; background: var(--rv-color-surface); }
   .return-detail-modal > footer { position: sticky; bottom: 0; z-index: 1; margin-top: var(--rv-space-5); background: var(--rv-color-surface); }
   .return-detail-modal .return-detail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .return-inline-actions { display: grid; gap: var(--rv-space-3); margin: var(--rv-space-5) var(--rv-space-6) 0; }
+  .return-inline-actions > .notice { margin: 0; }
+  .return-inline-action { display: grid; gap: var(--rv-space-3); padding: var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .return-inline-action > div { display: grid; gap: var(--rv-space-1); }
+  .return-inline-action h3 { margin: 0; }
+  .return-inline-action p { margin: 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); line-height: 1.5; }
+  .return-inline-action form { margin: 0; }
+  .return-inline-action .form-grid { grid-template-columns: 1fr; }
+  .return-inline-action > button { justify-self: start; }
+  .return-decision-action { border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border)); }
+  .return-receive-action { border-color: color-mix(in srgb, var(--rv-color-warning) 45%, var(--rv-color-border)); }
   /* Legacy invoice actions still used by the order workspace share the same
      bounded modal contract instead of relying on browser-sized content. */
   .invoice-draft-modal, .invoice-viewer-modal, .invoice-upload-modal { display: block; width: min(980px, 100%); max-height: calc(100dvh - 32px); overflow: auto; }

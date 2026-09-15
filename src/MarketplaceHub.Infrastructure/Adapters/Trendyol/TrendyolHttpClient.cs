@@ -247,7 +247,11 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
             return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(
                 new(mapped.Items, hasMore ? OrderWindowCursorValue(next) : null, hasMore), response.RateLimit);
         }
-        catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(TrendyolErrorMapper.Contract()); }
+        catch (JsonException exception)
+        {
+            logger.LogWarning(exception, "Trendyol order response failed contract mapping during polling.");
+            return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(TrendyolErrorMapper.Contract());
+        }
     }
 
     public async Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken)
@@ -277,7 +281,11 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
                     var order = TrendyolJsonMapper.MergeOrderPackages(page.Items, normalizedOrderNumber);
                     if (order is not null) return AdapterResult<RemoteOrder>.Success(order, response.RateLimit);
                 }
-                catch (JsonException) { return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Contract()); }
+                catch (JsonException exception)
+                {
+                    logger.LogWarning(exception, "Trendyol order response failed contract mapping during direct lookup for {ExternalOrderId}.", normalizedOrderNumber);
+                    return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Contract());
+                }
             }
         }
 
