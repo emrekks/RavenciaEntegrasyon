@@ -299,7 +299,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .Where(x => x.TenantId == tenantId && attributeIds.Contains(x.AttributeId) && x.IsActive)
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Value)
             .ToListAsync(cancellationToken);
-        var attributeLookup = attributes.ToDictionary(x => x.Id, x => MapAttribute(x, values.Where(value => value.AttributeId == x.Id)));
+        var roles = requirements
+            .GroupBy(x => x.AttributeId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(x => NormalizeRequirementRole(x.Role)).Distinct(StringComparer.Ordinal).ToList());
+        var attributeLookup = attributes.ToDictionary(x => x.Id, x => MapAttribute(x, values.Where(value => value.AttributeId == x.Id), roles.GetValueOrDefault(x.Id)));
         var result = requirements.Where(x => attributeLookup.ContainsKey(x.AttributeId)).Select(x => new CategoryAttributeRequirementView(x.AttributeId, x.IsRequired, x.AllowsCustomValue, x.DisplayOrder, attributeLookup[x.AttributeId], NormalizeRequirementRole(x.Role))).ToList();
         return ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>.Ok(result);
     }
@@ -670,6 +673,17 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (variantUpdates.Count > 0)
         {
             if (variantUpdates.Select(x => x.Id).Distinct().Count() != variantUpdates.Count || variantUpdates.Any(x => !existingVariants.Any(existing => existing.Id == x.Id))) return Invalid<ProductView>("variantUpdates", "Güncellenecek varyant ürün kaydına ait değil.");
+            var optionUpdates = variantUpdates.Where(x => x.Options is not null).ToList();
+            foreach (var update in optionUpdates)
+            {
+                var attributeValidation = await ValidateAttributeValuesAsync(tenantId, update.Attributes ?? [], cancellationToken);
+                if (attributeValidation is not null) return ServiceResult<ProductView>.Fail(attributeValidation.Code, attributeValidation.Message, attributeValidation.Status, attributeValidation.FieldErrors);
+            }
+            if (optionUpdates.Count > 0)
+            {
+                var optionValidation = await ValidateVariantOptionsAsync(tenantId, command.CategoryId, optionUpdates.Select(update => new CreateVariantCommand(update.Sku, update.Barcode, update.ModelCode, update.Options, Attributes: update.Attributes)).ToList(), cancellationToken);
+                if (optionValidation is not null) return ServiceResult<ProductView>.Fail(optionValidation.Code, optionValidation.Message, optionValidation.Status, optionValidation.FieldErrors);
+            }
             var updatesById = variantUpdates.ToDictionary(x => x.Id);
             var proposedSkus = existingVariants.Select(variant => Normalize(updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku)).ToArray();
             if (proposedSkus.Any(string.IsNullOrWhiteSpace) || proposedSkus.Distinct().Count() != proposedSkus.Length) return Invalid<ProductView>("variantUpdates", "Stok kodları boş veya tekrarlı olamaz.");
@@ -680,7 +694,28 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             foreach (var update in variantUpdates)
             {
                 var variant = existingVariants.Single(x => x.Id == update.Id);
-                variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = string.IsNullOrWhiteSpace(update.Barcode) ? null : Normalize(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.SortOrder = Math.Max(0, update.SortOrder); variant.UpdatedAt = updatedAt; variant.Version++;
+                variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = string.IsNullOrWhiteSpace(update.Barcode) ? null : Normalize(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.SortOrder = Math.Max(0, update.SortOrder);
+                if (update.Options is not null) variant.OptionSignature = Signature(update.Options);
+                variant.UpdatedAt = updatedAt; variant.Version++;
+            }
+            var optionUpdatesByProduct = variantUpdates.Where(update => update.Options is not null)
+                .GroupBy(update => existingVariants.Single(variant => variant.Id == update.Id).ProductId);
+            foreach (var productOptionUpdates in optionUpdatesByProduct)
+            {
+                var updatedRows = productOptionUpdates.Select(update => existingVariants.Single(variant => variant.Id == update.Id)).ToList();
+                var updatedIds = updatedRows.Select(variant => variant.Id).ToArray();
+                var currentOptions = await db.VariantOptionValues.Where(x => x.TenantId == tenantId && updatedIds.Contains(x.VariantId)).ToListAsync(cancellationToken);
+                db.VariantOptionValues.RemoveRange(currentOptions);
+                var optionCommands = productOptionUpdates.Select(update => new CreateVariantCommand(update.Sku, update.Barcode, update.ModelCode, update.Options, Attributes: update.Attributes)).ToList();
+                await PersistVariantOptionsAsync(tenantId, productOptionUpdates.Key, updatedRows, optionCommands, cancellationToken);
+            }
+            var attributeUpdates = variantUpdates.Where(update => update.Attributes is not null).ToList();
+            if (attributeUpdates.Count > 0)
+            {
+                var updatedIds = attributeUpdates.Select(update => update.Id).ToArray();
+                var currentAssignments = await db.ProductAttributeAssignments.Where(x => x.TenantId == tenantId && updatedIds.Contains(x.VariantId ?? Guid.Empty)).ToListAsync(cancellationToken);
+                db.ProductAttributeAssignments.RemoveRange(currentAssignments);
+                foreach (var update in attributeUpdates) db.ProductAttributeAssignments.AddRange((update.Attributes ?? []).Select(attribute => Assignment(tenantId, existingVariants.Single(variant => variant.Id == update.Id).ProductId, update.Id, attribute)));
             }
         }
         if (variantsToCreate.Count > 0)
@@ -987,6 +1022,16 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .Where(x => x.TenantId == tenantId && optionIds.Contains(x.OptionId))
             .OrderBy(x => x.SortOrder)
             .ToListAsync(cancellationToken);
+        var variantOptionRows = await (from assignment in db.VariantOptionValues.AsNoTracking()
+                                       join option in db.ProductOptions.AsNoTracking() on new { assignment.TenantId, assignment.OptionId } equals new { option.TenantId, OptionId = option.Id }
+                                       join value in db.ProductOptionValues.AsNoTracking() on new { assignment.TenantId, assignment.OptionValueId } equals new { value.TenantId, OptionValueId = value.Id }
+                                       where assignment.TenantId == tenantId && variantIds.Contains(assignment.VariantId) && productIds.Contains(option.ProductId)
+                                       select new { assignment.VariantId, OptionLabel = option.Label, ValueLabel = value.Label }).ToListAsync(cancellationToken);
+        var variantOptionsByVariant = variantOptionRows
+            .GroupBy(item => item.VariantId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyDictionary<string, string>)group
+                .GroupBy(item => item.OptionLabel, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(option => option.Key, option => option.Last().ValueLabel, StringComparer.OrdinalIgnoreCase));
         var connectionIds = profiles.Select(x => x.ConnectionId).Distinct().ToArray();
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
         var media = await (from item in db.ProductMedia.AsNoTracking()
@@ -1016,7 +1061,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var variantViews = productVariants.Select(variant =>
             {
                 inventoryByVariant.TryGetValue(variant.Id, out var inventory); offerByVariant.TryGetValue(variant.Id, out var offer);
-                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id));
+                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id));
             }).ToList();
             var platformStatuses = profiles.Where(x => x.ProductId == product.Id)
                 .Select(x => new ProductPlatformStatusView(connections.GetValueOrDefault(x.ConnectionId, "Platform"), x.ActualStatus))
@@ -1091,7 +1136,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (valueValidation is not null) return valueValidation;
         if (categoryId is Guid category)
         {
-            var required = await db.CategoryAttributeRequirements.AsNoTracking().Where(x => x.TenantId == tenantId && x.CategoryId == category && (x.IsPanelScoped || x.Role == "OPTION") && x.IsRequired).Select(x => x.AttributeId).ToListAsync(cancellationToken);
+            var required = await db.CategoryAttributeRequirements.AsNoTracking().Where(x => x.TenantId == tenantId && x.CategoryId == category && x.IsPanelScoped && x.Role != "OPTION" && x.IsRequired).Select(x => x.AttributeId).ToListAsync(cancellationToken);
             var supplied = assignments.Select(x => x.AttributeId).ToHashSet();
             if (required.Any(id => !supplied.Contains(id))) return new("REQUIRED_ATTRIBUTE_MISSING", "Kategori için zorunlu özellikler eksik.", 422, new Dictionary<string, string[]> { ["attributes"] = ["Tüm zorunlu kategori özelliklerini girin."] });
         }

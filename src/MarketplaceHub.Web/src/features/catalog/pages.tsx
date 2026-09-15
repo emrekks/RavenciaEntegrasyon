@@ -11,14 +11,14 @@ import { platformLogoClass, platformLogoSource } from '../../shared/platform-log
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
 type Brand = Versioned & { name: string; isActive: boolean }
-type Attribute = Versioned & { code: string; name: string; dataType: string; values: Array<{ id: string; value: string }> }
+type Attribute = Versioned & { code: string; name: string; dataType: string; values: Array<{ id: string; value: string }>; roles?: string[] | null }
 type Variant = Versioned & {
   sku: string; barcode: string | null; modelCode: string | null; optionSignature: string; status: string
   weight: number | null; width: number | null; height: number | null; length: number | null; desi: number | null
   onHand: number; available: number; inventoryVersion: number | null
   offerId: string | null; listPrice: number | null; salePrice: number | null; currency: string | null; offerStatus: string | null
   priceVersion: number | null; offerVersion: number | null; vatRate: number | null; vatInclusion: string | null; roundingMode: string | null; safetyStock: number | null
-  mediaUrls?: string[]
+  mediaUrls?: string[]; options?: Record<string, string>
 }
 type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
@@ -61,7 +61,7 @@ function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[
 }
 
 function variantColorKey(variant: Variant) {
-  const color = preferredColorOption(parseVariantOptionSignature(variant.optionSignature))
+  const color = preferredColorOption(variantOptionEntries(variant))
   return color?.value.trim().toLocaleLowerCase('tr-TR') || null
 }
 
@@ -199,6 +199,21 @@ function parseVariantOptionSignature(signature: string): ParsedVariantOption[] {
   })
 }
 
+function variantOptionEntries(variant: Pick<Variant, 'optionSignature' | 'options'>) {
+  const parsed = parseVariantOptionSignature(variant.optionSignature ?? '')
+  if (parsed.length) return parsed
+  return Object.entries(variant.options ?? {})
+    .filter(([, value]) => value.trim())
+    .map(([name, value]) => ({ name, value: cleanOptionValue(value) }))
+}
+
+function optionSignatureFromOptions(options: Record<string, string>) {
+  return Object.entries(options)
+    .filter(([, value]) => value.trim())
+    .map(([name, value]) => `${name}:${cleanOptionValue(value)}`)
+    .join('_')
+}
+
 function productVariantDisplayGroups(variants: Variant[]) {
   const groups = new Map<string, { label: string; values: string[] }>()
   const add = (key: string, label: string, value: string) => {
@@ -207,7 +222,7 @@ function productVariantDisplayGroups(variants: Variant[]) {
     groups.set(key, group)
   }
   for (const variant of variants) {
-    const options = parseVariantOptionSignature(variant.optionSignature)
+    const options = variantOptionEntries(variant)
     const color = preferredColorOption(options)
     const size = options.find(option => ['BEDEN', 'SIZE', 'SIZ', 'NUMARA', 'NUMBER'].includes(option.name.replace(/\s+/g, '').toLocaleUpperCase('tr-TR')))
     if (color) {
@@ -270,8 +285,11 @@ function isVariantOptionName(name: string) {
   return ['RENK', 'COLOR', 'COLOUR', 'WEBCOLOR', 'WEBCOLOUR', 'WEBRENK', 'BEDEN', 'SIZE', 'SIZ', 'NUMARA', 'NUMBER'].includes(normalized)
 }
 
-function isColorAttributeName(name: string) {
-  return isColorOptionName(name)
+function isOptionAttribute(attribute: Pick<Attribute, 'code' | 'name' | 'roles'>) {
+  const normalizedName = normalizeVariantOptionName(attribute.name)
+  return attribute.code.trim().toLocaleLowerCase('tr-TR').startsWith('option-')
+    || attribute.roles?.some(role => role.toLocaleUpperCase('tr-TR') === 'OPTION') === true
+    || isVariantOptionName(normalizedName)
 }
 
 function VariantImageIcon() {
@@ -909,6 +927,9 @@ export function ProductsPage() {
 }
 
 type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; attribute: Attribute }
+function isOptionRequirement(requirement: CategoryRequirement) {
+  return requirement.role === 'OPTION' || isOptionAttribute(requirement.attribute)
+}
 type VariantDraft = {
   key: string
   optionSignature: string
@@ -1173,7 +1194,7 @@ function CategoryAttributeMappingPanel({
   onManualWebColorValueChange: (valueId: string) => void
 }) {
   const attributes = requirements
-    .filter(item => item.role === 'ATTRIBUTE' && item.attributeId !== webColorRequirement?.attributeId)
+    .filter(item => !isOptionRequirement(item) && item.attributeId !== webColorRequirement?.attributeId)
     .sort((left, right) => Number(right.isRequired) - Number(left.isRequired) || left.attribute.name.localeCompare(right.attribute.name, 'tr-TR', { sensitivity: 'base' }))
   const dataTypeLabels: Record<string, string> = {
     SINGLE_SELECT: 'Tek seçim',
@@ -1326,9 +1347,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   // value. The latter keeps required text fields (for example a free-form
   // color field) available for entry from the product form.
   const mappedRequirements = useMemo(() => allRequirements.filter(item => item.attribute.values.length > 0 || item.allowsCustomValue), [allRequirements])
-  const webColorRequirement = useMemo(() => mappedRequirements.find(item => isColorAttributeName(item.attribute.name) && item.attribute.values.length > 0), [mappedRequirements])
-  const webColorValues = webColorRequirement?.attribute.values ?? []
-  const optionRequirements = useMemo(() => mappedRequirements.filter(item => (item.attributeId === webColorRequirement?.attributeId && webColorRequirement?.role === 'OPTION') || (!['WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(item.attribute.name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')) && (item.role === 'OPTION' || isVariantOptionName(item.attribute.name)))).slice(0, 2), [mappedRequirements, webColorRequirement])
+  const webColorRequirement = useMemo(() => mappedRequirements.find(item => isWebColorOptionName(item.attribute.name) && item.attribute.values.length > 0), [mappedRequirements])
+  const colorOptionRequirement = useMemo(() => mappedRequirements.find(item => !isWebColorOptionName(item.attribute.name) && isColorOptionName(item.attribute.name) && isOptionRequirement(item)), [mappedRequirements])
+  const webColorValues = webColorRequirement?.attribute.values ?? colorOptionRequirement?.attribute.values ?? []
+  const optionRequirements = useMemo(() => mappedRequirements.filter(item => !isWebColorOptionName(item.attribute.name) && isOptionRequirement(item)).slice(0, 2), [mappedRequirements])
   const [webColorAutoEnabled, setWebColorAutoEnabled] = useState(true)
   const [manualWebColorValueId, setManualWebColorValueId] = useState('')
   useEffect(() => {
@@ -1349,7 +1371,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
     setMediaFiles([])
     const seededMediaRefs = seedVariantMediaRefs(product.variants)
-    setVariantRows(product.variants.map((variant, index) => ({ key: variant.id, optionSignature: variant.optionSignature || 'Tek Ürün', options: {}, attributeValueIds: {}, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.salePrice ?? 0, listPrice: variant.listPrice ?? variant.salePrice ?? 0, mediaRefs: seededMediaRefs[index] ?? [] })))
+    setVariantRows(product.variants.map((variant, index) => {
+      const options = Object.fromEntries(variantOptionEntries(variant).map(option => [option.name, option.value]))
+      return { key: variant.id, optionSignature: variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : optionSignatureFromOptions(options) || 'Tek Ürün', options, attributeValueIds: {}, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.salePrice ?? 0, listPrice: variant.listPrice ?? variant.salePrice ?? 0, mediaRefs: seededMediaRefs[index] ?? [] }
+    }))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
@@ -1372,7 +1397,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     initializedEditOptionsKey.current = productKey
     const inferred: Record<string, string[]> = {}
     for (const requirement of optionRequirements) {
-      const valuesInVariants = new Set(productToEdit.data.variants.flatMap(variant => parseVariantOptionSignature(variant.optionSignature)
+      const valuesInVariants = new Set(productToEdit.data.variants.flatMap(variant => variantOptionEntries(variant)
         .filter(option => option.name.trim().toLocaleLowerCase('tr-TR') === requirement.attribute.name.trim().toLocaleLowerCase('tr-TR'))
         .map(option => option.value.trim().toLocaleLowerCase('tr-TR'))))
       const ids = requirement.attribute.values.filter(value => valuesInVariants.has(value.value.trim().toLocaleLowerCase('tr-TR'))).map(value => value.id)
@@ -1380,24 +1405,35 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     }
     setAttributeSelections(current => ({ ...current, ...inferred }))
     setVariantAttributeIds(Object.keys(inferred))
+    setVariantRows(rows => rows.map(row => {
+      const source = productToEdit.data!.variants.find(variant => variant.id === row.key)
+      if (!source) return row
+      const options = Object.fromEntries(variantOptionEntries(source).map(option => [option.name, option.value]))
+      const attributeValueIds = Object.fromEntries(optionRequirements.flatMap(requirement => {
+        const option = variantOptionEntries(source).find(item => item.name.trim().toLocaleLowerCase('tr-TR') === requirement.attribute.name.trim().toLocaleLowerCase('tr-TR'))
+        const value = requirement.attribute.values.find(item => item.value.trim().toLocaleLowerCase('tr-TR') === option?.value.trim().toLocaleLowerCase('tr-TR'))
+        return value ? [[requirement.attributeId, value.id]] : []
+      }))
+      return { ...row, optionSignature: source.optionSignature && source.optionSignature !== '-' ? source.optionSignature : optionSignatureFromOptions(options) || row.optionSignature, options, attributeValueIds }
+    }))
   }, [allRequirements, editProductId, optionRequirements, productToEdit.data, requirements.isLoading])
 
   function updateField(name: keyof typeof form, value: string) { setForm(current => ({ ...current, [name]: value })) }
   function toggleAttributeValue(attributeId: string, valueId: string) {
     const requirement = mappedRequirements.find(item => item.attributeId === attributeId)
     const alreadySelected = (attributeSelections[attributeId] ?? []).includes(valueId)
-    if (!alreadySelected && requirement?.role === 'OPTION' && !variantAttributeIds.includes(attributeId) && variantAttributeIds.length >= 2) {
+    if (!alreadySelected && requirement && isOptionRequirement(requirement) && !variantAttributeIds.includes(attributeId) && variantAttributeIds.length >= 2) {
       const message = 'Bir ürün en fazla 2 seçenek grubuyla varyantlanabilir.'; setNotice(message); showFeedback(message, 'error'); return
     }
     setAttributeSelections(current => {
       const values = current[attributeId] ?? []
-      const nextValues = values.includes(valueId) ? values.filter(item => item !== valueId) : requirement?.role === 'ATTRIBUTE' && requirement.attribute.dataType === 'SINGLE_SELECT' ? [valueId] : [...values, valueId]
-      if (requirement?.role === 'OPTION') {
+      const nextValues = values.includes(valueId) ? values.filter(item => item !== valueId) : requirement && !isOptionRequirement(requirement) && requirement.attribute.dataType === 'SINGLE_SELECT' ? [valueId] : [...values, valueId]
+      if (requirement && isOptionRequirement(requirement)) {
         setVariantAttributeIds(currentAxes => nextValues.length ? currentAxes.includes(attributeId) ? currentAxes : [...currentAxes, attributeId] : currentAxes.filter(id => id !== attributeId))
       }
       if (values.includes(valueId)) return { ...current, [attributeId]: nextValues }
-      const selectedOptionalAttributeCount = mappedRequirements.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && (current[item.attributeId]?.length ?? 0) > 0).length
-      if (requirement?.role === 'ATTRIBUTE' && !requirement.isRequired && values.length === 0 && selectedOptionalAttributeCount >= MAX_PRODUCT_ATTRIBUTES) { const message = `Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`; setNotice(message); showFeedback(message, 'error'); return current }
+      const selectedOptionalAttributeCount = mappedRequirements.filter(item => !isOptionRequirement(item) && !item.isRequired && (current[item.attributeId]?.length ?? 0) > 0).length
+      if (requirement && !isOptionRequirement(requirement) && !requirement.isRequired && values.length === 0 && selectedOptionalAttributeCount >= MAX_PRODUCT_ATTRIBUTES) { const message = `Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`; setNotice(message); showFeedback(message, 'error'); return current }
       return { ...current, [attributeId]: nextValues }
     })
   }
@@ -1640,19 +1676,19 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
   function validate(rows: VariantDraft[], requireCompleteCatalog = true) {
     const issues: string[] = []; const requirementList = mappedRequirements
-    if (requireCompleteCatalog && (variantAttributeIds.length > 2 || variantAttributeIds.some(id => requirementList.find(item => item.attributeId === id)?.role !== 'OPTION'))) issues.push('Varyant için en fazla 2 Seçenek Eşitleme başlığı kullanılabilir.')
-    const selectedOptionalProductAttributes = requirementList.filter(item => item.role === 'ATTRIBUTE' && !item.isRequired && ((attributeSelections[item.attributeId]?.length ?? 0) > 0 || Boolean((attributeTextValues[item.attributeId] ?? '').trim()))).length
+    if (requireCompleteCatalog && (variantAttributeIds.length > 2 || variantAttributeIds.some(id => { const requirement = requirementList.find(item => item.attributeId === id); return !requirement || !isOptionRequirement(requirement) }))) issues.push('Varyant için en fazla 2 Seçenek Eşitleme başlığı kullanılabilir.')
+    const selectedOptionalProductAttributes = requirementList.filter(item => !isOptionRequirement(item) && !item.isRequired && ((attributeSelections[item.attributeId]?.length ?? 0) > 0 || Boolean((attributeTextValues[item.attributeId] ?? '').trim()))).length
     if (requireCompleteCatalog && selectedOptionalProductAttributes > MAX_PRODUCT_ATTRIBUTES) issues.push(`Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`)
     if (requireCompleteCatalog && !webColorAutoEnabled && (!webColorRequirement || !manualWebColorValueId)) issues.push('Manuel Web Color aktarımı için gönderilecek panel renk değerini seçin.')
     if (!webColorAutoEnabled && webColorRequirement && manualWebColorValueId && !webColorRequirement.attribute.values.some(value => value.id === manualWebColorValueId)) issues.push('Manuel Web Color için seçilen değer geçerli değil.')
-    if (requireCompleteCatalog && webColorAutoEnabled && webColorRequirement && !variantAttributeIds.includes(webColorRequirement.attributeId) && !(attributeSelections[webColorRequirement.attributeId]?.length)) issues.push('Web Color otomatik aktarımı için Renk varyantını seçin veya otomatik aktarımı kapatıp bir değer seçin.')
+    if (requireCompleteCatalog && webColorAutoEnabled && webColorRequirement && (!colorOptionRequirement || !variantAttributeIds.includes(colorOptionRequirement.attributeId)) && !(attributeSelections[colorOptionRequirement?.attributeId ?? '']?.length)) issues.push('Web Color otomatik aktarımı için Renk seçeneğini seçin veya otomatik aktarımı kapatıp bir değer seçin.')
     if (!form.title.trim()) issues.push('Ürün adı zorunludur.')
     if (requireCompleteCatalog && !form.description.trim()) issues.push('Açıklama zorunludur.')
     if (requireCompleteCatalog) {
       for (const requirement of requirementList) {
         const selectedCount = attributeSelections[requirement.attributeId]?.length ?? 0
         if (!variantAttributeIds.includes(requirement.attributeId) && requirement.attribute.dataType === 'SINGLE_SELECT' && selectedCount > 1) issues.push(`${requirement.attribute.name} yalnız bir ürün değeri kabul eder.`)
-        if (requirement.role === 'OPTION' || !requirement.isRequired) continue
+        if (isOptionRequirement(requirement) || !requirement.isRequired) continue
         if (variantAttributeIds.includes(requirement.attributeId)) {
           if (rows.some(row => !row.attributeValueIds[requirement.attributeId])) issues.push(`${requirement.attribute.name} tüm varyantlarda seçilmelidir.`)
         } else if (!(attributeSelections[requirement.attributeId]?.length) && !(attributeTextValues[requirement.attributeId] ?? '').trim()) issues.push(`${requirement.attribute.name} zorunludur.`)
@@ -1705,7 +1741,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (requireCompleteCatalog && form.categoryId && requirements.isError) throw new Error('Kategori özellikleri alınamadı. Önce kategori eşleştirmesini kontrol edin.')
       const requirementList = mappedRequirements; const rows = rowsForSubmit(requireCompleteCatalog); validate(rows, requireCompleteCatalog)
       const regularGlobalAttributes = requirementList
-        .filter(item => item.attributeId !== webColorRequirement?.attributeId && !variantAttributeIds.includes(item.attributeId))
+        .filter(item => !isOptionRequirement(item) && item.attributeId !== webColorRequirement?.attributeId && !variantAttributeIds.includes(item.attributeId))
         .flatMap((item, index) => productAttributePayload(item, attributeSelections[item.attributeId] ?? [], attributeTextValues[item.attributeId] ?? '', index))
       const colorGlobalAttributes = webColorRequirement && !webColorAutoEnabled && manualWebColorValueId
         ? [{ attributeId: webColorRequirement.attributeId, valueId: manualWebColorValueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: regularGlobalAttributes.length }]
@@ -1721,7 +1757,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : Number(form.desi) || 1, options: row.options, attributes: Object.entries(row.attributeValueIds).map(([attributeId, valueId], attributeIndex) => ({ attributeId, valueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: index * 100 + attributeIndex })) })
       const existingVariantIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
       const product = productToEdit.data
-        ? await hubApi<Product>(`/products/${productToEdit.data.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${productToEdit.data.version}"` }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}), variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload), variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({ id: row.key, sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null, sortOrder: rows.findIndex(candidate => candidate.key === row.key) })) }) })
+        ? await hubApi<Product>(`/products/${productToEdit.data.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${productToEdit.data.version}"` }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}), variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload), variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({ id: row.key, sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null, sortOrder: rows.findIndex(candidate => candidate.key === row.key), options: row.options, attributes: Object.entries(row.attributeValueIds).map(([attributeId, valueId], attributeIndex) => ({ attributeId, valueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: rows.findIndex(candidate => candidate.key === row.key) * 100 + attributeIndex })) })) }) })
         : await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, attributes: globalAttributes, variants: rows.map(variantPayload) }) })
       productCreated = product; setCreated(product); const completed = ['ürün']; const warnings: string[] = []
       const mediaUrlsToPersist = editProductId && form.mediaUrls.trim() === initialEditMediaUrl.current.trim() ? [] : mediaUrls
@@ -1801,7 +1837,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const names = new Set<string>()
     const hasPanelColorSource = (productToEdit.data?.options ?? []).some(option => isColorOptionName(option.label) && !isWebColorOptionName(option.label))
       || optionRequirements.some(item => isColorOptionName(item.attribute.name) && !isWebColorOptionName(item.attribute.name))
-      || variantRows.some(row => parseVariantOptionSignature(row.optionSignature).some(option => isColorOptionName(option.name) && !isWebColorOptionName(option.name)))
+      || variantRows.some(row => variantOptionEntries(row).some(option => isColorOptionName(option.name) && !isWebColorOptionName(option.name)))
     const addGroup = (group: VariantMediaGroup) => {
       if (hasPanelColorSource && isWebColorOptionName(group.name)) return
       const canonicalName = isColorOptionName(group.name) ? 'Renk' : group.name.trim()
@@ -1826,7 +1862,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     }
     const signatureValues = new Map<string, { name: string; values: Map<string, string> }>()
     for (const row of variantRows) {
-      for (const option of parseVariantOptionSignature(row.optionSignature)) {
+      for (const option of variantOptionEntries(row)) {
         const groupKey = option.name.trim().toLocaleLowerCase('tr-TR')
         const group = signatureValues.get(groupKey) ?? { name: option.name.trim(), values: new Map<string, string>() }
         group.values.set(option.value.trim().toLocaleLowerCase('tr-TR'), option.value.trim())

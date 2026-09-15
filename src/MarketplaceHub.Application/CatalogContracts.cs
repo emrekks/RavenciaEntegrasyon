@@ -40,7 +40,8 @@ public sealed record ProductVariantView(
     string? VatInclusion = null,
     string? RoundingMode = null,
     decimal? SafetyStock = null,
-    IReadOnlyList<string>? MediaUrls = null);
+    IReadOnlyList<string>? MediaUrls = null,
+    IReadOnlyDictionary<string, string>? Options = null);
 public sealed record ProductAttributeAssignmentView(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record ProductOptionValueView(Guid Id, string Label);
 public sealed record ProductOptionView(Guid Id, string Label, IReadOnlyList<ProductOptionValueView> Values);
@@ -87,7 +88,7 @@ public sealed record CreateAttributeCommand(string Code, string Name, string Dat
 public sealed record AttributeRequirementCommand(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder, string Role = "ATTRIBUTE");
 public sealed record CategoryAttributeRequirementView(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder, AttributeView Attribute, string Role = "ATTRIBUTE");
 public sealed record CreateVariantCommand(string Sku, string? Barcode, string? ModelCode, IReadOnlyDictionary<string, string>? Options = null, decimal? Weight = null, decimal? Width = null, decimal? Height = null, decimal? Length = null, decimal? Desi = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null, int SortOrder = 0);
-public sealed record UpdateVariantCommand(Guid Id, string Sku, string? Barcode, string? ModelCode, int SortOrder = 0);
+public sealed record UpdateVariantCommand(Guid Id, string Sku, string? Barcode, string? ModelCode, int SortOrder = 0, IReadOnlyDictionary<string, string>? Options = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null);
 public sealed record ProductAttributeCommand(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record CreateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<CreateVariantCommand> Variants, IReadOnlyList<ProductAttributeCommand>? Attributes = null, string? Status = null);
 public sealed record BulkProductStatusCommand(IReadOnlyList<Guid> ProductIds, string Status);

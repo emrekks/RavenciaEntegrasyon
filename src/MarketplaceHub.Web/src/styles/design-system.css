@@ -3122,6 +3122,10 @@ button,
   padding: 0;
 }
 
+.app-shell.stitch-shell main .mapping-saved-card > footer > .rv-pagination {
+  margin-top: 0;
+}
+
 .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list > span > .category-library-remove,
 .app-shell.stitch-shell main .brand-library-list .category-chip-remove {
   width: 30px;
