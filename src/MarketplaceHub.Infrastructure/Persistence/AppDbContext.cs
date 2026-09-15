@@ -190,8 +190,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             throw new InvalidOperationException("Audit log is append-only.");
         if (ChangeTracker.Entries<OrderStatusHistory>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Order status history is append-only.");
-        if (ChangeTracker.Entries<ReturnDecision>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
-            throw new InvalidOperationException("Return decisions are append-only.");
+        // ReturnDecision is the mutable lifecycle snapshot for a queued external
+        // action. Its evidence and audit records remain immutable; the decision
+        // itself must transition through its processing states.
         if (ChangeTracker.Entries<InvoiceLine>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Invoice lines are immutable snapshots.");
         if (ChangeTracker.Entries<InvoicePartySnapshot>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))

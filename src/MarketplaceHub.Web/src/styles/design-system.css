@@ -8181,6 +8181,12 @@ small,
   content: none;
 }
 
+/* Job status labels already render one solid dot through their own <i>. */
+.app-shell.stitch-shell main .jobs-reference-status::before {
+  display: none;
+  content: none;
+}
+
 /* The drawer header uses the same status element as the table, but it must
    stay a compact label instead of inheriting the full error callout surface. */
 .app-shell.stitch-shell main .jobs-reference-drawer-header .jobs-reference-status {
