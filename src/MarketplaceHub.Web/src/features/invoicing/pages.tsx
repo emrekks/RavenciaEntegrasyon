@@ -24,6 +24,20 @@ async function waitForInvoiceCompletion(invoiceId: string) {
   }
   throw new Error('Fatura sağlayıcıda hâlâ işleniyor. İşlem arka planda devam ediyor; lütfen İşlem takibi ekranından sonucu kontrol edin.')
 }
+async function submitInvoice(item: InvoiceWorkspace, provider: Connection | undefined) {
+  if (!provider) throw new Error('Aktif Trendyol E-Faturam bağlantısı gereklidir.')
+  let invoice: InvoiceDetail
+  if (item.invoiceId) {
+    invoice = await hubApi<InvoiceDetail>(`/invoices/${item.invoiceId}`)
+    if (!invoice.allowedActions.includes('SUBMIT')) throw new Error('Bu fatura tekrar gönderilebilir durumda değil.')
+  } else {
+    const draft = await hubApi<InvoiceDetail>('/invoices', { method: 'POST', headers: { 'Idempotency-Key': `invoice:${item.orderId}:${item.packageId}` }, body: JSON.stringify({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: provider.id, originalInvoiceId: null }) })
+    invoice = await hubApi<InvoiceDetail>(`/invoices/${draft.id}/validate`, { method: 'POST', headers: { 'If-Match': `"v${draft.version}"` } })
+  }
+  await hubApi(`/invoices/${invoice.id}/submit-jobs`, { method: 'POST', headers: { 'Idempotency-Key': item.invoiceId ? `invoice-submit-retry:${invoice.id}:${idempotency()}` : `invoice-submit:${invoice.id}`, 'If-Match': `"v${invoice.version}"` }, body: JSON.stringify({ password: '', confirmed: false }) })
+  return invoice.id
+}
+function requiresInvoiceAction(item: InvoiceWorkspace) { return item.canCreateInvoice || item.invoiceStatus === 'FATURA_REDDEDILDI' }
 function Badge({ value }: { value: string }) { const normalized = value.trim().toUpperCase(); const tone = ['READY', 'ACCEPTED', 'COMPLETED', 'ACTIVE', 'SUPPORTED', 'CANCELLED', 'DELIVERED', 'SUCCESS'].includes(normalized) ? 'good' : ['UNKNOWN_RESULT', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'UNAPPROVED', 'UNKNOWN', 'CANCELLATION_PENDING', 'FAILED'].includes(normalized) ? 'warn' : 'neutral'; return <span className={`badge ${tone}`}><i aria-hidden="true" />{statusLabel(value)}</span> }
 function actionLabel(action: string) { return ({ SUBMIT: 'E-Faturam’a gönder', STAGE_CAPABILITY_PROBE: 'Stage mali canary çalıştır', RECONCILE: 'Durumu uzlaştır', DELIVER: 'Trendyol’a fatura linkini ilet', CANCEL: 'E-Arşiv iptal isteği', VALIDATE: 'Yerel doğrula' } as Record<string, string>)[action] ?? action }
 function addressLines(value: string | null | undefined) {
@@ -49,17 +63,17 @@ export function InvoicesPage() {
   const query = useQuery({ queryKey: ['invoice-workspace'], queryFn: () => hubApi<InvoiceWorkspace[]>('/invoice-workspace') })
   const connections = useQuery({ queryKey: ['connections', 'billing-workspace'], queryFn: () => loadAllPages<Connection>('/connections') })
   const provider = connections.data?.items.find(x => x.platformCode === 'TRENDYOL_EFATURAM' && (x.status === 'ACTIVE' || x.status === 'VERIFIED'))
-  const create = useMutation({ mutationFn: async (item: InvoiceWorkspace) => { if (!provider) throw new Error('Aktif Trendyol E-Faturam bağlantısı gereklidir.'); const invoice = await hubApi<InvoiceDetail>('/invoices', { method: 'POST', headers: { 'Idempotency-Key': `invoice:${item.orderId}:${item.packageId}` }, body: JSON.stringify({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: provider.id, originalInvoiceId: null }) }); const ready = await hubApi<InvoiceDetail>(`/invoices/${invoice.id}/validate`, { method: 'POST', headers: { 'If-Match': `"v${invoice.version}"` } }); await hubApi(`/invoices/${invoice.id}/submit-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-submit:${invoice.id}`, 'If-Match': `"v${ready.version}"` }, body: JSON.stringify({ password: '', confirmed: false }) }); setMessage(`#${item.orderNumber} için fatura sağlayıcıda işleniyor…`); return waitForInvoiceCompletion(invoice.id) }, onMutate: item => setMessage(`#${item.orderNumber} için fatura oluşturuluyor…`), onSuccess: async () => { setMessage('Fatura başarıyla oluşturuldu.'); await client.invalidateQueries({ queryKey: ['invoice-workspace'] }) }, onError: error => setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.') })
+  const create = useMutation({ mutationFn: async (item: InvoiceWorkspace) => { const invoiceId = await submitInvoice(item, provider); setMessage(`#${item.orderNumber} için fatura sağlayıcıda işleniyor…`); return waitForInvoiceCompletion(invoiceId) }, onMutate: item => setMessage(`#${item.orderNumber} için fatura oluşturuluyor…`), onSuccess: async () => { setMessage('Fatura başarıyla oluşturuldu.'); await client.invalidateQueries({ queryKey: ['invoice-workspace'] }) }, onError: error => setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.') })
   const items = query.data ?? []; const normalized = search.trim().toLocaleLowerCase('tr-TR')
   const visible = items.filter(item => {
-    const tabMatch = tab === 'UNINVOICED' ? item.canCreateInvoice : tab === 'INVOICED' ? !item.canCreateInvoice : item.isDueSoon
+    const tabMatch = tab === 'UNINVOICED' ? requiresInvoiceAction(item) : tab === 'INVOICED' ? !requiresInvoiceAction(item) : item.isDueSoon
     const statusMatch = status === 'ALL' || item.shipmentStatus === status
     return tabMatch && statusMatch && (!normalized || [item.orderNumber, item.customerName, item.invoiceNumber ?? '', item.cargoTrackingNumber ?? ''].some(value => value.toLocaleLowerCase('tr-TR').includes(normalized)))
   })
   const totalPages = Math.max(1, Math.ceil(visible.length / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageItems = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize)
   useEffect(() => { setPageNumber(1) }, [search, tab, status, pageSize])
   const tabs = [['UNINVOICED', 'Faturalandırılmamışlar'], ['INVOICED', 'Faturalandırılmışlar'], ['DUE_SOON', 'Süresi Yaklaşanlar']] as const
-  const counts = { unInvoiced: items.filter(x => x.canCreateInvoice).length, invoiced: items.filter(x => !x.canCreateInvoice).length, dueSoon: items.filter(x => x.isDueSoon).length }
+  const counts = { unInvoiced: items.filter(requiresInvoiceAction).length, invoiced: items.filter(x => !requiresInvoiceAction(x)).length, dueSoon: items.filter(x => x.isDueSoon).length }
   const activeTabLabel = tabs.find(([value]) => value === tab)?.[1] ?? 'Faturalar'
   return <section className="content f3 invoices-page reference-invoices-page">
     <div className="page-heading invoices-reference-heading">
@@ -91,7 +105,7 @@ export function InvoicesPage() {
           <div className="invoice-reference-shipment"><Badge value={item.shipmentStatus} /><small>{item.deliveredAt ? `Teslim: ${new Date(item.deliveredAt).toLocaleDateString('tr-TR')}` : 'Henüz teslim edilmedi'}</small></div>
           <div className="invoice-reference-status"><span className={item.canCreateInvoice ? 'invoice-status pending' : 'invoice-status complete'}>{item.canCreateInvoice ? 'Fatura bekliyor' : 'Fatura oluşturuldu'}</span>{item.invoiceDueAt && <small className={item.isDueSoon ? 'deadline critical' : ''}>Son tarih: {new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}</small>}</div>
           <div className="invoice-reference-amount"><strong>{item.amount.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</strong><small>{item.isDueSoon ? 'Öncelikli takip' : 'Sipariş toplamı'}</small></div>
-          <div className="invoice-reference-actions">{item.invoiceId ? <span className="badge neutral">Fatura oluşturuldu</span> : <button type="button" aria-busy={create.isPending && create.variables?.packageId === item.packageId} disabled={!provider?.hasCredential || create.isPending || !item.canCreateInvoice} onClick={() => create.mutate(item)}>{create.isPending && create.variables?.packageId === item.packageId && <span className="invoice-action-spinner" aria-hidden="true" />}<span className="invoice-action-label">{create.isPending && create.variables?.packageId === item.packageId ? 'İşleniyor…' : 'Fatura oluştur'}</span></button>}<button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları aç <UiIcon name="externalLink" /></button></div>
+          <div className="invoice-reference-actions">{item.invoiceId ? item.invoiceStatus === 'FATURA_REDDEDILDI' ? <><span className="invoice-status failed">Hatalı</span><button type="button" aria-busy={create.isPending && create.variables?.packageId === item.packageId} disabled={!provider?.hasCredential || create.isPending} onClick={() => create.mutate(item)}>{create.isPending && create.variables?.packageId === item.packageId && <span className="invoice-action-spinner" aria-hidden="true" />}<span className="invoice-action-label">{create.isPending && create.variables?.packageId === item.packageId ? 'Deneniyor…' : 'Tekrar dene'}</span></button></> : <span className={`invoice-status ${item.invoiceStatus === 'FATURA_KESILDI' ? 'complete' : 'pending'}`}>{item.invoiceStatus === 'FATURA_KESILDI' ? 'Faturası kesilmiş' : 'Fatura işleniyor'}</span> : <button type="button" aria-busy={create.isPending && create.variables?.packageId === item.packageId} disabled={!provider?.hasCredential || create.isPending || !item.canCreateInvoice} onClick={() => create.mutate(item)}>{create.isPending && create.variables?.packageId === item.packageId && <span className="invoice-action-spinner" aria-hidden="true" />}<span className="invoice-action-label">{create.isPending && create.variables?.packageId === item.packageId ? 'İşleniyor…' : 'Fatura oluştur'}</span></button>}<button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları aç <UiIcon name="externalLink" /></button></div>
         </article>)}
       </div><nav className="order-pagination" aria-label="Fatura sayfaları"><span>Toplam {visible.length.toLocaleString('tr-TR')} adet</span><Pagination className="pagination-controls" page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={() => setPageNumber(value => Math.min(totalPages, value + 1))} /></nav></>}
     </section>
