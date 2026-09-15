@@ -1455,6 +1455,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         return
       }
       setVariantRows(current => {
+        if (current.length === 1 && current[0].optionSignature.trim().toLocaleLowerCase('tr-TR') === 'tek ürün' && generated.length === 1) {
+          const existing = current[0]
+          const [next] = generated
+          return [{ ...next, key: existing.key, barcode: existing.barcode || next.barcode, sku: existing.sku || next.sku, stock: existing.stock, salePrice: existing.salePrice, listPrice: existing.listPrice, mediaRefs: existing.mediaRefs }]
+        }
         const existingMap = new Map(current.map(row => [variantSignatureKey(row.optionSignature), row]))
         const merged = generated.map(gen => {
           const match = existingMap.get(variantSignatureKey(gen.optionSignature))
