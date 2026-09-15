@@ -1171,7 +1171,7 @@
   .invoice-reference-actions { justify-items: stretch; }
   .invoice-reference-actions > * { width: 100%; min-width: 0; }
   .invoice-reference-actions > .invoice-status { width: fit-content; max-width: 100%; min-height: 28px; padding: 4px 8px; border: 1px solid currentColor; border-radius: var(--rv-radius-sm); line-height: 1.2; }
-  .invoice-reference-actions > .invoice-status.failed { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+  .invoice-reference-actions > .invoice-status.failed { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); cursor: help; }
   .invoice-reference-actions > button:not(.invoice-reference-details-trigger) { display: inline-flex; align-items: center; justify-content: center; gap: var(--rv-space-1); min-width: 0; overflow: hidden; padding-inline: var(--rv-space-2); white-space: nowrap; }
   .invoice-action-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .invoice-reference-actions > button[aria-busy="true"] { cursor: wait; }

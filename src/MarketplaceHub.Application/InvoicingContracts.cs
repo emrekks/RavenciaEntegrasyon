@@ -97,7 +97,8 @@ public sealed record InvoiceWorkspaceItemView(
     bool CanCreateInvoice,
     string? ShipmentAddressJson = null,
     string? InvoiceAddressJson = null,
-    IReadOnlyList<InvoiceWorkspaceLineView>? Lines = null);
+    IReadOnlyList<InvoiceWorkspaceLineView>? Lines = null,
+    string? InvoiceErrorCode = null);
 public sealed record InvoiceWorkspaceLineView(string Sku, string? Barcode, string Description, decimal Quantity, decimal UnitPrice, decimal VatRate, string? ImageUrl);
 public sealed record InvoiceLineView(Guid Id, int LineSequence, string Description, string? Sku, string Unit, decimal Quantity, decimal UnitPrice, decimal DiscountAmount, decimal VatRate, decimal VatAmount, decimal LineTotal);
 public sealed record InvoiceDocumentView(Guid Id, string DocumentType, string Sha256, DateTimeOffset CreatedAt);
