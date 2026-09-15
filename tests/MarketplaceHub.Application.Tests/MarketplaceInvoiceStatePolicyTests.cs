@@ -57,6 +57,24 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     }
 
     [Fact]
+    public void MapperAcceptsDocumentedV2ShipmentPackageAndLinePriceFields()
+    {
+        const string json = """
+            {"content":[{"shipmentPackageId":3330111111,"orderNumber":"10654411111","status":"Delivered","lastModifiedDate":1760000000000,"packageGrossAmount":498.90,"packageTotalDiscount":0,"packageTotalPrice":498.90,"lines":[{"lineId":4765111111,"stockCode":"SKU-1","productName":"Test","quantity":1,"lineUnitPrice":498.90,"vatRate":20,"barcode":"8683772071724"}]}]}
+            """;
+
+        var page = TrendyolJsonMapper.Orders(json);
+        var order = Assert.Single(page.Items);
+        var package = Assert.Single(order.Packages);
+        var line = Assert.Single(order.Lines);
+
+        Assert.Equal("3330111111", package.ExternalPackageId);
+        Assert.Equal("10654411111", order.OrderNumber);
+        Assert.Equal(498.90m, line.UnitPrice);
+        Assert.Empty(page.Issues!);
+    }
+
+    [Fact]
     public void InvoiceNumberOrLinkAloneDoesNotProveMarketplaceInvoice()
     {
         Assert.Equal(MarketplaceInvoiceStatus.Unknown,
