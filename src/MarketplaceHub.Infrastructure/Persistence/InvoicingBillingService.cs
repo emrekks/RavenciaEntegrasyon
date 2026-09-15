@@ -92,6 +92,20 @@ public sealed partial class InvoicingBillingService(
             .Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null && ((x.PackageId != null && packageIds.Contains(x.PackageId.Value)) || (x.PackageId == null && orderIds.Contains(x.OrderId))))
             .OrderByDescending(x => x.CreatedAt)
             .ToListAsync(cancellationToken);
+        var invoiceIds = invoices.Select(x => x.Id).ToArray();
+        var invoiceDocumentIds = (await db.InvoiceDocuments.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && invoiceIds.Contains(x.InvoiceId))
+            .Select(x => x.InvoiceId)
+            .Distinct()
+            .ToListAsync(cancellationToken)).ToHashSet();
+        var deliveryStates = await db.MarketplaceDeliveryStates.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && invoiceIds.Contains(x.InvoiceId))
+            .Select(x => new { x.InvoiceId, x.Status, x.ExternalReference, x.UpdatedAt })
+            .ToListAsync(cancellationToken);
+        var deliveryAttempts = await db.MarketplaceDeliveries.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && invoiceIds.Contains(x.InvoiceId))
+            .Select(x => new { x.InvoiceId, x.Status, x.ExternalReference, x.AttemptNumber })
+            .ToListAsync(cancellationToken);
 
         var variantIds = lines.Where(x => x.VariantId != null).Select(x => x.VariantId!.Value).Distinct().ToArray();
         var lineSkus = lines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -133,7 +147,13 @@ public sealed partial class InvoicingBillingService(
             var image = orderLines.Select(line => ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
             var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
             var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(line.Sku, line.Barcode, line.TitleSnapshot, line.OrderedQuantity, line.UnitPrice, line.VatRate, ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null)).ToList();
-            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, invoice?.InvoiceNumber, invoiceStatus == "FATURA_BEKLIYOR", order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode);
+            var deliveryState = invoice is null
+                ? null
+                : deliveryStates.Where(x => x.InvoiceId == invoice.Id).OrderByDescending(x => x.UpdatedAt).FirstOrDefault();
+            var deliveryAttempt = invoice is null
+                ? null
+                : deliveryAttempts.Where(x => x.InvoiceId == invoice.Id).OrderByDescending(x => x.AttemptNumber).FirstOrDefault();
+            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, invoice?.InvoiceNumber, invoiceStatus == "FATURA_BEKLIYOR", order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id));
         }).Where(x => x is not null).Select(x => x!).ToList();
     }
 
