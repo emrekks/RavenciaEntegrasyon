@@ -91,7 +91,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (job.JobType == MarketplaceJobTypes.ProductSync)
         {
             var configuredMinutes = configuration.GetValue<double?>("Worker:ProductSyncTimeoutMinutes") ?? 60;
-            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 60)));
+            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 180)));
         }
         using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         var heartbeat = MaintainLeaseAsync(job, execution, heartbeatStop.Token);
