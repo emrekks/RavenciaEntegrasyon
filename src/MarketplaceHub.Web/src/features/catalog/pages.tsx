@@ -1311,11 +1311,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const mediaUrls = useMemo(() => form.mediaUrls.split(/\r?\n|[;|]/).map(item => item.trim()).filter(Boolean), [form.mediaUrls])
 
   const allRequirements = useMemo(() => (requirements.data ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder), [requirements.data])
-  // A category requirement is usable in the product editor only when its
-  // mapped local attribute has active values. Empty definitions are kept in
-  // the mapping workspace for maintenance, but must not become empty product
-  // fields or validation requirements.
-  const mappedRequirements = useMemo(() => allRequirements.filter(item => item.attribute.values.length > 0), [allRequirements])
+  // A category requirement is usable in the product editor when its mapped
+  // local attribute has active values or the marketplace accepts a custom
+  // value. The latter keeps required text fields (for example a free-form
+  // color field) available for entry from the product form.
+  const mappedRequirements = useMemo(() => allRequirements.filter(item => item.attribute.values.length > 0 || item.allowsCustomValue), [allRequirements])
   const webColorRequirement = useMemo(() => mappedRequirements.find(item => isColorAttributeName(item.attribute.name) && item.attribute.values.length > 0), [mappedRequirements])
   const webColorValues = webColorRequirement?.attribute.values ?? []
   const optionRequirements = useMemo(() => mappedRequirements.filter(item => (item.attributeId === webColorRequirement?.attributeId && webColorRequirement?.role === 'OPTION') || (!['WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(item.attribute.name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')) && (item.role === 'OPTION' || isVariantOptionName(item.attribute.name)))).slice(0, 2), [mappedRequirements, webColorRequirement])
