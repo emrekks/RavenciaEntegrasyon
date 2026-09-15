@@ -1560,6 +1560,8 @@
   .publish-platform-facts div { display: grid; gap: 3px; }
   .publish-platform-facts dt { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
   .publish-platform-facts dd { margin: 0; font-weight: 750; }
+  .publish-platform-status { display: inline-flex; width: fit-content; max-width: 100%; min-height: 30px; align-items: center; gap: var(--rv-space-1); padding: 0 var(--rv-space-2); color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-accent) 20%, var(--rv-color-surface-raised)); border: 1px solid color-mix(in srgb, var(--rv-color-accent) 48%, var(--rv-color-border)); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 800; line-height: 1.5; white-space: nowrap; }
+  .publish-platform-status > i { width: 7px; height: 7px; flex: 0 0 7px; background: var(--rv-color-accent); border-radius: 50%; }
   .scheduled-publish-panel summary { display: flex; min-height: 52px; align-items: center; justify-content: space-between; gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); cursor: pointer; list-style: none; }
   .scheduled-publish-panel summary > span { display: flex; align-items: center; gap: var(--rv-space-2); font-weight: 800; }
   .scheduled-publish-info { display: grid; gap: var(--rv-space-2); padding: 0 var(--rv-space-4) var(--rv-space-4); color: var(--rv-color-muted); }
