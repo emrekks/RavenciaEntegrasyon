@@ -1149,7 +1149,6 @@ function VariantFilterDropdown({
     {open && <div className="variant-filter-dropdown-menu" role="listbox" aria-label={`${group.name} filtre değerleri`}>
       <div className="variant-filter-dropdown-tools">
         <input autoFocus value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara..." aria-label={`${group.name} değerlerinde ara`} />
-        <span>{filteredValues.length}/{group.values.length}</span>
       </div>
       {selected.length > 0 && <button type="button" className="variant-filter-clear-selection" onClick={onClear}>Seçimi temizle</button>}
       <div className="variant-filter-dropdown-options">
