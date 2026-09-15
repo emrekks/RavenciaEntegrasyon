@@ -44,7 +44,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (jobType != MarketplaceJobTypes.ConnectionTest && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
             return JobExecutionResult.Blocked("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için işlem çalıştırılmadı.");
         var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken);
-        if (syncLock is null) return JobExecutionResult.Retry("SYNC_LOCK_BUSY", "Aynı Trendyol mağazası için aynı senkronizasyon akışı zaten çalışıyor.", TimeSpan.FromSeconds(5));
+        if (syncLock is null) return JobExecutionResult.Retry("SYNC_LOCK_BUSY", "Aynı Trendyol mağazası için aynı senkronizasyon akışı zaten çalışıyor.", TimeSpan.FromMinutes(5));
         await using (syncLock)
         {
             var telemetryResource = TelemetryResource(jobType);
