@@ -467,7 +467,7 @@ public sealed record ReturnDetailView(
     IReadOnlyList<ReturnLineView>? Lines = null,
     bool StockDispositionAvailable = false,
     DateTimeOffset? ApprovedAt = null);
-public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds);
+public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);
 
 public interface IMarketplaceSalesService

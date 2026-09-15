@@ -771,6 +771,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"), cancellationToken); if (claim is null) return NotFound<Guid>(); if (claim.Version != expectedVersion) return Precondition<Guid>(claim.Version);
         var action = command.Action.Trim().ToUpperInvariant(); if (action is not ("APPROVE" or "REJECT")) return Invalid<Guid>("action", "İade aksiyonu APPROVE veya REJECT olmalıdır.");
         if (claim.Status != ReturnClaimStatus.ActionRequired) return ServiceResult<Guid>.Fail("RETURN_ACTION_NOT_ALLOWED", "İade aksiyonu yalnız ACTION_REQUIRED durumunda oluşturulabilir.", 409);
+        var claimLineIds = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId).Select(x => x.Id).ToListAsync(cancellationToken);
+        if (claimLineIds.Count == 0) return Invalid<Guid>("returnLineIds", "İade işleminde en az bir ürün satırı bulunmalıdır.");
+        var returnLineIds = command.ReturnLineIds?.Distinct().ToArray() ?? claimLineIds.ToArray();
+        if (returnLineIds.Length == 0 || returnLineIds.Except(claimLineIds).Any()) return Invalid<Guid>("returnLineIds", "İşlem yapılacak ürün satırları bu iadeye ait olmalıdır.");
         var activeDecision = await db.ReturnDecisions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && (x.Status == "PENDING" || x.Status == "SUBMITTED" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW")).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
         if (activeDecision is not null) return ServiceResult<Guid>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade için tamamlanmamış bir karar zaten bulunuyor.", 409);
         if (action == "REJECT" && (string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)) return Invalid<Guid>("explanation", "REJECT için reasonCode ve en fazla 500 karakter açıklama gerekir.");
@@ -787,7 +791,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             if (asset.Classification != "RETURN_EVIDENCE" || asset.SizeBytes is <= 0 or > 10 * 1024 * 1024 || asset.MimeType is not ("application/pdf" or "image/jpeg" or "image/png")) return ServiceResult<Guid>.Fail("EVIDENCE_INVALID", "İade kanıtı PDF/JPEG/PNG ve en fazla 10 MiB olmalıdır.", 422);
             db.ReturnEvidence.Add(new ReturnEvidence { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, DecisionId = decision.Id, FileAssetId = asset.Id, EvidenceKind = asset.Classification, Checksum = asset.Sha256, CreatedAt = timeProvider.GetUtcNow() });
         }
-        var job = NewJob(tenantId, claim.ConnectionId, MarketplaceJobTypes.ReturnAction, $"return-action:{normalizedKey}", JsonSerializer.Serialize(new { claimId, decisionId = decision.Id }), correlationId); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
+        var job = NewJob(tenantId, claim.ConnectionId, MarketplaceJobTypes.ReturnAction, $"return-action:{normalizedKey}", JsonSerializer.Serialize(new { claimId, decisionId = decision.Id, returnLineIds }), correlationId); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
     }
 
     public async Task<ServiceResult<ReturnDetailView>> ApplyDispositionAsync(Guid tenantId, Guid userId, Guid claimId, ReturnDispositionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
