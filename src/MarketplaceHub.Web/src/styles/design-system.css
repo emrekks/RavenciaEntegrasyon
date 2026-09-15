@@ -8247,6 +8247,28 @@ small,
   display: none;
 }
 
+/* Orders: split multiple products with the same shared divider used by returns. */
+.order-reference-row .order-reference-products > article,
+.order-reference-row .order-reference-prices > strong {
+  border-bottom: 0;
+}
+
+.order-row-divider {
+  grid-column: 4 / 6;
+  align-self: end;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--rv-color-border);
+  border-right: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.app-shell.stitch-shell main .order-row-divider {
+  border-top-color: var(--rv-color-border-strong);
+}
+
 .app-shell.stitch-shell main .return-reference-row .order-reference-products > article,
 .app-shell.stitch-shell main .return-reference-row .order-reference-prices > strong {
   border-bottom: 0;
