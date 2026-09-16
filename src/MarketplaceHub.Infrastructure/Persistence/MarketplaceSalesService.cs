@@ -686,7 +686,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (claim is null) return NotFound<ReturnDetailView>();
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claim.OrderId, cancellationToken);
         if (order is null) return NotFound<ReturnDetailView>();
-        var actions = claim.Status == ReturnClaimStatus.InTransit
+        var actions = claim.Status is ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit
             ? ["RECEIVE"]
             : await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken) && claim.Status == ReturnClaimStatus.ActionRequired
             ? ReturnActions
@@ -742,7 +742,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"), cancellationToken);
         if (claim is null) return NotFound<ReturnDetailView>();
         if (claim.Version != expectedVersion) return Precondition<ReturnDetailView>(claim.Version);
-        if (claim.Status != ReturnClaimStatus.InTransit) return ServiceResult<ReturnDetailView>.Fail("RETURN_RECEIPT_NOT_ALLOWED", "Teslim alındı işlemi yalnız kargodaki iadeler için kullanılabilir.", 409);
+        if (claim.Status is not (ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit)) return ServiceResult<ReturnDetailView>.Fail("RETURN_RECEIPT_NOT_ALLOWED", "Teslim alındı işlemi yalnız talep oluşturulan veya kargodaki iadeler için kullanılabilir.", 409);
         if (!ReturnClaimStateMachine.CanTransition(claim.Status, ReturnClaimStatus.ActionRequired)) return ServiceResult<ReturnDetailView>.Fail("RETURN_STATE_CONFLICT", "İade durumu aksiyon bekliyor durumuna geçirilemedi.", 409);
 
         var now = timeProvider.GetUtcNow();
