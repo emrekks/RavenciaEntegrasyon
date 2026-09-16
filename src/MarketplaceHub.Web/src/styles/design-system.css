@@ -6766,13 +6766,15 @@ small,
 }
 
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-nw { top: 0; left: 0; cursor: nwse-resize; transform: translate(-50%, -50%); }
-.app-shell.stitch-shell main .shipping-designer-resize-handle.handle-n { top: 0; left: 50%; cursor: ns-resize; transform: translate(-50%, -50%); }
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-ne { top: 0; right: 0; cursor: nesw-resize; transform: translate(50%, -50%); }
-.app-shell.stitch-shell main .shipping-designer-resize-handle.handle-e { top: 50%; right: 0; cursor: ew-resize; transform: translate(50%, -50%); }
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-se { right: 0; bottom: 0; cursor: nwse-resize; transform: translate(50%, 50%); }
-.app-shell.stitch-shell main .shipping-designer-resize-handle.handle-s { bottom: 0; left: 50%; cursor: ns-resize; transform: translate(-50%, 50%); }
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-sw { bottom: 0; left: 0; cursor: nesw-resize; transform: translate(-50%, 50%); }
-.app-shell.stitch-shell main .shipping-designer-resize-handle.handle-w { top: 50%; left: 0; cursor: ew-resize; transform: translate(-50%, -50%); }
+.app-shell.stitch-shell main .shipping-designer-resize-handle.handle-n { top: 0; left: 50%; transform: translate(-50%, -50%); }
+.app-shell.stitch-shell main .shipping-designer-resize-handle.handle-e { top: 50%; right: 0; transform: translate(50%, -50%); }
+.app-shell.stitch-shell main .shipping-designer-resize-handle.handle-s { bottom: 0; left: 50%; transform: translate(-50%, 50%); }
+.app-shell.stitch-shell main .shipping-designer-resize-handle.handle-w { top: 50%; left: 0; transform: translate(-50%, -50%); }
+.app-shell.stitch-shell main .shipping-designer-rotate-handle { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); cursor: pointer; }
+.app-shell.stitch-shell main .shipping-designer-rotate-handle:active { cursor: pointer; }
 
 .app-shell.stitch-shell main .shipping-designer-resize-handle:hover {
   background: var(--rv-color-primary);
