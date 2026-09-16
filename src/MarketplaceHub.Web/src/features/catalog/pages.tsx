@@ -582,7 +582,7 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
     </div>
     {open && createPortal(
       <div ref={tooltipRef} className="product-variant-tooltip product-variant-tooltip-portal" role="tooltip" style={{ left: position.left, top: position.top }}>
-        {groups.map(group => <div className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span>{group.values.map(value => `${value.label} (${value.quantity})`).join(', ')}</span></div>)}
+        {groups.map(group => <div className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span className="product-variant-values">{group.values.map(value => <span className={`product-variant-value${value.quantity === 0 ? ' is-empty' : ''}`} key={value.label}><span>{value.label}</span><b>{value.quantity}</b></span>)}</span></div>)}
       </div>,
       document.body
     )}
