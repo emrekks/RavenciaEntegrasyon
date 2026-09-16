@@ -186,8 +186,12 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             var connectionTestCode = connection.PlatformCode == "TRENDYOL" ? MarketplaceCapabilities.ConnectionTest : InvoicingCapabilities.ConnectionTest;
             var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == connectionTestCode && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
             if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported) return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Bağlantı etkinleştirilmeden önce başarılı Stage/Production testi gerekir.", 422);
+            // Re-activation after data was hidden or purged must always rebuild the
+            // marketplace snapshot. Checking for remaining rows is not reliable:
+            // reference snapshots can survive an operational data reset while the
+            // connection is still missing orders/products/returns.
             queueActivationBootstrap = connection.PlatformCode == "TRENDYOL"
-                && (connection.Status == "DISABLED" || !await HasConnectionDataAsync(tenantId, id, cancellationToken));
+                && connection.Status is not ("ACTIVE" or "VERIFIED");
             connection.Status = "ACTIVE";
         }
         else connection.Status = "DISABLED";
@@ -325,11 +329,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         await db.SaveChangesAsync(cancellationToken);
     }
     private Task<bool> HasCredential(Guid tenantId, Guid id, CancellationToken cancellationToken) => db.PlatformCredentials.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.RevokedAt == null, cancellationToken);
-    private async Task<bool> HasConnectionDataAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
-        await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
-        || await db.ReturnClaims.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
-        || await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
-        || await db.ReferenceSnapshots.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
     private async Task CancelScheduledSyncsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
         var jobs = await db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
