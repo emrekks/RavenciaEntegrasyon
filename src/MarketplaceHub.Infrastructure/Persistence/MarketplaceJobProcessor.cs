@@ -1306,7 +1306,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // an older cursor survived the reset. This keeps the first import idempotent
         // without requiring any direct database mutation.
         var hasSnapshots = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
-        var state = ReadOrderSyncState(cursor, now, overlap, allowBaseline, forceBaseline: allowBaseline && (full || !hasSnapshots));
+        // Recovery is the safety net after an interrupted/auth-failed sync.
+        // Do not let a stale successful watermark turn the first healthy run
+        // into a narrow incremental read that permanently misses the gap.
+        var retryAfterFailure = cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
+        var state = ReadOrderSyncState(cursor, now, overlap, allowBaseline, forceBaseline: allowBaseline && (full || !hasSnapshots || retryAfterFailure));
         var resetExpiredCursor = false;
         do
         {
@@ -3748,7 +3752,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Select(x => (int?)x.OverlapSeconds)
             .SingleOrDefaultAsync(cancellationToken) ?? 900;
         var overlap = TimeSpan.FromSeconds(Math.Clamp(configuredOverlapSeconds, 60, 86_400));
-        var state = ReadReturnSyncState(cursor, timeProvider.GetUtcNow(), overlap, ReadBoolean(payloadJson, "forceFull"));
+        // A failed sync can leave a valid-looking watermark even though the
+        // remote read never completed (for example after an auth outage). The
+        // next successful run must backfill the bounded baseline instead of
+        // advancing from that stale watermark and silently skipping older
+        // claims.
+        var retryAfterFailure = cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
+        var state = ReadReturnSyncState(cursor, timeProvider.GetUtcNow(), overlap, ReadBoolean(payloadJson, "forceFull") || retryAfterFailure);
         var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         do
         {
