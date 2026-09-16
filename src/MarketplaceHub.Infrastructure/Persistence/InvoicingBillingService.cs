@@ -138,9 +138,8 @@ public sealed partial class InvoicingBillingService(
             var orderLines = linesByOrder.GetValueOrDefault(order.Id) ?? [];
             var invoice = invoices.FirstOrDefault(x => x.PackageId == package.Id) ?? invoices.FirstOrDefault(x => x.PackageId == null && x.OrderId == order.Id);
             var invoiceStatus = MarketplaceSalesService.InvoiceLabel(invoice, package.MarketplaceInvoiceStatus, order.CustomerSnapshotJson, [package.RawStatus]);
-            if (invoiceStatus == "FATURA_BEKLIYOR"
-                && (package.Status == ShipmentPackageStatus.Cancelled
-                    || DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus))) return null;
+            if (!DashboardMetricPolicy.IsInvoiceEligiblePackage(package.Status)
+                || !DashboardMetricPolicy.IsInvoiceEligibleOrder(order.DerivedStatus)) return null;
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
             var dueAt = deliveredAt?.AddDays(7);
             var dueSoon = invoiceStatus == "FATURA_BEKLIYOR" && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);

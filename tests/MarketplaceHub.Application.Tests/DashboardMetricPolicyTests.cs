@@ -80,6 +80,16 @@ public sealed class DashboardMetricPolicyTests
     public void CancelledPackagesAreNotInvoiceEligible(ShipmentPackageStatus status) => Assert.False(DashboardMetricPolicy.IsInvoiceEligiblePackage(status));
 
     [Theory]
+    [InlineData("CANCELLED")]
+    [InlineData("canceled")]
+    public void CancelledOrdersAreNotInvoiceEligible(string status) => Assert.False(DashboardMetricPolicy.IsInvoiceEligibleOrder(status));
+
+    [Theory]
+    [InlineData("NEW")]
+    [InlineData("DELIVERED")]
+    public void ActiveOrdersRemainInvoiceEligible(string status) => Assert.True(DashboardMetricPolicy.IsInvoiceEligibleOrder(status));
+
+    [Theory]
     [InlineData(JobStatus.Pending)]
     [InlineData(JobStatus.Leased)]
     [InlineData(JobStatus.RetryScheduled)]

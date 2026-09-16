@@ -689,11 +689,17 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (claim is null) return NotFound<ReturnDetailView>();
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claim.OrderId, cancellationToken);
         if (order is null) return NotFound<ReturnDetailView>();
-        var actions = claim.Status is ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit
-            ? ["RECEIVE"]
-            : await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken) && claim.Status == ReturnClaimStatus.ActionRequired
-            ? ReturnActions
-            : await CapabilityValues(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, "allowedActions", cancellationToken);
+        // ActionRequired is the provider's decision point. The Trendyol return
+        // adapter already has explicit APPROVE/REJECT implementations, so the
+        // UI must not hide those controls just because a production capability
+        // evidence row was not recorded. The write policy is still enforced by
+        // EnqueueReturnActionAsync before any external job is created.
+        var actions = claim.Status switch
+        {
+            ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit => ["RECEIVE"],
+            ReturnClaimStatus.ActionRequired => ReturnActions,
+            _ => await CapabilityValues(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, "allowedActions", cancellationToken)
+        };
         var approvedAt = claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
             ? await db.ReturnDecisions.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.Action == "APPROVE" && x.Status == "SUCCEEDED")

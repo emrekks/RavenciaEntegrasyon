@@ -40,6 +40,9 @@ public static class DashboardMetricPolicy
     public static bool IsInvoiceEligiblePackage(ShipmentPackageStatus status) =>
         status is not ShipmentPackageStatus.Cancelled;
 
+    public static bool IsInvoiceEligibleOrder(string? status) =>
+        !InvoiceExcludedOrderStatuses.Contains(status?.Trim().ToUpperInvariant() ?? string.Empty, StringComparer.Ordinal);
+
     public static bool IsInvoiceDueSoon(DateTimeOffset deliveredAt, DateTimeOffset now)
     {
         var age = now - deliveredAt;
