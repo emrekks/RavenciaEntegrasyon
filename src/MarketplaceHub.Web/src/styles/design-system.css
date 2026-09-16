@@ -2433,6 +2433,20 @@
   .reference-product-media > .reference-product-placeholder { width: 68px; height: 102px; }
 }
 
+@media (min-width: 1280px) {
+  .category-attribute-mapping-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--rv-space-2); }
+  .category-attribute-field { grid-template-columns: minmax(132px, .78fr) minmax(0, 1.22fr); gap: var(--rv-space-2); padding: var(--rv-space-3); }
+  .category-attribute-field-head { align-items: flex-start; }
+  .category-attribute-field-head strong { font-size: var(--rv-font-size-sm); }
+  .category-attribute-count { padding: 4px 7px; }
+  .app-shell.stitch-shell main .category-attribute-select-trigger { min-height: 48px; padding-inline: var(--rv-space-2); }
+}
+
+@media (min-width: 1800px) {
+  .category-attribute-mapping-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .category-attribute-field { grid-template-columns: minmax(140px, .82fr) minmax(0, 1.18fr); }
+}
+
 @media (max-width: 900px) {
   .embedded-attribute-grid, .mapping-unified-grid { grid-template-columns: 1fr; }
   .panel-library-section .panel-attribute-create { grid-template-columns: 1fr; }
