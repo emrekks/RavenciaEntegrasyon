@@ -5592,6 +5592,10 @@ small,
   padding: var(--rv-space-5) var(--rv-space-6);
 }
 
+.app-shell.stitch-shell main .integration-settings-modal {
+  width: min(960px, 100%);
+}
+
 .app-shell.stitch-shell main .integration-settings-modal > .integration-inline-workspace {
   display: grid;
   align-content: start;
@@ -7835,10 +7839,13 @@ small,
 
 .app-shell.stitch-shell main .integration-detail-summary {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
   gap: var(--rv-space-3);
 }
 
 .app-shell.stitch-shell main .integration-detail-summary > article {
+  box-sizing: border-box;
+  height: 100%;
   min-height: 126px;
   padding: var(--rv-space-4);
   background: var(--rv-color-surface-raised);
@@ -7856,13 +7863,45 @@ small,
 
 .app-shell.stitch-shell main .sync-policy-list {
   display: grid;
+  gap: var(--rv-space-5);
+}
+
+.app-shell.stitch-shell main .sync-policy-group {
+  display: grid;
+  min-width: 0;
   gap: var(--rv-space-3);
+}
+
+.app-shell.stitch-shell main .sync-policy-group-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--rv-space-3);
+}
+
+.app-shell.stitch-shell main .sync-policy-group-heading h3 {
+  margin: 0;
+  font-size: var(--rv-font-size-sm);
+}
+
+.app-shell.stitch-shell main .sync-policy-group-heading > span {
+  flex: 0 0 auto;
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-xs);
+}
+
+.app-shell.stitch-shell main .sync-policy-group-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--rv-space-3);
+  min-width: 0;
 }
 
 .app-shell.stitch-shell main .sync-policy-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1.5fr) minmax(126px, .8fr) minmax(138px, .8fr) auto;
-  align-items: end;
+  grid-template-columns: minmax(0, 1fr) minmax(126px, .9fr);
+  align-items: start;
   gap: var(--rv-space-3);
   min-width: 0;
   padding: var(--rv-space-4);
@@ -7892,6 +7931,7 @@ small,
 
 .app-shell.stitch-shell main .sync-policy-identity {
   display: grid;
+  grid-column: 1 / -1;
   min-width: 0;
   gap: var(--rv-space-2);
 }
@@ -7942,6 +7982,7 @@ small,
 }
 
 .app-shell.stitch-shell main .sync-policy-save {
+  width: 100%;
   min-height: var(--rv-control-height-md);
   white-space: nowrap;
 }
@@ -7957,6 +7998,10 @@ small,
 
   .app-shell.stitch-shell main .sync-policy-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-shell.stitch-shell main .sync-policy-group-grid {
+    grid-template-columns: 1fr;
   }
 
   .app-shell.stitch-shell main .sync-policy-identity,
