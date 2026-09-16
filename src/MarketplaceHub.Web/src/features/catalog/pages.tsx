@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
 import { Callout, Pagination, UiIcon, type UiIconName } from '../../shared/components'
@@ -521,80 +520,12 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect }:
 type VariantDisplayGroup = { label: string; values: string[] }
 
 function ProductVariantHover({ count, catalogCount, groups }: { count: number; catalogCount: number; groups: VariantDisplayGroup[] }) {
-  const triggerRef = useRef<HTMLDivElement>(null)
-  const [open, setOpen] = useState(false)
-  const [pinned, setPinned] = useState(false)
-  const [hovered, setHovered] = useState(false)
-  const [focused, setFocused] = useState(false)
-  const [position, setPosition] = useState({ left: 16, top: 16 })
-
-  function updatePosition() {
-    const rect = triggerRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const width = Math.min(280, Math.max(160, window.innerWidth - 32))
-    const estimatedHeight = Math.min(240, Math.max(48, groups.length * 30 + 16))
-    const belowTop = rect.bottom + 8
-    const spaceBelow = window.innerHeight - belowTop - 12
-    const top = spaceBelow >= estimatedHeight || rect.top <= estimatedHeight + 20
-      ? belowTop
-      : Math.max(12, rect.top - estimatedHeight - 8)
-    const left = Math.min(Math.max(16, rect.left), Math.max(16, window.innerWidth - width - 16))
-    setPosition({ left, top })
-  }
-
-  function showTooltip() {
-    setOpen(true)
-    window.requestAnimationFrame(updatePosition)
-  }
-
-  function togglePinned() {
-    setPinned(value => {
-      const next = !value
-      setOpen(next || hovered || focused)
-      if (next) window.requestAnimationFrame(updatePosition)
-      return next
-    })
-  }
-
-  useEffect(() => {
-    if (!open) return
-    updatePosition()
-    const handleViewportChange = () => updatePosition()
-    const closeOnOutsideClick = (event: PointerEvent) => {
-      const target = event.target
-      if (target instanceof Element && (triggerRef.current?.contains(target) || target.closest('.product-variant-tooltip'))) return
-      setPinned(false)
-      setOpen(false)
-    }
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      setPinned(false)
-      setOpen(false)
-      triggerRef.current?.focus()
-    }
-    window.addEventListener('resize', handleViewportChange)
-    window.addEventListener('scroll', handleViewportChange, true)
-    document.addEventListener('pointerdown', closeOnOutsideClick)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => {
-      window.removeEventListener('resize', handleViewportChange)
-      window.removeEventListener('scroll', handleViewportChange, true)
-      document.removeEventListener('pointerdown', closeOnOutsideClick)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [groups.length, open])
-
-  return <>
-    <div ref={triggerRef} className="product-list-variants product-variant-hover" tabIndex={0} role="button" aria-expanded={open} aria-pressed={pinned} aria-label={`${catalogCount} seçenek, ${count} varyant. Üzerine gelince gösterilir; sabitlemek için tıklayın`} title="Üzerine gelince gösterilir; açık tutmak için tıklayın" onMouseEnter={() => { setHovered(true); showTooltip() }} onMouseLeave={() => { setHovered(false); if (!pinned && !focused) setOpen(false) }} onFocus={() => { setFocused(true); showTooltip() }} onBlur={() => { setFocused(false); if (!pinned && !hovered) setOpen(false) }} onClick={togglePinned} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); togglePinned() } }}>
-      <strong>{catalogCount} seçenek</strong><span>{count} varyant</span>
+  return <div className="product-list-variants product-variant-list-inline" aria-label={`${catalogCount} seçenek, ${count} varyant`}>
+    <strong>{catalogCount} seçenek</strong><span>{count} varyant</span>
+    <div className="product-variant-groups">
+      {groups.map(group => <div className="product-variant-group" key={group.label}><strong>{group.label}:</strong><span>{group.values.join(', ')}</span></div>)}
     </div>
-    {open && createPortal(
-      <span className="product-variant-tooltip product-variant-tooltip-portal" role="tooltip" style={{ left: position.left, top: position.top }}>
-        {groups.map(group => <span className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span>{group.values.join(', ')}</span></span>)}
-      </span>,
-      document.body
-    )}
-  </>
+  </div>
 }
 
 function ProductCatalogImage({ url, title, onClick }: { url: string | null; title: string; onClick: () => void }) {
@@ -659,18 +590,16 @@ function LowStockDetailsModal({ products, loading, error, onClose, onImageClick 
                 <div className="low-stock-color-list">
                   {[...group.products].sort((left, right) => lowStockProductColor(left).localeCompare(lowStockProductColor(right), 'tr', { sensitivity: 'base' })).map(product => {
                     const lowVariants = product.variants.filter(variant => variant.onHand <= 5).sort((left, right) => lowStockVariantLabel(left).localeCompare(lowStockVariantLabel(right), 'tr', { numeric: true, sensitivity: 'base' }))
-                    const image = lowStockProductImage(product, group.primary)
-                    return <section className="low-stock-color-card" key={product.id}>
-                      <div className="low-stock-color-header">
-                        <ProductCatalogImage url={image} title={`${modelCode} ${lowStockProductColor(product)}`} onClick={() => { if (image) onImageClick(image, `${modelCode} · ${lowStockProductColor(product)}`) }} />
-                        <div><strong>{lowStockProductColor(product)}</strong><span>{product.title}</span></div>
+                    return <details className="low-stock-color-card" key={product.id}>
+                      <summary className="low-stock-color-summary"><div><strong>{lowStockProductColor(product)}</strong><span>{product.title}</span></div><span>{lowVariants.length} eksik varyant</span><UiIcon name="chevronDown" /></summary>
+                      <div className="low-stock-color-details">
+                        <div className="low-stock-variant-heading"><strong>Eksik varyantlar</strong><span>{lowVariants.length} kayıt</span></div>
+                        {lowVariants.length ? <div className="low-stock-variant-list">{lowVariants.map(variant => <div className="low-stock-variant-row" key={variant.id}>
+                          <div><strong>{lowStockVariantLabel(variant)}</strong><small>SKU: {variant.sku}{variant.barcode ? ` · Barkod: ${variant.barcode}` : ''}</small></div>
+                          <span className={`low-stock-value${variant.onHand === 0 ? ' is-empty' : ''}`}><b>{variant.onHand}</b><small>{variant.onHand === 0 ? 'Stoksuz' : 'Kalan'}</small></span>
+                        </div>)}</div> : <p className="low-stock-details-muted">Bu renkte kritik stok varyantı bulunamadı.</p>}
                       </div>
-                      <div className="low-stock-variant-heading"><strong>Eksik varyantlar</strong><span>{lowVariants.length} kayıt</span></div>
-                      {lowVariants.length ? <div className="low-stock-variant-list">{lowVariants.map(variant => <div className="low-stock-variant-row" key={variant.id}>
-                        <div><strong>{lowStockVariantLabel(variant)}</strong><small>SKU: {variant.sku}{variant.barcode ? ` · Barkod: ${variant.barcode}` : ''}</small></div>
-                        <span className={`low-stock-value${variant.onHand === 0 ? ' is-empty' : ''}`}><b>{variant.onHand}</b><small>{variant.onHand === 0 ? 'Stoksuz' : 'Kalan'}</small></span>
-                      </div>)}</div> : <p className="low-stock-details-muted">Bu renkte kritik stok varyantı bulunamadı.</p>}
-                    </section>
+                    </details>
                   })}
                 </div>
               </article>
