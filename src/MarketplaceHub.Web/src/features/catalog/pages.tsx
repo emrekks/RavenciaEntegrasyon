@@ -582,7 +582,7 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
     </div>
     {open && createPortal(
       <div ref={tooltipRef} className="product-variant-tooltip product-variant-tooltip-portal" role="tooltip" style={{ left: position.left, top: position.top }}>
-        {groups.map(group => <div className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span className="product-variant-values">{group.values.map(value => <span className={`product-variant-value${value.quantity === 0 ? ' is-empty' : ''}`} key={value.label}><span>{value.label}</span><b>{value.quantity}</b></span>)}</span></div>)}
+        {groups.map(group => <div className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span className="product-variant-values">{group.values.map(value => <span className={`product-variant-value ${value.quantity === 0 ? 'is-empty' : value.quantity < 5 ? 'is-low' : 'is-healthy'}`} key={value.label}><span>{value.label}</span><b>{value.quantity}</b></span>)}</span></div>)}
       </div>,
       document.body
     )}
@@ -623,9 +623,42 @@ function lowStockProductImage(product: Product, fallback: Product | null = null)
     ?? null
 }
 
+function lowStockMissingVariantCount(group: ProductGroup) {
+  return group.variants.filter(item => item.variant.onHand <= 0).length
+}
+
 function LowStockDetailsModal({ products, loading, error, onClose, onImageClick }: { products: Product[]; loading: boolean; error: unknown; onClose: () => void; onImageClick: (url: string, title: string) => void }) {
-  const groups = useMemo(() => productRowsAsCards(products).sort((left, right) => lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })), [products])
-  const lowVariantCount = groups.reduce((sum, group) => sum + group.variants.filter(item => item.variant.onHand <= 0).length, 0)
+  const groups = useMemo(() => productRowsAsCards(products), [products])
+  const [search, setSearch] = useState('')
+  const [colorFilter, setColorFilter] = useState<'ALL' | 'SINGLE' | 'MULTI'>('ALL')
+  const [sort, setSort] = useState<'MODEL_ASC' | 'MODEL_DESC' | 'MISSING_DESC' | 'MISSING_ASC'>('MODEL_ASC')
+  const filteredGroups = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('tr-TR')
+    return groups.flatMap(group => {
+      const modelCode = lowStockModelCode(group)
+      const groupText = [modelCode, ...group.products.flatMap(product => [product.title, lowStockProductColor(product), ...product.variants.map(lowStockVariantLabel)])]
+        .join(' ')
+        .toLocaleLowerCase('tr-TR')
+      if (query && !groupText.includes(query)) return []
+      if (colorFilter === 'SINGLE' && group.products.length !== 1) return []
+      if (colorFilter === 'MULTI' && group.products.length < 2) return []
+      const matchingProducts = query
+        ? group.products.filter(product => [product.title, lowStockProductColor(product), ...product.variants.map(lowStockVariantLabel)].join(' ').toLocaleLowerCase('tr-TR').includes(query))
+        : []
+      const visibleProducts = matchingProducts.length > 0 ? matchingProducts : group.products
+      const visibleVariants = matchingProducts.length > 0
+        ? group.variants.filter(item => matchingProducts.includes(item.product))
+        : group.variants
+      return [{ ...group, products: visibleProducts, variants: visibleVariants }]
+    }).sort((left, right) => {
+      if (sort === 'MODEL_DESC') return lowStockModelCode(right).localeCompare(lowStockModelCode(left), 'tr', { numeric: true, sensitivity: 'base' })
+      if (sort === 'MISSING_DESC') return lowStockMissingVariantCount(right) - lowStockMissingVariantCount(left) || lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
+      if (sort === 'MISSING_ASC') return lowStockMissingVariantCount(left) - lowStockMissingVariantCount(right) || lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
+      return lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
+    })
+  }, [colorFilter, groups, search, sort])
+  const lowVariantCount = filteredGroups.reduce((sum, group) => sum + lowStockMissingVariantCount(group), 0)
+  const catalogRecordCount = filteredGroups.reduce((sum, group) => sum + group.products.length, 0)
 
   return <div className="workspace-modal-backdrop low-stock-details-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) onClose() }}>
     <section className="workspace-modal low-stock-details-modal" role="dialog" aria-modal="true" aria-labelledby="low-stock-details-title" onMouseDown={event => event.stopPropagation()}>
@@ -638,9 +671,15 @@ function LowStockDetailsModal({ products, loading, error, onClose, onImageClick 
         {!loading && <ErrorBox error={error} />}
         {!loading && !error && !groups.length && <p className="low-stock-details-state">Düşük stoklu ürün bulunamadı.</p>}
         {!loading && !error && groups.length > 0 && <>
-          <div className="low-stock-details-summary"><strong>{groups.length} model</strong><span>{products.length} katalog kaydı · {lowVariantCount} kritik varyant</span></div>
+          <div className="low-stock-details-tools">
+            <label><span>Arama</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Model kodu, ürün veya renk ara…" /></label>
+            <label><span>Renk sayısı</span><select value={colorFilter} onChange={event => setColorFilter(event.target.value as typeof colorFilter)}><option value="ALL">Tüm modeller</option><option value="SINGLE">Tek renkli</option><option value="MULTI">Çok renkli</option></select></label>
+            <label><span>Sıralama</span><select value={sort} onChange={event => setSort(event.target.value as typeof sort)}><option value="MODEL_ASC">Model kodu (A-Z)</option><option value="MODEL_DESC">Model kodu (Z-A)</option><option value="MISSING_DESC">Eksik varyant (çoktan aza)</option><option value="MISSING_ASC">Eksik varyant (azdan çoğa)</option></select></label>
+          </div>
+          <div className="low-stock-details-summary"><strong>{filteredGroups.length} model</strong><span>{catalogRecordCount} katalog kaydı · {lowVariantCount} eksik varyant</span></div>
+          {!filteredGroups.length && <p className="low-stock-details-state">Arama veya filtreye uyan düşük stoklu ürün bulunamadı.</p>}
           <div className="low-stock-family-list">
-            {groups.map(group => {
+            {filteredGroups.map(group => {
               const modelCode = lowStockModelCode(group)
               return <article className="low-stock-family-card" key={group.id}>
                 <div className="low-stock-family-header">
@@ -668,7 +707,7 @@ function LowStockDetailsModal({ products, loading, error, onClose, onImageClick 
           </div>
         </>}
       </div>
-      <footer><span className="low-stock-details-footer-note">Stok eşiği: 5 ve altı</span><button type="button" onClick={onClose}>Kapat</button></footer>
+      <footer><span className="low-stock-details-footer-note">Düşük stok: bir renkteki varyantların en az yarısı tükenmiş</span><button type="button" onClick={onClose}>Kapat</button></footer>
     </section>
   </div>
 }

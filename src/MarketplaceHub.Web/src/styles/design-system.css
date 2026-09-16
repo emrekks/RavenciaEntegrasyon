@@ -814,7 +814,9 @@
   .product-variant-tooltip-row > span { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
   .product-variant-values { display: flex; flex-wrap: wrap; gap: 4px; }
   .product-variant-value { display: inline-flex; min-height: 22px; align-items: center; gap: 5px; padding: 2px 6px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); line-height: 1.2; white-space: nowrap; }
-  .product-variant-value b { color: var(--rv-color-primary); font-family: var(--rv-font-mono); font-size: 11px; }
+  .product-variant-value b { color: var(--rv-color-primary); font-family: var(--rv-font-mono); font-size: 13px; font-weight: 800; }
+  .product-variant-value.is-low b { color: var(--rv-color-warning); }
+  .product-variant-value.is-healthy b { color: var(--rv-color-accent); }
   .product-variant-value.is-empty b { color: var(--rv-color-danger); }
   .product-list-price { grid-column: 5; }
   .product-list-stock { grid-column: 6; }
@@ -7143,6 +7145,10 @@ small,
 
 .low-stock-details-summary strong { color: var(--rv-color-ink); }
 .low-stock-details-summary span, .low-stock-details-footer-note { font-size: var(--rv-font-size-sm); }
+.low-stock-details-tools { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(150px, .7fr) minmax(190px, .9fr); gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+.low-stock-details-tools label { display: grid; min-width: 0; gap: 6px; }
+.low-stock-details-tools label > span { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
+.low-stock-details-tools input, .low-stock-details-tools select { min-width: 0; }
 .low-stock-details-state { margin: 0; padding: var(--rv-space-6); color: var(--rv-color-muted); text-align: center; }
 .low-stock-family-list { display: grid; gap: var(--rv-space-4); }
 .low-stock-family-card { display: grid; gap: var(--rv-space-4); padding: var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); }
@@ -7184,6 +7190,7 @@ small,
   .app-shell.stitch-shell main .product-metrics article,
   .app-shell.stitch-shell main .product-metrics > .product-metric-button { grid-template-columns: 42px minmax(0, 1fr); }
   .low-stock-details-body { padding-inline: var(--rv-space-4); }
+  .low-stock-details-tools { grid-template-columns: 1fr; }
   .low-stock-family-header { grid-template-columns: 58px minmax(0, 1fr); }
   .low-stock-family-count { grid-column: 2; justify-self: start; }
   .low-stock-details-modal > footer { align-items: stretch; flex-direction: column; }
