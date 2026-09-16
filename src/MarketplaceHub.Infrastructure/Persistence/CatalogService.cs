@@ -299,12 +299,43 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .Where(x => x.TenantId == tenantId && attributeIds.Contains(x.AttributeId) && x.IsActive)
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Value)
             .ToListAsync(cancellationToken);
+        var webColorAttributeIds = await FindWebColorAttributeIdsAsync(tenantId, categoryId, attributeIds, cancellationToken);
         var roles = requirements
             .GroupBy(x => x.AttributeId)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(x => NormalizeRequirementRole(x.Role)).Distinct(StringComparer.Ordinal).ToList());
         var attributeLookup = attributes.ToDictionary(x => x.Id, x => MapAttribute(x, values.Where(value => value.AttributeId == x.Id), roles.GetValueOrDefault(x.Id)));
-        var result = requirements.Where(x => attributeLookup.ContainsKey(x.AttributeId)).Select(x => new CategoryAttributeRequirementView(x.AttributeId, x.IsRequired, x.AllowsCustomValue, x.DisplayOrder, attributeLookup[x.AttributeId], NormalizeRequirementRole(x.Role))).ToList();
+        var result = requirements.Where(x => attributeLookup.ContainsKey(x.AttributeId)).Select(x => new CategoryAttributeRequirementView(x.AttributeId, x.IsRequired, x.AllowsCustomValue, x.DisplayOrder, attributeLookup[x.AttributeId], NormalizeRequirementRole(x.Role), webColorAttributeIds.Contains(x.AttributeId))).ToList();
         return ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>.Ok(result);
+    }
+
+    private async Task<HashSet<Guid>> FindWebColorAttributeIdsAsync(Guid tenantId, Guid categoryId, IReadOnlyCollection<Guid> attributeIds, CancellationToken cancellationToken)
+    {
+        if (attributeIds.Count == 0) return [];
+
+        var categoryScopes = await db.CategoryMappings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.LocalId == categoryId && x.Status == "VERIFIED")
+            .Select(x => x.ExternalId)
+            .Distinct()
+            .ToArrayAsync(cancellationToken);
+        if (categoryScopes.Length == 0) return [];
+
+        var mappedNames = await (from mapping in db.AttributeMappings.AsNoTracking()
+                                 join item in db.ReferenceItems.AsNoTracking()
+                                     on new { mapping.TenantId, mapping.SnapshotId, mapping.ExternalId }
+                                     equals new { item.TenantId, item.SnapshotId, item.ExternalId }
+                                 where mapping.TenantId == tenantId
+                                     && attributeIds.Contains(mapping.LocalId)
+                                     && categoryScopes.Contains(mapping.ScopeExternalId)
+                                     && mapping.Status == "VERIFIED"
+                                     && item.ResourceType == "CATEGORY_ATTRIBUTES"
+                                     && item.IsActive
+                                 select new { mapping.LocalId, item.Name })
+            .ToListAsync(cancellationToken);
+
+        return mappedNames
+            .Where(item => IsWebColorAttributeName(item.Name))
+            .Select(item => item.LocalId)
+            .ToHashSet();
     }
 
     public async Task<ServiceResult<IReadOnlyList<AttributeRequirementCommand>>> ReplaceRequirementsAsync(Guid tenantId, Guid categoryId, long expectedVersion, IReadOnlyList<AttributeRequirementCommand> requirements, CancellationToken cancellationToken)
@@ -1323,6 +1354,11 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     private PageResult<TView> Page<TEntity, TView>(List<TEntity> rows, int limit, Func<TEntity, TView> map) where TEntity : class { var hasMore = rows.Count > limit; var items = rows.Take(limit).Select(map).ToList(); var next = hasMore ? cursors.Encode((Guid)typeof(TEntity).GetProperty("Id")!.GetValue(rows[limit - 1])!) : null; return new(items, next, hasMore); }
     private static string Normalize(string value) => value.Trim().ToUpperInvariant();
     private static string NormalizeRequirementRole(string? value) => string.Equals(value?.Trim(), "OPTION", StringComparison.OrdinalIgnoreCase) ? "OPTION" : "ATTRIBUTE";
+    internal static bool IsWebColorAttributeName(string? value)
+    {
+        var normalized = value?.Replace(" ", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal).Replace("_", "", StringComparison.Ordinal).ToUpperInvariant();
+        return normalized is "WEBCOLOR" or "WEBCOLOUR" or "WEBRENK";
+    }
     private static string? NullTrim(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static string Signature(IReadOnlyDictionary<string, string>? options) => options is null || options.Count == 0 ? "-" : string.Join('|', options.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => $"{Normalize(x.Key)}={Normalize(x.Value)}"));
     private static bool TryAttributeType(string value, out AttributeDataType result) { result = value.Trim().ToUpperInvariant() switch { "TEXT" => AttributeDataType.Text, "NUMBER" => AttributeDataType.Number, "SINGLE_SELECT" => AttributeDataType.SingleSelect, "MULTI_SELECT" => AttributeDataType.MultiSelect, "BOOLEAN" => AttributeDataType.Boolean, _ => (AttributeDataType)(-1) }; return Enum.IsDefined(result); }

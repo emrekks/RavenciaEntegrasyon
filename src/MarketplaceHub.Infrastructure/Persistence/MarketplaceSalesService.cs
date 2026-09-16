@@ -125,6 +125,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     private void ApplyOrderFilters(ref IQueryable<Order> query, OrderListQuery options)
     {
+        var resendCreators = new[] { "transfer", "resend", "replacement" };
         var invoice = options.Invoice?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(invoice) && invoice != "ALL")
         {
@@ -177,10 +178,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             {
                 "PROCESSING" => query.Where(x => x.DerivedStatus == "PROCESSING" || x.DerivedStatus == "READY_TO_SHIP"),
                 "SHIPPED" => query.Where(x => x.DerivedStatus == "SHIPPED" || x.DerivedStatus == "UNDELIVERED"),
-                // A cancelled replacement package is a failed resend, not an
-                // active resend. Keep it in the cancelled tab so the resend
-                // tab does not offer a misleading "İşlem yapılamaz" row.
-                "RESENT" => query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled)),
+                // originPackageIds is also present for split/cancel packages;
+                // only Trendyol's explicit creator marker identifies a resend.
+                "RESENT" => query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy))),
                 _ => query.Where(x => x.DerivedStatus == status)
             };
         }
@@ -236,6 +236,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     {
         // Marketplace status tabs are package-based. Counting Orders here made
         // split packages and the provider's package counters incomparable.
+        var resendCreators = new[] { "transfer", "resend", "replacement" };
         var packages = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
         var platformCode = platform?.Trim().ToUpperInvariant();
@@ -250,7 +251,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 group.Count(x => x.Status == ShipmentPackageStatus.Processing || x.Status == ShipmentPackageStatus.ReadyToShip),
                 group.Count(x => x.Status == ShipmentPackageStatus.Shipped || x.Status == ShipmentPackageStatus.Undelivered),
                 group.Count(x => x.Status == ShipmentPackageStatus.Delivered),
-                group.Count(x => x.OriginExternalPackageId != null && x.Status != ShipmentPackageStatus.Cancelled),
+                group.Count(x => x.OriginExternalPackageId != null && x.Status != ShipmentPackageStatus.Cancelled && x.CreatedBy != null && resendCreators.Contains(x.CreatedBy)),
                 group.Count(x => x.Status == ShipmentPackageStatus.OnHold),
                 group.Count(x => x.Status == ShipmentPackageStatus.Cancelled),
                 group.Count(x => x.Status == ShipmentPackageStatus.Returned),
@@ -1240,7 +1241,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
-    private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId);
+    private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId, ShipmentPackageClassification.IsResend(x.CreatedBy, x.OriginExternalPackageId));
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
     private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });

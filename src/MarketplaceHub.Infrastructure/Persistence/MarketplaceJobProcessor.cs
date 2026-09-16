@@ -2490,6 +2490,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         if (!isNewProduct && link is not null && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase) && await CatalogSnapshotAlreadyApplied(tenantId, product.Id, snapshot, cancellationToken))
         {
+            // A previous import may have stored the remote observation while
+            // leaving the untouched local projection at zero. Reconcile that
+            // legacy state even when the payload itself has not changed.
+            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken);
+            if (saveChanges)
+                await db.SaveChangesAsync(cancellationToken);
             telemetrySkippedCount++;
             return false;
         }
@@ -2537,6 +2543,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .ToList();
             await UpsertCatalogMedia(tenantId, product, null, productImageUrls, product.Title, cancellationToken);
         }
+        else
+        {
+            // Local product edits must not block stock observations. Match
+            // existing variants without touching their local content/options,
+            // then apply only the inventory part of the remote snapshot.
+            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken);
+        }
         link ??= await db.MarketplaceProductLinks.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
         link.LastImportedPayloadHash = remoteHash;
         link.LastImportedAt = now;
@@ -2556,6 +2569,52 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (saveChanges)
             await db.SaveChangesAsync(cancellationToken);
         return !preserveLocal;
+    }
+
+    private async Task SyncCatalogInventoryForPreservedProduct(
+        Guid tenantId,
+        Guid connectionId,
+        Product product,
+        RemoteCatalogProduct snapshot,
+        ConnectionInventoryPolicy? inventoryPolicy,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var variants = await db.ProductVariants
+            .Where(x => x.TenantId == tenantId && x.ProductId == product.Id)
+            .ToListAsync(cancellationToken);
+        if (variants.Count == 0) return;
+
+        var externalIds = snapshot.Variants
+            .Select(x => Short(x.ExternalVariantId, 256))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var links = externalIds.Length == 0
+            ? new List<MarketplaceVariantLink>()
+            : await db.MarketplaceVariantLinks
+                .AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalIds.Contains(x.ExternalId))
+                .ToListAsync(cancellationToken);
+
+        foreach (var remote in snapshot.Variants)
+        {
+            var externalId = Short(remote.ExternalVariantId, 256);
+            var linkedVariantId = links.FirstOrDefault(x => string.Equals(x.ExternalId, externalId, StringComparison.Ordinal))?.VariantId;
+            var sku = Short(string.IsNullOrWhiteSpace(remote.Sku) ? remote.Barcode ?? remote.ExternalVariantId : remote.Sku, 160);
+            var skuNormalized = NormalizeCatalogKey(sku, 160);
+            var barcodeNormalized = NormalizeCatalogKey(remote.Barcode, 160);
+            var variant = linkedVariantId is Guid variantId
+                ? variants.FirstOrDefault(x => x.Id == variantId)
+                : null;
+            variant ??= variants.FirstOrDefault(x => x.SkuNormalized == skuNormalized)
+                ?? (!string.IsNullOrWhiteSpace(barcodeNormalized)
+                    ? variants.FirstOrDefault(x => x.BarcodeNormalized == barcodeNormalized)
+                    : null);
+            if (variant is null) continue;
+
+            await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: false);
+        }
     }
 
     private async Task NormalizeLegacyWebColorOptions(Guid tenantId, Guid productId, CancellationToken cancellationToken)
@@ -2813,7 +2872,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             ? $"id:{variant.ExternalVariantId}"
             : $"sku:{NormalizeCatalogKey(variant.Sku, 160)}";
 
-    private async Task UpsertCatalogOfferAndInventory(Guid tenantId, Guid connectionId, ProductVariant variant, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task UpsertCatalogOfferAndInventory(Guid tenantId, Guid connectionId, ProductVariant variant, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool updateOffer = true)
     {
         if (remote.StockQuantity is decimal stockQuantity)
         {
@@ -2829,12 +2888,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     TenantId = tenantId,
                     VariantId = variant.Id,
                     LocationCode = "MAIN",
-                    // A catalog read is an observation, not proof of local
-                    // physical stock. Only the explicit compatibility mode may
-                    // seed/overwrite OnHand from the remote quantity.
-                    OnHand = applyRemoteQuantityToOnHand ? observedRemoteQuantity : 0m,
+                    // The first catalog snapshot initializes an untouched
+                    // inventory row. Subsequent writes still require the
+                    // explicit remote-authoritative mode.
+                    OnHand = observedRemoteQuantity,
                     Reserved = 0,
-                    Available = applyRemoteQuantityToOnHand ? observedRemoteQuantity : 0m,
+                    Available = observedRemoteQuantity,
                     ObservedRemoteQuantity = observedRemoteQuantity,
                     ObservedRemoteAt = now,
                     ReconciledAt = now,
@@ -2845,7 +2904,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             else
             {
                 var reconciliationWasMissing = inventory.ReconciledAt is null;
-                var projectionChanged = applyRemoteQuantityToOnHand && inventory.OnHand != observedRemoteQuantity;
+                var seedInitialOnHand = InventoryAuthorityPolicy.ShouldSeedInitialOnHand(inventory);
+                var applyQuantityToOnHand = applyRemoteQuantityToOnHand || seedInitialOnHand;
+                var projectionChanged = applyQuantityToOnHand && inventory.OnHand != observedRemoteQuantity;
                 var observationChanged = inventory.ObservedRemoteQuantity != observedRemoteQuantity;
                 if (projectionChanged)
                 {
@@ -2861,6 +2922,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
         }
 
+        if (!updateOffer) return;
         if (remote.SalePrice is null && remote.ListPrice is null) return;
         var salePrice = decimal.Round(Math.Max(0m, remote.SalePrice ?? remote.ListPrice ?? 0m), 4, MidpointRounding.ToEven);
         var listPrice = decimal.Round(Math.Max(salePrice, Math.Max(0m, remote.ListPrice ?? salePrice)), 4, MidpointRounding.ToEven);
@@ -3491,10 +3553,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 continue;
             }
             var accept = package is null || PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt);
-            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken); }
+            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken); }
             else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = remotePackage.OccurredAt; package.Version++; }
             else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target) await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
-            if (accept)
+            if (package is not null && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
+            if (accept && package is not null)
             {
                 package.OriginExternalPackageId = remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now }); knownEventIds.Add(eventId);
                 foreach (var remoteAllocation in remotePackage.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; } }

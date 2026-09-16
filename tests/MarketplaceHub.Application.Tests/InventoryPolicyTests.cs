@@ -38,4 +38,30 @@ public sealed class InventoryPolicyTests
         Assert.False(InventoryAuthorityPolicy.ShouldApplyRemoteQuantityToOnHand(InventoryAuthorityPolicy.RemoteObservation));
         Assert.True(InventoryAuthorityPolicy.ShouldApplyRemoteQuantityToOnHand(InventoryAuthorityPolicy.RemoteAuthoritative));
     }
+
+    [Fact]
+    public void UntouchedInventoryCanBeSeededByTheFirstCatalogSnapshotOnly()
+    {
+        Assert.True(InventoryAuthorityPolicy.ShouldSeedInitialOnHand(new InventoryItem
+        {
+            LocationCode = "MAIN",
+            OnHand = 0m,
+            Reserved = 0m
+        }));
+
+        Assert.False(InventoryAuthorityPolicy.ShouldSeedInitialOnHand(new InventoryItem
+        {
+            LocationCode = "MAIN",
+            OnHand = 0m,
+            Reserved = 0m,
+            Version = 2
+        }));
+        Assert.True(InventoryAuthorityPolicy.ShouldSeedInitialOnHand(new InventoryItem
+        {
+            LocationCode = "MAIN",
+            OnHand = 0m,
+            Reserved = 0m,
+            ObservedRemoteQuantity = 4m
+        }));
+    }
 }

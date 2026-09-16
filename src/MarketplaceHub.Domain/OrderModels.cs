@@ -234,6 +234,7 @@ public sealed class ShipmentPackage
     public Guid OrderId { get; set; }
     public required string ExternalPackageId { get; set; }
     public string? OriginExternalPackageId { get; set; }
+    public string? CreatedBy { get; set; }
     public string? CargoProviderExternalId { get; set; }
     public string? CargoTrackingNumber { get; set; }
     public decimal GrossAmount { get; set; }
@@ -252,6 +253,16 @@ public sealed class ShipmentPackage
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
+}
+
+public static class ShipmentPackageClassification
+{
+    // Trendyol's originPackageIds is also populated for split/cancel package
+    // flows. Only an explicit creator marker can classify a package as a
+    // resend/replacement; originPackageIds alone is not sufficient.
+    public static bool IsResend(string? createdBy, string? originExternalPackageId) =>
+        !string.IsNullOrWhiteSpace(originExternalPackageId)
+        && createdBy?.Trim().ToUpperInvariant() is "TRANSFER" or "RESEND" or "REPLACEMENT";
 }
 
 public sealed class PackageLineAllocation

@@ -379,7 +379,8 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const title = mode === 'price' ? 'Hızlı fiyat güncelleme' : mode === 'stock' ? 'Hızlı stok güncelleme' : 'Hızlı fiyat ve stok düzenleme'
   const eyebrow = mode === 'price' ? 'HIZLI FİYAT GÜNCELLEME' : mode === 'stock' ? 'HIZLI STOK GÜNCELLEME' : 'TOPLU DÜZENLEME'
   const variants = products.flatMap(product => product.variants.map(variant => ({ product, variant })))
-  const groups = variants.reduce<Record<string, typeof variants>>((result, item) => {
+  const sortedVariants = [...variants].sort((left, right) => (left.variant.optionSignature || left.variant.sku).localeCompare(right.variant.optionSignature || right.variant.sku, 'tr-TR', { sensitivity: 'base', numeric: true }))
+  const groups = sortedVariants.reduce<Record<string, typeof variants>>((result, item) => {
     const color = variantColorKey(item.variant) || 'Diğer'
     ;(result[color] ??= []).push(item)
     return result
@@ -389,17 +390,21 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     return signature.match(new RegExp(`(?:${labelPattern})\\s*[:=]\\s*([^|_]+)`, 'i'))?.[1]?.trim() || fallback
   }
   const colorOf = (item: typeof variants[number]) => variantColorKey(item.variant) || 'Diğer'
+  const colorLabelOf = (item: typeof variants[number]) => preferredColorOption(variantOptionEntries(item.variant))?.value.trim() || 'Diğer'
   const sizeOf = (item: typeof variants[number]) => optionValue(item.variant.optionSignature || '', ['BEDEN', 'SIZE'], item.variant.optionSignature || 'Ana varyant')
-  const colorOptions = Object.keys(groups)
+  const colorLabels = sortedVariants.reduce<Record<string, string>>((result, item) => { const key = colorOf(item); result[key] ??= colorLabelOf(item); return result }, {})
+  const colorOptions = Object.keys(groups).sort((left, right) => (colorLabels[left] || left).localeCompare(colorLabels[right] || right, 'tr-TR', { sensitivity: 'base', numeric: true }))
   const [selectionDraft, setSelectionDraft] = useState<string[]>([])
   const [selectedColors, setSelectedColors] = useState<string[]>([])
   const [selectedSizes, setSelectedSizes] = useState<string[]>([])
+  const [activeColorTab, setActiveColorTab] = useState('ALL')
   const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
   const selectedSet = new Set(selectionDraft)
   const activeSelection = selectionDraft
   const activeSelectedSet = selectedSet
-  const sizeOptions = [...new Set(variants.filter(item => !selectedColors.length || selectedColors.includes(colorOf(item))).map(sizeOf))]
+  const sizeOptions = [...new Set(sortedVariants.filter(item => !selectedColors.length || selectedColors.includes(colorOf(item))).map(sizeOf))].sort((left, right) => left.localeCompare(right, 'tr-TR', { sensitivity: 'base', numeric: true }))
+  const visibleTabVariants = activeColorTab === 'ALL' ? colorOptions.flatMap(color => groups[color]) : (groups[activeColorTab] ?? [])
   const toggleColor = (color: string) => {
     const next = selectedColors.includes(color) ? selectedColors.filter(item => item !== color) : [...selectedColors, color]
     setSelectedColors(next)
@@ -411,9 +416,8 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     applyFilterSelection(selectedColors, next)
   }
   const toggle = (id: string) => { setSelectionDraft(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]) }
-  const toggleGroup = (items: typeof variants) => { const ids = items.map(item => item.variant.id); const every = ids.every(id => selectedSet.has(id)); setSelectionDraft(current => every ? current.filter(id => !ids.includes(id)) : [...new Set([...current, ...ids])]) }
   function applyFilterSelection(colors: string[], sizes: string[]) {
-    const ids = !colors.length && !sizes.length ? [] : variants.filter(item => (!colors.length || colors.includes(colorOf(item))) && (!sizes.length || sizes.includes(sizeOf(item)))).map(item => item.variant.id)
+    const ids = !colors.length && !sizes.length ? [] : sortedVariants.filter(item => (!colors.length || colors.includes(colorOf(item))) && (!sizes.length || sizes.includes(sizeOf(item)))).map(item => item.variant.id)
     setSelectionDraft(ids)
   }
   async function apply(event: FormEvent<HTMLFormElement>) {
@@ -426,7 +430,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     if ((list != null && (!Number.isFinite(list) || list < 0)) || (sale != null && (!Number.isFinite(sale) || sale < 0)) || (list != null && sale != null && list < sale) || (amount != null && (!Number.isFinite(amount) || amount < 0))) return setNotice('Değerleri kontrol edin; negatif fiyat/stok veya hatalı fiyat sıralaması kullanılamaz.')
     setSaving(true); setNotice('Seçilen varyantlar güncelleniyor…')
     try {
-      for (const item of variants.filter(value => targetSelectionSet.has(value.variant.id))) {
+      for (const item of sortedVariants.filter(value => targetSelectionSet.has(value.variant.id))) {
         const variant = item.variant
         if (priceRequested) {
           const connectionId = variant.offerId ? '' : connections[0]?.id ?? ''; const nextSale = sale ?? variant.salePrice ?? variant.listPrice ?? 0; const nextList = list ?? variant.listPrice ?? nextSale
@@ -457,7 +461,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           <div className="quick-edit-filter-row">
             <details className="quick-edit-filter">
               <summary><span>Renk</span><small>{selectedColors.length ? `${selectedColors.length} renk seçildi` : 'Renk seçin'}</small><UiIcon name="chevronDown" /></summary>
-              <div className="quick-edit-filter-options">{colorOptions.map(color => <label key={color}><input type="checkbox" checked={selectedColors.includes(color)} onChange={() => toggleColor(color)} /><span>{color}</span><small>{groups[color].length} varyant</small></label>)}</div>
+              <div className="quick-edit-filter-options">{colorOptions.map(color => <label key={color}><input type="checkbox" checked={selectedColors.includes(color)} onChange={() => toggleColor(color)} /><span>{colorLabels[color] || color}</span><small>{groups[color].length} varyant</small></label>)}</div>
             </details>
             <details className="quick-edit-filter">
               <summary><span>Beden</span><small>{selectedSizes.length ? `${selectedSizes.length} beden seçildi` : 'Beden seçin'}</small><UiIcon name="chevronDown" /></summary>
@@ -466,10 +470,14 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           </div>
           <div className="quick-edit-filter-action"><p>Renk ve beden filtrelerini seçtikçe alttaki eşleşen varyantlar otomatik işaretlenir.</p></div>
           <div className="quick-edit-selection">
-            {Object.entries(groups).map(([color, items]) => <details className="quick-edit-color" key={color} open={Object.keys(groups).length === 1}>
-              <summary><label onClick={event => event.stopPropagation()}><input type="checkbox" checked={items.every(item => selectedSet.has(item.variant.id))} onChange={() => toggleGroup(items)} /> {color}</label><small>{items.length} varyant · {items.reduce((sum, item) => sum + item.variant.available, 0)} stok</small><UiIcon name="chevronDown" /></summary>
-              <div className="quick-edit-variants">{items.map(item => <div className="quick-edit-variant" key={item.variant.id}><input type="checkbox" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} /><span><strong>{item.variant.optionSignature || item.product.title}</strong><small>{item.product.title} · Stok kodu: {item.variant.sku}</small></span><QuickEditVariantControls variant={item.variant} connections={connections} onChanged={onChanged} onSelect={() => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id])} /></div>)}</div>
-            </details>)}
+            <div className="quick-edit-variant-tabs" role="tablist" aria-label="Varyant renkleri">
+              <button type="button" role="tab" aria-selected={activeColorTab === 'ALL'} className={activeColorTab === 'ALL' ? 'is-active' : ''} onClick={() => setActiveColorTab('ALL')}>Tümü <small>{sortedVariants.length}</small></button>
+              {colorOptions.map(color => { const items = groups[color]; const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length; return <button type="button" role="tab" key={color} aria-selected={activeColorTab === color} className={activeColorTab === color ? 'is-active' : ''} onClick={() => setActiveColorTab(color)}>{colorLabels[color] || color} <small>{selectedCount ? `${selectedCount}/${items.length}` : items.length}</small></button> })}
+            </div>
+            <div className="quick-edit-tab-panel" role="tabpanel" aria-label={activeColorTab === 'ALL' ? 'Tüm varyantlar' : colorLabels[activeColorTab] || activeColorTab}>
+              <div className="quick-edit-tab-panel-head"><strong>{activeColorTab === 'ALL' ? 'Tüm varyantlar' : colorLabels[activeColorTab] || activeColorTab}</strong><span>A–Z sıralı · seçtiklerinize aşağıdaki adımda değişiklik uygulanır.</span></div>
+              <div className="quick-edit-variants">{visibleTabVariants.map(item => <div className="quick-edit-variant" key={item.variant.id}><input type="checkbox" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /><span><strong>{item.variant.optionSignature || item.product.title}</strong><small>{item.product.title} · Stok kodu: {item.variant.sku}</small></span><QuickEditVariantControls variant={item.variant} connections={connections} onChanged={onChanged} onSelect={() => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id])} /></div>)}</div>
+            </div>
           </div>
           <div className="quick-edit-step-action"><p>{selectionDraft.length ? `${selectionDraft.length} varyant işaretli. Değerleri doğrudan uygulayabilirsiniz.` : 'Önce alt listeden varyant seçin veya üst filtreyi kullanın.'}</p></div>
         </details>
@@ -926,7 +934,7 @@ export function ProductsPage() {
   </Page>
 }
 
-type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; attribute: Attribute }
+type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; isWebColor?: boolean; attribute: Attribute }
 function isOptionRequirement(requirement: CategoryRequirement) {
   return requirement.role === 'OPTION' || isOptionAttribute(requirement.attribute)
 }
@@ -1345,7 +1353,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   // value. The latter keeps required text fields (for example a free-form
   // color field) available for entry from the product form.
   const mappedRequirements = useMemo(() => allRequirements.filter(item => item.attribute.values.length > 0 || item.allowsCustomValue), [allRequirements])
-  const webColorRequirement = useMemo(() => mappedRequirements.find(item => isWebColorOptionName(item.attribute.name) && item.attribute.values.length > 0), [mappedRequirements])
+  const webColorRequirement = useMemo(() => mappedRequirements.find(item => (item.isWebColor === true || isWebColorOptionName(item.attribute.name)) && item.attribute.values.length > 0), [mappedRequirements])
   const colorOptionRequirement = useMemo(() => mappedRequirements.find(item => !isWebColorOptionName(item.attribute.name) && isColorOptionName(item.attribute.name) && isOptionRequirement(item)), [mappedRequirements])
   const webColorValues = webColorRequirement?.attribute.values ?? colorOptionRequirement?.attribute.values ?? []
   const optionRequirements = useMemo(() => mappedRequirements.filter(item => !isWebColorOptionName(item.attribute.name) && isOptionRequirement(item)).slice(0, 2), [mappedRequirements])

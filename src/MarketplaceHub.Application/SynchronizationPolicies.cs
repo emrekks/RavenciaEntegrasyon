@@ -150,6 +150,16 @@ public static class InventoryAuthorityPolicy
     // silently replace local physical stock.
     public static bool ShouldApplyRemoteQuantityToOnHand(string? authorityMode) =>
         Normalize(authorityMode) == RemoteAuthoritative;
+
+    // An untouched inventory row created by the catalog importer has no local
+    // physical-stock decision behind it yet. Seed that first projection from
+    // the catalog snapshot; later imports still follow the configured
+    // authority mode and cannot silently overwrite local stock.
+    public static bool ShouldSeedInitialOnHand(InventoryItem inventory) =>
+        inventory.OnHand == 0m
+        && inventory.Reserved == 0m
+        && inventory.Version == 1
+        && inventory.ProjectionVersion == 1;
 }
 
 public static class ProductImportMergePolicy

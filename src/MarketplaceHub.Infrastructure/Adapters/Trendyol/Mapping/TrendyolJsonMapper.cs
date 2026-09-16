@@ -59,7 +59,7 @@ public static class TrendyolJsonMapper
                     NullText(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber"),
                     NullText(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"),
                     FlexibleInstant(package, "invoiceUpdatedAt") ?? modified);
-                var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net, invoice);
+                var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net, invoice, NormalizeCreatedBy(NullText(package, "createdBy")));
                 var dueAt = FlexibleInstant(package, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
                 rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
                     CustomerSnapshot(package),
@@ -553,7 +553,7 @@ public static class TrendyolJsonMapper
         var allocations = lines.Select(x => new RemotePackageAllocation(x.ExternalLineId, x.Quantity, 0, x.Quantity, x.Quantity, 0)).ToList();
         var package = new RemotePackage(packageId, null, "Delivered", modified,
             NullText(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider"),
-            NullText(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, 0, gross);
+            NullText(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, 0, gross, CreatedBy: NormalizeCreatedBy(NullText(claim, "createdBy")));
         return new(orderNumber, orderNumber, ordered, modified, NullText(claim, "currencyCode") ?? "TRY", gross, 0, gross,
             CustomerSnapshot(claim), ObjectSnapshot(claim, "shipmentAddress"), ObjectSnapshot(claim, "invoiceAddress"), lines, [package], claim.GetRawText());
     }
@@ -567,6 +567,8 @@ public static class TrendyolJsonMapper
             Text(orderLine, "productName", "title"), quantity, Decimal(orderLine, "price", "lineUnitPrice", "amount"),
             Decimal(orderLine, "vatRate"), "Delivered", orderLine.GetRawText()));
     }
+
+    private static string? NormalizeCreatedBy(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
 
     public static IReadOnlyList<ReturnIssueReason> ReturnIssueReasons(string json)
     {

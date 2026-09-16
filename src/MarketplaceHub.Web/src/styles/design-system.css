@@ -1564,6 +1564,15 @@
   .quick-edit-step-action { padding-bottom: var(--rv-space-4); }
   .quick-edit-filter-action p, .quick-edit-step-action p { margin: 0; }
   .quick-edit-selection { display: grid; gap: var(--rv-space-3); }
+  .quick-edit-variant-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 4px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md) var(--rv-radius-md) 0 0; scrollbar-width: thin; }
+  .quick-edit-variant-tabs button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; min-height: 38px; padding: 8px 12px; color: var(--rv-color-muted); background: transparent; border: 1px solid transparent; border-radius: 8px; font-size: var(--rv-font-size-sm); font-weight: 750; cursor: pointer; }
+  .quick-edit-variant-tabs button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface); }
+  .quick-edit-variant-tabs button.is-active { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 35%, transparent); }
+  .quick-edit-variant-tabs button small { display: inline-flex; min-width: 22px; min-height: 20px; align-items: center; justify-content: center; padding: 2px 5px; color: inherit; background: color-mix(in srgb, currentColor 12%, transparent); border-radius: 999px; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .quick-edit-tab-panel { overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-top: 0; border-radius: 0 0 var(--rv-radius-md) var(--rv-radius-md); }
+  .quick-edit-tab-panel-head { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: var(--rv-space-3); padding: var(--rv-space-3); border-bottom: 1px solid var(--rv-color-border); }
+  .quick-edit-tab-panel-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .quick-edit-tab-panel-head span { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); text-align: right; }
   .quick-edit-color { overflow: hidden; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .quick-edit-color > summary { padding: var(--rv-space-3); }
   .quick-edit-color > summary label { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); }
@@ -2579,6 +2588,8 @@
   .marketplace-pricing-bars-head, .attribute-variant-action, .variant-filter-panel-head, .variant-table-toolbar, .product-submit-sticky { align-items: flex-start; flex-direction: column; }
   .marketplace-pricing-bar, .variant-filter-grid, .variant-bulk-editor { grid-template-columns: 1fr; }
   .quick-edit-filter-row, .quick-edit-fields { grid-template-columns: 1fr; }
+  .quick-edit-tab-panel-head { align-items: flex-start; flex-direction: column; }
+  .quick-edit-tab-panel-head span { text-align: left; }
   .product-quick-edit-modal > form { padding-inline: var(--rv-space-4); }
   .quick-edit-footer { align-items: stretch; flex-wrap: wrap; }
   .quick-edit-footer > span { flex: 1 1 100%; margin-right: 0; }
