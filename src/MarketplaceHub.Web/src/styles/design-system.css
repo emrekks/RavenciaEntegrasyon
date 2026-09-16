@@ -8576,6 +8576,12 @@ small,
   border-right: 0;
 }
 
+/* Keep neutral return badges visible when the row switches to its hover
+   surface; the default raised surface otherwise blends into the row. */
+.app-shell.stitch-shell main .return-reference-table .return-reference-status > .badge.neutral {
+  background: var(--rv-color-surface-soft);
+}
+
 .app-shell.stitch-shell main :is(.order-reference-table, .return-reference-table) .invoice-no-discount .order-invoice-payable {
   margin-top: 0;
   padding-top: 0;
