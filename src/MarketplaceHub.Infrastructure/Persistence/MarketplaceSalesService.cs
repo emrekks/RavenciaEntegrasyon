@@ -988,14 +988,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // as an in-progress marketplace delivery.
         if (invoice is not null)
         {
+            if (invoice.Status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview or InvoiceStatus.MarketplaceFailed) return "FATURA_REDDEDILDI";
+            if (invoice.Status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal) return "FATURA_IPTAL";
             if (invoice.Status == InvoiceStatus.Completed)
                 return "FATURA_KESILDI";
             if (invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending)
                 return "FATURA_KONTROLDE";
             if (!string.IsNullOrWhiteSpace(invoice.InvoiceNumber) && invoice.Status is not (InvoiceStatus.Draft or InvoiceStatus.Validating or InvoiceStatus.Ready))
                 return "FATURA_KONTROLDE";
-            if (invoice.Status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal) return "FATURA_IPTAL";
-            if (invoice.Status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview) return "FATURA_REDDEDILDI";
             return "FATURA_ISLENIYOR";
         }
         // Trendyol's order payloads expose the same business fact in two
@@ -1022,6 +1022,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     {
         if (invoice is not null)
         {
+            if (invoice.Status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview or InvoiceStatus.MarketplaceFailed)
+                return "FATURA_REDDEDILDI";
+            if (invoice.Status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal)
+                return "FATURA_IPTAL";
             // The marketplace observation is authoritative for the delivery
             // leg. A local invoice number only proves that our fiscal provider
             // created a document; it does not prove Trendyol accepted it.

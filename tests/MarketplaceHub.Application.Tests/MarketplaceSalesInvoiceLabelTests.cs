@@ -1,4 +1,5 @@
 using MarketplaceHub.Infrastructure.Persistence;
+using MarketplaceHub.Domain;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
@@ -21,5 +22,13 @@ public sealed class MarketplaceSalesInvoiceLabelTests
         var label = MarketplaceSalesService.InvoiceLabel(null, "{}", ["Delivered"]);
 
         Assert.Equal("FATURA_BILINMIYOR", label);
+    }
+
+    [Fact]
+    public void LocalProviderRejectionWinsOverInvoicedMarketplaceSnapshot()
+    {
+        var label = MarketplaceSalesService.InvoiceLabel(new Invoice { Status = InvoiceStatus.Rejected, InvoiceType = "EARSIV", SequencePurpose = "MANUAL", Currency = "TRY", Note = string.Empty, IdempotencyKey = "test" }, MarketplaceInvoiceStatus.Invoiced, "{}", []);
+
+        Assert.Equal("FATURA_REDDEDILDI", label);
     }
 }

@@ -1213,6 +1213,10 @@
   .invoice-detail-body { display: grid; min-height: 0; gap: var(--rv-space-5); overflow-y: auto; padding: var(--rv-space-5) var(--rv-space-6); }
   .invoice-detail-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); }
   .invoice-detail-summary > div { display: grid; min-width: 0; gap: 2px; padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .invoice-detail-summary .invoice-detail-invoice-status { gap: var(--rv-space-2); }
+  .invoice-detail-summary .invoice-detail-error-reason { color: var(--rv-color-danger); line-height: 1.45; }
+  .invoice-detail-error-guidance { line-height: 1.45; }
+  .invoice-detail-error-code { color: var(--rv-color-warning); font-family: var(--rv-font-mono); font-size: var(--rv-font-size-xs); overflow-wrap: anywhere; }
   .invoice-detail-summary small, .invoice-detail-muted { color: var(--rv-color-muted); }
   .invoice-detail-summary-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); margin-bottom: var(--rv-space-3); }
   .invoice-detail-summary-facts > div { display: grid; min-width: 0; align-content: start; gap: 3px; padding: var(--rv-space-3); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }

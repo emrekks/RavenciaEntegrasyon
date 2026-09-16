@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
 import { Busy, ErrorBox, Pagination, Tabs, UiIcon } from '../../shared/components'
@@ -68,49 +67,16 @@ function invoiceFailureGuidance(code: string | null) {
   }
   return labels[code ?? ''] ?? 'Fatura detaylarını açıp son hata kodunu ve provider denemelerini kontrol edin.'
 }
-function InvoiceFailureStatus({ packageId, code, reason }: { packageId: string; code: string | null; reason: string }) {
-  const triggerRef = useRef<HTMLSpanElement>(null)
-  const [open, setOpen] = useState(false)
-  const [position, setPosition] = useState({ left: 16, top: 16 })
-  const tooltipId = `invoice-failure-tooltip-${packageId}`
-
-  function updatePosition() {
-    const rect = triggerRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const width = Math.min(380, Math.max(220, window.innerWidth - 32))
-    const estimatedHeight = 144
-    const belowTop = rect.bottom + 8
-    const spaceBelow = window.innerHeight - belowTop - 12
-    const top = spaceBelow >= estimatedHeight || rect.top <= estimatedHeight + 20
-      ? belowTop
-      : Math.max(12, rect.top - estimatedHeight - 8)
-    const left = Math.min(Math.max(16, rect.left), Math.max(16, window.innerWidth - width - 16))
-    setPosition({ left, top })
-  }
-
-  function showTooltip() {
-    setOpen(true)
-    window.requestAnimationFrame(updatePosition)
-  }
-
-  useEffect(() => {
-    if (!open) return
-    updatePosition()
-    const handleViewportChange = () => updatePosition()
-    window.addEventListener('resize', handleViewportChange)
-    window.addEventListener('scroll', handleViewportChange, true)
-    return () => {
-      window.removeEventListener('resize', handleViewportChange)
-      window.removeEventListener('scroll', handleViewportChange, true)
-    }
-  }, [open])
-
-  return <>
-    <span ref={triggerRef} className="invoice-status failed invoice-failure-tooltip-trigger" tabIndex={0} aria-describedby={tooltipId} aria-label={`Hatalı: ${reason}`} onMouseEnter={showTooltip} onMouseLeave={() => setOpen(false)} onFocus={showTooltip} onBlur={() => setOpen(false)}>Hatalı</span>
-    {open && createPortal(<div id={tooltipId} className="invoice-failure-tooltip-portal" role="tooltip" style={{ left: position.left, top: position.top }}><strong>Fatura işlemi başarısız</strong><small>{reason}</small><small className="invoice-failure-tooltip-next-step"><b>Sonraki adım:</b> {invoiceFailureGuidance(code)}</small>{code && <code>Hata kodu: {code}</code>}</div>, document.body)}
-  </>
-}
 function Badge({ value, tone, label }: { value: string; tone?: 'good' | 'warn' | 'neutral'; label?: string }) { const normalized = value.trim().toUpperCase(); const resolvedTone = tone ?? (['READY', 'ACCEPTED', 'COMPLETED', 'ACTIVE', 'SUPPORTED', 'CANCELLED', 'DELIVERED', 'SUCCESS', 'CONFIRMED'].includes(normalized) ? 'good' : ['UNKNOWN_RESULT', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'UNAPPROVED', 'UNKNOWN', 'CANCELLATION_PENDING', 'FAILED', 'RETRYABLE_FAILURE', 'MARKETPLACE_FAILED'].includes(normalized) ? 'warn' : 'neutral'); return <span className={`badge ${resolvedTone}`}><i aria-hidden="true" />{label ?? statusLabel(value)}</span> }
+function isInvoiceFailureStatus(value: string | null | undefined) {
+  return ['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'].includes(value?.trim().toUpperCase() ?? '')
+}
+function invoiceWorkspaceStatus(item: Pick<InvoiceWorkspace, 'invoiceId' | 'invoiceStatus' | 'canCreateInvoice'>) {
+  if (!item.invoiceId || item.canCreateInvoice || item.invoiceStatus === 'FATURA_BEKLIYOR') return { value: 'FATURA_BEKLIYOR', tone: 'warn' as const, label: 'Fatura bekliyor' }
+  if (isInvoiceFailureStatus(item.invoiceStatus)) return { value: item.invoiceStatus, tone: 'warn' as const, label: 'Hatalı' }
+  if (item.invoiceStatus === 'FATURA_KESILDI' || item.invoiceStatus === 'COMPLETED') return { value: item.invoiceStatus, tone: 'good' as const, label: 'Fatura oluşturuldu' }
+  return { value: item.invoiceStatus || 'FATURA_BILINMIYOR', tone: 'warn' as const, label: 'Fatura işleniyor' }
+}
 function invoiceDeliveryLabel(status: string | null | undefined) {
   if (!status) return 'Platforma aktarım başlatılmadı'
   return ({ STARTED: 'Aktarım başlatıldı', SUBMITTED: 'Platforma gönderildi', CONFIRMATION_RETRYABLE: 'Platform doğrulaması bekleniyor', CONFIRMED: 'Platformda doğrulandı', RETRYABLE_FAILURE: 'Yeniden denenecek', FAILED: 'Platform aktarımı başarısız', UNKNOWN: 'Aktarım sonucu bekleniyor' } as Record<string, string>)[status] ?? statusLabel(status)
@@ -184,15 +150,15 @@ export function InvoicesPage() {
           <div className="invoice-reference-buyer"><strong>{item.customerName}</strong><small>{item.productCount} adet · {item.lines?.length ?? 1} çeşit</small></div>
           <div className="invoice-reference-products"><strong>{item.cargoProviderName ?? 'Kargo bilgisi yok'}</strong><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small><small>Paket: {item.packageId}</small></div>
           <div className="invoice-reference-shipment"><Badge value={item.shipmentStatus} /><small>{item.deliveredAt ? `Teslim: ${new Date(item.deliveredAt).toLocaleDateString('tr-TR')}` : 'Henüz teslim edilmedi'}</small></div>
-          <div className="invoice-reference-status"><Badge value={item.canCreateInvoice ? 'FATURA_BEKLIYOR' : 'FATURA_KESILDI'} tone={item.canCreateInvoice ? 'warn' : 'good'} label={item.canCreateInvoice ? 'Fatura bekliyor' : 'Fatura oluşturuldu'} />{item.invoiceDueAt && <small className={item.isDueSoon ? 'deadline critical' : ''}>Son tarih: {new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}</small>}{item.invoiceId && <Badge value={item.invoiceDeliveryStatus ?? 'NOT_SENT'} tone={invoiceDeliveryTone(item.invoiceDeliveryStatus)} label={`Platform: ${invoiceDeliveryLabel(item.invoiceDeliveryStatus)}`} />}{item.invoiceDeliveryReference && <small>Platform referansı: {item.invoiceDeliveryReference}</small>}</div>
+          <div className="invoice-reference-status"><Badge {...invoiceWorkspaceStatus(item)} />{item.invoiceDueAt && <small className={item.isDueSoon ? 'deadline critical' : ''}>Son tarih: {new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}</small>}</div>
           <div className="invoice-reference-amount"><strong>{item.amount.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</strong><small>{item.isDueSoon ? 'Öncelikli takip' : 'Sipariş toplamı'}</small></div>
-          <div className="invoice-reference-actions">{item.invoiceId ? item.invoiceStatus === 'FATURA_REDDEDILDI' ? <><InvoiceFailureStatus packageId={item.packageId} code={item.invoiceErrorCode} reason={invoiceFailureReason(item.invoiceErrorCode)} /><button type="button" aria-busy={create.isPending && create.variables?.packageId === item.packageId} disabled={!provider?.hasCredential || create.isPending} onClick={() => create.mutate(item)}>{create.isPending && create.variables?.packageId === item.packageId && <span className="invoice-action-spinner" aria-hidden="true" />}<span className="invoice-action-label">{create.isPending && create.variables?.packageId === item.packageId ? 'Deneniyor…' : 'Tekrar dene'}</span></button></> : <Badge value={item.invoiceStatus} tone={item.invoiceStatus === 'FATURA_KESILDI' ? 'good' : 'warn'} label={item.invoiceStatus === 'FATURA_KESILDI' ? 'Faturası kesilmiş' : 'Fatura işleniyor'} /> : <button type="button" aria-busy={create.isPending && create.variables?.packageId === item.packageId} disabled={!provider?.hasCredential || create.isPending || !item.canCreateInvoice} onClick={() => create.mutate(item)}>{create.isPending && create.variables?.packageId === item.packageId && <span className="invoice-action-spinner" aria-hidden="true" />}<span className="invoice-action-label">{create.isPending && create.variables?.packageId === item.packageId ? 'İşleniyor…' : 'Fatura oluştur'}</span></button>}{item.invoiceId && item.invoiceDocumentAvailable && <a className="invoice-reference-document-link" href={`/api/v1/invoices/${item.invoiceId}/documents/latest/content`} target="_blank" rel="noreferrer">Fatura linki <UiIcon name="externalLink" /></a>}<button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları aç <UiIcon name="externalLink" /></button></div>
+          <div className="invoice-reference-actions">{item.invoiceId ? isInvoiceFailureStatus(item.invoiceStatus) ? <button type="button" aria-busy={create.isPending && create.variables?.packageId === item.packageId} disabled={!provider?.hasCredential || create.isPending} onClick={() => create.mutate(item)}>{create.isPending && create.variables?.packageId === item.packageId && <span className="invoice-action-spinner" aria-hidden="true" />}<span className="invoice-action-label">{create.isPending && create.variables?.packageId === item.packageId ? 'Deneniyor…' : 'Tekrar dene'}</span></button> : <Badge value={item.invoiceStatus} tone={item.invoiceStatus === 'FATURA_KESILDI' ? 'good' : 'warn'} label={item.invoiceStatus === 'FATURA_KESILDI' ? 'Faturası kesilmiş' : 'Fatura işleniyor'} /> : <button type="button" aria-busy={create.isPending && create.variables?.packageId === item.packageId} disabled={!provider?.hasCredential || create.isPending || !item.canCreateInvoice} onClick={() => create.mutate(item)}>{create.isPending && create.variables?.packageId === item.packageId && <span className="invoice-action-spinner" aria-hidden="true" />}<span className="invoice-action-label">{create.isPending && create.variables?.packageId === item.packageId ? 'İşleniyor…' : 'Fatura oluştur'}</span></button>}{item.invoiceId && item.invoiceDocumentAvailable && <a className="invoice-reference-document-link" href={`/api/v1/invoices/${item.invoiceId}/documents/latest/content`} target="_blank" rel="noreferrer">Fatura linki <UiIcon name="externalLink" /></a>}<button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları aç <UiIcon name="externalLink" /></button></div>
         </article>)}
       </div><nav className="order-pagination" aria-label="Fatura sayfaları"><span>Toplam {visible.length.toLocaleString('tr-TR')} adet</span><Pagination className="pagination-controls" page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={() => setPageNumber(value => Math.min(totalPages, value + 1))} /></nav></>}
     </section>
     {selectedItem && <div className="invoice-detail-backdrop" role="presentation" onMouseDown={() => setSelectedItem(null)}><aside className="invoice-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="invoice-detail-title" onMouseDown={event => event.stopPropagation()}>
       <header className="invoice-detail-header"><div><p className="eyebrow">Sipariş ve fatura özeti</p><h2 id="invoice-detail-title">#{selectedItem.orderNumber}</h2><p>{selectedItem.customerName} · {new Date(selectedItem.orderedAt).toLocaleString('tr-TR')}</p></div><button type="button" className="modal-close" onClick={() => setSelectedItem(null)} aria-label="Detay panelini kapat"><UiIcon name="close" /></button></header>
-      <div className="invoice-detail-body"><section className="invoice-detail-summary"><div><small>Sipariş durumu</small><Badge value={selectedItem.shipmentStatus} /></div><div><small>Fatura durumu</small><strong>{statusLabel(selectedItem.invoiceStatus)}</strong></div><div><small>Toplam</small><strong>{selectedItem.amount.toLocaleString('tr-TR', { style: 'currency', currency: selectedItem.currency })}</strong></div><div><small>Kargo / takip</small><strong>{selectedItem.cargoProviderName ?? '—'}<br />{selectedItem.cargoTrackingNumber ?? 'Takip no yok'}</strong></div></section>
+      <div className="invoice-detail-body"><section className="invoice-detail-summary"><div><small>Sipariş durumu</small><Badge value={selectedItem.shipmentStatus} /></div><div className="invoice-detail-invoice-status"><small>Fatura durumu</small>{isInvoiceFailureStatus(selectedItem.invoiceStatus) ? <Badge value="FATURA_REDDEDILDI" tone="warn" label="Hatalı" /> : <strong>{statusLabel(selectedItem.invoiceStatus)}</strong>}{isInvoiceFailureStatus(selectedItem.invoiceStatus) && <small className="invoice-detail-error-reason">{invoiceFailureReason(selectedItem.invoiceErrorCode)}</small>}{selectedItem.invoiceErrorCode && <code className="invoice-detail-error-code">Hata kodu: {selectedItem.invoiceErrorCode}</code>}{isInvoiceFailureStatus(selectedItem.invoiceStatus) && <small className="invoice-detail-error-guidance">{invoiceFailureGuidance(selectedItem.invoiceErrorCode)}</small>}</div><div><small>Toplam</small><strong>{selectedItem.amount.toLocaleString('tr-TR', { style: 'currency', currency: selectedItem.currency })}</strong></div><div><small>Kargo / takip</small><strong>{selectedItem.cargoProviderName ?? '—'}<br />{selectedItem.cargoTrackingNumber ?? 'Takip no yok'}</strong></div></section>
         <section className="invoice-detail-section invoice-summary-section"><div className="invoice-detail-section-heading"><div><h3>Fatura bilgileri</h3><p className="invoice-detail-muted">Belgenin hazır olup olmadığını ve Trendyol aktarımını buradan takip edebilirsiniz.</p></div></div><div className="invoice-detail-summary-facts"><div><small>Fatura numarası</small><strong>{selectedItem.invoiceNumber ?? 'Henüz atanmadı'}</strong></div><div><small>Platform aktarımı</small><Badge value={selectedItem.invoiceDeliveryStatus ?? 'NOT_SENT'} tone={invoiceDeliveryTone(selectedItem.invoiceDeliveryStatus)} label={invoiceDeliveryLabel(selectedItem.invoiceDeliveryStatus)} />{selectedItem.invoiceDeliveryReference && <small>Referans: {selectedItem.invoiceDeliveryReference}</small>}</div></div>{selectedItem.invoiceId && selectedItem.invoiceDocumentAvailable ? <a className="invoice-document-link" href={`/api/v1/invoices/${selectedItem.invoiceId}/documents/latest/content`} target="_blank" rel="noreferrer">Fatura dosyasını aç <UiIcon name="externalLink" /></a> : <p className="invoice-detail-muted">Fatura belgesi henüz hazır değil. Hazır olduğunda dosya bağlantısı burada görünecek.</p>}</section>
         <section className="invoice-detail-section"><div className="invoice-detail-section-heading"><h3>Ürünler</h3><span>{selectedItem.lines?.length ?? selectedItem.productCount} kalem</span></div><div className="invoice-detail-lines">{(selectedItem.lines ?? []).map((line, index) => <article className="invoice-detail-line" key={`${line.sku}-${index}`}><span className="invoice-detail-line-media">{line.imageUrl ? <img src={line.imageUrl} alt="" /> : <UiIcon name="image" />}</span><div><strong>{line.description}</strong><small>SKU: {line.sku || '—'} · Barkod: {line.barcode || '—'}</small><small>{line.quantity} adet · Birim {line.unitPrice.toLocaleString('tr-TR', { style: 'currency', currency: selectedItem.currency })} · KDV %{line.vatRate}</small></div></article>)}{!selectedItem.lines?.length && <p className="invoice-detail-muted">Ürün satırı detayına ulaşılamadı; sipariş kaydı korunuyor.</p>}</div></section>
         <section className="invoice-detail-addresses"><article><h3>Teslimat adresi</h3>{addressLines(selectedItem.shipmentAddressJson).map(line => <span key={line}>{line}</span>)}{!addressLines(selectedItem.shipmentAddressJson).length && <span className="invoice-detail-muted">Adres bilgisi yok</span>}</article><article><h3>Fatura adresi</h3>{addressLines(selectedItem.invoiceAddressJson).map(line => <span key={line}>{line}</span>)}{!addressLines(selectedItem.invoiceAddressJson).length && <span className="invoice-detail-muted">Adres bilgisi yok</span>}</article></section>
