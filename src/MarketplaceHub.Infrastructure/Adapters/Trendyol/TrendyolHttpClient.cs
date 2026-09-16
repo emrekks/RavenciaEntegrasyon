@@ -260,7 +260,10 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Configuration());
         var normalizedOrderNumber = externalOrderId.Trim();
         AdapterPageIssue? firstPageIssue = null;
-        foreach (var storeFrontCode in TrendyolReadStorefronts.ReturnOrderCodes)
+        // A direct order lookup is also used by the single-order sync flow.
+        // Unlike return hydration, that flow must search every storefront so
+        // international orders are not reported as missing.
+        foreach (var storeFrontCode in TrendyolReadStorefronts.Codes)
         {
             var lookupFilters = $"orderNumber={Uri.EscapeDataString(normalizedOrderNumber)}&page=0&size=200";
             var endpoints = new[]
