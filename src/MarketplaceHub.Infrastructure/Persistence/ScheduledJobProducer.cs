@@ -17,11 +17,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         var added = 0;
         await DisableProductAutomationAsync(cancellationToken);
         await EnsureDefaultPoliciesAsync(cancellationToken);
-        var policies = await (from policy in db.ConnectionSyncPolicies.AsNoTracking()
-                              join connection in db.PlatformConnections.AsNoTracking()
-                                  on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
-                              where policy.Enabled && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.PlatformCode == "TRENDYOL"
-                              select new { Policy = policy, Connection = connection }).ToListAsync(cancellationToken);
+        var policies = (await (from policy in db.ConnectionSyncPolicies.AsNoTracking()
+                               join connection in db.PlatformConnections.AsNoTracking()
+                                   on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
+                               where policy.Enabled && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.PlatformCode == "TRENDYOL"
+                               select new { Policy = policy, Connection = connection }).ToListAsync(cancellationToken))
+            // Keep the hot order stream ahead of lifecycle and reconciliation
+            // scans. The query has no guaranteed row order, so an incidental
+            // database order could otherwise enqueue a long lifecycle scan
+            // first and block fresh orders behind the shared orders lane.
+            .OrderBy(row => ScheduledPolicyPriority(row.Policy.ResourceType))
+            .ThenBy(row => row.Connection.Id)
+            .ToList();
         var bootstrapConnections = (await db.IntegrationJobs.AsNoTracking()
             .Where(x => x.ConnectionId != null
                 && x.JobDedupKey.StartsWith(MarketplaceJobTypes.ActivationBootstrapPrefix)
@@ -239,6 +246,26 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         var digest = SHA256.HashData(Encoding.UTF8.GetBytes($"{connectionId:N}:{resourceType}"));
         return (int)(BitConverter.ToUInt32(digest, 0) % (uint)(maximum + 1));
     }
+
+    private static int ScheduledPolicyPriority(string resourceType) => resourceType switch
+    {
+        "ORDERS" => 0,
+        "ORDER_RECOVERY" => 10,
+        "ORDER_LIFECYCLE" => 20,
+        "ORDER_RECONCILE_SHORT" => 30,
+        "ORDER_RECONCILE_MEDIUM" => 31,
+        "ORDER_RECONCILE_DAILY" => 32,
+        "ORDER_INVOICE_RECONCILIATION" => 33,
+        "RETURNS" => 40,
+        "RETURN_LIFECYCLE" => 50,
+        "RETURN_RECONCILE_SHORT" => 60,
+        "RETURN_RECONCILE_MEDIUM" => 61,
+        "RETURN_RECONCILE_DAILY" => 62,
+        "STOCK_RECONCILE_SHORT" => 70,
+        "STOCK_RECONCILE_MEDIUM" => 71,
+        "STOCK_RECONCILE_DAILY" => 72,
+        _ => 100
+    };
 
     private static bool IsOrderBackgroundJob(string jobType) =>
         jobType is MarketplaceJobTypes.OrderRecoverySync
