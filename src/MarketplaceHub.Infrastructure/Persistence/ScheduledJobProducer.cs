@@ -58,9 +58,12 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .ToListAsync(cancellationToken);
             var executionGroup = MarketplaceSyncExecutionLock.GroupFor(definition.Value.JobType);
             var active = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == executionGroup);
+            var isHotOrder = definition.Value.JobType == MarketplaceJobTypes.OrderSync;
+            var hotOrderAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderSync, StringComparer.Ordinal);
             var isOrderLifecycle = definition.Value.JobType == MarketplaceJobTypes.OrderStatusSync;
             var lifecycleAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderStatusSync, StringComparer.Ordinal);
             var activeOrderLane = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == "orders");
+            var canQueueHotOrderBehindOrderLane = isHotOrder && activeOrderLane && !hotOrderAlreadyQueued;
             var canQueueLifecycleBehindOrderLane = isOrderLifecycle && activeOrderLane && !lifecycleAlreadyQueued;
             var isOrderBackground = IsOrderBackgroundJob(definition.Value.JobType);
             var backgroundOrderAlreadyQueued = activeJobTypes.Any(IsOrderBackgroundJob);
@@ -75,8 +78,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             // wait behind the hot order stream, otherwise a continuously busy
             // stream can starve status refreshes forever.
             var reservationKey = $"{row.Policy.TenantId:N}:{row.Connection.Id:N}:{executionGroup}";
-            if ((active && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)
-                || (reservedExecutionGroups.Contains(reservationKey) && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)) continue;
+            if ((active && !canQueueHotOrderBehindOrderLane && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)
+                || (reservedExecutionGroups.Contains(reservationKey) && !canQueueHotOrderBehindOrderLane && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)) continue;
             var latest = await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
