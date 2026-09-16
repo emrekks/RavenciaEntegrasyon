@@ -1894,6 +1894,9 @@
   .reference-menu-popover a, .reference-menu-popover button { display: flex; width: 100%; min-height: 36px; align-items: center; padding: 0 var(--rv-space-2); color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); text-align: left; text-decoration: none; }
   .reference-menu-popover a:hover, .reference-menu-popover button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
   .reference-integration-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); padding: var(--rv-space-5); align-content: start; }
+  .reference-integration-private-state { display: grid; min-height: 132px; align-content: center; gap: var(--rv-space-2); padding: var(--rv-space-5); color: var(--rv-color-muted); background: var(--rv-color-surface-raised); }
+  .reference-integration-private-state strong { color: var(--rv-color-warning); font-size: var(--rv-font-size-sm); }
+  .reference-integration-private-state span { font-size: var(--rv-font-size-sm); }
   .reference-data-point { display: grid; min-width: 0; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
   .reference-data-point strong { min-width: 0; overflow: hidden; color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
   .reference-integration-write-control { grid-column: 1 / -1; display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-3); padding-top: var(--rv-space-3); border-top: 1px solid var(--rv-color-border); }
