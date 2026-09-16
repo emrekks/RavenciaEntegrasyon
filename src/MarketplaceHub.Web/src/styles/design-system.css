@@ -3622,10 +3622,10 @@ button,
   border-color: var(--rv-color-border-strong);
 }
 
-/* Keep the column labels visible below the fixed top bar while the order rows scroll. */
+/* Keep the column labels pinned to the top of the scrolling workspace while the order rows scroll. */
 .app-shell.stitch-shell main .order-reference-table > .order-reference-head {
   position: sticky;
-  top: calc(var(--rv-topbar-height) + 1px);
+  top: 0;
   z-index: calc(var(--rv-z-sticky) + 1);
   align-self: start;
   background: var(--rv-color-surface-raised);
