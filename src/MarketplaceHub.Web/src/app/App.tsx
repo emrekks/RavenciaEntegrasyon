@@ -485,9 +485,9 @@ function DashboardChartPoints({ points, maxValue, currency, chartViewport }: { p
     const yesterdayPoint = index > 0 ? points[index - 1] : point.yesterdayPoint
     const yesterdayProductQuantity = yesterdayPoint?.productQuantity ?? 0
     const yesterdayShipmentCount = yesterdayPoint?.shipmentCount ?? 0
-    const yesterdayLabel = yesterdayPoint ? `Dün · ${dashboardTooltipDateLabel(yesterdayPoint.day)}` : 'Dün · Veri yok'
+    const yesterdayLabel = yesterdayPoint ? `Öncesi gün · ${dashboardTooltipDateLabel(yesterdayPoint.day)}` : 'Öncesi gün · Veri yok'
     const yesterdayDescription = yesterdayPoint ? `${yesterdayPoint.orderCount} sipariş, ${dashboardQuantity(yesterdayProductQuantity)} adet ürün, ${yesterdayShipmentCount} paket, ${dashboardMoney(yesterdayPoint.amount, currency)} ciro` : 'veri yok'
-    return <g className="dashboard-chart-point" key={point.key} tabIndex={0} role="group" aria-label={`${point.fullLabel}: ${point.orderCount} sipariş, ${dashboardQuantity(productQuantity)} adet ürün, ${shipmentCount} paket, ${dashboardMoney(point.amount, currency)} ciro; Dün: ${yesterdayDescription}`}>
+    return <g className="dashboard-chart-point" key={point.key} tabIndex={0} role="group" aria-label={`${point.fullLabel}: ${point.orderCount} sipariş, ${dashboardQuantity(productQuantity)} adet ürün, ${shipmentCount} paket, ${dashboardMoney(point.amount, currency)} ciro; Öncesi gün: ${yesterdayDescription}`}>
       <circle className="dashboard-chart-point-hit" cx={x} cy={y} r="12" />
       <circle className="dashboard-chart-point-dot" cx={x} cy={y} r="3" />
       <foreignObject className="dashboard-chart-point-tooltip" x={tooltipX} y={tooltipY} width={dashboardChartTooltipWidth} height={dashboardChartTooltipHeight}>

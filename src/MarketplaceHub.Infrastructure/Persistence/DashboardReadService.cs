@@ -7,8 +7,6 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvider) : IDashboardReadService
 {
-    private const decimal LowStockThreshold = 5m;
-
     private static readonly (string ResourceType, string Label, string Kind, string[] JobTypes, bool Required)[] SyncDefinitions =
     [
         ("orders", "Siparişler", "orders", [MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.WebhookIngest, MarketplaceJobTypes.ShipmentAction], true),
@@ -261,21 +259,27 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                     [package.RawStatus]) == "FATURA_BEKLIYOR");
         }
 
-        var stockRows = await (from variant in db.ProductVariants.AsNoTracking()
-                               join item in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on variant.Id equals item.VariantId
-                               where variant.TenantId == tenantId
-                                   && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == variant.ProductId)
-                                       || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == variant.ProductId
-                                           && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))))
-                               group item by variant.ProductId into grouped
-                               select new { ProductId = grouped.Key, TotalStock = grouped.Sum(x => x.OnHand) }).ToListAsync(cancellationToken);
-        var stockByProduct = stockRows.ToDictionary(x => x.ProductId, x => x.TotalStock);
         var products = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Status == ProductStatus.Active
             && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == x.Id)
                 || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == x.Id
                     && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))))
             .Select(x => new { x.Id, x.Title }).ToListAsync(cancellationToken);
-        var lowProducts = products.Where(x => stockByProduct.GetValueOrDefault(x.Id) <= LowStockThreshold).ToList();
+        var productIds = products.Select(x => x.Id).ToArray();
+        var variants = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId))
+            .ToListAsync(cancellationToken);
+        var variantIds = variants.Select(variant => variant.Id).ToArray();
+        var inventoryByVariant = await db.InventoryItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
+            .GroupBy(x => x.VariantId)
+            .Select(group => new { VariantId = group.Key, TotalStock = group.Sum(x => x.OnHand) })
+            .ToDictionaryAsync(x => x.VariantId, x => x.TotalStock, cancellationToken);
+        var variantsByProduct = variants
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductVariant>)group.ToList());
+        var stockByProduct = variantsByProduct.ToDictionary(x => x.Key, x => ProductStockPolicy.TotalStock(x.Value, inventoryByVariant));
+        var lowProducts = products.Where(product => stockByProduct.GetValueOrDefault(product.Id) > 0
+            && ProductStockPolicy.IsLowStock(variantsByProduct.GetValueOrDefault(product.Id) ?? [], inventoryByVariant)).ToList();
         var lowProductIds = lowProducts.Select(x => x.Id).ToArray();
         var imageRows = await (from media in db.ProductMedia.AsNoTracking()
                                join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }

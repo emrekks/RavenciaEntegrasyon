@@ -625,7 +625,7 @@ function lowStockProductImage(product: Product, fallback: Product | null = null)
 
 function LowStockDetailsModal({ products, loading, error, onClose, onImageClick }: { products: Product[]; loading: boolean; error: unknown; onClose: () => void; onImageClick: (url: string, title: string) => void }) {
   const groups = useMemo(() => productRowsAsCards(products).sort((left, right) => lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })), [products])
-  const lowVariantCount = groups.reduce((sum, group) => sum + group.variants.filter(item => item.variant.onHand <= 5).length, 0)
+  const lowVariantCount = groups.reduce((sum, group) => sum + group.variants.filter(item => item.variant.onHand <= 0).length, 0)
 
   return <div className="workspace-modal-backdrop low-stock-details-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) onClose() }}>
     <section className="workspace-modal low-stock-details-modal" role="dialog" aria-modal="true" aria-labelledby="low-stock-details-title" onMouseDown={event => event.stopPropagation()}>
@@ -650,7 +650,7 @@ function LowStockDetailsModal({ products, loading, error, onClose, onImageClick 
                 </div>
                 <div className="low-stock-color-list">
                   {[...group.products].sort((left, right) => lowStockProductColor(left).localeCompare(lowStockProductColor(right), 'tr', { sensitivity: 'base' })).map(product => {
-                    const lowVariants = product.variants.filter(variant => variant.onHand <= 5).sort((left, right) => lowStockVariantLabel(left).localeCompare(lowStockVariantLabel(right), 'tr', { numeric: true, sensitivity: 'base' }))
+                    const lowVariants = product.variants.filter(variant => variant.onHand <= 0).sort((left, right) => lowStockVariantLabel(left).localeCompare(lowStockVariantLabel(right), 'tr', { numeric: true, sensitivity: 'base' }))
                     return <details className="low-stock-color-card" key={product.id}>
                       <summary className="low-stock-color-summary"><div><strong>{lowStockProductColor(product)}</strong><span>{product.title}</span></div><span>{lowVariants.length} eksik varyant</span><UiIcon name="chevronDown" /></summary>
                       <div className="low-stock-color-details">

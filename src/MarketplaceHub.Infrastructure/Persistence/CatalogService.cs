@@ -351,7 +351,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     public async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, CancellationToken cancellationToken)
     {
         var query = VisibleProducts(tenantId);
-        ApplyProductFilters(ref query, tenantId, status, search, platform, stock);
+        ApplyProductFilters(ref query, tenantId, status, search, platform);
         var countKey = $"catalog:product-family-count:v2:{tenantId:N}:{status?.Trim()}:{search?.Trim()}:{platform?.Trim()}:{stock?.Trim()}";
         var cachedCount = countCache.Get(countKey);
         if (!cursors.TryDecodeProduct(after, out var afterUpdatedAt, out var afterId))
@@ -359,6 +359,30 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var allProducts = await query.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
         var allProductIds = allProducts.Select(x => x.Id).ToArray();
         var allVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && allProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
+        var variantIds = allVariants.Select(variant => variant.Id).ToArray();
+        var inventoryByVariant = await db.InventoryItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
+            .GroupBy(x => x.VariantId)
+            .Select(group => new { VariantId = group.Key, TotalStock = group.Sum(x => x.OnHand) })
+            .ToDictionaryAsync(x => x.VariantId, x => x.TotalStock, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(stock))
+        {
+            var variantsByProductForFilter = allVariants
+                .GroupBy(x => x.ProductId)
+                .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductVariant>)group.ToList());
+            var stockByProduct = variantsByProductForFilter.ToDictionary(x => x.Key, x => ProductStockPolicy.TotalStock(x.Value, inventoryByVariant));
+            allProducts = allProducts.Where(product => stock.Trim().ToUpperInvariant() switch
+            {
+                "OUT" => stockByProduct.GetValueOrDefault(product.Id) <= 0,
+                "LOW" => stockByProduct.GetValueOrDefault(product.Id) > 0
+                    && ProductStockPolicy.IsLowStock(variantsByProductForFilter.GetValueOrDefault(product.Id) ?? [], inventoryByVariant),
+                "OK" => stockByProduct.GetValueOrDefault(product.Id) > 0
+                    && !ProductStockPolicy.IsLowStock(variantsByProductForFilter.GetValueOrDefault(product.Id) ?? [], inventoryByVariant),
+                _ => true
+            }).ToList();
+            allProductIds = allProducts.Select(x => x.Id).ToArray();
+            allVariants = allVariants.Where(x => allProductIds.Contains(x.ProductId)).ToList();
+        }
         var variantsByProduct = allVariants.GroupBy(x => x.ProductId).ToDictionary(x => x.Key, x => x.ToList());
         var families = allProducts
             .GroupBy(product => ProductFamilyKey(product, variantsByProduct.GetValueOrDefault(product.Id) ?? []), StringComparer.Ordinal)
@@ -396,7 +420,6 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .ToListAsync(cancellationToken);
         var variants = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId)
-            .Select(x => new { x.Id, x.ProductId })
             .ToListAsync(cancellationToken);
         var inventoryByVariant = await db.InventoryItems.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN")
@@ -405,7 +428,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .ToDictionaryAsync(x => x.VariantId, x => x.TotalStock, cancellationToken);
         var stockByProduct = variants
             .GroupBy(x => x.ProductId)
-            .ToDictionary(group => group.Key, group => group.Sum(variant => inventoryByVariant.GetValueOrDefault(variant.Id)));
+            .ToDictionary(group => group.Key, group => ProductStockPolicy.TotalStock(group, inventoryByVariant));
+        var variantsByProduct = variants
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductVariant>)group.ToList());
         var platforms = await (from profile in db.ChannelListingProfiles.AsNoTracking()
                                join connection in db.PlatformConnections.AsNoTracking()
                                    on new { profile.TenantId, profile.ConnectionId } equals new { connection.TenantId, ConnectionId = connection.Id }
@@ -418,7 +444,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             products.Count,
             products.Count(x => x.Status == ProductStatus.Active),
             products.Count(x => stockByProduct.GetValueOrDefault(x.Id) <= 0),
-            products.Count(x => stockByProduct.GetValueOrDefault(x.Id) > 0 && stockByProduct.GetValueOrDefault(x.Id) <= 5),
+            products.Count(x => stockByProduct.GetValueOrDefault(x.Id) > 0
+                && ProductStockPolicy.IsLowStock(variantsByProduct.GetValueOrDefault(x.Id) ?? [], inventoryByVariant)),
             platforms);
     }
 
@@ -1299,7 +1326,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == product.Id
                 && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))));
 
-    private void ApplyProductFilters(ref IQueryable<Product> query, Guid tenantId, string? status, string? search, string? platform, string? stock)
+    private void ApplyProductFilters(ref IQueryable<Product> query, Guid tenantId, string? status, string? search, string? platform)
     {
         if (!string.IsNullOrWhiteSpace(status) && TryProductStatus(status, out var parsed))
             query = query.Where(x => x.Status == parsed);
@@ -1323,31 +1350,6 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == profile.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.DisplayName == platformName)));
         }
 
-        var stockTotals = db.ProductVariants.AsNoTracking()
-            .Where(variant => variant.TenantId == tenantId)
-            .Select(variant => new
-            {
-                variant.ProductId,
-                TotalStock = db.InventoryItems.AsNoTracking()
-                    .Where(inventory => inventory.TenantId == tenantId && inventory.VariantId == variant.Id && inventory.LocationCode == "MAIN")
-                    .Select(inventory => (decimal?)inventory.OnHand)
-                    .FirstOrDefault() ?? 0
-            })
-            .GroupBy(value => value.ProductId)
-            .Select(group => new { ProductId = group.Key, TotalStock = group.Sum(value => value.TotalStock) });
-
-        switch (stock?.Trim().ToUpperInvariant())
-        {
-            case "OUT":
-                query = query.Where(product => !stockTotals.Any(total => total.ProductId == product.Id && total.TotalStock > 0));
-                break;
-            case "LOW":
-                query = query.Where(product => stockTotals.Any(total => total.ProductId == product.Id && total.TotalStock > 0 && total.TotalStock <= 5));
-                break;
-            case "OK":
-                query = query.Where(product => stockTotals.Any(total => total.ProductId == product.Id && total.TotalStock > 5));
-                break;
-        }
     }
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
