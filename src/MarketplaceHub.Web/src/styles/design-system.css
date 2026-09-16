@@ -6776,8 +6776,8 @@ small,
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-e { top: 50%; right: 0; transform: translate(50%, -50%); }
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-s { bottom: 0; left: 50%; transform: translate(-50%, 50%); }
 .app-shell.stitch-shell main .shipping-designer-resize-handle.handle-w { top: 50%; left: 0; transform: translate(-50%, -50%); }
-.app-shell.stitch-shell main .shipping-designer-rotate-handle { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); cursor: pointer; }
-.app-shell.stitch-shell main .shipping-designer-rotate-handle:active { cursor: pointer; }
+.app-shell.stitch-shell main .shipping-designer-rotate-handle { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); cursor: grab; }
+.app-shell.stitch-shell main .shipping-designer-rotate-handle:active { cursor: grabbing; }
 
 .app-shell.stitch-shell main .shipping-designer-resize-handle:hover {
   background: var(--rv-color-primary);
@@ -7119,6 +7119,37 @@ small,
 .app-shell.stitch-shell main .integration-settings-modal > .integration-inline-workspace > .split > form.form-panel > label {
   display: grid;
   gap: var(--rv-space-2);
+}
+
+.app-shell.stitch-shell main .connection-settings-panel {
+  display: grid;
+  gap: var(--rv-space-5);
+}
+
+.app-shell.stitch-shell main .connection-settings-section {
+  display: grid;
+  align-content: start;
+  gap: var(--rv-space-3);
+}
+
+.app-shell.stitch-shell main .connection-settings-section > p {
+  margin: 0;
+  color: var(--rv-color-muted);
+}
+
+.app-shell.stitch-shell main .connection-settings-section > form,
+.app-shell.stitch-shell main .connection-settings-section > label {
+  display: grid;
+  gap: var(--rv-space-3);
+}
+
+.app-shell.stitch-shell main .connection-settings-section > form > label {
+  display: grid;
+  gap: var(--rv-space-2);
+}
+
+.app-shell.stitch-shell main .connection-settings-divider {
+  border-top: 1px solid var(--rv-color-border);
 }
 
 .app-shell.stitch-shell main .integration-write-toggle {
