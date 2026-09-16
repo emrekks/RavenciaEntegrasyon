@@ -22,11 +22,19 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                                   on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
                               where policy.Enabled && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.PlatformCode == "TRENDYOL"
                               select new { Policy = policy, Connection = connection }).ToListAsync(cancellationToken);
+        var bootstrapConnections = (await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.ConnectionId != null
+                && x.JobDedupKey.StartsWith(MarketplaceJobTypes.ActivationBootstrapPrefix)
+                && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
+            .Select(x => x.ConnectionId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken)).ToHashSet();
         var reservedExecutionGroups = new HashSet<string>(StringComparer.Ordinal);
         var backgroundOrderReservations = new HashSet<Guid>();
 
         foreach (var row in policies)
         {
+            if (bootstrapConnections.Contains(row.Connection.Id)) continue;
             var definition = Definition(row.Policy.ResourceType, row.Connection.Id);
             if (definition is null) continue;
 

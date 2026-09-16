@@ -7,6 +7,7 @@ public static class ActiveIntegrationScope
 
 public static class MarketplaceJobTypes
 {
+    public const string ActivationBootstrapPrefix = "activation-bootstrap:";
     public const string ConnectionTest = "TRENDYOL_CONNECTION_TEST";
     public const string ReferenceSync = "TRENDYOL_REFERENCE_SYNC";
     public const string OrderSync = "TRENDYOL_ORDER_SYNC";

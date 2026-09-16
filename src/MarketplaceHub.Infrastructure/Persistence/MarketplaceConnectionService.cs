@@ -180,17 +180,26 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     public async Task<ServiceResult<ConnectionView>> SetActiveAsync(Guid tenantId, Guid id, long expectedVersion, bool active, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM"), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode) && active) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
+        var queueActivationBootstrap = false;
         if (active)
         {
             var connectionTestCode = connection.PlatformCode == "TRENDYOL" ? MarketplaceCapabilities.ConnectionTest : InvoicingCapabilities.ConnectionTest;
             var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == connectionTestCode && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
             if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported) return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Bağlantı etkinleştirilmeden önce başarılı Stage/Production testi gerekir.", 422);
+            queueActivationBootstrap = connection.PlatformCode == "TRENDYOL"
+                && (connection.Status == "DISABLED" || !await HasConnectionDataAsync(tenantId, id, cancellationToken));
             connection.Status = "ACTIVE";
         }
         else connection.Status = "DISABLED";
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
-        connection.Version++; await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, await HasCredential(tenantId, id, cancellationToken)));
+        connection.Version++;
+        if (queueActivationBootstrap)
+        {
+            await CancelScheduledSyncsAsync(tenantId, id, cancellationToken);
+            QueueActivationBootstrap(tenantId, connection);
+        }
+        await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, await HasCredential(tenantId, id, cancellationToken)));
     }
 
     public async Task<ServiceResult<IReadOnlyList<CapabilityView>>> CapabilitiesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -316,6 +325,40 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         await db.SaveChangesAsync(cancellationToken);
     }
     private Task<bool> HasCredential(Guid tenantId, Guid id, CancellationToken cancellationToken) => db.PlatformCredentials.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.RevokedAt == null, cancellationToken);
+    private async Task<bool> HasConnectionDataAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
+        || await db.ReturnClaims.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
+        || await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
+        || await db.ReferenceSnapshots.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
+    private async Task CancelScheduledSyncsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var jobs = await db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+            && x.JobDedupKey.StartsWith("scheduled:")
+            && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled)).ToListAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        foreach (var job in jobs)
+        {
+            job.Status = JobStatus.Cancelled;
+            job.CompletedAt = now;
+            job.Version++;
+        }
+    }
+    private void QueueActivationBootstrap(Guid tenantId, PlatformConnection connection)
+    {
+        var prefix = $"{MarketplaceJobTypes.ActivationBootstrapPrefix}{connection.Id:N}:{connection.Version}:";
+        var correlationId = $"{MarketplaceJobTypes.ActivationBootstrapPrefix}{connection.Id:N}:{connection.Version}";
+        AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.ReferenceSync, $"{prefix}categories", JsonSerializer.Serialize(new { connectionId = connection.Id, resourceType = "CATEGORIES", parentExternalId = (string?)null }), correlationId);
+        AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.ReferenceSync, $"{prefix}brands", JsonSerializer.Serialize(new { connectionId = connection.Id, resourceType = "BRANDS", parentExternalId = (string?)null }), correlationId);
+        AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.ProductSync, $"{prefix}products", JsonSerializer.Serialize(new { connectionId = connection.Id, full = true }), correlationId);
+        AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.OrderRecoverySync, $"{prefix}orders", JsonSerializer.Serialize(new { connectionId = connection.Id, externalOrderId = (string?)null, full = true }), correlationId);
+        AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.ReturnSync, $"{prefix}returns", JsonSerializer.Serialize(new { connectionId = connection.Id, forceFull = true }), correlationId);
+    }
+    private void AddBootstrapJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId)
+    {
+        var job = NewJob(tenantId, connectionId, type, dedup, payload, correlationId);
+        job.Priority = 1;
+        db.IntegrationJobs.Add(job);
+    }
     private async Task<HashSet<Guid>> ActiveCredentialConnectionIds(Guid tenantId, IEnumerable<Guid> connectionIds, CancellationToken cancellationToken) => (await db.PlatformCredentials.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.ConnectionId) && x.RevokedAt == null).Select(x => x.ConnectionId).ToListAsync(cancellationToken)).ToHashSet();
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private PageResult<TView> Page<TEntity, TView>(List<TEntity> rows, int limit, Func<TEntity, TView> map) where TEntity : class { var hasMore = rows.Count > limit; var items = rows.Take(limit).Select(map).ToList(); var next = hasMore ? cursors.Encode((Guid)typeof(TEntity).GetProperty("Id")!.GetValue(rows[limit - 1])!) : null; return new(items, next, hasMore); }

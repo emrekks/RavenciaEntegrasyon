@@ -39,6 +39,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var connectionState = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId.Value).Select(x => new { x.PlatformCode, x.Status }).SingleOrDefaultAsync(cancellationToken);
         var platform = connectionState?.PlatformCode;
         if (!ActiveIntegrationScope.Contains(platform)) return JobExecutionResult.Blocked("CONNECTION_OUT_OF_SCOPE", "Connection is not active in the current integration scope.");
+        var currentJobIsBootstrap = jobId is { } currentJobId
+            && await db.IntegrationJobs.AsNoTracking().Where(x => x.Id == currentJobId).Select(x => x.JobDedupKey).AnyAsync(x => x.StartsWith(MarketplaceJobTypes.ActivationBootstrapPrefix), cancellationToken);
+        if (!currentJobIsBootstrap && IsBootstrapManagedJob(jobType)
+            && await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+                && x.JobDedupKey.StartsWith(MarketplaceJobTypes.ActivationBootstrapPrefix)
+                && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken))
+            return JobExecutionResult.Retry("INITIAL_SYNC_PENDING", "İlk kapsamlı veri aktarımı tamamlanmadan artımlı senkronizasyon başlatılmayacak.", TimeSpan.FromSeconds(30));
         // A disabled connection may still be tested so it can be reactivated, but
         // no data sync or marketplace operation may execute while it is passive.
         if (jobType != MarketplaceJobTypes.ConnectionTest && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
@@ -140,6 +147,19 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         MarketplaceJobTypes.StageTestOrder => "STAGE_TEST_ORDER",
         _ => null
     };
+
+    private static bool IsBootstrapManagedJob(string jobType) => jobType is
+        MarketplaceJobTypes.ReferenceSync
+        or MarketplaceJobTypes.OrderSync
+        or MarketplaceJobTypes.OrderRecoverySync
+        or MarketplaceJobTypes.OrderStatusSync
+        or MarketplaceJobTypes.OrderReconciliation
+        or MarketplaceJobTypes.OrderInvoiceReconciliation
+        or MarketplaceJobTypes.ProductSync
+        or MarketplaceJobTypes.ReturnSync
+        or MarketplaceJobTypes.ReturnStatusSync
+        or MarketplaceJobTypes.ReturnReconciliation
+        or MarketplaceJobTypes.StockReconciliation;
 
     private async Task RecordSyncAttempt(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
     {
