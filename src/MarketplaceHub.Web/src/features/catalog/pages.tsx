@@ -214,11 +214,18 @@ function optionSignatureFromOptions(options: Record<string, string>) {
     .join('_')
 }
 
+type VariantDisplayValue = { label: string; quantity: number }
+type VariantDisplayGroup = { label: string; values: VariantDisplayValue[]; valueSortLabel: string }
+
 function productVariantDisplayGroups(variants: Variant[]) {
-  const groups = new Map<string, { label: string; values: string[] }>()
-  const add = (key: string, label: string, value: string) => {
-    const group = groups.get(key) ?? { label, values: [] }
-    if (value && !group.values.some(item => item.localeCompare(value, 'tr', { sensitivity: 'accent' }) === 0)) group.values.push(value)
+  const groups = new Map<string, VariantDisplayGroup>()
+  const add = (key: string, label: string, value: string, quantity: number, valueSortLabel = label) => {
+    const group = groups.get(key) ?? { label, values: [], valueSortLabel }
+    const existing = group.values.find(item => item.label.localeCompare(value, 'tr', { sensitivity: 'accent' }) === 0)
+    if (value) {
+      if (existing) existing.quantity += quantity
+      else group.values.push({ label: value, quantity })
+    }
     groups.set(key, group)
   }
   for (const variant of variants) {
@@ -226,16 +233,26 @@ function productVariantDisplayGroups(variants: Variant[]) {
     const color = preferredColorOption(options)
     const size = options.find(option => ['BEDEN', 'SIZE', 'SIZ', 'NUMARA', 'NUMBER'].includes(option.name.replace(/\s+/g, '').toLocaleUpperCase('tr-TR')))
     if (color) {
-      add(`color:${color.value.toLocaleLowerCase('tr-TR')}`, color.value, size?.value ?? (options.filter(option => option !== color).map(option => `${option.name}: ${option.value}`).join(' · ') || variant.sku))
+      add(`color:${color.value.toLocaleLowerCase('tr-TR')}`, color.value, size?.value ?? (options.filter(option => option !== color).map(option => `${option.name}: ${option.value}`).join(' · ') || variant.sku), variant.onHand, size?.name ?? 'Beden')
     } else if (size) {
-      add('size', size.name, size.value)
+      add('size', size.name, size.value, variant.onHand, size.name)
     } else if (options.length) {
-      add(`option:${options[0].name.toLocaleLowerCase('tr-TR')}`, options[0].name, options.map(option => `${option.name}: ${option.value}`).join(' · '))
+      add(`option:${options[0].name.toLocaleLowerCase('tr-TR')}`, options[0].name, options.map(option => `${option.name}: ${option.value}`).join(' · '), variant.onHand, options[0].name)
     } else {
-      add('variant', 'Varyantlar', variant.sku)
+      add('variant', 'Varyantlar', variant.sku, variant.onHand)
     }
   }
-  return [...groups.values()]
+  return [...groups.values()].map(group => ({
+    ...group,
+    values: [...group.values].sort((left, right) => {
+      const leftRank = optionValueSortRank(group.valueSortLabel, left.label)
+      const rightRank = optionValueSortRank(group.valueSortLabel, right.label)
+      return leftRank.bucket - rightRank.bucket
+        || leftRank.primary - rightRank.primary
+        || leftRank.secondary - rightRank.secondary
+        || leftRank.text.localeCompare(rightRank.text, 'tr', { numeric: true, sensitivity: 'base' })
+    })
+  })).sort((left, right) => left.label.localeCompare(right.label, 'tr', { sensitivity: 'base' }))
 }
 
 function cleanOptionValue(value: string) {
@@ -518,8 +535,6 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect }:
   return <div className="quick-edit-variant-controls" onClick={event => event.stopPropagation()}><label><small>Stok</small><input aria-label={`${variant.sku} stok`} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStock(Number(event.target.value || 0)) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label><label><small>Fiyat</small><input aria-label={`${variant.sku} fiyat`} value={price} onFocus={onSelect} onChange={event => { onSelect(); setPrice(event.target.value === '' ? '' : Number(event.target.value)) }} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /></label></div>
 }
 
-type VariantDisplayGroup = { label: string; values: string[] }
-
 function ProductVariantHover({ count, catalogCount, groups }: { count: number; catalogCount: number; groups: VariantDisplayGroup[] }) {
   const triggerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -567,7 +582,7 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
     </div>
     {open && createPortal(
       <div ref={tooltipRef} className="product-variant-tooltip product-variant-tooltip-portal" role="tooltip" style={{ left: position.left, top: position.top }}>
-        {groups.map(group => <div className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span>{group.values.join(', ')}</span></div>)}
+        {groups.map(group => <div className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span>{group.values.map(value => `${value.label} (${value.quantity})`).join(', ')}</span></div>)}
       </div>,
       document.body
     )}
