@@ -1285,6 +1285,8 @@
   .return-inline-action .form-grid { grid-template-columns: 1fr; }
   .return-inline-action > button { justify-self: start; }
   .return-decision-action { border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border)); }
+  .return-external-write-disabled { padding: var(--rv-space-3); color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-sm); }
+  .return-decision-action button.external-write-disabled, .return-decision-action button.external-write-disabled:hover { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border); box-shadow: none; cursor: not-allowed; opacity: .68; }
   .return-receive-action { border-color: color-mix(in srgb, var(--rv-color-warning) 45%, var(--rv-color-border)); }
   /* Legacy invoice actions still used by the order workspace share the same
      bounded modal contract instead of relying on browser-sized content. */

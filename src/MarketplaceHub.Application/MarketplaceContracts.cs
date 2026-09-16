@@ -467,7 +467,8 @@ public sealed record ReturnDetailView(
     string? CargoTrackingNumber = null,
     IReadOnlyList<ReturnLineView>? Lines = null,
     bool StockDispositionAvailable = false,
-    DateTimeOffset? ApprovedAt = null);
+    DateTimeOffset? ApprovedAt = null,
+    bool ExternalWritesEnabled = false);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);
 

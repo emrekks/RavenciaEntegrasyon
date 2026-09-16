@@ -689,6 +689,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (claim is null) return NotFound<ReturnDetailView>();
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claim.OrderId, cancellationToken);
         if (order is null) return NotFound<ReturnDetailView>();
+        var stageConnection = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken);
+        var externalWritesEnabled = stageConnection || await WritesEnabled(tenantId, claim.ConnectionId, cancellationToken);
         // ActionRequired is the provider's decision point. The Trendyol return
         // adapter already has explicit APPROVE/REJECT implementations, so the
         // UI must not hide those controls just because a production capability
@@ -720,15 +722,18 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             var source = orderLines.GetValueOrDefault(line.OrderLineId);
             var sourceSnapshot = source is null ? null : SourceLine(source.SourceSnapshotJson);
             var disposed = dispositions.GetValueOrDefault(line.Id);
+            var imageUrl = sourceSnapshot?.ImageUrl ?? (source?.VariantId is { } variantId ? imageUrls.GetValueOrDefault(variantId) : null);
+            if (imageUrl is null && !string.IsNullOrWhiteSpace(source?.Barcode))
+                imageUrl = $"/api/v1/orders/product-image?barcode={Uri.EscapeDataString(source.Barcode)}";
             return new ReturnLineView(line.Id, line.ExternalLineId, line.OrderLineId, source?.Sku ?? "—", source?.Barcode, source?.TitleSnapshot ?? "—", line.Quantity, disposed, Math.Max(0, line.Quantity - disposed), source?.UnitPrice ?? 0,
-                source?.VariantId is { } variantId ? imageUrls.GetValueOrDefault(variantId) : null,
+                imageUrl,
                 source?.VariantId is { } mappedVariantId && inventoryVariants.Contains(mappedVariantId),
                 sourceSnapshot?.OptionSignature);
         }).ToList();
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, claim.ActionDueAt, actions, claim.Version,
-            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, package?.CargoProviderExternalId, package?.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt));
+            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, package?.CargoProviderExternalId, package?.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled));
     }
 
     public async Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken)
