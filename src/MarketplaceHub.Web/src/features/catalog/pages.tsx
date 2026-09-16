@@ -1248,7 +1248,6 @@ function CategoryAttributeMappingPanel({
                 <strong>{displayName}{item.isRequired ? ' *' : ''}</strong>
                 <small>{dataTypeLabels[item.attribute.dataType] ?? item.attribute.dataType}{item.isRequired ? ' · Zorunlu' : ' · İsteğe bağlı'}</small>
               </div>
-              {item.attribute.values.length > 0 && selectedValues.length > 0 && <span className="category-attribute-count">{selectedValues.length} seçildi</span>}
             </div>
             {item.attribute.values.length ? (
               <CategoryAttributeValueDropdown attributeName={displayName} dataType={item.attribute.dataType} values={item.attribute.values} selectedValues={selectedValues} onToggleValue={valueId => onToggleValue(item.attributeId, valueId)} />
