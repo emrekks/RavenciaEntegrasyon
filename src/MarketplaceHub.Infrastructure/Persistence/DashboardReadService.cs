@@ -42,7 +42,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             .Select(x => new DashboardSyncStatusView(x.ResourceType, x.DisplayName, x.Kind, x.Status, x.LastAttemptAt, x.LastSuccessAt, x.LastErrorCode))
             .ToListAsync(cancellationToken);
         var platforms = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Status != "HIDDEN")
+            .Where(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED"))
             .OrderBy(x => x.DisplayName)
             .Select(x => new DashboardPlatformView(x.DisplayName, x.Status))
             .ToListAsync(cancellationToken);
@@ -97,7 +97,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var rangeStart = UtcOffset(DateTime.SpecifyKind(startDay, DateTimeKind.Unspecified), timezone);
         var rangeEnd = UtcOffset(DateTime.SpecifyKind(endDay.AddDays(1), DateTimeKind.Unspecified), timezone);
         var connectionNames = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Status != "HIDDEN")
+            .Where(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED"))
             .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
         var rows = await db.Orders.AsNoTracking()
             .Where(x => x.TenantId == tenantId
@@ -205,7 +205,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             .GroupBy(x => x.ConnectionId)
             .Select(x => new { ConnectionId = x.Key, Count = x.Count() })
             .ToListAsync(cancellationToken);
-        var connectionNames = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Status != "HIDDEN").ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
+        var connectionNames = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED")).ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
         var pendingByPlatform = pendingByConnection
             .GroupBy(x => connectionNames.GetValueOrDefault(x.ConnectionId, "Belirtilmemiş"))
             .ToDictionary(x => x.Key, x => x.Sum(row => row.Count));
@@ -229,7 +229,8 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                 .Where(x => x.TenantId == tenantId && activeOrderIds.Contains(x.Id))
                 .ToDictionaryAsync(x => x.Id, cancellationToken);
             var activeInvoices = await db.Invoices.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null && activeOrderIds.Contains(x.OrderId))
+                .Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null && activeOrderIds.Contains(x.OrderId)
+                    && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
                 .OrderByDescending(x => x.CreatedAt)
                 .ToListAsync(cancellationToken);
             var invoicesByOrder = activeInvoices
@@ -265,14 +266,14 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                                where variant.TenantId == tenantId
                                    && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == variant.ProductId)
                                        || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == variant.ProductId
-                                           && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId && connection.Status != "HIDDEN")))
+                                           && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))))
                                group item by variant.ProductId into grouped
                                select new { ProductId = grouped.Key, TotalStock = grouped.Sum(x => x.OnHand) }).ToListAsync(cancellationToken);
         var stockByProduct = stockRows.ToDictionary(x => x.ProductId, x => x.TotalStock);
         var products = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Status == ProductStatus.Active
             && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == x.Id)
                 || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == x.Id
-                    && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId && connection.Status != "HIDDEN"))))
+                    && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))))
             .Select(x => new { x.Id, x.Title }).ToListAsync(cancellationToken);
         var lowProducts = products.Where(x => stockByProduct.GetValueOrDefault(x.Id) <= LowStockThreshold).ToList();
         var lowProductIds = lowProducts.Select(x => x.Id).ToArray();

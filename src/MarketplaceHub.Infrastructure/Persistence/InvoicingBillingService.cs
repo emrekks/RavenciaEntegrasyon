@@ -58,9 +58,9 @@ public sealed partial class InvoicingBillingService(
     public async Task<PageResult<InvoiceListView>> ListAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
         var afterId = Decode(after); var query = db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId
-            && !db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Status == "HIDDEN"
-                && (connection.Id == x.ProviderConnectionId
-                    || db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId && order.ConnectionId == connection.Id))));
+            && db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == order.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
         if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<InvoiceStatus>(status, true, out var parsed)) query = query.Where(x => x.Status == parsed);
         var rows = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken); var orderIds = rows.Select(x => x.OrderId).Distinct().ToList();
@@ -79,7 +79,7 @@ public sealed partial class InvoicingBillingService(
 
         var packages = await db.ShipmentPackages.AsNoTracking()
             .Where(x => x.TenantId == tenantId
-                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.Status != "HIDDEN"))
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
             .OrderByDescending(x => x.StatusOccurredAt)
             .ToListAsync(cancellationToken);
         if (packages.Count == 0) return [];
@@ -89,7 +89,9 @@ public sealed partial class InvoicingBillingService(
         var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).ToListAsync(cancellationToken);
         var invoices = await db.Invoices.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null && ((x.PackageId != null && packageIds.Contains(x.PackageId.Value)) || (x.PackageId == null && orderIds.Contains(x.OrderId))))
+            .Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null
+                && ((x.PackageId != null && packageIds.Contains(x.PackageId.Value)) || (x.PackageId == null && orderIds.Contains(x.OrderId)))
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
             .OrderByDescending(x => x.CreatedAt)
             .ToListAsync(cancellationToken);
         var invoiceIds = invoices.Select(x => x.Id).ToArray();
@@ -327,9 +329,9 @@ public sealed partial class InvoicingBillingService(
     public async Task<ServiceResult<InvoiceDetailView>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
         var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id
-            && !db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Status == "HIDDEN"
-                && (connection.Id == x.ProviderConnectionId
-                    || db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId && order.ConnectionId == connection.Id))), cancellationToken);
+            && db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == order.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")), cancellationToken);
         if (invoice is null) return NotFound<InvoiceDetailView>();
         var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId).Select(x => x.OrderNumber).SingleAsync(cancellationToken);
         var lines = await db.InvoiceLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.LineSequence).Select(x => new InvoiceLineView(x.Id, x.LineSequence, x.DescriptionSnapshot, x.SkuSnapshot, x.UnitSnapshot, x.Quantity, x.UnitPrice, x.DiscountAmount, x.VatRate, x.VatAmount, x.LineTotal)).ToListAsync(cancellationToken);
@@ -435,7 +437,14 @@ public sealed partial class InvoicingBillingService(
 
     public async Task<ServiceResult<(Stream Content, string MimeType, string FileName)>> OpenDocumentAsync(Guid tenantId, Guid invoiceId, Guid documentId, CancellationToken cancellationToken)
     {
-        var row = await (from document in db.InvoiceDocuments.AsNoTracking() join asset in db.FileAssets.AsNoTracking() on new { document.TenantId, Id = document.FileAssetId } equals new { asset.TenantId, asset.Id } where document.TenantId == tenantId && document.InvoiceId == invoiceId && document.Id == documentId select new { asset.RelativePath, asset.MimeType, asset.OriginalNameSafe }).SingleOrDefaultAsync(cancellationToken);
+        var row = await (from document in db.InvoiceDocuments.AsNoTracking()
+                         join asset in db.FileAssets.AsNoTracking() on new { document.TenantId, Id = document.FileAssetId } equals new { asset.TenantId, asset.Id }
+                         where document.TenantId == tenantId && document.InvoiceId == invoiceId && document.Id == documentId
+                            && db.Invoices.Any(invoice => invoice.TenantId == tenantId && invoice.Id == document.InvoiceId
+                                && db.Orders.Any(order => order.TenantId == tenantId && order.Id == invoice.OrderId
+                                    && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == order.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
+                                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == invoice.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
+                         select new { asset.RelativePath, asset.MimeType, asset.OriginalNameSafe }).SingleOrDefaultAsync(cancellationToken);
         return row is null ? NotFound<(Stream, string, string)>() : ServiceResult<(Stream, string, string)>.Ok((await files.OpenReadAsync(tenantId, row.RelativePath, cancellationToken), row.MimeType, row.OriginalNameSafe ?? $"invoice-{documentId:N}"));
     }
 

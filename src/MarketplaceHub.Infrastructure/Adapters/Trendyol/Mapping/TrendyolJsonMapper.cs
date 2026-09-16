@@ -14,51 +14,56 @@ public static class TrendyolJsonMapper
         foreach (var package in Content(root))
         {
             var externalPackageId = Text(package, "id", "shipmentPackageId", "packageId"); var orderNumber = Text(package, "orderNumber");
-            if (string.IsNullOrWhiteSpace(externalPackageId) || string.IsNullOrWhiteSpace(orderNumber)) continue;
+            if (string.IsNullOrWhiteSpace(externalPackageId) || string.IsNullOrWhiteSpace(orderNumber))
+            {
+                var identity = string.IsNullOrWhiteSpace(externalPackageId) ? orderNumber : externalPackageId;
+                issues.Add(new("ORDER_PACKAGE_INVALID", identity ?? "unknown", "Sipariş paketi içeri alınmadı: paket kimliği ve sipariş numarası zorunludur."));
+                continue;
+            }
             try
             {
-            var lines = new List<RemoteOrderLine>(); var allocations = new List<RemotePackageAllocation>();
-            if (package.TryGetProperty("lines", out var lineArray) && lineArray.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var line in lineArray.EnumerateArray())
+                var lines = new List<RemoteOrderLine>(); var allocations = new List<RemotePackageAllocation>();
+                if (package.TryGetProperty("lines", out var lineArray) && lineArray.ValueKind == JsonValueKind.Array)
                 {
-                    var externalLineId = Text(line, "lineId", "id"); if (string.IsNullOrWhiteSpace(externalLineId)) continue;
-                    if (!TryDecimal(line, out var quantity, "quantity") || quantity <= 0)
-                        throw new JsonException($"Order line {externalLineId} has no valid positive quantity.");
-                    if (!TryDecimal(line, out var unitPrice, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount") || unitPrice < 0)
-                        throw new JsonException($"Order line {externalLineId} has no valid unit price.");
-                    if (!TryDecimal(line, out var vatRate, "vatRate", "vatBaseAmount") || vatRate < 0)
-                        throw new JsonException($"Order line {externalLineId} has no valid VAT value.");
-                    var barcode = NullText(line, "barcode");
-                    var sku = Text(line, "stockCode", "merchantSku");
-                    if (string.IsNullOrWhiteSpace(sku)) sku = barcode ?? "";
-                    var title = Text(line, "productName", "title");
-                    if (string.IsNullOrWhiteSpace(sku) || string.IsNullOrWhiteSpace(title))
-                        throw new JsonException($"Order line {externalLineId} has no SKU/barcode or product name.");
-                    var rawStatus = Text(line, "orderLineItemStatusName");
-                    lines.Add(new(externalLineId, sku, barcode, title, quantity, unitPrice, vatRate, rawStatus, line.GetRawText()));
-                    allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
+                    foreach (var line in lineArray.EnumerateArray())
+                    {
+                        var externalLineId = Text(line, "lineId", "id"); if (string.IsNullOrWhiteSpace(externalLineId)) continue;
+                        if (!TryDecimal(line, out var quantity, "quantity") || quantity <= 0)
+                            throw new JsonException($"Order line {externalLineId} has no valid positive quantity.");
+                        if (!TryDecimal(line, out var unitPrice, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount") || unitPrice < 0)
+                            throw new JsonException($"Order line {externalLineId} has no valid unit price.");
+                        if (!TryDecimal(line, out var vatRate, "vatRate", "vatBaseAmount") || vatRate < 0)
+                            throw new JsonException($"Order line {externalLineId} has no valid VAT value.");
+                        var barcode = NullText(line, "barcode");
+                        var sku = Text(line, "stockCode", "merchantSku");
+                        if (string.IsNullOrWhiteSpace(sku)) sku = barcode ?? "";
+                        var title = Text(line, "productName", "title");
+                        if (string.IsNullOrWhiteSpace(sku) || string.IsNullOrWhiteSpace(title))
+                            throw new JsonException($"Order line {externalLineId} has no SKU/barcode or product name.");
+                        var rawStatus = Text(line, "orderLineItemStatusName");
+                        lines.Add(new(externalLineId, sku, barcode, title, quantity, unitPrice, vatRate, rawStatus, line.GetRawText()));
+                        allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
+                    }
                 }
-            }
-            var gross = Decimal(package, "packageGrossAmount", "grossAmount", "packageTotalPrice");
-            var discount = Decimal(package, "packageTotalDiscount");
-            if (discount == 0) discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
-            var net = Decimal(package, "packageTotalPrice", "totalPrice");
-            // Trendyol's Yeni tab is driven by the top-level package status.
-            // For newly created packages shipmentPackageStatus may already be
-            // ReadyToShip while status is still Created; the latter is the
-            // authoritative workflow state for the order projection.
-            var rawStatusPackage = Text(package, "status", "shipmentPackageStatus"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
-            var invoice = new RemotePackageInvoiceObservation(
-                NullText(package, "invoiceStatus"),
-                NullText(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber"),
-                NullText(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"),
-                FlexibleInstant(package, "invoiceUpdatedAt") ?? modified);
-            var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net, invoice);
-            var dueAt = FlexibleInstant(package, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
-            rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
-                CustomerSnapshot(package),
-                ObjectSnapshot(package, "shipmentAddress"), ObjectSnapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText(), dueAt));
+                var gross = Decimal(package, "packageGrossAmount", "grossAmount", "packageTotalPrice");
+                var discount = Decimal(package, "packageTotalDiscount");
+                if (discount == 0) discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
+                var net = Decimal(package, "packageTotalPrice", "totalPrice");
+                // Trendyol's Yeni tab is driven by the top-level package status.
+                // For newly created packages shipmentPackageStatus may already be
+                // ReadyToShip while status is still Created; the latter is the
+                // authoritative workflow state for the order projection.
+                var rawStatusPackage = Text(package, "status", "shipmentPackageStatus"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
+                var invoice = new RemotePackageInvoiceObservation(
+                    NullText(package, "invoiceStatus"),
+                    NullText(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber"),
+                    NullText(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"),
+                    FlexibleInstant(package, "invoiceUpdatedAt") ?? modified);
+                var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net, invoice);
+                var dueAt = FlexibleInstant(package, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
+                rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
+                    CustomerSnapshot(package),
+                    ObjectSnapshot(package, "shipmentAddress"), ObjectSnapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText(), dueAt));
             }
             catch (JsonException exception)
             {

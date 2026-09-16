@@ -116,6 +116,21 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     }
 
     [Fact]
+    public void MapperReportsPackageWithMissingIdentityInsteadOfDroppingSilently()
+    {
+        const string json = """
+            {"content":[{"orderNumber":"ord-1","status":"Created"}]}
+            """;
+
+        var result = TrendyolJsonMapper.Orders(json);
+
+        Assert.Empty(result.Items);
+        var issue = Assert.Single(result.Issues!);
+        Assert.Equal("ORDER_PACKAGE_INVALID", issue.Code);
+        Assert.Equal("ord-1", issue.Identity);
+    }
+
+    [Fact]
     public void DirectOrderRead_MergesEveryPackageBeforeReconciliation()
     {
         const string json = """
