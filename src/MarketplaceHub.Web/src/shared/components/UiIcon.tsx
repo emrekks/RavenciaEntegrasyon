@@ -115,7 +115,7 @@ type UiIconProps = {
 const returnsIcon: ReactNode = <g fill="none"><path d="m4.7 5.1 7.3-3.6 7.3 3.6v7.8L12 16.5l-7.3-3.6z" /><path d="m4.7 5.1 7.3 3.7 7.3-3.7" /><path d="M12 8.8v7.7" /><path d="M19 20.2A8.2 8.2 0 0 1 6.8 19.2" /><path d="M10.3 19.2H6.8V22.4" /></g>
 
 const paths: Record<UiIconName, ReactNode> = {
-  alert: <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />,
+  alert: <><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5m0 3.25h.01" /></>,
   addCategory: <path fill="currentColor" stroke="none" fillRule="evenodd" clipRule="evenodd" d="M3.75 4.5 4.5 3.75h6l.75.75v6l-.75.75h-6l-.75-.75v-6Zm1.5.75v4.5h4.5v-4.5h-4.5Zm8.25-1.5-.75.75v6l.75.75h6l.75-.75v-6l-.75-.75h-6Zm.75 1.5h4.5v4.5h-4.5v-4.5Zm3 15h-1.5v-3h-3v-1.5h3v-3h1.5v3h3v1.5h-3v3Zm-12.75-7.5-.75.75v6l.75.75h6l.75-.75v-6l-.75-.75h-6Zm.75 1.5h4.5v4.5h-4.5v-4.5Z" />,
   alignCenter: <><path d="M5 6h14M8 10h8M5 14h14M8 18h8" /></>,
   alignLeft: <><path d="M5 6h14M5 10h10M5 14h14M5 18h10" /></>,
