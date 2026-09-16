@@ -2100,6 +2100,8 @@
   .order-reference-actions .row-menu-trigger { width: 100%; min-width: 0; }
   .order-label-actions { display: grid; gap: var(--rv-space-2); }
   .order-label-action { display: inline-flex; width: 100%; min-height: 36px; align-items: center; justify-content: center; text-align: center; }
+  .order-label-action.is-printed { color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border); opacity: .66; }
+  .order-label-action.is-printed .ui-icon { color: var(--rv-color-accent); }
   .order-label-action .ui-icon { width: 14px; height: 14px; }
   .return-reference-workspace { min-width: 0; overflow: visible; }
   .return-reference-head, .return-reference-row { min-width: 1240px; }
@@ -3593,12 +3595,24 @@ button,
 
 /* Orders use the same continuous grid treatment and centered actions as returns. */
 .app-shell.stitch-shell main .order-reference-table {
+  position: relative;
+  overflow: visible;
   border-color: var(--rv-color-border-strong);
 }
 
 .app-shell.stitch-shell main .order-reference-table > .order-reference-head,
 .app-shell.stitch-shell main .order-reference-table > .order-reference-row {
   border-color: var(--rv-color-border-strong);
+}
+
+/* Keep the column labels visible below the fixed top bar while the order rows scroll. */
+.app-shell.stitch-shell main .order-reference-table > .order-reference-head {
+  position: sticky;
+  top: calc(var(--rv-topbar-height) + 1px);
+  z-index: calc(var(--rv-z-sticky) + 1);
+  align-self: start;
+  background: var(--rv-color-surface-raised);
+  box-shadow: var(--rv-shadow-sm);
 }
 
 .app-shell.stitch-shell main .order-reference-table > .order-reference-head > *,
