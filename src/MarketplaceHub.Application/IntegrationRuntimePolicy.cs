@@ -37,6 +37,11 @@ public static class IntegrationRuntimePolicy
         IsManualStage(connection, context)
         || (IsProduction(connection) && IsActive(connection) && globalWritesEnabled && connectionWritesEnabled);
 
+    public static bool AllowsExternalWrite(PlatformConnection connection, AdapterContext context, bool globalWritesEnabled, bool connectionWritesEnabled) =>
+        context.Operation == IntegrationOperation.Automatic
+            ? IsProduction(connection) && IsActive(connection) && globalWritesEnabled && connectionWritesEnabled
+            : AllowsManualWrite(connection, context, globalWritesEnabled, connectionWritesEnabled);
+
     public static bool RequiresSensitiveConfirmation(PlatformConnection connection) => !IsStage(connection);
 
     public static bool TryResolveBaseAddress(string environment, Uri stageBaseAddress, Uri productionBaseAddress, out Uri baseAddress)

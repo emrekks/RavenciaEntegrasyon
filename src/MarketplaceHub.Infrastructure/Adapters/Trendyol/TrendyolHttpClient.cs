@@ -471,8 +471,7 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
     }
 
     private bool CanWrite(TrendyolRequestContext context, AdapterContext adapterContext) =>
-        IntegrationRuntimePolicy.IsManualStage(context.Connection, adapterContext)
-        || (IntegrationRuntimePolicy.IsProduction(context.Connection) && GlobalWritesEnabled && context.ExternalWritesEnabled);
+        IntegrationRuntimePolicy.AllowsExternalWrite(context.Connection, adapterContext, GlobalWritesEnabled, context.ExternalWritesEnabled);
     private static CapabilityEvidence SupportedEvidence(string code, ConnectionIdentity identity, string sourceUrl, string note, DateTimeOffset verifiedAt) =>
         new(code, "SUPPORTED", "V2", identity.Environment, identity.ExternalStoreId, sourceUrl, "2026-08-04", null, null, note, null, verifiedAt);
 

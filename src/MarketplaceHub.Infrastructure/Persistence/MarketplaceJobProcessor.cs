@@ -841,7 +841,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
             if (connection is null) return JobExecutionResult.Blocked("CONNECTION_NOT_FOUND", "Bağlantı bulunamadı.");
-            if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson))
+            if (!WritesEnabled(connection.SettingsJson))
                 return JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalı olduğu için fiyat-stok gönderimi çalıştırılmadı.");
             var current = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId);
             if (!current.Succeeded)
@@ -854,7 +854,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.PriceInventorySync, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
             db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
             TrackRequest();
-            var submit = await inventoryPrice.PushPriceAndInventoryAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), payload.PayloadJson, cancellationToken);
+            var submit = await inventoryPrice.PushPriceAndInventoryAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey) with { Operation = IntegrationOperation.Automatic }, payload.PayloadJson, cancellationToken);
             if (!submit.IsSuccess)
             {
                 TrackResultFailure(submit.Error);
