@@ -166,7 +166,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             {
                 "PROCESSING" => query.Where(x => x.DerivedStatus == "PROCESSING" || x.DerivedStatus == "READY_TO_SHIP"),
                 "SHIPPED" => query.Where(x => x.DerivedStatus == "SHIPPED" || x.DerivedStatus == "UNDELIVERED"),
-                "RESENT" => query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null)),
+                // A cancelled replacement package is a failed resend, not an
+                // active resend. Keep it in the cancelled tab so the resend
+                // tab does not offer a misleading "İşlem yapılamaz" row.
+                "RESENT" => query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled)),
                 _ => query.Where(x => x.DerivedStatus == status)
             };
         }
@@ -236,7 +239,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 group.Count(x => x.Status == ShipmentPackageStatus.Processing || x.Status == ShipmentPackageStatus.ReadyToShip),
                 group.Count(x => x.Status == ShipmentPackageStatus.Shipped || x.Status == ShipmentPackageStatus.Undelivered),
                 group.Count(x => x.Status == ShipmentPackageStatus.Delivered),
-                group.Count(x => x.OriginExternalPackageId != null),
+                group.Count(x => x.OriginExternalPackageId != null && x.Status != ShipmentPackageStatus.Cancelled),
                 group.Count(x => x.Status == ShipmentPackageStatus.OnHold),
                 group.Count(x => x.Status == ShipmentPackageStatus.Cancelled),
                 group.Count(x => x.Status == ShipmentPackageStatus.Returned),
@@ -734,7 +737,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             : ServiceResult<IReadOnlyList<ReturnIssueReason>>.Fail(result.Error!.Code, result.Error.SafeMessage, result.Error.HttpStatus ?? 502);
     }
 
-    public Task<ServiceResult<Guid>> EnqueueReturnSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ReturnRead, MarketplaceJobTypes.ReturnSync, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken);
+    public Task<ServiceResult<Guid>> EnqueueReturnSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ReturnRead, MarketplaceJobTypes.ReturnSync, JsonSerializer.Serialize(new { connectionId, forceFull = true }), correlationId, cancellationToken);
 
     public async Task<ServiceResult<ReturnDetailView>> MarkReturnReceivedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {

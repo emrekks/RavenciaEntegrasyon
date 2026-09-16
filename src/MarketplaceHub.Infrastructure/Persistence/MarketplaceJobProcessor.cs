@@ -83,7 +83,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     MarketplaceJobTypes.OrderReconciliation => await ReconcileOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderInvoiceReconciliation => await ReconcileOrderInvoices(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ProductSync => await SyncProducts(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
-                    MarketplaceJobTypes.ReturnSync => await SyncReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
+                    MarketplaceJobTypes.ReturnSync => await SyncReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnReconciliation => await ReconcileReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.StockReconciliation => await ReconcileStock(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
@@ -3740,7 +3740,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private const string ReturnSyncStateVersion = "returns-v10";
     private sealed record ReturnSyncState(string Version, int StoreFrontIndex, int Page, bool Full = true, DateTimeOffset? StartAt = null, DateTimeOffset? EndAt = null);
 
-    private async Task<bool> SyncReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    private async Task<bool> SyncReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
         var configuredOverlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
@@ -3748,7 +3748,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Select(x => (int?)x.OverlapSeconds)
             .SingleOrDefaultAsync(cancellationToken) ?? 900;
         var overlap = TimeSpan.FromSeconds(Math.Clamp(configuredOverlapSeconds, 60, 86_400));
-        var state = ReadReturnSyncState(cursor, timeProvider.GetUtcNow(), overlap);
+        var state = ReadReturnSyncState(cursor, timeProvider.GetUtcNow(), overlap, ReadBoolean(payloadJson, "forceFull"));
         var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         do
         {
@@ -3921,8 +3921,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         catch (JsonException) { return false; }
     }
 
-    private static ReturnSyncState ReadReturnSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap)
+    private static ReturnSyncState ReadReturnSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool forceFull = false)
     {
+        if (forceFull) return InitialReturnWindow(now);
         if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
         {
             try
