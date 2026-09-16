@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
-import { UiIcon, type UiIconName } from './UiIcon'
+import { UiIcon } from './UiIcon'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 export type ControlSize = 'sm' | 'md' | 'lg'
@@ -125,8 +125,7 @@ export function Badge({ tone = 'neutral', children }: { tone?: StatusTone; child
 export function StatusBadge({ tone, children }: { tone?: StatusTone; children: ReactNode }) { return <Badge tone={tone}>{children}</Badge> }
 
 export function Callout({ tone = 'info', children, role }: { tone?: StatusTone; children: ReactNode; role?: 'status' | 'alert' }) {
-  const icon: UiIconName = tone === 'success' ? 'check' : tone === 'warning' || tone === 'danger' ? 'alert' : 'sparkle'
-  return <div className={`rv-callout rv-callout-${tone}`} role={role ?? (tone === 'danger' ? 'alert' : 'status')} aria-live={tone === 'danger' ? 'assertive' : 'polite'}><span className="rv-callout-icon" aria-hidden="true"><UiIcon name={icon} /></span><div>{children}</div></div>
+  return <div className={`rv-callout rv-callout-${tone}`} role={role ?? (tone === 'danger' ? 'alert' : 'status')} aria-live={tone === 'danger' ? 'assertive' : 'polite'}><span className="rv-callout-icon" aria-hidden="true" /><div>{children}</div></div>
 }
 
 export function MetricCard({ label, value, detail, icon }: { label: string; value: ReactNode; detail?: ReactNode; icon?: ReactNode }) {
@@ -182,8 +181,7 @@ export function Drawer({ open, title, onClose, children, footer, description, cl
 }
 
 export function Toast({ children, tone = 'info' }: { children: ReactNode; tone?: StatusTone }) {
-  const icon: UiIconName = tone === 'success' ? 'check' : tone === 'warning' || tone === 'danger' ? 'alert' : 'sparkle'
-  return <div className={`rv-toast rv-toast-${tone}`} role={tone === 'danger' ? 'alert' : 'status'} aria-live={tone === 'danger' ? 'assertive' : 'polite'}><span className="rv-toast-icon" aria-hidden="true"><UiIcon name={icon} /></span><div className="rv-toast-content">{children}</div></div>
+  return <div className={`rv-toast rv-toast-${tone}`} role={tone === 'danger' ? 'alert' : 'status'} aria-live={tone === 'danger' ? 'assertive' : 'polite'}><span className="rv-toast-icon" aria-hidden="true" /><div className="rv-toast-content">{children}</div></div>
 }
 export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode }) { return <header className="rv-page-header"><div>{eyebrow ? <p className="rv-eyebrow">{eyebrow}</p> : null}<h1>{title}</h1>{description ? <p>{description}</p> : null}</div>{actions ? <div className="rv-page-actions">{actions}</div> : null}</header> }
 export function EmptyState({ children }: { children: ReactNode }) { return <div className="rv-empty-state"><span className="rv-empty-state-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Henüz kayıt yok</strong><p>{children}</p></div> }
