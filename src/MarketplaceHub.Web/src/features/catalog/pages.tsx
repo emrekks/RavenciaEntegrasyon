@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
+import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
 import { Callout, Pagination, UiIcon, type UiIconName } from '../../shared/components'
@@ -520,12 +521,57 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect }:
 type VariantDisplayGroup = { label: string; values: string[] }
 
 function ProductVariantHover({ count, catalogCount, groups }: { count: number; catalogCount: number; groups: VariantDisplayGroup[] }) {
-  return <div className="product-list-variants product-variant-list-inline" aria-label={`${catalogCount} seçenek, ${count} varyant`}>
-    <strong>{catalogCount} seçenek</strong><span>{count} varyant</span>
-    <div className="product-variant-groups">
-      {groups.map(group => <div className="product-variant-group" key={group.label}><strong>{group.label}:</strong><span>{group.values.join(', ')}</span></div>)}
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState({ left: 16, top: 16 })
+
+  function updatePosition() {
+    const trigger = triggerRef.current?.getBoundingClientRect()
+    const tooltip = tooltipRef.current?.getBoundingClientRect()
+    if (!trigger) return
+    const width = tooltip?.width ?? Math.min(440, Math.max(220, window.innerWidth - 32))
+    const height = tooltip?.height ?? Math.max(48, groups.length * 30 + 16)
+    const belowTop = trigger.bottom + 8
+    const spaceBelow = window.innerHeight - belowTop - 12
+    const top = spaceBelow >= height || trigger.top <= height + 20
+      ? belowTop
+      : Math.max(12, trigger.top - height - 8)
+    const left = Math.min(Math.max(16, trigger.left), Math.max(16, window.innerWidth - width - 16))
+    setPosition({ left, top })
+  }
+
+  function showTooltip() {
+    setOpen(true)
+    window.requestAnimationFrame(updatePosition)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const handleViewportChange = () => updatePosition()
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
+    window.addEventListener('resize', handleViewportChange)
+    window.addEventListener('scroll', handleViewportChange, true)
+    document.addEventListener('keydown', closeOnEscape)
+    window.requestAnimationFrame(updatePosition)
+    return () => {
+      window.removeEventListener('resize', handleViewportChange)
+      window.removeEventListener('scroll', handleViewportChange, true)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [groups, open])
+
+  return <>
+    <div ref={triggerRef} className="product-list-variants product-variant-hover" tabIndex={0} aria-label={`${catalogCount} seçenek, ${count} varyant. Tüm varyantları görmek için üzerine gelin`} title="Tüm varyantları görmek için üzerine gelin" onMouseEnter={showTooltip} onMouseLeave={() => setOpen(false)} onFocus={showTooltip} onBlur={() => setOpen(false)}>
+      <strong>{catalogCount} seçenek</strong><span>{count} varyant</span>
     </div>
-  </div>
+    {open && createPortal(
+      <div ref={tooltipRef} className="product-variant-tooltip product-variant-tooltip-portal" role="tooltip" style={{ left: position.left, top: position.top }}>
+        {groups.map(group => <div className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span>{group.values.join(', ')}</span></div>)}
+      </div>,
+      document.body
+    )}
+  </>
 }
 
 function ProductCatalogImage({ url, title, onClick }: { url: string | null; title: string; onClick: () => void }) {
