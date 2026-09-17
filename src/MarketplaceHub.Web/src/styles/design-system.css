@@ -1502,7 +1502,9 @@
   .variant-filter-panel-summary { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); }
   .variant-filter-panel-summary > b { max-width: 180px; overflow: hidden; font-size: var(--rv-font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
   .variant-filter-panel-head span, .variant-filter-empty { color: var(--rv-color-muted); }
-  .variant-filter-grid, .variant-bulk-editor { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--rv-space-3); }
+  .variant-filter-grid, .variant-bulk-editor { display: grid; gap: var(--rv-space-3); }
+  .variant-filter-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .variant-bulk-editor { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .variant-bulk-editor { padding-top: var(--rv-space-3); border-top: 1px solid var(--rv-color-border); }
   .variant-bulk-editor label, .variant-bulk-action { display: grid; min-width: 0; gap: 6px; }
   .variant-bulk-editor label > span, .variant-bulk-action > span { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
@@ -5531,17 +5533,28 @@ small,
   height: 18px;
 }
 
-/* Table hover follows the full row, including the rightmost action column,
-   without creating a bright card-shaped flash. */
+/* Orders follow the same restrained row hover as returns. Keep the full
+   record, including the action column, on one surface during the transition. */
 .app-shell.stitch-shell main .order-reference-table > .order-reference-row {
   width: 100%;
   background: var(--rv-color-surface);
+}
+
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row:hover,
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row:hover {
+  border-color: var(--rv-color-border-strong);
+  background: var(--rv-color-surface-raised);
+  box-shadow: none;
+}
+
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row,
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row {
   transition: background var(--rv-duration-fast) var(--rv-ease-standard), border-color var(--rv-duration-fast) var(--rv-ease-standard);
 }
 
 .app-shell.stitch-shell main .order-reference-table > .order-reference-row:hover,
 .app-shell.stitch-shell main .order-reference-table > .order-reference-row:hover > .order-reference-grid {
-  background: color-mix(in srgb, var(--rv-color-primary) 5%, var(--rv-color-surface));
+  background: var(--rv-color-surface-raised);
 }
 
 .app-shell.stitch-shell main .order-number-copy {

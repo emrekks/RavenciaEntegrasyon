@@ -81,6 +81,15 @@ function seedVariantMediaRefs(variants: Variant[]) {
   })
 }
 
+function sortVariantsAlphabetically<T extends { optionSignature?: string | null; sku: string }>(variants: T[]) {
+  return [...variants].sort((left, right) => {
+    const leftLabel = (left.optionSignature || left.sku).trim()
+    const rightLabel = (right.optionSignature || right.sku).trim()
+    return leftLabel.localeCompare(rightLabel, 'tr-TR', { sensitivity: 'base', numeric: true })
+      || left.sku.localeCompare(right.sku, 'tr-TR', { sensitivity: 'base', numeric: true })
+  })
+}
+
 type ProductListFilters = { search: string; status: string; platform: string; stock: string }
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number; platforms: string[] }
 type ImportSession = Versioned & { sourceType: string; status: string; totalRows: number; validRows: number; errorRows: number; reviewRows: number; sourceAssetId: string | null }
@@ -1428,7 +1437,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [barcodeSkuMenuOpen, setBarcodeSkuMenuOpen] = useState(false)
   const barcodeSkuActionRef = useRef<HTMLDivElement>(null)
   const [expandedOptionGroupIds, setExpandedOptionGroupIds] = useState<Record<string, boolean>>({})
-  const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
+  const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkCostPrice, setBulkCostPrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const [draggedMediaUrl, setDraggedMediaUrl] = useState<string | null>(null); const [dragOverMediaUrl, setDragOverMediaUrl] = useState<string | null>(null)
   const [pointerDraggedVariantKey, setPointerDraggedVariantKey] = useState<string | null>(null)
@@ -1511,14 +1520,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (initializedEditProductKey.current === productKey) return
     initializedEditProductKey.current = productKey
     const primary = product.variants[0]
+    const sortedVariants = sortVariantsAlphabetically(product.variants)
     const savedMediaUrls = orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl)
     setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: primary?.sku ?? '', barcode: primary?.barcode ?? '', modelCode: primary?.modelCode ?? product.modelCode ?? '', weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(primary?.listPrice ?? primary?.salePrice ?? 0), salePrice: String(primary?.salePrice ?? 0), costPrice: String(primary?.costPrice ?? 0), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
     setMediaFiles([])
     const seededMediaRefs = seedVariantMediaRefs(product.variants)
-    setVariantRows(product.variants.map((variant, index) => {
+    const mediaRefsByVariantId = new Map(product.variants.map((variant, index) => [variant.id, seededMediaRefs[index] ?? []]))
+    setVariantRows(sortedVariants.map(variant => {
       const options = Object.fromEntries(variantOptionEntries(variant).map(option => [option.name, option.value]))
-      return { key: variant.id, optionSignature: variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : optionSignatureFromOptions(options) || 'Tek Ürün', options, attributeValueIds: {}, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.salePrice ?? 0, listPrice: variant.listPrice ?? variant.salePrice ?? 0, costPrice: variant.costPrice ?? 0, mediaRefs: seededMediaRefs[index] ?? [] }
+      return { key: variant.id, optionSignature: variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : optionSignatureFromOptions(options) || 'Tek Ürün', options, attributeValueIds: {}, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.salePrice ?? 0, listPrice: variant.listPrice ?? variant.salePrice ?? 0, costPrice: variant.costPrice ?? 0, mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [] }
     }))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
@@ -1702,14 +1713,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setChannelPricing(current => ({ ...current, [connectionId]: { ...(current[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice }), [field]: value } }))
   }
   function applyBulk() {
-    const stock = bulkStock === '' ? null : Number(bulkStock); const sale = bulkSalePrice === '' ? null : Number(bulkSalePrice); const list = bulkListPrice === '' ? null : Number(bulkListPrice)
+    const stock = bulkStock === '' ? null : Number(bulkStock); const sale = bulkSalePrice === '' ? null : Number(bulkSalePrice); const cost = bulkCostPrice === '' ? null : Number(bulkCostPrice); const list = bulkListPrice === '' ? null : Number(bulkListPrice)
     const matchingKeys = new Set(variantRows.filter(row => rowMatchesVariantFilters(row)).map(row => row.key))
     if (hasVariantFilters && !matchingKeys.size) {
       const message = 'Seçtiğiniz filtrelerle eşleşen varyant bulunamadı.'; setNotice(message); showFeedback(message, 'error')
       return
     }
-    setVariantRows(rows => rows.map(row => !matchingKeys.has(row.key) ? row : { ...row, stock: stock == null || !Number.isFinite(stock) ? row.stock : stock, salePrice: sale == null || !Number.isFinite(sale) ? row.salePrice : sale, listPrice: list == null || !Number.isFinite(list) ? row.listPrice : list }))
-    const message = hasVariantFilters ? `Toplu stok ve fiyat değerleri ${matchingKeys.size} seçili varyanta uygulandı.` : 'Toplu stok ve fiyat değerleri tüm varyantlara uygulandı.'; setNotice(message); showFeedback(message, 'success')
+    setVariantRows(rows => rows.map(row => !matchingKeys.has(row.key) ? row : { ...row, stock: stock == null || !Number.isFinite(stock) ? row.stock : stock, salePrice: sale == null || !Number.isFinite(sale) ? row.salePrice : sale, costPrice: cost == null || !Number.isFinite(cost) ? row.costPrice : cost, listPrice: list == null || !Number.isFinite(list) ? row.listPrice : list }))
+    const message = hasVariantFilters ? `Toplu stok, fiyat ve maliyet değerleri ${matchingKeys.size} seçili varyanta uygulandı.` : 'Toplu stok, fiyat ve maliyet değerleri tüm varyantlara uygulandı.'; setNotice(message); showFeedback(message, 'success')
   }
 
   function applyBarcodeToSku(mode: 'missing' | 'all') {
@@ -2204,6 +2215,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             <div className="variant-bulk-editor">
               <label><span>Stok</span><input aria-label="Tüm varyantların stoku" value={bulkStock} onChange={event => setBulkStock(event.target.value)} type="number" min="0" placeholder="Tüm stoklar" /></label>
               <label><span>Satış fiyatı</span><input aria-label="Tüm varyantların satış fiyatı" value={bulkSalePrice} onChange={event => setBulkSalePrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm satış fiyatları" /></label>
+              <label><span>Maliyet</span><input aria-label="Tüm varyantların maliyeti" value={bulkCostPrice} onChange={event => setBulkCostPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm maliyetler" /></label>
               <label><span>Liste fiyatı</span><input aria-label="Tüm varyantların liste fiyatı" value={bulkListPrice} onChange={event => setBulkListPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm liste fiyatları" /></label>
               <div className="variant-bulk-action"><span>Toplu uygulama</span><button type="button" className="secondary" onClick={applyBulk} disabled={hasVariantFilters && matchingVariantCount === 0}>{hasVariantFilters ? `${matchingVariantCount} seçilene uygula` : 'Tümüne uygula'}</button></div>
             </div>
