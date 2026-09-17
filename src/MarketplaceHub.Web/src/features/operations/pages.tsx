@@ -82,7 +82,7 @@ function jobPresentation(jobType: string): JobPresentation {
   if (type.includes('PRICE') || type.includes('INVENTORY') || type.includes('STOCK')) return { title: 'Fiyat Güncelleme', icon: 'price' }
   if (type === 'TRENDYOL_ORDER_STATUS_SYNC') return { title: 'Sipariş Durum Taraması', icon: 'order' }
   if (type === 'TRENDYOL_ORDER_RECONCILIATION') return { title: 'Sipariş Mutabakatı', icon: 'order' }
-  if (type === 'TRENDYOL_ORDER_INVOICE_RECONCILIATION') return { title: 'Sipariş-Fatura Mutabakatı', icon: 'order' }
+  if (type === 'TRENDYOL_ORDER_INVOICE_RECONCILIATION') return { title: 'Paket Fatura Kontrolü', icon: 'invoice' }
   if (type === 'TRENDYOL_ORDER_RECOVERY_SYNC') return { title: 'Sipariş Kurtarma Senkronizasyonu', icon: 'order' }
   if (type === 'TRENDYOL_ORDER_SYNC') return { title: 'Sipariş Senkronizasyonu', icon: 'order' }
   if (type.includes('SHIPMENT') || type.includes('PACKAGE') || type.includes('COURIER')) return { title: 'Kargo İşlemi', icon: 'order' }
@@ -97,8 +97,9 @@ function jobPresentation(jobType: string): JobPresentation {
 
 function jobSource(jobType: string) {
   const type = jobType.toUpperCase()
-  if (type.includes('EFATURAM') || type.includes('INVOICE')) return 'e-Faturam API'
-  if (type.includes('TRENDYOL')) return 'Trendyol API'
+  if (type.includes('EFATURAM')) return 'e-Faturam API'
+  if (type.startsWith('TRENDYOL_')) return 'Trendyol API'
+  if (type.includes('INVOICE')) return 'e-Faturam API'
   return 'Ravencia Worker'
 }
 
