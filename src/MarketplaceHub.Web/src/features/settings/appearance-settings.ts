@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
-export type AppearanceFontSize = 'small' | 'normal' | 'large' | 'extra-large'
+export type AppearanceFontSize = 'compact' | 'small' | 'normal' | 'large' | 'extra-large' | 'huge'
 export type AppearanceThemeMode = 'dark'
 export type AppearanceColorTheme = 'dark'
 export type AppearanceColorToken = 'bg' | 'sidebar' | 'surface' | 'surfaceRaised' | 'surfaceSoft' | 'border' | 'borderStrong' | 'ink' | 'muted' | 'subtle' | 'primary' | 'primaryHover' | 'primarySoft' | 'accent' | 'accentSoft' | 'warning' | 'warningSoft' | 'danger' | 'dangerSoft' | 'info'
@@ -92,10 +92,12 @@ export const appearanceFontFamilyOptions: Array<{ value: AppearanceFontFamily; l
 ]
 
 export const appearanceFontSizeOptions: Array<{ value: AppearanceFontSize; label: string; description: string }> = [
+  { value: 'compact', label: 'Çok küçük', description: 'En fazla içerik için en sıkı görünüm' },
   { value: 'small', label: 'Küçük', description: 'Daha fazla içerik için daha sıkı görünüm' },
   { value: 'normal', label: 'Normal', description: 'Önerilen, okunabilirliği artırılmış görünüm' },
   { value: 'large', label: 'Büyük', description: 'Yoğun tablolarda daha rahat okuma' },
-  { value: 'extra-large', label: 'Çok büyük', description: 'En yüksek okunabilirlik' }
+  { value: 'extra-large', label: 'Çok büyük', description: 'Yüksek okunabilirlik için ferah görünüm' },
+  { value: 'huge', label: 'Ekstra büyük', description: 'Maksimum okunabilirlik ve daha belirgin metinler' }
 ]
 
 export const appearanceThemeModeOptions: Array<{ value: AppearanceThemeMode; label: string; description: string }> = [
@@ -110,10 +112,12 @@ export const appearanceFontFamilyCss: Record<AppearanceFontFamily, string> = {
 }
 
 export const appearanceFontScale: Record<AppearanceFontSize, number> = {
+  compact: 0.88,
   small: 0.93,
   normal: 1,
   large: 1.1,
-  'extra-large': 1.2
+  'extra-large': 1.2,
+  huge: 1.3
 }
 
 const fontFamilies = new Set<AppearanceFontFamily>(appearanceFontFamilyOptions.map(option => option.value))
