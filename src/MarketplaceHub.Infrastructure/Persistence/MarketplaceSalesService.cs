@@ -390,11 +390,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        var writePolicy = await ExternalWritePolicyAsync(tenantId, package.ConnectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken);
+        if (!writePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı.", 422);
         var normalizedKey = idempotencyKey.Trim();
         var commandHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{action}\n{commandPayload}")));
         var dedup = $"shipment-action:{package.Id}:v{package.Version}:{action}:{commandHash}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedKey)))}";
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ShipmentAction && x.EffectIdempotencyKey == normalizedKey, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-        var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new ShipmentActionJobPayload(jobId, package.Id, action, commandPayload)); var job = NewJob(tenantId, package.ConnectionId, MarketplaceJobTypes.ShipmentAction, dedup, payload, correlationId); job.Id = jobId; job.EffectIdempotencyKey = normalizedKey; db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
+        var jobId = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow(); var payload = JsonSerializer.Serialize(new ShipmentActionJobPayload(jobId, package.Id, action, commandPayload)); var job = NewJob(tenantId, package.ConnectionId, MarketplaceJobTypes.ShipmentAction, dedup, payload, correlationId); job.Id = jobId; job.EffectIdempotencyKey = normalizedKey; job.AvailableAt = now.AddSeconds(stage ? 0 : writePolicy.IntervalSeconds); job.CreatedAt = now; db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
     }
 
     public async Task<ServiceResult<ShipmentView>> ProcessShipmentInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -418,6 +420,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (!await ExternalWritePolicyEnabledAsync(tenantId, package.ConnectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken)) return ServiceResult<ShipmentView>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı.", 422);
         var order = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.OrderId, cancellationToken);
         if (order is null) return NotFound<ShipmentView>();
         var orderNumber = order.OrderNumber;
@@ -495,6 +498,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (!await ExternalWritePolicyEnabledAsync(tenantId, package.ConnectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken)) return ServiceResult<ShipmentView>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı.", 422);
 
         var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
         if (orderNumber is null) return NotFound<ShipmentView>();
@@ -555,6 +559,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Ortak etiket yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (!await ExternalWritePolicyEnabledAsync(tenantId, package.ConnectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı.", 422);
         var normalizedKey = idempotencyKey.Trim(); var existingAttempt = await db.ShipmentDocumentAttempts.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == normalizedKey, cancellationToken);
         if (existingAttempt is not null)
         {
@@ -811,6 +816,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var stage = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "İade aksiyonu yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (!stage && !await WritesEnabled(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        var writePolicy = await ExternalWritePolicyAsync(tenantId, claim.ConnectionId, MarketplaceExternalWritePolicies.Return, cancellationToken);
+        if (!writePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "İade dış yazma akışı kapalı.", 422);
         var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, Action = action, ReasonCode = string.IsNullOrWhiteSpace(command.ReasonCode) ? null : command.ReasonCode.Trim(), Explanation = string.IsNullOrWhiteSpace(command.Explanation) ? null : command.Explanation.Trim(), IdempotencyKey = normalizedKey, Status = "PENDING", ActorUserId = userId, CreatedAt = timeProvider.GetUtcNow() }; db.ReturnDecisions.Add(decision);
         if (command.EvidenceAssetIds is not null) foreach (var assetId in command.EvidenceAssetIds.Distinct())
         {
@@ -819,7 +826,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             if (asset.Classification != "RETURN_EVIDENCE" || asset.SizeBytes is <= 0 or > 10 * 1024 * 1024 || asset.MimeType is not ("application/pdf" or "image/jpeg" or "image/png")) return ServiceResult<Guid>.Fail("EVIDENCE_INVALID", "İade kanıtı PDF/JPEG/PNG ve en fazla 10 MiB olmalıdır.", 422);
             db.ReturnEvidence.Add(new ReturnEvidence { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, DecisionId = decision.Id, FileAssetId = asset.Id, EvidenceKind = asset.Classification, Checksum = asset.Sha256, CreatedAt = timeProvider.GetUtcNow() });
         }
-        var job = NewJob(tenantId, claim.ConnectionId, MarketplaceJobTypes.ReturnAction, $"return-action:{normalizedKey}", JsonSerializer.Serialize(new { claimId, decisionId = decision.Id, returnLineIds }), correlationId); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
+        var now = timeProvider.GetUtcNow(); var job = NewJob(tenantId, claim.ConnectionId, MarketplaceJobTypes.ReturnAction, $"return-action:{normalizedKey}", JsonSerializer.Serialize(new { claimId, decisionId = decision.Id, returnLineIds }), correlationId); job.AvailableAt = now.AddSeconds(stage ? 0 : writePolicy.IntervalSeconds); job.CreatedAt = now; db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
     }
 
     public async Task<ServiceResult<ReturnDetailView>> ApplyDispositionAsync(Guid tenantId, Guid userId, Guid claimId, ReturnDispositionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -950,6 +957,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private Task<bool> IsStageConnection(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.Environment == "STAGE", cancellationToken);
     private Task<bool> IsProductionConnection(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.Environment == "PRODUCTION", cancellationToken);
     private async Task<bool> WritesEnabled(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) { if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false; var settings = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.SettingsJson).SingleOrDefaultAsync(cancellationToken); if (settings is null) return false; try { using var document = JsonDocument.Parse(settings); return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True; } catch (JsonException) { return false; } }
+    private async Task<bool> ExternalWritePolicyEnabledAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken) => (await ExternalWritePolicyAsync(tenantId, connectionId, resourceType, cancellationToken)).Enabled;
+    private async Task<(bool Enabled, int IntervalSeconds)> ExternalWritePolicyAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
+    {
+        var policy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType, cancellationToken);
+        return policy is null ? (true, 0) : (policy.Enabled, Math.Clamp(policy.IntervalSeconds, 0, 86_400));
+    }
     private async Task<IReadOnlyList<string>> CapabilityValues(Guid tenantId, Guid connectionId, string code, string property, CancellationToken cancellationToken) { var capability = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken); if (capability?.ConstraintsJson is null) return []; try { using var doc = JsonDocument.Parse(capability.ConstraintsJson); return doc.RootElement.TryGetProperty(property, out var values) && values.ValueKind == JsonValueKind.Array ? values.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList() : []; } catch (JsonException) { return []; } }
     private static ProductVariant? ResolveVariant(OrderLine line, IReadOnlyDictionary<Guid, ProductVariant> variants, IReadOnlyDictionary<string, ProductVariant> variantsBySku, IReadOnlyDictionary<string, ProductVariant> variantsByBarcode) =>
         line.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) :

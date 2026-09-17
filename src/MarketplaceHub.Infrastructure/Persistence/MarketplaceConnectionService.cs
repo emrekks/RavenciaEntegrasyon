@@ -25,7 +25,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         InvoicingCapabilities.ConnectionTest, InvoicingCapabilities.InvoiceSubmit,
         InvoicingCapabilities.InvoiceStatusRead, InvoicingCapabilities.InvoiceDocumentRead, InvoicingCapabilities.InvoiceCancel
     ];
-    private static readonly HashSet<string> ResourceTypes = new(StringComparer.Ordinal) { "ORDERS", "ORDER_RECOVERY", "ORDER_LIFECYCLE", "ORDER_RECONCILE_SHORT", "ORDER_RECONCILE_MEDIUM", "ORDER_RECONCILE_DAILY", "ORDER_INVOICE_RECONCILIATION", "RETURNS", "RETURN_LIFECYCLE", "RETURN_RECONCILE_SHORT", "RETURN_RECONCILE_MEDIUM", "RETURN_RECONCILE_DAILY", "STOCK_RECONCILE_SHORT", "STOCK_RECONCILE_MEDIUM", "STOCK_RECONCILE_DAILY", "REFERENCE_DATA" };
+    private static readonly HashSet<string> ResourceTypes = new(StringComparer.Ordinal) { "ORDERS", "ORDER_RECOVERY", "ORDER_LIFECYCLE", "ORDER_RECONCILE_SHORT", "ORDER_RECONCILE_MEDIUM", "ORDER_RECONCILE_DAILY", "ORDER_INVOICE_RECONCILIATION", "RETURNS", "RETURN_LIFECYCLE", "RETURN_RECONCILE_SHORT", "RETURN_RECONCILE_MEDIUM", "RETURN_RECONCILE_DAILY", "STOCK_RECONCILE_SHORT", "STOCK_RECONCILE_MEDIUM", "STOCK_RECONCILE_DAILY", "REFERENCE_DATA", MarketplaceExternalWritePolicies.Product, MarketplaceExternalWritePolicies.PriceStock, MarketplaceExternalWritePolicies.Shipment, MarketplaceExternalWritePolicies.Return };
     private readonly IDataProtector _credentialProtector = dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1");
     private readonly IDataProtector _webhookProtector = dataProtection.CreateProtector("MarketplaceHub.WebhookVerifier.v1");
 
@@ -300,7 +300,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     public async Task<ServiceResult<SyncPolicyView>> UpsertSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken)
     {
         var normalized = resourceType.Trim().ToUpperInvariant(); if (!ResourceTypes.Contains(normalized)) return Invalid<SyncPolicyView>("resourceType", "Trendyol için desteklenen sync resource türü değil.");
-        if (command.IntervalSeconds is < 30 or > 86_400 || command.OverlapSeconds is < 0 or > 1_209_599 || command.JitterSeconds is < 0 or > 3_600) return Invalid<SyncPolicyView>("interval", "Sync aralığı 30 saniye-24 saat, overlap 0-14 gün ve jitter 0-1 saat arasında olmalıdır.");
+        var minimumInterval = MarketplaceExternalWritePolicies.IsPolicy(normalized) ? 0 : 30;
+        if (command.IntervalSeconds is < 0 or > 86_400 || command.IntervalSeconds < minimumInterval || command.OverlapSeconds is < 0 or > 1_209_599 || command.JitterSeconds is < 0 or > 3_600) return Invalid<SyncPolicyView>("interval", MarketplaceExternalWritePolicies.IsPolicy(normalized) ? "Dış yazma sıklığı anında veya 30 saniye-24 saat arasında olmalıdır." : "Sync aralığı 30 saniye-24 saat, overlap 0-14 gün ve jitter 0-1 saat arasında olmalıdır.");
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && x.PlatformCode == "TRENDYOL", cancellationToken); if (connection is null) return NotFound<SyncPolicyView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<SyncPolicyView>();
         if (command.Enabled && MarketplaceSyncPolicyRules.RequiresExternalWrites(normalized) && !WritesEnabled(connection.SettingsJson))
             return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalıyken bu otomatik akış açılamaz.", 422);
@@ -356,7 +357,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var policies = await db.ConnectionSyncPolicies
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Enabled)
             .ToListAsync(cancellationToken);
-        foreach (var policy in policies.Where(x => MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType)))
+        foreach (var policy in policies.Where(x => x.ResourceType is "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"))
         {
             policy.Enabled = false;
             policy.Version++;

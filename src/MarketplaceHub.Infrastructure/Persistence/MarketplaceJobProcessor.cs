@@ -250,6 +250,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         if (string.Equals(payload.Phase, "SUBMIT", StringComparison.OrdinalIgnoreCase))
         {
+            if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Product, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "EXTERNAL_WRITE_POLICY_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "Ürün dış yazma akışı kapalı; Trendyol’a gönderim yapılmadı."), cancellationToken);
             var existingEffect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ProductCreate && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
             if (existingEffect is not null) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki dış yazmanın sonucu kesinleştirilemedi; tekrar gönderim engellendi."), cancellationToken);
 
@@ -640,6 +641,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var phase = payload.Phase.Trim().ToUpperInvariant();
         if (phase.StartsWith("SUBMIT_", StringComparison.Ordinal))
         {
+            if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Product, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", "EXTERNAL_WRITE_POLICY_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "Ürün dış yazma akışı kapalı; Trendyol’a gönderim yapılmadı."), cancellationToken);
             var phasePayload = UpdatePayload(payload, phase);
             if (!HasItems(phasePayload))
             {
@@ -762,6 +764,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var phase = payload.Phase.Trim().ToUpperInvariant();
         if (phase == "SUBMIT")
         {
+            if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Product, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "ARCHIVE_BLOCKED", "EXTERNAL_WRITE_POLICY_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "Ürün dış yazma akışı kapalı; Trendyol’a gönderim yapılmadı."), cancellationToken);
             var effectKey = job.EffectIdempotencyKey;
             if (await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ProductArchive && x.IdempotencyKey == effectKey, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki arşiv çağrısının sonucu kesinleştirilemedi."), cancellationToken);
             var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ProductArchive, IdempotencyKey = effectKey, CreatedAt = timeProvider.GetUtcNow() };
@@ -849,6 +852,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (connection is null) return JobExecutionResult.Blocked("CONNECTION_NOT_FOUND", "Bağlantı bulunamadı.");
             if (!WritesEnabled(connection.SettingsJson))
                 return JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalı olduğu için fiyat-stok gönderimi çalıştırılmadı.");
+            if (!await ExternalWritePolicyEnabledAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.PriceStock, cancellationToken))
+                return JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "Fiyat-stok dış yazma akışı kapalı; Trendyol’a gönderim yapılmadı.");
             var current = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId);
             if (!current.Succeeded)
             {
@@ -3929,6 +3934,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // available, but an automatic projection must never enqueue a remote write
         // while the explicit external-write switch is off.
         if (!WritesEnabled(connection.SettingsJson)) return JobExecutionResult.Success();
+        if (!await ExternalWritePolicyEnabledAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.PriceStock, cancellationToken)) return JobExecutionResult.Success();
         if (!await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId && x.Status == "ACTIVE", cancellationToken)) return JobExecutionResult.Success();
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, variantId);
         if (!build.Succeeded) return JobExecutionResult.Blocked(build.Error!.Code, build.Error.Message);
@@ -3937,7 +3943,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken)) return JobExecutionResult.Success();
         var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
         var jobPayload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = jobPayload, PayloadVersion = 1, PayloadHash = Hash(jobPayload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = 1, Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        var writeDelay = await ExternalWriteDelaySecondsAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.PriceStock, cancellationToken);
+        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = jobPayload, PayloadVersion = 1, PayloadHash = Hash(jobPayload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = 1, Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken);
         return JobExecutionResult.Success();
     }
@@ -3951,6 +3958,26 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
         }
         catch (JsonException) { return false; }
+    }
+
+    private async Task<bool> ExternalWriteAllowedAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
+        if (connection is null) return false;
+        if (!string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) && !WritesEnabled(connection.SettingsJson)) return false;
+        return await ExternalWritePolicyEnabledAsync(tenantId, connectionId, resourceType, cancellationToken);
+    }
+
+    private async Task<bool> ExternalWritePolicyEnabledAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
+    {
+        var policy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType, cancellationToken);
+        return policy is null || policy.Enabled;
+    }
+
+    private async Task<int> ExternalWriteDelaySecondsAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
+    {
+        var policy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType, cancellationToken);
+        return policy is null ? 0 : Math.Clamp(policy.IntervalSeconds, 0, 86_400);
     }
 
     // Trendyol's claims feed is date-bounded for the initial scan. Invalidating
@@ -4240,6 +4267,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.JobId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ShipmentAction, cancellationToken);
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.PackageId && x.ConnectionId == connectionId, cancellationToken);
         if (job is null || package is null) return false;
+        if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken)) throw new JobProcessingException(JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı; Trendyol’a gönderim yapılmadı."));
         var effect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ShipmentAction && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
         if (effect is not null && effect.CompletedAt is null) throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki paket aksiyonunun sonucu kesinleştirilemedi; tekrar gönderim engellendi."));
         if (effect is not null && effect.CompletedAt is not null) return true;
@@ -4276,6 +4304,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (decision.Status == "SUCCEEDED") return true;
             if (decision.Status == "MANUAL_REVIEW") throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode ?? "RETURN_ACTION_REVIEW_REQUIRED", "İade kararı manuel inceleme bekliyor.", decision.ExternalOperationId));
             var claim = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == decision.ClaimId && x.ConnectionId == connectionId, cancellationToken);
+            if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Return, cancellationToken)) throw new JobProcessingException(JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "İade dış yazma akışı kapalı; Trendyol’a gönderim yapılmadı."));
             var returnLines = db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id);
             if (selectedReturnLineIds is not null) returnLines = returnLines.Where(x => selectedReturnLineIds.Contains(x.Id));
             var lineIds = await returnLines.OrderBy(x => x.Id).Select(x => x.ExternalLineId).ToListAsync(cancellationToken);

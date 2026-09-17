@@ -37,7 +37,31 @@ public static class MarketplaceJobTypes
 public static class MarketplaceSyncPolicyRules
 {
     public static bool RequiresExternalWrites(string? resourceType) => resourceType?.Trim().ToUpperInvariant() is
-        "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY";
+        "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
+        or MarketplaceExternalWritePolicies.Product
+        or MarketplaceExternalWritePolicies.PriceStock
+        or MarketplaceExternalWritePolicies.Shipment
+        or MarketplaceExternalWritePolicies.Return;
+}
+
+public static class MarketplaceExternalWritePolicies
+{
+    public const string Product = "PRODUCT_WRITE";
+    public const string PriceStock = "PRICE_STOCK_WRITE";
+    public const string Shipment = "SHIPMENT_WRITE";
+    public const string Return = "RETURN_WRITE";
+
+    public static bool IsPolicy(string? resourceType) => resourceType?.Trim().ToUpperInvariant() is
+        Product or PriceStock or Shipment or Return;
+
+    public static string? ForJobType(string? jobType) => jobType switch
+    {
+        MarketplaceJobTypes.ProductCreate or MarketplaceJobTypes.ProductUpdate or MarketplaceJobTypes.ProductArchive => Product,
+        MarketplaceJobTypes.PriceInventorySync or MarketplaceJobTypes.StockProjectionDispatch or MarketplaceJobTypes.StockReconciliation => PriceStock,
+        MarketplaceJobTypes.ShipmentAction => Shipment,
+        MarketplaceJobTypes.ReturnAction => Return,
+        _ => null
+    };
 }
 
 public static class MarketplaceCapabilities
