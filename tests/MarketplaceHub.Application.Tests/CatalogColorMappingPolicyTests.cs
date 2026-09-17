@@ -24,8 +24,8 @@ public sealed class CatalogColorMappingPolicyTests
     [InlineData("STOCK_RECONCILE_SHORT")]
     [InlineData("STOCK_RECONCILE_MEDIUM")]
     [InlineData("STOCK_RECONCILE_DAILY")]
-    [InlineData("PRODUCT_WRITE")]
-    [InlineData("PRICE_STOCK_WRITE")]
+    [InlineData("PRICE_WRITE")]
+    [InlineData("STOCK_WRITE")]
     [InlineData("SHIPMENT_WRITE")]
     [InlineData("RETURN_WRITE")]
     public void RequiresExternalWrites_IdentifiesWritePolicies(string resource)
@@ -34,13 +34,20 @@ public sealed class CatalogColorMappingPolicyTests
     }
 
     [Theory]
-    [InlineData("PRODUCT_WRITE")]
-    [InlineData("PRICE_STOCK_WRITE")]
+    [InlineData("PRICE_WRITE")]
+    [InlineData("STOCK_WRITE")]
     [InlineData("SHIPMENT_WRITE")]
     [InlineData("RETURN_WRITE")]
     public void ExternalWritePolicies_AreRecognizedAsIndependentControls(string resource)
     {
         Assert.True(MarketplaceExternalWritePolicies.IsPolicy(resource));
+    }
+
+    [Fact]
+    public void ManualProductWrites_AreNotAutomaticPolicies()
+    {
+        Assert.False(MarketplaceSyncPolicyRules.RequiresExternalWrites("PRODUCT_WRITE"));
+        Assert.False(MarketplaceExternalWritePolicies.IsPolicy("PRODUCT_WRITE"));
     }
 
     [Theory]
