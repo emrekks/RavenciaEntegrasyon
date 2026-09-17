@@ -7152,7 +7152,8 @@ small,
 
 .low-stock-details-summary strong { color: var(--rv-color-ink); }
 .low-stock-details-summary span, .low-stock-details-footer-note { font-size: var(--rv-font-size-sm); }
-.low-stock-details-tools { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(150px, .7fr) minmax(190px, .9fr); gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+.low-stock-details-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+.low-stock-details-tools > label:first-child { grid-column: 1 / -1; }
 .low-stock-details-tools label { display: grid; min-width: 0; gap: 6px; }
 .low-stock-details-tools label > span { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
 .low-stock-details-tools input, .low-stock-details-tools select { min-width: 0; }
