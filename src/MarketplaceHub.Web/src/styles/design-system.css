@@ -879,7 +879,7 @@
   .return-reference-table { width: 100%; min-width: 0; overflow-x: auto; overflow-y: visible; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
   .order-reference-head, .order-reference-grid, .return-reference-head, .return-reference-row { display: grid; grid-template-columns: 36px minmax(170px, .95fr) minmax(110px, .62fr) minmax(260px, 1.65fr) minmax(92px, .55fr) minmax(132px, .75fr) minmax(170px, .95fr) minmax(150px, .8fr); align-items: stretch; }
   .return-reference-head, .return-reference-row { grid-template-columns: minmax(170px, .95fr) minmax(110px, .62fr) minmax(300px, 1.8fr) minmax(92px, .55fr) minmax(132px, .75fr) minmax(170px, .95fr) minmax(160px, .9fr) minmax(150px, .8fr); }
-  .order-reference-head, .return-reference-head { position: sticky; top: var(--rv-topbar-height); z-index: 20; min-height: 52px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .order-reference-head, .return-reference-head { position: static; top: auto; z-index: auto; min-height: 52px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
   .order-reference-head { margin: -1px -1px 0; border-radius: var(--rv-radius-lg) var(--rv-radius-lg) 0 0; }
   .order-reference-head > *, .return-reference-head > * { display: flex; min-width: 0; align-items: center; padding: var(--rv-space-3); border-right: 1px solid var(--rv-color-border); }
   .order-reference-head > *:last-child, .return-reference-head > *:last-child { border-right: 0; }
@@ -2099,6 +2099,10 @@
   .jobs-reference-table tbody .jobs-reference-row:last-child td { border-bottom: 0; }
   .jobs-reference-type { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: var(--rv-space-3); min-width: 0; }
   .jobs-reference-type > span:last-child, .jobs-reference-time { display: grid; min-width: 0; gap: 2px; }
+  .jobs-reference-type-content { position: relative; }
+  .jobs-reference-type-tooltip { position: absolute; top: calc(100% + 8px); left: -12px; z-index: var(--rv-z-tooltip, var(--rv-z-dropdown)); display: block; width: min(360px, calc(100vw - 64px)); padding: var(--rv-space-3) var(--rv-space-4); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); font-size: var(--rv-font-size-xs); font-weight: 500; line-height: 1.45; white-space: normal; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-4px); transition: opacity var(--rv-duration-fast) var(--rv-ease-standard), visibility var(--rv-duration-fast) var(--rv-ease-standard), transform var(--rv-duration-fast) var(--rv-ease-standard); }
+  .jobs-reference-type-tooltip::before { content: ''; position: absolute; top: -5px; left: 18px; width: 8px; height: 8px; background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border-strong); border-left: 1px solid var(--rv-color-border-strong); transform: rotate(45deg); }
+  .jobs-reference-row:hover .jobs-reference-type-tooltip, .jobs-reference-row:focus-visible .jobs-reference-type-tooltip { opacity: 1; visibility: visible; transform: translateY(0); }
   .jobs-reference-type small, .jobs-reference-time small { color: var(--rv-color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .jobs-reference-type-icon { display: inline-grid; width: 34px; height: 34px; place-items: center; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: var(--rv-radius-sm); }
   .jobs-reference-icon { display: block; width: 18px; height: 18px; flex: 0 0 18px; overflow: visible; }
@@ -3683,11 +3687,12 @@ button,
   border-color: var(--rv-color-border-strong);
 }
 
-/* Keep the column labels pinned to the top of the scrolling workspace while the order rows scroll. */
+/* Keep the column labels in the table flow; they must stay below the filters
+   instead of following the viewport while the order list scrolls. */
 .app-shell.stitch-shell main .order-reference-table > .order-reference-head {
-  position: sticky;
-  top: 0;
-  z-index: calc(var(--rv-z-sticky) + 1);
+  position: static;
+  top: auto;
+  z-index: auto;
   align-self: start;
   background: var(--rv-color-surface-raised);
   box-shadow: var(--rv-shadow-sm);
@@ -8569,9 +8574,10 @@ small,
    filter's two internal pieces need their own small layout. */
 .app-shell.stitch-shell main .order-reference-table > .order-reference-head {
   display: grid;
-  /* The top bar is part of the document flow, so the order header can pin
-     directly to the viewport edge while the rows continue below it. */
-  top: 0;
+  /* The header remains part of the table flow and does not follow the viewport. */
+  position: static;
+  top: auto;
+  z-index: auto;
 }
 
 .app-shell.stitch-shell main .order-reference-table > .order-reference-head > strong {
