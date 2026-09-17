@@ -1370,7 +1370,6 @@ function CategoryAttributeMappingPanel({
               <strong>Web Color <b className="required-marker" aria-hidden="true">*</b></strong>
               <small>Varyant renk aktarımı · Zorunlu</small>
             </div>
-            <span className="category-attribute-count">{webColorAutoEnabled ? 'Otomatik' : 'Manuel'}</span>
           </div>
           <div className={`attribute-builder-web-color-mode${webColorAutoEnabled ? ' is-auto' : ' is-manual'}`}>
             <label className="attribute-builder-web-color-toggle">
@@ -1378,7 +1377,7 @@ function CategoryAttributeMappingPanel({
               <span><strong>Varyant renklerini otomatik aktar</strong><small>{webColorAutoEnabled ? 'Açık · Renk eşleşmelerinden dönüştürülmüş Web Color gönderilir.' : 'Kapalı · Web Color panel değeri aşağıdan seçilir.'}</small></span>
             </label>
             {webColorAutoEnabled ? null : (
-              <label className="attribute-builder-web-color-manual">Manuel panel rengi<select aria-label="Manuel Web Color panel değeri" value={manualWebColorValueId} onChange={event => onManualWebColorValueChange(event.target.value)}><option value="">Panel rengi seçin</option>{sortOptionValues('Renk', webColorRequirement.attribute.values).map(value => <option key={value.id} value={value.id}>{cleanOptionValue(value.value)}</option>)}</select></label>
+              <label className="attribute-builder-web-color-manual">Trendyol katalog rengi<select aria-label="Manuel Trendyol katalog rengi" value={manualWebColorValueId} onChange={event => onManualWebColorValueChange(event.target.value)}><option value="">Trendyol katalog rengi seçin</option>{sortOptionValues('Renk', webColorRequirement.attribute.values).map(value => <option key={value.id} value={value.id}>{cleanOptionValue(value.value)}</option>)}</select></label>
             )}
           </div>
         </article>}
