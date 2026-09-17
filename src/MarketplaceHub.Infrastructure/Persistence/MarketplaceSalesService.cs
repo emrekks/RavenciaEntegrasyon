@@ -717,7 +717,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // ProcessReturnActionInstantAsync enforces the policy before any external
         // request is made. Return decisions are intentionally not queued.
         var pendingDecision = await db.ReturnDecisions.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && (x.Status == "PENDING" || x.Status == "SUBMITTED" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW"))
+            .Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && (x.Status == "PENDING" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW" || (x.Status == "SUBMITTED" && db.ExternalEffectRecords.Any(effect => effect.TenantId == x.TenantId && effect.IdempotencyKey == x.IdempotencyKey))))
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => x.Id)
             .FirstOrDefaultAsync(cancellationToken);
@@ -831,7 +831,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (claimLineIds.Count == 0) return Invalid<ReturnDetailView>("returnLineIds", "İade işleminde en az bir ürün satırı bulunmalıdır.");
         var returnLineIds = command.ReturnLineIds?.Distinct().ToArray() ?? claimLineIds.ToArray();
         if (returnLineIds.Length == 0 || returnLineIds.Except(claimLineIds).Any()) return Invalid<ReturnDetailView>("returnLineIds", "İşlem yapılacak ürün satırları bu iadeye ait olmalıdır.");
-        var activeDecision = await db.ReturnDecisions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && (x.Status == "PENDING" || x.Status == "SUBMITTED" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW")).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        var activeDecision = await db.ReturnDecisions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && (x.Status == "PENDING" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW" || (x.Status == "SUBMITTED" && db.ExternalEffectRecords.Any(effect => effect.TenantId == x.TenantId && effect.IdempotencyKey == x.IdempotencyKey)))).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
         if (activeDecision is not null) return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade kararı Trendyol’a gönderildi; Trendyol’dan sonuç kesinleşene kadar yeni bir karar gönderilemez.", 409);
         if (action == "REJECT" && (string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)) return Invalid<ReturnDetailView>("explanation", "REJECT için reasonCode ve en fazla 500 karakter açıklama gerekir.");
         var evidenceOptional = command.ReasonCode is "1651" or "451" or "2101";
