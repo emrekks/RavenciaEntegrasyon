@@ -1564,9 +1564,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
 
         var fullScan = ReadBoolean(payloadJson, "full");
+        var newOnly = ReadBoolean(payloadJson, "newOnly");
+        var includeArchived = ReadBoolean(payloadJson, "includeArchived");
+        var scanLabel = fullScan
+            ? "Tüm ürünler güncelleniyor"
+            : newOnly
+                ? "Yalnızca yeni ürünler taranıyor"
+                : "Yeni ve değişen ürünler taranıyor";
+        var archiveLabel = includeArchived ? " · Arşiv ürünleri dahil" : " · Arşiv ürünleri hariç";
         var receivedProducts = 0;
         if (jobId is { } currentJob)
-            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, fullScan ? "Trendyol kataloğu taranıyor · İlk sayfa bekleniyor" : "Yeni ve değişen ürünler taranıyor · İlk sayfa bekleniyor", cancellationToken);
+            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, scanLabel + archiveLabel + " · İlk sayfa bekleniyor", cancellationToken);
         int? totalProducts = null;
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
         if (fullScan && cursor.OpaqueCursor is not null)
@@ -1576,6 +1584,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await db.SaveChangesAsync(cancellationToken);
         }
         var hasSnapshots = await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
+        var existingProductExternalIds = newOnly
+            ? (await db.MarketplaceProductLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId).Select(x => x.ExternalId).ToListAsync(cancellationToken)).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : null;
         var hasCategoryMappings = await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
         // The first attribute backfill must revisit the already imported catalog. Keep
         // LastModifiedWatermark null until that full pass is complete so a retry cannot
@@ -1617,7 +1628,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             pageNumber++;
             if (jobId is { } readingJob)
             {
-                var scanLabel = fullScan ? "Trendyol kataloğu taranıyor" : "Yeni ve değişen ürünler taranıyor";
                 await UpdateProductSyncProgressAsync(
                     tenantId,
                     readingJob,
@@ -1626,7 +1636,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     totalProducts is { } knownTotal && knownTotal > 0
                         ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / knownTotal), 0, 99)
                         : null,
-                    $"{scanLabel} · {pageNumber}. sayfa okunuyor · Alınan {receivedProducts:N0} · İşlenen {telemetryImportProcessedCount:N0} · Atlanan {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0}",
+                    $"{scanLabel}{archiveLabel} · {pageNumber}. sayfa okunuyor · Alınan {receivedProducts:N0} · İşlenen {telemetryImportProcessedCount:N0} · Atlanan {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0}",
                     cancellationToken);
             }
             TrackRequest();
@@ -1639,7 +1649,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             foreach (var _ in result.Value!.Items) TrackReceived();
             receivedProducts += result.Value.Items.Count;
             totalProducts ??= result.Value.TotalCount;
-            pendingCatalogSnapshots.AddRange(result.Value.Items);
+            var pageSnapshots = result.Value.Items
+                .Select(snapshot => includeArchived
+                    ? snapshot
+                    : snapshot with { Variants = snapshot.Variants.Where(variant => !variant.Archived).ToList() })
+                .Where(snapshot => includeArchived || snapshot.Variants.Count > 0)
+                .ToList();
+            telemetryImportSkippedCount += result.Value.Items.Count - pageSnapshots.Count;
+            pendingCatalogSnapshots.AddRange(pageSnapshots);
             // Trendyol can change the catalog while a long scan is running. If
             // its reported total falls behind the pages actually returned, do
             // not publish an impossible "received / total" progress state.
@@ -1702,10 +1719,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 try
                 {
+                    if (newOnly && existingProductExternalIds!.Contains(snapshot.ExternalProductId))
+                    {
+                        telemetryImportSkippedCount++;
+                        importedModelCount++;
+                        continue;
+                    }
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
                     var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false);
+                    existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
                 }
