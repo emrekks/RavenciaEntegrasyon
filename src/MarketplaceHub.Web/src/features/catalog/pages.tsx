@@ -1490,8 +1490,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   // value. The latter keeps required text fields (for example a free-form
   // color field) available for entry from the product form.
   const mappedRequirements = useMemo(() => allRequirements.filter(item => item.attribute.values.length > 0 || item.allowsCustomValue), [allRequirements])
-  const webColorRequirement = useMemo(() => mappedRequirements.find(item => (item.isWebColor === true || isWebColorOptionName(item.attribute.name)) && item.attribute.values.length > 0), [mappedRequirements])
   const colorOptionRequirement = useMemo(() => mappedRequirements.find(item => !isWebColorOptionName(item.attribute.name) && isColorOptionName(item.attribute.name) && isOptionRequirement(item)), [mappedRequirements])
+  // Web Color is backed by the local Renk option. Prefer the explicit
+  // category mapping marker, but keep the editor usable when a category has
+  // Renk configured before its Web Color mapping is saved.
+  const webColorRequirement = useMemo(() => mappedRequirements.find(item => (item.isWebColor === true || isWebColorOptionName(item.attribute.name)) && item.attribute.values.length > 0) ?? colorOptionRequirement, [colorOptionRequirement, mappedRequirements])
   const webColorValues = webColorRequirement?.attribute.values ?? colorOptionRequirement?.attribute.values ?? []
   const optionRequirements = useMemo(() => mappedRequirements.filter(item => !isWebColorOptionName(item.attribute.name) && isOptionRequirement(item)).slice(0, 2), [mappedRequirements])
   const [webColorAutoEnabled, setWebColorAutoEnabled] = useState(true)
