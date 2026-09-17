@@ -112,7 +112,9 @@ public static class OrderInventoryReservationPolicy
 
     public static bool IsReservationEnabled(ConnectionInventoryPolicy? policy, string? rawStatus)
     {
-        if (policy is null) return true;
+        // Reservations are opt-in. Without an explicit connection policy,
+        // order synchronization must not create reserved stock implicitly.
+        if (policy is null) return false;
         if (string.Equals(policy.ReservationMode?.Trim(), "NONE", StringComparison.OrdinalIgnoreCase)
             || string.Equals(policy.ReservationMode?.Trim(), "DISABLED", StringComparison.OrdinalIgnoreCase))
             return false;

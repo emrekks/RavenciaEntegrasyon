@@ -31,6 +31,12 @@ public sealed class InventoryPolicyTests
     }
 
     [Fact]
+    public void MissingReservationPolicyDefaultsToNoReservation()
+    {
+        Assert.False(OrderInventoryReservationPolicy.IsReservationEnabled(null, "Created"));
+    }
+
+    [Fact]
     public void MissingOrUnknownAuthorityNeverOverwritesLocalPhysicalStock()
     {
         Assert.False(InventoryAuthorityPolicy.ShouldApplyRemoteQuantityToOnHand(null));
