@@ -8372,6 +8372,25 @@ small,
   padding: var(--rv-space-5) var(--rv-space-6);
 }
 
+.app-shell.stitch-shell main .sync-policy-modal-purpose {
+  display: grid;
+  gap: var(--rv-space-2);
+  padding: var(--rv-space-4);
+  background: var(--rv-color-surface-soft);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-md);
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-purpose .eyebrow {
+  margin: 0;
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-purpose > p:last-child {
+  margin: 0;
+  color: var(--rv-color-muted);
+  line-height: 1.6;
+}
+
 .app-shell.stitch-shell main .sync-policy-modal-state {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
