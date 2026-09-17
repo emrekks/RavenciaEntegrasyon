@@ -2310,24 +2310,17 @@
   .value-mapping-row > b { display: grid; place-items: center; color: var(--rv-color-primary); }
   .value-mapping-row > select { min-width: 0; }
   .value-mapping-row > small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; text-align: right; }
-  .web-color-assignment-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); }
-  .web-color-assignment-picker > label, .web-color-assignment-current { display: grid; min-width: 0; align-content: end; gap: var(--rv-space-2); }
+  .web-color-assignment-picker { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--rv-space-3); }
+  .web-color-assignment-picker > label { display: grid; min-width: 0; align-content: end; gap: var(--rv-space-2); }
   .web-color-assignment-picker > label { color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); font-weight: 750; }
-  .web-color-assignment-current > span { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); font-weight: 750; }
-  .web-color-assignment-current-box { display: flex; min-height: var(--rv-control-height-md); align-items: center; padding: 0 var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
-  .web-color-assignment-current-box strong { min-width: 0; overflow-wrap: anywhere; }
-  .web-color-panel-value-picker, .web-color-assignment-groups { display: grid; min-width: 0; gap: var(--rv-space-3); padding: var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .web-color-panel-value-picker { display: grid; min-width: 0; gap: var(--rv-space-3); padding: var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .web-color-panel-value-picker-head { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); }
   .web-color-panel-value-picker-head > span { color: var(--rv-color-primary); font-size: var(--rv-font-size-sm); font-weight: 800; }
   .web-color-panel-value-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--rv-space-2); }
-  .web-color-panel-value { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--rv-space-2); min-width: 0; padding: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }
+  .web-color-panel-value { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(18px, auto) minmax(14px, auto); align-items: center; align-content: center; gap: var(--rv-space-2); min-width: 0; min-height: 56px; box-sizing: border-box; padding: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }
   .web-color-panel-value.selected { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
   .web-color-panel-value > span { min-width: 0; overflow-wrap: anywhere; font-size: var(--rv-font-size-sm); font-weight: 700; }
   .web-color-panel-value small { grid-column: 2; min-width: 0; overflow-wrap: anywhere; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
-  .web-color-assignment-groups > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-2); }
-  .web-color-assignment-groups p { display: grid; min-width: 0; gap: 2px; margin: 0; padding: var(--rv-space-3); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }
-  .web-color-assignment-groups p span, .web-color-assignment-groups p small { min-width: 0; overflow-wrap: anywhere; }
-  .web-color-assignment-groups p small { color: var(--rv-color-muted); }
 
   /* Saved mapping heading: title, platform tabs, search and sort share one
      baseline instead of competing for a flex row. */
@@ -2488,7 +2481,7 @@
   .mapping-advanced-modal, .mapping-values-modal { width: min(100%, calc(100vw - 24px)); }
   .value-mapping-row { grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1.2fr); }
   .value-mapping-row > small { grid-column: 3; text-align: left; }
-  .web-color-assignment-picker, .web-color-assignment-groups > div { grid-template-columns: 1fr; }
+  .web-color-assignment-picker { grid-template-columns: 1fr; }
   .web-color-panel-value-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .jobs-reference-change-summary { grid-template-columns: 1fr; }
   .jobs-reference-batch-list article { grid-template-columns: minmax(0, 1fr) auto; }
