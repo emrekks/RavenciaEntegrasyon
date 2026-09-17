@@ -1767,7 +1767,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       setNotice(message); showFeedback(message, 'error')
       return
     }
-    const group = groups[0]
+    const group = groups.find(item => normalizeVariantOptionName(item.name) === 'RENK') ?? groups[0]
     setVariantMediaModal({ mode: 'bulk', draftRefs: [], groupId: group.id, valueId: group.values[0]?.id ?? '' })
   }
   function rowOptionValue(row: VariantDraft, group: Pick<VariantMediaGroup, 'name'>) {
