@@ -45,7 +45,7 @@ internal static class MarketplaceModelConfiguration
         });
         builder.Entity<ConnectionSyncPolicy>(entity =>
         {
-            entity.ToTable("connection_sync_policies", "integration", table => table.HasCheckConstraint("ck_connection_sync_policy_intervals", "\"IntervalSeconds\" > 0 AND \"OverlapSeconds\" >= 0 AND \"JitterSeconds\" >= 0")); entity.HasKey(x => x.Id);
+            entity.ToTable("connection_sync_policies", "integration", table => table.HasCheckConstraint("ck_connection_sync_policy_intervals", "\"IntervalSeconds\" >= 0 AND \"OverlapSeconds\" >= 0 AND \"JitterSeconds\" >= 0")); entity.HasKey(x => x.Id);
             entity.Property(x => x.ResourceType).HasMaxLength(64); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ResourceType }).IsUnique();
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);

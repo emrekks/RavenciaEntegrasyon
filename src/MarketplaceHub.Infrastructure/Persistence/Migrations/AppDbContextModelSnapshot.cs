@@ -911,7 +911,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.ToTable("connection_sync_policies", "integration", t =>
                         {
-                            t.HasCheckConstraint("ck_connection_sync_policy_intervals", "\"IntervalSeconds\" > 0 AND \"OverlapSeconds\" >= 0 AND \"JitterSeconds\" >= 0");
+                            t.HasCheckConstraint("ck_connection_sync_policy_intervals", "\"IntervalSeconds\" >= 0 AND \"OverlapSeconds\" >= 0 AND \"JitterSeconds\" >= 0");
                         });
                 });
 
