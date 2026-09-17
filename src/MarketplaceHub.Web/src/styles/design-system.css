@@ -1427,6 +1427,12 @@
   .attribute-builder-web-color-toggle > span { display: grid; min-width: 0; gap: 3px; }
   .attribute-builder-web-color-toggle small { color: var(--rv-color-muted); line-height: 1.45; }
   .attribute-builder-web-color-manual { display: grid; gap: var(--rv-space-2); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
+  .category-attribute-field-web-color { grid-column: 1 / -1; grid-template-columns: minmax(180px, .42fr) minmax(0, 1.58fr); align-items: center; }
+  .category-attribute-field-web-color .category-attribute-field-head { align-items: center; }
+  .category-attribute-field-web-color .attribute-builder-web-color-mode { align-content: center; }
+  .category-attribute-field-web-color .attribute-builder-web-color-toggle { align-items: center; min-height: 52px; padding: var(--rv-space-3); background: color-mix(in srgb, var(--rv-color-surface) 78%, transparent); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }
+  .category-attribute-field-web-color .attribute-builder-web-color-toggle input { margin: 0; }
+  .category-attribute-field-web-color .attribute-builder-web-color-toggle > span { align-content: center; }
   .rich-text-editor { overflow: hidden; padding: 0; }
   .rich-text-editor-head { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); border-bottom: 1px solid var(--rv-color-border); }
   .rich-text-editor-head > div:first-child, .rich-text-editor-meta { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); }
@@ -2610,6 +2616,7 @@
   .product-identifiers-grid { grid-template-columns: 1fr; }
   .category-attribute-mapping-list { grid-template-columns: 1fr; }
   .category-attribute-field { grid-template-columns: 1fr; align-items: stretch; }
+  .category-attribute-field-web-color { grid-column: 1 / -1; grid-template-columns: 1fr; }
   .category-attribute-field-head { align-items: flex-start; }
   .attribute-variant-action { grid-template-columns: 1fr; align-items: stretch; }
   .attribute-variant-actions, .attribute-variant-actions button { width: 100%; }

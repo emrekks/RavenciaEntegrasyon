@@ -1364,7 +1364,7 @@ function CategoryAttributeMappingPanel({
       <div className="unknown"><strong>Kategori özellikleri alınamadı</strong><p>Özellik başlıklarını Kategori Eşleştirme ekranında hazırlayın.</p></div>
     ) : attributes.length || webColorRequirement ? (
       <div className="category-attribute-mapping-list">
-        {webColorRequirement && <article className="category-attribute-field required has-selection">
+        {webColorRequirement && <article className="category-attribute-field category-attribute-field-web-color required has-selection">
           <div className="category-attribute-field-head">
             <div>
               <strong>Web Color</strong>
