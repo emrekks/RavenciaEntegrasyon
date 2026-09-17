@@ -294,7 +294,9 @@
 
 @layer base {
   :root { font-size: calc(16px * var(--rv-font-scale, 1)); }
-  body { overflow-x: hidden; color: var(--rv-color-ink); background: var(--rv-color-bg); font-family: var(--rv-font-ui); font-size: var(--rv-font-size-md); line-height: var(--rv-line-height); font-synthesis: none; text-rendering: optimizeLegibility; }
+  /* Keep horizontal overflow clipped without creating an extra scroll
+     container; this lets sticky page headers follow the document scroll. */
+  body { overflow-x: clip; color: var(--rv-color-ink); background: var(--rv-color-bg); font-family: var(--rv-font-ui); font-size: var(--rv-font-size-md); line-height: var(--rv-line-height); font-synthesis: none; text-rendering: optimizeLegibility; }
   h1, h2, h3, h4, p { margin-top: 0; }
   h1, h2, h3, h4, strong, b, th, label { color: var(--rv-color-ink); }
   h1 { margin-bottom: var(--rv-space-2); font-size: clamp(1.5rem, 2vw, 1.875rem); line-height: 1.2; letter-spacing: -.025em; }
