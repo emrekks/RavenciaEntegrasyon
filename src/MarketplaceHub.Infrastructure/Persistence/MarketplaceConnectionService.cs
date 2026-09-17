@@ -103,7 +103,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var requestedStoreId = command.ExternalStoreId?.Trim();
         var currentSettings = connection.PlatformCode == "TRENDYOL" ? ReadSettings(connection) : null;
         var requestedUserAgent = string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? null : command.UserAgentIdentity.Trim();
-        var requestedExternalWrites = currentSettings is not null && (command.ExternalWritesEnabled ?? currentSettings.ExternalWritesEnabled);
+        var requestedExternalWrites = currentSettings is not null
+            && configuration.GetValue<bool>("FeatureFlags:ExternalWrites")
+            && (command.ExternalWritesEnabled ?? currentSettings.ExternalWritesEnabled);
         if (connection.PlatformCode == "TRENDYOL" && requestedExternalWrites && currentSettings?.ExternalWritesEnabled != true)
         {
             if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites"))
@@ -271,7 +273,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
     public async Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> SyncPoliciesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        if (!await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Id == id && x.PlatformCode == "TRENDYOL", cancellationToken)) return NotFound<IReadOnlyList<SyncPolicyView>>();
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && x.PlatformCode == "TRENDYOL", cancellationToken);
+        if (connection is null) return NotFound<IReadOnlyList<SyncPolicyView>>();
+        var externalWritesEnabled = WritesEnabled(connection.SettingsJson);
         var policies = await db.ConnectionSyncPolicies.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType != "PRODUCTS").OrderBy(x => x.ResourceType).ToListAsync(cancellationToken);
         var cursors = await db.SyncCursors.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
@@ -286,7 +290,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 ?? (x.ResourceType == "ORDERS" ? cursors.FirstOrDefault(candidate => candidate.ResourceType == "ORDERS_HOT") : null);
             var health = MarketplaceSyncHealthPolicy.Classify(cursor?.LastSuccessAt, now, delayedAfter, degradedAfter, offlineAfter).ToString().ToUpperInvariant();
             var gap = MarketplaceSyncHealthPolicy.RecoveryGap(cursor?.LastModifiedWatermark, now, recoveryGapWarning, recoveryGapCritical);
-            return new SyncPolicyView(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, x.Enabled, x.Version, cursor?.LastSuccessAt, cursor?.LastModifiedWatermark, health, cursor?.LastAttemptAt, cursor?.ConsecutiveFailureCount ?? 0, cursor?.LastRequestCount ?? 0, cursor?.LastReceivedCount ?? 0, cursor?.LastChangedCount ?? 0, cursor?.LastInsertedCount ?? 0, cursor?.LastUpdatedCount ?? 0, cursor?.LastSkippedCount ?? 0, cursor?.LastFailedCount ?? 0, cursor?.LastRetryCount ?? 0, cursor?.LastRateLimitCount ?? 0, gap.Status, gap.Days, MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType));
+            var requiresExternalWrites = MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType);
+            var effectiveEnabled = x.Enabled && (!requiresExternalWrites || externalWritesEnabled);
+            return new SyncPolicyView(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, effectiveEnabled, x.Version, cursor?.LastSuccessAt, cursor?.LastModifiedWatermark, health, cursor?.LastAttemptAt, cursor?.ConsecutiveFailureCount ?? 0, cursor?.LastRequestCount ?? 0, cursor?.LastReceivedCount ?? 0, cursor?.LastChangedCount ?? 0, cursor?.LastInsertedCount ?? 0, cursor?.LastUpdatedCount ?? 0, cursor?.LastSkippedCount ?? 0, cursor?.LastFailedCount ?? 0, cursor?.LastRetryCount ?? 0, cursor?.LastRateLimitCount ?? 0, gap.Status, gap.Days, requiresExternalWrites);
         }).ToList();
         return ServiceResult<IReadOnlyList<SyncPolicyView>>.Ok(rows);
     }

@@ -153,15 +153,22 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     private async Task DisableExternalWriteAutomationAsync(CancellationToken cancellationToken)
     {
-        var connections = await db.PlatformConnections.AsNoTracking()
+        var connections = await db.PlatformConnections
             .Where(x => x.PlatformCode == "TRENDYOL")
-            .Select(x => new { x.TenantId, ConnectionId = x.Id, x.SettingsJson })
             .ToListAsync(cancellationToken);
         var blockedConnectionIds = connections
             .Where(x => !WritesEnabled(x.SettingsJson))
-            .Select(x => new { x.TenantId, x.ConnectionId })
+            .Select(x => new { x.TenantId, ConnectionId = x.Id })
             .ToList();
         if (blockedConnectionIds.Count == 0) return;
+
+        var connectionSettingsChanged = false;
+        foreach (var connection in connections.Where(x => !WritesEnabled(x.SettingsJson) && StoredWritesEnabled(x.SettingsJson)))
+        {
+            connection.SettingsJson = DisableStoredWrites(connection.SettingsJson);
+            connection.Version++;
+            connectionSettingsChanged = true;
+        }
 
         var connectionIds = blockedConnectionIds.Select(x => x.ConnectionId).ToArray();
         var policies = await db.ConnectionSyncPolicies
@@ -188,7 +195,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             job.Version++;
         }
 
-        if (policies.Any(x => MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType)) || jobs.Count > 0)
+        if (connectionSettingsChanged || policies.Any(x => MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType)) || jobs.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -343,12 +350,30 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     private bool WritesEnabled(string settingsJson)
     {
         if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
+        return StoredWritesEnabled(settingsJson);
+    }
+
+    private static bool StoredWritesEnabled(string settingsJson)
+    {
         try
         {
             using var document = JsonDocument.Parse(settingsJson);
             return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
         }
         catch (JsonException) { return false; }
+    }
+
+    private static string DisableStoredWrites(string settingsJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(settingsJson);
+            var userAgent = document.RootElement.TryGetProperty("UserAgentIdentity", out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString() ?? ""
+                : "";
+            return JsonSerializer.Serialize(new { UserAgentIdentity = userAgent, ExternalWritesEnabled = false });
+        }
+        catch (JsonException) { return settingsJson; }
     }
 
     private static bool IsExpectedDedupRace(DbUpdateException exception)
