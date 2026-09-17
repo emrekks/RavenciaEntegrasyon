@@ -5005,8 +5005,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                 {
                     b.HasBaseType("MarketplaceHub.Domain.CatalogMapping");
 
-                    b.HasIndex("TenantId", "ConnectionId", "LocalId", "ScopeExternalId")
-                        .IsUnique();
+                    b.HasIndex("TenantId", "ConnectionId", "LocalId", "ScopeExternalId", "ExternalId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_attribute_mappings_local_remote_scope");
 
                     b.ToTable("attribute_mappings", "catalog");
                 });

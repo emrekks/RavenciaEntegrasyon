@@ -2114,9 +2114,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 && x.CategoryId == category.Id
                 && x.AttributeId == attribute.Id)
             ?? await db.CategoryAttributeRequirements.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == category.Id && x.AttributeId == attribute.Id, cancellationToken);
-        var role = IsWebColorOptionKey(remoteAttribute.Name)
-            ? "ATTRIBUTE"
-            : requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
+        // Web Color may share the panel Renk source with the real Renk
+        // option. Never let that presentation field demote an existing
+        // variant-option requirement to a plain attribute.
+        var role = requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
         if (requirement is null)
             db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = category.Id, AttributeId = attribute.Id, IsRequired = remoteAttribute.IsRequired == true, AllowsCustomValue = remoteAttribute.AllowsCustomValue == true, IsPanelScoped = true, DisplayOrder = remoteAttribute.SortOrder ?? 0, Role = role, Version = 1 });
         else
@@ -2130,17 +2131,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         // Several marketplace fields (for example the real color slicer and
-        // Web Color) can intentionally share the same panel attribute. When
-        // both are materialized before the current save batch is flushed, the
-        // database query cannot see the first pending mapping. Check the local
-        // change tracker first so the unique (tenant, connection, attribute,
-        // category) mapping is updated instead of inserted twice.
+        // Web Color) can intentionally share the same panel attribute. Their
+        // external field is part of the mapping identity, so both mappings
+        // must be retained even when they are pending in this save batch.
         var attributeMapping = db.AttributeMappings.Local.FirstOrDefault(x =>
                 x.TenantId == tenantId
                 && x.ConnectionId == connectionId
                 && x.LocalId == attribute.Id
-                && x.ScopeExternalId == remoteCategory.ExternalId)
-            ?? await db.AttributeMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == attribute.Id && x.ScopeExternalId == remoteCategory.ExternalId, cancellationToken);
+                && x.ScopeExternalId == remoteCategory.ExternalId
+                && x.ExternalId == remoteAttribute.ExternalId)
+            ?? await db.AttributeMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == attribute.Id && x.ScopeExternalId == remoteCategory.ExternalId && x.ExternalId == remoteAttribute.ExternalId, cancellationToken);
         if (attributeMapping is null)
             db.AttributeMappings.Add(new AttributeMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = attributeSnapshot.Id, LocalId = attribute.Id, ScopeExternalId = remoteCategory.ExternalId, ExternalId = remoteAttribute.ExternalId, Status = "VERIFIED", VerifiedAt = timeProvider.GetUtcNow(), Version = 1 });
         else

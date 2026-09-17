@@ -30,11 +30,15 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         return ServiceResult<IReadOnlyList<CatalogMappingView>>.Ok(entities.Select(Map).ToList());
     }
 
-    public async Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, CancellationToken cancellationToken)
     {
         if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<CatalogMappingView?>();
         var scope = string.IsNullOrWhiteSpace(scopeExternalId) ? "" : scopeExternalId.Trim();
-        var mapping = await Query(mappingType).AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == connectionId && x.ScopeExternalId == scope, cancellationToken);
+        var query = Query(mappingType).AsNoTracking().Where(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == connectionId && x.ScopeExternalId == scope);
+        if (!string.IsNullOrWhiteSpace(externalId)) query = query.Where(x => x.ExternalId == externalId.Trim());
+        var mappings = await query.OrderBy(x => x.ExternalId).Take(2).ToListAsync(cancellationToken);
+        if (mappings.Count > 1) return ServiceResult<CatalogMappingView?>.Fail("MAPPING_EXTERNAL_ID_REQUIRED", "Bu panel özelliğinin birden fazla Trendyol alanı var; externalId belirtilmelidir.", 409);
+        var mapping = mappings.SingleOrDefault();
         return ServiceResult<CatalogMappingView?>.Ok(mapping is null ? null : Map(mapping));
     }
 
@@ -52,7 +56,13 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         if (mappingType == "categories" && (!external.IsLeaf || !external.IsActive)) return ServiceResult<CatalogMappingView>.Fail("ACTIVE_LEAF_CATEGORY_REQUIRED", "Ürün mapping'i yalnız etkin leaf kategoriye yapılabilir.", 422);
 
         var scope = snapshot.ScopeExternalId;
-        var mapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope, cancellationToken);
+        var externalId = command.ExternalId.Trim();
+        var mapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope && x.ExternalId == externalId, cancellationToken);
+        if (mapping is null && expectedVersion is not null)
+        {
+            var legacyMapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope, cancellationToken);
+            if (legacyMapping is not null && legacyMapping.Version == expectedVersion) mapping = legacyMapping;
+        }
         if (mapping is null)
         {
             mapping = New(mappingType);
@@ -65,7 +75,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             if (mapping.Version != expectedVersion) return ServiceResult<CatalogMappingView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{mapping.Version}.", 412);
             mapping.Version++;
         }
-        mapping.SnapshotId = command.SnapshotId; mapping.ExternalId = command.ExternalId.Trim(); mapping.Status = command.Status.Trim(); mapping.VerifiedAt = timeProvider.GetUtcNow();
+        mapping.SnapshotId = command.SnapshotId; mapping.ExternalId = externalId; mapping.Status = command.Status.Trim(); mapping.VerifiedAt = timeProvider.GetUtcNow();
         if (mappingType == "attributes")
         {
             var role = NormalizeRequirementRole(command.Role);
@@ -116,11 +126,15 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         return ServiceResult<CatalogMappingView>.Ok(Map(mapping));
     }
 
-    public async Task<ServiceResult<bool>> DeleteMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, long expectedVersion, CancellationToken cancellationToken)
+    public async Task<ServiceResult<bool>> DeleteMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, long expectedVersion, CancellationToken cancellationToken)
     {
         if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<bool>();
         var scope = string.IsNullOrWhiteSpace(scopeExternalId) ? "" : scopeExternalId.Trim();
-        var mapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == connectionId && x.ScopeExternalId == scope, cancellationToken);
+        var query = Query(mappingType).Where(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == connectionId && x.ScopeExternalId == scope);
+        if (!string.IsNullOrWhiteSpace(externalId)) query = query.Where(x => x.ExternalId == externalId.Trim());
+        var candidates = await query.OrderBy(x => x.ExternalId).Take(2).ToListAsync(cancellationToken);
+        if (candidates.Count > 1) return ServiceResult<bool>.Fail("MAPPING_EXTERNAL_ID_REQUIRED", "Bu panel özelliğinin birden fazla Trendyol alanı var; externalId belirtilmelidir.", 409);
+        var mapping = candidates.SingleOrDefault();
         if (mapping is null) return NotFound<bool>();
         if (mapping.Version != expectedVersion) return ServiceResult<bool>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{mapping.Version}.", 412);
         db.Remove(mapping);
