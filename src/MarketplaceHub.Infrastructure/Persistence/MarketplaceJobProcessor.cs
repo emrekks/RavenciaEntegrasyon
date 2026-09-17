@@ -2043,7 +2043,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         CancellationToken cancellationToken)
     {
         var optionAxis = VariantOptionAxis(remoteAttribute.Name);
-        var canonicalName = optionAxis switch
+        var canonicalName = IsWebColorOptionKey(remoteAttribute.Name) ? "Renk" : optionAxis switch
         {
             "COLOR" => "Renk",
             "SIZE" => "Beden",
@@ -2114,7 +2114,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 && x.CategoryId == category.Id
                 && x.AttributeId == attribute.Id)
             ?? await db.CategoryAttributeRequirements.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == category.Id && x.AttributeId == attribute.Id, cancellationToken);
-        var role = requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
+        var role = IsWebColorOptionKey(remoteAttribute.Name)
+            ? "ATTRIBUTE"
+            : requirement?.Role == "OPTION" || IsVariantOptionName(remoteAttribute.Name) ? "OPTION" : "ATTRIBUTE";
         if (requirement is null)
             db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = category.Id, AttributeId = attribute.Id, IsRequired = remoteAttribute.IsRequired == true, AllowsCustomValue = remoteAttribute.AllowsCustomValue == true, IsPanelScoped = true, DisplayOrder = remoteAttribute.SortOrder ?? 0, Role = role, Version = 1 });
         else
@@ -2275,6 +2277,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var sortOrder = 0;
         foreach (var pair in options)
         {
+            if (IsWebColorOptionKey(pair.Key))
+            {
+                sortOrder++;
+                continue;
+            }
             if (!TryGetMappedAttribute(categoryContext.Attributes, pair.Key, out var mapped))
             {
                 sortOrder++;
@@ -2334,6 +2341,91 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             sortOrder++;
         }
+
+        await UpsertDerivedWebColorAttributeAssignment(tenantId, connectionId, product, variant, options, categoryContext, cancellationToken);
+    }
+
+    private async Task UpsertDerivedWebColorAttributeAssignment(
+        Guid tenantId,
+        Guid connectionId,
+        Product product,
+        ProductVariant variant,
+        IReadOnlyDictionary<string, string> options,
+        CategoryAttributeContext categoryContext,
+        CancellationToken cancellationToken)
+    {
+        var webColor = categoryContext.Attributes.Values
+            .Where(item => IsWebColorOptionKey(item.Remote.Name))
+            .GroupBy(item => item.Definition.Id)
+            .Select(group => group.First())
+            .FirstOrDefault();
+        var realColor = options.FirstOrDefault(pair => IsRealColorOptionKey(pair.Key));
+        if (webColor is null || string.IsNullOrWhiteSpace(realColor.Key) || string.IsNullOrWhiteSpace(realColor.Value)) return;
+        if (!TryGetMappedAttribute(categoryContext.Attributes, realColor.Key, out var colorAttribute)) return;
+
+        var remoteColorValue = colorAttribute.Values.FirstOrDefault(value => NormalizeCatalogKey(value.Name, 320) == NormalizeCatalogKey(realColor.Value, 320));
+        var localColorValue = await ResolveMappedAttributeValue(tenantId, connectionId, categoryContext, colorAttribute, remoteColorValue, realColor.Value, cancellationToken);
+        if (localColorValue is null)
+        {
+            await RecordIssue(tenantId, $"product-web-color-value:{product.Id}:{variant.Id}:{NormalizeCatalogKey(realColor.Value, 320)}", "PRODUCT_WEBCOLOR_VALUE_UNMAPPED", $"Trendyol Renk değeri '{realColor.Value}' için panel Renk değeri bulunamadı; Web Color atanmadı.", cancellationToken);
+            return;
+        }
+
+        var webColorExternalId = await ResolveWebColorExternalIdAsync(tenantId, connectionId, categoryContext, webColor, localColorValue, cancellationToken);
+        if (string.IsNullOrWhiteSpace(webColorExternalId))
+        {
+            await RecordIssue(tenantId, $"product-web-color-mapping:{product.Id}:{variant.Id}:{localColorValue.Id}", "PRODUCT_WEBCOLOR_MAPPING_REQUIRED", $"Panel Renk değeri '{localColorValue.Value}' için Web Color eşlemesi bulunamadı; Web Color atanmadı.", cancellationToken);
+            return;
+        }
+
+        var assignment = db.ProductAttributeAssignments.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId == variant.Id && x.AttributeId == webColor.Definition.Id)
+            ?? await db.ProductAttributeAssignments.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId == variant.Id && x.AttributeId == webColor.Definition.Id, cancellationToken);
+        if (assignment is null)
+        {
+            db.ProductAttributeAssignments.Add(new ProductAttributeAssignment
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ProductId = product.Id,
+                VariantId = variant.Id,
+                AttributeId = webColor.Definition.Id,
+                ValueId = localColorValue.Id,
+                SortOrder = webColor.Remote.SortOrder ?? 0,
+                Version = 1
+            });
+        }
+        else
+        {
+            assignment.ValueId = localColorValue.Id;
+            assignment.TextValue = null;
+            assignment.NumberValue = null;
+            assignment.BooleanValue = null;
+            assignment.SortOrder = webColor.Remote.SortOrder ?? assignment.SortOrder;
+            assignment.Version++;
+        }
+    }
+
+    private async Task<string?> ResolveWebColorExternalIdAsync(
+        Guid tenantId,
+        Guid connectionId,
+        CategoryAttributeContext categoryContext,
+        LocalCategoryAttribute webColor,
+        AttributeValue localColorValue,
+        CancellationToken cancellationToken)
+    {
+        var valueScope = $"{categoryContext.ExternalCategoryId}/{webColor.Remote.ExternalId}";
+        var mapping = db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localColorValue.Id && x.ScopeExternalId == valueScope && x.Status == "VERIFIED")
+            ?? await db.AttributeValueMappings.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localColorValue.Id && x.ScopeExternalId == valueScope && x.Status == "VERIFIED", cancellationToken);
+        if (mapping is not null && webColor.Values.Any(value => value.ExternalId == mapping.ExternalId)) return mapping.ExternalId;
+
+        var exact = webColor.Values.FirstOrDefault(value => NormalizeCatalogKey(value.Name, 320) == NormalizeCatalogKey(localColorValue.Value, 320));
+        if (exact is not null) return exact.ExternalId;
+        foreach (var fallbackKey in CatalogColorMappingPolicy.FallbackKeys(localColorValue.Value))
+        {
+            var fallback = webColor.Values.FirstOrDefault(value => NormalizeCatalogKey(value.Name, 320).Replace("-", "", StringComparison.Ordinal) == fallbackKey);
+            if (fallback is not null) return fallback.ExternalId;
+        }
+        return null;
     }
 
     private async Task PromoteCommonImportedAttributes(Guid tenantId, Product product, IReadOnlyList<ProductVariant> importedVariants, CategoryAttributeContext categoryContext, CancellationToken cancellationToken)
@@ -2470,7 +2562,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             Snapshot = snapshot,
             // Reprocess existing catalog products after changing mapped
             // attribute assignment semantics, not only newly fetched rows.
-            OptionRoleVersion = "catalog-options-v8-preserve-local-color-source"
+            OptionRoleVersion = "catalog-options-v9-web-color-adapter"
         }));
         var isNewProduct = false;
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
@@ -3021,10 +3113,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var order = 0;
         foreach (var pair in options)
         {
-            // When the feed contains the real Renk slicer it wins over Web
-            // Color. If Web Color is the only color source, its saved mapping
-            // is used to populate the local Renk option.
-            if (IsWebColorOptionKey(pair.Key) && hasRealColorSource)
+            // Web Color is a category attribute derived from the real Renk
+            // slicer. It must never create a second product option axis.
+            if (IsWebColorOptionKey(pair.Key))
             {
                 order++;
                 continue;
@@ -3078,7 +3169,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private static string? VariantOptionAxis(string value)
     {
-        if (IsWebColorOptionKey(value)) return "COLOR";
         if (IsColorOptionKey(value)) return "COLOR";
         if (IsSizeOptionKey(value)) return "SIZE";
         return null;
@@ -3151,10 +3241,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var order = 0;
         var processedPanelOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var hasRealColorSource = options.Keys.Any(IsRealColorOptionKey);
         foreach (var pair in options.OrderBy(x => IsWebColorOptionKey(x.Key) ? 1 : 0).ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
         {
-            if (IsWebColorOptionKey(pair.Key) && hasRealColorSource) continue;
+            if (IsWebColorOptionKey(pair.Key)) continue;
             var optionKey = NormalizeCatalogKey(pair.Key, 160); var valueKey = NormalizeCatalogKey(pair.Value, 160);
             if (string.IsNullOrWhiteSpace(optionKey) || string.IsNullOrWhiteSpace(valueKey)) continue;
             LocalCategoryAttribute? mapped = null;

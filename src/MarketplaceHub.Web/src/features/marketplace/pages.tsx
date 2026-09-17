@@ -1766,7 +1766,7 @@ export function WebColorMappingCard({ connectionId, categoryScope, snapshotId, l
   async function save() {
     try {
       if (!localId) throw new Error('Web Color için panel özelliğini seçin.')
-      await hubApi<CatalogMapping>(`/mappings/attributes/${localId}`, { method: 'PUT', headers: currentMapping ? { 'If-Match': `"v${currentMapping.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: categoryScope, externalId: remoteAttribute.externalId, status: 'VERIFIED', role: 'OPTION' }) })
+      await hubApi<CatalogMapping>(`/mappings/attributes/${localId}`, { method: 'PUT', headers: currentMapping ? { 'If-Match': `"v${currentMapping.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: categoryScope, externalId: remoteAttribute.externalId, status: 'VERIFIED', role: 'ATTRIBUTE' }) })
       onNotice(`${selectedAttribute.name} → Trendyol Web Color eşlemesi kaydedildi.`); setShowValues(true); await client.invalidateQueries({ queryKey: ['attribute-mappings', connectionId, categoryScope] })
     } catch (reason) { onNotice(reason instanceof Error ? reason.message : 'Web Color eşlemesi kaydedilemedi.') }
   }
