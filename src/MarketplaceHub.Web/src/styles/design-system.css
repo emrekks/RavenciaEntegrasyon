@@ -1414,12 +1414,13 @@
   .product-category-mapping-card { grid-column: 1 / -1; }
   .category-attribute-mapping-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); }
   .category-attribute-field { display: grid; grid-template-columns: minmax(190px, .48fr) minmax(0, 1.52fr); align-items: center; gap: var(--rv-space-4); min-width: 0; padding: var(--rv-space-4); background: color-mix(in srgb, var(--rv-color-surface-raised) 88%, transparent); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); transition: border-color var(--rv-duration-fast) var(--rv-ease-standard), background var(--rv-duration-fast) var(--rv-ease-standard), box-shadow var(--rv-duration-fast) var(--rv-ease-standard); }
-  .category-attribute-field.required { border-left: 2px solid color-mix(in srgb, var(--rv-color-warning) 62%, var(--rv-color-border)); }
-  .category-attribute-field.has-selection { border-color: color-mix(in srgb, var(--rv-color-accent) 25%, var(--rv-color-border)); background: color-mix(in srgb, var(--rv-color-accent) 4%, var(--rv-color-surface-raised)); }
-  .category-attribute-field.is-missing { border-color: color-mix(in srgb, var(--rv-color-danger) 58%, var(--rv-color-border)); }
+  .category-attribute-field.required { border-left: 1px solid var(--rv-color-border); }
+  .category-attribute-field.has-selection { border-color: var(--rv-color-border); background: color-mix(in srgb, var(--rv-color-surface-raised) 88%, transparent); }
+  .category-attribute-field.is-missing { border-color: var(--rv-color-border); }
   .category-attribute-field-head { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--rv-space-3); }
   .category-attribute-field-head > div { display: grid; min-width: 0; gap: 3px; }
   .category-attribute-field-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .category-attribute-field-head .required-marker { color: var(--rv-color-danger); font-weight: 900; }
   .category-attribute-field-head small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
   .category-attribute-count { flex: 0 0 auto; padding: 4px 8px; color: var(--rv-color-accent); background: color-mix(in srgb, var(--rv-color-accent) 10%, var(--rv-color-surface)); border: 1px solid color-mix(in srgb, var(--rv-color-accent) 18%, var(--rv-color-border)); border-radius: 999px; font-size: var(--rv-font-size-xs); font-weight: 750; }
   .attribute-builder-web-color-mode { display: grid; gap: var(--rv-space-3); min-width: 0; }

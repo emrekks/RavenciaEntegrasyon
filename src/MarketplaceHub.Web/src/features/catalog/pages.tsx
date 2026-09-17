@@ -1367,7 +1367,7 @@ function CategoryAttributeMappingPanel({
         {webColorRequirement && <article className="category-attribute-field category-attribute-field-web-color required has-selection">
           <div className="category-attribute-field-head">
             <div>
-              <strong>Web Color</strong>
+              <strong>Web Color <b className="required-marker" aria-hidden="true">*</b></strong>
               <small>Varyant renk aktarımı · Zorunlu</small>
             </div>
             <span className="category-attribute-count">{webColorAutoEnabled ? 'Otomatik' : 'Manuel'}</span>
@@ -1390,7 +1390,7 @@ function CategoryAttributeMappingPanel({
           return <article className={`category-attribute-field ${item.isRequired ? 'required' : ''} ${hasValue ? 'has-selection' : ''} ${item.isRequired && !hasValue ? 'is-missing' : ''}`} key={item.attributeId}>
             <div className="category-attribute-field-head">
               <div>
-                <strong>{displayName}{item.isRequired ? ' *' : ''}</strong>
+                <strong>{displayName}{item.isRequired && <b className="required-marker" aria-hidden="true"> *</b>}</strong>
                 <small>{dataTypeLabels[item.attribute.dataType] ?? item.attribute.dataType}{item.isRequired ? ' · Zorunlu' : ' · İsteğe bağlı'}</small>
               </div>
             </div>
