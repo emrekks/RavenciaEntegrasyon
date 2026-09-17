@@ -716,10 +716,17 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // evidence row was not recorded. The write policy is still enforced by
         // ProcessReturnActionInstantAsync enforces the policy before any external
         // request is made. Return decisions are intentionally not queued.
+        var pendingDecision = await db.ReturnDecisions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && (x.Status == "PENDING" || x.Status == "SUBMITTED" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW"))
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        var decisionPending = pendingDecision != Guid.Empty;
         var actions = claim.Status switch
         {
             ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit => ["RECEIVE"],
-            ReturnClaimStatus.ActionRequired => ReturnActions,
+            ReturnClaimStatus.ActionRequired when !decisionPending => ReturnActions,
+            ReturnClaimStatus.ActionRequired => Array.Empty<string>(),
             _ => await CapabilityValues(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, "allowedActions", cancellationToken)
         };
         var approvedAt = claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
@@ -753,7 +760,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, claim.ActionDueAt, actions, claim.Version,
-            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, package?.CargoProviderExternalId, package?.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled));
+            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, package?.CargoProviderExternalId, package?.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending));
     }
 
     public async Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken)
@@ -825,7 +832,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var returnLineIds = command.ReturnLineIds?.Distinct().ToArray() ?? claimLineIds.ToArray();
         if (returnLineIds.Length == 0 || returnLineIds.Except(claimLineIds).Any()) return Invalid<ReturnDetailView>("returnLineIds", "İşlem yapılacak ürün satırları bu iadeye ait olmalıdır.");
         var activeDecision = await db.ReturnDecisions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && (x.Status == "PENDING" || x.Status == "SUBMITTED" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW")).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-        if (activeDecision is not null) return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade için tamamlanmamış bir karar zaten bulunuyor.", 409);
+        if (activeDecision is not null) return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade kararı Trendyol’a gönderildi; Trendyol’dan sonuç kesinleşene kadar yeni bir karar gönderilemez.", 409);
         if (action == "REJECT" && (string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)) return Invalid<ReturnDetailView>("explanation", "REJECT için reasonCode ve en fazla 500 karakter açıklama gerekir.");
         var evidenceOptional = command.ReasonCode is "1651" or "451" or "2101";
         if (action == "REJECT" && !evidenceOptional && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)) return Invalid<ReturnDetailView>("evidenceAssetIds", "Seçilen ret nedeni için en az bir kanıt dosyası gerekir.");

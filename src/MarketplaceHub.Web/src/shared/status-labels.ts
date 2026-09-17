@@ -75,6 +75,7 @@ const statusLabels: Record<string, string> = {
   UNKNOWN_RESULT: 'Bilinmeyen sonuç',
   VERIFIED: 'Doğrulandı',
   WAITING_FOR_SHIPMENT: 'Kargo bekliyor',
+  WAITINGINACTION: 'Trendyol’da karar bekliyor',
   LABEL_READ: 'Etiketi oku',
   LABEL_WRITE: 'Etiket oluşturmayı dene',
   AUTO: 'Otomatik',

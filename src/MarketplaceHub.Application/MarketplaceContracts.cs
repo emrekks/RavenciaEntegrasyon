@@ -499,7 +499,8 @@ public sealed record ReturnDetailView(
     IReadOnlyList<ReturnLineView>? Lines = null,
     bool StockDispositionAvailable = false,
     DateTimeOffset? ApprovedAt = null,
-    bool ExternalWritesEnabled = false);
+    bool ExternalWritesEnabled = false,
+    bool DecisionPending = false);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);
 
