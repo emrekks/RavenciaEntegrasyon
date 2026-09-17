@@ -8418,7 +8418,8 @@ small,
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-auto-rows: minmax(40px, auto);
   align-items: stretch;
-  max-height: 136px;
+  min-height: 148px;
+  max-height: 148px;
 }
 
 .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list > span {
