@@ -8152,14 +8152,36 @@ small,
 
 .app-shell.stitch-shell main .sync-policy-row {
   display: grid;
+  width: 100%;
   grid-template-columns: minmax(0, 1fr) minmax(126px, .9fr);
   align-items: start;
   gap: var(--rv-space-3);
   min-width: 0;
   padding: var(--rv-space-4);
+  color: var(--rv-color-ink);
   background: var(--rv-color-surface-raised);
   border: 1px solid var(--rv-color-border);
   border-radius: var(--rv-radius-md);
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  cursor: pointer;
+  transition: background var(--rv-duration-fast) var(--rv-ease-standard), border-color var(--rv-duration-fast) var(--rv-ease-standard), transform var(--rv-duration-fast) var(--rv-ease-standard);
+}
+
+.app-shell.stitch-shell main .sync-policy-row:hover {
+  background: var(--rv-color-surface-soft);
+  border-color: var(--rv-color-primary);
+  transform: translateY(-1px);
+}
+
+.app-shell.stitch-shell main .sync-policy-row:focus-visible {
+  outline: 2px solid var(--rv-color-primary);
+  outline-offset: 2px;
+}
+
+.app-shell.stitch-shell main .sync-policy-row.is-disabled .sync-policy-meta {
+  opacity: .78;
 }
 
 .app-shell.stitch-shell main .sync-policy-row > label {
@@ -8197,12 +8219,123 @@ small,
 }
 
 .app-shell.stitch-shell main .sync-policy-title > strong {
+  flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.app-shell.stitch-shell main .sync-policy-title .badge {
+.app-shell.stitch-shell main .sync-policy-boolean {
   flex: 0 0 auto;
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  color: var(--rv-color-muted);
+  background: var(--rv-color-surface);
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: 999px;
+  font-size: var(--rv-font-size-xs);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.app-shell.stitch-shell main .sync-policy-boolean.is-on {
+  color: var(--rv-color-accent);
+  background: var(--rv-color-accent-soft);
+  border-color: color-mix(in srgb, var(--rv-color-accent) 55%, var(--rv-color-border));
+}
+
+.app-shell.stitch-shell main .sync-policy-boolean > i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  background: currentcolor;
+  border-radius: 50%;
+}
+
+.app-shell.stitch-shell main .sync-policy-open-hint {
+  color: var(--rv-color-primary);
+  font-size: var(--rv-font-size-xs);
+  font-weight: 750;
+}
+
+.app-shell.stitch-shell main .sync-policy-modal {
+  width: min(560px, 100%);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-form {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-body {
+  display: grid;
+  min-height: 0;
+  align-content: start;
+  gap: var(--rv-space-5);
+  overflow: auto;
+  padding: var(--rv-space-5) var(--rv-space-6);
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--rv-space-3);
+  padding: var(--rv-space-4);
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-md);
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-state > span:last-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-state small,
+.app-shell.stitch-shell main .sync-policy-modal-toggle small {
+  color: var(--rv-color-muted);
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--rv-space-3);
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-fields label {
+  display: grid;
+  gap: var(--rv-space-2);
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-xs);
+  font-weight: 800;
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-toggle {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--rv-space-3);
+  padding-top: var(--rv-space-4);
+  border-top: 1px solid var(--rv-color-border);
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-toggle > span {
+  display: grid;
+  gap: 3px;
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-form > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--rv-space-2);
+  padding: var(--rv-space-4) var(--rv-space-6);
+  border-top: 1px solid var(--rv-color-border);
 }
 
 .app-shell.stitch-shell main .sync-policy-meta {
@@ -8263,6 +8396,15 @@ small,
 
   .app-shell.stitch-shell main .sync-policy-toggle {
     align-self: center;
+  }
+
+  .app-shell.stitch-shell main .sync-policy-modal-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.stitch-shell main .sync-policy-modal-body,
+  .app-shell.stitch-shell main .sync-policy-modal-form > footer {
+    padding-inline: var(--rv-space-4);
   }
 }
 
