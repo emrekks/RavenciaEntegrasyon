@@ -75,11 +75,19 @@ function jobStatusTone(status: JobStatus) {
 }
 
 type JobTypeIconName = 'price' | 'order' | 'invoice' | 'return' | 'product' | 'connection' | 'generic'
+type JobPresentation = { title: string; icon: JobTypeIconName }
 
-function jobPresentation(jobType: string): { title: string; icon: JobTypeIconName } {
+function jobPresentation(jobType: string): JobPresentation {
   const type = jobType.toUpperCase()
   if (type.includes('PRICE') || type.includes('INVENTORY') || type.includes('STOCK')) return { title: 'Fiyat Güncelleme', icon: 'price' }
-  if (type.includes('ORDER') || type.includes('SHIPMENT') || type.includes('PACKAGE') || type.includes('COURIER') || type.includes('LABEL')) return { title: 'Sipariş Aktarımı', icon: 'order' }
+  if (type === 'TRENDYOL_ORDER_STATUS_SYNC') return { title: 'Sipariş Durum Taraması', icon: 'order' }
+  if (type === 'TRENDYOL_ORDER_RECONCILIATION') return { title: 'Sipariş Mutabakatı', icon: 'order' }
+  if (type === 'TRENDYOL_ORDER_INVOICE_RECONCILIATION') return { title: 'Sipariş-Fatura Mutabakatı', icon: 'order' }
+  if (type === 'TRENDYOL_ORDER_RECOVERY_SYNC') return { title: 'Sipariş Kurtarma Senkronizasyonu', icon: 'order' }
+  if (type === 'TRENDYOL_ORDER_SYNC') return { title: 'Sipariş Senkronizasyonu', icon: 'order' }
+  if (type.includes('SHIPMENT') || type.includes('PACKAGE') || type.includes('COURIER')) return { title: 'Kargo İşlemi', icon: 'order' }
+  if (type.includes('LABEL')) return { title: 'Kargo Etiketi', icon: 'order' }
+  if (type.includes('ORDER')) return { title: 'Sipariş İşlemi', icon: 'order' }
   if (type.includes('INVOICE') || type.includes('EFATURAM') || type.includes('BILLING')) return { title: 'Fatura İletimi', icon: 'invoice' }
   if (type.includes('RETURN') || type.includes('CLAIM')) return { title: 'İade Senkronizasyonu', icon: 'return' }
   if (type.includes('PRODUCT') || type.includes('CATALOG') || type.includes('PUBLICATION') || type.includes('ATTRIBUTE') || type.includes('CATEGORY') || type.includes('BRAND')) return { title: 'Ürün Senkronizasyonu', icon: 'product' }
@@ -97,7 +105,11 @@ function jobSource(jobType: string) {
 function fallbackJobChange(job: JobSummary): JobChange {
   const type = job.jobType.toUpperCase()
   if (type.includes('SHIPMENT_ACTION')) return { label: 'Yapılan değişiklik', value: 'Paket işlemi', detail: 'Paket işlemi Trendyol’a gönderildi.' }
-  if (type.includes('ORDER_SYNC')) return { label: 'Yapılan değişiklik', value: 'Sipariş senkronizasyonu', detail: 'Sipariş bilgileri pazaryerinden eşitlendi.' }
+  if (type === 'TRENDYOL_ORDER_STATUS_SYNC') return { label: 'Tarama türü', value: 'Sipariş durum taraması', detail: 'Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel durum güncellenir.' }
+  if (type === 'TRENDYOL_ORDER_RECONCILIATION') return { label: 'Tarama türü', value: 'Kapsamlı sipariş taraması', detail: 'Yerel siparişler ile pazaryeri kayıtları karşılaştırılır; durum ve paket farklılıkları düzeltilir.' }
+  if (type === 'TRENDYOL_ORDER_INVOICE_RECONCILIATION') return { label: 'Tarama türü', value: 'Paket fatura taraması', detail: 'Teslim edilmiş ve açık paketlerin pazaryeri fatura durumu kontrol edilir.' }
+  if (type === 'TRENDYOL_ORDER_RECOVERY_SYNC') return { label: 'Tarama türü', value: 'Tam sipariş taraması', detail: 'Erişilebilen sipariş pencereleri taranarak eksik yerel kayıtlar tamamlanır.' }
+  if (type === 'TRENDYOL_ORDER_SYNC') return { label: 'Yapılan değişiklik', value: 'Sipariş senkronizasyonu', detail: 'Sipariş bilgileri pazaryerinden eşitlendi.' }
   if (type.includes('REFERENCE_SYNC')) return { label: 'Yapılan değişiklik', value: 'Referans verisi senkronizasyonu', detail: 'Kategori, marka veya özellik verileri güncellendi.' }
   if (type.includes('PRODUCT') || type.includes('CATALOG')) return { label: 'Yapılan değişiklik', value: 'Ürün senkronizasyonu', detail: 'Ürün bilgileri pazaryerine gönderildi.' }
   if (type.includes('INVOICE')) return { label: 'Yapılan değişiklik', value: 'Fatura işlemi', detail: 'Fatura isteği pazaryerine gönderildi.' }
