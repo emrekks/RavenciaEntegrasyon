@@ -540,12 +540,15 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
   const tooltipRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ left: 16, top: 16 })
+  const maxValueCount = Math.max(0, ...groups.map(group => group.values.length))
+  const tooltipSize = maxValueCount <= 3 ? 'is-compact' : maxValueCount <= 6 ? 'is-medium' : 'is-wide'
+  const tooltipWidth = maxValueCount <= 3 ? 280 : maxValueCount <= 6 ? 360 : 440
 
   function updatePosition() {
     const trigger = triggerRef.current?.getBoundingClientRect()
     const tooltip = tooltipRef.current?.getBoundingClientRect()
     if (!trigger) return
-    const width = tooltip?.width ?? Math.min(440, Math.max(220, window.innerWidth - 32))
+    const width = tooltip?.width ?? Math.min(tooltipWidth, Math.max(220, window.innerWidth - 32))
     const height = tooltip?.height ?? Math.max(48, groups.length * 30 + 16)
     const belowTop = trigger.bottom + 8
     const spaceBelow = window.innerHeight - belowTop - 12
@@ -581,7 +584,7 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
       <strong>{catalogCount} seçenek</strong><span>{count} varyant</span>
     </div>
     {open && createPortal(
-      <div ref={tooltipRef} className="product-variant-tooltip product-variant-tooltip-portal" role="tooltip" style={{ left: position.left, top: position.top }}>
+      <div ref={tooltipRef} className={`product-variant-tooltip product-variant-tooltip-portal ${tooltipSize}`} role="tooltip" style={{ left: position.left, top: position.top }}>
         {groups.map(group => <div className="product-variant-tooltip-row" key={group.label}><strong>{group.label}:</strong><span className="product-variant-values">{group.values.map(value => <span className={`product-variant-value ${value.quantity === 0 ? 'is-empty' : value.quantity < 5 ? 'is-low' : 'is-healthy'}`} key={value.label}><span>{value.label}</span><b>{value.quantity}</b></span>)}</span></div>)}
       </div>,
       document.body
