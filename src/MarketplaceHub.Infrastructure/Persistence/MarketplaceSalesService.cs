@@ -9,7 +9,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IOrderPort orders, IReturnPort returns, TimeProvider timeProvider) : IMarketplaceSalesService
+public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IOrderPort orders, IReturnPort returns, IPrivateFileStorage files, TimeProvider timeProvider) : IMarketplaceSalesService
 {
     public async Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, int page, string? after, OrderListQuery queryOptions, CancellationToken cancellationToken)
     {
@@ -714,7 +714,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // adapter already has explicit APPROVE/REJECT implementations, so the
         // UI must not hide those controls just because a production capability
         // evidence row was not recorded. The write policy is still enforced by
-        // EnqueueReturnActionAsync before any external job is created.
+        // ProcessReturnActionInstantAsync enforces the policy before any external
+        // request is made. Return decisions are intentionally not queued.
         var actions = claim.Status switch
         {
             ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit => ["RECEIVE"],
@@ -798,35 +799,128 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return await ReturnAsync(tenantId, claimId, cancellationToken);
     }
 
-    public async Task<ServiceResult<Guid>> EnqueueReturnActionAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, ReturnDecisionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<ReturnDetailView>> ProcessReturnActionInstantAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, ReturnDecisionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
-        var normalizedKey = idempotencyKey.Trim(); var prior = await db.ReturnDecisions.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == normalizedKey, cancellationToken); if (prior is not null) return ServiceResult<Guid>.Ok(prior.Id);
-        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")), cancellationToken); if (claim is null) return NotFound<Guid>(); if (claim.Version != expectedVersion) return Precondition<Guid>(claim.Version);
-        var action = command.Action.Trim().ToUpperInvariant(); if (action is not ("APPROVE" or "REJECT")) return Invalid<Guid>("action", "İade aksiyonu APPROVE veya REJECT olmalıdır.");
-        if (claim.Status != ReturnClaimStatus.ActionRequired) return ServiceResult<Guid>.Fail("RETURN_ACTION_NOT_ALLOWED", "İade aksiyonu yalnız ACTION_REQUIRED durumunda oluşturulabilir.", 409);
+        const string effectType = "TRENDYOL_INSTANT_RETURN_ACTION";
+        var normalizedKey = idempotencyKey.Trim();
+        var prior = await db.ReturnDecisions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == normalizedKey, cancellationToken);
+        if (prior is not null)
+        {
+            if (prior.ClaimId != claimId) return ServiceResult<ReturnDetailView>.Fail("IDEMPOTENCY_KEY_CONFLICT", "Bu Idempotency-Key başka bir iade için kullanılmış.", 409);
+            if (prior.Status is "SUCCEEDED" or "SUBMITTED") return await ReturnAsync(tenantId, claimId, cancellationToken);
+            if (prior.Status is "PENDING" or "MANUAL_REVIEW") return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade kararının sonucu henüz kesinleşmedi.", 409);
+            return ServiceResult<ReturnDetailView>.Fail(prior.ErrorCode ?? "RETURN_ACTION_FAILED", "Bu Idempotency-Key ile başlatılan iade kararı başarısız oldu; yeni bir anahtar ile tekrar deneyin.", 409);
+        }
+
+        var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")), cancellationToken);
+        if (claim is null) return NotFound<ReturnDetailView>();
+        if (claim.Version != expectedVersion) return Precondition<ReturnDetailView>(claim.Version);
+        var action = command.Action.Trim().ToUpperInvariant();
+        if (action is not ("APPROVE" or "REJECT")) return Invalid<ReturnDetailView>("action", "İade aksiyonu APPROVE veya REJECT olmalıdır.");
+        if (claim.Status != ReturnClaimStatus.ActionRequired) return ServiceResult<ReturnDetailView>.Fail("RETURN_ACTION_NOT_ALLOWED", "İade aksiyonu yalnız ACTION_REQUIRED durumunda kullanılabilir.", 409);
+
         var claimLineIds = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId).Select(x => x.Id).ToListAsync(cancellationToken);
-        if (claimLineIds.Count == 0) return Invalid<Guid>("returnLineIds", "İade işleminde en az bir ürün satırı bulunmalıdır.");
+        if (claimLineIds.Count == 0) return Invalid<ReturnDetailView>("returnLineIds", "İade işleminde en az bir ürün satırı bulunmalıdır.");
         var returnLineIds = command.ReturnLineIds?.Distinct().ToArray() ?? claimLineIds.ToArray();
-        if (returnLineIds.Length == 0 || returnLineIds.Except(claimLineIds).Any()) return Invalid<Guid>("returnLineIds", "İşlem yapılacak ürün satırları bu iadeye ait olmalıdır.");
+        if (returnLineIds.Length == 0 || returnLineIds.Except(claimLineIds).Any()) return Invalid<ReturnDetailView>("returnLineIds", "İşlem yapılacak ürün satırları bu iadeye ait olmalıdır.");
         var activeDecision = await db.ReturnDecisions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && (x.Status == "PENDING" || x.Status == "SUBMITTED" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW")).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-        if (activeDecision is not null) return ServiceResult<Guid>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade için tamamlanmamış bir karar zaten bulunuyor.", 409);
-        if (action == "REJECT" && (string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)) return Invalid<Guid>("explanation", "REJECT için reasonCode ve en fazla 500 karakter açıklama gerekir.");
+        if (activeDecision is not null) return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade için tamamlanmamış bir karar zaten bulunuyor.", 409);
+        if (action == "REJECT" && (string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)) return Invalid<ReturnDetailView>("explanation", "REJECT için reasonCode ve en fazla 500 karakter açıklama gerekir.");
         var evidenceOptional = command.ReasonCode is "1651" or "451" or "2101";
-        if (action == "REJECT" && !evidenceOptional && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)) return Invalid<Guid>("evidenceAssetIds", "Seçilen ret nedeni için en az bir kanıt dosyası gerekir.");
+        if (action == "REJECT" && !evidenceOptional && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)) return Invalid<ReturnDetailView>("evidenceAssetIds", "Seçilen ret nedeni için en az bir kanıt dosyası gerekir.");
+
         var stage = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken);
-        if (!stage && !await IsProductionConnection(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "İade aksiyonu yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
-        if (!stage && !await WritesEnabled(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
-        var writePolicy = await ExternalWritePolicyAsync(tenantId, claim.ConnectionId, MarketplaceExternalWritePolicies.Return, cancellationToken);
-        if (!writePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "İade dış yazma akışı kapalı.", 422);
-        var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, Action = action, ReasonCode = string.IsNullOrWhiteSpace(command.ReasonCode) ? null : command.ReasonCode.Trim(), Explanation = string.IsNullOrWhiteSpace(command.Explanation) ? null : command.Explanation.Trim(), IdempotencyKey = normalizedKey, Status = "PENDING", ActorUserId = userId, CreatedAt = timeProvider.GetUtcNow() }; db.ReturnDecisions.Add(decision);
+        if (!stage && !await IsProductionConnection(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("ENVIRONMENT_INVALID", "İade aksiyonu yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!stage && !await WritesEnabled(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (!await ExternalWritePolicyEnabledAsync(tenantId, claim.ConnectionId, MarketplaceExternalWritePolicies.Return, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "İade dış yazma akışı kapalı.", 422);
+
+        var now = timeProvider.GetUtcNow();
+        var decision = new ReturnDecision
+        {
+            Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, Action = action,
+            ReasonCode = string.IsNullOrWhiteSpace(command.ReasonCode) ? null : command.ReasonCode.Trim(),
+            Explanation = string.IsNullOrWhiteSpace(command.Explanation) ? null : command.Explanation.Trim(),
+            IdempotencyKey = normalizedKey, Status = "PENDING", ActorUserId = userId, CreatedAt = now
+        };
+        db.ReturnDecisions.Add(decision);
+
+        var evidenceFiles = new List<ReturnEvidenceFile>(); long totalBytes = 0;
         if (command.EvidenceAssetIds is not null) foreach (var assetId in command.EvidenceAssetIds.Distinct())
         {
             var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == assetId && x.ArchivedAt == null && x.Status == "ACTIVE", cancellationToken);
-            if (asset is null) return ServiceResult<Guid>.Fail("EVIDENCE_NOT_FOUND", "İade kanıt dosyası tenant private storage içinde bulunamadı.", 422);
-            if (asset.Classification != "RETURN_EVIDENCE" || asset.SizeBytes is <= 0 or > 10 * 1024 * 1024 || asset.MimeType is not ("application/pdf" or "image/jpeg" or "image/png")) return ServiceResult<Guid>.Fail("EVIDENCE_INVALID", "İade kanıtı PDF/JPEG/PNG ve en fazla 10 MiB olmalıdır.", 422);
-            db.ReturnEvidence.Add(new ReturnEvidence { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, DecisionId = decision.Id, FileAssetId = asset.Id, EvidenceKind = asset.Classification, Checksum = asset.Sha256, CreatedAt = timeProvider.GetUtcNow() });
+            if (asset is null) return ServiceResult<ReturnDetailView>.Fail("EVIDENCE_NOT_FOUND", "İade kanıt dosyası tenant private storage içinde bulunamadı.", 422);
+            if (asset.Classification != "RETURN_EVIDENCE" || asset.SizeBytes is <= 0 or > 10 * 1024 * 1024 || totalBytes + asset.SizeBytes > 25 * 1024 * 1024 || asset.MimeType is not ("application/pdf" or "image/jpeg" or "image/png")) return ServiceResult<ReturnDetailView>.Fail("EVIDENCE_INVALID", "İade kanıtları PDF/JPEG/PNG olmalı, dosya başına 10 MiB ve toplamda 25 MiB sınırını aşmamalıdır.", 422);
+            await using var source = await files.OpenReadAsync(tenantId, asset.RelativePath, cancellationToken);
+            await using var buffer = new MemoryStream();
+            await source.CopyToAsync(buffer, cancellationToken);
+            if (buffer.Length != asset.SizeBytes) return ServiceResult<ReturnDetailView>.Fail("RETURN_EVIDENCE_SIZE_MISMATCH", "İade kanıt dosyasının kayıtlı boyutu ile okunan içerik eşleşmedi.", 422);
+            var bytes = buffer.ToArray();
+            if (!string.Equals(Convert.ToHexString(SHA256.HashData(bytes)), asset.Sha256, StringComparison.OrdinalIgnoreCase)) return ServiceResult<ReturnDetailView>.Fail("RETURN_EVIDENCE_CHECKSUM_MISMATCH", "İade kanıt dosyasının checksum doğrulaması başarısız oldu.", 422);
+            db.ReturnEvidence.Add(new ReturnEvidence { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, DecisionId = decision.Id, FileAssetId = asset.Id, EvidenceKind = asset.Classification, Checksum = asset.Sha256, CreatedAt = now });
+            evidenceFiles.Add(new(asset.OriginalNameSafe ?? $"evidence-{asset.Id:N}", asset.MimeType, bytes));
+            totalBytes += bytes.LongLength;
         }
-        var now = timeProvider.GetUtcNow(); var job = NewJob(tenantId, claim.ConnectionId, MarketplaceJobTypes.ReturnAction, $"return-action:{normalizedKey}", JsonSerializer.Serialize(new { claimId, decisionId = decision.Id, returnLineIds }), correlationId); job.AvailableAt = now.AddSeconds(stage ? 0 : writePolicy.IntervalSeconds); job.CreatedAt = now; db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
+
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = now };
+        db.ExternalEffectRecords.Add(effect);
+        await db.SaveChangesAsync(cancellationToken);
+
+        var lineIds = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).OrderBy(x => x.Id).Select(x => x.ExternalLineId).ToListAsync(cancellationToken);
+        var context = new AdapterContext(tenantId, claim.ConnectionId, correlationId, normalizedKey, now.AddSeconds(30));
+        var result = await returns.ExecuteAsync(context, new(claim.ExternalClaimId, lineIds, action, decision.ReasonCode, decision.Explanation, evidenceFiles), cancellationToken);
+        if (!result.IsSuccess)
+        {
+            var error = result.Error;
+            decision.ErrorCode = error?.Code ?? "RETURN_ACTION_FAILED";
+            decision.ExternalOperationId ??= error?.RemoteRequestId;
+            decision.CompletedAt = timeProvider.GetUtcNow();
+            if (error is null || IsAmbiguous(error))
+            {
+                decision.Status = "MANUAL_REVIEW";
+                await db.SaveChangesAsync(cancellationToken);
+                return ServiceResult<ReturnDetailView>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", error?.SafeMessage ?? "Trendyol iade isteğine yanıt vermedi; tekrar gönderim engellendi.", 409);
+            }
+            db.ExternalEffectRecords.Remove(effect);
+            decision.Status = "FAILED";
+            await db.SaveChangesAsync(cancellationToken);
+            return ServiceResult<ReturnDetailView>.Fail(error.Code, error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
+        }
+
+        decision.Status = "SUBMITTED";
+        decision.ExternalOperationId = result.Value?.ExternalOperationId;
+        decision.ErrorCode = null;
+        effect.CompletedAt = timeProvider.GetUtcNow();
+        claim.Status = action == "APPROVE" ? ReturnClaimStatus.Approved : ReturnClaimStatus.Rejected;
+        claim.RawStatus = result.Value?.Status ?? (action == "APPROVE" ? "ACCEPTED" : "REJECTED");
+        claim.UpdatedAt = effect.CompletedAt.Value;
+        claim.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+
+        // The action itself is already complete. Read-back is best-effort and
+        // only refines the local status; it must not put the user action in a
+        // background queue or hide the provider response from the panel.
+        var readback = await returns.GetAsync(new AdapterContext(tenantId, claim.ConnectionId, correlationId, $"{normalizedKey}:readback", timeProvider.GetUtcNow().AddSeconds(30)), claim.ExternalClaimId, cancellationToken);
+        if (readback.IsSuccess && readback.Value is not null)
+        {
+            var remoteStatus = CanonicalReturn(readback.Value.RawStatus, readback.Value.CargoTrackingLink);
+            if (ReturnClaimStateMachine.CanTransition(claim.Status, remoteStatus)) claim.Status = remoteStatus;
+            claim.RawStatus = readback.Value.RawStatus;
+            claim.ReasonCode = readback.Value.ReasonCode;
+            claim.ReasonText = readback.Value.ReasonText;
+            claim.ActionDueAt = readback.Value.ActionDueAt;
+            claim.LastRemoteModifiedAt = readback.Value.LastModifiedAt;
+            claim.UpdatedAt = timeProvider.GetUtcNow();
+            claim.Version++;
+            var confirmed = action == "APPROVE" && remoteStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+                || action == "REJECT" && remoteStatus is ReturnClaimStatus.Rejected or ReturnClaimStatus.Disputed;
+            var conflicting = action == "APPROVE" && remoteStatus is ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled
+                || action == "REJECT" && remoteStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed;
+            if (confirmed) { decision.Status = "SUCCEEDED"; decision.CompletedAt = claim.UpdatedAt; }
+            else if (conflicting) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_ACTION_READBACK_CONFLICT"; decision.CompletedAt = claim.UpdatedAt; }
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        return await ReturnAsync(tenantId, claimId, cancellationToken);
     }
 
     public async Task<ServiceResult<ReturnDetailView>> ApplyDispositionAsync(Guid tenantId, Guid userId, Guid claimId, ReturnDispositionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -1269,6 +1363,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
     private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId, ShipmentPackageClassification.IsResend(x.CreatedBy, x.OriginExternalPackageId));
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
+    private static ReturnClaimStatus CanonicalReturn(string raw, string? cargoTrackingLink = null) => raw.ToUpperInvariant() switch { "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit, "CREATED" => ReturnClaimStatus.Requested, "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment, "WAITINGINCARGO" => ReturnClaimStatus.InTransit, "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit, "WAITINGINACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" => ReturnClaimStatus.Disputed, "COMPLETED" => ReturnClaimStatus.Completed, "CANCELLED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
     private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
