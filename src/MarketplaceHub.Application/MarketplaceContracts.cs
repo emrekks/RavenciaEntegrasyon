@@ -34,6 +34,12 @@ public static class MarketplaceJobTypes
     public const string StageTestOrder = "TRENDYOL_STAGE_TEST_ORDER";
 }
 
+public static class MarketplaceSyncPolicyRules
+{
+    public static bool RequiresExternalWrites(string? resourceType) => resourceType?.Trim().ToUpperInvariant() is
+        "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY";
+}
+
 public static class MarketplaceCapabilities
 {
     public const string ConnectionTest = "CONNECTION_TEST";
@@ -241,7 +247,8 @@ public sealed record SyncPolicyView(
     int LastRetryCount = 0,
     int LastRateLimitCount = 0,
     string RecoveryGapStatus = "UNKNOWN",
-    double? RecoveryGapDays = null);
+    double? RecoveryGapDays = null,
+    bool RequiresExternalWrites = false);
 public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);
 public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType, string? Username, string? Password, string? ApiKey);

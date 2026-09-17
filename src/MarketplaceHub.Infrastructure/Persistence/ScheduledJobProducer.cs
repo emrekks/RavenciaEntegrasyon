@@ -17,6 +17,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         var added = 0;
         await DisableProductAutomationAsync(cancellationToken);
         await EnsureDefaultPoliciesAsync(cancellationToken);
+        await DisableExternalWriteAutomationAsync(cancellationToken);
         var policies = (await (from policy in db.ConnectionSyncPolicies.AsNoTracking()
                                join connection in db.PlatformConnections.AsNoTracking()
                                    on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
@@ -48,8 +49,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var interval = Math.Clamp(row.Policy.IntervalSeconds, 30, 86_400);
             // Different scheduled job types can share one provider execution
             // lane (for example order sync and order reconciliation). Checking
-            // only the exact job type allowed those jobs to pile up behind the
-            // advisory lock and eventually exhaust retries with SYNC_LOCK_BUSY.
+            // the execution group keeps the queue coalesced before it reaches
+            // the worker's advisory lock.
             var activeJobTypes = await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id
                     && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
@@ -147,6 +148,47 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         }
 
         if (productPolicies.Count > 0 || scheduledProductJobs.Count > 0)
+            await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task DisableExternalWriteAutomationAsync(CancellationToken cancellationToken)
+    {
+        var connections = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.PlatformCode == "TRENDYOL")
+            .Select(x => new { x.TenantId, ConnectionId = x.Id, x.SettingsJson })
+            .ToListAsync(cancellationToken);
+        var blockedConnectionIds = connections
+            .Where(x => !WritesEnabled(x.SettingsJson))
+            .Select(x => new { x.TenantId, x.ConnectionId })
+            .ToList();
+        if (blockedConnectionIds.Count == 0) return;
+
+        var connectionIds = blockedConnectionIds.Select(x => x.ConnectionId).ToArray();
+        var policies = await db.ConnectionSyncPolicies
+            .Where(x => connectionIds.Contains(x.ConnectionId) && x.Enabled)
+            .ToListAsync(cancellationToken);
+        foreach (var policy in policies.Where(x => MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType)))
+        {
+            policy.Enabled = false;
+            policy.Version++;
+        }
+
+        var jobs = await db.IntegrationJobs
+            .Where(x => connectionIds.Contains(x.ConnectionId!.Value)
+                && (x.JobType == MarketplaceJobTypes.StockReconciliation
+                    || x.JobType == MarketplaceJobTypes.PriceInventorySync
+                    || x.JobType == MarketplaceJobTypes.StockProjectionDispatch)
+                && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled))
+            .ToListAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        foreach (var job in jobs)
+        {
+            job.Status = JobStatus.Cancelled;
+            job.CompletedAt = now;
+            job.Version++;
+        }
+
+        if (policies.Any(x => MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType)) || jobs.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -297,6 +339,17 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     };
 
     private int ConfigInt(string key, int fallback, int minimum, int maximum) => Math.Clamp(configuration.GetValue(key, fallback), minimum, maximum);
+
+    private bool WritesEnabled(string settingsJson)
+    {
+        if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(settingsJson);
+            return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
+    }
 
     private static bool IsExpectedDedupRace(DbUpdateException exception)
     {

@@ -918,8 +918,21 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private async Task<ServiceResult<Guid>> Enqueue(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId, CancellationToken cancellationToken)
     {
         var recurringRead = type is MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnStatusSync;
-        var active = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == type && (recurringRead ? x.JobDedupKey.StartsWith(dedup) : x.JobDedupKey == dedup) && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
+        var activeJobs = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+                && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
+            .Select(x => new { x.Id, x.JobType, x.JobDedupKey })
+            .ToListAsync(cancellationToken);
+        var active = activeJobs.FirstOrDefault(x => x.JobType == type && (recurringRead ? x.JobDedupKey.StartsWith(dedup, StringComparison.Ordinal) : x.JobDedupKey == dedup));
         if (active is not null) return ServiceResult<Guid>.Ok(active.Id);
+
+        // Manual sync buttons and scheduled policies use different dedup keys.
+        // Collapse them onto the same provider lane before a second job reaches
+        // the worker; otherwise the advisory lock turns a normal overlap into a
+        // visible SYNC_LOCK_BUSY retry storm.
+        var executionGroup = MarketplaceSyncExecutionLock.GroupFor(type);
+        var conflicting = activeJobs.FirstOrDefault(x => MarketplaceSyncExecutionLock.GroupFor(x.JobType) == executionGroup);
+        if (conflicting is not null) return ServiceResult<Guid>.Ok(conflicting.Id);
 
         var job = NewJob(tenantId, connectionId, type, recurringRead ? $"{dedup}:{timeProvider.GetUtcNow().ToUnixTimeMilliseconds()}" : dedup, payload, correlationId);
         db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);

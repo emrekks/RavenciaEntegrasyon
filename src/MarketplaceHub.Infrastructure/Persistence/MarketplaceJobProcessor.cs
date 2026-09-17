@@ -53,8 +53,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken);
         if (syncLock is null)
         {
-            var retryDelay = jobType == MarketplaceJobTypes.OrderSync ? TimeSpan.FromSeconds(15) : TimeSpan.FromMinutes(5);
-            return JobExecutionResult.Retry("SYNC_LOCK_BUSY", "Aynı Trendyol mağazası için aynı senkronizasyon akışı zaten çalışıyor.", retryDelay);
+            // The active job owns the same provider lane. This is expected
+            // coalescing, not a failed sync: retrying the duplicate only turns
+            // a normal overlap into a visible SYNC_LOCK_BUSY error storm.
+            return JobExecutionResult.Success();
         }
         await using (syncLock)
         {
@@ -2440,6 +2442,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         var normalized = NormalizeCatalogKey(remoteValueText, 320);
+        if (IsWebColorOptionKey(mapped.Remote.Name))
+        {
+            var localValues = await db.AttributeValues.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive)
+                .ToListAsync(cancellationToken);
+            foreach (var fallbackKey in CatalogColorMappingPolicy.FallbackKeys(remoteValueText))
+            {
+                var fallback = localValues.FirstOrDefault(value => NormalizeCatalogKey(value.Value, 320).Replace("-", "", StringComparison.Ordinal) == fallbackKey);
+                if (fallback is not null) return fallback;
+            }
+        }
         return db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized)
             ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized, cancellationToken);
     }
@@ -3008,10 +3021,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var order = 0;
         foreach (var pair in options)
         {
-            // Web Color is a marketplace presentation value. It must never
-            // become the local Renk option, even when the real Renk field is
-            // not mapped in the category workspace.
-            if (IsWebColorOptionKey(pair.Key))
+            // When the feed contains the real Renk slicer it wins over Web
+            // Color. If Web Color is the only color source, its saved mapping
+            // is used to populate the local Renk option.
+            if (IsWebColorOptionKey(pair.Key) && hasRealColorSource)
             {
                 order++;
                 continue;
@@ -3138,9 +3151,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var order = 0;
         var processedPanelOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var hasRealColorSource = options.Keys.Any(IsRealColorOptionKey);
         foreach (var pair in options.OrderBy(x => IsWebColorOptionKey(x.Key) ? 1 : 0).ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
         {
-            if (IsWebColorOptionKey(pair.Key)) continue;
+            if (IsWebColorOptionKey(pair.Key) && hasRealColorSource) continue;
             var optionKey = NormalizeCatalogKey(pair.Key, 160); var valueKey = NormalizeCatalogKey(pair.Value, 160);
             if (string.IsNullOrWhiteSpace(optionKey) || string.IsNullOrWhiteSpace(valueKey)) continue;
             LocalCategoryAttribute? mapped = null;
