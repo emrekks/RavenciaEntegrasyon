@@ -8153,8 +8153,8 @@ small,
 .app-shell.stitch-shell main .sync-policy-row {
   display: grid;
   width: 100%;
-  grid-template-columns: minmax(0, 1fr) minmax(126px, .9fr);
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: var(--rv-space-3);
   min-width: 0;
   padding: var(--rv-space-4);
@@ -8178,6 +8178,98 @@ small,
 .app-shell.stitch-shell main .sync-policy-row:focus-visible {
   outline: 2px solid var(--rv-color-primary);
   outline-offset: 2px;
+}
+
+.app-shell.stitch-shell main .sync-policy-card-trigger {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  color: var(--rv-color-ink);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-shell.stitch-shell main .sync-policy-card-trigger:focus-visible {
+  outline: 2px solid var(--rv-color-primary);
+  outline-offset: 4px;
+  border-radius: var(--rv-radius-sm);
+}
+
+.app-shell.stitch-shell main .sync-policy-card-trigger > strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.app-shell.stitch-shell main .sync-policy-card-switch {
+  position: relative;
+  display: inline-flex !important;
+  min-height: 30px;
+  align-items: center;
+  gap: var(--rv-space-2);
+  margin: 0;
+  padding: 0;
+  color: var(--rv-color-muted) !important;
+  font-size: var(--rv-font-size-xs);
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.app-shell.stitch-shell main .sync-policy-card-switch > input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.app-shell.stitch-shell main .sync-policy-card-switch > i {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+  flex: 0 0 42px;
+  background: var(--rv-color-border-strong);
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: 999px;
+  transition: background var(--rv-duration-fast) var(--rv-ease-standard), border-color var(--rv-duration-fast) var(--rv-ease-standard);
+}
+
+.app-shell.stitch-shell main .sync-policy-card-switch > i::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: var(--rv-color-surface-raised);
+  border-radius: 50%;
+  content: "";
+  transition: transform var(--rv-duration-fast) var(--rv-ease-standard);
+}
+
+.app-shell.stitch-shell main .sync-policy-card-switch > input:checked + i {
+  background: var(--rv-color-accent);
+  border-color: var(--rv-color-accent);
+}
+
+.app-shell.stitch-shell main .sync-policy-card-switch > input:checked + i::after {
+  transform: translateX(18px);
+}
+
+.app-shell.stitch-shell main .sync-policy-card-switch:focus-within {
+  outline: 2px solid var(--rv-color-primary);
+  outline-offset: 3px;
+  border-radius: 999px;
+}
+
+.app-shell.stitch-shell main .sync-policy-card-switch:has(> input:disabled) {
+  cursor: not-allowed;
+  opacity: .7;
 }
 
 .app-shell.stitch-shell main .sync-policy-row.is-disabled .sync-policy-meta {
