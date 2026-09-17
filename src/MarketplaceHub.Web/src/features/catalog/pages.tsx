@@ -22,7 +22,7 @@ type Variant = Versioned & {
 }
 type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
-  variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null; familyMediaUrls?: string[]
+  categoryPath?: string | null; variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null; familyMediaUrls?: string[]
   platformStatuses?: Array<{ platform: string; status: string }>
   attributes?: Array<{ attributeId: string; valueId: string | null; textValue: string | null; numberValue: number | null; booleanValue: boolean | null; sortOrder: number }>
   options?: Array<{ id: string; label: string; values: Array<{ id: string; label: string }> }>
@@ -609,6 +609,10 @@ function lowStockProductColor(product: Product) {
   return 'Renk belirtilmemiş'
 }
 
+function productCategoryLabel(product: Product) {
+  return product.categoryPath?.trim() || 'Kategori belirtilmemiş'
+}
+
 function lowStockVariantLabel(variant: Variant) {
   const options = variantOptionEntries(variant)
     .sort((left, right) => left.name.localeCompare(right.name, 'tr', { sensitivity: 'base' }) || left.value.localeCompare(right.value, 'tr', { numeric: true, sensitivity: 'base' }))
@@ -630,33 +634,34 @@ function lowStockMissingVariantCount(group: ProductGroup) {
 function LowStockDetailsModal({ products, loading, error, onClose, onImageClick }: { products: Product[]; loading: boolean; error: unknown; onClose: () => void; onImageClick: (url: string, title: string) => void }) {
   const groups = useMemo(() => productRowsAsCards(products), [products])
   const [search, setSearch] = useState('')
-  const [colorFilter, setColorFilter] = useState<'ALL' | 'SINGLE' | 'MULTI'>('ALL')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [sort, setSort] = useState<'MODEL_ASC' | 'MODEL_DESC' | 'MISSING_DESC' | 'MISSING_ASC'>('MODEL_ASC')
+  const categoryOptions = useMemo(() => [...new Set(products.map(productCategoryLabel))].sort((left, right) => left.localeCompare(right, 'tr', { sensitivity: 'base' })), [products])
   const filteredGroups = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('tr-TR')
     return groups.flatMap(group => {
       const modelCode = lowStockModelCode(group)
-      const groupText = [modelCode, ...group.products.flatMap(product => [product.title, lowStockProductColor(product), ...product.variants.map(lowStockVariantLabel)])]
+      const groupText = [modelCode, ...group.products.flatMap(product => [product.title, productCategoryLabel(product), lowStockProductColor(product), ...product.variants.map(lowStockVariantLabel)])]
         .join(' ')
         .toLocaleLowerCase('tr-TR')
       if (query && !groupText.includes(query)) return []
-      if (colorFilter === 'SINGLE' && group.products.length !== 1) return []
-      if (colorFilter === 'MULTI' && group.products.length < 2) return []
+      if (categoryFilter && !group.products.some(product => productCategoryLabel(product) === categoryFilter)) return []
       const matchingProducts = query
-        ? group.products.filter(product => [product.title, lowStockProductColor(product), ...product.variants.map(lowStockVariantLabel)].join(' ').toLocaleLowerCase('tr-TR').includes(query))
+        ? group.products.filter(product => [product.title, productCategoryLabel(product), lowStockProductColor(product), ...product.variants.map(lowStockVariantLabel)].join(' ').toLocaleLowerCase('tr-TR').includes(query))
         : []
-      const visibleProducts = matchingProducts.length > 0 ? matchingProducts : group.products
+      const categoryProducts = categoryFilter ? group.products.filter(product => productCategoryLabel(product) === categoryFilter) : group.products
+      const visibleProducts = matchingProducts.length > 0 ? matchingProducts.filter(product => categoryProducts.includes(product)) : categoryProducts
       const visibleVariants = matchingProducts.length > 0
-        ? group.variants.filter(item => matchingProducts.includes(item.product))
-        : group.variants
+        ? group.variants.filter(item => matchingProducts.includes(item.product) && categoryProducts.includes(item.product))
+        : group.variants.filter(item => categoryProducts.includes(item.product))
       return [{ ...group, products: visibleProducts, variants: visibleVariants }]
-    }).sort((left, right) => {
+    }).filter(group => group.products.length > 0).sort((left, right) => {
       if (sort === 'MODEL_DESC') return lowStockModelCode(right).localeCompare(lowStockModelCode(left), 'tr', { numeric: true, sensitivity: 'base' })
       if (sort === 'MISSING_DESC') return lowStockMissingVariantCount(right) - lowStockMissingVariantCount(left) || lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
       if (sort === 'MISSING_ASC') return lowStockMissingVariantCount(left) - lowStockMissingVariantCount(right) || lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
       return lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
     })
-  }, [colorFilter, groups, search, sort])
+  }, [categoryFilter, groups, search, sort])
   const lowVariantCount = filteredGroups.reduce((sum, group) => sum + lowStockMissingVariantCount(group), 0)
   const catalogRecordCount = filteredGroups.reduce((sum, group) => sum + group.products.length, 0)
 
@@ -673,7 +678,7 @@ function LowStockDetailsModal({ products, loading, error, onClose, onImageClick 
         {!loading && !error && groups.length > 0 && <>
           <div className="low-stock-details-tools">
             <label><span>Arama</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Model kodu, ürün veya renk ara…" /></label>
-            <label><span>Renk sayısı</span><select value={colorFilter} onChange={event => setColorFilter(event.target.value as typeof colorFilter)}><option value="ALL">Tüm modeller</option><option value="SINGLE">Tek renkli</option><option value="MULTI">Çok renkli</option></select></label>
+            <label><span>Kategori</span><select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}><option value="">Tüm kategoriler</option>{categoryOptions.map(category => <option key={category} value={category}>{category}</option>)}</select></label>
             <label><span>Sıralama</span><select value={sort} onChange={event => setSort(event.target.value as typeof sort)}><option value="MODEL_ASC">Model kodu (A-Z)</option><option value="MODEL_DESC">Model kodu (Z-A)</option><option value="MISSING_DESC">Eksik varyant (çoktan aza)</option><option value="MISSING_ASC">Eksik varyant (azdan çoğa)</option></select></label>
           </div>
           <div className="low-stock-details-summary"><strong>{filteredGroups.length} model</strong><span>{catalogRecordCount} katalog kaydı · {lowVariantCount} eksik varyant</span></div>

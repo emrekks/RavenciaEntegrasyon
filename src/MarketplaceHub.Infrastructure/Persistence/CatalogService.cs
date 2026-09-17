@@ -1103,6 +1103,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var globalMediaUrlsByProduct = media.Where(x => x.VariantId is null)
             .GroupBy(x => x.ProductId)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(MediaUrl).Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+        var categoryIds = products.Select(x => x.CategoryId).OfType<Guid>().Distinct().ToArray();
+        var categoryPathById = categoryIds.Length == 0
+            ? new Dictionary<Guid, string>()
+            : await db.Categories.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && categoryIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, x => x.Path, cancellationToken);
         var inventoryByVariant = inventories.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
         var offerByVariant = offers.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
         return products.Select(product =>
@@ -1136,7 +1142,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var options = productOptions.Where(x => x.ProductId == product.Id)
                 .Select(option => new ProductOptionView(option.Id, option.Label, optionValues.Where(value => value.OptionId == option.Id).Select(value => new ProductOptionValueView(value.Id, value.Label)).ToList()))
                 .ToList();
-            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), prices.Count > 0 ? prices.Min() : null, currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id)), null, platformStatuses);
+            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), prices.Count > 0 ? prices.Min() : null, currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id)), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null);
         }).ToList();
 
         static string MediaUrl(dynamic item) => item.Classification == "PRODUCT_MEDIA_URL" ? item.Url : $"/api/v1/files/product-media/{item.Id:D}/content";
