@@ -1522,7 +1522,7 @@
   .variant-table-toolbar { margin-bottom: var(--rv-space-3); padding: var(--rv-space-3) 0; border-top: 1px solid var(--rv-color-border); border-bottom: 1px solid var(--rv-color-border); }
   .variant-table-toolbar-actions { display: flex; flex-wrap: wrap; gap: var(--rv-space-2); }
   .variant-table-editor { overflow-x: auto; padding: 0; }
-  .variant-table-head, .variant-table-row { display: grid; grid-template-columns: 54px minmax(180px, 1.35fr) minmax(145px, 1fr) minmax(145px, 1fr) 90px 110px 110px 94px 70px; min-width: 1110px; align-items: center; }
+  .variant-table-head, .variant-table-row { display: grid; grid-template-columns: 54px minmax(180px, 1.35fr) minmax(145px, 1fr) minmax(145px, 1fr) 90px 110px 110px 110px 94px 70px; min-width: 1220px; align-items: center; }
   .variant-table-head { min-height: 46px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); font-size: var(--rv-font-size-xs); font-weight: 800; text-transform: uppercase; }
   .variant-table-head > span:first-child { text-align: center; }
   .variant-table-head > *, .variant-table-row > * { min-width: 0; margin: 0; padding: var(--rv-space-2); }
@@ -2441,7 +2441,7 @@
   .product-list-actions a, .product-list-actions button { width: 34px; height: 34px; min-height: 34px; }
   .product-list-actions > a, .product-list-actions > button { flex-basis: 34px; }
   .product-list-actions .product-action-icon { width: 16px; height: 16px; }
-  .variant-table-head, .variant-table-row { min-width: 0; grid-template-columns: 42px minmax(150px, 1.2fr) minmax(118px, .9fr) minmax(118px, .9fr) 68px 82px 82px 72px 58px; }
+  .variant-table-head, .variant-table-row { min-width: 0; grid-template-columns: 42px minmax(150px, 1.2fr) minmax(118px, .9fr) minmax(118px, .9fr) 68px 82px 82px 82px 72px 58px; }
   .variant-table-head > *, .variant-table-row > * { padding-inline: 6px; }
   .order-reference-head, .order-reference-grid { min-width: 0; grid-template-columns: 32px minmax(145px, .9fr) minmax(90px, .55fr) minmax(220px, 1.4fr) minmax(92px, .55fr) minmax(115px, .65fr) minmax(130px, .76fr) minmax(138px, .78fr); }
   .order-reference-products > article { grid-template-columns: 68px minmax(0, 1fr); }
