@@ -8569,7 +8569,9 @@ small,
    filter's two internal pieces need their own small layout. */
 .app-shell.stitch-shell main .order-reference-table > .order-reference-head {
   display: grid;
-  top: var(--rv-topbar-height);
+  /* The top bar is part of the document flow, so the order header can pin
+     directly to the viewport edge while the rows continue below it. */
+  top: 0;
 }
 
 .app-shell.stitch-shell main .order-reference-table > .order-reference-head > strong {
