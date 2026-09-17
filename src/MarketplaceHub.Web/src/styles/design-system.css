@@ -2317,7 +2317,7 @@
   .web-color-panel-value-picker-head { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); }
   .web-color-panel-value-picker-head > span { color: var(--rv-color-primary); font-size: var(--rv-font-size-sm); font-weight: 800; }
   .web-color-panel-value-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--rv-space-2); }
-  .web-color-panel-value { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(18px, auto) minmax(14px, auto); align-items: center; align-content: center; gap: var(--rv-space-2); min-width: 0; min-height: 56px; box-sizing: border-box; padding: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }
+  .web-color-panel-value { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(18px, auto) minmax(14px, auto); align-items: center; align-content: center; gap: var(--rv-space-2); min-width: 0; height: 68px; min-height: 68px; box-sizing: border-box; padding: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }
   .web-color-panel-value.selected { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
   .web-color-panel-value > span { min-width: 0; overflow-wrap: anywhere; font-size: var(--rv-font-size-sm); font-weight: 700; }
   .web-color-panel-value small { grid-column: 2; min-width: 0; overflow-wrap: anywhere; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
