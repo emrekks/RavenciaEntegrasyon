@@ -6556,6 +6556,26 @@ small,
   padding-block: 10px;
 }
 
+.app-shell.stitch-shell main .variant-filter-select-trigger {
+  position: relative;
+  height: 55px;
+  min-height: 55px;
+  align-items: center;
+  justify-content: center;
+  padding-block: 6px;
+  text-align: center;
+}
+
+.app-shell.stitch-shell main .variant-filter-select-trigger > span {
+  justify-items: center;
+  text-align: center;
+}
+
+.app-shell.stitch-shell main .variant-filter-select-trigger > .ui-icon {
+  position: absolute;
+  right: var(--rv-space-3);
+}
+
 .app-shell.stitch-shell main .shipping-settings-check,
 .rv-auth-control {
   min-height: var(--rv-control-height-md);
