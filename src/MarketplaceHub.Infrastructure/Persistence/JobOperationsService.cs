@@ -465,7 +465,11 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     private static JobChangeView? Change(IntegrationJob job)
     {
         var type = job.JobType.ToUpperInvariant();
-        if (type.Contains("ORDER_SYNC", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Sipariş senkronizasyonu", "Sipariş bilgileri pazaryerinden eşitlendi.");
+        if (type == MarketplaceJobTypes.OrderStatusSync) return new("Tarama türü", "Sipariş durum taraması", "Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel durum güncellendi.");
+        if (type == MarketplaceJobTypes.OrderReconciliation) return new("Tarama türü", "Kapsamlı sipariş taraması", "Yerel siparişler ile pazaryeri kayıtları karşılaştırıldı; durum ve paket farklılıkları düzeltildi.");
+        if (type == MarketplaceJobTypes.OrderInvoiceReconciliation) return new("Tarama türü", "Paket fatura taraması", "Teslim edilmiş ve açık paketlerin pazaryeri fatura durumu kontrol edildi.");
+        if (type == MarketplaceJobTypes.OrderRecoverySync) return new("Tarama türü", "Tam sipariş taraması", "Erişilebilen sipariş pencereleri taranarak eksik yerel kayıtlar tamamlandı.");
+        if (type == MarketplaceJobTypes.OrderSync) return new("Yapılan değişiklik", "Sipariş senkronizasyonu", "Sipariş bilgileri pazaryerinden eşitlendi.");
         if (type.Contains("REFERENCE_SYNC", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Referans verisi senkronizasyonu", "Kategori, marka veya özellik verileri güncellendi.");
         if (type.Contains("PRODUCT", StringComparison.Ordinal) || type.Contains("CATALOG", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Ürün senkronizasyonu", "Ürün bilgileri pazaryerine gönderildi.");
         if (type.Contains("INVOICE", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Fatura işlemi", "Fatura isteği pazaryerine gönderildi.");
