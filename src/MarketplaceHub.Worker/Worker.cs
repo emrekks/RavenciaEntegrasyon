@@ -9,12 +9,39 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private readonly string healthFile = configuration["Worker:HealthFile"] ?? "/tmp/marketplacehub-worker-heartbeat";
     private readonly TimeSpan schedulerScanInterval = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:SchedulerScanSeconds", 5), 1, 30));
     private readonly int hotPriorityCeiling = Math.Clamp(configuration.GetValue("Worker:HotPriorityCeiling", 2), 0, 5);
+    private readonly TimeSpan healthStaleAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:HealthStaleAfterSeconds", 120), 30, 900));
+    private long lastDatabaseContactUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await RecoverAtStartupAsync(stoppingToken);
         await Task.WhenAll(
             RunSchedulerAsync(stoppingToken),
             RunLeaseLaneAsync("hot", hotPriorityCeiling, null, stoppingToken),
-            RunLeaseLaneAsync("background", null, hotPriorityCeiling + 1, stoppingToken));
+            RunLeaseLaneAsync("background", null, hotPriorityCeiling + 1, stoppingToken),
+            RunHealthWatchdogAsync(stoppingToken));
+    }
+
+    private async Task RecoverAtStartupAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
+            var reaped = await jobs.ReapExpiredAsync(cancellationToken);
+            var producer = scope.ServiceProvider.GetRequiredService<IScheduledJobProducer>();
+            var scheduled = await producer.EnqueueDueAsync(cancellationToken);
+            TouchHealthFile();
+            logger.LogInformation("Worker startup recovery completed; reaped {ReapedJobs} expired jobs and enqueued {ScheduledJobs} due jobs", reaped, scheduled);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            // The normal loops will retry the database recovery. The watchdog
+            // keeps this process restartable if the database never becomes
+            // reachable instead of leaving a half-alive worker behind.
+            logger.LogError(exception, "Worker startup recovery failed; normal recovery loops will retry");
+        }
     }
 
     private async Task RunSchedulerAsync(CancellationToken stoppingToken)
@@ -168,6 +195,21 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         return true;
     }
 
+    private async Task RunHealthWatchdogAsync(CancellationToken cancellationToken)
+    {
+        var interval = TimeSpan.FromSeconds(Math.Clamp(healthStaleAfter.TotalSeconds / 3, 10, 30));
+        using var timer = new PeriodicTimer(interval);
+        while (await timer.WaitForNextTickAsync(cancellationToken))
+        {
+            var lastContact = DateTimeOffset.FromUnixTimeMilliseconds(Interlocked.Read(ref lastDatabaseContactUnixMilliseconds));
+            var age = DateTimeOffset.UtcNow - lastContact;
+            if (age <= healthStaleAfter) continue;
+
+            logger.LogCritical("Worker database heartbeat is stale for {AgeSeconds} seconds; stopping so the container can restart", Math.Round(age.TotalSeconds));
+            throw new InvalidOperationException("Worker database heartbeat became stale.");
+        }
+    }
+
     private static async Task<JobExecutionResult> DispatchAsync(IServiceProvider services, LeasedJob job, CancellationToken cancellationToken)
     {
         if (job.JobType is "IMPORT_PREVIEW" or "IMPORT_APPLY")
@@ -210,6 +252,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             var directory = Path.GetDirectoryName(healthFile);
             if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
             File.WriteAllText(healthFile, DateTimeOffset.UtcNow.ToString("O"));
+            Interlocked.Exchange(ref lastDatabaseContactUnixMilliseconds, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         }
         catch (Exception exception)
         {

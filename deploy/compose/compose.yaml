@@ -23,6 +23,7 @@ x-app: &app
     TrendyolEFaturam__DocumentAllowedHosts__0: ${MARKETPLACEHUB_EFATURAM_DOCUMENT_HOST:-}
     TrendyolEFaturam__OutgoingInvoiceStatusPath: ${MARKETPLACEHUB_EFATURAM_EINVOICE_STATUS_PATH:-}
     Worker__HealthFile: /tmp/marketplacehub-worker-heartbeat
+    Worker__HealthStaleAfterSeconds: "120"
     Storage__Root: /var/lib/marketplacehub/files
     DataProtection__KeysRoot: /var/lib/marketplacehub/dp-keys
   secrets:
