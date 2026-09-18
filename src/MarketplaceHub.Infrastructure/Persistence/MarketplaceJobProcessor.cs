@@ -1678,7 +1678,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             : newOnly
                 ? "Ekli olmayan ürünler taranıyor"
                 : existingOnly
-                    ? "Ekli model kodları güncelleniyor"
+                    ? isShopify ? "Ekli barkodlar güncelleniyor" : "Ekli model kodları güncelleniyor"
                     : "Yeni ve değişen ürünler taranıyor";
         var archiveLabel = includeArchived ? " · Arşiv ürünleri dahil" : " · Arşiv ürünleri hariç";
         var draftLabel = includeDrafts ? " · Taslak ürünleri dahil" : " · Taslak ürünleri hariç";
@@ -1702,9 +1702,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             : null;
         var existingModelCodes = existingOnly
             ? (await db.ProductVariants.AsNoTracking()
-                    .Where(x => x.TenantId == tenantId && x.ModelCode != null)
-                    .Select(x => x.ModelCode)
+                    .Where(x => x.TenantId == tenantId && (x.ModelCode != null || isShopify && x.BarcodeNormalized != null))
+                    .Select(x => new { x.ModelCode, x.BarcodeNormalized })
                     .ToListAsync(cancellationToken))
+                .SelectMany(value => new[] { value.ModelCode, isShopify ? value.BarcodeNormalized : null })
                 .Select(modelCode => NormalizeCatalogKey(modelCode, 160))
                 .Where(modelCode => !string.IsNullOrWhiteSpace(modelCode))
                 .ToHashSet(StringComparer.Ordinal)
@@ -1831,7 +1832,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         if (jobId is { } orderingJob)
-            await UpdateProductSyncProgressAsync(tenantId, orderingJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "model sırası hazır; aktarım başlıyor", receivedProducts), cancellationToken);
+            await UpdateProductSyncProgressAsync(tenantId, orderingJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "ürün sırası hazır; aktarım başlıyor", receivedProducts), cancellationToken);
 
         var productSaveBatchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:Products:ImportSaveBatchSize", 10), 1, 50);
         var importedModelCount = 0;
@@ -1847,7 +1848,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     var hasNewVariant = existingVariantExternalIds is not null
                         && snapshot.Variants.Any(variant => !existingVariantExternalIds.Contains(Short(variant.ExternalVariantId, 256)));
                     var matchesExistingModelCode = existingModelCodes is not null
-                        && snapshot.Variants.Any(variant => existingModelCodes.Contains(NormalizeCatalogKey(variant.ModelCode, 160)));
+                        && snapshot.Variants.Any(variant => existingModelCodes.Contains(NormalizeCatalogKey(variant.ModelCode ?? variant.Barcode, 160)));
                     if (newOnly && productAlreadyLinked && !hasNewVariant)
                     {
                         telemetryImportSkippedCount++;
@@ -2734,28 +2735,40 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         Product? product = link is null
             ? null
             : await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == link.ProductId, cancellationToken);
-        if (product is null && observeOnly && !string.IsNullOrWhiteSpace(snapshot.ProductMainId))
+        if (product is null && observeOnly)
         {
-            var modelCode = snapshot.ProductMainId.Trim();
-            var normalizedModelCode = modelCode.ToUpperInvariant();
-            var modelCodeProductIds = await db.ProductVariants.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.ModelCode != null && x.ModelCode.ToUpper() == normalizedModelCode)
-                .Select(x => x.ProductId)
-                .Distinct()
-                .Take(2)
-                .ToListAsync(cancellationToken);
-            if (modelCodeProductIds.Count > 1)
+            // Shopify has no model-code field. Match an unlinked snapshot by
+            // barcode so the first read can reuse an existing local variant.
+            var identityCodes = (string.IsNullOrWhiteSpace(snapshot.ProductMainId)
+                    ? snapshot.Variants.Select(variant => variant.ModelCode ?? variant.Barcode)
+                    : new[] { snapshot.ProductMainId })
+                .Select(value => NormalizeCatalogKey(value, 160))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!)
+                .ToHashSet(StringComparer.Ordinal);
+            if (identityCodes.Count > 0)
             {
-                await RecordIssue(tenantId, $"product-sync-model-code-conflict:{connectionId}:{NormalizeCatalogKey(modelCode, 160)}", "PRODUCT_MODEL_CODE_CONFLICT", $"Shopify model kodu '{Short(modelCode, 160)}' birden fazla yerel üründe bulundu; otomatik eşleştirme yapılmadı.", cancellationToken);
-                return false;
-            }
-            if (modelCodeProductIds.Count == 1)
-            {
-                product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == modelCodeProductIds[0], cancellationToken);
-                if (product is not null && await db.MarketplaceProductLinks.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == product.Id && x.ExternalId != externalProductId, cancellationToken))
+                var identityProductIds = await db.ProductVariants.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId
+                        && ((x.ModelCode != null && identityCodes.Contains(x.ModelCode.ToUpper()))
+                            || (x.BarcodeNormalized != null && identityCodes.Contains(x.BarcodeNormalized))))
+                    .Select(x => x.ProductId)
+                    .Distinct()
+                    .Take(2)
+                    .ToListAsync(cancellationToken);
+                if (identityProductIds.Count > 1)
                 {
-                    await RecordIssue(tenantId, $"product-sync-link-conflict:{connectionId}:{externalProductId}", "PRODUCT_LINK_CONFLICT", "Shopify ürünü aynı bağlantıda başka bir dış ürünle eşleşmiş yerel ürüne bağlanmadı.", cancellationToken);
+                    await RecordIssue(tenantId, $"product-sync-barcode-conflict:{connectionId}:{identityCodes.First()}", "PRODUCT_BARCODE_CONFLICT", "Shopify barkodu birden fazla yerel üründe bulundu; otomatik eşleştirme yapılmadı.", cancellationToken);
                     return false;
+                }
+                if (identityProductIds.Count == 1)
+                {
+                    product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == identityProductIds[0], cancellationToken);
+                    if (product is not null && await db.MarketplaceProductLinks.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == product.Id && x.ExternalId != externalProductId, cancellationToken))
+                    {
+                        await RecordIssue(tenantId, $"product-sync-link-conflict:{connectionId}:{externalProductId}", "PRODUCT_LINK_CONFLICT", "Shopify ürünü aynı bağlantıda başka bir dış ürünle eşleşmiş yerel ürüne bağlanmadı.", cancellationToken);
+                        return false;
+                    }
                 }
             }
         }
@@ -3136,6 +3149,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (!observeOnly && (variant.SortOrder != sortOrder || variant.Sku != sku || variant.SkuNormalized != skuNormalized || variant.Barcode != barcode || variant.BarcodeNormalized != barcodeNormalized || variant.ModelCode != nextModelCode || variant.OptionSignature != optionSignature || variant.Status != nextStatus))
             {
                 variant.SortOrder = sortOrder; variant.Sku = sku; variant.SkuNormalized = skuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = barcodeNormalized; variant.ModelCode = nextModelCode; variant.OptionSignature = optionSignature; variant.Status = nextStatus; variant.UpdatedAt = now; variant.Version++;
+                telemetryUpdatedCount++;
+            }
+            else if (observeOnly && preferBarcode && variant.ModelCode != nextModelCode)
+            {
+                // Shopify uses the barcode as the local model-code value. Keep
+                // SKU and barcode as separate fields, while repairing older
+                // Shopify imports that still contain the removed metafield.
+                variant.ModelCode = nextModelCode;
+                variant.UpdatedAt = now;
+                variant.Version++;
                 telemetryUpdatedCount++;
             }
         }

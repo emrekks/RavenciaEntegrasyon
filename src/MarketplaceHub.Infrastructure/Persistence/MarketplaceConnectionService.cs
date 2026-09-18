@@ -58,10 +58,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var externalStoreId = platform == "SHOPIFY" ? NormalizeShopifyStore(command.ExternalStoreId) : command.ExternalStoreId.Trim();
         if (platform == "SHOPIFY" && externalStoreId is null) return Invalid<ConnectionView>("externalStoreId", "Shopify mağaza adı kısa ad veya myshopify.com adresi olarak girilmelidir.");
         if (platform == "SHOPIFY" && string.IsNullOrWhiteSpace(command.ShopifyAccessToken)) return Invalid<ConnectionView>("shopifyAccessToken", "Shopify uygulama tokenı zorunludur.");
-        var shopifyModelCodeMetafield = platform == "SHOPIFY"
-            ? NormalizeShopifyModelCodeMetafield(command.ShopifyModelCodeMetafield)
-            : null;
-        if (platform == "SHOPIFY" && shopifyModelCodeMetafield is null) return Invalid<ConnectionView>("shopifyModelCodeMetafield", "Shopify model kodu alanı namespace.key biçiminde olmalıdır; varsayılan ravencia.model_code kullanılabilir.");
         if (await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Status != "DELETED" && x.PlatformCode == platform && x.Environment == environment && x.ExternalStoreId == externalStoreId, cancellationToken)) return ServiceResult<ConnectionView>.Fail("CONNECTION_ALREADY_EXISTS", "Bu platform kapsamı ve environment için bağlantı zaten var.", 409);
 
         var now = timeProvider.GetUtcNow(); var connection = new PlatformConnection
@@ -75,7 +71,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             ExternalStoreId = externalStoreId!,
             ApiVersion = platform == "TRENDYOL" ? "V2" : platform == "SHOPIFY" ? "2026-07" : "1.0.0",
             Status = "DRAFT",
-            SettingsJson = platform == "TRENDYOL" ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false)) : platform == "SHOPIFY" ? JsonSerializer.Serialize(new ShopifyConnectionSettings(false, shopifyModelCodeMetafield!)) : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(false)),
+            SettingsJson = platform == "TRENDYOL" ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false)) : platform == "SHOPIFY" ? JsonSerializer.Serialize(new ShopifyConnectionSettings(false)) : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(false)),
             Version = 1
         };
         db.PlatformConnections.Add(connection);
@@ -134,13 +130,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             : command.ExternalStoreId?.Trim();
         if (connection.PlatformCode == "SHOPIFY" && command.ExternalStoreId is not null && requestedStoreId is null) return Invalid<ConnectionView>("externalStoreId", "Shopify mağaza adı kısa ad veya myshopify.com adresi olarak girilmelidir.");
         var currentSettings = connection.PlatformCode == "TRENDYOL" ? ReadSettings(connection) : null;
-        var currentShopifySettings = connection.PlatformCode == "SHOPIFY" ? ReadShopifySettings(connection) : null;
-        var requestedShopifyModelCodeMetafield = connection.PlatformCode == "SHOPIFY"
-            ? command.ShopifyModelCodeMetafield is null
-                ? currentShopifySettings?.ModelCodeMetafield ?? ShopifyModelCodeMetafieldDefault
-                : NormalizeShopifyModelCodeMetafield(command.ShopifyModelCodeMetafield)
-            : null;
-        if (connection.PlatformCode == "SHOPIFY" && requestedShopifyModelCodeMetafield is null) return Invalid<ConnectionView>("shopifyModelCodeMetafield", "Shopify model kodu alanı namespace.key biçiminde olmalıdır; varsayılan ravencia.model_code kullanılabilir.");
         var requestedUserAgent = string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? null : command.UserAgentIdentity.Trim();
         var requestedExternalWrites = currentSettings is not null
             && configuration.GetValue<bool>("FeatureFlags:ExternalWrites")
@@ -158,9 +147,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var environmentChanged = requestedEnvironment is not null && !string.Equals(connection.Environment, requestedEnvironment, StringComparison.OrdinalIgnoreCase);
         var storeScopeChanged = requestedStoreId is not null && !string.Equals(connection.ExternalStoreId, requestedStoreId, StringComparison.Ordinal);
         var userAgentChanged = currentSettings is not null && requestedUserAgent is not null && !string.Equals(currentSettings.UserAgentIdentity, requestedUserAgent, StringComparison.Ordinal);
-        var modelCodeMetafieldChanged = connection.PlatformCode == "SHOPIFY"
-            && !string.Equals(currentShopifySettings?.ModelCodeMetafield ?? ShopifyModelCodeMetafieldDefault, requestedShopifyModelCodeMetafield, StringComparison.Ordinal);
-
         connection.DisplayName = command.DisplayName.Trim();
         if (requestedEnvironment is not null) connection.Environment = requestedEnvironment;
         if (requestedStoreId is not null) connection.ExternalStoreId = requestedStoreId;
@@ -172,9 +158,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         else if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else
-            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, requestedShopifyModelCodeMetafield!));
+            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false));
 
-        if (environmentChanged || storeScopeChanged || userAgentChanged || modelCodeMetafieldChanged)
+        if (environmentChanged || storeScopeChanged || userAgentChanged)
         {
             connection.LastTestedAt = null;
             connection.LastSuccessAt = null;
@@ -189,7 +175,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 capability.SourceVersion = null;
                 capability.RequiredScope = null;
                 capability.ConstraintsJson = null;
-                capability.EvidenceNote = "Bağlantı kapsamı, model kodu alanı veya User-Agent değişti; yeniden bağlantı testi gerekiyor.";
+                capability.EvidenceNote = "Bağlantı kapsamı veya User-Agent değişti; yeniden bağlantı testi gerekiyor.";
                 capability.FixtureChecksum = null;
                 capability.VerifiedAt = null;
                 capability.Version++;
@@ -230,11 +216,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         };
         var credentialType = connection.PlatformCode == "TRENDYOL" ? "BASIC" : connection.PlatformCode == "SHOPIFY" ? "SHOPIFY_ACCESS_TOKEN" : "EMAIL_PASSWORD";
         db.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, CredentialType = credentialType, ProtectedPayload = _credentialProtector.Protect(payload), MaskedHint = hint, CreatedAt = now, Version = 1 });
-        var currentShopifyModelCodeMetafield = connection.PlatformCode == "SHOPIFY" ? ReadShopifySettings(connection).ModelCodeMetafield : ShopifyModelCodeMetafieldDefault;
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else if (connection.PlatformCode == "SHOPIFY")
-            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, currentShopifyModelCodeMetafield));
+            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false));
         connection.LastTestedAt = null; connection.LastSuccessAt = null; connection.LastErrorCode = null; connection.Status = "DRAFT"; connection.Version++;
         foreach (var capability in await db.PlatformCapabilities.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken)) { capability.SupportLevel = CapabilitySupportLevel.Unknown; capability.VerifiedAt = null; capability.EvidenceNote = "Credential rotasyonu sonrası yeniden doğrulama gerekiyor."; capability.Version++; }
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, true));
@@ -271,10 +256,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else if (connection.PlatformCode == "SHOPIFY")
-            // Activation must not reset the configured model-code metafield.
-            // It is part of the connection scope and is used by both bulk and
-            // single-product reads after the connection is verified.
-            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, ReadShopifySettings(connection).ModelCodeMetafield));
+            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false));
         connection.Version++;
         if (queueActivationBootstrap)
         {
@@ -485,23 +467,11 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private ConnectionView Map(PlatformConnection x, bool hasCredential)
     {
         var externalWritesEnabled = x.PlatformCode != "SHOPIFY" && configuration.GetValue<bool>("FeatureFlags:ExternalWrites") && (x.PlatformCode == "TRENDYOL" ? ReadSettings(x).ExternalWritesEnabled : ReadEfaturamSettings(x).ExternalWritesEnabled);
-        var shopifyModelCodeMetafield = x.PlatformCode == "SHOPIFY" ? ReadShopifySettings(x).ModelCodeMetafield : null;
-        return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version, shopifyModelCodeMetafield);
+        return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version);
     }
     private static SyncPolicyView Map(ConnectionSyncPolicy x) => new(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, x.Enabled, x.Version, RequiresExternalWrites: MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType));
     private static WebhookSubscriptionView Map(WebhookSubscription x) => new(x.Id, x.AuthenticationType, x.Status, x.ExternalSubscriptionId, x.VerifiedAt, x.LastReceivedAt, x.Version);
     private static ConnectionSettings ReadSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<ConnectionSettings>(value.SettingsJson) ?? new("", false); } catch (JsonException) { return new("", false); } }
-    private static ShopifyConnectionSettings ReadShopifySettings(PlatformConnection value)
-    {
-        try
-        {
-            var settings = JsonSerializer.Deserialize<ShopifyConnectionSettings>(value.SettingsJson);
-            return settings is null || string.IsNullOrWhiteSpace(settings.ModelCodeMetafield)
-                ? new(false, ShopifyModelCodeMetafieldDefault)
-                : settings;
-        }
-        catch (JsonException) { return new(false, ShopifyModelCodeMetafieldDefault); }
-    }
     private static TrendyolEFaturamConnectionSettings ReadEfaturamSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<TrendyolEFaturamConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
     private bool WritesEnabled(string settingsJson)
     {
@@ -514,17 +484,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         catch (JsonException) { return false; }
     }
     private static string Mask(string value) => value.Length <= 4 ? "****" : $"****{value[^4..]}";
-    private const string ShopifyModelCodeMetafieldDefault = "ravencia.model_code";
-    private static string? NormalizeShopifyModelCodeMetafield(string? value)
-    {
-        var normalized = string.IsNullOrWhiteSpace(value) ? ShopifyModelCodeMetafieldDefault : value.Trim();
-        var separator = normalized.IndexOf('.');
-        if (separator <= 0 || separator != normalized.LastIndexOf('.') || separator >= normalized.Length - 1 || normalized.Length > 160) return null;
-        var name = normalized[..separator];
-        var key = normalized[(separator + 1)..];
-        return IsShopifyMetafieldPart(name) && IsShopifyMetafieldPart(key) ? $"{name}.{key}" : null;
-    }
-    private static bool IsShopifyMetafieldPart(string value) => value.Length is >= 1 and <= 80 && value.All(character => character is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '_' or '-');
     private static string? NormalizeShopifyStore(string value)
     {
         var normalized = value.Trim().ToLowerInvariant();
@@ -548,6 +507,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private sealed record CredentialPayload(string ApiKey, string ApiSecret);
     private sealed record ShopifyCredentialPayload(string AccessToken);
     private sealed record ConnectionSettings(string UserAgentIdentity, bool ExternalWritesEnabled);
-    private sealed record ShopifyConnectionSettings(bool ExternalWritesEnabled, string ModelCodeMetafield = ShopifyModelCodeMetafieldDefault);
+    private sealed record ShopifyConnectionSettings(bool ExternalWritesEnabled);
     private sealed record WebhookVerifierPayload(string? Username, string? Password, string? ApiKey, string? ClientSecret);
 }

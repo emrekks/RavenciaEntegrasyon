@@ -74,7 +74,7 @@ public sealed class ShopifyHttpClient(
         var first = Math.Clamp(page.Limit, 1, Math.Clamp(settings.PageSize, 1, 250));
         if (!TryBuildProductQuery(shop, filter, out var query, out var lookupError))
             return Fail<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_LOOKUP_INVALID", lookupError!, HttpStatusCode.UnprocessableEntity);
-        var gql = $"query($first:Int!, $after:String, $query:String) {{ products(first:$first, after:$after, query:$query, sortKey:UPDATED_AT) {{ edges {{ cursor node {{ id title descriptionHtml vendor productType status updatedAt category {{ id name fullName }} metafield(namespace:\"{GraphQlString(shop.ModelCodeNamespace)}\", key:\"{GraphQlString(shop.ModelCodeKey)}\") {{ value }} images(first:50) {{ nodes {{ url }} }} priceRange {{ minVariantPrice {{ currencyCode }} }} variants(first:250) {{ nodes {{ id sku barcode price compareAtPrice inventoryQuantity selectedOptions {{ name value }} image {{ url }} inventoryItem {{ inventoryLevels(first:250) {{ nodes {{ location {{ id name isActive }} quantities(names:[\"available\"]) {{ name quantity }} }} }} }} }} }} }} pageInfo {{ hasNextPage endCursor }} }} }}";
+        const string gql = "query($first:Int!, $after:String, $query:String) { products(first:$first, after:$after, query:$query, sortKey:UPDATED_AT) { edges { cursor node { id title descriptionHtml vendor productType status updatedAt category { id name fullName } images(first:50) { nodes { url } } priceRange { minVariantPrice { currencyCode } } variants(first:250) { nodes { id sku barcode price compareAtPrice inventoryQuantity selectedOptions { name value } image { url } inventoryItem { inventoryLevels(first:250) { nodes { location { id name isActive } quantities(names:[\"available\"]) { name quantity } } } } } } } } pageInfo { hasNextPage endCursor } } }";
         var variables = new { first, after = page.Cursor, query };
         var result = await QueryAsync(shop, gql, variables, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(result.Error!, result.RateLimit);
@@ -221,7 +221,6 @@ public sealed class ShopifyHttpClient(
         var category = product.TryGetProperty("category", out var categoryElement) && categoryElement.ValueKind != JsonValueKind.Null ? categoryElement : default;
         var categoryId = category.ValueKind == JsonValueKind.Object && category.TryGetProperty("id", out var categoryIdElement) ? ShortId(categoryIdElement.GetString()) : null;
         var categoryName = category.ValueKind == JsonValueKind.Object && category.TryGetProperty("fullName", out var fullName) ? fullName.GetString() : product.GetProperty("productType").GetString();
-        var modelCode = product.TryGetProperty("metafield", out var metafield) && metafield.ValueKind != JsonValueKind.Null && metafield.TryGetProperty("value", out var model) ? model.GetString() : null;
         var images = product.GetProperty("images").GetProperty("nodes").EnumerateArray().Select(x => x.GetProperty("url").GetString()).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!).ToList();
         var currency = product.TryGetProperty("priceRange", out var priceRange)
             && priceRange.ValueKind == JsonValueKind.Object
@@ -230,11 +229,11 @@ public sealed class ShopifyHttpClient(
             && minPrice.TryGetProperty("currencyCode", out var currencyElement)
             ? currencyElement.GetString()
             : null;
-        var variants = product.GetProperty("variants").GetProperty("nodes").EnumerateArray().Select((variant, index) => MapVariant(variant, index, archived, modelCode, currency)).ToList();
-        return new(productId, modelCode, product.GetProperty("title").GetString() ?? productId, product.GetProperty("descriptionHtml").GetString() ?? "", product.GetProperty("vendor").GetString(), product.GetProperty("vendor").GetString(), categoryId, categoryName, images, variants, product.GetRawText(), isDraft);
+        var variants = product.GetProperty("variants").GetProperty("nodes").EnumerateArray().Select((variant, index) => MapVariant(variant, index, archived, currency)).ToList();
+        return new(productId, null, product.GetProperty("title").GetString() ?? productId, product.GetProperty("descriptionHtml").GetString() ?? "", product.GetProperty("vendor").GetString(), product.GetProperty("vendor").GetString(), categoryId, categoryName, images, variants, product.GetRawText(), isDraft);
     }
 
-    private static RemoteCatalogVariant MapVariant(JsonElement variant, int index, bool productArchived, string? modelCode, string? currency)
+    private static RemoteCatalogVariant MapVariant(JsonElement variant, int index, bool productArchived, string? currency)
     {
         var options = variant.GetProperty("selectedOptions").EnumerateArray().ToDictionary(x => x.GetProperty("name").GetString() ?? $"Seçenek {index + 1}", x => x.GetProperty("value").GetString() ?? "", StringComparer.OrdinalIgnoreCase);
         var inventory = variant.TryGetProperty("inventoryQuantity", out var inventoryElement) && inventoryElement.ValueKind == JsonValueKind.Number && inventoryElement.TryGetDecimal(out var quantity) ? quantity : (decimal?)null;
@@ -259,7 +258,8 @@ public sealed class ShopifyHttpClient(
                 return new RemoteInventoryLevel(ShortId(location.GetProperty("id").GetString()), location.TryGetProperty("name", out var locationName) ? locationName.GetString() : null, quantity, level.GetRawText());
             }).ToList()
             : [];
-        return new(ShortId(variant.GetProperty("id").GetString()), variant.GetProperty("sku").GetString() ?? ShortId(variant.GetProperty("id").GetString()), variant.GetProperty("barcode").ValueKind == JsonValueKind.Null ? null : variant.GetProperty("barcode").GetString(), modelCode, options, productArchived, price, compareAt, null, inventory, currency, variant.GetRawText(), image is null ? [] : [image], levels);
+        var barcode = variant.GetProperty("barcode").ValueKind == JsonValueKind.Null ? null : variant.GetProperty("barcode").GetString();
+        return new(ShortId(variant.GetProperty("id").GetString()), variant.GetProperty("sku").GetString() ?? ShortId(variant.GetProperty("id").GetString()), barcode, barcode, options, productArchived, price, compareAt, null, inventory, currency, variant.GetRawText(), image is null ? [] : [image], levels);
     }
 
     private static RemoteOrder MapOrder(JsonElement order)
@@ -420,7 +420,10 @@ public sealed class ShopifyHttpClient(
         }
         else if (!string.IsNullOrWhiteSpace(filter.ProductMainId))
         {
-            parts.Add($"metafield:{EscapeSearch(context.ModelCodeNamespace)}.{EscapeSearch(context.ModelCodeKey)}:{EscapeSearch(filter.ProductMainId)}");
+            // Shopify has no model-code field in this integration. The shared
+            // ProductMainId slot carries the single-product barcode for the
+            // Shopify adapter; SKU remains the stock code and is not reused.
+            parts.Add($"barcode:{EscapeSearch(filter.ProductMainId)}");
         }
         else if (!string.IsNullOrWhiteSpace(filter.ContentId))
         {
@@ -430,7 +433,6 @@ public sealed class ShopifyHttpClient(
         return true;
     }
     private static string EscapeSearch(string value) => value.Trim().Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
-    private static string GraphQlString(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
     private static string ShortId(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Split('/').Last();
     private static string? BuildOrderQuery(OrderPollWindow window) => window.ModifiedAfter is { } from ? $"updated_at:>={from.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}" : null;
     private static AdapterError MapHttpError(HttpStatusCode status, string body, TimeSpan? retryAfter = null, string? remoteRequestId = null) => status switch

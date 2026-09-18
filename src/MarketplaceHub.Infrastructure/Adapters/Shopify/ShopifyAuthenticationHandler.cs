@@ -46,8 +46,7 @@ public sealed class ShopifyAuthenticationHandler(
 
         if (!string.IsNullOrWhiteSpace(payload.AccessToken))
         {
-            var directModelCode = ModelCodeMetafield(connection.SettingsJson);
-            return new(connection, shop, apiVersion, payload.AccessToken.Trim(), DateTimeOffset.MaxValue, directModelCode.Namespace, directModelCode.Key);
+            return new(connection, shop, apiVersion, payload.AccessToken.Trim(), DateTimeOffset.MaxValue);
         }
 
         // Existing client-credentials records remain readable during the credential
@@ -60,8 +59,7 @@ public sealed class ShopifyAuthenticationHandler(
 
         var token = await AccessTokenAsync(connectionId, shop, payload, cancellationToken);
         if (token is null) return null;
-        var modelCode = ModelCodeMetafield(connection.SettingsJson);
-        return new(connection, shop, apiVersion, token.Token, token.ExpiresAt, modelCode.Namespace, modelCode.Key);
+        return new(connection, shop, apiVersion, token.Token, token.ExpiresAt);
     }
 
     private async Task<CachedToken?> AccessTokenAsync(Guid connectionId, string shop, ShopifyCredentialPayload payload, CancellationToken cancellationToken)
@@ -108,30 +106,6 @@ public sealed class ShopifyAuthenticationHandler(
         && shop[^1] is >= 'a' and <= 'z' or >= '0' and <= '9'
         && shop.All(value => value is >= 'a' and <= 'z' or >= '0' and <= '9' or '-');
 
-    private static (string Namespace, string Key) ModelCodeMetafield(string settingsJson)
-    {
-        const string fallbackNamespace = "ravencia";
-        const string fallbackKey = "model_code";
-        try
-        {
-            using var document = JsonDocument.Parse(settingsJson);
-            var value = document.RootElement.TryGetProperty("ModelCodeMetafield", out var property) && property.ValueKind == JsonValueKind.String
-                ? property.GetString()
-                : null;
-            var separator = value?.IndexOf('.') ?? -1;
-            if (separator <= 0 || separator != value!.LastIndexOf('.') || separator == value.Length - 1) return (fallbackNamespace, fallbackKey);
-            var modelNamespace = value[..separator];
-            var modelKey = value[(separator + 1)..];
-            return IsMetafieldPart(modelNamespace) && IsMetafieldPart(modelKey)
-                ? (modelNamespace, modelKey)
-                : (fallbackNamespace, fallbackKey);
-        }
-        catch (JsonException) { return (fallbackNamespace, fallbackKey); }
-    }
-
-    private static bool IsMetafieldPart(string value) => value.Length is >= 1 and <= 80
-        && value.All(character => character is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '_' or '-');
-
     // Existing credential rows use the shared ApiKey/ApiSecret JSON shape;
     // accept both shapes while Shopify-specific credentials roll out.
     private sealed record ShopifyCredentialPayload(string? AccessToken = null, string? ClientId = null, string? ClientSecret = null, string? ApiKey = null, string? ApiSecret = null)
@@ -142,4 +116,4 @@ public sealed class ShopifyAuthenticationHandler(
     private sealed record CachedToken(string Token, DateTimeOffset ExpiresAt);
 }
 
-public sealed record ShopifyRequestContext(PlatformConnection Connection, string Shop, string ApiVersion, string AccessToken, DateTimeOffset ExpiresAt, string ModelCodeNamespace = "ravencia", string ModelCodeKey = "model_code");
+public sealed record ShopifyRequestContext(PlatformConnection Connection, string Shop, string ApiVersion, string AccessToken, DateTimeOffset ExpiresAt);
