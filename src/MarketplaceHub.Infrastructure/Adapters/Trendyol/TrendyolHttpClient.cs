@@ -100,6 +100,9 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
             else query.Add($"page={pageNumber}");
         }
         else query.Add("page=0");
+        if (!string.IsNullOrWhiteSpace(filter.Barcode)) query.Add("barcode=" + Uri.EscapeDataString(filter.Barcode));
+        if (!string.IsNullOrWhiteSpace(filter.ProductMainId)) query.Add("productMainId=" + Uri.EscapeDataString(filter.ProductMainId));
+        if (!string.IsNullOrWhiteSpace(filter.ContentId)) query.Add("contentId=" + Uri.EscapeDataString(filter.ContentId));
         if (filter.ModifiedAfter is not null)
         {
             query.Add("startDate=" + filter.ModifiedAfter.Value.ToUnixTimeMilliseconds());

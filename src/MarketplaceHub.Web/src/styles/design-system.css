@@ -852,6 +852,7 @@
   .product-import-connection:hover, .product-import-mode:hover, .product-import-connection.selected, .product-import-mode.selected { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
   .product-import-connection input, .product-import-mode input { width: 16px; height: 16px; margin: 2px 0 0; }
   .product-import-connection > span, .product-import-mode > span { display: grid; min-width: 0; gap: 3px; }
+  .product-import-lookup-input { width: 100%; margin-top: var(--rv-space-2); padding: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); }
   .product-import-connection small, .product-import-mode small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 500; line-height: 1.45; }
   .product-import-note, .product-import-empty { margin: 0; padding: var(--rv-space-3); color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-left: 3px solid var(--rv-color-accent); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-sm); }
   .product-import-progress { display: grid; gap: var(--rv-space-3); padding: var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }

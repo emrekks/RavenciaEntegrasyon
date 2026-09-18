@@ -1573,7 +1573,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var newOnly = ReadBoolean(payloadJson, "newOnly");
         var existingOnly = ReadBoolean(payloadJson, "existingOnly");
         var includeArchived = ReadBoolean(payloadJson, "includeArchived");
-        var scanLabel = fullScan
+        var productLookup = ReadText(payloadJson, "productLookup");
+        var singleLookup = !string.IsNullOrWhiteSpace(productLookup);
+        var scanLabel = singleLookup
+            ? "Tekil ürün çekimi"
+            : fullScan
             ? "Tam katalog taraması"
             : newOnly
                 ? "Ekli olmayan ürünler taranıyor"
@@ -1618,7 +1622,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
         }
-        DateTimeOffset? modifiedAfter = !fullScan && hasSnapshots && cursor.LastModifiedWatermark is not null ? cursor.LastModifiedWatermark.Value.AddMinutes(-2) : null;
+        DateTimeOffset? modifiedAfter = !fullScan && !singleLookup && hasSnapshots && cursor.LastModifiedWatermark is not null ? cursor.LastModifiedWatermark.Value.AddMinutes(-2) : null;
+        var productFilter = ProductImportFilter(modifiedAfter, productLookup);
         // Product imports carry Trendyol's brand id, so keep the current brand
         // reference available for an automatic panel-brand mapping while the
         // catalog rows are being materialized.
@@ -1641,7 +1646,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .GroupBy(x => NormalizeCatalogKey(x.Name, 160), StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
         var categoryContexts = new Dictionary<string, CategoryAttributeContext>(StringComparer.Ordinal);
-        var nextCursor = cursor.OpaqueCursor;
+        var nextCursor = singleLookup ? null : cursor.OpaqueCursor;
         var pageNumber = 0;
         var pendingCatalogSnapshots = new List<RemoteCatalogProduct>();
         do
@@ -1664,7 +1669,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var result = await products.ListCatalogAsync(
                 Context(tenantId, connectionId, correlationId, $"product-sync:{nextCursor ?? "0"}"),
                 new(nextCursor, 100),
-                new(modifiedAfter),
+                productFilter,
                 cancellationToken);
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
             foreach (var _ in result.Value!.Items) TrackReceived();
@@ -1814,12 +1819,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        var completedCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
-        completedCursor.OpaqueCursor = null;
-        // Approved-products supports a modified-date filter. Keep a short
-        // overlap so a variant changed while a page was being read is not lost.
-        completedCursor.LastModifiedWatermark = timeProvider.GetUtcNow().AddSeconds(-60);
-        completedCursor.Version++;
+        if (!singleLookup)
+        {
+            var completedCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
+            completedCursor.OpaqueCursor = null;
+            // Approved-products supports a modified-date filter. Keep a short
+            // overlap so a variant changed while a page was being read is not lost.
+            completedCursor.LastModifiedWatermark = timeProvider.GetUtcNow().AddSeconds(-60);
+            completedCursor.Version++;
+        }
         if (jobId is { } completedJob)
             await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(pageNumber, totalProducts, "aktarımı tamamlandı", receivedProducts), cancellationToken, keepExistingTotal: true);
         await db.SaveChangesAsync(cancellationToken);
@@ -4226,6 +4234,35 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             return document.RootElement.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.True;
         }
         catch (JsonException) { return false; }
+    }
+
+    private static string? ReadText(string payloadJson, string propertyName)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return document.RootElement.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static ProductReadFilter ProductImportFilter(DateTimeOffset? modifiedAfter, string? lookup)
+    {
+        var value = lookup?.Trim();
+        if (string.IsNullOrWhiteSpace(value)) return new(modifiedAfter);
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            const string marker = "-p-";
+            var markerIndex = uri.AbsolutePath.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex >= 0)
+            {
+                var contentId = uri.AbsolutePath[(markerIndex + marker.Length)..].Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(contentId)) return new(null, ContentId: contentId);
+            }
+        }
+        return new(null, ProductMainId: value);
     }
 
     private static ReturnSyncState ReadReturnSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool forceFull = false)
