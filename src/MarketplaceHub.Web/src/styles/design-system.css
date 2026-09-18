@@ -9325,13 +9325,27 @@ small,
 }
 
 .app-shell.stitch-shell main .connection-settings-panel > .connection-settings-section:first-child > form {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: start;
 }
 
-.app-shell.stitch-shell main .connection-settings-panel > .connection-settings-section:first-child > form > button {
+.app-shell.stitch-shell main .connection-settings-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--rv-space-3);
+}
+
+.app-shell.stitch-shell main .connection-settings-input-row > button {
   width: auto;
   min-width: 190px;
+}
+
+.app-shell.stitch-shell main .connection-settings-field-help {
+  margin: 0;
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-sm);
 }
 
 .app-shell.stitch-shell main .connection-settings-panel > form.connection-settings-section {
@@ -9369,12 +9383,12 @@ small,
 }
 
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .connection-settings-panel > .connection-settings-section:first-child > form,
+  .app-shell.stitch-shell main .connection-settings-input-row,
   .app-shell.stitch-shell main .connection-settings-panel > form.connection-settings-section {
     grid-template-columns: 1fr;
   }
 
-  .app-shell.stitch-shell main .connection-settings-panel > .connection-settings-section:first-child > form > button {
+  .app-shell.stitch-shell main .connection-settings-input-row > button {
     width: 100%;
   }
 
