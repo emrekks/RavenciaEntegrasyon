@@ -1571,12 +1571,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         var fullScan = ReadBoolean(payloadJson, "full");
         var newOnly = ReadBoolean(payloadJson, "newOnly");
+        var existingOnly = ReadBoolean(payloadJson, "existingOnly");
         var includeArchived = ReadBoolean(payloadJson, "includeArchived");
         var scanLabel = fullScan
-            ? "Tüm ürünler güncelleniyor"
+            ? "Tam katalog taraması"
             : newOnly
-                ? "Yalnızca yeni ürünler taranıyor"
-                : "Yeni ve değişen ürünler taranıyor";
+                ? "Ekli olmayan ürünler taranıyor"
+                : existingOnly
+                    ? "Ekli model kodları güncelleniyor"
+                    : "Yeni ve değişen ürünler taranıyor";
         var archiveLabel = includeArchived ? " · Arşiv ürünleri dahil" : " · Arşiv ürünleri hariç";
         var receivedProducts = 0;
         if (jobId is { } currentJob)
@@ -1590,8 +1593,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await db.SaveChangesAsync(cancellationToken);
         }
         var hasSnapshots = await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
-        var existingProductExternalIds = newOnly
+        var existingProductExternalIds = newOnly || existingOnly
             ? (await db.MarketplaceProductLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId).Select(x => x.ExternalId).ToListAsync(cancellationToken)).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : null;
+        var existingVariantExternalIds = newOnly
+            ? (await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId).Select(x => x.ExternalId).ToListAsync(cancellationToken)).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : null;
+        var existingModelCodes = existingOnly
+            ? (await db.ProductVariants.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.ModelCode != null)
+                    .Select(x => x.ModelCode)
+                    .ToListAsync(cancellationToken))
+                .Select(modelCode => NormalizeCatalogKey(modelCode, 160))
+                .Where(modelCode => !string.IsNullOrWhiteSpace(modelCode))
+                .ToHashSet(StringComparer.Ordinal)
             : null;
         var hasCategoryMappings = await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
         // The first attribute backfill must revisit the already imported catalog. Keep
@@ -1725,7 +1740,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 try
                 {
-                    if (newOnly && existingProductExternalIds!.Contains(snapshot.ExternalProductId))
+                    var productAlreadyLinked = existingProductExternalIds?.Contains(snapshot.ExternalProductId) == true;
+                    var hasNewVariant = existingVariantExternalIds is not null
+                        && snapshot.Variants.Any(variant => !existingVariantExternalIds.Contains(Short(variant.ExternalVariantId, 256)));
+                    var matchesExistingModelCode = existingModelCodes is not null
+                        && snapshot.Variants.Any(variant => existingModelCodes.Contains(NormalizeCatalogKey(variant.ModelCode, 160)));
+                    if (newOnly && productAlreadyLinked && !hasNewVariant)
+                    {
+                        telemetryImportSkippedCount++;
+                        importedModelCount++;
+                        continue;
+                    }
+                    if (existingOnly && !productAlreadyLinked && !matchesExistingModelCode)
                     {
                         telemetryImportSkippedCount++;
                         importedModelCount++;
@@ -1734,8 +1760,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
+                    if (existingVariantExternalIds is not null)
+                        foreach (var variant in snapshot.Variants)
+                            existingVariantExternalIds.Add(Short(variant.ExternalVariantId, 256));
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
                 }
@@ -2579,7 +2608,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized, cancellationToken);
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -2623,7 +2652,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
         }
 
-        if (!isNewProduct && link is not null && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase) && await CatalogSnapshotAlreadyApplied(tenantId, product.Id, snapshot, cancellationToken))
+        if (!onlyNewVariants && !isNewProduct && link is not null && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase) && await CatalogSnapshotAlreadyApplied(tenantId, product.Id, snapshot, cancellationToken))
         {
             // A previous import may have stored the remote observation while
             // leaving the untouched local projection at zero. Reconcile that
@@ -2636,7 +2665,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         var preserveLocal = link is not null && ProductImportMergePolicy.PreserveLocalChanges(product.Version, link.LastImportedProductVersion, link.DirtyFieldsJson);
-        if (!preserveLocal)
+        if (!onlyNewVariants && !preserveLocal)
         {
             product.Title = ProductTitle(snapshot.Title, externalProductId);
             product.Description = snapshot.Description ?? "";
@@ -2646,7 +2675,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             product.Version++;
             telemetryUpdatedCount++;
         }
-        else
+        else if (preserveLocal)
         {
             telemetrySkippedCount++;
         }
@@ -2654,29 +2683,49 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var brand = await UpsertCatalogBrand(tenantId, snapshot.BrandName, cancellationToken);
         await EnsureImportedBrandMapping(tenantId, connectionId, brand, snapshot.BrandExternalId, brandReferenceSnapshotId, now, cancellationToken);
         var category = categoryContext?.LocalCategory ?? await UpsertCatalogCategory(tenantId, snapshot.CategoryName, cancellationToken);
-        if (!preserveLocal)
+        if (!preserveLocal && !onlyNewVariants)
         {
             product.BrandId = brand?.Id;
             product.CategoryId = category?.Id;
         }
 
-        if (!preserveLocal)
+        var importedNewVariantCount = 0;
+        if (!preserveLocal || onlyNewVariants)
         {
-            await NormalizeLegacyWebColorOptions(tenantId, product.Id, cancellationToken);
+            if (!onlyNewVariants)
+                await NormalizeLegacyWebColorOptions(tenantId, product.Id, cancellationToken);
+            var existingVariantExternalIds = onlyNewVariants
+                ? (await db.MarketplaceVariantLinks.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId)
+                        .Select(x => x.ExternalId)
+                        .ToListAsync(cancellationToken))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : null;
             var importedVariants = new List<ProductVariant>(snapshot.Variants.Count);
             foreach (var (remote, sortOrder) in snapshot.Variants.Select((remote, index) => (remote, index)))
             {
+                var externalVariantId = Short(remote.ExternalVariantId, 256);
+                if (onlyNewVariants && existingVariantExternalIds!.Contains(externalVariantId))
+                    continue;
                 var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, sortOrder, categoryContext, inventoryPolicy, now, cancellationToken);
-                if (importedVariant is not null) importedVariants.Add(importedVariant);
+                if (importedVariant is not null)
+                {
+                    importedVariants.Add(importedVariant);
+                    if (onlyNewVariants) importedNewVariantCount++;
+                    existingVariantExternalIds?.Add(externalVariantId);
+                }
             }
             if (categoryContext is not null && importedVariants.Count > 0)
                 await PromoteCommonImportedAttributes(tenantId, product, importedVariants, categoryContext, cancellationToken);
 
-            var productImageUrls = snapshot.ImageUrls
-                .Concat(snapshot.Variants.SelectMany(variant => variant.ImageUrls ?? []))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            await UpsertCatalogMedia(tenantId, product, null, productImageUrls, product.Title, cancellationToken);
+            if (!onlyNewVariants)
+            {
+                var productImageUrls = snapshot.ImageUrls
+                    .Concat(snapshot.Variants.SelectMany(variant => variant.ImageUrls ?? []))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                await UpsertCatalogMedia(tenantId, product, null, productImageUrls, product.Title, cancellationToken);
+            }
         }
         else
         {
@@ -2688,12 +2737,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         link ??= await db.MarketplaceProductLinks.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
         link.LastImportedPayloadHash = remoteHash;
         link.LastImportedAt = now;
-        if (preserveLocal)
+        if (preserveLocal && !onlyNewVariants)
         {
             link.SyncStatus = "LOCAL_CHANGES_PENDING";
             link.DirtyFieldsJson ??= "[\"product\"]";
         }
-        else
+        else if (!preserveLocal)
         {
             link.LastImportedProductVersion = product.Version;
             link.SyncStatus = "SYNCED";
@@ -2703,7 +2752,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         link.Version++;
         if (saveChanges)
             await db.SaveChangesAsync(cancellationToken);
-        return !preserveLocal;
+        return onlyNewVariants ? importedNewVariantCount > 0 : !preserveLocal;
     }
 
     private async Task SyncCatalogInventoryForPreservedProduct(
