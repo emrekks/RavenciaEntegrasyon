@@ -2411,6 +2411,8 @@
   .operation-feedback-toast p, .product-operation-toast p { margin: 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); line-height: 1.45; overflow-wrap: anywhere; }
   .operation-feedback-toast > button, .product-operation-toast > button { display: grid; width: 28px; height: 28px; min-height: 28px; place-items: center; padding: 0; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); }
   .operation-feedback-toast > button:hover, .product-operation-toast > button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); }
+  .operation-feedback-toast.error > button, .product-operation-toast.error > button { color: var(--rv-color-danger); }
+  .operation-feedback-toast.error > button:hover, .product-operation-toast.error > button:hover { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
   @keyframes rv-spin { to { transform: rotate(360deg); } }
 }
 

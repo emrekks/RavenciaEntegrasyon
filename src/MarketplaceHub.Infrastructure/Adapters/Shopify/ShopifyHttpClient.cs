@@ -211,7 +211,22 @@ public sealed class ShopifyHttpClient(
                     throttled ? rate?.RetryAfter ?? TimeSpan.FromSeconds(5) : null,
                     remoteRequestId), rate);
             }
-            return AdapterResult<JsonDocument>.Success(JsonDocument.Parse(raw), rate);
+            if (!document.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+            {
+                return Failure<JsonDocument>(new(
+                    AdapterErrorClass.ContractViolation,
+                    "SHOPIFY_GRAPHQL_CONTRACT_INVALID",
+                    "Shopify GraphQL yanıtı beklenen veri alanını içermiyor.",
+                    (int)HttpStatusCode.BadGateway,
+                    null,
+                    remoteRequestId), rate);
+            }
+
+            // Shopify GraphQL wraps every successful result in a top-level
+            // `data` object. Keep the adapter contract flat so the catalog,
+            // order and connection checks can consume the queried fields
+            // consistently.
+            return AdapterResult<JsonDocument>.Success(JsonDocument.Parse(data.GetRawText()), rate);
         }
         catch (HttpRequestException exception)
         {
