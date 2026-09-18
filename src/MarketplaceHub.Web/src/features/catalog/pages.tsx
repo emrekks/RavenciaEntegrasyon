@@ -153,7 +153,7 @@ type OperationFeedback = { message: string; kind: 'success' | 'error' | 'info' }
 function OperationFeedbackToast({ feedback, onClose }: { feedback: OperationFeedback | null; onClose: () => void }) {
   if (!feedback) return null
   const title = feedback.kind === 'success' ? 'İşlem başarılı' : feedback.kind === 'error' ? 'İşlem başarısız' : 'İşlem sürüyor'
-  return <div className={`rv-toast rv-toast-${feedback.kind === 'error' ? 'danger' : feedback.kind} operation-feedback-toast ${feedback.kind}`} role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'}><span className="rv-toast-icon operation-feedback-icon" aria-hidden="true" /><div className="rv-toast-content"><strong>{title}</strong><p>{feedback.message}</p></div><button type="button" onClick={onClose} aria-label="Durum raporunu kapat"><UiIcon name="close" /></button></div>
+  return <div className={`rv-toast rv-toast-${feedback.kind === 'error' ? 'danger' : feedback.kind} operation-feedback-toast ${feedback.kind}`} role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'}><span className="rv-toast-icon" aria-hidden="true" /><div className="rv-toast-content"><strong>{title}</strong><p>{feedback.message}</p></div><button type="button" onClick={onClose} aria-label="Durum raporunu kapat"><UiIcon name="close" /></button></div>
 }
 
 function LocalImagePreview({ file, alt, caption, onRemove, onZoom }: { file: File, alt: string, caption: string, onRemove?: () => void, onZoom?: (url: string) => void }) {

@@ -48,8 +48,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     {
         var platform = string.IsNullOrWhiteSpace(command.PlatformCode) ? "TRENDYOL" : command.PlatformCode.Trim().ToUpperInvariant();
         if (!ActiveIntegrationScope.Contains(platform)) return Invalid<ConnectionView>("platformCode", "Desteklenmeyen platform bağlantısı.");
-        var environment = command.Environment.Trim().ToUpperInvariant();
-        if (environment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Environment yalnız STAGE veya PRODUCTION olabilir.");
+        var requestedEnvironment = command.Environment.Trim().ToUpperInvariant();
+        if (requestedEnvironment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Ortam yalnız STAGE veya PRODUCTION olabilir.");
+        if (platform == "SHOPIFY" && requestedEnvironment != "PRODUCTION") return Invalid<ConnectionView>("environment", "Shopify bağlantısı yalnız Canlı ortamda oluşturulabilir.");
+        var environment = platform == "SHOPIFY" ? "PRODUCTION" : requestedEnvironment;
         var apiVersion = command.ApiVersion.Trim();
         if (platform == "TRENDYOL" && !string.Equals(apiVersion, "V2", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Trendyol marketplace bağlantısı yalnız Product Integration V2 kullanır.");
         if (platform == "SHOPIFY" && !string.Equals(apiVersion, "2026-07", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Shopify bağlantısı yalnız GraphQL Admin API 2026-07 kullanır.");
@@ -86,7 +88,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             ApiVersion = connection.ApiVersion,
             Environment = environment,
             StoreScope = connection.ExternalStoreId,
-            EvidenceNote = "Stage/SIT kanıtı bekleniyor.",
+            EvidenceNote = platform == "SHOPIFY" ? "Shopify canlı bağlantı doğrulaması bekleniyor." : "Stage/SIT kanıtı bekleniyor.",
             Version = 1
         }));
         if (platform == "SHOPIFY")
@@ -123,6 +125,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
         var requestedEnvironment = command.Environment?.Trim().ToUpperInvariant();
         if (requestedEnvironment is not null && requestedEnvironment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Ortam STAGE veya PRODUCTION olmalıdır.");
+        if (connection.PlatformCode == "SHOPIFY" && requestedEnvironment == "STAGE") return Invalid<ConnectionView>("environment", "Shopify bağlantısı yalnız Canlı ortamda çalışır.");
+        if (connection.PlatformCode == "SHOPIFY") requestedEnvironment = "PRODUCTION";
         if (command.ExternalStoreId is not null && string.IsNullOrWhiteSpace(command.ExternalStoreId)) return Invalid<ConnectionView>("externalStoreId", "Mağaza/firma kapsamı boş olamaz.");
 
         var requestedStoreId = connection.PlatformCode == "SHOPIFY" && command.ExternalStoreId is not null

@@ -28,9 +28,21 @@ public sealed class ShopifyHttpClient(
         try
         {
             var root = result.Value!.RootElement;
-            var storeName = root.GetProperty("shop").GetProperty("name").GetString() ?? shop.Shop;
-            var host = root.GetProperty("shop").GetProperty("primaryDomain").GetProperty("host").GetString() ?? $"{shop.Shop}.myshopify.com";
-            var locationCount = root.GetProperty("locations").GetProperty("nodes").GetArrayLength();
+            if (!root.TryGetProperty("shop", out var shopElement) || shopElement.ValueKind != JsonValueKind.Object)
+                return Fail<ConnectionIdentity>(AdapterErrorClass.ContractViolation, "SHOPIFY_CONNECTION_CONTRACT_INVALID", "Shopify mağaza doğrulama yanıtı mağaza bilgisini içermiyor.", HttpStatusCode.BadGateway);
+            var host = shopElement.TryGetProperty("primaryDomain", out var primaryDomain)
+                && primaryDomain.ValueKind == JsonValueKind.Object
+                && primaryDomain.TryGetProperty("host", out var hostElement)
+                && hostElement.ValueKind == JsonValueKind.String
+                ? hostElement.GetString()
+                : null;
+            host = string.IsNullOrWhiteSpace(host) ? $"{shop.Shop}.myshopify.com" : host;
+            var locationCount = root.TryGetProperty("locations", out var locations)
+                && locations.ValueKind == JsonValueKind.Object
+                && locations.TryGetProperty("nodes", out var nodes)
+                && nodes.ValueKind == JsonValueKind.Array
+                ? nodes.GetArrayLength()
+                : 0;
             return AdapterResult<ConnectionIdentity>.Success(new("SHOPIFY", shop.Connection.Environment, shop.Shop, shop.ApiVersion, $"{host}:{locationCount}"), result.RateLimit);
         }
         catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
