@@ -847,7 +847,12 @@
   .product-import-body { display: grid; gap: var(--rv-space-5); }
   .product-import-body fieldset { display: grid; gap: var(--rv-space-2); min-width: 0; margin: 0; padding: 0; border: 0; }
   .product-import-body legend { margin-bottom: var(--rv-space-2); padding: 0; color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); font-weight: 800; }
+  .product-import-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-1); padding: var(--rv-space-1); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .product-import-tab { min-width: 0; padding: var(--rv-space-3) var(--rv-space-4); color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); cursor: pointer; font: inherit; font-size: var(--rv-font-size-sm); font-weight: 800; text-align: center; }
+  .product-import-tab:hover, .product-import-tab[aria-selected='true'] { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
   .product-import-connections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-2); }
+  .product-import-scan-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-2); }
+  .product-import-scan-grid .product-import-mode { min-height: 100%; }
   .product-import-connection, .product-import-mode { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: var(--rv-space-3); min-width: 0; padding: var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); cursor: pointer; }
   .product-import-connection:hover, .product-import-mode:hover, .product-import-connection.selected, .product-import-mode.selected { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
   .product-import-connection input, .product-import-mode input { width: 16px; height: 16px; margin: 2px 0 0; }
@@ -2698,6 +2703,7 @@
   .shipping-designer-format-tabs { width: 100%; margin-left: 0; }
   .shipping-designer-format-tabs button { flex: 1; }
   .product-import-connections { grid-template-columns: 1fr; }
+  .product-import-tabs, .product-import-scan-grid { grid-template-columns: 1fr; }
   .product-import-modal > footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .product-import-modal > footer > button { min-width: 0; }
   .rv-filter-actions > * { flex: 1; }
