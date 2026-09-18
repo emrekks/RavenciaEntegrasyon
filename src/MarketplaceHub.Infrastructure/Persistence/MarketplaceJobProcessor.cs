@@ -1311,7 +1311,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             connection.LastErrorCode = "SHOPIFY_REQUIRED_READ_SCOPE";
             connection.Version++;
             await db.SaveChangesAsync(cancellationToken);
-            throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.Authentication, "SHOPIFY_REQUIRED_READ_SCOPE", "Shopify için ürün, sipariş ve depo okuma izinleri doğrulanamadı. Uygulamanın read_products, read_inventory, read_orders, read_customers ve read_locations izinlerini kontrol edin.", 403, null, null));
+            var failedCapabilities = discovery.Value
+                .Where(item => item.Code is MarketplaceCapabilities.ProductRead or MarketplaceCapabilities.OrderRead)
+                .Where(item => !string.Equals(item.SupportLevel, "SUPPORTED", StringComparison.Ordinal))
+                .Select(item => item.EvidenceNote)
+                .Where(note => !string.IsNullOrWhiteSpace(note))
+                .ToArray();
+            var detail = failedCapabilities.Length == 0
+                ? "Ürün ve sipariş okuma izinleri doğrulanamadı."
+                : string.Join(" ", failedCapabilities);
+            throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.Authentication, "SHOPIFY_REQUIRED_READ_SCOPE", $"{detail} Gerekli izinler: read_products, read_inventory, read_orders, read_customers ve read_locations.", 403, null, null));
         }
         connection.LastSuccessAt = now; connection.LastErrorCode = null; if (connection.Status == "DRAFT") connection.Status = "VERIFIED"; connection.Version++; await db.SaveChangesAsync(cancellationToken); return true;
     }
