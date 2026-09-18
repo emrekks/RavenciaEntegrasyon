@@ -38,9 +38,23 @@ public sealed class ShopifyAuthenticationHandler(
         }
 
         var shop = connection.ExternalStoreId.Trim().ToLowerInvariant();
-        if (payload is null || string.IsNullOrWhiteSpace(payload.ResolvedClientId) || string.IsNullOrWhiteSpace(payload.ResolvedClientSecret) || !IsValidShop(shop))
+        if (payload is null || !IsValidShop(shop))
         {
             logger.LogWarning("Shopify bağlantı bilgileri eksik veya mağaza kimliği geçersiz. ConnectionId: {ConnectionId}", connectionId);
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(payload.AccessToken))
+        {
+            var directModelCode = ModelCodeMetafield(connection.SettingsJson);
+            return new(connection, shop, apiVersion, payload.AccessToken.Trim(), DateTimeOffset.MaxValue, directModelCode.Namespace, directModelCode.Key);
+        }
+
+        // Existing client-credentials records remain readable during the credential
+        // transition; all newly saved Shopify credentials use the app token above.
+        if (string.IsNullOrWhiteSpace(payload.ResolvedClientId) || string.IsNullOrWhiteSpace(payload.ResolvedClientSecret))
+        {
+            logger.LogWarning("Shopify uygulama tokenı bulunamadı. ConnectionId: {ConnectionId}", connectionId);
             return null;
         }
 
@@ -120,7 +134,7 @@ public sealed class ShopifyAuthenticationHandler(
 
     // Existing credential rows use the shared ApiKey/ApiSecret JSON shape;
     // accept both shapes while Shopify-specific credentials roll out.
-    private sealed record ShopifyCredentialPayload(string? ClientId, string? ClientSecret, string? ApiKey = null, string? ApiSecret = null)
+    private sealed record ShopifyCredentialPayload(string? AccessToken = null, string? ClientId = null, string? ClientSecret = null, string? ApiKey = null, string? ApiSecret = null)
     {
         public string? ResolvedClientId => ClientId ?? ApiKey;
         public string? ResolvedClientSecret => ClientSecret ?? ApiSecret;

@@ -49,7 +49,7 @@ public sealed class ShopifyHttpClient(
         var orders = await PollAsync(context, new OrderPollWindow(null, now, null), new(null, 1), cancellationToken);
         var evidence = new List<CapabilityEvidence>
         {
-            Supported(MarketplaceCapabilities.ConnectionTest, identity, "https://shopify.dev/docs/apps/build/authentication-authorization/client-credentials-grant", "Shopify mağaza, token, izin kapsamı, para birimi ve depo bilgileri doğrulandı.", now, "read_products,read_inventory,read_orders,read_customers,read_locations")
+            Supported(MarketplaceCapabilities.ConnectionTest, identity, "https://shopify.dev/docs/api/admin-graphql", "Shopify mağaza, uygulama tokenı, izin kapsamı, para birimi ve depo bilgileri doğrulandı.", now, "read_products,read_inventory,read_orders,read_customers,read_locations")
         };
         evidence.Add(Probe(MarketplaceCapabilities.ProductRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Product", products, "GraphQL ürün ve varyant okuması", now, "read_products,read_inventory"));
         evidence.Add(Probe(MarketplaceCapabilities.OrderRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Order", orders, "GraphQL sipariş okuması", now, "read_orders,read_customers"));

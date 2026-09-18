@@ -55,8 +55,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (platform == "SHOPIFY" && !string.Equals(apiVersion, "2026-07", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Shopify bağlantısı yalnız GraphQL Admin API 2026-07 kullanır.");
         if (platform == "TRENDYOL_EFATURAM" && !string.Equals(apiVersion, "1.0.0", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "E-Faturam bağlantısı doğrulanmış doküman sürümü 1.0.0 ile pinlenmelidir.");
         if (string.IsNullOrWhiteSpace(command.DisplayName) || string.IsNullOrWhiteSpace(command.ExternalStoreId) || platform == "TRENDYOL" && string.IsNullOrWhiteSpace(command.UserAgentIdentity)) return Invalid<ConnectionView>("connection", "Ad ve mağaza kapsamı; Trendyol için ayrıca User-Agent kimliği zorunludur.");
-        var externalStoreId = command.ExternalStoreId.Trim();
-        if (platform == "SHOPIFY" && !IsValidShopifyStore(externalStoreId)) return Invalid<ConnectionView>("externalStoreId", "Shopify mağaza adı yalnız myshopify.com alt alan adının güvenli kısa adı olmalıdır.");
+        var externalStoreId = platform == "SHOPIFY" ? NormalizeShopifyStore(command.ExternalStoreId) : command.ExternalStoreId.Trim();
+        if (platform == "SHOPIFY" && externalStoreId is null) return Invalid<ConnectionView>("externalStoreId", "Shopify mağaza adı kısa ad veya myshopify.com adresi olarak girilmelidir.");
+        if (platform == "SHOPIFY" && string.IsNullOrWhiteSpace(command.ShopifyAccessToken)) return Invalid<ConnectionView>("shopifyAccessToken", "Shopify uygulama tokenı zorunludur.");
         var shopifyModelCodeMetafield = platform == "SHOPIFY"
             ? NormalizeShopifyModelCodeMetafield(command.ShopifyModelCodeMetafield)
             : null;
@@ -71,7 +72,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             PlatformCode = platform,
             Environment = environment,
             DisplayName = command.DisplayName.Trim(),
-            ExternalStoreId = externalStoreId,
+            ExternalStoreId = externalStoreId!,
             ApiVersion = platform == "TRENDYOL" ? "V2" : platform == "SHOPIFY" ? "2026-07" : "1.0.0",
             Status = "DRAFT",
             SettingsJson = platform == "TRENDYOL" ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false)) : platform == "SHOPIFY" ? JsonSerializer.Serialize(new ShopifyConnectionSettings(false, shopifyModelCodeMetafield!)) : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(false)),
@@ -92,8 +93,23 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             EvidenceNote = "Stage/SIT kanıtı bekleniyor.",
             Version = 1
         }));
+        if (platform == "SHOPIFY")
+        {
+            var accessToken = command.ShopifyAccessToken!.Trim();
+            db.PlatformCredentials.Add(new PlatformCredential
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ConnectionId = connection.Id,
+                CredentialType = "SHOPIFY_ACCESS_TOKEN",
+                ProtectedPayload = _credentialProtector.Protect(JsonSerializer.Serialize(new ShopifyCredentialPayload(accessToken))),
+                MaskedHint = Mask(accessToken),
+                CreatedAt = now,
+                Version = 1
+            });
+        }
         await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<ConnectionView>.Ok(Map(connection, false));
+        return ServiceResult<ConnectionView>.Ok(Map(connection, platform == "SHOPIFY"));
     }
 
     public async Task<ServiceResult<ConnectionView>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -113,8 +129,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (requestedEnvironment is not null && requestedEnvironment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Ortam STAGE veya PRODUCTION olmalıdır.");
         if (command.ExternalStoreId is not null && string.IsNullOrWhiteSpace(command.ExternalStoreId)) return Invalid<ConnectionView>("externalStoreId", "Mağaza/firma kapsamı boş olamaz.");
 
-        var requestedStoreId = command.ExternalStoreId?.Trim();
-        if (connection.PlatformCode == "SHOPIFY" && requestedStoreId is not null && !IsValidShopifyStore(requestedStoreId)) return Invalid<ConnectionView>("externalStoreId", "Shopify mağaza adı yalnız myshopify.com alt alan adının güvenli kısa adı olmalıdır.");
+        var requestedStoreId = connection.PlatformCode == "SHOPIFY" && command.ExternalStoreId is not null
+            ? NormalizeShopifyStore(command.ExternalStoreId)
+            : command.ExternalStoreId?.Trim();
+        if (connection.PlatformCode == "SHOPIFY" && command.ExternalStoreId is not null && requestedStoreId is null) return Invalid<ConnectionView>("externalStoreId", "Shopify mağaza adı kısa ad veya myshopify.com adresi olarak girilmelidir.");
         var currentSettings = connection.PlatformCode == "TRENDYOL" ? ReadSettings(connection) : null;
         var currentShopifySettings = connection.PlatformCode == "SHOPIFY" ? ReadShopifySettings(connection) : null;
         var requestedShopifyModelCodeMetafield = connection.PlatformCode == "SHOPIFY"
@@ -188,7 +206,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     public async Task<ServiceResult<ConnectionView>> RotateCredentialAsync(Guid tenantId, Guid id, long expectedVersion, CredentialCommand command, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY"), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
-        if (connection.PlatformCode is "TRENDYOL" or "SHOPIFY" && (string.IsNullOrWhiteSpace(command.ApiKey) || string.IsNullOrWhiteSpace(command.ApiSecret))) return Invalid<ConnectionView>("credential", "Bu bağlantı için kimlik ve gizli anahtar zorunludur.");
+        if (connection.PlatformCode == "TRENDYOL" && (string.IsNullOrWhiteSpace(command.ApiKey) || string.IsNullOrWhiteSpace(command.ApiSecret))) return Invalid<ConnectionView>("credential", "Trendyol API kimliği ve gizli anahtarı zorunludur.");
+        if (connection.PlatformCode == "SHOPIFY" && string.IsNullOrWhiteSpace(command.ShopifyAccessToken)) return Invalid<ConnectionView>("shopifyAccessToken", "Shopify uygulama tokenı zorunludur.");
         TrendyolEFaturamCredentialPayload? efaturamCredential = null;
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
         {
@@ -197,11 +216,19 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             efaturamCredential = new(command.Email.Trim(), command.Password);
         }
         var now = timeProvider.GetUtcNow(); var current = await db.PlatformCredentials.Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.RevokedAt == null).ToListAsync(cancellationToken); foreach (var item in current) { item.RevokedAt = now; item.Version++; }
-        var payload = connection.PlatformCode is "TRENDYOL" or "SHOPIFY"
-            ? JsonSerializer.Serialize(new CredentialPayload(command.ApiKey!, command.ApiSecret!))
-            : JsonSerializer.Serialize(efaturamCredential!);
-        var hint = connection.PlatformCode is "TRENDYOL" or "SHOPIFY" ? Mask(command.ApiKey!) : MaskEmail(efaturamCredential!.Email!);
-        var credentialType = connection.PlatformCode == "TRENDYOL" ? "BASIC" : connection.PlatformCode == "SHOPIFY" ? "SHOPIFY_CLIENT_CREDENTIALS" : "EMAIL_PASSWORD";
+        var payload = connection.PlatformCode switch
+        {
+            "TRENDYOL" => JsonSerializer.Serialize(new CredentialPayload(command.ApiKey!, command.ApiSecret!)),
+            "SHOPIFY" => JsonSerializer.Serialize(new ShopifyCredentialPayload(command.ShopifyAccessToken!.Trim())),
+            _ => JsonSerializer.Serialize(efaturamCredential!)
+        };
+        var hint = connection.PlatformCode switch
+        {
+            "TRENDYOL" => Mask(command.ApiKey!),
+            "SHOPIFY" => Mask(command.ShopifyAccessToken!.Trim()),
+            _ => MaskEmail(efaturamCredential!.Email!)
+        };
+        var credentialType = connection.PlatformCode == "TRENDYOL" ? "BASIC" : connection.PlatformCode == "SHOPIFY" ? "SHOPIFY_ACCESS_TOKEN" : "EMAIL_PASSWORD";
         db.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, CredentialType = credentialType, ProtectedPayload = _credentialProtector.Protect(payload), MaskedHint = hint, CreatedAt = now, Version = 1 });
         var currentShopifyModelCodeMetafield = connection.PlatformCode == "SHOPIFY" ? ReadShopifySettings(connection).ModelCodeMetafield : ShopifyModelCodeMetafieldDefault;
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
@@ -498,6 +525,16 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         return IsShopifyMetafieldPart(name) && IsShopifyMetafieldPart(key) ? $"{name}.{key}" : null;
     }
     private static bool IsShopifyMetafieldPart(string value) => value.Length is >= 1 and <= 80 && value.All(character => character is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '_' or '-');
+    private static string? NormalizeShopifyStore(string value)
+    {
+        var normalized = value.Trim().ToLowerInvariant();
+        if (normalized.StartsWith("https://", StringComparison.Ordinal)) normalized = normalized[8..];
+        else if (normalized.StartsWith("http://", StringComparison.Ordinal)) normalized = normalized[7..];
+        if (normalized.EndsWith("/", StringComparison.Ordinal)) normalized = normalized[..^1];
+        const string suffix = ".myshopify.com";
+        if (normalized.EndsWith(suffix, StringComparison.Ordinal)) normalized = normalized[..^suffix.Length];
+        return IsValidShopifyStore(normalized) ? normalized : null;
+    }
     private static bool IsValidShopifyStore(string shop) => shop.Length is >= 3 and <= 100
         && shop[0] is >= 'a' and <= 'z' or >= 'A' and <= 'Z'
         && shop[^1] is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9'
@@ -509,6 +546,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
     private sealed record CredentialPayload(string ApiKey, string ApiSecret);
+    private sealed record ShopifyCredentialPayload(string AccessToken);
     private sealed record ConnectionSettings(string UserAgentIdentity, bool ExternalWritesEnabled);
     private sealed record ShopifyConnectionSettings(bool ExternalWritesEnabled, string ModelCodeMetafield = ShopifyModelCodeMetafieldDefault);
     private sealed record WebhookVerifierPayload(string? Username, string? Password, string? ApiKey, string? ClientSecret);
