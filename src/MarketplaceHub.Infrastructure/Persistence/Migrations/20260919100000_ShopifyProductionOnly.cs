@@ -13,7 +13,7 @@ public partial class ShopifyProductionOnly : Migration
     {
         migrationBuilder.Sql("""
             UPDATE integration.platform_connections AS staged
-            SET "Environment" = 'PRODUCTION', "Version" = "Version" + 1
+            SET "Environment" = 'PRODUCTION', "Version" = staged."Version" + 1
             WHERE staged."PlatformCode" = 'SHOPIFY'
               AND staged."Environment" = 'STAGE'
               AND NOT EXISTS (
@@ -26,7 +26,7 @@ public partial class ShopifyProductionOnly : Migration
                     AND live."Status" <> 'DELETED');
 
             UPDATE integration.platform_capabilities AS capability
-            SET "Environment" = 'PRODUCTION', "Version" = "Version" + 1
+            SET "Environment" = 'PRODUCTION', "Version" = capability."Version" + 1
             FROM integration.platform_connections AS connection
             WHERE capability."TenantId" = connection."TenantId"
               AND capability."ConnectionId" = connection."Id"
