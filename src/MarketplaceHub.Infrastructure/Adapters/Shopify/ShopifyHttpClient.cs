@@ -61,10 +61,10 @@ public sealed class ShopifyHttpClient(
         var orders = await PollAsync(context, new OrderPollWindow(null, now, null), new(null, 1), cancellationToken);
         var evidence = new List<CapabilityEvidence>
         {
-            Supported(MarketplaceCapabilities.ConnectionTest, identity, "https://shopify.dev/docs/api/admin-graphql", "Shopify mağaza, uygulama tokenı, izin kapsamı, para birimi ve depo bilgileri doğrulandı.", now, "read_products,read_inventory,read_orders,read_customers,read_locations")
+            Supported(MarketplaceCapabilities.ConnectionTest, identity, "https://shopify.dev/docs/api/admin-graphql", "Shopify mağaza, uygulama tokenı, ürün/sipariş okuma izinleri, para birimi ve depo bilgileri doğrulandı.", now, "read_products,read_inventory,read_orders,read_locations")
         };
         evidence.Add(Probe(MarketplaceCapabilities.ProductRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Product", products, "GraphQL ürün ve varyant okuması", now, "read_products,read_inventory"));
-        evidence.Add(Probe(MarketplaceCapabilities.OrderRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Order", orders, "GraphQL sipariş okuması", now, "read_orders,read_customers"));
+        evidence.Add(Probe(MarketplaceCapabilities.OrderRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Order", orders, "GraphQL sipariş okuması (müşteri kişisel verileri olmadan)", now, "read_orders"));
         return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(evidence, products.RateLimit ?? orders.RateLimit);
     }
 
@@ -129,7 +129,7 @@ public sealed class ShopifyHttpClient(
         if (shop is null) return Fail<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
         var first = Math.Clamp(page.Limit, 1, Math.Clamp(settings.OrderPageSize, 1, 250));
         var query = BuildOrderQuery(window);
-        const string gql = "query($first:Int!, $after:String, $query:String) { orders(first:$first, after:$after, query:$query, sortKey:UPDATED_AT, reverse:false) { edges { cursor node { id name createdAt updatedAt cancelledAt email currencyCode displayFinancialStatus displayFulfillmentStatus currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } customer { id displayName email } shippingAddress { address1 address2 city province zip country phone name } billingAddress { address1 address2 city province zip country phone name } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status createdAt trackingInfo { number company url } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } } } } pageInfo { hasNextPage endCursor } } }";
+        const string gql = "query($first:Int!, $after:String, $query:String) { orders(first:$first, after:$after, query:$query, sortKey:UPDATED_AT, reverse:false) { edges { cursor node { id name createdAt updatedAt cancelledAt currencyCode displayFinancialStatus displayFulfillmentStatus currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status createdAt trackingInfo { number company url } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } } } } pageInfo { hasNextPage endCursor } } }";
         var result = await QueryAsync(shop, gql, new { first, after = page.Cursor, query }, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(result.Error!, result.RateLimit);
         try
@@ -150,7 +150,7 @@ public sealed class ShopifyHttpClient(
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
         if (shop is null) return Fail<RemoteOrder>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
-        const string gql = "query($id:ID!) { order(id:$id) { id name createdAt updatedAt cancelledAt email currencyCode displayFinancialStatus displayFulfillmentStatus currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } customer { id displayName email } shippingAddress { address1 address2 city province zip country phone name } billingAddress { address1 address2 city province zip country phone name } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status createdAt trackingInfo { number company url } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } } } }";
+        const string gql = "query($id:ID!) { order(id:$id) { id name createdAt updatedAt cancelledAt currencyCode displayFinancialStatus displayFulfillmentStatus currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status createdAt trackingInfo { number company url } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } } } }";
         var id = externalOrderId.StartsWith("gid://", StringComparison.Ordinal) ? externalOrderId : $"gid://shopify/Order/{externalOrderId}";
         var result = await QueryAsync(shop, gql, new { id }, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemoteOrder>.Failure(result.Error!, result.RateLimit);
@@ -374,7 +374,15 @@ public sealed class ShopifyHttpClient(
             _ when refundedAmount > 0 => "PARTIALLY_REFUNDED",
             _ => "NOT_REFUNDED"
         };
-        var customer = order.GetProperty("customer");
+        var customer = order.TryGetProperty("customer", out var customerElement) ? customerElement : default;
+        var customerJson = customer.ValueKind == JsonValueKind.Object
+            ? JsonSerializer.Serialize(new
+            {
+                id = customer.TryGetProperty("id", out var customerId) ? customerId.GetString() : null,
+                name = customer.TryGetProperty("displayName", out var customerName) ? customerName.GetString() : null,
+                email = order.TryGetProperty("email", out var email) && email.ValueKind == JsonValueKind.String ? email.GetString() : null
+            })
+            : "{}";
         return new(
             ShortId(order.GetProperty("id").GetString()),
             order.GetProperty("name").GetString() ?? ShortId(order.GetProperty("id").GetString()),
@@ -384,7 +392,7 @@ public sealed class ShopifyHttpClient(
             DecimalOrNull(money, "amount") ?? 0,
             DecimalOrNull(discount, "amount") ?? 0,
             DecimalOrNull(money, "amount") ?? 0,
-            JsonSerializer.Serialize(new { id = customer.ValueKind == JsonValueKind.Null ? null : customer.GetProperty("id").GetString(), name = customer.ValueKind == JsonValueKind.Null ? null : customer.GetProperty("displayName").GetString(), email = order.GetProperty("email").ValueKind == JsonValueKind.Null ? null : order.GetProperty("email").GetString() }),
+            customerJson,
             AddressJson(order, "shippingAddress"),
             AddressJson(order, "billingAddress"),
             lines,

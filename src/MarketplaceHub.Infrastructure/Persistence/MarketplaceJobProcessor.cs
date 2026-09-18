@@ -1320,7 +1320,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var detail = failedCapabilities.Length == 0
                 ? "Ürün ve sipariş okuma izinleri doğrulanamadı."
                 : string.Join(" ", failedCapabilities);
-            throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.Authentication, "SHOPIFY_REQUIRED_READ_SCOPE", $"{detail} Gerekli izinler: read_products, read_inventory, read_orders, read_customers ve read_locations.", 403, null, null));
+            throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.Authentication, "SHOPIFY_REQUIRED_READ_SCOPE", $"{detail} Gerekli izinler: read_products, read_inventory, read_orders ve read_locations.", 403, null, null));
         }
         connection.LastSuccessAt = now; connection.LastErrorCode = null; if (connection.Status == "DRAFT") connection.Status = "VERIFIED"; connection.Version++; await db.SaveChangesAsync(cancellationToken); return true;
     }
