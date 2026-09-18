@@ -1677,7 +1677,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var newOnly = ReadBoolean(payloadJson, "newOnly");
         var existingOnly = ReadBoolean(payloadJson, "existingOnly");
         var includeArchived = ReadBoolean(payloadJson, "includeArchived");
-        var includeDrafts = ReadBoolean(payloadJson, "includeDrafts");
+        // Shopify's single inactive-product option intentionally covers both
+        // archived variants and draft products; keep older payloads compatible.
+        var includeDrafts = ReadBoolean(payloadJson, "includeDrafts") || isShopify && includeArchived;
         var productLookup = ReadText(payloadJson, "productLookup");
         var singleLookup = !string.IsNullOrWhiteSpace(productLookup);
         var scanLabel = singleLookup
@@ -1691,9 +1693,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     : "Yeni ve değişen ürünler taranıyor";
         var archiveLabel = includeArchived ? " · Arşiv ürünleri dahil" : " · Arşiv ürünleri hariç";
         var draftLabel = includeDrafts ? " · Taslak ürünleri dahil" : " · Taslak ürünleri hariç";
+        var lifecycleLabel = isShopify
+            ? includeArchived ? " · Arşiv ve taslak ürünler dahil" : " · Arşiv ve taslak ürünler hariç"
+            : archiveLabel + draftLabel;
         var receivedProducts = 0;
         if (jobId is { } currentJob)
-            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, scanLabel + archiveLabel + draftLabel + " · İlk sayfa bekleniyor", cancellationToken);
+            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, scanLabel + lifecycleLabel + " · İlk sayfa bekleniyor", cancellationToken);
         int? totalProducts = null;
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
         if (fullScan && cursor.OpaqueCursor is not null)
@@ -1769,7 +1774,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     totalProducts is { } knownTotal && knownTotal > 0
                         ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / knownTotal), 0, 99)
                         : null,
-                    $"{scanLabel}{archiveLabel} · {pageNumber}. sayfa okunuyor · Alınan {receivedProducts:N0} · İşlenen {telemetryImportProcessedCount:N0} · Atlanan {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0}",
+                    $"{scanLabel}{lifecycleLabel} · {pageNumber}. sayfa okunuyor · Alınan {receivedProducts:N0} · İşlenen {telemetryImportProcessedCount:N0} · Atlanan {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0}",
                     cancellationToken);
             }
             TrackRequest();
