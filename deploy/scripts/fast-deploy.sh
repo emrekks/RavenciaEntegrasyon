@@ -73,7 +73,12 @@ if [[ "$verify" == true ]]; then
 
   worker_id="$("${compose[@]}" ps -q worker)"
   [[ -n "$worker_id" ]] || { echo "Worker container was not created." >&2; exit 1; }
-  worker_health="$(sudo -n docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$worker_id")"
+  worker_health="missing"
+  for ((attempt = 1; attempt <= 30; attempt++)); do
+    worker_health="$(sudo -n docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$worker_id")"
+    [[ "$worker_health" == "healthy" ]] && break
+    (( attempt == 30 )) || sleep 2
+  done
   [[ "$worker_health" == "healthy" ]] || { echo "Worker is not healthy: $worker_health" >&2; exit 1; }
 
   html="$(curl --connect-timeout 3 --max-time 10 --silent --show-error --fail "$site_address/")"
