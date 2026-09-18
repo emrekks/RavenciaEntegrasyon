@@ -302,7 +302,10 @@ public sealed class ShopifyHttpClient(
         var currency = money.GetProperty("currencyCode").GetString() ?? "TRY";
         var financialStatus = order.GetProperty("displayFinancialStatus").GetString() ?? "OPEN";
         var lines = order.GetProperty("lineItems").GetProperty("nodes").EnumerateArray().Select(line => MapOrderLine(line, financialStatus)).ToList();
-        var fulfillments = order.GetProperty("fulfillments").GetProperty("nodes").EnumerateArray().ToList();
+        // In the 2026-07 Admin API, Order.fulfillments is returned as a
+        // direct list. Its nested fulfillmentLineItems field remains a
+        // connection and is mapped from nodes below.
+        var fulfillments = order.GetProperty("fulfillments").EnumerateArray().ToList();
         var fulfilledByLine = new Dictionary<string, decimal>(StringComparer.Ordinal);
         var packages = new List<RemotePackage>();
         foreach (var fulfillment in fulfillments)
