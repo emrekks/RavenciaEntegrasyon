@@ -199,13 +199,19 @@ public sealed class ShopifyHttpClient(
                 var throttled = string.Equals(errorCode, "THROTTLED", StringComparison.OrdinalIgnoreCase);
                 var accessDenied = string.Equals(errorCode, "ACCESS_DENIED", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(errorCode, "FORBIDDEN", StringComparison.OrdinalIgnoreCase);
+                var deniedField = firstError.TryGetProperty("path", out var path)
+                    && path.ValueKind == JsonValueKind.Array
+                    ? string.Join(".", path.EnumerateArray()
+                        .Select(value => value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString())
+                        .Where(value => !string.IsNullOrWhiteSpace(value)))
+                    : null;
                 return Failure<JsonDocument>(new(
                     throttled ? AdapterErrorClass.RateLimit : accessDenied ? AdapterErrorClass.Authentication : AdapterErrorClass.Validation,
                     throttled ? "SHOPIFY_RATE_LIMITED" : accessDenied ? "SHOPIFY_REQUIRED_READ_SCOPE" : "SHOPIFY_GRAPHQL_ERROR",
                     throttled
                         ? "Shopify API sınırına ulaşıldı; bağlantı bazında yeniden denenecek."
                         : accessDenied
-                            ? "Shopify okuma izinleri eksik. read_products, read_inventory, read_orders, read_customers ve read_locations izinlerini kontrol edin."
+                            ? $"Shopify okuma izni eksik{(string.IsNullOrWhiteSpace(deniedField) ? string.Empty : $" ({deniedField})")}. read_products, read_inventory, read_orders, read_customers ve read_locations izinlerini kontrol edin."
                             : message ?? "Shopify GraphQL isteği reddedildi.",
                     (int)response.StatusCode,
                     throttled ? rate?.RetryAfter ?? TimeSpan.FromSeconds(5) : null,
