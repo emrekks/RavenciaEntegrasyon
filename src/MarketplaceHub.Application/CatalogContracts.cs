@@ -46,7 +46,12 @@ public sealed record ProductVariantView(
 public sealed record ProductAttributeAssignmentView(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record ProductOptionValueView(Guid Id, string Label);
 public sealed record ProductOptionView(Guid Id, string Label, IReadOnlyList<ProductOptionValueView> Values);
-public sealed record ProductPlatformStatusView(string Platform, string Status);
+public sealed record ProductPlatformStatusView(
+    string Platform,
+    string Status,
+    int MatchedVariantCount = 0,
+    int VariantCount = 0,
+    bool IsChecking = false);
 public sealed record ProductView(
     Guid Id,
     string Title,

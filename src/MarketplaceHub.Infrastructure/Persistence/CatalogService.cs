@@ -1032,6 +1032,11 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return ServiceResult<PublicationStatusView>.Ok(new(productId, connectionId, profile?.Id, profile?.DesiredStatus, profile?.ActualStatus, profile?.LastRejectionCode, job?.Id, job is null ? null : JobWire(job.Status), lines));
     }
 
+    private static bool IsPlatformUpdateInProgress(string? status) => status?.Trim().ToUpperInvariant() is
+        "QUEUED" or "UPDATE_QUEUED" or "BATCH_SUBMITTED" or "BATCH_IN_PROGRESS" or "UPDATE_SUBMITTED" or "UPDATE_IN_PROGRESS" or
+        "APPROVAL_PENDING" or "APPROVAL_PARTIAL_PENDING" or "ARCHIVE_QUEUED" or "ARCHIVE_BATCH_SUBMITTED" or "ARCHIVE_RECONCILING" or
+        "UNARCHIVE_QUEUED";
+
     private bool WritesEnabled(string settingsJson)
     {
         if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
@@ -1068,6 +1073,15 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).OrderByDescending(x => x.Status == "ACTIVE").ThenBy(x => x.Id).ToListAsync(cancellationToken);
         var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.Enabled
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))).ToListAsync(cancellationToken);
+        var variantLinks = await db.MarketplaceVariantLinks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId))
+            .Select(x => new { x.ConnectionId, x.VariantId })
+            .ToListAsync(cancellationToken);
+        var profileIds = profiles.Select(x => x.Id).ToArray();
+        var listingVariants = await db.ChannelListingVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && profileIds.Contains(x.ProfileId) && variantIds.Contains(x.VariantId))
+            .Select(x => new { x.ProfileId, x.VariantId })
+            .ToListAsync(cancellationToken);
         var productAttributes = await db.ProductAttributeAssignments.AsNoTracking()
             .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.VariantId == null)
             .OrderBy(x => x.SortOrder)
@@ -1091,8 +1105,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .ToDictionary(group => group.Key, group => (IReadOnlyDictionary<string, string>)group
                 .GroupBy(item => item.OptionLabel, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(option => option.Key, option => option.Last().ValueLabel, StringComparer.OrdinalIgnoreCase));
-        var connectionIds = profiles.Select(x => x.ConnectionId).Distinct().ToArray();
-        var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
+        var connectionIds = profiles.Select(x => x.ConnectionId).Concat(variantLinks.Select(x => x.ConnectionId)).Distinct().ToArray();
+        var connections = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id) && (x.Status == "ACTIVE" || x.Status == "VERIFIED"))
+            .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
         var media = await (from item in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
                            where item.TenantId == tenantId && productIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
@@ -1128,8 +1144,28 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 inventoryByVariant.TryGetValue(variant.Id, out var inventory); offerByVariant.TryGetValue(variant.Id, out var offer);
                 return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id));
             }).ToList();
-            var platformStatuses = profiles.Where(x => x.ProductId == product.Id)
-                .Select(x => new ProductPlatformStatusView(connections.GetValueOrDefault(x.ConnectionId, "Platform"), x.ActualStatus))
+            var productVariantIds = productVariants.Select(x => x.Id).ToHashSet();
+            var productProfiles = profiles.Where(x => x.ProductId == product.Id).ToList();
+            var productLinks = variantLinks.Where(x => productVariantIds.Contains(x.VariantId)).ToList();
+            var productConnectionIds = productProfiles.Select(x => x.ConnectionId)
+                .Concat(productLinks.Select(x => x.ConnectionId))
+                .Where(connections.ContainsKey)
+                .Distinct()
+                .ToList();
+            var platformStatuses = productConnectionIds
+                .Select(connectionId =>
+                {
+                    var profile = productProfiles.FirstOrDefault(x => x.ConnectionId == connectionId);
+                    var linkedVariantIds = productLinks.Where(x => x.ConnectionId == connectionId).Select(x => x.VariantId).ToHashSet();
+                    if (profile is not null)
+                    {
+                        foreach (var listing in listingVariants.Where(x => x.ProfileId == profile.Id)) linkedVariantIds.Add(listing.VariantId);
+                    }
+
+                    var matchedVariantCount = linkedVariantIds.Count;
+                    var status = profile?.ActualStatus ?? (matchedVariantCount == productVariantIds.Count && productVariantIds.Count > 0 ? "LINKED" : matchedVariantCount > 0 ? "PARTIAL_LINKED" : "UNLINKED");
+                    return new ProductPlatformStatusView(connections.GetValueOrDefault(connectionId, "Platform"), status, matchedVariantCount, productVariantIds.Count, IsPlatformUpdateInProgress(profile?.ActualStatus));
+                })
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             var activePlatforms = platformStatuses.Select(x => x.Platform).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
