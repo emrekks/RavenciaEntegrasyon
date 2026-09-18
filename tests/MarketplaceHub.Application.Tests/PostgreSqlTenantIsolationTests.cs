@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using MarketplaceHub.Application;
 using MarketplaceHub.Api.Catalog;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Domain;
@@ -17,6 +18,101 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
+    [PostgreSqlFact]
+    public async Task ReceiveAsync_WhenSameWebhookArrivesConcurrently_CreatesOneInboxMessageAndOneJob()
+    {
+        var tenant = NewTenant("webhook");
+        var connection = new PlatformConnection
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            PublicId = Guid.CreateVersion7(),
+            PlatformCode = "TRENDYOL",
+            Environment = "STAGE",
+            DisplayName = "Concurrent webhook test",
+            ExternalStoreId = $"store-{Guid.NewGuid():N}",
+            Status = "ACTIVE",
+            ApiVersion = "V2",
+            Version = 1
+        };
+        const string routeToken = "concurrent-webhook-route-token";
+        var subscription = new WebhookSubscription
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = connection.Id,
+            RouteTokenHash = fixture.TokenHasher.Hash(routeToken),
+            AuthenticationType = "API_KEY",
+            ProtectedVerifierSecret = "test-secret",
+            Status = "ACTIVE",
+            Version = 1
+        };
+        const string externalMessageId = "content:concurrent-event";
+        const string firstRawJson = "{\"content\":[{\"id\":\"concurrent-event\"}],\"page\":0}";
+        const string secondRawJson = "{ \"page\": 0, \"content\": [ { \"id\": \"concurrent-event\" } ] }";
+        var firstVerifier = new FixedWebhookVerifier(new(externalMessageId, "payload-hash-a", "ORDERS", firstRawJson));
+        var secondVerifier = new FixedWebhookVerifier(new(externalMessageId, "payload-hash-b", "ORDERS", secondRawJson));
+
+        try
+        {
+            await using (var setupDb = fixture.CreateContext())
+            {
+                setupDb.Tenants.Add(tenant);
+                setupDb.PlatformConnections.Add(connection);
+                setupDb.WebhookSubscriptions.Add(subscription);
+                await setupDb.SaveChangesAsync();
+            }
+
+            var requests = Enumerable.Range(0, 16)
+                .Select(index => index % 2 == 0
+                    ? ReceiveWebhookAsync(connection.PublicId, routeToken, firstRawJson, $"concurrent-{index}", firstVerifier)
+                    : ReceiveWebhookAsync(connection.PublicId, routeToken, secondRawJson, $"concurrent-{index}", secondVerifier))
+                .ToArray();
+            var results = await Task.WhenAll(requests);
+
+            Assert.All(results, result => Assert.True(result.Succeeded, result.Error?.Code));
+
+            await using var verifyDb = fixture.CreateContext();
+            var inboxCount = await verifyDb.InboxMessages.CountAsync(x =>
+                x.TenantId == tenant.Id &&
+                x.Source == "TRENDYOL_WEBHOOK" &&
+                x.ExternalMessageId == externalMessageId);
+            var jobDedupKey = $"webhook:{connection.Id}:{externalMessageId}";
+            var jobCount = await verifyDb.IntegrationJobs.CountAsync(x =>
+                x.TenantId == tenant.Id &&
+                x.JobType == MarketplaceJobTypes.WebhookIngest &&
+                x.JobDedupKey == jobDedupKey);
+            var persistedSubscription = await verifyDb.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.Id == subscription.Id);
+
+            Assert.Equal(1, inboxCount);
+            Assert.Equal(1, jobCount);
+            Assert.NotNull(persistedSubscription.LastReceivedAt);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.IntegrationJobs.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.InboxMessages.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.IntegrationOutboxEvents.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.WebhookSubscriptions.Where(x => x.Id == subscription.Id).ExecuteDeleteAsync();
+            await cleanupDb.PlatformConnections.Where(x => x.Id == connection.Id).ExecuteDeleteAsync();
+            await cleanupDb.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    private async Task<ServiceResult<bool>> ReceiveWebhookAsync(Guid connectionPublicId, string routeToken, string rawJson, string correlationId, IWebhookVerifier verifier)
+    {
+        await using var db = fixture.CreateContext();
+        var service = new MarketplaceWebhookService(db, fixture.TokenHasher, verifier, fixture.TimeProvider);
+        return await service.ReceiveAsync(
+            connectionPublicId,
+            routeToken,
+            Encoding.UTF8.GetBytes(rawJson),
+            new Dictionary<string, string>(),
+            correlationId,
+            CancellationToken.None);
+    }
+
     [PostgreSqlFact]
     public async Task OperationalIssueDedupeKey_AllowsSameKeyAcrossTenants_ButRejectsDuplicateWithinTenant()
     {
@@ -414,6 +510,17 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         return Convert.ToHexString(SHA256.HashData(combined));
     }
 
+    private sealed class FixedWebhookVerifier(VerifiedWebhookEnvelope envelope) : IWebhookVerifier
+    {
+        public ValueTask<AdapterResult<VerifiedWebhookEnvelope>> VerifyAsync(
+            ReadOnlyMemory<byte> rawBody,
+            IReadOnlyDictionary<string, string> headers,
+            Guid connectionId,
+            Guid subscriptionId,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(AdapterResult<VerifiedWebhookEnvelope>.Success(envelope));
+    }
+
     private sealed class FixedTenantContextAccessor(Guid tenantId) : ITenantContextAccessor
     {
         public TenantContext? Current { get; } = new(Guid.Empty, tenantId, "ADMIN");
@@ -422,6 +529,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
 
 public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
 {
+    private static readonly SemaphoreSlim MigrationGate = new(1, 1);
     private readonly bool shouldMigrate = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION"));
     private readonly string databaseConnectionString = Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")
         ?? "Host=localhost;Port=5432;Database=marketplacehub;Username=marketplacehub;Password=development-only";
@@ -433,8 +541,16 @@ public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         if (!shouldMigrate) return;
-        await using var db = CreateContext();
-        await db.Database.MigrateAsync();
+        await MigrationGate.WaitAsync();
+        try
+        {
+            await using var db = CreateContext();
+            await db.Database.MigrateAsync();
+        }
+        finally
+        {
+            MigrationGate.Release();
+        }
     }
 
     public AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString).Options);

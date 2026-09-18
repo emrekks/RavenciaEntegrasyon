@@ -546,6 +546,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             DELETE FROM inventory.channel_offers o
             USING catalog.product_variants v, purge_product_ids p
             WHERE o."TenantId"={{tenantId}} AND o."VariantId"=v."Id" AND v."ProductId"=p."Id";
+            DELETE FROM inventory.channel_inventory_observations o
+            USING catalog.product_variants v, purge_product_ids p
+            WHERE o."TenantId"={{tenantId}} AND o."VariantId"=v."Id" AND v."ProductId"=p."Id";
             DELETE FROM inventory.stock_reservations r
             USING inventory.inventory_items i, catalog.product_variants v, purge_product_ids p
             WHERE r."TenantId"={{tenantId}} AND r."InventoryItemId"=i."Id" AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";

@@ -2,7 +2,9 @@ namespace MarketplaceHub.Application;
 
 public static class ActiveIntegrationScope
 {
-    public static bool Contains(string? platformCode) => platformCode is "TRENDYOL" or "TRENDYOL_EFATURAM";
+    public static bool Contains(string? platformCode) => platformCode is "TRENDYOL" or "TRENDYOL_EFATURAM" or "SHOPIFY";
+
+    public static bool IsMarketplace(string? platformCode) => platformCode is "TRENDYOL" or "SHOPIFY";
 }
 
 public static class MarketplaceJobTypes
@@ -32,6 +34,30 @@ public static class MarketplaceJobTypes
     public const string CommonLabel = "TRENDYOL_COMMON_LABEL";
     public const string CapabilityProbe = "TRENDYOL_CAPABILITY_PROBE";
     public const string StageTestOrder = "TRENDYOL_STAGE_TEST_ORDER";
+    public const string ShopifyConnectionTest = "SHOPIFY_CONNECTION_TEST";
+    public const string ShopifyProductSync = "SHOPIFY_PRODUCT_SYNC";
+    public const string ShopifyOrderSync = "SHOPIFY_ORDER_SYNC";
+    public const string ShopifyOrderRecoverySync = "SHOPIFY_ORDER_RECOVERY_SYNC";
+    public const string ShopifyOrderStatusSync = "SHOPIFY_ORDER_STATUS_SYNC";
+    public const string ShopifyOrderReconciliation = "SHOPIFY_ORDER_RECONCILIATION";
+    public const string ShopifyOrderInvoiceReconciliation = "SHOPIFY_ORDER_INVOICE_RECONCILIATION";
+    public const string ShopifyWebhookIngest = "SHOPIFY_WEBHOOK_INGEST";
+
+    public static string ForPlatform(string? platformCode, string jobType) =>
+        string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
+            ? jobType switch
+            {
+                ConnectionTest => ShopifyConnectionTest,
+                ProductSync => ShopifyProductSync,
+                OrderSync => ShopifyOrderSync,
+                OrderRecoverySync => ShopifyOrderRecoverySync,
+                OrderStatusSync => ShopifyOrderStatusSync,
+                OrderReconciliation => ShopifyOrderReconciliation,
+                OrderInvoiceReconciliation => ShopifyOrderInvoiceReconciliation,
+                WebhookIngest => ShopifyWebhookIngest,
+                _ => jobType
+            }
+            : jobType;
 }
 
 public static class MarketplaceSyncPolicyRules
@@ -133,7 +159,9 @@ public sealed record RemoteCatalogProduct(
     string? CategoryName,
     IReadOnlyList<string> ImageUrls,
     IReadOnlyList<RemoteCatalogVariant> Variants,
-    string RawJson);
+    string RawJson,
+    bool IsDraft = false);
+public sealed record RemoteInventoryLevel(string ExternalLocationId, string? LocationName, decimal Quantity, string RawJson);
 public sealed record RemoteCatalogVariant(
     string ExternalVariantId,
     string Sku,
@@ -147,9 +175,10 @@ public sealed record RemoteCatalogVariant(
     decimal? StockQuantity,
     string? Currency,
     string RawJson,
-    IReadOnlyList<string>? ImageUrls = null);
+    IReadOnlyList<string>? ImageUrls = null,
+    IReadOnlyList<RemoteInventoryLevel>? InventoryLevels = null);
 public sealed record RemotePublicationStatus(string Barcode, string Status, string? ExternalProductId, string? ExternalVariantId, string? RejectionCode, string RawJson);
- public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter, string? Barcode = null, string? ProductMainId = null, string? ContentId = null);
+public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter, string? Barcode = null, string? ProductMainId = null, string? ContentId = null, string? ProductUrl = null);
 public sealed record StockPushLine(Guid VariantId, string Barcode, decimal Quantity, long ProjectionVersion);
 public sealed record PricePushLine(Guid VariantId, string Barcode, decimal ListPrice, decimal SalePrice, string Currency, long PriceVersion);
 public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string Barcode, decimal Quantity, decimal ListPrice, decimal SalePrice, string Currency, long ProjectionVersion, long PriceVersion, string PriceHash);
@@ -157,11 +186,12 @@ public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, str
 public sealed record BatchLineResult(Guid LocalId, bool Succeeded, string? ErrorCode, bool Retryable);
 public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOperationId, bool IsPartial);
 public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? PackageItemStatuses = null, string? StoreFrontCode = null);
-public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal VatRate, string RawStatus, string SourceSnapshotJson = "{}");
+public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0);
 public sealed record RemotePackageAllocation(string ExternalLineId, decimal AllocatedQuantity, decimal CancelledQuantity, decimal ShippedQuantity, decimal DeliveredQuantity, decimal ReturnedQuantity);
 public sealed record RemotePackageInvoiceObservation(string? RawStatus, string? InvoiceNumber, string? InvoiceUrl, DateTimeOffset? SourceUpdatedAt);
 public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null);
-public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null);
+public sealed record RemoteOrderRefund(string ExternalRefundId, DateTimeOffset OccurredAt, decimal Amount, string Currency, string RawJson);
+public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "NOT_CANCELLED", string RefundStatus = "NOT_REFUNDED", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null);
 public sealed record PackageActionCommand(string ExternalPackageId, string Action, string PayloadJson);
 public sealed record ShipmentActionJobPayload(Guid JobId, Guid PackageId, string Action, string PayloadJson);
 public sealed record PackageActionResult(string ExternalPackageId, string Status, string? ExternalOperationId);
@@ -238,11 +268,11 @@ public interface IWebhookVerifier
     ValueTask<AdapterResult<VerifiedWebhookEnvelope>> VerifyAsync(ReadOnlyMemory<byte> rawBody, IReadOnlyDictionary<string, string> headers, Guid connectionId, Guid subscriptionId, CancellationToken cancellationToken);
 }
 
-public sealed record ConnectionView(Guid Id, Guid PublicId, string PlatformCode, string Environment, string DisplayName, string ExternalStoreId, string Status, string ApiVersion, DateTimeOffset? LastTestedAt, DateTimeOffset? LastSuccessAt, string? LastErrorCode, bool HasCredential, bool ExternalWritesEnabled, long Version);
+public sealed record ConnectionView(Guid Id, Guid PublicId, string PlatformCode, string Environment, string DisplayName, string ExternalStoreId, string Status, string ApiVersion, DateTimeOffset? LastTestedAt, DateTimeOffset? LastSuccessAt, string? LastErrorCode, bool HasCredential, bool ExternalWritesEnabled, long Version, string? ShopifyModelCodeMetafield = null);
 public sealed record CapabilityView(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string? SourceUrl, DateTimeOffset? VerifiedAt, string? ConstraintsJson, string? EvidenceNote, long Version);
 public sealed record RecordCapabilityEvidenceCommand(string SupportLevel, string SourceUrl, string SourceVersion, string Environment, string StoreScope, string EvidenceNote, string? FixtureChecksum, string? ConstraintsJson, DateTimeOffset VerifiedAt);
-public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null);
-public sealed record UpdateConnectionCommand(string DisplayName, string? UserAgentIdentity, string? Environment = null, string? ExternalStoreId = null, bool? ExternalWritesEnabled = null);
+public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null, string? ShopifyModelCodeMetafield = null);
+public sealed record UpdateConnectionCommand(string DisplayName, string? UserAgentIdentity, string? Environment = null, string? ExternalStoreId = null, bool? ExternalWritesEnabled = null, string? ShopifyModelCodeMetafield = null);
 public sealed record CredentialCommand(
     string? ApiKey,
     string? ApiSecret,
@@ -514,7 +544,7 @@ public interface IMarketplaceSalesService
     Task<ServiceResult<ShipmentDetailView>> ShipmentAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken);
-    Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool includeArchived, string? productLookup, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool includeArchived, bool includeDrafts, string? productLookup, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueShipmentActionAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ShipmentView>> ProcessShipmentInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ShipmentView>> ChangeCargoProviderInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);

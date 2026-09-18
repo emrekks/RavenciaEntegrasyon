@@ -69,6 +69,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<StockLedgerEntry> StockLedgerEntries => Set<StockLedgerEntry>();
     public DbSet<StockReservation> StockReservations => Set<StockReservation>();
     public DbSet<ChannelOffer> ChannelOffers => Set<ChannelOffer>();
+    public DbSet<ChannelInventoryObservation> ChannelInventoryObservations => Set<ChannelInventoryObservation>();
     public DbSet<ChannelPriceHistory> ChannelPriceHistory => Set<ChannelPriceHistory>();
     public DbSet<PlatformCredential> PlatformCredentials => Set<PlatformCredential>();
     public DbSet<PlatformCapability> PlatformCapabilities => Set<PlatformCapability>();

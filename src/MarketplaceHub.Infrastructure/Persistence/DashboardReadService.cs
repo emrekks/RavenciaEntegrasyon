@@ -9,12 +9,12 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
 {
     private static readonly (string ResourceType, string Label, string Kind, string[] JobTypes, bool Required)[] SyncDefinitions =
     [
-        ("orders", "Siparişler", "orders", [MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.WebhookIngest, MarketplaceJobTypes.ShipmentAction], true),
+        ("orders", "Siparişler", "orders", [MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.ShopifyOrderSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.ShopifyOrderRecoverySync, MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.ShopifyOrderStatusSync, MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.ShopifyOrderReconciliation, MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation, MarketplaceJobTypes.WebhookIngest, MarketplaceJobTypes.ShopifyWebhookIngest, MarketplaceJobTypes.ShipmentAction], true),
         ("returns", "İadeler", "returns", [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.ReturnStatusSync, MarketplaceJobTypes.ReturnReconciliation, MarketplaceJobTypes.ReturnAction], true),
         ("inventory", "Stok", "stock", [MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StockProjectionDispatch, MarketplaceJobTypes.StockReconciliation], true),
-        ("products", "Ürünler", "products", [MarketplaceJobTypes.ProductSync, MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive, MarketplaceJobTypes.ProductApprovalReconcile], false),
+        ("products", "Ürünler", "products", [MarketplaceJobTypes.ProductSync, MarketplaceJobTypes.ShopifyProductSync, MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive, MarketplaceJobTypes.ProductApprovalReconcile], false),
         ("invoices", "Faturalar", "invoices", [InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.InvoiceReconcile, InvoicingJobTypes.InvoiceDocumentFetch, InvoicingJobTypes.MarketplaceDelivery, InvoicingJobTypes.InvoiceCancellation, InvoicingJobTypes.InvoiceDueScan], false),
-        ("connections", "Bağlantılar", "connections", [MarketplaceJobTypes.ConnectionTest, InvoicingJobTypes.ConnectionTest, MarketplaceJobTypes.CapabilityProbe, InvoicingJobTypes.StageCapabilityProbe], false)
+        ("connections", "Bağlantılar", "connections", [MarketplaceJobTypes.ConnectionTest, MarketplaceJobTypes.ShopifyConnectionTest, InvoicingJobTypes.ConnectionTest, MarketplaceJobTypes.CapabilityProbe, InvoicingJobTypes.StageCapabilityProbe], false)
     ];
 
     public async Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken)

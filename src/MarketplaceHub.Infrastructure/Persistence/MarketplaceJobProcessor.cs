@@ -48,7 +48,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             return JobExecutionResult.Retry("INITIAL_SYNC_PENDING", "İlk kapsamlı veri aktarımı tamamlanmadan artımlı senkronizasyon başlatılmayacak.", TimeSpan.FromSeconds(30));
         // A disabled connection may still be tested so it can be reactivated, but
         // no data sync or marketplace operation may execute while it is passive.
-        if (jobType != MarketplaceJobTypes.ConnectionTest && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
+        if (jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest) && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
             return JobExecutionResult.Blocked("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için işlem çalıştırılmadı.");
         var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken);
         if (syncLock is null)
@@ -88,19 +88,19 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 }
                 var succeeded = jobType switch
                 {
-                    MarketplaceJobTypes.ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
+                    MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.OrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
-                    MarketplaceJobTypes.OrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
-                    MarketplaceJobTypes.OrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
-                    MarketplaceJobTypes.OrderReconciliation => await ReconcileOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.OrderInvoiceReconciliation => await ReconcileOrderInvoices(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.ProductSync => await SyncProducts(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
+                    MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
+                    MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
+                    MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
+                    MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation => await ReconcileOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                    MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation => await ReconcileOrderInvoices(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                    MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync => await SyncProducts(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
                     MarketplaceJobTypes.ReturnSync => await SyncReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnReconciliation => await ReconcileReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.StockReconciliation => await ReconcileStock(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.WebhookIngest => await IngestWebhook(tenantId, connectionId.Value, payloadJson, cancellationToken),
+                    MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest => await IngestWebhook(tenantId, connectionId.Value, payloadJson, cancellationToken),
                     MarketplaceJobTypes.ShipmentAction => await ShipmentAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnAction => await ReturnAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     _ => false
@@ -127,17 +127,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private static string? TelemetryResource(string jobType) => jobType switch
     {
-        MarketplaceJobTypes.ConnectionTest => "CONNECTION_TEST",
+        MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest => "CONNECTION_TEST",
         MarketplaceJobTypes.ReferenceSync => "REFERENCE_DATA",
-        MarketplaceJobTypes.OrderSync => "ORDERS_HOT",
-        MarketplaceJobTypes.OrderRecoverySync => "ORDERS_RECOVERY",
-        MarketplaceJobTypes.OrderStatusSync => "ORDER_LIFECYCLE",
-        MarketplaceJobTypes.OrderReconciliation => "ORDER_RECONCILIATION",
-        MarketplaceJobTypes.OrderInvoiceReconciliation => "ORDER_INVOICE_RECONCILIATION",
+        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync => "ORDERS_HOT",
+        MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync => "ORDERS_RECOVERY",
+        MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync => "ORDER_LIFECYCLE",
+        MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation => "ORDER_RECONCILIATION",
+        MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation => "ORDER_INVOICE_RECONCILIATION",
         MarketplaceJobTypes.ReturnSync => "RETURNS",
         MarketplaceJobTypes.ReturnStatusSync => "RETURN_LIFECYCLE",
         MarketplaceJobTypes.ReturnReconciliation => "RETURN_RECONCILIATION",
-        MarketplaceJobTypes.ProductSync => "PRODUCTS",
+        MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync => "PRODUCTS",
         MarketplaceJobTypes.ProductCreate => "PRODUCT_CREATE",
         MarketplaceJobTypes.ProductApprovalReconcile => "PRODUCT_APPROVAL",
         MarketplaceJobTypes.ProductUpdate => "PRODUCT_UPDATE",
@@ -145,7 +145,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         MarketplaceJobTypes.PriceInventorySync => "PRICE_INVENTORY",
         MarketplaceJobTypes.StockProjectionDispatch => "STOCK_PROJECTION",
         MarketplaceJobTypes.StockReconciliation => "STOCK_RECONCILIATION",
-        MarketplaceJobTypes.WebhookIngest => "WEBHOOK_INGEST",
+        MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest => "WEBHOOK_INGEST",
         MarketplaceJobTypes.ShipmentAction => "SHIPMENT_ACTION",
         MarketplaceJobTypes.ReturnAction => "RETURN_ACTION",
         MarketplaceJobTypes.CommonLabel => "COMMON_LABEL",
@@ -157,11 +157,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private static bool IsBootstrapManagedJob(string jobType) => jobType is
         MarketplaceJobTypes.ReferenceSync
         or MarketplaceJobTypes.OrderSync
+        or MarketplaceJobTypes.ShopifyOrderSync
         or MarketplaceJobTypes.OrderRecoverySync
+        or MarketplaceJobTypes.ShopifyOrderRecoverySync
         or MarketplaceJobTypes.OrderStatusSync
+        or MarketplaceJobTypes.ShopifyOrderStatusSync
         or MarketplaceJobTypes.OrderReconciliation
+        or MarketplaceJobTypes.ShopifyOrderReconciliation
         or MarketplaceJobTypes.OrderInvoiceReconciliation
+        or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
         or MarketplaceJobTypes.ProductSync
+        or MarketplaceJobTypes.ShopifyProductSync
         or MarketplaceJobTypes.ReturnSync
         or MarketplaceJobTypes.ReturnStatusSync
         or MarketplaceJobTypes.ReturnReconciliation
@@ -1289,7 +1295,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> TestConnection(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken); if (connection is null) return false; var now = timeProvider.GetUtcNow(); connection.LastTestedAt = now;
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"), cancellationToken); if (connection is null) return false; var now = timeProvider.GetUtcNow(); connection.LastTestedAt = now;
         IConnectionPort port = connections;
         var context = Context(tenantId, connectionId, correlationId, "connection-test"); TrackRequest(); var result = await port.TestAsync(context, cancellationToken); if (!result.IsSuccess) { TrackResultFailure(result.Error); connection.LastErrorCode = result.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
         TrackRequest(); var discovery = await port.DiscoverCapabilitiesAsync(context, cancellationToken); if (!discovery.IsSuccess) { TrackResultFailure(discovery.Error); connection.LastErrorCode = discovery.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(discovery.Error!); }
@@ -1299,6 +1305,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var capability = await db.PlatformCapabilities.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == evidence.Code, cancellationToken); if (capability is null) continue;
             capability.SupportLevel = string.Equals(evidence.SupportLevel, "SUPPORTED", StringComparison.Ordinal) ? CapabilitySupportLevel.Supported : CapabilitySupportLevel.Unknown; capability.SourceUrl = evidence.SourceUrl; capability.SourceVersion = evidence.SourceVersion; capability.RequiredScope = evidence.RequiredScope; capability.ConstraintsJson = evidence.ConstraintsJson; capability.EvidenceNote = evidence.EvidenceNote; capability.FixtureChecksum = evidence.FixtureChecksum; capability.VerifiedAt = evidence.VerifiedAt; capability.Version++;
         }
+        if (connection.PlatformCode == "SHOPIFY" && discovery.Value is not null
+            && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(code => discovery.Value.Any(item => item.Code == code && item.SupportLevel == "SUPPORTED")))
+        {
+            connection.LastErrorCode = "SHOPIFY_REQUIRED_READ_SCOPE";
+            connection.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.Authentication, "SHOPIFY_REQUIRED_READ_SCOPE", "Shopify için ürün, sipariş ve depo okuma izinleri doğrulanamadı. Uygulamanın read_products, read_inventory, read_orders, read_customers ve read_locations izinlerini kontrol edin.", 403, null, null));
+        }
         connection.LastSuccessAt = now; connection.LastErrorCode = null; if (connection.Status == "DRAFT") connection.Status = "VERIFIED"; connection.Version++; await db.SaveChangesAsync(cancellationToken); return true;
     }
 
@@ -1307,6 +1321,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         if (!configuration.GetValue("Marketplace:PersistOrderSnapshots", true))
             return true;
+
+        var platform = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (platform == "SHOPIFY")
+            return await SyncShopifyOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
 
         string? externalOrderId = null;
         var full = false;
@@ -1434,8 +1455,71 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
+    private async Task<bool> SyncShopifyOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
+    {
+        string? externalOrderId = null;
+        var full = false;
+        try
+        {
+            using var payload = JsonDocument.Parse(payloadJson);
+            if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString();
+            if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
+        }
+        catch (JsonException) { return false; }
+
+        if (!string.IsNullOrWhiteSpace(externalOrderId))
+        {
+            TrackRequest();
+            var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"shopify-order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
+            if (!single.IsSuccess) { TrackResultFailure(single.Error); throw JobProcessingException.FromAdapter(single.Error!); }
+            TrackReceived();
+            await UpsertOrder(tenantId, connectionId, single.Value!, cancellationToken, projectReservations: false, persistFinancialObservations: true);
+            return true;
+        }
+
+        var cursor = await Cursor(tenantId, connectionId, cursorResourceType, cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var initialWindowStart = now.AddDays(-60);
+        var modifiedAfter = full || allowBaseline
+            ? initialWindowStart
+            : cursor.LastModifiedWatermark?.AddMinutes(-10) ?? (cursor.LastSuccessAt is null ? initialWindowStart : null);
+        do
+        {
+            TrackRequest();
+            var result = await orders.PollAsync(
+                Context(tenantId, connectionId, correlationId, $"shopify-order-sync:{cursor.OpaqueCursor ?? "0"}"),
+                new OrderPollWindow(modifiedAfter, now, null),
+                new(cursor.OpaqueCursor, 100),
+                cancellationToken);
+            if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+            foreach (var _ in result.Value!.Items) TrackReceived();
+            foreach (var issue in result.Value.Issues ?? [])
+                await RecordIssue(tenantId, $"shopify-order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+            await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken, projectReservations: false);
+            if (result.Value.HasMore)
+            {
+                if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Shopify sipariş sayfası hasMore=true ancak nextCursor boş döndü.");
+                cursor.OpaqueCursor = result.Value.NextCursor;
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                continue;
+            }
+
+            cursor.OpaqueCursor = null;
+            cursor.LastModifiedWatermark = now.AddSeconds(-60);
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            break;
+        } while (!cancellationToken.IsCancellationRequested);
+        return true;
+    }
+
     private async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
+        var isShopify = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode == "SHOPIFY")
+            .SingleOrDefaultAsync(cancellationToken);
         var lifecycleBatchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:OrderLifecycle:BatchSize", 25), 1, 100);
         var externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()
                                       join order in db.Orders.AsNoTracking()
@@ -1469,7 +1553,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             recoveredOrders.Add(result.Value!);
             await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{externalOrderId}", cancellationToken);
         }
-        if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken);
+        if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken, projectReservations: !isShopify);
 
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
         cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
@@ -1480,6 +1564,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> ReconcileOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
+        var isShopify = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode == "SHOPIFY")
+            .SingleOrDefaultAsync(cancellationToken);
         var lookbackDays = ReadBoundedInt(payloadJson, "lookbackDays", 1, 1, 90);
         var batchSize = ReadBoundedInt(payloadJson, "batchSize", 25, 1, 100);
         var end = timeProvider.GetUtcNow();
@@ -1513,7 +1601,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
 
             TrackReceived();
-            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken);
+            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
             await ResolveIssue(tenantId, $"order-reconcile:{connectionId}:{externalOrderId}", cancellationToken);
         }
 
@@ -1522,6 +1610,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> ReconcileOrderInvoices(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
+        var isShopify = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode == "SHOPIFY")
+            .SingleOrDefaultAsync(cancellationToken);
         var batchSize = ReadBoundedInt(payloadJson, "batchSize", 50, 1, 250);
         var externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()
                                       join order in db.Orders.AsNoTracking()
@@ -1552,7 +1644,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
 
             TrackReceived();
-            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken);
+            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
             await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
         }
 
@@ -1562,8 +1654,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
-        // Product import is read-only on Trendyol and writes only to the local catalog.
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"), cancellationToken);
+        var isShopify = connection?.PlatformCode == "SHOPIFY";
+        // Product import is read-only on the remote platform and writes only to
+        // Ravencia's local catalog. Shopify observations never become local
+        // price/stock authority.
         // Keep it restricted to operational connections and recognised environments.
         if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED")) return false;
         var inventoryPolicy = await db.ConnectionInventoryPolicies.AsNoTracking()
@@ -1573,6 +1668,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var newOnly = ReadBoolean(payloadJson, "newOnly");
         var existingOnly = ReadBoolean(payloadJson, "existingOnly");
         var includeArchived = ReadBoolean(payloadJson, "includeArchived");
+        var includeDrafts = ReadBoolean(payloadJson, "includeDrafts");
         var productLookup = ReadText(payloadJson, "productLookup");
         var singleLookup = !string.IsNullOrWhiteSpace(productLookup);
         var scanLabel = singleLookup
@@ -1585,9 +1681,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     ? "Ekli model kodları güncelleniyor"
                     : "Yeni ve değişen ürünler taranıyor";
         var archiveLabel = includeArchived ? " · Arşiv ürünleri dahil" : " · Arşiv ürünleri hariç";
+        var draftLabel = includeDrafts ? " · Taslak ürünleri dahil" : " · Taslak ürünleri hariç";
         var receivedProducts = 0;
         if (jobId is { } currentJob)
-            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, scanLabel + archiveLabel + " · İlk sayfa bekleniyor", cancellationToken);
+            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, scanLabel + archiveLabel + draftLabel + " · İlk sayfa bekleniyor", cancellationToken);
         int? totalProducts = null;
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
         if (fullScan && cursor.OpaqueCursor is not null)
@@ -1612,7 +1709,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .Where(modelCode => !string.IsNullOrWhiteSpace(modelCode))
                 .ToHashSet(StringComparer.Ordinal)
             : null;
-        var hasCategoryMappings = await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
+        var hasCategoryMappings = !isShopify && await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
         // The first attribute backfill must revisit the already imported catalog. Keep
         // LastModifiedWatermark null until that full pass is complete so a retry cannot
         // accidentally switch to the incremental window halfway through the backfill.
@@ -1627,8 +1724,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // Product imports carry Trendyol's brand id, so keep the current brand
         // reference available for an automatic panel-brand mapping while the
         // catalog rows are being materialized.
-        var brandReferences = await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
-        var categoryReferences = await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
+        var brandReferences = isShopify ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
+        var categoryReferences = isShopify ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
         IReadOnlyList<ReferenceItem> categoryItems = categoryReferences is null
             ? []
             : await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == categoryReferences.Id && x.ResourceType == "CATEGORIES" && x.IsActive).ToListAsync(cancellationToken);
@@ -1676,6 +1773,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             receivedProducts += result.Value.Items.Count;
             totalProducts ??= result.Value.TotalCount;
             var pageSnapshots = result.Value.Items
+                .Where(snapshot => includeDrafts || !snapshot.IsDraft)
                 .Select(snapshot => includeArchived
                     ? snapshot
                     : snapshot with { Variants = snapshot.Variants.Where(variant => !variant.Archived).ToList() })
@@ -1765,7 +1863,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify, preferBarcode: isShopify);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -1836,7 +1934,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private Task<int> UpdateProductSyncProgressAsync(Guid tenantId, Guid jobId, int current, int? total, int? percent, string label, CancellationToken cancellationToken, bool keepExistingTotal = false)
     {
-        var query = db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.Id == jobId && x.JobType == MarketplaceJobTypes.ProductSync);
+        var query = db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.Id == jobId && (x.JobType == MarketplaceJobTypes.ProductSync || x.JobType == MarketplaceJobTypes.ShopifyProductSync));
         return keepExistingTotal
             ? query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken)
             : query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressTotal, total).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken);
@@ -2616,7 +2714,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized, cancellationToken);
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -2636,6 +2734,31 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         Product? product = link is null
             ? null
             : await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == link.ProductId, cancellationToken);
+        if (product is null && observeOnly && !string.IsNullOrWhiteSpace(snapshot.ProductMainId))
+        {
+            var modelCode = snapshot.ProductMainId.Trim();
+            var normalizedModelCode = modelCode.ToUpperInvariant();
+            var modelCodeProductIds = await db.ProductVariants.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ModelCode != null && x.ModelCode.ToUpper() == normalizedModelCode)
+                .Select(x => x.ProductId)
+                .Distinct()
+                .Take(2)
+                .ToListAsync(cancellationToken);
+            if (modelCodeProductIds.Count > 1)
+            {
+                await RecordIssue(tenantId, $"product-sync-model-code-conflict:{connectionId}:{NormalizeCatalogKey(modelCode, 160)}", "PRODUCT_MODEL_CODE_CONFLICT", $"Shopify model kodu '{Short(modelCode, 160)}' birden fazla yerel üründe bulundu; otomatik eşleştirme yapılmadı.", cancellationToken);
+                return false;
+            }
+            if (modelCodeProductIds.Count == 1)
+            {
+                product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == modelCodeProductIds[0], cancellationToken);
+                if (product is not null && await db.MarketplaceProductLinks.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == product.Id && x.ExternalId != externalProductId, cancellationToken))
+                {
+                    await RecordIssue(tenantId, $"product-sync-link-conflict:{connectionId}:{externalProductId}", "PRODUCT_LINK_CONFLICT", "Shopify ürünü aynı bağlantıda başka bir dış ürünle eşleşmiş yerel ürüne bağlanmadı.", cancellationToken);
+                    return false;
+                }
+            }
+        }
         if (product is null)
         {
             isNewProduct = true;
@@ -2659,20 +2782,36 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 telemetryInsertedCount++;
             }
         }
+        else if (link is null && observeOnly)
+        {
+            link = new MarketplaceProductLink
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ConnectionId = connectionId,
+                ProductId = product.Id,
+                ExternalId = externalProductId,
+                LastImportedPayloadHash = remoteHash,
+                SyncStatus = "SYNCED",
+                Version = 1
+            };
+            db.MarketplaceProductLinks.Add(link);
+            telemetryInsertedCount++;
+        }
 
         if (!onlyNewVariants && !isNewProduct && link is not null && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase) && await CatalogSnapshotAlreadyApplied(tenantId, product.Id, snapshot, cancellationToken))
         {
             // A previous import may have stored the remote observation while
             // leaving the untouched local projection at zero. Reconcile that
             // legacy state even when the payload itself has not changed.
-            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken);
+            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode);
             if (saveChanges)
                 await db.SaveChangesAsync(cancellationToken);
             telemetrySkippedCount++;
             return false;
         }
 
-        var preserveLocal = link is not null && ProductImportMergePolicy.PreserveLocalChanges(product.Version, link.LastImportedProductVersion, link.DirtyFieldsJson);
+        var preserveLocal = link is not null && (ProductImportMergePolicy.PreserveLocalChanges(product.Version, link.LastImportedProductVersion, link.DirtyFieldsJson) || observeOnly && !isNewProduct);
         if (!onlyNewVariants && !preserveLocal)
         {
             product.Title = ProductTitle(snapshot.Title, externalProductId);
@@ -2688,9 +2827,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             telemetrySkippedCount++;
         }
 
-        var brand = await UpsertCatalogBrand(tenantId, snapshot.BrandName, cancellationToken);
+        var brand = observeOnly ? null : await UpsertCatalogBrand(tenantId, snapshot.BrandName, cancellationToken);
         await EnsureImportedBrandMapping(tenantId, connectionId, brand, snapshot.BrandExternalId, brandReferenceSnapshotId, now, cancellationToken);
-        var category = categoryContext?.LocalCategory ?? await UpsertCatalogCategory(tenantId, snapshot.CategoryName, cancellationToken);
+        var category = observeOnly ? null : categoryContext?.LocalCategory ?? await UpsertCatalogCategory(tenantId, snapshot.CategoryName, cancellationToken);
         if (!preserveLocal && !onlyNewVariants)
         {
             product.BrandId = brand?.Id;
@@ -2698,7 +2837,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         var importedNewVariantCount = 0;
-        if (!preserveLocal || onlyNewVariants)
+        if (!preserveLocal || onlyNewVariants || observeOnly)
         {
             if (!onlyNewVariants)
                 await NormalizeLegacyWebColorOptions(tenantId, product.Id, cancellationToken);
@@ -2715,7 +2854,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 var externalVariantId = Short(remote.ExternalVariantId, 256);
                 if (onlyNewVariants && existingVariantExternalIds!.Contains(externalVariantId))
                     continue;
-                var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, sortOrder, categoryContext, inventoryPolicy, now, cancellationToken);
+                var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, sortOrder, categoryContext, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode);
                 if (importedVariant is not null)
                 {
                     importedVariants.Add(importedVariant);
@@ -2740,7 +2879,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             // Local product edits must not block stock observations. Match
             // existing variants without touching their local content/options,
             // then apply only the inventory part of the remote snapshot.
-            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken);
+            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode);
         }
         link ??= await db.MarketplaceProductLinks.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
         link.LastImportedPayloadHash = remoteHash;
@@ -2770,7 +2909,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         RemoteCatalogProduct snapshot,
         ConnectionInventoryPolicy? inventoryPolicy,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool observeOnly = false,
+        bool preferBarcode = false)
     {
         var variants = await db.ProductVariants
             .Where(x => x.TenantId == tenantId && x.ProductId == product.Id)
@@ -2799,13 +2940,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var variant = linkedVariantId is Guid variantId
                 ? variants.FirstOrDefault(x => x.Id == variantId)
                 : null;
-            variant ??= variants.FirstOrDefault(x => x.SkuNormalized == skuNormalized)
-                ?? (!string.IsNullOrWhiteSpace(barcodeNormalized)
-                    ? variants.FirstOrDefault(x => x.BarcodeNormalized == barcodeNormalized)
-                    : null);
+            if (preferBarcode && !string.IsNullOrWhiteSpace(barcodeNormalized))
+                variant ??= variants.FirstOrDefault(x => x.BarcodeNormalized == barcodeNormalized);
+            variant ??= variants.FirstOrDefault(x => x.SkuNormalized == skuNormalized);
+            if (!preferBarcode && variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
+                variant = variants.FirstOrDefault(x => x.BarcodeNormalized == barcodeNormalized);
             if (variant is null) continue;
 
-            await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: false);
+            await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: false, observeOnly: observeOnly);
         }
     }
 
@@ -2957,7 +3099,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return category;
     }
 
-    private async Task<ProductVariant?> UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, int sortOrder, CategoryAttributeContext? categoryContext, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<ProductVariant?> UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, int sortOrder, CategoryAttributeContext? categoryContext, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool observeOnly = false, bool preferBarcode = false)
     {
         var sku = Short(string.IsNullOrWhiteSpace(remote.Sku) ? remote.Barcode ?? remote.ExternalVariantId : remote.Sku, 160);
         var skuNormalized = NormalizeCatalogKey(sku, 160);
@@ -2968,6 +3110,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var optionSignature = categoryContext is null ? OptionSignature(remote.Options) : await PanelOptionSignatureAsync(tenantId, connectionId, categoryContext, remote.Options, cancellationToken);
         var link = await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalVariantId, cancellationToken);
         ProductVariant? variant = link is null ? null : await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == link.VariantId, cancellationToken);
+        if (preferBarcode && !string.IsNullOrWhiteSpace(barcodeNormalized))
+            variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized)
+                ?? await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized, cancellationToken);
         variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.SkuNormalized == skuNormalized)
             ?? await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SkuNormalized == skuNormalized, cancellationToken);
         if (variant is not null && variant.ProductId != product.Id)
@@ -2975,8 +3120,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await RecordIssue(tenantId, $"product-sync-variant-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_CONFLICT", "Trendyol varyantı başka bir yerel üründe kullanılan stok koduyla eşleşti; mevcut kayıt korunarak atlandı.", cancellationToken);
             return null;
         }
-        if (variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
+        if (!preferBarcode && variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
             variant = await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized, cancellationToken);
+        var isNewVariant = variant is null;
         if (variant is null)
         {
             variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = sortOrder, Sku = sku, SkuNormalized = skuNormalized, Barcode = barcode, BarcodeNormalized = barcodeNormalized, ModelCode = Short(remote.ModelCode, 160), OptionSignature = optionSignature, Status = remote.Archived ? ProductStatus.Archived : ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
@@ -2987,7 +3133,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             var nextModelCode = Short(remote.ModelCode, 160);
             var nextStatus = remote.Archived ? ProductStatus.Archived : ProductStatus.Active;
-            if (variant.SortOrder != sortOrder || variant.Sku != sku || variant.SkuNormalized != skuNormalized || variant.Barcode != barcode || variant.BarcodeNormalized != barcodeNormalized || variant.ModelCode != nextModelCode || variant.OptionSignature != optionSignature || variant.Status != nextStatus)
+            if (!observeOnly && (variant.SortOrder != sortOrder || variant.Sku != sku || variant.SkuNormalized != skuNormalized || variant.Barcode != barcode || variant.BarcodeNormalized != barcodeNormalized || variant.ModelCode != nextModelCode || variant.OptionSignature != optionSignature || variant.Status != nextStatus))
             {
                 variant.SortOrder = sortOrder; variant.Sku = sku; variant.SkuNormalized = skuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = barcodeNormalized; variant.ModelCode = nextModelCode; variant.OptionSignature = optionSignature; variant.Status = nextStatus; variant.UpdatedAt = now; variant.Version++;
                 telemetryUpdatedCount++;
@@ -3008,11 +3154,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 return null;
             }
         }
-        await UpsertCatalogOptions(tenantId, connectionId, product.Id, variant.Id, remote.Options, categoryContext, cancellationToken);
-        if (categoryContext is not null)
+        if (!observeOnly || isNewVariant)
+            await UpsertCatalogOptions(tenantId, connectionId, product.Id, variant.Id, remote.Options, categoryContext, cancellationToken);
+        if ((!observeOnly || isNewVariant) && categoryContext is not null)
             await UpsertProductAttributeAssignments(tenantId, connectionId, product, variant, remote.Options, categoryContext, cancellationToken);
-        await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken);
-        if (remote.ImageUrls is not null)
+        await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, observeOnly: observeOnly);
+        if ((!observeOnly || isNewVariant) && remote.ImageUrls is not null)
             await UpsertCatalogMedia(tenantId, product, variant.Id, remote.ImageUrls, $"{product.Title} · {optionSignature}", cancellationToken);
         return variant;
     }
@@ -3064,9 +3211,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             ? $"id:{variant.ExternalVariantId}"
             : $"sku:{NormalizeCatalogKey(variant.Sku, 160)}";
 
-    private async Task UpsertCatalogOfferAndInventory(Guid tenantId, Guid connectionId, ProductVariant variant, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool updateOffer = true)
+    private async Task UpsertCatalogOfferAndInventory(Guid tenantId, Guid connectionId, ProductVariant variant, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool updateOffer = true, bool observeOnly = false)
     {
-        if (remote.StockQuantity is decimal stockQuantity)
+        if (observeOnly)
+        {
+            await UpsertShopifyInventoryObservations(tenantId, connectionId, variant.Id, remote, now, cancellationToken);
+        }
+        else if (remote.StockQuantity is decimal stockQuantity)
         {
             var observedRemoteQuantity = decimal.Round(Math.Max(0m, stockQuantity), 4, MidpointRounding.ToEven);
             var applyRemoteQuantityToOnHand = InventoryAuthorityPolicy.ShouldApplyRemoteQuantityToOnHand(inventoryPolicy?.AuthorityMode);
@@ -3083,9 +3234,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     // The first catalog snapshot initializes an untouched
                     // inventory row. Subsequent writes still require the
                     // explicit remote-authoritative mode.
-                    OnHand = observedRemoteQuantity,
+                    OnHand = observeOnly ? 0 : observedRemoteQuantity,
                     Reserved = 0,
-                    Available = observedRemoteQuantity,
+                    Available = observeOnly ? 0 : observedRemoteQuantity,
                     ObservedRemoteQuantity = observedRemoteQuantity,
                     ObservedRemoteAt = now,
                     ReconciledAt = now,
@@ -3097,7 +3248,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 var reconciliationWasMissing = inventory.ReconciledAt is null;
                 var seedInitialOnHand = InventoryAuthorityPolicy.ShouldSeedInitialOnHand(inventory);
-                var applyQuantityToOnHand = applyRemoteQuantityToOnHand || seedInitialOnHand;
+                var applyQuantityToOnHand = !observeOnly && (applyRemoteQuantityToOnHand || seedInitialOnHand);
                 var projectionChanged = applyQuantityToOnHand && inventory.OnHand != observedRemoteQuantity;
                 var observationChanged = inventory.ObservedRemoteQuantity != observedRemoteQuantity;
                 if (projectionChanged)
@@ -3123,6 +3274,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var status = remote.Archived ? "INACTIVE" : "ACTIVE";
         var offer = db.ChannelOffers.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id)
             ?? await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id, cancellationToken);
+        var observationSource = observeOnly ? "SHOPIFY" : "TRENDYOL";
         if (offer is null)
         {
             offer = new ChannelOffer
@@ -3152,8 +3304,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 ListPrice = offer.ListPrice,
                 SalePrice = offer.SalePrice,
                 Currency = offer.Currency,
-                Reason = "TRENDYOL_CATALOG_IMPORT",
-                ActorSource = "SYSTEM:TRENDYOL",
+                Reason = $"{observationSource}_CATALOG_IMPORT",
+                ActorSource = $"SYSTEM:{observationSource}",
                 EffectiveAt = now
             });
             return;
@@ -3180,10 +3332,67 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 ListPrice = offer.ListPrice,
                 SalePrice = offer.SalePrice,
                 Currency = offer.Currency,
-                Reason = "TRENDYOL_CATALOG_IMPORT",
-                ActorSource = "SYSTEM:TRENDYOL",
+                Reason = $"{observationSource}_CATALOG_IMPORT",
+                ActorSource = $"SYSTEM:{observationSource}",
                 EffectiveAt = now
             });
+        }
+    }
+
+    private async Task UpsertShopifyInventoryObservations(Guid tenantId, Guid connectionId, Guid variantId, RemoteCatalogVariant remote, DateTimeOffset observedAt, CancellationToken cancellationToken)
+    {
+        var levels = remote.InventoryLevels is { Count: > 0 }
+            ? remote.InventoryLevels
+            : remote.StockQuantity is decimal aggregate
+                ? [new RemoteInventoryLevel("__aggregate__", null, aggregate, remote.RawJson)]
+                : [];
+        if (levels.Count == 0) return;
+
+        var mappings = await db.ConnectionLocationMappings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "ACTIVE")
+            .ToListAsync(cancellationToken);
+
+        foreach (var level in levels)
+        {
+            var externalLocationId = Short(level.ExternalLocationId, 256);
+            var mapping = mappings.FirstOrDefault(x => string.Equals(Short(x.ExternalLocationId, 256), externalLocationId, StringComparison.OrdinalIgnoreCase));
+            var quantity = decimal.Round(Math.Max(0m, level.Quantity), 4, MidpointRounding.ToEven);
+            var observation = db.ChannelInventoryObservations.Local.FirstOrDefault(x =>
+                    x.TenantId == tenantId
+                    && x.ConnectionId == connectionId
+                    && x.VariantId == variantId
+                    && string.Equals(x.ExternalLocationId, externalLocationId, StringComparison.Ordinal))
+                ?? await db.ChannelInventoryObservations.SingleOrDefaultAsync(x =>
+                    x.TenantId == tenantId
+                    && x.ConnectionId == connectionId
+                    && x.VariantId == variantId
+                    && x.ExternalLocationId == externalLocationId,
+                    cancellationToken);
+
+            if (observation is null)
+            {
+                db.ChannelInventoryObservations.Add(new ChannelInventoryObservation
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    ConnectionId = connectionId,
+                    VariantId = variantId,
+                    LocationId = mapping?.LocationId,
+                    ExternalLocationId = externalLocationId,
+                    Quantity = quantity,
+                    ObservedAt = observedAt,
+                    Version = 1
+                });
+                continue;
+            }
+
+            if (observation.LocationId != mapping?.LocationId || observation.Quantity != quantity || observation.ObservedAt != observedAt)
+            {
+                observation.LocationId = mapping?.LocationId;
+                observation.Quantity = quantity;
+                observation.ObservedAt = observedAt;
+                observation.Version++;
+            }
         }
     }
 
@@ -3492,13 +3701,39 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> IngestWebhook(Guid tenantId, Guid connectionId, string payloadJson, CancellationToken cancellationToken)
     {
-        string raw; string externalMessageId; try { using var payload = JsonDocument.Parse(payloadJson); raw = payload.RootElement.GetProperty("rawJson").GetString() ?? ""; externalMessageId = payload.RootElement.GetProperty("externalMessageId").GetString() ?? ""; } catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException) { return false; }
-        AdapterPageResult<RemoteOrder> page; try { page = TrendyolJsonMapper.Orders(raw); } catch (JsonException) { return false; }
-        foreach (var issue in page.Issues ?? [])
-            await RecordIssue(tenantId, $"order-webhook-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
-        if (configuration.GetValue("Marketplace:PersistOrderSnapshots", true))
-            await UpsertOrders(tenantId, connectionId, page.Items, cancellationToken);
-        var inbox = await db.InboxMessages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Source == "TRENDYOL_WEBHOOK" && x.ExternalMessageId == externalMessageId, cancellationToken); if (inbox is not null) inbox.ProcessedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return true;
+        string raw; string externalMessageId;
+        try { using var payload = JsonDocument.Parse(payloadJson); raw = payload.RootElement.GetProperty("rawJson").GetString() ?? ""; externalMessageId = payload.RootElement.GetProperty("externalMessageId").GetString() ?? ""; }
+        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException) { return false; }
+
+        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var source = $"{platform}_WEBHOOK";
+        if (platform == "SHOPIFY")
+        {
+            if (!configuration.GetValue("Marketplace:PersistOrderSnapshots", true)) return true;
+            string? externalOrderId = null;
+            try
+            {
+                using var document = JsonDocument.Parse(raw);
+                if (document.RootElement.TryGetProperty("id", out var id))
+                    externalOrderId = id.ValueKind == JsonValueKind.Number ? id.GetInt64().ToString(System.Globalization.CultureInfo.InvariantCulture) : id.GetString();
+            }
+            catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException) { return false; }
+            if (string.IsNullOrWhiteSpace(externalOrderId)) return false;
+            TrackRequest();
+            var order = await orders.GetAsync(Context(tenantId, connectionId, $"webhook:{externalMessageId}", $"shopify-webhook:{connectionId}:{externalMessageId}"), externalOrderId, cancellationToken);
+            if (!order.IsSuccess) { TrackResultFailure(order.Error); throw JobProcessingException.FromAdapter(order.Error!); }
+            TrackReceived();
+            await UpsertOrder(tenantId, connectionId, order.Value!, cancellationToken, projectReservations: false, persistFinancialObservations: true);
+        }
+        else
+        {
+            AdapterPageResult<RemoteOrder> page; try { page = TrendyolJsonMapper.Orders(raw); } catch (JsonException) { return false; }
+            foreach (var issue in page.Issues ?? [])
+                await RecordIssue(tenantId, $"order-webhook-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+            if (configuration.GetValue("Marketplace:PersistOrderSnapshots", true))
+                await UpsertOrders(tenantId, connectionId, page.Items, cancellationToken);
+        }
+        var inbox = await db.InboxMessages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Source == source && x.ExternalMessageId == externalMessageId, cancellationToken); if (inbox is not null) inbox.ProcessedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return true;
     }
 
     private sealed class OrderIngestionBatch
@@ -3512,16 +3747,26 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         public List<(OrderLine Line, DateTimeOffset ModifiedAt)> ReservationSources { get; } = [];
     }
 
-    private async Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken)
+    private async Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken, bool projectReservations = true)
     {
         if (remotes.Count == 0) return;
+        var isShopify = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode == "SHOPIFY")
+            .SingleOrDefaultAsync(cancellationToken);
         // The stream is package-shaped: one order can occur once per package.
         // Merge the page before materializing the order so split-package line
         // quantities are summed instead of the last package overwriting them.
         var mergedRemotes = remotes
             .Where(remote => !string.IsNullOrWhiteSpace(remote.ExternalOrderId))
             .GroupBy(remote => remote.ExternalOrderId, StringComparer.Ordinal)
-            .Select(group => TrendyolJsonMapper.MergeOrderPackages(group, group.Key) ?? group.OrderByDescending(remote => remote.LastModifiedAt).First())
+            .Select(group => isShopify
+                // Shopify returns a complete order snapshot, including all
+                // fulfillments and refunds. The Trendyol package merger only
+                // sums active package quantities and would erase Shopify
+                // cancellation quantities, so retain the newest snapshot.
+                ? group.OrderByDescending(remote => remote.LastModifiedAt).First()
+                : TrendyolJsonMapper.MergeOrderPackages(group, group.Key) ?? group.OrderByDescending(remote => remote.LastModifiedAt).First())
             .ToList();
         if (mergedRemotes.Count == 0) return;
         var conflictingPackages = OrderPackageIdentityGuard.FindConflicts(mergedRemotes);
@@ -3594,12 +3839,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         var variantIds = await ResolveOrderLineVariantIds(tenantId, remotes.SelectMany(x => x.Lines).ToList(), cancellationToken);
         foreach (var pair in variantIds) batch.VariantIdsByKey[pair.Key] = pair.Value;
-        foreach (var remote in mergedRemotes) await UpsertOrder(tenantId, connectionId, remote, cancellationToken, batch, saveChanges: false);
-        await ProjectOrderReservations(tenantId, connectionId, batch.ReservationSources, cancellationToken);
+        foreach (var remote in mergedRemotes) await UpsertOrder(tenantId, connectionId, remote, cancellationToken, batch, saveChanges: false, projectReservations: projectReservations, persistFinancialObservations: isShopify);
+        if (projectReservations)
+            await ProjectOrderReservations(tenantId, connectionId, batch.ReservationSources, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch = null, bool saveChanges = true)
+    private async Task UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch = null, bool saveChanges = true, bool projectReservations = true, bool persistFinancialObservations = false)
     {
         IReadOnlyDictionary<string, decimal> remoteLineQuantities;
         if (remote.Lines.Count == 0 || remote.Packages.Count == 0)
@@ -3659,6 +3905,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             order.OrderNumber = remote.OrderNumber; order.Currency = remote.Currency; order.GrossAmount = remote.GrossAmount; order.DiscountAmount = remote.DiscountAmount; order.NetAmount = remote.NetAmount; order.OrderedAt = remote.OrderedAt; order.ShipmentDueAt = remote.ShipmentDueAt; order.LastRemoteModifiedAt = remote.LastModifiedAt; order.CustomerSnapshotJson = remote.CustomerSnapshotJson; order.ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson; order.InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson; order.UpdatedAt = now; if (db.Entry(order).State != EntityState.Added) { order.Version++; telemetryUpdatedCount++; }
         }
+        if (persistFinancialObservations && orderIsFresh)
+            await UpsertShopifyFinancialObservations(tenantId, order.Id, remote, cancellationToken);
         var existingLines = batch is not null
             ? batch.LinesByOrder.GetValueOrDefault(order.Id) ?? []
             : await db.OrderLines.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).ToListAsync(cancellationToken);
@@ -3768,11 +4016,57 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var acceptedStatuses = persistedStatuses.ToList();
         acceptedStatuses.AddRange(db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status));
         order.DerivedStatus = Wire(ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses));
-        if (batch is null)
+        if (projectReservations && batch is null)
             await ProjectOrderReservations(tenantId, connectionId, lines.Values.Select(line => (line, remote.LastModifiedAt)).ToList(), cancellationToken);
-        else
+        else if (projectReservations && batch is not null)
             batch.ReservationSources.AddRange(lines.Values.Select(line => (line, remote.LastModifiedAt)));
         if (saveChanges) await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task UpsertShopifyFinancialObservations(Guid tenantId, Guid orderId, RemoteOrder remote, CancellationToken cancellationToken)
+    {
+        var rows = await db.OrderFinancialAllocations
+            .Where(x => x.TenantId == tenantId && x.OrderId == orderId && x.SourceKey.StartsWith("shopify:"))
+            .ToListAsync(cancellationToken);
+        var byKey = rows.ToDictionary(x => x.SourceKey, StringComparer.Ordinal);
+
+        Upsert("shopify:payment-status", $"PAYMENT_STATUS:{Short(remote.PaymentStatus, 48)}", 0m);
+        Upsert("shopify:cancellation-status", $"CANCELLATION_STATUS:{Short(remote.CancellationStatus, 48)}", 0m);
+        Upsert("shopify:refund-summary", $"REFUND_STATUS:{Short(remote.RefundStatus, 48)}", remote.RefundedAmount);
+
+        var currentRefundKeys = (remote.Refunds ?? [])
+            .Where(refund => !string.IsNullOrWhiteSpace(refund.ExternalRefundId))
+            .Select(refund => $"shopify:refund:{Short(refund.ExternalRefundId, 180)}")
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var stale in rows.Where(row => row.SourceKey.StartsWith("shopify:refund:") && row.SourceKey != "shopify:refund-summary" && !currentRefundKeys.Contains(row.SourceKey)))
+            db.OrderFinancialAllocations.Remove(stale);
+        foreach (var refund in remote.Refunds ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(refund.ExternalRefundId)) continue;
+            Upsert($"shopify:refund:{Short(refund.ExternalRefundId, 180)}", "REFUND", refund.Amount, refund.Currency);
+        }
+        return;
+
+        void Upsert(string sourceKey, string allocationType, decimal amount, string? currency = null)
+        {
+            if (byKey.TryGetValue(sourceKey, out var row))
+            {
+                row.AllocationType = allocationType;
+                row.Amount = Math.Max(0, amount);
+                row.Currency = Short(currency ?? remote.Currency, 3).ToUpperInvariant();
+                return;
+            }
+            db.OrderFinancialAllocations.Add(new OrderFinancialAllocation
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                OrderId = orderId,
+                AllocationType = allocationType,
+                Amount = Math.Max(0, amount),
+                Currency = Short(currency ?? remote.Currency, 3).ToUpperInvariant(),
+                SourceKey = sourceKey
+            });
+        }
     }
 
     private async Task MergeMarketplaceInvoiceState(ShipmentPackage package, RemotePackage remotePackage, CancellationToken cancellationToken)
@@ -4259,8 +4553,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (markerIndex >= 0)
             {
                 var contentId = uri.AbsolutePath[(markerIndex + marker.Length)..].Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(contentId)) return new(null, ContentId: contentId);
+                if (!string.IsNullOrWhiteSpace(contentId)) return new(null, ContentId: contentId, ProductUrl: value);
             }
+            return new(null, ProductMainId: value, ProductUrl: value);
         }
         return new(null, ProductMainId: value);
     }

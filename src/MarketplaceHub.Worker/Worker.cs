@@ -115,7 +115,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private async Task ExecuteLeasedJobAsync(LeasedJob job, CancellationToken stoppingToken)
     {
         using var execution = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        if (job.JobType == MarketplaceJobTypes.ProductSync)
+        if (job.JobType is MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync)
         {
             var configuredMinutes = configuration.GetValue<double?>("Worker:ProductSyncTimeoutMinutes") ?? 60;
             execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 180)));
@@ -221,7 +221,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             return succeeded ? JobExecutionResult.Success() : JobExecutionResult.Blocked("IMPORT_JOB_REJECTED", "Import operation was rejected by its current state or validation rules.");
         }
 
-        if (job.JobType is MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ProductCreate or MarketplaceJobTypes.ProductApprovalReconcile or MarketplaceJobTypes.ProductUpdate or MarketplaceJobTypes.ProductArchive or MarketplaceJobTypes.PriceInventorySync or MarketplaceJobTypes.StockProjectionDispatch or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.CommonLabel or MarketplaceJobTypes.CapabilityProbe or MarketplaceJobTypes.StageTestOrder or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnStatusSync or MarketplaceJobTypes.ReturnReconciliation or MarketplaceJobTypes.ReturnAction or MarketplaceJobTypes.StockReconciliation or MarketplaceJobTypes.WebhookIngest)
+        if (job.JobType is MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.ProductCreate or MarketplaceJobTypes.ProductApprovalReconcile or MarketplaceJobTypes.ProductUpdate or MarketplaceJobTypes.ProductArchive or MarketplaceJobTypes.PriceInventorySync or MarketplaceJobTypes.StockProjectionDispatch or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation or MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation or MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.CommonLabel or MarketplaceJobTypes.CapabilityProbe or MarketplaceJobTypes.StageTestOrder or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnStatusSync or MarketplaceJobTypes.ReturnReconciliation or MarketplaceJobTypes.ReturnAction or MarketplaceJobTypes.StockReconciliation or MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest)
         {
             var processor = services.GetRequiredService<IMarketplaceJobProcessor>();
             return await processor.ProcessAsync(job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, cancellationToken, job.Id);

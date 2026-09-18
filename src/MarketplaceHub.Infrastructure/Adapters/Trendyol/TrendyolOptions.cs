@@ -14,6 +14,9 @@ public sealed class TrendyolOptions
     // requests per minute than the global authorization limit.
     public int OrderRequestsPerInterval { get; init; } = 30;
     public TimeSpan OrderRequestInterval { get; init; } = TimeSpan.FromMinutes(1);
+    // Trendyol recommends spacing stream reads by at least five seconds. The
+    // rolling quota remains in place as a second safety net for concurrent jobs.
+    public TimeSpan OrderRequestMinimumInterval { get; init; } = TimeSpan.FromSeconds(5);
     public int CircuitFailureThreshold { get; init; } = 5;
     public TimeSpan CircuitBreakDuration { get; init; } = TimeSpan.FromSeconds(30);
 }

@@ -26,8 +26,11 @@ public static class MarketplaceEndpoints
                 .SingleOrDefaultAsync(http.RequestAborted);
             if (platform is null) return Results.NotFound();
 
-            var jobType = platform == "TRENDYOL" ? MarketplaceJobTypes.ConnectionTest : InvoicingJobTypes.ConnectionTest;
-            var result = platform == "TRENDYOL"
+            var marketplace = platform is "TRENDYOL" or "SHOPIFY";
+            var jobType = marketplace
+                ? MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.ConnectionTest)
+                : InvoicingJobTypes.ConnectionTest;
+            var result = marketplace
                 ? await marketplaceProcessor.ProcessAsync(tenant.TenantId, id, jobType, "{}", http.TraceIdentifier, http.RequestAborted)
                 : await invoicingProcessor.ProcessAsync(tenant.TenantId, id, jobType, "{}", http.TraceIdentifier, http.RequestAborted);
             return Results.Ok(result);
@@ -59,7 +62,7 @@ public static class MarketplaceEndpoints
         api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service, string? platform) => Tenant(http) is { } tenant ? Results.Ok(await service.OrderSummaryAsync(tenant.TenantId, platform, http.RequestAborted)) : Unauthorized(http));
         api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted), value => Results.Redirect(value)) : Unauthorized(http));
         api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
-        api.MapPost("/orders/{id:guid}/instant-process", async (Guid id, HttpContext http, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor) =>
+        api.MapPost("/orders/{id:guid}/instant-process", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             if (RequireIdempotency(http) is { } missingContext) return missingContext;
@@ -74,17 +77,21 @@ public static class MarketplaceEndpoints
 
                 // Refresh an order without creating a worker job, then continue the
                 // picking action in the same request.
+                var platform = await db.PlatformConnections.AsNoTracking()
+                    .Where(x => x.TenantId == tenant.TenantId && x.Id == connectionId)
+                    .Select(x => x.PlatformCode)
+                    .SingleOrDefaultAsync(http.RequestAborted);
                 var sync = await marketplaceProcessor.ProcessAsync(
                     tenant.TenantId,
                     connectionId,
-                    MarketplaceJobTypes.OrderSync,
+                    MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.OrderSync),
                     JsonSerializer.Serialize(new { connectionId, externalOrderId = detail.Value.OrderNumber, full = false }),
                     OperationCorrelation(http),
                     http.RequestAborted);
                 if (!sync.Succeeded)
                 {
                     var status = sync.Kind == JobCompletionKind.Retry ? 503 : 422;
-                    return Problem(http, new(sync.ErrorCode ?? "ORDER_REFRESH_FAILED", sync.ErrorSummary ?? "Sipariş Trendyol’dan anlık olarak yenilenemedi.", status));
+                    return Problem(http, new(sync.ErrorCode ?? "ORDER_REFRESH_FAILED", sync.ErrorSummary ?? (platform == "SHOPIFY" ? "Sipariş Shopify’dan anlık olarak yenilenemedi." : "Sipariş Trendyol’dan anlık olarak yenilenemedi."), status));
                 }
 
                 detail = await service.OrderAsync(tenant.TenantId, id, http.RequestAborted);
@@ -108,7 +115,7 @@ public static class MarketplaceEndpoints
             });
         });
         api.MapPost("/connections/{connectionId:guid}/order-sync-jobs", async (Guid connectionId, OrderSyncCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueOrderSyncAsync(tenant.TenantId, connectionId, command.ExternalOrderId, command.Full, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
-        api.MapPost("/connections/{connectionId:guid}/product-sync-jobs", async (Guid connectionId, bool? full, bool? newOnly, bool? existingOnly, bool? includeArchived, string? lookup, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueProductSyncAsync(tenant.TenantId, connectionId, full == true, newOnly == true, existingOnly == true, includeArchived == true, lookup, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
+        api.MapPost("/connections/{connectionId:guid}/product-sync-jobs", async (Guid connectionId, bool? full, bool? newOnly, bool? existingOnly, bool? includeArchived, bool? includeDrafts, string? lookup, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueProductSyncAsync(tenant.TenantId, connectionId, full == true, newOnly == true, existingOnly == true, includeArchived == true, includeDrafts == true, lookup, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
         api.MapPost("/connections/{connectionId:guid}/stage-test-order-jobs", async (Guid connectionId, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueStageTestOrderAsync(tenant.TenantId, tenant.UserId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
         api.MapPost("/connections/{connectionId:guid}/reference-sync-jobs", async (Guid connectionId, string? resourceType, string? parentExternalId, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueReferenceSyncAsync(tenant.TenantId, connectionId, resourceType ?? "CATEGORIES", parentExternalId, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
         api.MapGet("/shipments", async (HttpContext http, IMarketplaceSalesService service, int? limit, string? after, string? status) => Tenant(http) is { } tenant ? Results.Ok(await service.ShipmentsAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http));
@@ -168,27 +175,16 @@ public static class MarketplaceEndpoints
         : bytes.Length >= 8 && bytes[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }) ? "image/png"
         : null;
 
-    private static async Task<IResult> ReceiveWebhook(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service)
+    internal static async Task<IResult> ReceiveWebhook(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service)
     {
-        const int maximumBytes = 10 * 1024 * 1024;
         var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
-        if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = maximumBytes;
-        if (http.Request.ContentLength is > maximumBytes) return Problem(http, new("WEBHOOK_TOO_LARGE", "Webhook gövdesi kabul edilen üst sınırı aşıyor.", 413));
-
-        await using var body = new MemoryStream(http.Request.ContentLength is > 0 and <= maximumBytes ? (int)http.Request.ContentLength.Value : 0);
-        var buffer = new byte[81_920];
-        var total = 0;
-        while (true)
-        {
-            var read = await http.Request.Body.ReadAsync(buffer.AsMemory(), http.RequestAborted);
-            if (read == 0) break;
-            total += read;
-            if (total > maximumBytes) return Problem(http, new("WEBHOOK_TOO_LARGE", "Webhook gövdesi kabul edilen üst sınırı aşıyor.", 413));
-            await body.WriteAsync(buffer.AsMemory(0, read), http.RequestAborted);
-        }
+        if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = WebhookBodyReader.MaximumBytes;
+        var bodyRead = await WebhookBodyReader.ReadAsync(http.Request.Body, http.Request.ContentLength, http.RequestAborted);
+        if (bodyRead.TooLarge) return Problem(http, new("WEBHOOK_TOO_LARGE", "Webhook gövdesi kabul edilen üst sınırı aşıyor.", 413));
 
         var headers = http.Request.Headers.ToDictionary(x => x.Key, x => x.Value.ToString(), StringComparer.OrdinalIgnoreCase);
-        var result = await service.ReceiveAsync(connectionPublicId, routeToken, body.ToArray(), headers, http.TraceIdentifier, http.RequestAborted);
+        using var body = bodyRead.Body!;
+        var result = await service.ReceiveAsync(connectionPublicId, routeToken, body.Memory, headers, http.TraceIdentifier, http.RequestAborted);
         return result.Succeeded ? Results.Ok(new { accepted = true }) : Problem(http, result.Error!);
     }
     private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;

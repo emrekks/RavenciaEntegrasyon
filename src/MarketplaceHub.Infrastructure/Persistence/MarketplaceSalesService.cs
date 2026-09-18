@@ -351,9 +351,25 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return ServiceResult<ShipmentDetailView>.Ok(new(Map(row.Package, row.OrderNumber), actions, formats, stage, documents));
     }
 
-    public Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, full ? MarketplaceJobTypes.OrderRecoverySync : MarketplaceJobTypes.OrderSync, JsonSerializer.Serialize(new { connectionId, externalOrderId, full }), correlationId, cancellationToken);
+    public async Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken)
+    {
+        var platform = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode)
+            .SingleOrDefaultAsync(cancellationToken);
+        var type = MarketplaceJobTypes.ForPlatform(platform, full ? MarketplaceJobTypes.OrderRecoverySync : MarketplaceJobTypes.OrderSync);
+        return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, type, JsonSerializer.Serialize(new { connectionId, externalOrderId, full }), correlationId, cancellationToken);
+    }
 
-    public Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool includeArchived, string? productLookup, string correlationId, CancellationToken cancellationToken) => EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, MarketplaceJobTypes.ProductSync, JsonSerializer.Serialize(new { connectionId, full, newOnly, existingOnly, includeArchived, productLookup }), correlationId, cancellationToken);
+    public async Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool includeArchived, bool includeDrafts, string? productLookup, string correlationId, CancellationToken cancellationToken)
+    {
+        var platform = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode)
+            .SingleOrDefaultAsync(cancellationToken);
+        var type = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.ProductSync);
+        return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, type, JsonSerializer.Serialize(new { connectionId, full, newOnly, existingOnly, includeArchived, includeDrafts, productLookup }), correlationId, cancellationToken);
+    }
 
     public Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)
     {
@@ -1021,11 +1037,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     private async Task<ServiceResult<Guid>> EnqueueRead(Guid tenantId, Guid connectionId, string capability, string type, string payload, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL" && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken); if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Aktif veya doğrulanmış Trendyol bağlantısı gerekir.", 422); if (!IntegrationRuntimePolicy.AllowsManualRead(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Read işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422); return await Enqueue(tenantId, connectionId, type, $"{type.ToLowerInvariant()}:{connectionId}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)))}", payload, correlationId, cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY") && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken); if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Aktif veya doğrulanmış marketplace bağlantısı gerekir.", 422); if (!IntegrationRuntimePolicy.AllowsManualRead(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Read işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422); return await Enqueue(tenantId, connectionId, type, $"{type.ToLowerInvariant()}:{connectionId}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)))}", payload, correlationId, cancellationToken);
     }
     private async Task<ServiceResult<Guid>> Enqueue(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId, CancellationToken cancellationToken)
     {
-        var recurringRead = type is MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnStatusSync;
+        var recurringRead = type is MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnStatusSync;
         var activeJobs = await db.IntegrationJobs.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
                 && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
@@ -1048,10 +1064,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => new() { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = type, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = Priority(type), AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
     private static int Priority(string type) => type switch
     {
-        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.CommonLabel => 0,
-        MarketplaceJobTypes.OrderRecoverySync => 6,
+        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.CommonLabel => 0,
+        MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync => 6,
         MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnAction => 2,
-        MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ReferenceSync => 5,
+        MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.ReferenceSync => 5,
         _ => 3
     };
     private Task<bool> Supported(Guid tenantId, Guid connectionId, string code, CancellationToken cancellationToken) => db.PlatformCapabilities.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken);

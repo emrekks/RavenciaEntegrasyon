@@ -2,6 +2,7 @@ using System.Security.Cryptography.X509Certificates;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
+using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Bootstrap;
 using MarketplaceHub.Infrastructure.Files;
 using MarketplaceHub.Infrastructure.Identity;
@@ -61,6 +62,7 @@ public static class DependencyInjection
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<IReferenceDataService, ReferenceDataService>();
         services.Configure<TrendyolOptions>(configuration.GetSection(TrendyolOptions.SectionName));
+        services.Configure<ShopifyOptions>(configuration.GetSection(ShopifyOptions.SectionName));
         services.AddSingleton<TrendyolResilienceState>();
         services.AddTransient<TrendyolResilienceHandler>();
         services.AddHttpClient("Trendyol", client => client.Timeout = Timeout.InfiniteTimeSpan)
@@ -68,14 +70,21 @@ public static class DependencyInjection
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<TrendyolAuthenticationHandler>();
         services.AddScoped<TrendyolHttpClient>();
-        services.AddScoped<IConnectionPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
-        services.AddScoped<IReferenceDataPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
-        services.AddScoped<IProductPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
-        services.AddScoped<IProductVisualLookupPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
-        services.AddScoped<IInventoryPricePort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
-        services.AddScoped<IOrderPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
-        services.AddScoped<IReturnPort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
-        services.AddScoped<IWebhookVerifier, TrendyolWebhookVerifier>();
+        services.AddHttpClient("Shopify", client => client.Timeout = TimeSpan.FromSeconds(45))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
+        services.AddScoped<ShopifyAuthenticationHandler>();
+        services.AddScoped<ShopifyHttpClient>();
+        services.AddScoped<ShopifyWebhookVerifier>();
+        services.AddScoped<MarketplacePortRouter>();
+        services.AddScoped<IConnectionPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
+        services.AddScoped<IReferenceDataPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
+        services.AddScoped<IProductPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
+        services.AddScoped<IProductVisualLookupPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
+        services.AddScoped<IInventoryPricePort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
+        services.AddScoped<IOrderPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
+        services.AddScoped<IReturnPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
+        services.AddScoped<TrendyolWebhookVerifier>();
+        services.AddScoped<IWebhookVerifier, MarketplaceWebhookVerifier>();
         services.AddScoped<IMarketplaceConnectionService, MarketplaceConnectionService>();
         services.AddScoped<IOperationalDataMaintenanceService, OperationalDataMaintenanceService>();
         services.AddScoped<IMarketplaceSalesService, MarketplaceSalesService>();

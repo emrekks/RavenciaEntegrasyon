@@ -171,6 +171,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM catalog.field_provenance f WHERE f."TenantId"={{tenantId}} AND (f."ProductId" IN (SELECT "Id" FROM purge_products) OR f."VariantId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_products p ON p."Id"=v."ProductId"));
         DELETE FROM inventory.channel_price_history h USING inventory.channel_offers o, catalog.product_variants v, purge_products p WHERE h."TenantId"={{tenantId}} AND h."OfferId"=o."Id" AND o."VariantId"=v."Id" AND v."ProductId"=p."Id";
         DELETE FROM inventory.channel_offers o USING catalog.product_variants v, purge_products p WHERE o."TenantId"={{tenantId}} AND o."VariantId"=v."Id" AND v."ProductId"=p."Id";
+        DELETE FROM inventory.channel_inventory_observations o USING catalog.product_variants v, purge_products p WHERE o."TenantId"={{tenantId}} AND o."VariantId"=v."Id" AND v."ProductId"=p."Id";
         DELETE FROM inventory.stock_reservations r USING inventory.inventory_items i, catalog.product_variants v, purge_products p WHERE r."TenantId"={{tenantId}} AND r."InventoryItemId"=i."Id" AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
         DELETE FROM inventory.stock_ledger_entries l USING inventory.inventory_items i, catalog.product_variants v, purge_products p WHERE l."TenantId"={{tenantId}} AND l."InventoryItemId"=i."Id" AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
         DELETE FROM inventory.inventory_items i USING catalog.product_variants v, purge_products p WHERE i."TenantId"={{tenantId}} AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
@@ -206,6 +207,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM sales.cargo_provider_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM inventory.channel_price_history h USING inventory.channel_offers o WHERE h."TenantId"={{tenantId}} AND h."OfferId"=o."Id" AND o."ConnectionId"={{connectionId}};
         DELETE FROM inventory.channel_offers WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        DELETE FROM inventory.channel_inventory_observations WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM inventory.connection_location_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM inventory.connection_inventory_policies WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM integration.webhook_subscriptions WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
