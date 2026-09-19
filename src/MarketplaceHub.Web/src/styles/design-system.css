@@ -1602,17 +1602,37 @@
   .variant-table-row { min-height: 62px; border-bottom: 1px solid var(--rv-color-border); }
   .variant-table-row:last-child { border-bottom: 0; }
   .variant-platform-statuses { display: flex; min-width: 0; align-items: center; gap: 4px; flex-wrap: wrap; }
-  .variant-platform-status { position: relative; display: grid; width: 26px; height: 26px; flex: 0 0 26px; place-items: center; padding: 0; color: inherit; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; cursor: pointer; }
+  .variant-platform-status { position: relative; display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; padding: 0; color: inherit; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 8px; cursor: pointer; }
   .variant-platform-status:hover, .variant-platform-status:focus-visible { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); outline: none; }
   .variant-platform-status::after { content: ''; position: absolute; top: -3px; right: -3px; width: 7px; height: 7px; background: var(--rv-color-danger); border: 2px solid var(--rv-color-surface); border-radius: 50%; }
   .variant-platform-status.is-linked { border-color: color-mix(in srgb, var(--rv-color-accent) 58%, var(--rv-color-border-strong)); }
   .variant-platform-status.is-linked::after { background: var(--rv-color-accent); }
+  .variant-platform-status.is-partial { border-color: color-mix(in srgb, var(--rv-color-warning) 60%, var(--rv-color-border-strong)); }
+  .variant-platform-status.is-partial::after { background: var(--rv-color-warning); }
   .variant-platform-status.is-unlinked { opacity: .62; }
+  .variant-platform-status-summary .ui-icon { width: 17px; height: 17px; }
+  .variant-platform-status-summary > i { position: absolute; right: -6px; bottom: -6px; display: grid; min-width: 16px; height: 16px; place-items: center; padding: 0 3px; color: #fff; background: var(--rv-color-primary); border: 2px solid var(--rv-color-surface); border-radius: 999px; font-size: 9px; font-style: normal; font-weight: 800; line-height: 1; }
   .variant-platform-logo { display: block; width: 18px; height: 18px; object-fit: contain; object-position: center; }
   .variant-platform-logo.platform-logo-trendyol { object-fit: cover; }
   .variant-platform-empty { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
-  .variant-platform-pricing-modal { width: min(520px, 100%); }
-  .variant-platform-pricing-body { display: grid; gap: var(--rv-space-4); padding: var(--rv-space-5) var(--rv-space-6); }
+  .variant-platform-pricing-modal { width: min(720px, 100%); }
+  .variant-platform-pricing-body { display: grid; max-height: min(70vh, 620px); gap: var(--rv-space-4); overflow-y: auto; padding: var(--rv-space-5) var(--rv-space-6); }
+  .variant-platform-pricing-list { display: grid; gap: var(--rv-space-3); }
+  .variant-platform-pricing-card { display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, minmax(100px, .55fr)) auto; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .variant-platform-pricing-card.is-selected { border-color: var(--rv-color-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
+  .variant-platform-pricing-card-head { display: flex; align-items: center; min-width: 0; gap: var(--rv-space-2); }
+  .variant-platform-pricing-card-head > div { display: grid; min-width: 0; gap: 3px; }
+  .variant-platform-pricing-card-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .variant-platform-pricing-card-head small, .variant-platform-pricing-editor small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+  .variant-platform-pricing-card dl { display: contents; }
+  .variant-platform-pricing-card dl > div { display: grid; gap: 3px; }
+  .variant-platform-pricing-card dt { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+  .variant-platform-pricing-card dd { margin: 0; font-size: var(--rv-font-size-sm); font-weight: 800; white-space: nowrap; }
+  .variant-platform-pricing-card > button { white-space: nowrap; }
+  .variant-platform-pricing-state { width: 7px; height: 7px; flex: 0 0 7px; margin-left: auto; background: var(--rv-color-danger); border-radius: 50%; }
+  .variant-platform-pricing-state.is-linked { background: var(--rv-color-accent); }
+  .variant-platform-pricing-editor { display: grid; gap: var(--rv-space-3); padding-top: var(--rv-space-4); border-top: 1px solid var(--rv-color-border); }
+  .variant-platform-pricing-editor > div:first-child { display: grid; gap: 3px; }
   .variant-platform-pricing-channel { display: flex; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .variant-platform-pricing-channel > div { display: grid; gap: 3px; min-width: 0; }
   .variant-platform-pricing-channel small, .variant-platform-pricing-help { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
