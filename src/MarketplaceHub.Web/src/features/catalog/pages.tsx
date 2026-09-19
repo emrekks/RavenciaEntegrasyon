@@ -524,7 +524,6 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
               })}
             </div>
           </div>
-          <div className="quick-edit-step-action"><p>{selectionDraft.length ? `${selectionDraft.length} varyant işaretli. Değerleri doğrudan uygulayabilirsiniz.` : 'Önce alt listeden varyant seçin veya üst filtreyi kullanın.'}</p></div>
         </details>
         <details className="quick-edit-step quick-edit-pricing-step" open>
           <summary><span><b>2</b> {mode === 'stock' ? 'Stok değerini düzenle' : 'Fiyat ve stok değerini düzenle'}</span><small>{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small><UiIcon name="chevronDown" /></summary>
