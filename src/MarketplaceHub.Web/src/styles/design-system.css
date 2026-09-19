@@ -1692,7 +1692,9 @@
   .variant-media-picker-modal > footer > button:first-child { margin-right: auto; }
   .product-quick-edit-modal { grid-template-rows: auto minmax(0, 1fr); }
   .product-quick-edit-modal > form { min-height: 0; overflow-y: auto; padding: 0 var(--rv-space-6); }
-  .quick-edit-product-context { margin: 0; overflow: hidden; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
+  .quick-edit-product-context { display: grid; min-width: 0; gap: 3px; margin: 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+  .quick-edit-product-title, .quick-edit-product-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .quick-edit-product-title { color: var(--rv-color-ink); }
   .quick-edit-step { margin: 0; border-bottom: 1px solid var(--rv-color-border); }
   .quick-edit-step > summary, .quick-edit-filter > summary, .quick-edit-color > summary { display: flex; min-width: 0; min-height: 52px; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-3) 0; color: var(--rv-color-ink); cursor: pointer; list-style: none; }
   .quick-edit-step > summary::-webkit-details-marker, .quick-edit-filter > summary::-webkit-details-marker, .quick-edit-color > summary::-webkit-details-marker { display: none; }
@@ -1701,7 +1703,7 @@
   .quick-edit-step > summary small, .quick-edit-filter > summary small, .quick-edit-color > summary small { min-width: 0; margin-left: auto; overflow: hidden; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   .quick-edit-step > summary .ui-icon, .quick-edit-filter > summary .ui-icon, .quick-edit-color > summary .ui-icon { flex: 0 0 auto; transition: transform 160ms ease; }
   .quick-edit-step[open] > summary .ui-icon, .quick-edit-filter[open] > summary .ui-icon, .quick-edit-color[open] > summary .ui-icon { transform: rotate(180deg); }
-  .quick-edit-filter-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); }
+  .quick-edit-filter-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); margin-bottom: var(--rv-space-3); }
   .quick-edit-filter { min-width: 0; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .quick-edit-filter > summary { min-height: 48px; padding: var(--rv-space-3); }
   .quick-edit-filter-options { display: grid; gap: var(--rv-space-2); padding: 0 var(--rv-space-3) var(--rv-space-3); border-top: 1px solid var(--rv-color-border); }
@@ -1715,6 +1717,7 @@
   .quick-edit-selection { display: grid; gap: var(--rv-space-3); }
   .quick-edit-color-list { display: grid; gap: var(--rv-space-3); }
   .quick-edit-color { overflow: hidden; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .product-quick-edit-modal .quick-edit-color.is-open { border-bottom-right-radius: 0; border-bottom-left-radius: 0; }
   .quick-edit-color-toggle { display: flex; width: 100%; min-width: 0; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-3); color: var(--rv-color-ink); background: transparent; border: 0; text-align: left; cursor: pointer; }
   .quick-edit-color-toggle:hover, .quick-edit-color.is-open .quick-edit-color-toggle { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
   .quick-edit-color-toggle > span { display: grid; min-width: 0; gap: 3px; }
@@ -1724,9 +1727,6 @@
   .quick-edit-color-toggle > .ui-icon { flex: 0 0 auto; color: var(--rv-color-muted); transition: transform 160ms ease; }
   .quick-edit-color.is-open .quick-edit-color-toggle > .ui-icon { color: var(--rv-color-primary); transform: rotate(180deg); }
   .quick-edit-color-variants { overflow: hidden; border-top: 1px solid var(--rv-color-border); }
-  .quick-edit-color-variants-head { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: var(--rv-space-3); padding: var(--rv-space-3); border-bottom: 1px solid var(--rv-color-border); }
-  .quick-edit-color-variants-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .quick-edit-color-variants-head span { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); text-align: right; }
   .quick-edit-variants { display: grid; gap: var(--rv-space-3); padding: 0 var(--rv-space-3) var(--rv-space-3); }
   .quick-edit-variant { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--rv-space-2) var(--rv-space-3); padding-top: var(--rv-space-3); }
   .quick-edit-variant > span { display: block; min-width: 0; }
@@ -2765,8 +2765,6 @@
   .variant-platform-pricing-card { grid-template-columns: minmax(0, 1fr) repeat(2, minmax(88px, .6fr)); }
   .variant-platform-pricing-card > button { grid-column: 1 / -1; justify-self: start; }
   .variant-platform-pricing-variant-items { grid-template-columns: 1fr; }
-  .quick-edit-color-variants-head { align-items: flex-start; flex-direction: column; }
-  .quick-edit-color-variants-head span { text-align: left; }
   .product-quick-edit-modal > form { padding-inline: var(--rv-space-4); }
   .quick-edit-footer { align-items: stretch; flex-wrap: wrap; }
   .quick-edit-footer > span { flex: 1 1 100%; margin-right: 0; }

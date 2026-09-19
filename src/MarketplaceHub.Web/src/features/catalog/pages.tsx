@@ -418,8 +418,8 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const title = mode === 'stock' ? 'Hızlı stok güncelleme' : 'Hızlı fiyat ve stok düzenleme'
   const eyebrow = mode === 'stock' ? 'HIZLI STOK GÜNCELLEME' : 'TOPLU DÜZENLEME'
   const contextProduct = products[0]
-  const contextLabel = contextProduct ? `${contextProduct.title} · Model kodu: ${contextProduct.modelCode || contextProduct.variants.find(variant => variant.modelCode)?.modelCode || '—'}` : 'Toplu düzenleme'
-  const productContext = products.length > 1 ? `${products.length} ürün · ${contextLabel}` : contextLabel
+  const contextTitle = contextProduct?.title || 'Toplu düzenleme'
+  const contextModelCode = contextProduct ? contextProduct.modelCode || contextProduct.variants.find(variant => variant.modelCode)?.modelCode || '—' : null
   const variants = products.flatMap(product => product.variants.map(variant => ({ product, variant })))
   const sortedVariants = [...variants].sort((left, right) => (left.variant.optionSignature || left.variant.sku).localeCompare(right.variant.optionSignature || right.variant.sku, 'tr-TR', { sensitivity: 'base', numeric: true }))
   const groups = sortedVariants.reduce<Record<string, typeof variants>>((result, item) => {
@@ -495,7 +495,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   return <div className="workspace-modal-backdrop product-quick-edit-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="workspace-modal product-quick-edit-modal" role="dialog" aria-modal="true" aria-label={title} onMouseDown={event => event.stopPropagation()}>
       <header>
-        <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p className="quick-edit-product-context">{productContext}</p></div>
+        <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p className="quick-edit-product-context"><span className="quick-edit-product-title">{contextTitle}</span>{contextModelCode && <span className="quick-edit-product-model">Model kodu: {contextModelCode}</span>}</p></div>
         <button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button>
       </header>
       <form onSubmit={apply}>
@@ -519,7 +519,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
                 const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length
                 return <section className={`quick-edit-color${isOpen ? ' is-open' : ''}`} key={color}>
                   <button type="button" className="quick-edit-color-toggle" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><span><strong>{colorLabels[color] || color}</strong><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : 'Renk varyantlarını göster'}</small></span><b>{items.length}</b><UiIcon name="chevronDown" /></button>
-                  {isOpen && <div className="quick-edit-color-variants" role="region" aria-label={`${colorLabels[color] || color} varyantları`}><div className="quick-edit-color-variants-head"><strong>{colorLabels[color] || color} varyantları</strong></div>{renderVariantList(items)}</div>}
+                  {isOpen && <div className="quick-edit-color-variants" role="region" aria-label={`${colorLabels[color] || color} varyantları`}>{renderVariantList(items)}</div>}
                 </section>
               })}
             </div>
