@@ -2754,10 +2754,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (observeOnly)
         {
             // Shopify has no main-product/model-code identity for this
-            // integration. Resolve the local parent from its variants first,
-            // even when an older product link already exists. This lets a
-            // multi-option Shopify product reuse one Ravencia product and then
-            // match every option variant inside that parent by barcode.
+            // integration. Resolve local products from their variants first,
+            // even when an older product link already exists. A Shopify product
+            // may contain one model's colours while Ravencia stores each colour
+            // as a separate Product row, so existing-only sync may need to link
+            // variants across more than one local product.
+            var allowCrossProductVariantMatch = preferBarcode && onlyExistingVariants;
             var identityCodes = snapshot.Variants
                 .Select(variant => variant.Barcode)
                 .Select(value => NormalizeCatalogKey(value, 160))
@@ -2776,8 +2778,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     .ToListAsync(cancellationToken);
                 if (identityProductIds.Count > 1)
                 {
-                    await RecordIssue(tenantId, $"product-sync-barcode-conflict:{connectionId}:{identityCodes.First()}", "PRODUCT_BARCODE_CONFLICT", "Shopify barkodu birden fazla yerel üründe bulundu; otomatik eşleştirme yapılmadı.", cancellationToken);
-                    return false;
+                    if (!allowCrossProductVariantMatch)
+                    {
+                        await RecordIssue(tenantId, $"product-sync-barcode-conflict:{connectionId}:{identityCodes.First()}", "PRODUCT_BARCODE_CONFLICT", "Shopify barkodu birden fazla yerel üründe bulundu; otomatik eşleştirme yapılmadı.", cancellationToken);
+                        return false;
+                    }
+
+                    // Keep the existing product link stable when one exists;
+                    // individual variants are resolved globally by barcode
+                    // below and can therefore belong to sibling colour rows.
+                    var representativeProductId = link?.ProductId ?? identityProductIds[0];
+                    product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == representativeProductId, cancellationToken);
                 }
                 if (identityProductIds.Count == 1)
                 {
@@ -3174,10 +3185,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (preferBarcode && !string.IsNullOrWhiteSpace(barcodeNormalized))
             variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized)
                 ?? await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized, cancellationToken);
+        if (preferBarcode && onlyExistingVariants && variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
+            variant = db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.BarcodeNormalized == barcodeNormalized)
+                ?? await db.ProductVariants.Where(x => x.TenantId == tenantId && x.BarcodeNormalized == barcodeNormalized).OrderBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
         if (!preferBarcode)
             variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.SkuNormalized == skuNormalized)
                 ?? await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SkuNormalized == skuNormalized, cancellationToken);
-        if (variant is not null && variant.ProductId != product.Id)
+        if (variant is not null && variant.ProductId != product.Id && !(preferBarcode && onlyExistingVariants))
         {
             await RecordIssue(tenantId, $"product-sync-variant-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_CONFLICT", "Trendyol varyantı başka bir yerel üründe kullanılan stok koduyla eşleşti; mevcut kayıt korunarak atlandı.", cancellationToken);
             return null;
@@ -3203,6 +3217,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 variant.SortOrder = sortOrder; variant.Sku = sku; variant.SkuNormalized = skuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = barcodeNormalized; variant.ModelCode = nextModelCode; variant.OptionSignature = optionSignature; variant.Status = nextStatus; variant.UpdatedAt = now; variant.Version++;
                 telemetryUpdatedCount++;
             }
+        }
+        if (link is not null && link.VariantId != variant.Id)
+        {
+            var conflictingVariantLink = db.MarketplaceVariantLinks.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id && x.Id != link.Id)
+                ?? await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id && x.Id != link.Id, cancellationToken);
+            if (conflictingVariantLink is not null)
+            {
+                await RecordIssue(tenantId, $"product-sync-variant-link-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_LINK_CONFLICT", "Aynı yerel varyantın başka bir Shopify varyant linki zaten var; ikinci link güvenli biçimde atlandı.", cancellationToken);
+                return null;
+            }
+            link.VariantId = variant.Id;
+            link.Version++;
         }
         if (link is null)
         {
