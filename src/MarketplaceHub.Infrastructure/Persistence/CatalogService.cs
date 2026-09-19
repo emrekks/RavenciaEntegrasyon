@@ -350,10 +350,11 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     public async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, CancellationToken cancellationToken)
     {
+        var hasPlatformStatusFilter = TryProductPlatformFilter(platform?.Trim() ?? string.Empty, out var platformFilterCode, out var platformFilterState);
         var query = VisibleProducts(tenantId);
         ApplyProductFilters(ref query, tenantId, status, search, platform);
         var countKey = $"catalog:product-family-count:v3:{tenantId:N}:{status?.Trim()}:{search?.Trim()}:{platform?.Trim()}:{stock?.Trim()}";
-        var cachedCount = countCache.Get(countKey);
+        var cachedCount = hasPlatformStatusFilter ? null : countCache.Get(countKey);
         if (!cursors.TryDecodeProduct(after, out var afterUpdatedAt, out var afterId))
             throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(after));
         var allProducts = await query.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
@@ -380,6 +381,31 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                     && !ProductStockPolicy.IsLowStock(variantsByProductForFilter.GetValueOrDefault(product.Id) ?? [], inventoryByVariant),
                 _ => true
             }).ToList();
+            allProductIds = allProducts.Select(x => x.Id).ToArray();
+            allVariants = allVariants.Where(x => allProductIds.Contains(x.ProductId)).ToList();
+        }
+        if (hasPlatformStatusFilter)
+        {
+            var variantsByProductForPlatform = allVariants
+                .GroupBy(variant => variant.ProductId)
+                .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductVariant>)group.ToList());
+            var platformVariantIds = allVariants.Select(variant => variant.Id).ToArray();
+            var matchedVariantIds = platformVariantIds.Length == 0
+                ? new HashSet<Guid>()
+                : await PlatformMatchedVariantIds(tenantId, platformFilterCode)
+                    .Where(variantId => platformVariantIds.Contains(variantId))
+                    .ToHashSetAsync(cancellationToken);
+            var matchingFamilyKeys = allProducts
+                .GroupBy(product => ProductFamilyKey(product, variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? []), StringComparer.Ordinal)
+                .Where(group => PlatformFilterMatchesFamily(
+                    group.SelectMany(product => variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? []).Select(variant => variant.Id),
+                    matchedVariantIds,
+                    platformFilterState))
+                .Select(group => group.Key)
+                .ToHashSet(StringComparer.Ordinal);
+            allProducts = allProducts
+                .Where(product => matchingFamilyKeys.Contains(ProductFamilyKey(product, variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? [])))
+                .ToList();
             allProductIds = allProducts.Select(x => x.Id).ToArray();
             allVariants = allVariants.Where(x => allProductIds.Contains(x.ProductId)).ToList();
         }
@@ -1388,23 +1414,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (!string.IsNullOrWhiteSpace(platform))
         {
             var platformFilter = platform.Trim();
-            if (TryProductPlatformFilter(platformFilter, out var platformCode, out var platformState))
-            {
-                var matchedVariantIds = PlatformMatchedVariantIds(tenantId, platformCode);
-                query = platformState switch
-                {
-                    "ACTIVE" => query.Where(product =>
-                        db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == product.Id)
-                        && !db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == product.Id && !matchedVariantIds.Contains(variant.Id))),
-                    "PARTIAL" => query.Where(product =>
-                        db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == product.Id && matchedVariantIds.Contains(variant.Id))
-                        && db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == product.Id && !matchedVariantIds.Contains(variant.Id))),
-                    "PASSIVE" => query.Where(product =>
-                        !db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == product.Id && matchedVariantIds.Contains(variant.Id))),
-                    _ => query
-                };
-            }
-            else
+            if (!TryProductPlatformFilter(platformFilter, out _, out _))
             {
                 var platformName = platformFilter;
                 query = query.Where(product => db.ChannelListingProfiles.Any(profile =>
@@ -1430,6 +1440,19 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                             && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))))
                 .Select(listing => listing.VariantId))
             .Distinct();
+
+    private static bool PlatformFilterMatchesFamily(IEnumerable<Guid> familyVariantIds, IReadOnlySet<Guid> matchedVariantIds, string platformState)
+    {
+        var variantIds = familyVariantIds.Distinct().ToArray();
+        var matchedCount = variantIds.Count(matchedVariantIds.Contains);
+        return platformState switch
+        {
+            "ACTIVE" => variantIds.Length > 0 && matchedCount == variantIds.Length,
+            "PARTIAL" => matchedCount > 0 && matchedCount < variantIds.Length,
+            "PASSIVE" => matchedCount == 0,
+            _ => true
+        };
+    }
 
     private static bool TryProductPlatformFilter(string value, out string platformCode, out string platformState)
     {
