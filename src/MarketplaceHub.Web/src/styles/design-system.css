@@ -1629,6 +1629,7 @@
   .variant-platform-pricing-variant-item > span { display: grid; min-width: 0; gap: 2px; }
   .variant-platform-pricing-variant-item strong, .variant-platform-pricing-variant-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .variant-platform-pricing-variant-item small { color: var(--rv-color-muted); font-size: 10px; }
+  .variant-platform-pricing-variant-item em { overflow: hidden; color: var(--rv-color-primary); font-size: 10px; font-style: normal; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
   .variant-platform-pricing-variant-item i { display: grid; min-width: 20px; height: 20px; place-items: center; color: var(--rv-color-muted); background: var(--rv-color-surface); border-radius: 999px; font-size: 10px; font-style: normal; font-weight: 800; }
   .variant-platform-pricing-list { display: grid; gap: var(--rv-space-3); }
   .variant-platform-pricing-card { display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, minmax(100px, .55fr)) auto; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
