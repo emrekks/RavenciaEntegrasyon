@@ -1598,10 +1598,11 @@
   .variant-table-head, .variant-table-row { display: grid; grid-template-columns: 54px minmax(180px, 1.35fr) minmax(145px, 1fr) minmax(145px, 1fr) 90px 110px 110px 110px minmax(126px, .9fr) 94px 70px; min-width: 1360px; align-items: center; }
   .variant-table-head { min-height: 46px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); font-size: var(--rv-font-size-xs); font-weight: 800; text-transform: uppercase; }
   .variant-table-head > span:first-child { text-align: center; }
+  .variant-table-head > span:nth-child(9) { text-align: center; }
   .variant-table-head > *, .variant-table-row > * { min-width: 0; margin: 0; padding: var(--rv-space-2); }
   .variant-table-row { min-height: 62px; border-bottom: 1px solid var(--rv-color-border); }
   .variant-table-row:last-child { border-bottom: 0; }
-  .variant-platform-statuses { display: flex; min-width: 0; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .variant-platform-statuses { display: flex; min-width: 0; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
   .variant-platform-status { position: relative; display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; padding: 0; color: inherit; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 8px; cursor: pointer; }
   .variant-platform-status:hover, .variant-platform-status:focus-visible { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); outline: none; }
   .variant-platform-status::after { content: ''; position: absolute; top: -3px; right: -3px; width: 7px; height: 7px; background: var(--rv-color-danger); border: 2px solid var(--rv-color-surface); border-radius: 50%; }
@@ -1610,6 +1611,7 @@
   .variant-platform-status.is-partial { border-color: color-mix(in srgb, var(--rv-color-warning) 60%, var(--rv-color-border-strong)); }
   .variant-platform-status.is-partial::after { background: var(--rv-color-warning); }
   .variant-platform-status.is-unlinked { opacity: .62; }
+  .variant-platform-status-summary { margin-inline: auto; }
   .variant-platform-status-summary .ui-icon { width: 17px; height: 17px; }
   .variant-platform-status-summary > i { position: absolute; right: -6px; bottom: -6px; display: grid; min-width: 16px; height: 16px; place-items: center; padding: 0 3px; color: #fff; background: var(--rv-color-primary); border: 2px solid var(--rv-color-surface); border-radius: 999px; font-size: 9px; font-style: normal; font-weight: 800; line-height: 1; }
   .variant-platform-logo { display: block; width: 18px; height: 18px; object-fit: contain; object-position: center; }
