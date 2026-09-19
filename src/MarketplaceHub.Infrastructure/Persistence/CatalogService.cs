@@ -1108,9 +1108,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .ToDictionary(group => group.Key, group => (IReadOnlyDictionary<string, string>)group
                 .GroupBy(item => item.OptionLabel, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(option => option.Key, option => option.Last().ValueLabel, StringComparer.OrdinalIgnoreCase));
-        var connectionIds = profiles.Select(x => x.ConnectionId).Concat(variantLinks.Select(x => x.ConnectionId)).Distinct().ToArray();
         var connections = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id) && (x.Status == "ACTIVE" || x.Status == "VERIFIED"))
+            .Where(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"))
             .ToDictionaryAsync(x => x.Id, x => new { x.DisplayName, x.PlatformCode }, cancellationToken);
         var media = await (from item in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
@@ -1150,11 +1149,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var productVariantIds = productVariants.Select(x => x.Id).ToHashSet();
             var productProfiles = profiles.Where(x => x.ProductId == product.Id).ToList();
             var productLinks = variantLinks.Where(x => productVariantIds.Contains(x.VariantId)).ToList();
-            var productConnectionIds = productProfiles.Select(x => x.ConnectionId)
-                .Concat(productLinks.Select(x => x.ConnectionId))
-                .Where(connections.ContainsKey)
-                .Distinct()
-                .ToList();
+            var productConnectionIds = connections.Keys.ToList();
             var platformStatuses = productConnectionIds
                 .Select(connectionId =>
                 {
