@@ -824,7 +824,7 @@
   .product-variant-value.is-empty b { color: var(--rv-color-danger); }
   .product-list-price { grid-column: 5; }
   .product-list-stock { grid-column: 6; }
-  .product-list-platforms { grid-column: 7; display: grid; justify-items: start; gap: 3px; }
+  .product-list-platforms { grid-column: 7; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px; }
   .product-list-status { grid-column: 8; width: fit-content; max-width: 100%; min-height: 0; justify-self: center; box-sizing: border-box; }
   .product-status-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .product-list-actions { grid-column: 9; display: flex; align-items: center; gap: var(--rv-space-2); }

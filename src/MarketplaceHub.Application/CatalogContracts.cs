@@ -51,7 +51,8 @@ public sealed record ProductPlatformStatusView(
     string Status,
     int MatchedVariantCount = 0,
     int VariantCount = 0,
-    bool IsChecking = false);
+    bool IsChecking = false,
+    string PlatformCode = "TRENDYOL");
 public sealed record ProductView(
     Guid Id,
     string Title,

@@ -1111,7 +1111,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var connectionIds = profiles.Select(x => x.ConnectionId).Concat(variantLinks.Select(x => x.ConnectionId)).Distinct().ToArray();
         var connections = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id) && (x.Status == "ACTIVE" || x.Status == "VERIFIED"))
-            .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
+            .ToDictionaryAsync(x => x.Id, x => new { x.DisplayName, x.PlatformCode }, cancellationToken);
         var media = await (from item in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
                            where item.TenantId == tenantId && productIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
@@ -1167,7 +1167,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
                     var matchedVariantCount = linkedVariantIds.Count;
                     var status = profile?.ActualStatus ?? (matchedVariantCount == productVariantIds.Count && productVariantIds.Count > 0 ? "LINKED" : matchedVariantCount > 0 ? "PARTIAL_LINKED" : "UNLINKED");
-                    return new ProductPlatformStatusView(connections.GetValueOrDefault(connectionId, "Platform"), status, matchedVariantCount, productVariantIds.Count, IsPlatformUpdateInProgress(profile?.ActualStatus));
+                    var connection = connections[connectionId];
+                    return new ProductPlatformStatusView(connection.DisplayName, status, matchedVariantCount, productVariantIds.Count, IsPlatformUpdateInProgress(profile?.ActualStatus), connection.PlatformCode);
                 })
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)
                 .ToList();

@@ -20,7 +20,7 @@ type Variant = Versioned & {
   priceVersion: number | null; offerVersion: number | null; vatRate: number | null; vatInclusion: string | null; roundingMode: string | null; safetyStock: number | null
   mediaUrls?: string[]; options?: Record<string, string>
 }
-type ProductPlatformStatus = { platform: string; status: string; matchedVariantCount?: number; variantCount?: number; isChecking?: boolean }
+type ProductPlatformStatus = { platform: string; platformCode?: string; status: string; matchedVariantCount?: number; variantCount?: number; isChecking?: boolean }
 type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
   categoryPath?: string | null; variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null; familyMediaUrls?: string[]
@@ -735,25 +735,41 @@ function LowStockDetailsModal({ products, loading, error, onClose, onImageClick 
 function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick, onDelete }: { group: ProductGroup; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void; onDelete: () => void }) {
   const product = group.primary
   const platformStatuses = group.products.flatMap(item => item.platformStatuses ?? [])
-  const platformConfigured = platformStatuses.length > 0 || group.products.some(item => Boolean(item.activePlatforms?.length))
-  const normalizedPlatformStatuses = platformStatuses.map(item => item.status.trim().toLocaleUpperCase('tr-TR'))
-  const matchedVariantCount = platformStatuses.reduce((total, item) => total + (item.matchedVariantCount ?? 0), 0)
-  const variantCount = platformStatuses.reduce((total, item) => total + (item.variantCount ?? 0), 0)
-  const hasCoverageData = platformStatuses.some(item => (item.variantCount ?? 0) > 0)
-  const platformFullyMatched = platformConfigured && hasCoverageData && matchedVariantCount >= variantCount && variantCount > 0
-  const platformPartiallyMatched = matchedVariantCount > 0 && matchedVariantCount < variantCount
-  const platformChecking = platformStatuses.some(item => item.isChecking || ['QUEUED', 'UPDATE_QUEUED', 'BATCH_SUBMITTED', 'BATCH_IN_PROGRESS', 'UPDATE_SUBMITTED', 'UPDATE_IN_PROGRESS', 'APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING', 'ARCHIVE_QUEUED', 'ARCHIVE_BATCH_SUBMITTED', 'ARCHIVE_RECONCILING', 'UNARCHIVE_QUEUED'].includes(item.status.trim().toLocaleUpperCase('tr-TR')))
-  const platformHasError = normalizedPlatformStatuses.some(item => ['REJECTED', 'PARTIAL_REJECTED', 'MANUAL_REVIEW', 'LOCKED', 'BLACKLISTED'].includes(item))
-  const platformState = platformChecking ? 'processing' : platformHasError ? 'error' : platformFullyMatched ? 'active' : platformPartiallyMatched ? 'partial' : 'inactive'
-  const platformLabel = platformState === 'active'
-    ? `Tüm varyantlar Trendyol ile eşleşti${variantCount ? ` (${matchedVariantCount}/${variantCount})` : ''}`
-    : platformState === 'partial'
-      ? `Bazı varyantlar Trendyol ile eşleşti (${matchedVariantCount}/${variantCount})`
-      : platformState === 'processing'
-        ? 'Trendyol ürün bağlantısı güncelleniyor'
-        : platformState === 'error'
-          ? 'Trendyol ürün bağlantısı başarısız veya incelemede'
-          : 'Trendyol ürün eşleşmesi bulunamadı'
+  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean }>()
+  for (const item of platformStatuses) {
+    const platform = item.platform?.trim() || 'Platform'
+    const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : 'UNKNOWN')
+    const key = `${platformCode}:${platform}`
+    const current = platformStatusAggregates.get(key)
+    if (current) {
+      current.statuses.push(item.status)
+      current.matchedVariantCount += item.matchedVariantCount ?? 0
+      current.variantCount += item.variantCount ?? 0
+      current.isChecking ||= Boolean(item.isChecking)
+    } else {
+      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking) })
+    }
+  }
+  const platformCheckingStatuses = ['QUEUED', 'UPDATE_QUEUED', 'BATCH_SUBMITTED', 'BATCH_IN_PROGRESS', 'UPDATE_SUBMITTED', 'UPDATE_IN_PROGRESS', 'APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING', 'ARCHIVE_QUEUED', 'ARCHIVE_BATCH_SUBMITTED', 'ARCHIVE_RECONCILING', 'UNARCHIVE_QUEUED']
+  const platformCards = [...platformStatusAggregates.entries()].map(([key, item]) => {
+    const normalizedStatuses = item.statuses.map(status => status.trim().toLocaleUpperCase('tr-TR'))
+    const platformChecking = item.isChecking || normalizedStatuses.some(status => platformCheckingStatuses.includes(status))
+    const platformHasError = normalizedStatuses.some(status => ['REJECTED', 'PARTIAL_REJECTED', 'MANUAL_REVIEW', 'LOCKED', 'BLACKLISTED'].includes(status))
+    const platformFullyMatched = item.variantCount > 0 && item.matchedVariantCount >= item.variantCount
+    const platformPartiallyMatched = item.matchedVariantCount > 0 && item.matchedVariantCount < item.variantCount
+    const state = platformChecking ? 'processing' : platformHasError ? 'error' : platformFullyMatched ? 'active' : platformPartiallyMatched ? 'partial' : 'inactive'
+    const coverage = item.variantCount ? ` (${item.matchedVariantCount}/${item.variantCount})` : ''
+    const label = state === 'active'
+      ? `Tüm varyantlar ${item.platform} ile eşleşti${coverage}`
+      : state === 'partial'
+        ? `Bazı varyantlar ${item.platform} ile eşleşti${coverage}`
+        : state === 'processing'
+          ? `${item.platform} ürün bağlantısı güncelleniyor`
+          : state === 'error'
+            ? `${item.platform} ürün bağlantısı başarısız veya incelemede`
+            : `${item.platform} ürün eşleşmesi bulunamadı`
+    return { key, platform: item.platform, platformCode: item.platformCode, state, label }
+  })
   const totalStock = group.products.reduce((sum, item) => sum + item.totalStock, 0)
   const prices = group.products.map(item => item.startingPrice).filter((price): price is number => price != null)
   const startingPrice = prices.length ? Math.min(...prices) : null
@@ -771,7 +787,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
         <ProductVariantHover count={group.variants.length} catalogCount={group.products.length} groups={variantDisplayGroups} />
         <button type="button" className="product-list-price clickable-cell" aria-label={`${product.title}: fiyatı düzenle`} onClick={() => onQuickEdit('price')}><strong>{money(startingPrice, product.currency)}</strong></button>
         <button type="button" className="product-list-stock clickable-cell" aria-label={`${product.title}: stoğu düzenle`} onClick={() => onQuickEdit('stock')}><strong>{totalStock}</strong></button>
-        <div className="product-list-platforms"><span className={`platform-state-icon ${platformState}`} title={platformLabel} aria-label={platformLabel}><img className={`platform-state-logo ${platformLogoClass('TRENDYOL')}`} src={platformLogoSource('TRENDYOL')!} alt="" /><i /></span></div>
+        <div className="product-list-platforms" aria-label="Platform durumları">{platformCards.length ? platformCards.map(card => <span className={`platform-state-icon ${card.state}`} key={card.key} title={card.label} aria-label={card.label}><img className={`platform-state-logo ${platformLogoClass(card.platformCode)}`} src={platformLogoSource(card.platformCode) ?? '/platforms/trendyol.png'} alt="" /><i /></span>) : <span className="platform-state-icon inactive" title="Platform eşleşmesi bulunamadı" aria-label="Platform eşleşmesi bulunamadı"><img className={`platform-state-logo ${platformLogoClass('TRENDYOL')}`} src={platformLogoSource('TRENDYOL')!} alt="" /><i /></span>}</div>
         <div className={`product-list-status pill ${statusTone}`.trim()}><span className="dot product-status-dot" aria-hidden="true" /><span className="product-status-label">{statusLabel}</span></div>
         <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title={group.products.length > 1 ? 'Ürün grubundaki ilk kaydı düzenle' : 'Ürünü düzenle'}><UiIcon className="product-action-icon" name="edit" /></Link><button type="button" className="product-delete-button" onClick={event => { event.stopPropagation(); onDelete() }} aria-label={`${product.title} ürün grubunu sil`} title={group.products.length > 1 ? 'Ürün grubundaki tüm kayıtları sil' : 'Ürünü sil'}><UiIcon className="product-action-icon" name="trash" /></button></div>
       </div>
