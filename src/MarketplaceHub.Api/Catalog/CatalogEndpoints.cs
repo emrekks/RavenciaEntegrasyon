@@ -111,11 +111,31 @@ public static class CatalogEndpoints
         });
         api.MapGet("/products/{id:guid}/publication-status/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.GetPublicationStatusAsync(tenant.TenantId, id, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapGet("/files/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage) =>
+        api.MapGet("/files/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage, IHttpClientFactory clients) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
-            var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == assetId && x.Classification == "PRODUCT_MEDIA" && x.Status == "ACTIVE" && x.ArchivedAt == null, http.RequestAborted);
+            var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == assetId && (x.Classification == "PRODUCT_MEDIA" || x.Classification == "PRODUCT_MEDIA_URL") && x.Status == "ACTIVE" && x.ArchivedAt == null, http.RequestAborted);
             if (asset is null) return Results.NotFound();
+            if (asset.Classification == "PRODUCT_MEDIA_URL")
+            {
+                if (!Uri.TryCreate(asset.RelativePath, UriKind.Absolute, out var remoteUri) || remoteUri.Scheme != Uri.UriSchemeHttps || remoteUri.IsLoopback || string.Equals(remoteUri.Host, "localhost", StringComparison.OrdinalIgnoreCase)) return Results.NotFound();
+                try
+                {
+                    var client = clients.CreateClient();
+                    client.Timeout = TimeSpan.FromSeconds(12);
+                    client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; RavenciaMediaProxy/1.0)");
+                    using var response = await client.GetAsync(remoteUri, HttpCompletionOption.ResponseHeadersRead, http.RequestAborted);
+                    if (!response.IsSuccessStatusCode) return Results.NotFound();
+                    var contentType = response.Content.Headers.ContentType?.MediaType;
+                    if (string.IsNullOrWhiteSpace(contentType) || !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return Results.NotFound();
+                    var bytes = await response.Content.ReadAsByteArrayAsync(http.RequestAborted);
+                    if (bytes.Length == 0 || bytes.Length > MaxUploadBytes) return Results.NotFound();
+                    http.Response.Headers.CacheControl = "private, max-age=900";
+                    return Results.Bytes(bytes, contentType);
+                }
+                catch (HttpRequestException) { return Results.NotFound(); }
+                catch (TaskCanceledException) { return Results.NotFound(); }
+            }
             try
             {
                 var content = await storage.OpenReadAsync(tenant.TenantId, asset.RelativePath, http.RequestAborted);

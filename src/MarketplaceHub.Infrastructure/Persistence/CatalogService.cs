@@ -727,7 +727,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 return productMedia.Count > 0 ? productMedia : group.OrderBy(item => item.SortOrder).Take(1).ToList();
             })
             .OrderBy(item => item.SortOrder)
-            .Select(item => item.Classification == "PRODUCT_MEDIA_URL" ? item.Url : $"/api/v1/files/product-media/{item.Id:D}/content")
+            .Select(item => $"/api/v1/files/product-media/{item.Id:D}/content")
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
