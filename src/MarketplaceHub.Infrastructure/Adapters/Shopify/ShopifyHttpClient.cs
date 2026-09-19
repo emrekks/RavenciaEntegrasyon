@@ -86,10 +86,14 @@ public sealed class ShopifyHttpClient(
         // The catalog query contains nested variant and inventory-level
         // connections. Keeping the product page small is required because
         // Shopify rejects a query whose requested cost exceeds 1,000.
-        var first = Math.Clamp(page.Limit, 1, Math.Min(Math.Clamp(settings.PageSize, 1, 250), 10));
+        var first = Math.Clamp(page.Limit, 1, Math.Min(Math.Clamp(settings.PageSize, 1, 250), 5));
         if (!TryBuildProductQuery(shop, filter, out var query, out var lookupError))
             return Fail<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_LOOKUP_INVALID", lookupError!, HttpStatusCode.UnprocessableEntity);
-        const string gql = "query($first:Int!, $after:String, $query:String) { products(first:$first, after:$after, query:$query, sortKey:UPDATED_AT) { edges { cursor node { id title descriptionHtml vendor productType status updatedAt category { id name fullName } images(first:50) { nodes { url } } priceRange { minVariantPrice { currencyCode } } variants(first:250) { nodes { id sku barcode price compareAtPrice inventoryQuantity selectedOptions { name value } image { url } inventoryItem { inventoryLevels(first:250) { nodes { location { id name isActive } quantities(names:[\"available\"]) { name quantity } } } } } } } } pageInfo { hasNextPage endCursor } } }";
+        // Keep the catalog page within Shopify's query-cost budget. The
+        // aggregate inventoryQuantity is retained here; per-location levels
+        // are not requested in this product query because nesting them under
+        // every variant can exceed Shopify's single-query cost limit.
+        const string gql = "query($first:Int!, $after:String, $query:String) { products(first:$first, after:$after, query:$query, sortKey:UPDATED_AT) { edges { cursor node { id title descriptionHtml vendor productType status updatedAt category { id name fullName } images(first:10) { nodes { url } } priceRange { minVariantPrice { currencyCode } } variants(first:250) { nodes { id sku barcode price compareAtPrice inventoryQuantity selectedOptions { name value } image { url } } } } } pageInfo { hasNextPage endCursor } } }";
         var variables = new { first, after = page.Cursor, query };
         var result = await QueryAsync(shop, gql, variables, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(result.Error!, result.RateLimit);
