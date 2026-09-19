@@ -88,20 +88,24 @@ function seedVariantMediaRefs(variants: Variant[]) {
   })
 }
 
+function compareLabelsAlphabetically(left: string, right: string) {
+  return left.trim().localeCompare(right.trim(), 'tr-TR', { sensitivity: 'base', numeric: true })
+}
+
 function sortVariantsAlphabetically<T extends { optionSignature?: string | null; sku: string }>(variants: T[]) {
   return [...variants].sort((left, right) => {
     const leftLabel = (left.optionSignature || left.sku).trim()
     const rightLabel = (right.optionSignature || right.sku).trim()
-    return leftLabel.localeCompare(rightLabel, 'tr-TR', { sensitivity: 'base', numeric: true })
-      || left.sku.localeCompare(right.sku, 'tr-TR', { sensitivity: 'base', numeric: true })
+    return compareLabelsAlphabetically(leftLabel, rightLabel)
+      || compareLabelsAlphabetically(left.sku, right.sku)
   })
 }
 
 function compareVariantItemsAlphabetically(left: { variant: { optionSignature?: string | null; sku: string } }, right: { variant: { optionSignature?: string | null; sku: string } }) {
   const leftLabel = (left.variant.optionSignature || left.variant.sku).trim()
   const rightLabel = (right.variant.optionSignature || right.variant.sku).trim()
-  return leftLabel.localeCompare(rightLabel, 'tr-TR', { sensitivity: 'base', numeric: true })
-    || left.variant.sku.localeCompare(right.variant.sku, 'tr-TR', { sensitivity: 'base', numeric: true })
+  return compareLabelsAlphabetically(leftLabel, rightLabel)
+    || compareLabelsAlphabetically(left.variant.sku, right.variant.sku)
 }
 
 type ProductListFilters = { search: string; status: string; platform: string; stock: string }
@@ -442,7 +446,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const colorLabelOf = (item: typeof variants[number]) => preferredColorOption(variantOptionEntries(item.variant))?.value.trim() || 'Diğer'
   const sizeOf = (item: typeof variants[number]) => optionValue(item.variant.optionSignature || '', ['BEDEN', 'SIZE'], item.variant.optionSignature || 'Ana varyant')
   const colorLabels = sortedVariants.reduce<Record<string, string>>((result, item) => { const key = colorOf(item); result[key] ??= colorLabelOf(item); return result }, {})
-  const colorOptions = Object.keys(groups).sort((left, right) => (colorLabels[left] || left).localeCompare(colorLabels[right] || right, 'tr-TR', { sensitivity: 'base', numeric: true }))
+  const colorOptions = Object.keys(groups).sort((left, right) => compareLabelsAlphabetically(colorLabels[left] || left, colorLabels[right] || right))
   const [selectionDraft, setSelectionDraft] = useState<string[]>([])
   const [selectedColors, setSelectedColors] = useState<string[]>([])
   const [selectedSizes, setSelectedSizes] = useState<string[]>([])
@@ -452,7 +456,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const selectedSet = new Set(selectionDraft)
   const activeSelection = selectionDraft
   const activeSelectedSet = selectedSet
-  const sizeOptions = [...new Set(sortedVariants.filter(item => !selectedColors.length || selectedColors.includes(colorOf(item))).map(sizeOf))].sort((left, right) => left.localeCompare(right, 'tr-TR', { sensitivity: 'base', numeric: true }))
+  const sizeOptions = [...new Set(sortedVariants.filter(item => !selectedColors.length || selectedColors.includes(colorOf(item))).map(sizeOf))].sort(compareLabelsAlphabetically)
   const toggleColor = (color: string) => {
     const next = selectedColors.includes(color) ? selectedColors.filter(item => item !== color) : [...selectedColors, color]
     setSelectedColors(next)
@@ -1227,7 +1231,7 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, selectedPlatfor
   const sortedRows = sortVariantsAlphabetically(rows)
   const colorOf = (item: VariantDraft) => item.optionSignature?.match(/(?:Renk|COLOR)\s*[:=]\s*([^|_]+)/i)?.[1]?.trim() || 'Diğer'
   const colorGroups = sortedRows.reduce<Record<string, VariantDraft[]>>((result, item) => { const color = colorOf(item); (result[color] ??= []).push(item); return result }, {})
-  const colorOptions = Object.keys(colorGroups).sort((left, right) => left.localeCompare(right, 'tr-TR', { sensitivity: 'base', numeric: true }))
+  const colorOptions = Object.keys(colorGroups).sort(compareLabelsAlphabetically)
   const [openColorGroups, setOpenColorGroups] = useState<string[]>([colorOf(row)])
   useEffect(() => { setOpenColorGroups([colorOf(row)]) }, [row.key])
   const toggleColorGroup = (color: string) => setOpenColorGroups(current => current.includes(color) ? current.filter(item => item !== color) : [...current, color])
