@@ -1729,10 +1729,10 @@
   .quick-edit-color.is-open .quick-edit-color-toggle > .ui-icon { color: var(--rv-color-primary); transform: rotate(180deg); }
   .quick-edit-color-variants { overflow: hidden; border-top: 1px solid var(--rv-color-border); }
   .quick-edit-variants { display: grid; gap: var(--rv-space-3); padding: 0 var(--rv-space-3) var(--rv-space-3); }
-  .quick-edit-variant { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--rv-space-2) var(--rv-space-3); padding-top: var(--rv-space-3); }
+  .quick-edit-variant { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(220px, .9fr); align-items: center; gap: var(--rv-space-2) var(--rv-space-3); padding-top: var(--rv-space-3); }
   .quick-edit-variant > span { display: block; min-width: 0; }
   .quick-edit-variant > span strong { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .quick-edit-variant-controls { display: grid; grid-column: 2; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-2); }
+  .quick-edit-variant-controls { display: grid; grid-column: 3; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-2); }
   .quick-edit-variant-controls label { display: grid; min-width: 0; gap: 3px; }
   .quick-edit-variant-controls label small, .quick-edit-fields label { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 700; }
   .quick-edit-variant-controls input { min-width: 0; }
@@ -2763,6 +2763,8 @@
   .marketplace-pricing-bars-head, .attribute-variant-action, .variant-filter-panel-head, .variant-table-toolbar, .product-submit-sticky { align-items: flex-start; flex-direction: column; }
   .marketplace-pricing-bar, .variant-filter-grid, .variant-bulk-editor { grid-template-columns: 1fr; }
   .quick-edit-filter-row, .quick-edit-fields { grid-template-columns: 1fr; }
+  .quick-edit-variant { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .quick-edit-variant-controls { grid-column: 2; }
   .variant-platform-pricing-card { grid-template-columns: minmax(0, 1fr) repeat(2, minmax(88px, .6fr)); }
   .variant-platform-pricing-card > button { grid-column: 1 / -1; justify-self: start; }
   .variant-platform-pricing-variant-items { grid-template-columns: 1fr; }
