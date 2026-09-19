@@ -1630,8 +1630,8 @@
   .variant-platform-logo { display: block; width: 18px; height: 18px; object-fit: contain; object-position: center; }
   .variant-platform-logo.platform-logo-trendyol { object-fit: cover; }
   .variant-platform-empty { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
-  .variant-platform-pricing-modal { width: min(720px, 100%); }
-  .variant-platform-pricing-body { display: grid; max-height: min(70vh, 620px); gap: var(--rv-space-4); overflow-y: auto; padding: var(--rv-space-5) var(--rv-space-6); }
+  .variant-platform-pricing-modal { width: min(1180px, 100%); }
+  .variant-platform-pricing-body { display: grid; max-height: min(76vh, 760px); gap: var(--rv-space-4); overflow: hidden; padding: var(--rv-space-5) var(--rv-space-6); }
   .variant-platform-pricing-variant-list { display: grid; gap: var(--rv-space-2); }
   .variant-platform-pricing-variant-list-head { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); color: var(--rv-color-ink); }
   .variant-platform-pricing-variant-list-head span { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
@@ -1677,6 +1677,23 @@
   .variant-platform-pricing-platform-column > header small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
   .variant-platform-pricing-platform-column > label { display: grid; gap: var(--rv-space-2); color: var(--rv-color-ink); font-size: var(--rv-font-size-xs); font-weight: 750; }
   .variant-platform-pricing-platform-column > button { width: 100%; }
+  .variant-platform-pricing-matrix { display: grid; min-width: 0; gap: var(--rv-space-3); }
+  .variant-platform-pricing-matrix-scroll { max-width: 100%; max-height: min(62vh, 600px); overflow: auto; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .variant-platform-pricing-matrix-grid { display: grid; min-width: max-content; }
+  .variant-platform-pricing-matrix-cell { display: grid; min-width: 0; align-content: center; gap: 5px; padding: var(--rv-space-3); border-right: 1px solid var(--rv-color-border); border-bottom: 1px solid var(--rv-color-border); }
+  .variant-platform-pricing-matrix-cell > input { width: 100%; min-width: 0; }
+  .variant-platform-pricing-matrix-head { position: sticky; top: 0; z-index: 2; align-content: start; background: var(--rv-color-surface-soft); color: var(--rv-color-ink); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+  .variant-platform-pricing-matrix-platform { display: flex; min-width: 0; align-items: center; gap: 6px; }
+  .variant-platform-pricing-matrix-platform strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .variant-platform-pricing-matrix-head > span { color: var(--rv-color-muted); }
+  .variant-platform-pricing-matrix-head > input { min-height: 30px; }
+  .variant-platform-pricing-matrix-bulk-button { width: 100%; padding: 5px 7px; color: #fff; background: var(--rv-color-primary); border: 0; border-radius: var(--rv-radius-sm); font-size: 9px; font-weight: 850; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
+  .variant-platform-pricing-matrix-bulk-button:hover, .variant-platform-pricing-matrix-bulk-button:focus-visible { background: var(--rv-color-primary-strong); }
+  .variant-platform-pricing-matrix-corner, .variant-platform-pricing-matrix-row-label { position: sticky; left: 0; z-index: 3; background: var(--rv-color-surface); }
+  .variant-platform-pricing-matrix-corner { z-index: 4; color: var(--rv-color-muted); }
+  .variant-platform-pricing-matrix-row-label { align-content: center; }
+  .variant-platform-pricing-matrix-row-label strong, .variant-platform-pricing-matrix-row-label small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .variant-platform-pricing-matrix-row-label small { color: var(--rv-color-muted); font-size: 10px; }
   .variant-platform-pricing-channel { display: flex; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .variant-platform-pricing-channel > div { display: grid; gap: 3px; min-width: 0; }
   .variant-platform-pricing-channel small, .variant-platform-pricing-help { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
