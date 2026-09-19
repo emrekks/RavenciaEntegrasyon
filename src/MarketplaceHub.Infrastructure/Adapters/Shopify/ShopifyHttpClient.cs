@@ -83,7 +83,10 @@ public sealed class ShopifyHttpClient(
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
         if (shop is null) return Fail<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
-        var first = Math.Clamp(page.Limit, 1, Math.Clamp(settings.PageSize, 1, 250));
+        // The catalog query contains nested variant and inventory-level
+        // connections. Keeping the product page small is required because
+        // Shopify rejects a query whose requested cost exceeds 1,000.
+        var first = Math.Clamp(page.Limit, 1, Math.Min(Math.Clamp(settings.PageSize, 1, 250), 10));
         if (!TryBuildProductQuery(shop, filter, out var query, out var lookupError))
             return Fail<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_LOOKUP_INVALID", lookupError!, HttpStatusCode.UnprocessableEntity);
         const string gql = "query($first:Int!, $after:String, $query:String) { products(first:$first, after:$after, query:$query, sortKey:UPDATED_AT) { edges { cursor node { id title descriptionHtml vendor productType status updatedAt category { id name fullName } images(first:50) { nodes { url } } priceRange { minVariantPrice { currencyCode } } variants(first:250) { nodes { id sku barcode price compareAtPrice inventoryQuantity selectedOptions { name value } image { url } inventoryItem { inventoryLevels(first:250) { nodes { location { id name isActive } quantities(names:[\"available\"]) { name quantity } } } } } } } } pageInfo { hasNextPage endCursor } } }";
