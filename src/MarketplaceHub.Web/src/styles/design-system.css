@@ -1606,7 +1606,8 @@
   .variant-table-head > :nth-child(8), .variant-table-row > :nth-child(8) { grid-column: 8; }
   .variant-table-head > :nth-child(9), .variant-table-row > :nth-child(9) { grid-column: 9; }
   .variant-table-head > :nth-child(10), .variant-table-row > :nth-child(10) { grid-column: 10; }
-  .variant-table-head > :nth-child(11), .variant-table-row > :nth-child(11) { grid-column: 11; }
+.variant-table-head > :nth-child(11), .variant-table-row > :nth-child(11) { grid-column: 11; }
+.variant-table-head > *, .variant-table-row > * { grid-row: 1; }
   .variant-table-head { min-height: 46px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); font-size: var(--rv-font-size-xs); font-weight: 800; text-transform: uppercase; }
   .variant-table-head > span:first-child { text-align: center; }
   .variant-table-head > span:nth-child(9) { text-align: center; }
