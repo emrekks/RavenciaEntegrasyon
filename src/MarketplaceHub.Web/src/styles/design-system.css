@@ -1574,7 +1574,7 @@
   .variant-filter-panel-body { display: grid; gap: var(--rv-space-3); }
   .variant-filter-panel-summary { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); }
   .variant-filter-panel-summary > b { max-width: 180px; overflow: hidden; font-size: var(--rv-font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
-  .variant-filter-panel-head span, .variant-filter-empty { color: var(--rv-color-muted); }
+  .variant-filter-panel-toggle > span:first-child > span, .variant-filter-empty { color: var(--rv-color-muted); }
   .variant-filter-grid, .variant-bulk-editor { display: grid; gap: var(--rv-space-3); }
   .variant-filter-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .variant-bulk-editor { grid-template-columns: repeat(5, minmax(0, 1fr)); }
