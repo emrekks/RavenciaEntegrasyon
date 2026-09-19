@@ -437,13 +437,25 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const [selectedColors, setSelectedColors] = useState<string[]>([])
   const [selectedSizes, setSelectedSizes] = useState<string[]>([])
   const [activeColorTab, setActiveColorTab] = useState('ALL')
+  const [colorDropdownOpen, setColorDropdownOpen] = useState(false)
   const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
+  const colorDropdownRef = useRef<HTMLDivElement>(null)
   const selectedSet = new Set(selectionDraft)
   const activeSelection = selectionDraft
   const activeSelectedSet = selectedSet
   const sizeOptions = [...new Set(sortedVariants.filter(item => !selectedColors.length || selectedColors.includes(colorOf(item))).map(sizeOf))].sort((left, right) => left.localeCompare(right, 'tr-TR', { sensitivity: 'base', numeric: true }))
   const visibleTabVariants = activeColorTab === 'ALL' ? colorOptions.flatMap(color => groups[color]) : (groups[activeColorTab] ?? [])
+  const activeColorLabel = activeColorTab === 'ALL' ? 'Tüm renkler' : colorLabels[activeColorTab] || activeColorTab
+  const activeColorCount = activeColorTab === 'ALL' ? sortedVariants.length : groups[activeColorTab]?.length ?? 0
+  useEffect(() => {
+    if (!colorDropdownOpen) return
+    const closeOnPointerDown = (event: MouseEvent) => { if (!colorDropdownRef.current?.contains(event.target as Node)) setColorDropdownOpen(false) }
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setColorDropdownOpen(false) }
+    document.addEventListener('mousedown', closeOnPointerDown)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => { document.removeEventListener('mousedown', closeOnPointerDown); document.removeEventListener('keydown', closeOnEscape) }
+  }, [colorDropdownOpen])
   const toggleColor = (color: string) => {
     const next = selectedColors.includes(color) ? selectedColors.filter(item => item !== color) : [...selectedColors, color]
     setSelectedColors(next)
@@ -509,9 +521,12 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           </div>
           <div className="quick-edit-filter-action"><p>Renk ve beden filtrelerini seçtikçe alttaki eşleşen varyantlar otomatik işaretlenir.</p></div>
           <div className="quick-edit-selection">
-            <div className="quick-edit-variant-tabs" role="tablist" aria-label="Varyant renkleri">
-              <button type="button" role="tab" aria-selected={activeColorTab === 'ALL'} className={activeColorTab === 'ALL' ? 'is-active' : ''} onClick={() => setActiveColorTab('ALL')}>Tümü <small>{sortedVariants.length}</small></button>
-              {colorOptions.map(color => { const items = groups[color]; const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length; return <button type="button" role="tab" key={color} aria-selected={activeColorTab === color} className={activeColorTab === color ? 'is-active' : ''} onClick={() => setActiveColorTab(color)}>{colorLabels[color] || color} <small>{selectedCount ? `${selectedCount}/${items.length}` : items.length}</small></button> })}
+            <div className="quick-edit-color-dropdown" ref={colorDropdownRef}>
+              <button type="button" className="quick-edit-color-trigger" aria-haspopup="listbox" aria-expanded={colorDropdownOpen} onClick={() => setColorDropdownOpen(value => !value)}><span><small>Renk</small><strong>{activeColorLabel}</strong></span><em>{activeColorCount} varyant</em><UiIcon name="chevronDown" /></button>
+              {colorDropdownOpen && <div className="quick-edit-color-menu" role="listbox" aria-label="Varyant renkleri">
+                <button type="button" role="option" aria-selected={activeColorTab === 'ALL'} className={activeColorTab === 'ALL' ? 'is-active' : ''} onClick={() => { setActiveColorTab('ALL'); setColorDropdownOpen(false) }}><span><strong>Tüm renkler</strong><small>Tüm varyantları göster</small></span><b>{sortedVariants.length}</b>{activeColorTab === 'ALL' && <UiIcon name="check" />}</button>
+                {colorOptions.map(color => { const items = groups[color]; const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length; return <button type="button" role="option" key={color} aria-selected={activeColorTab === color} className={activeColorTab === color ? 'is-active' : ''} onClick={() => { setActiveColorTab(color); setColorDropdownOpen(false) }}><span><strong>{colorLabels[color] || color}</strong><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : 'Renk varyantlarını göster'}</small></span><b>{items.length}</b>{activeColorTab === color && <UiIcon name="check" />}</button> })}
+              </div>}
             </div>
             <div className="quick-edit-tab-panel" role="tabpanel" aria-label={activeColorTab === 'ALL' ? 'Tüm varyantlar' : colorLabels[activeColorTab] || activeColorTab}>
               <div className="quick-edit-tab-panel-head"><strong>{activeColorTab === 'ALL' ? 'Tüm varyantlar' : colorLabels[activeColorTab] || activeColorTab}</strong><span>A–Z sıralı · seçtiklerinize aşağıdaki adımda değişiklik uygulanır.</span></div>
