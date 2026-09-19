@@ -1878,7 +1878,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify, preferBarcode: isShopify);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify, preferBarcode: isShopify, onlyExistingVariants: existingOnly && isShopify);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -2729,7 +2729,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized, cancellationToken);
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -2742,20 +2742,24 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             Snapshot = snapshot,
             // Reprocess existing catalog products after changing mapped
             // attribute assignment semantics, not only newly fetched rows.
-            OptionRoleVersion = "catalog-options-v9-web-color-adapter"
+            OptionRoleVersion = observeOnly
+                ? "catalog-options-v10-shopify-variant-first-match"
+                : "catalog-options-v9-web-color-adapter"
         }));
         var isNewProduct = false;
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
         Product? product = link is null
             ? null
             : await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == link.ProductId, cancellationToken);
-        if (product is null && observeOnly)
+        if (observeOnly)
         {
-            // Shopify has no model-code field. Match an unlinked snapshot by
-            // barcode so the first read can reuse an existing local variant.
-            var identityCodes = (string.IsNullOrWhiteSpace(snapshot.ProductMainId)
-                    ? snapshot.Variants.Select(variant => variant.Barcode)
-                    : new[] { snapshot.ProductMainId })
+            // Shopify has no main-product/model-code identity for this
+            // integration. Resolve the local parent from its variants first,
+            // even when an older product link already exists. This lets a
+            // multi-option Shopify product reuse one Ravencia product and then
+            // match every option variant inside that parent by barcode.
+            var identityCodes = snapshot.Variants
+                .Select(variant => variant.Barcode)
                 .Select(value => NormalizeCatalogKey(value, 160))
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Select(value => value!)
@@ -2777,12 +2781,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 }
                 if (identityProductIds.Count == 1)
                 {
-                    product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == identityProductIds[0], cancellationToken);
-                    if (product is not null && await db.MarketplaceProductLinks.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == product.Id && x.ExternalId != externalProductId, cancellationToken))
+                    var variantMatchedProduct = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == identityProductIds[0], cancellationToken);
+                    if (variantMatchedProduct is not null && link is not null && link.ProductId != variantMatchedProduct.Id)
                     {
                         await RecordIssue(tenantId, $"product-sync-link-conflict:{connectionId}:{externalProductId}", "PRODUCT_LINK_CONFLICT", "Shopify ürünü aynı bağlantıda başka bir dış ürünle eşleşmiş yerel ürüne bağlanmadı.", cancellationToken);
                         return false;
                     }
+                    if (variantMatchedProduct is not null && await db.MarketplaceProductLinks.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == variantMatchedProduct.Id && x.ExternalId != externalProductId, cancellationToken))
+                    {
+                        await RecordIssue(tenantId, $"product-sync-link-conflict:{connectionId}:{externalProductId}", "PRODUCT_LINK_CONFLICT", "Shopify varyant barkodu aynı bağlantıda başka bir dış ürünle eşleşmiş yerel ürüne bağlanmadı.", cancellationToken);
+                        return false;
+                    }
+                    product = variantMatchedProduct;
                 }
             }
         }
@@ -2885,7 +2895,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 var externalVariantId = Short(remote.ExternalVariantId, 256);
                 if (onlyNewVariants && existingVariantExternalIds!.Contains(externalVariantId))
                     continue;
-                var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, sortOrder, categoryContext, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode);
+                var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, sortOrder, categoryContext, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, onlyExistingVariants);
                 if (importedVariant is not null)
                 {
                     importedVariants.Add(importedVariant);
@@ -3140,7 +3150,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return category;
     }
 
-    private async Task<ProductVariant?> UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, int sortOrder, CategoryAttributeContext? categoryContext, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool observeOnly = false, bool preferBarcode = false)
+    private async Task<ProductVariant?> UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, int sortOrder, CategoryAttributeContext? categoryContext, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false)
     {
         var sku = Short(string.IsNullOrWhiteSpace(remote.Sku) ? remote.Barcode ?? remote.ExternalVariantId : remote.Sku, 160);
         var skuNormalized = NormalizeCatalogKey(sku, 160);
@@ -3150,7 +3160,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var externalVariantId = Short(remote.ExternalVariantId, 256);
         var optionSignature = categoryContext is null ? OptionSignature(remote.Options) : await PanelOptionSignatureAsync(tenantId, connectionId, categoryContext, remote.Options, cancellationToken);
         var link = await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalVariantId, cancellationToken);
-        ProductVariant? variant = link is null ? null : await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == link.VariantId, cancellationToken);
+        ProductVariant? variant = null;
+        if (link is not null)
+        {
+            var linkedVariant = await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == link.VariantId, cancellationToken);
+            // A stale Shopify variant link must not override a barcode match
+            // inside the resolved local parent product.
+            if (linkedVariant is not null
+                && linkedVariant.ProductId == product.Id
+                && (!preferBarcode || string.Equals(linkedVariant.BarcodeNormalized, barcodeNormalized, StringComparison.Ordinal)))
+                variant = linkedVariant;
+        }
         if (preferBarcode && !string.IsNullOrWhiteSpace(barcodeNormalized))
             variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized)
                 ?? await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized, cancellationToken);
@@ -3164,6 +3184,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         if (!preferBarcode && variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
             variant = await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized, cancellationToken);
+        if (variant is null && onlyExistingVariants)
+            return null;
+
         var isNewVariant = variant is null;
         if (variant is null)
         {
