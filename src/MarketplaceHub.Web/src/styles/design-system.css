@@ -6388,12 +6388,16 @@ small,
 }
 
 .app-shell.stitch-shell main .product-image-modal-body {
-  padding: 16px;
+  padding: 0;
 }
 
 .app-shell.stitch-shell main .product-image-modal-frame {
-  width: min(320px, 100%);
+  width: 100%;
   aspect-ratio: 2 / 3;
+  background: transparent;
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .app-shell.stitch-shell main .variant-table-editor > .empty.small {
