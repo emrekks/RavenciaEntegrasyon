@@ -2835,7 +2835,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (saveChanges)
                 await db.SaveChangesAsync(cancellationToken);
             telemetrySkippedCount++;
-            return false;
+            // A Shopify read-only observation is still a successful match even
+            // when the local product hash is unchanged. The local catalog is
+            // intentionally preserved, but progress must report the linked
+            // product as processed rather than silently skipped.
+            return observeOnly;
         }
 
         var preserveLocal = link is not null && (ProductImportMergePolicy.PreserveLocalChanges(product.Version, link.LastImportedProductVersion, link.DirtyFieldsJson) || observeOnly && !isNewProduct);
@@ -2926,7 +2930,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         link.Version++;
         if (saveChanges)
             await db.SaveChangesAsync(cancellationToken);
-        return onlyNewVariants ? importedNewVariantCount > 0 : !preserveLocal;
+        return onlyNewVariants
+            ? importedNewVariantCount > 0
+            : observeOnly
+                ? !isNewProduct
+                : !preserveLocal;
     }
 
     private async Task SyncCatalogInventoryForPreservedProduct(
