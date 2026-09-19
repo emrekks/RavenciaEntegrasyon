@@ -3035,8 +3035,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             // Local product edits must not block stock observations. Match
             // existing variants without touching their local content/options,
-            // then apply only the inventory part of the remote snapshot.
-            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode);
+            // then apply the inventory part of the remote snapshot. Trendyol
+            // media is a separate remote projection, so a manual product edit
+            // must not leave an older Shopify gallery in place.
+            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, syncMedia: !observeOnly);
+            if (!observeOnly && snapshot.ImageUrls.Count > 0)
+            {
+                var productImageUrls = snapshot.ImageUrls
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                await UpsertCatalogMedia(tenantId, product, null, productImageUrls, product.Title, cancellationToken);
+            }
         }
         link ??= await db.MarketplaceProductLinks.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
         link.LastImportedPayloadHash = remoteHash;
@@ -3072,7 +3081,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         DateTimeOffset now,
         CancellationToken cancellationToken,
         bool observeOnly = false,
-        bool preferBarcode = false)
+        bool preferBarcode = false,
+        bool syncMedia = false)
     {
         var variants = await db.ProductVariants
             .Where(x => x.TenantId == tenantId && x.ProductId == product.Id)
@@ -3115,6 +3125,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (variant is null) continue;
 
             await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: false, observeOnly: observeOnly);
+            if (syncMedia && remote.ImageUrls is not null)
+                await UpsertCatalogMedia(tenantId, product, variant.Id, remote.ImageUrls, $"{product.Title} · {OptionSignature(remote.Options)}", cancellationToken);
         }
     }
 
@@ -3157,8 +3169,30 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var variantCount = await db.ProductVariants.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.ProductId == productId, cancellationToken);
         if (variantCount < snapshot.Variants.Count) return false;
 
-        var mediaCount = await db.ProductMedia.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE", cancellationToken);
-        return mediaCount >= snapshot.ImageUrls.Count;
+        var expectedUrls = snapshot.ImageUrls
+            .Select(NormalizeCatalogImageUrl)
+            .Where(x => x is not null)
+            .Select(x => x!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var mediaRows = await (from media in db.ProductMedia.AsNoTracking()
+                               join asset in db.FileAssets.AsNoTracking()
+                                   on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
+                               where media.TenantId == tenantId
+                                   && media.ProductId == productId
+                                   && media.VariantId == null
+                                   && media.Status == "ACTIVE"
+                                   && asset.Status == "ACTIVE"
+                                   && asset.ArchivedAt == null
+                                   && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
+                               orderby media.SortOrder
+                               select new { media.FileAssetId, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
+        var actualUrls = mediaRows
+            .Select(row => row.Classification == "PRODUCT_MEDIA_URL"
+                ? row.RelativePath
+                : $"/api/v1/files/product-media/{row.FileAssetId:D}/content")
+            .ToList();
+        return actualUrls.SequenceEqual(expectedUrls, StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task<Brand?> UpsertCatalogBrand(Guid tenantId, string? name, CancellationToken cancellationToken)

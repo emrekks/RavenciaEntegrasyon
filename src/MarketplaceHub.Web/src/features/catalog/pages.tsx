@@ -217,13 +217,19 @@ function LocalImagePreview({ file, alt, caption: _caption, onRemove, onZoom }: {
 function ImageLightboxModal({ image, onClose }: { image: { url: string; title: string }; onClose: () => void }) {
   return (
     <div className="workspace-modal-backdrop image-lightbox-backdrop" role="presentation" onMouseDown={onClose}>
-      <div className="image-lightbox-modal" role="dialog" aria-modal="true" onMouseDown={e => e.stopPropagation()}>
-        <button type="button" className="lightbox-close" onClick={onClose} aria-label="Kapat"><UiIcon name="close" /></button>
-        <div className="lightbox-img-wrap">
-          <img src={image.url} alt={image.title} />
+      <section className="workspace-modal product-image-modal" role="dialog" aria-modal="true" aria-labelledby="catalog-image-modal-title" onMouseDown={e => e.stopPropagation()}>
+        <header className="product-image-modal-header">
+          <div>
+            <h2 id="catalog-image-modal-title">{image.title}</h2>
+          </div>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Kapat"><UiIcon name="close" /></button>
+        </header>
+        <div className="product-image-modal-body">
+          <div className="product-image-modal-frame">
+            <img src={image.url} alt={`${image.title} büyük ürün görseli`} />
+          </div>
         </div>
-        {image.title && <div className="lightbox-caption">{image.title}</div>}
-      </div>
+      </section>
     </div>
   )
 }
