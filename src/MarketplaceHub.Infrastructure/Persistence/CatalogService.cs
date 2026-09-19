@@ -1156,6 +1156,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 .ToDictionaryAsync(x => x.Id, x => x.Path, cancellationToken);
         var inventoryByVariant = inventories.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
         var offerByVariant = offers.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
+        var offerByVariantConnection = offers.ToDictionary(x => (x.VariantId, x.ConnectionId));
         return products.Select(product =>
         {
             // Product variants are inserted in the marketplace response order.
@@ -1187,7 +1188,22 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                         var connectionId = connection.Key;
                         var profile = productProfiles.FirstOrDefault(x => x.ConnectionId == connectionId);
                         var isLinked = linkedConnectionIds.Contains(connectionId) || listingConnectionIds.Contains(connectionId);
-                        return new ProductVariantPlatformStatusView(connection.Value.DisplayName, connection.Value.PlatformCode, isLinked, profile?.ActualStatus ?? (isLinked ? "LINKED" : "UNLINKED"));
+                        offerByVariantConnection.TryGetValue((variant.Id, connectionId), out var channelOffer);
+                        return new ProductVariantPlatformStatusView(
+                            connection.Value.DisplayName,
+                            connection.Value.PlatformCode,
+                            isLinked,
+                            profile?.ActualStatus ?? (isLinked ? "LINKED" : "UNLINKED"),
+                            connectionId,
+                            channelOffer?.Id,
+                            channelOffer?.ListPrice,
+                            channelOffer?.SalePrice,
+                            channelOffer?.Currency,
+                            channelOffer?.VatRate,
+                            channelOffer?.VatInclusion,
+                            channelOffer?.RoundingMode,
+                            channelOffer?.SafetyStock,
+                            channelOffer?.Version);
                     })
                     .ToList();
                 return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id), variantPlatformStatuses);

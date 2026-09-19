@@ -47,7 +47,21 @@ public sealed record ProductVariantView(
 public sealed record ProductAttributeAssignmentView(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record ProductOptionValueView(Guid Id, string Label);
 public sealed record ProductOptionView(Guid Id, string Label, IReadOnlyList<ProductOptionValueView> Values);
-public sealed record ProductVariantPlatformStatusView(string Platform, string PlatformCode, bool IsLinked, string Status = "UNLINKED");
+public sealed record ProductVariantPlatformStatusView(
+    string Platform,
+    string PlatformCode,
+    bool IsLinked,
+    string Status = "UNLINKED",
+    Guid? ConnectionId = null,
+    Guid? OfferId = null,
+    decimal? ListPrice = null,
+    decimal? SalePrice = null,
+    string? Currency = null,
+    decimal? VatRate = null,
+    string? VatInclusion = null,
+    string? RoundingMode = null,
+    decimal? SafetyStock = null,
+    long? OfferVersion = null);
 public sealed record ProductPlatformStatusView(
     string Platform,
     string Status,
