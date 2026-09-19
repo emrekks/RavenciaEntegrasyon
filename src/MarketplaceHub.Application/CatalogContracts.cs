@@ -42,10 +42,12 @@ public sealed record ProductVariantView(
     string? RoundingMode = null,
     decimal? SafetyStock = null,
     IReadOnlyList<string>? MediaUrls = null,
-    IReadOnlyDictionary<string, string>? Options = null);
+    IReadOnlyDictionary<string, string>? Options = null,
+    IReadOnlyList<ProductVariantPlatformStatusView>? PlatformStatuses = null);
 public sealed record ProductAttributeAssignmentView(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record ProductOptionValueView(Guid Id, string Label);
 public sealed record ProductOptionView(Guid Id, string Label, IReadOnlyList<ProductOptionValueView> Values);
+public sealed record ProductVariantPlatformStatusView(string Platform, string PlatformCode, bool IsLinked, string Status = "UNLINKED");
 public sealed record ProductPlatformStatusView(
     string Platform,
     string Status,

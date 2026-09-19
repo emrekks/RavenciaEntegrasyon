@@ -1167,14 +1167,31 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 .ThenBy(x => x.CreatedAt)
                 .ThenBy(x => x.Id)
                 .ToList();
-            var variantViews = productVariants.Select(variant =>
-            {
-                inventoryByVariant.TryGetValue(variant.Id, out var inventory); offerByVariant.TryGetValue(variant.Id, out var offer);
-                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id));
-            }).ToList();
             var productVariantIds = productVariants.Select(x => x.Id).ToHashSet();
             var productProfiles = profiles.Where(x => x.ProductId == product.Id).ToList();
             var productLinks = variantLinks.Where(x => productVariantIds.Contains(x.VariantId)).ToList();
+            var variantViews = productVariants.Select(variant =>
+            {
+                inventoryByVariant.TryGetValue(variant.Id, out var inventory); offerByVariant.TryGetValue(variant.Id, out var offer);
+                var linkedConnectionIds = productLinks.Where(x => x.VariantId == variant.Id).Select(x => x.ConnectionId).ToHashSet();
+                var listingConnectionIds = listingVariants
+                    .Where(x => x.VariantId == variant.Id)
+                    .Select(x => productProfiles.FirstOrDefault(profile => profile.Id == x.ProfileId)?.ConnectionId)
+                    .OfType<Guid>()
+                    .ToHashSet();
+                var variantPlatformStatuses = connections
+                    .OrderBy(connection => connection.Value.PlatformCode)
+                    .ThenBy(connection => connection.Value.DisplayName)
+                    .Select(connection =>
+                    {
+                        var connectionId = connection.Key;
+                        var profile = productProfiles.FirstOrDefault(x => x.ConnectionId == connectionId);
+                        var isLinked = linkedConnectionIds.Contains(connectionId) || listingConnectionIds.Contains(connectionId);
+                        return new ProductVariantPlatformStatusView(connection.Value.DisplayName, connection.Value.PlatformCode, isLinked, profile?.ActualStatus ?? (isLinked ? "LINKED" : "UNLINKED"));
+                    })
+                    .ToList();
+                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id), variantPlatformStatuses);
+            }).ToList();
             var productConnectionIds = connections.Keys.ToList();
             var platformStatuses = productConnectionIds
                 .Select(connectionId =>
