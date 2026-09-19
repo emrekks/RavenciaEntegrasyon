@@ -299,7 +299,11 @@ public sealed class ShopifyHttpClient(
             }).ToList()
             : [];
         var barcode = variant.GetProperty("barcode").ValueKind == JsonValueKind.Null ? null : variant.GetProperty("barcode").GetString();
-        return new(ShortId(variant.GetProperty("id").GetString()), variant.GetProperty("sku").GetString() ?? ShortId(variant.GetProperty("id").GetString()), barcode, barcode, options, productArchived, price, compareAt, null, inventory, currency, variant.GetRawText(), image is null ? [] : [image], levels);
+        // Shopify has no model-code field. SKU is the stock code and barcode
+        // is the only identity used when an existing Ravencia product is
+        // matched. Keep those values separate instead of mirroring barcode
+        // into the shared model-code field.
+        return new(ShortId(variant.GetProperty("id").GetString()), variant.GetProperty("sku").GetString() ?? ShortId(variant.GetProperty("id").GetString()), barcode, null, options, productArchived, price, compareAt, null, inventory, currency, variant.GetRawText(), image is null ? [] : [image], levels);
     }
 
     private static RemoteOrder MapOrder(JsonElement order)

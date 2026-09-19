@@ -1714,14 +1714,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var existingVariantExternalIds = newOnly
             ? (await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId).Select(x => x.ExternalId).ToListAsync(cancellationToken)).ToHashSet(StringComparer.OrdinalIgnoreCase)
             : null;
-        var existingModelCodes = existingOnly
+        var existingIdentityCodes = existingOnly
             ? (await db.ProductVariants.AsNoTracking()
                     .Where(x => x.TenantId == tenantId && (x.ModelCode != null || isShopify && x.BarcodeNormalized != null))
                     .Select(x => new { x.ModelCode, x.BarcodeNormalized })
                     .ToListAsync(cancellationToken))
-                .SelectMany(value => new[] { value.ModelCode, isShopify ? value.BarcodeNormalized : null })
-                .Select(modelCode => NormalizeCatalogKey(modelCode, 160))
-                .Where(modelCode => !string.IsNullOrWhiteSpace(modelCode))
+                .SelectMany(value => isShopify ? new[] { value.BarcodeNormalized } : new[] { value.ModelCode })
+                .Select(identity => NormalizeCatalogKey(identity, 160))
+                .Where(identity => !string.IsNullOrWhiteSpace(identity))
                 .ToHashSet(StringComparer.Ordinal)
             : null;
         var hasCategoryMappings = !isShopify && await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
@@ -1861,15 +1861,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     var productAlreadyLinked = existingProductExternalIds?.Contains(snapshot.ExternalProductId) == true;
                     var hasNewVariant = existingVariantExternalIds is not null
                         && snapshot.Variants.Any(variant => !existingVariantExternalIds.Contains(Short(variant.ExternalVariantId, 256)));
-                    var matchesExistingModelCode = existingModelCodes is not null
-                        && snapshot.Variants.Any(variant => existingModelCodes.Contains(NormalizeCatalogKey(variant.ModelCode ?? variant.Barcode, 160)));
+                    var matchesExistingIdentity = existingIdentityCodes is not null
+                        && snapshot.Variants.Any(variant => existingIdentityCodes.Contains(NormalizeCatalogKey(isShopify ? variant.Barcode : variant.ModelCode ?? variant.Barcode, 160)));
                     if (newOnly && productAlreadyLinked && !hasNewVariant)
                     {
                         telemetryImportSkippedCount++;
                         importedModelCount++;
                         continue;
                     }
-                    if (existingOnly && !productAlreadyLinked && !matchesExistingModelCode)
+                    if (existingOnly && !productAlreadyLinked && !matchesExistingIdentity)
                     {
                         telemetryImportSkippedCount++;
                         importedModelCount++;
@@ -2754,7 +2754,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             // Shopify has no model-code field. Match an unlinked snapshot by
             // barcode so the first read can reuse an existing local variant.
             var identityCodes = (string.IsNullOrWhiteSpace(snapshot.ProductMainId)
-                    ? snapshot.Variants.Select(variant => variant.ModelCode ?? variant.Barcode)
+                    ? snapshot.Variants.Select(variant => variant.Barcode)
                     : new[] { snapshot.ProductMainId })
                 .Select(value => NormalizeCatalogKey(value, 160))
                 .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -2764,8 +2764,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 var identityProductIds = await db.ProductVariants.AsNoTracking()
                     .Where(x => x.TenantId == tenantId
-                        && ((x.ModelCode != null && identityCodes.Contains(x.ModelCode.ToUpper()))
-                            || (x.BarcodeNormalized != null && identityCodes.Contains(x.BarcodeNormalized))))
+                        && x.BarcodeNormalized != null
+                        && identityCodes.Contains(x.BarcodeNormalized))
                     .Select(x => x.ProductId)
                     .Distinct()
                     .Take(2)
@@ -2967,11 +2967,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var variant = linkedVariantId is Guid variantId
                 ? variants.FirstOrDefault(x => x.Id == variantId)
                 : null;
-            if (preferBarcode && !string.IsNullOrWhiteSpace(barcodeNormalized))
-                variant ??= variants.FirstOrDefault(x => x.BarcodeNormalized == barcodeNormalized);
-            variant ??= variants.FirstOrDefault(x => x.SkuNormalized == skuNormalized);
-            if (!preferBarcode && variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
-                variant = variants.FirstOrDefault(x => x.BarcodeNormalized == barcodeNormalized);
+            if (preferBarcode)
+            {
+                if (!string.IsNullOrWhiteSpace(barcodeNormalized))
+                    variant ??= variants.FirstOrDefault(x => x.BarcodeNormalized == barcodeNormalized);
+            }
+            else
+            {
+                variant ??= variants.FirstOrDefault(x => x.SkuNormalized == skuNormalized);
+                if (variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
+                    variant = variants.FirstOrDefault(x => x.BarcodeNormalized == barcodeNormalized);
+            }
             if (variant is null) continue;
 
             await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: false, observeOnly: observeOnly);
@@ -3140,8 +3146,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (preferBarcode && !string.IsNullOrWhiteSpace(barcodeNormalized))
             variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized)
                 ?? await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized, cancellationToken);
-        variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.SkuNormalized == skuNormalized)
-            ?? await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SkuNormalized == skuNormalized, cancellationToken);
+        if (!preferBarcode)
+            variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.SkuNormalized == skuNormalized)
+                ?? await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SkuNormalized == skuNormalized, cancellationToken);
         if (variant is not null && variant.ProductId != product.Id)
         {
             await RecordIssue(tenantId, $"product-sync-variant-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_CONFLICT", "Trendyol varyantı başka bir yerel üründe kullanılan stok koduyla eşleşti; mevcut kayıt korunarak atlandı.", cancellationToken);
@@ -3158,21 +3165,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         else
         {
-            var nextModelCode = Short(remote.ModelCode, 160);
+            var nextModelCode = preferBarcode ? null : Short(remote.ModelCode, 160);
             var nextStatus = remote.Archived ? ProductStatus.Archived : ProductStatus.Active;
             if (!observeOnly && (variant.SortOrder != sortOrder || variant.Sku != sku || variant.SkuNormalized != skuNormalized || variant.Barcode != barcode || variant.BarcodeNormalized != barcodeNormalized || variant.ModelCode != nextModelCode || variant.OptionSignature != optionSignature || variant.Status != nextStatus))
             {
                 variant.SortOrder = sortOrder; variant.Sku = sku; variant.SkuNormalized = skuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = barcodeNormalized; variant.ModelCode = nextModelCode; variant.OptionSignature = optionSignature; variant.Status = nextStatus; variant.UpdatedAt = now; variant.Version++;
-                telemetryUpdatedCount++;
-            }
-            else if (observeOnly && preferBarcode && variant.ModelCode != nextModelCode)
-            {
-                // Shopify uses the barcode as the local model-code value. Keep
-                // SKU and barcode as separate fields, while repairing older
-                // Shopify imports that still contain the removed metafield.
-                variant.ModelCode = nextModelCode;
-                variant.UpdatedAt = now;
-                variant.Version++;
                 telemetryUpdatedCount++;
             }
         }

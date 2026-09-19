@@ -21,12 +21,12 @@ internal static class CatalogImportOrdering
             && !string.Equals(snapshot.ProductMainId.Trim(), snapshot.ExternalProductId.Trim(), StringComparison.OrdinalIgnoreCase))
             return snapshot.ProductMainId.Trim();
 
-        var variantModelCode = snapshot.Variants
-            .Select(variant => variant.ModelCode)
-            .FirstOrDefault(modelCode => !string.IsNullOrWhiteSpace(modelCode));
-        return !string.IsNullOrWhiteSpace(variantModelCode)
-            && !string.Equals(variantModelCode.Trim(), snapshot.ExternalProductId.Trim(), StringComparison.OrdinalIgnoreCase)
-            ? variantModelCode.Trim()
+        var variantIdentity = snapshot.Variants
+            .Select(variant => variant.ModelCode ?? variant.Barcode)
+            .FirstOrDefault(identity => !string.IsNullOrWhiteSpace(identity));
+        return !string.IsNullOrWhiteSpace(variantIdentity)
+            && !string.Equals(variantIdentity.Trim(), snapshot.ExternalProductId.Trim(), StringComparison.OrdinalIgnoreCase)
+            ? variantIdentity.Trim()
             : snapshot.ExternalProductId.Trim();
     }
 }
