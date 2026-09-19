@@ -361,14 +361,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, type, JsonSerializer.Serialize(new { connectionId, externalOrderId, full }), correlationId, cancellationToken);
     }
 
-    public async Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool mappingOnly, bool includeArchived, bool includeDrafts, string? productLookup, string correlationId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool mappingOnly, bool includeArchived, bool includeDrafts, bool updateExistingProducts, string? productLookup, string correlationId, CancellationToken cancellationToken)
     {
         var platform = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
             .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
         var type = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.ProductSync);
-        return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, type, JsonSerializer.Serialize(new { connectionId, full, newOnly, existingOnly, mappingOnly, includeArchived, includeDrafts, productLookup }), correlationId, cancellationToken);
+        return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, type, JsonSerializer.Serialize(new { connectionId, full, newOnly, existingOnly, mappingOnly, includeArchived, includeDrafts, updateExistingProducts, productLookup }), correlationId, cancellationToken);
     }
 
     public Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)

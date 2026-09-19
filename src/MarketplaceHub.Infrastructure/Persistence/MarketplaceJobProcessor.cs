@@ -1678,6 +1678,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var existingOnly = ReadBoolean(payloadJson, "existingOnly");
         var mappingOnly = ReadBoolean(payloadJson, "mappingOnly");
         var includeArchived = ReadBoolean(payloadJson, "includeArchived");
+        var updateExistingProducts = ReadBooleanOrDefault(payloadJson, "updateExistingProducts", true);
         // Shopify's single inactive-product option intentionally covers both
         // archived variants and draft products; keep older payloads compatible.
         var includeDrafts = ReadBoolean(payloadJson, "includeDrafts") || isShopify && includeArchived;
@@ -1699,9 +1700,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var lifecycleLabel = isShopify
             ? includeArchived ? " · Arşiv ve taslak ürünler dahil" : " · Arşiv ve taslak ürünler hariç"
             : archiveLabel + draftLabel;
+        var contentLabel = !newOnly && !mappingOnly
+            ? updateExistingProducts ? " · Mevcut ürün bilgileri güncellenecek" : " · Mevcut ürün bilgileri korunacak"
+            : "";
         var receivedProducts = 0;
         if (jobId is { } currentJob)
-            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, scanLabel + lifecycleLabel + " · İlk sayfa bekleniyor", cancellationToken);
+            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, scanLabel + lifecycleLabel + contentLabel + " · İlk sayfa bekleniyor", cancellationToken);
         int? totalProducts = null;
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
         if (fullScan && cursor.OpaqueCursor is not null)
@@ -1889,7 +1893,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify, preferBarcode: isShopify, onlyExistingVariants: existingOnly && isShopify);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify, preferBarcode: isShopify, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -2834,7 +2838,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -2968,7 +2972,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             return observeOnly;
         }
 
-        var preserveLocal = link is not null && (ProductImportMergePolicy.PreserveLocalChanges(product.Version, link.LastImportedProductVersion, link.DirtyFieldsJson) || observeOnly && !isNewProduct);
+        var preserveDueToLocalChanges = link is not null && (ProductImportMergePolicy.PreserveLocalChanges(product.Version, link.LastImportedProductVersion, link.DirtyFieldsJson) || observeOnly && !isNewProduct);
+        var preserveDueToImportOption = link is not null && !updateExistingProducts && !isNewProduct;
+        var preserveLocal = preserveDueToLocalChanges || preserveDueToImportOption;
         if (!onlyNewVariants && !preserveLocal)
         {
             product.Title = ProductTitle(snapshot.Title, externalProductId);
@@ -3038,8 +3044,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             // then apply the inventory part of the remote snapshot. Trendyol
             // media is a separate remote projection, so a manual product edit
             // must not leave an older Shopify gallery in place.
-            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, syncMedia: !observeOnly);
-            if (!observeOnly && snapshot.ImageUrls.Count > 0)
+            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, syncMedia: !observeOnly && updateExistingProducts);
+            if (!observeOnly && updateExistingProducts && snapshot.ImageUrls.Count > 0)
             {
                 var productImageUrls = snapshot.ImageUrls
                     .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -3050,7 +3056,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         link ??= await db.MarketplaceProductLinks.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
         link.LastImportedPayloadHash = remoteHash;
         link.LastImportedAt = now;
-        if (preserveLocal && !onlyNewVariants)
+        if (preserveDueToLocalChanges && !onlyNewVariants)
         {
             link.SyncStatus = "LOCAL_CHANGES_PENDING";
             link.DirtyFieldsJson ??= "[\"product\"]";
@@ -3166,6 +3172,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> CatalogSnapshotAlreadyApplied(Guid tenantId, Guid productId, RemoteCatalogProduct snapshot, CancellationToken cancellationToken)
     {
+        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        if (product is null || !string.Equals(product.Title, ProductTitle(snapshot.Title, snapshot.ExternalProductId), StringComparison.Ordinal) || !string.Equals(product.Description, snapshot.Description ?? "", StringComparison.Ordinal)) return false;
         var variantCount = await db.ProductVariants.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.ProductId == productId, cancellationToken);
         if (variantCount < snapshot.Variants.Count) return false;
 
@@ -4758,6 +4766,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             return document.RootElement.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.True;
         }
         catch (JsonException) { return false; }
+    }
+
+    private static bool ReadBooleanOrDefault(string payloadJson, string propertyName, bool fallback)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return document.RootElement.TryGetProperty(propertyName, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? value.GetBoolean()
+                : fallback;
+        }
+        catch (JsonException) { return fallback; }
     }
 
     private static string? ReadText(string payloadJson, string propertyName)
