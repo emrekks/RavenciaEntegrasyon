@@ -160,10 +160,29 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         }
 
         var invoiceType = options.InvoiceType?.Trim().ToUpperInvariant();
+        // Trendyol always sends the company fields, often as empty strings.
+        // Checking only for the property name therefore classified nearly every
+        // individual order as corporate. Match a non-empty JSON value instead.
         if (invoiceType == "KURUMSAL")
-            query = query.Where(x => x.CustomerSnapshotJson.Contains("\"commercial\":true") || x.CustomerSnapshotJson.Contains("\"commercial\": true") || x.InvoiceAddressSnapshotJson.Contains("\"company\"") || x.InvoiceAddressSnapshotJson.Contains("\"companyName\""));
+            query = query.Where(x =>
+                x.CustomerSnapshotJson.Contains("\"commercial\":true")
+                || x.CustomerSnapshotJson.Contains("\"commercial\": true")
+                || EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"company\":\"_%")
+                || EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"company\": \"_%")
+                || EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"companyName\":\"_%")
+                || EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"companyName\": \"_%")
+                || EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"taxOffice\":\"_%")
+                || EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"taxOffice\": \"_%"));
         else if (invoiceType == "BIREYSEL")
-            query = query.Where(x => !x.CustomerSnapshotJson.Contains("\"commercial\":true") && !x.CustomerSnapshotJson.Contains("\"commercial\": true") && !x.InvoiceAddressSnapshotJson.Contains("\"company\"") && !x.InvoiceAddressSnapshotJson.Contains("\"companyName\""));
+            query = query.Where(x =>
+                !x.CustomerSnapshotJson.Contains("\"commercial\":true")
+                && !x.CustomerSnapshotJson.Contains("\"commercial\": true")
+                && !EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"company\":\"_%")
+                && !EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"company\": \"_%")
+                && !EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"companyName\":\"_%")
+                && !EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"companyName\": \"_%")
+                && !EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"taxOffice\":\"_%")
+                && !EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"taxOffice\": \"_%"));
 
         var invoiceRegion = options.InvoiceRegion?.Trim().ToUpperInvariant();
         if (invoiceRegion == "MICRO_EXPORT")
