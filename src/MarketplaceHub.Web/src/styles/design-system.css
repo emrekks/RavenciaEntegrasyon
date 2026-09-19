@@ -1665,6 +1665,18 @@
   .variant-platform-pricing-editor > div:first-child { display: grid; gap: 3px; }
   .variant-platform-pricing-bulk-editor { padding-top: 0; padding-bottom: var(--rv-space-4); border-top: 0; border-bottom: 1px solid var(--rv-color-border); }
   .variant-platform-pricing-bulk-editor > button { justify-self: start; }
+  .variant-platform-pricing-bulk-grid { display: grid; gap: var(--rv-space-3); padding-bottom: var(--rv-space-4); border-bottom: 1px solid var(--rv-color-border); }
+  .variant-platform-pricing-bulk-heading { display: grid; gap: 3px; }
+  .variant-platform-pricing-bulk-heading span { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+  .variant-platform-pricing-platform-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--rv-space-3); }
+  .variant-platform-pricing-platform-column { display: grid; min-width: 0; align-content: start; gap: var(--rv-space-3); padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .variant-platform-pricing-platform-column.is-selected { border-color: var(--rv-color-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
+  .variant-platform-pricing-platform-column > header { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); padding: 0; border: 0; }
+  .variant-platform-pricing-platform-column > header > div { display: grid; min-width: 0; gap: 3px; }
+  .variant-platform-pricing-platform-column > header strong, .variant-platform-pricing-platform-column > header small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .variant-platform-pricing-platform-column > header small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+  .variant-platform-pricing-platform-column > label { display: grid; gap: var(--rv-space-2); color: var(--rv-color-ink); font-size: var(--rv-font-size-xs); font-weight: 750; }
+  .variant-platform-pricing-platform-column > button { width: 100%; }
   .variant-platform-pricing-channel { display: flex; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .variant-platform-pricing-channel > div { display: grid; gap: 3px; min-width: 0; }
   .variant-platform-pricing-channel small, .variant-platform-pricing-help { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
@@ -1741,7 +1753,8 @@
   .quick-edit-color.is-open .quick-edit-color-toggle > .ui-icon { color: var(--rv-color-primary); transform: rotate(180deg); }
   .quick-edit-color-variants { overflow: hidden; border-top: 1px solid var(--rv-color-border); }
   .quick-edit-variants { display: grid; gap: var(--rv-space-3); padding: 0 var(--rv-space-3) var(--rv-space-3); }
-  .quick-edit-variant { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(220px, .9fr); align-items: center; gap: var(--rv-space-2) var(--rv-space-3); padding-top: var(--rv-space-3); }
+  .quick-edit-variant { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(220px, .9fr); align-items: start; gap: var(--rv-space-2) var(--rv-space-3); padding-top: var(--rv-space-3); }
+  .quick-edit-variant > input { margin-top: 2px; }
   .quick-edit-variant > span { display: block; min-width: 0; }
   .quick-edit-variant > span strong { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .quick-edit-variant-controls { display: grid; grid-column: 3; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-2); }
@@ -2779,6 +2792,7 @@
   .quick-edit-variant-controls { grid-column: 2; }
   .variant-platform-pricing-card { grid-template-columns: minmax(0, 1fr) repeat(2, minmax(88px, .6fr)); }
   .variant-platform-pricing-card > button { grid-column: 1 / -1; justify-self: start; }
+  .variant-platform-pricing-platform-columns { grid-template-columns: 1fr; }
   .variant-platform-pricing-variant-items { grid-template-columns: 1fr; }
   .product-quick-edit-modal > form { padding-inline: var(--rv-space-4); }
   .quick-edit-footer { align-items: stretch; flex-wrap: wrap; }
