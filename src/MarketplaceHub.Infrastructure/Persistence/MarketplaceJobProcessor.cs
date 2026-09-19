@@ -1676,6 +1676,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var fullScan = ReadBoolean(payloadJson, "full");
         var newOnly = ReadBoolean(payloadJson, "newOnly");
         var existingOnly = ReadBoolean(payloadJson, "existingOnly");
+        var mappingOnly = ReadBoolean(payloadJson, "mappingOnly");
         var includeArchived = ReadBoolean(payloadJson, "includeArchived");
         // Shopify's single inactive-product option intentionally covers both
         // archived variants and draft products; keep older payloads compatible.
@@ -1684,6 +1685,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var singleLookup = !string.IsNullOrWhiteSpace(productLookup);
         var scanLabel = singleLookup
             ? "Tekil ürün çekimi"
+            : mappingOnly
+            ? "Ürün eşleme"
             : fullScan
             ? "Tam katalog taraması"
             : newOnly
@@ -1708,14 +1711,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await db.SaveChangesAsync(cancellationToken);
         }
         var hasSnapshots = await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
-        var existingProductExternalIds = newOnly || existingOnly
+        var existingProductExternalIds = newOnly || existingOnly || mappingOnly
             ? (await db.MarketplaceProductLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId).Select(x => x.ExternalId).ToListAsync(cancellationToken)).ToHashSet(StringComparer.OrdinalIgnoreCase)
             : null;
         var existingVariantExternalIds = newOnly
             ? (await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId).Select(x => x.ExternalId).ToListAsync(cancellationToken)).ToHashSet(StringComparer.OrdinalIgnoreCase)
             : null;
         var existingIdentityCodes = existingOnly
-            ? (await db.ProductVariants.AsNoTracking()
+                    ? (await db.ProductVariants.AsNoTracking()
                     .Where(x => x.TenantId == tenantId && (x.ModelCode != null || isShopify && x.BarcodeNormalized != null))
                     .Select(x => new { x.ModelCode, x.BarcodeNormalized })
                     .ToListAsync(cancellationToken))
@@ -1858,6 +1861,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 try
                 {
+                    if (mappingOnly)
+                    {
+                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken);
+                        if (!mapped) telemetryImportSkippedCount++;
+                        else telemetryImportProcessedCount++;
+                        importedModelCount++;
+                        continue;
+                    }
                     var productAlreadyLinked = existingProductExternalIds?.Contains(snapshot.ExternalProductId) == true;
                     var hasNewVariant = existingVariantExternalIds is not null
                         && snapshot.Variants.Any(variant => !existingVariantExternalIds.Contains(Short(variant.ExternalVariantId, 256)));
@@ -2727,6 +2738,100 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         return db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized)
             ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized, cancellationToken);
+    }
+
+    private async Task<bool> MapExistingCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, bool preferBarcode, CancellationToken cancellationToken)
+    {
+        var externalProductId = Short(snapshot.ExternalProductId, 256);
+        if (string.IsNullOrWhiteSpace(externalProductId)) return false;
+        var now = timeProvider.GetUtcNow();
+        var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
+        Guid? productId = link?.ProductId;
+        if (productId is null)
+        {
+            var modelCodes = preferBarcode
+                ? Array.Empty<string>()
+                : snapshot.Variants.Select(variant => variant.ModelCode?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var barcodes = snapshot.Variants.Select(variant => NormalizeCatalogKey(variant.Barcode, 160)).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.Ordinal).ToArray();
+            var skus = snapshot.Variants.Select(variant => NormalizeCatalogKey(variant.Sku, 160)).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.Ordinal).ToArray();
+            if (modelCodes.Length == 0 && barcodes.Length == 0 && skus.Length == 0) return false;
+            var candidates = await db.ProductVariants.AsNoTracking()
+                .Where(variant => variant.TenantId == tenantId
+                    && ((!preferBarcode && variant.ModelCode != null && modelCodes.Contains(variant.ModelCode))
+                        || (variant.BarcodeNormalized != null && barcodes.Contains(variant.BarcodeNormalized))
+                        || (variant.SkuNormalized != null && skus.Contains(variant.SkuNormalized))))
+                .Select(variant => new { variant.ProductId })
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            var candidateProductIds = candidates.Select(candidate => candidate.ProductId).Distinct().ToArray();
+            if (candidateProductIds.Length != 1) return false;
+            productId = candidateProductIds[0];
+        }
+
+        if (!await db.Products.AsNoTracking().AnyAsync(product => product.TenantId == tenantId && product.Id == productId.Value, cancellationToken)) return false;
+        var conflictingProductLink = await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && existing.ProductId == productId.Value && existing.ExternalId != externalProductId, cancellationToken);
+        if (conflictingProductLink) return false;
+
+        if (link is null)
+        {
+            link = new MarketplaceProductLink
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ConnectionId = connectionId,
+                ProductId = productId.Value,
+                ExternalId = externalProductId,
+                SyncStatus = "MAPPED",
+                LastImportedAt = now,
+                Version = 1
+            };
+            db.MarketplaceProductLinks.Add(link);
+            telemetryInsertedCount++;
+        }
+        else
+        {
+            link.LastImportedAt = now;
+            link.SyncStatus = "MAPPED";
+            link.Version++;
+        }
+
+        var localVariants = await db.ProductVariants
+            .Where(variant => variant.TenantId == tenantId && variant.ProductId == productId.Value)
+            .ToListAsync(cancellationToken);
+        if (localVariants.Count == 0) return true;
+        var localVariantIds = localVariants.Select(variant => variant.Id).ToArray();
+        var externalVariantIds = snapshot.Variants.Select(variant => Short(variant.ExternalVariantId, 256)).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var existingVariantLinks = await db.MarketplaceVariantLinks
+            .Where(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && (localVariantIds.Contains(existing.VariantId) || externalVariantIds.Contains(existing.ExternalId)))
+            .ToListAsync(cancellationToken);
+        foreach (var remote in snapshot.Variants)
+        {
+            var externalVariantId = Short(remote.ExternalVariantId, 256);
+            if (string.IsNullOrWhiteSpace(externalVariantId)) continue;
+            var remoteBarcode = NormalizeCatalogKey(remote.Barcode, 160);
+            var remoteSku = NormalizeCatalogKey(remote.Sku, 160);
+            var remoteModelCode = NormalizeCatalogKey(remote.ModelCode, 160);
+            var candidate = !string.IsNullOrWhiteSpace(remoteBarcode)
+                ? localVariants.FirstOrDefault(variant => string.Equals(variant.BarcodeNormalized, remoteBarcode, StringComparison.Ordinal))
+                : null;
+            candidate ??= !string.IsNullOrWhiteSpace(remoteSku)
+                ? localVariants.FirstOrDefault(variant => string.Equals(variant.SkuNormalized, remoteSku, StringComparison.Ordinal))
+                : null;
+            if (candidate is null && !preferBarcode && !string.IsNullOrWhiteSpace(remoteModelCode))
+            {
+                var modelMatches = localVariants.Where(variant => string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), remoteModelCode, StringComparison.Ordinal)).ToList();
+                if (modelMatches.Count == 1) candidate = modelMatches[0];
+            }
+            if (candidate is null) continue;
+            var externalLink = existingVariantLinks.FirstOrDefault(existing => string.Equals(existing.ExternalId, externalVariantId, StringComparison.OrdinalIgnoreCase));
+            if (externalLink is not null) continue;
+            var localLink = existingVariantLinks.FirstOrDefault(existing => existing.VariantId == candidate.Id);
+            if (localLink is not null) continue;
+            db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
+            existingVariantLinks.Add(new MarketplaceVariantLink { TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
+            telemetryInsertedCount++;
+        }
+        return true;
     }
 
     private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false)
