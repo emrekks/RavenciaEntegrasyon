@@ -93,6 +93,10 @@ function sortVariantsAlphabetically<T extends { optionSignature?: string | null;
 
 type ProductListFilters = { search: string; status: string; platform: string; stock: string }
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number; platforms: string[] }
+const productPlatformFilterGroups = [
+  { label: 'Trendyol', options: [{ value: 'TRENDYOL:ACTIVE', label: 'Aktif' }, { value: 'TRENDYOL:PARTIAL', label: 'Kısmi' }, { value: 'TRENDYOL:PASSIVE', label: 'Pasif' }] },
+  { label: 'Shopify', options: [{ value: 'SHOPIFY:ACTIVE', label: 'Aktif' }, { value: 'SHOPIFY:PARTIAL', label: 'Kısmi' }, { value: 'SHOPIFY:PASSIVE', label: 'Pasif' }] }
+]
 type ImportSession = Versioned & { sourceType: string; status: string; totalRows: number; validRows: number; errorRows: number; reviewRows: number; sourceAssetId: string | null }
 type Candidate = Versioned & { matchRule: string; safeSummary: string; productId: string | null; variantId: string | null }
 type MarketplaceConnection = { id: string; platformCode: string; displayName: string; externalStoreId: string; status: string }
@@ -1085,7 +1089,7 @@ export function ProductsPage() {
       </div>
       <label className="order-search"><UiIcon name="search" /><input aria-label="Ürün ara" placeholder="SKU veya Barkod Ara..." value={search} onChange={event => setSearch(event.target.value)} /></label>
       <select aria-label="Ürün durumu" value={status} onChange={event => setStatus(event.target.value)}><option value="">Tüm Durumlar</option><option value="ACTIVE">{productStatusLabel('ACTIVE')}</option><option value="DRAFT">{productStatusLabel('DRAFT')}</option><option value="ARCHIVED">{productStatusLabel('ARCHIVED')}</option></select>
-      <select aria-label="Platform filtresi" value={platform} onChange={event => setPlatform(event.target.value)}><option value="">Platform Durumu</option>{platforms.map(item => <option key={item}>{item}</option>)}</select>
+      <select aria-label="Platform filtresi" value={platform} onChange={event => setPlatform(event.target.value)}><option value="">Tüm platformlar</option>{productPlatformFilterGroups.map(group => <optgroup label={group.label} key={group.label}>{group.options.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</optgroup>)}{platforms.filter(item => !productPlatformFilterGroups.some(group => group.label.localeCompare(item, 'tr-TR', { sensitivity: 'base' }) === 0)).map(item => <option key={item}>{item}</option>)}</select>
       <select aria-label="Stok filtresi" value={stock} onChange={event => setStock(event.target.value)}><option value="">Stok Durumu</option><option value="OUT">Stoksuz</option><option value="LOW">Düşük stok</option><option value="OK">Yeterli stok</option></select>
     </div>
     {selectedProductIds.length > 0 && hasMoreProductsToSelect && <div className={`product-selection-banner${allProductsSelected ? ' is-all' : ''}`} role="status">

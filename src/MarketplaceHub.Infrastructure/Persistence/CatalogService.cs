@@ -352,7 +352,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         var query = VisibleProducts(tenantId);
         ApplyProductFilters(ref query, tenantId, status, search, platform);
-        var countKey = $"catalog:product-family-count:v2:{tenantId:N}:{status?.Trim()}:{search?.Trim()}:{platform?.Trim()}:{stock?.Trim()}";
+        var countKey = $"catalog:product-family-count:v3:{tenantId:N}:{status?.Trim()}:{search?.Trim()}:{platform?.Trim()}:{stock?.Trim()}";
         var cachedCount = countCache.Get(countKey);
         if (!cursors.TryDecodeProduct(after, out var afterUpdatedAt, out var afterId))
             throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(after));
@@ -1387,12 +1387,57 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
         if (!string.IsNullOrWhiteSpace(platform))
         {
-            var platformName = platform.Trim();
-            query = query.Where(product => db.ChannelListingProfiles.Any(profile =>
-                profile.TenantId == tenantId && profile.ProductId == product.Id && profile.Enabled &&
-                db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == profile.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.DisplayName == platformName)));
+            var platformFilter = platform.Trim();
+            if (TryProductPlatformFilter(platformFilter, out var platformCode, out var platformState))
+            {
+                var matchedVariantIds = PlatformMatchedVariantIds(tenantId, platformCode);
+                query = platformState switch
+                {
+                    "ACTIVE" => query.Where(product =>
+                        db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == product.Id)
+                        && !db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == product.Id && !matchedVariantIds.Contains(variant.Id))),
+                    "PARTIAL" => query.Where(product =>
+                        db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == product.Id && matchedVariantIds.Contains(variant.Id))
+                        && db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == product.Id && !matchedVariantIds.Contains(variant.Id))),
+                    "PASSIVE" => query.Where(product =>
+                        !db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == product.Id && matchedVariantIds.Contains(variant.Id))),
+                    _ => query
+                };
+            }
+            else
+            {
+                var platformName = platformFilter;
+                query = query.Where(product => db.ChannelListingProfiles.Any(profile =>
+                    profile.TenantId == tenantId && profile.ProductId == product.Id && profile.Enabled &&
+                    db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == profile.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.DisplayName == platformName)));
+            }
         }
 
+    }
+
+    private IQueryable<Guid> PlatformMatchedVariantIds(Guid tenantId, string platformCode) =>
+        db.MarketplaceVariantLinks
+            .Where(link => link.TenantId == tenantId
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId
+                    && connection.PlatformCode == platformCode
+                    && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
+            .Select(link => link.VariantId)
+            .Concat(db.ChannelListingVariants
+                .Where(listing => listing.TenantId == tenantId
+                    && db.ChannelListingProfiles.Any(profile => profile.TenantId == tenantId && profile.Id == listing.ProfileId && profile.Enabled
+                        && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == profile.ConnectionId
+                            && connection.PlatformCode == platformCode
+                            && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))))
+                .Select(listing => listing.VariantId))
+            .Distinct();
+
+    private static bool TryProductPlatformFilter(string value, out string platformCode, out string platformState)
+    {
+        var parts = value.Split(':', 2, StringSplitOptions.TrimEntries);
+        platformCode = parts.Length == 2 ? parts[0].ToUpperInvariant() : string.Empty;
+        platformState = parts.Length == 2 ? parts[1].ToUpperInvariant() : string.Empty;
+        return platformCode is "TRENDYOL" or "SHOPIFY"
+            && platformState is "ACTIVE" or "PARTIAL" or "PASSIVE";
     }
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
