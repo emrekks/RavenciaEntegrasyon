@@ -3595,6 +3595,17 @@ button,
   padding-block: var(--rv-space-1);
 }
 
+.app-shell.stitch-shell main .panel-attribute-value-editor > div > div > button {
+  box-sizing: border-box;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  flex: 0 0 36px;
+  aspect-ratio: 1;
+  padding: 0;
+}
+
 .app-shell.stitch-shell main .panel-attribute-category-list > button {
   min-height: 36px;
 }
