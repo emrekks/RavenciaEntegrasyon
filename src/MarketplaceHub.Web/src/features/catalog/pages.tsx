@@ -417,7 +417,8 @@ type QuickEditMode = 'stock' | 'price' | 'both'
 function ProductQuickEditModal({ products, connections, mode = 'both', onChanged, onClose, onResult }: { products: Product[]; connections: MarketplaceConnection[]; mode?: QuickEditMode; onChanged: () => Promise<unknown>; onClose: () => void; onResult?: (message: string, kind: 'success' | 'error') => void }) {
   const title = mode === 'stock' ? 'Hızlı stok güncelleme' : 'Hızlı fiyat ve stok düzenleme'
   const eyebrow = mode === 'stock' ? 'HIZLI STOK GÜNCELLEME' : 'TOPLU DÜZENLEME'
-  const productContext = products.length === 1 ? `${products[0].title} · Model kodu: ${products[0].modelCode || products[0].variants.find(variant => variant.modelCode)?.modelCode || '—'}` : `${products.length} ürün · toplu düzenleme`
+  const sharedProduct = products[0] && products.every(product => product.title === products[0].title) ? products[0] : null
+  const productContext = sharedProduct ? `${sharedProduct.title} · Model kodu: ${sharedProduct.modelCode || sharedProduct.variants.find(variant => variant.modelCode)?.modelCode || '—'}` : `${products.length} ürün · toplu düzenleme`
   const variants = products.flatMap(product => product.variants.map(variant => ({ product, variant })))
   const sortedVariants = [...variants].sort((left, right) => (left.variant.optionSignature || left.variant.sku).localeCompare(right.variant.optionSignature || right.variant.sku, 'tr-TR', { sensitivity: 'base', numeric: true }))
   const groups = sortedVariants.reduce<Record<string, typeof variants>>((result, item) => {
