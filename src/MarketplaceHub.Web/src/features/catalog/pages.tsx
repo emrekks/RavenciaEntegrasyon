@@ -1218,7 +1218,8 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, selectedPlatfor
   const colorOf = (item: VariantDraft) => item.optionSignature?.match(/(?:Renk|COLOR)\s*[:=]\s*([^|_]+)/i)?.[1]?.trim() || 'Diğer'
   const colorGroups = rows.reduce<Record<string, VariantDraft[]>>((result, item) => { const color = colorOf(item); (result[color] ??= []).push(item); return result }, {})
   const colorOptions = Object.keys(colorGroups).sort((left, right) => left.localeCompare(right, 'tr-TR', { sensitivity: 'base', numeric: true }))
-  const [openColorGroups, setOpenColorGroups] = useState<string[]>([])
+  const [openColorGroups, setOpenColorGroups] = useState<string[]>([colorOf(row)])
+  useEffect(() => { setOpenColorGroups([colorOf(row)]) }, [row.key])
   const toggleColorGroup = (color: string) => setOpenColorGroups(current => current.includes(color) ? current.filter(item => item !== color) : [...current, color])
   const priceSummary = (item: VariantDraft) => (item.platformStatuses ?? []).map(platform => `${marketplacePlatformName(platform)}: Liste ${marketplacePriceLabel(platform.listPrice, platform.currency)} · Satış ${marketplacePriceLabel(platform.salePrice, platform.currency)}`).join(' · ') || 'Fiyat tanımlı değil'
   const renderVariantRows = (items: VariantDraft[]) => <div className="variant-platform-pricing-variant-items" role="listbox" aria-label="Renk varyantları">{items.map(item => { const summary = priceSummary(item); return <button type="button" role="option" aria-selected={item.key === row.key} className={`variant-platform-pricing-variant-item${item.key === row.key ? ' is-selected' : ''}`} key={item.key} onClick={() => onSelectRow(item)} disabled={saving} aria-label={`${item.optionSignature || item.sku} · ${summary}`}><span><strong>{item.optionSignature || item.sku}</strong><small>{item.barcode || item.sku}</small><em>{summary}</em></span><i>{item.platformStatuses?.length ?? 0}</i></button> })}</div>
