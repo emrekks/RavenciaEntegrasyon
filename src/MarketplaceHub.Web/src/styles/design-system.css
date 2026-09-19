@@ -3340,8 +3340,8 @@ button,
 
 .order-number { flex-wrap: nowrap; }
 .order-bulk-notice { position: fixed; right: var(--rv-space-5); bottom: var(--rv-space-5); z-index: var(--rv-z-toast); display: flex; width: min(480px, calc(100vw - 32px)); align-items: center; gap: var(--rv-space-3); margin: 0; box-shadow: var(--rv-shadow-lg); }
-.order-bulk-notice > button { display: inline-grid; width: 36px; height: 36px; min-height: 36px; flex: 0 0 36px; place-items: center; margin-left: auto; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-primary); border: 1px solid var(--rv-color-primary); border-radius: var(--rv-radius-sm); }
-.order-bulk-notice > button:hover { color: #fff; background: var(--rv-color-primary-hover); border-color: var(--rv-color-primary-hover); }
+.order-bulk-notice > button { display: inline-grid; width: 36px; height: 36px; min-height: 36px; flex: 0 0 36px; place-items: center; margin-left: auto; padding: 0; color: currentcolor; background: color-mix(in srgb, currentcolor 12%, transparent); border: 1px solid color-mix(in srgb, currentcolor 32%, transparent); border-radius: 0; }
+.order-bulk-notice > button:hover { color: #fff; background: currentcolor; border-color: currentcolor; }
 .operation-feedback-toast.success, .product-operation-toast.success { background: var(--rv-color-accent-soft); }
 .operation-feedback-toast.error, .product-operation-toast.error { background: var(--rv-color-danger-soft); }
 
@@ -7634,15 +7634,32 @@ small,
   content: '';
 }
 
+.app-shell.stitch-shell main .order-bulk-notice-success::before {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  margin-top: 0;
+  place-items: center;
+  color: #fff;
+  background: var(--rv-color-accent);
+  border-radius: 50%;
+  content: '✓';
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .rv-callout-success,
-.app-shell.stitch-shell main .success {
+.app-shell.stitch-shell main .success,
+.app-shell.stitch-shell main .order-bulk-notice-success {
   color: var(--rv-color-accent);
   background: var(--rv-color-accent-soft);
   border-color: color-mix(in srgb, var(--rv-color-accent) 38%, transparent);
 }
 
 .rv-callout-warning,
-.app-shell.stitch-shell main .notice {
+.app-shell.stitch-shell main .notice:not(.order-bulk-notice-success) {
   color: var(--rv-color-warning);
   background: var(--rv-color-warning-soft);
   border-color: color-mix(in srgb, var(--rv-color-warning) 38%, transparent);
