@@ -1437,7 +1437,7 @@ function CategoryAttributeValueDropdown({
   }
 
   return <div className="category-attribute-dropdown" ref={rootRef}>
-    <button type="button" className={`category-attribute-select-trigger ${selected.length ? 'active' : ''}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)}>
+    <button type="button" className={`category-attribute-select-trigger ${selected.length ? 'active' : 'is-empty'}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)}>
       <span><small>{selected.length ? (isSingle ? 'Seçili değer' : `${selected.length} değer seçildi`) : 'Seçim yapın'}</small><strong>{summary}</strong></span>
       <UiIcon name="chevronDown" />
     </button>
