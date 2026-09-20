@@ -7824,6 +7824,13 @@ small,
   border-left: 4px solid var(--rv-color-accent);
 }
 
+.app-shell.stitch-shell main .notice.return-action-toast.success {
+  color: var(--rv-color-ink);
+  background: color-mix(in srgb, var(--rv-color-accent-soft) 82%, var(--rv-color-surface));
+  border-color: color-mix(in srgb, var(--rv-color-accent) 28%, var(--rv-color-border));
+  border-left-color: color-mix(in srgb, var(--rv-color-accent) 72%, var(--rv-color-surface));
+}
+
 .app-shell.stitch-shell main .return-action-toast::before {
   display: grid;
   width: 22px;
@@ -7840,6 +7847,10 @@ small,
   line-height: 1;
 }
 
+.app-shell.stitch-shell main .return-action-toast.success::before {
+  background: color-mix(in srgb, var(--rv-color-accent) 72%, var(--rv-color-surface));
+}
+
 .app-shell.stitch-shell main .return-action-toast::after {
   position: absolute;
   right: 0;
@@ -7851,6 +7862,10 @@ small,
   transform: scaleX(0);
   transform-origin: left center;
   animation: return-action-toast-progress 6s linear forwards;
+}
+
+.app-shell.stitch-shell main .return-action-toast.success::after {
+  background: color-mix(in srgb, var(--rv-color-accent) 72%, var(--rv-color-surface));
 }
 
 @keyframes return-action-toast-progress {
