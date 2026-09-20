@@ -1060,6 +1060,8 @@
   .return-reference-status { justify-items: stretch; }
   .return-reference-status > .badge, .return-reference-status > .return-detail-trigger { width: 100%; justify-content: center; }
   .order-reference-invoice { justify-items: start; }
+  .order-reference-invoice .order-invoice-actions { display: grid; min-width: 0; gap: var(--rv-space-1); }
+  .order-reference-invoice .order-invoice-actions-label { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
   .order-invoice-metric, .order-invoice-payable { display: grid; min-width: 0; gap: 2px; }
   .order-invoice-label { display: inline-flex; min-width: 0; align-items: center; gap: var(--rv-space-1); }
   .order-invoice-label small { min-width: 0; }
@@ -2376,6 +2378,7 @@
   .order-reference-actions .row-menu-trigger { width: 100%; min-width: 0; }
   .order-label-actions { display: grid; gap: var(--rv-space-2); }
   .order-label-action { display: inline-flex; width: 100%; min-height: 36px; align-items: center; justify-content: center; text-align: center; }
+  .order-label-action:disabled { color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border); cursor: not-allowed; opacity: .7; }
   .order-label-action.is-printed { color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border); opacity: .66; }
   .order-label-action.is-printed .ui-icon { color: var(--rv-color-accent); }
   .order-label-action .ui-icon { width: 14px; height: 14px; }
