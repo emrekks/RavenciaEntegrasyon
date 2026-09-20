@@ -1705,7 +1705,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             : "";
         var receivedProducts = 0;
         if (jobId is { } currentJob)
-            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, scanLabel + lifecycleLabel + contentLabel + " · İlk sayfa bekleniyor", cancellationToken);
+            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, scanLabel + lifecycleLabel + contentLabel + " · Ürün sayfaları bekleniyor", cancellationToken);
         int? totalProducts = null;
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
         if (fullScan && cursor.OpaqueCursor is not null)
@@ -1743,27 +1743,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         DateTimeOffset? modifiedAfter = !fullScan && !singleLookup && hasSnapshots && cursor.LastModifiedWatermark is not null ? cursor.LastModifiedWatermark.Value.AddMinutes(-2) : null;
         var productFilter = ProductImportFilter(modifiedAfter, productLookup);
-        // Product imports carry Trendyol's brand id, so keep the current brand
-        // reference available for an automatic panel-brand mapping while the
-        // catalog rows are being materialized.
-        var brandReferences = isShopify ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
-        var categoryReferences = isShopify ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
-        IReadOnlyList<ReferenceItem> categoryItems = categoryReferences is null
-            ? []
-            : await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == categoryReferences.Id && x.ResourceType == "CATEGORIES" && x.IsActive).ToListAsync(cancellationToken);
+        // Read the complete remote catalog before preparing the larger Trendyol
+        // reference snapshots. This makes the first phase observable quickly and
+        // prevents a slow brand/category refresh from looking like a stalled
+        // product page request.
+        ReferenceSnapshot? brandReferences = null;
+        ReferenceSnapshot? categoryReferences = null;
+        IReadOnlyList<ReferenceItem> categoryItems = [];
         // Keep one shared panel attribute for the same normalized name. This lets
         // an attribute such as "Bel" collect every category where Trendyol uses it
         // instead of creating a separate hidden definition for each category.
-        var importedAttributeLibrary = categoryReferences is null
-            ? new Dictionary<string, AttributeDefinition>(StringComparer.Ordinal)
-            : (await db.AttributeDefinitions
-                    .Where(x => x.TenantId == tenantId && x.IsActive)
-                    .OrderBy(x => x.CreatedAt)
-                    .ThenBy(x => x.Id)
-                    .ToListAsync(cancellationToken))
-                .Where(x => !string.IsNullOrWhiteSpace(NormalizeCatalogKey(x.Name, 160)))
-                .GroupBy(x => NormalizeCatalogKey(x.Name, 160), StringComparer.Ordinal)
-                .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        var importedAttributeLibrary = new Dictionary<string, AttributeDefinition>(StringComparer.Ordinal);
         var categoryContexts = new Dictionary<string, CategoryAttributeContext>(StringComparer.Ordinal);
         var nextCursor = singleLookup ? null : cursor.OpaqueCursor;
         var pageNumber = 0;
@@ -1834,6 +1824,47 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 break;
             }
         } while (!cancellationToken.IsCancellationRequested);
+
+        if (jobId is { } referenceJob)
+            await UpdateProductSyncProgressAsync(
+                tenantId,
+                referenceJob,
+                receivedProducts,
+                totalProducts,
+                totalProducts is { } completeTotal && completeTotal > 0 ? 99 : null,
+                ProductImportProgressLabel(pageNumber, totalProducts, "sayfalar okundu; referanslar hazırlanıyor · markalar", receivedProducts),
+                cancellationToken);
+
+        // Product imports carry Trendyol's brand id, so keep the current brand
+        // reference available for an automatic panel-brand mapping while the
+        // catalog rows are being materialized. These calls intentionally happen
+        // after remote product paging so a cold reference cache cannot hide
+        // product-read progress.
+        brandReferences = isShopify ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
+        if (jobId is { } categoryReferenceJob)
+            await UpdateProductSyncProgressAsync(
+                tenantId,
+                categoryReferenceJob,
+                receivedProducts,
+                totalProducts,
+                totalProducts is { } completeTotal && completeTotal > 0 ? 99 : null,
+                ProductImportProgressLabel(pageNumber, totalProducts, "sayfalar okundu; referanslar hazırlanıyor · kategoriler", receivedProducts),
+                cancellationToken);
+        categoryReferences = isShopify ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
+        categoryItems = categoryReferences is null
+            ? []
+            : await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == categoryReferences.Id && x.ResourceType == "CATEGORIES" && x.IsActive).ToListAsync(cancellationToken);
+        if (categoryReferences is not null)
+        {
+            importedAttributeLibrary = (await db.AttributeDefinitions
+                    .Where(x => x.TenantId == tenantId && x.IsActive)
+                    .OrderBy(x => x.CreatedAt)
+                    .ThenBy(x => x.Id)
+                    .ToListAsync(cancellationToken))
+                .Where(x => !string.IsNullOrWhiteSpace(NormalizeCatalogKey(x.Name, 160)))
+                .GroupBy(x => NormalizeCatalogKey(x.Name, 160), StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        }
 
         foreach (var invalidSnapshot in pendingCatalogSnapshots.Where(x => string.IsNullOrWhiteSpace(x.ExternalProductId)))
         {
