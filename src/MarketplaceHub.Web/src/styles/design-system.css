@@ -9884,10 +9884,25 @@ small,
 }
 
 .app-shell.stitch-shell main .invoice-document-link {
-  padding: 4px 6px;
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  padding: 4px 7px;
+  color: var(--rv-color-ink);
   background: var(--rv-color-accent-soft);
   border: 1px solid color-mix(in srgb, var(--rv-color-accent) 45%, var(--rv-color-border));
   border-radius: var(--rv-radius-sm);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.app-shell.stitch-shell main .invoice-document-link:hover {
+  color: var(--rv-color-ink);
+  background: color-mix(in srgb, var(--rv-color-accent-soft) 78%, var(--rv-color-accent));
+  border-color: var(--rv-color-accent);
+  text-decoration: none;
 }
 
 /* Return records are merged grid rows. Put the rule on the grid cells so it
