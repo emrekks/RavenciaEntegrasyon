@@ -1,9 +1,12 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace MarketplaceHub.Infrastructure.Persistence.Migrations;
 
+[DbContext(typeof(AppDbContext))]
+[Migration("20260920140000_AddReturnCargoProviderName")]
 public partial class AddReturnCargoProviderName : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
