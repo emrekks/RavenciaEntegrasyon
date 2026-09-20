@@ -497,7 +497,7 @@ public static class TrendyolJsonMapper
         {
             var claimId = Text(claim, "claimId", "id"); var orderNumber = Text(claim, "orderNumber"); if (claimId.Length == 0 || orderNumber.Length == 0) continue;
             var lines = ReturnLines(claim);
-            var status = ClaimStatus(claim); rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate"), Instant(claim, "lastModifiedDate") ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText(), NestedText(claim, "cargoProvider", "name", "code", "label") ?? NullText(claim, "cargoProviderName", "cargoProviderCode"), NullText(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), NullText(claim, "cargoTrackingLink", "trackingLink")));
+            var status = ClaimStatus(claim); rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate"), Instant(claim, "lastModifiedDate") ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText(), ReturnCargoProvider(claim), NullText(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), NullText(claim, "cargoTrackingLink", "trackingLink")));
         }
         var page = Long(root, "page"); var totalPages = Long(root, "totalPages"); var hasMore = totalPages > 0 && page + 1 < totalPages;
         return new(rows, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore);
@@ -724,6 +724,19 @@ public static class TrendyolJsonMapper
     private static string Text(JsonElement value, params string[] names) => NullText(value, names) ?? "";
     private static string? NullText(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.ToString(); return null; }
     private static string? NestedText(JsonElement value, string objectName, params string[] names) => value.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object ? NullText(nested, names) : null;
+    private static string? ReturnCargoProvider(JsonElement claim)
+    {
+        var nestedProvider = NestedText(claim, "cargoProvider", "name", "code", "label");
+        if (!string.IsNullOrWhiteSpace(nestedProvider)) return nestedProvider;
+        return ScalarText(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider");
+    }
+    private static string? ScalarText(JsonElement value, params string[] names)
+    {
+        foreach (var name in names)
+            if (value.TryGetProperty(name, out var item) && item.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+                return item.ToString();
+        return null;
+    }
     private static decimal Decimal(JsonElement value, params string[] names) => TryDecimal(value, out var result, names) ? result : 0;
     private static bool TryDecimal(JsonElement value, out decimal result, params string[] names)
     {

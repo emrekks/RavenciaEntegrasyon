@@ -8,6 +8,33 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class TrendyolCatalogMapperTests
 {
     [Fact]
+    public void ReturnClaim_ReadsScalarCargoProvider()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "claimId": "claim-ptt-1",
+              "orderNumber": "11587375142",
+              "claimItemStatus": { "name": "WaitingInAction" },
+              "cargoProvider": "PTT",
+              "cargoSenderNumber": "PTT-123456789",
+              "lastModifiedDate": 1789890000000,
+              "items": []
+            }
+          ],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal("PTT", claim.CargoProviderName);
+        Assert.Equal("PTT-123456789", claim.CargoTrackingNumber);
+    }
+
+    [Fact]
     public void CatalogImportOrdering_CompletesEachModelBeforeMovingToTheNextOne()
     {
         static RemoteCatalogProduct Product(string externalId, string modelId, string sku) => new(
