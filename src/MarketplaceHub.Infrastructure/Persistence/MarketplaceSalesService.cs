@@ -880,10 +880,16 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var now = timeProvider.GetUtcNow();
         var decision = new ReturnDecision
         {
-            Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, Action = action,
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ClaimId = claimId,
+            Action = action,
             ReasonCode = string.IsNullOrWhiteSpace(command.ReasonCode) ? null : command.ReasonCode.Trim(),
             Explanation = string.IsNullOrWhiteSpace(command.Explanation) ? null : command.Explanation.Trim(),
-            IdempotencyKey = normalizedKey, Status = "PENDING", ActorUserId = userId, CreatedAt = now
+            IdempotencyKey = normalizedKey,
+            Status = "PENDING",
+            ActorUserId = userId,
+            CreatedAt = now
         };
         db.ReturnDecisions.Add(decision);
 

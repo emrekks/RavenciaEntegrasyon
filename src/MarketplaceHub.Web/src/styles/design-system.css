@@ -9228,16 +9228,21 @@ small,
   }
 }
 
-/* Returns: the table edge is the only rule needed after the final status
-   column; remove the duplicate inner edge from the preceding column. */
-.app-shell.stitch-shell main .return-reference-table > .return-reference-head > *:last-child,
-.app-shell.stitch-shell main .return-reference-table > .return-reference-row > *:last-child {
+/* Returns: draw separators from the leading edge of each column so the
+   reason/status boundary stays open while the other column boundaries remain. */
+.app-shell.stitch-shell main .return-reference-table > .return-reference-head > *,
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row > * {
   border-right: 0;
 }
 
-.app-shell.stitch-shell main .return-reference-table > .return-reference-head > *:nth-last-child(2),
-.app-shell.stitch-shell main .return-reference-table > .return-reference-row > *:nth-last-child(2) {
-  border-right: 0;
+.app-shell.stitch-shell main .return-reference-table > .return-reference-head > * + *,
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row > * + * {
+  border-left: 1px solid var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .return-reference-table > .return-reference-head > *:last-child,
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row > .return-reference-status {
+  border-left: 0;
 }
 
 /* Returns: divider rules must span the complete record, including the

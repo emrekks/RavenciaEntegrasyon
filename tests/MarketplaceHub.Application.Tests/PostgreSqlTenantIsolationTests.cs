@@ -1,9 +1,9 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using MarketplaceHub.Application;
 using MarketplaceHub.Api.Catalog;
 using MarketplaceHub.Api.Security;
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
 using MarketplaceHub.Infrastructure.Persistence;
