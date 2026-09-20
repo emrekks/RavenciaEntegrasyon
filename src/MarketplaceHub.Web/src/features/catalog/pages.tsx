@@ -838,7 +838,9 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
     const state = platformChecking ? 'processing' : platformHasError ? 'error' : platformFullyMatched ? 'active' : platformPartiallyMatched ? 'partial' : 'inactive'
     const coverage = item.variantCount ? ` (${item.matchedVariantCount}/${item.variantCount})` : ''
     const unmatched = unmatchedVariantDetails.get(key)
-    const visibleBarcodes = unmatched?.barcodes.slice(0, 24) ?? []
+    // Keep the hover summary compact. The complete list made the native
+    // browser tooltip span the whole product row and cover the controls.
+    const visibleBarcodes = unmatched?.barcodes.slice(0, 3) ?? []
     const remainingBarcodeCount = Math.max(0, (unmatched?.barcodes.length ?? 0) - visibleBarcodes.length)
     const unmatchedBarcodeLabel = unmatched && (visibleBarcodes.length || unmatched.missingBarcodeCount)
       ? ` · Eşleşmeyen barkodlar: ${visibleBarcodes.join(', ')}${remainingBarcodeCount ? `, +${remainingBarcodeCount} barkod` : ''}${unmatched.missingBarcodeCount ? ` · ${unmatched.missingBarcodeCount} varyantta barkod yok` : ''}`
