@@ -1089,7 +1089,7 @@
   .return-detail-trigger:hover, .return-cargo-track:hover, .cargo-track-action:hover { color: #fff; background: var(--rv-color-info); border-color: var(--rv-color-info); }
   .return-reference-status > .badge { width: fit-content; max-width: 100%; min-height: 26px; justify-content: center; border-radius: var(--rv-radius-sm); }
   .invoice-status-label { width: fit-content; max-width: 100%; }
-  .order-reference-invoice .invoice-status-label { min-height: 24px; padding: 3px 6px; font-size: 10px; line-height: 1.2; }
+  .order-reference-invoice .invoice-status-label { min-height: 26px; padding: 4px 7px; font-size: 12px; line-height: 1.25; }
   .return-reference-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--rv-space-3); align-items: end; padding: var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
   .return-reference-filters .return-filter-actions { grid-column: auto; min-height: var(--rv-control-height-md); }
   .return-reference-workspace { padding: var(--rv-space-5); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
@@ -9868,10 +9868,10 @@ small,
 
 /* Invoice actions remain legible without taking over the narrow invoice lane. */
 .app-shell.stitch-shell main .invoice-status-label {
-  min-height: 24px;
-  padding: 3px 6px;
-  font-size: 10px;
-  line-height: 1.2;
+  min-height: 26px;
+  padding: 4px 7px;
+  font-size: 12px;
+  line-height: 1.25;
 }
 .app-shell.stitch-shell main .invoice-status-label {
   color: var(--rv-color-ink);
