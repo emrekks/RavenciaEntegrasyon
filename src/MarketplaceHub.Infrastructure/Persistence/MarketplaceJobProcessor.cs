@@ -1855,7 +1855,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (jobId is { } orderingJob)
             await UpdateProductSyncProgressAsync(tenantId, orderingJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "ürün sırası hazır; aktarım başlıyor", receivedProducts), cancellationToken);
 
-        var productSaveBatchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:Products:ImportSaveBatchSize", 10), 1, 50);
+        var productSaveBatchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:Products:ImportSaveBatchSize", 25), 1, 50);
         var importedModelCount = 0;
         foreach (var modelSnapshots in CatalogImportOrdering.GroupByModel(pendingCatalogSnapshots))
         {
@@ -1926,8 +1926,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
                 if (jobId is { } itemProgressJob)
                 {
+                    var completedProducts = telemetryImportProcessedCount + telemetryImportSkippedCount + telemetryImportFailedCount;
                     var percent = totalProducts is { } total && total > 0
-                        ? Math.Clamp((int)Math.Floor(telemetryImportProcessedCount * 100d / total), 0, 99)
+                        ? Math.Clamp((int)Math.Floor(completedProducts * 100d / total), 0, 99)
                         : (int?)null;
                     await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "model ürünü işleniyor", receivedProducts), cancellationToken);
                 }
