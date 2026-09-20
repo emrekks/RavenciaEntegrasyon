@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
 import { Busy, ErrorBox, Pagination, Tabs, UiIcon } from '../../shared/components'
 import { statusLabel } from '../../shared/status-labels'
+import { appendNotification } from '../../shared/notifications'
 
 type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
 type InvoiceWorkspaceLine = { sku: string; barcode: string | null; description: string; quantity: number; unitPrice: number; vatRate: number; imageUrl: string | null }
 type InvoiceWorkspace = { orderId: string; packageId: string; orderNumber: string; customerName: string; orderedAt: string; shipmentStatus: string; deliveredAt: string | null; invoiceDueAt: string | null; isDueSoon: boolean; currency: string; amount: number; productCount: number; primaryImageUrl: string | null; cargoProviderName: string | null; cargoTrackingNumber: string | null; invoiceId: string | null; invoiceStatus: string; invoiceNumber: string | null; canCreateInvoice: boolean; shipmentAddressJson: string | null; invoiceAddressJson: string | null; lines: InvoiceWorkspaceLine[] | null; invoiceErrorCode: string | null; invoiceDeliveryStatus: string | null; invoiceDeliveryReference: string | null; invoiceDocumentAvailable: boolean }
 type InvoiceDetail = Invoice & { orderId: string; packageId: string | null; providerConnectionId: string; sequencePurpose: string; ettnUuid: string | null; taxExclusiveTotal: number; discountTotal: number; taxTotal: number; note: string; issuedAt: string | null; lastErrorCode: string | null; lines: Array<{ id: string; lineSequence: number; description: string; sku: string | null; unit: string; quantity: number; unitPrice: number; discountAmount: number; vatRate: number; vatAmount: number; lineTotal: number }>; documents: Array<{ id: string; documentType: string; sha256: string; createdAt: string }>; attempts: Array<{ attemptNumber: number; outcome: string; errorCode: string | null; startedAt: string; completedAt: string | null }>; deliveries: Array<{ id: string; deliveryType: string; status: string; externalReference: string | null; errorCode: string | null; createdAt: string }>; allowedActions: string[]; requiresSensitiveConfirmation: boolean }
 type Connection = { id: string; platformCode: string; displayName: string; status: string; hasCredential: boolean }
+type InvoiceNoticeKind = 'success' | 'error' | 'info'
 
 function idempotency() { return crypto.randomUUID() }
 async function waitForInvoiceCompletion(invoiceId: string) {
@@ -109,11 +111,17 @@ function addressLines(value: string | null | undefined) {
 }
 
 export function InvoicesPage() {
-  const client = useQueryClient(); const [search, setSearch] = useState(''); const [tab, setTab] = useState('UNINVOICED'); const [shipmentStatusFilter, setShipmentStatusFilter] = useState('ALL'); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [dateFrom, setDateFrom] = useState(''); const [dateTo, setDateTo] = useState(''); const [columnFilterOpen, setColumnFilterOpen] = useState<'cargo' | 'shipment' | 'invoice' | null>(null); const [message, setMessage] = useState(''); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [selectedItem, setSelectedItem] = useState<InvoiceWorkspace | null>(null)
+  const client = useQueryClient(); const [search, setSearch] = useState(''); const [tab, setTab] = useState('UNINVOICED'); const [shipmentStatusFilter, setShipmentStatusFilter] = useState('ALL'); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [dateFrom, setDateFrom] = useState(''); const [dateTo, setDateTo] = useState(''); const [columnFilterOpen, setColumnFilterOpen] = useState<'cargo' | 'shipment' | 'invoice' | null>(null); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [selectedItem, setSelectedItem] = useState<InvoiceWorkspace | null>(null)
+  function setMessage(value: string, kind: InvoiceNoticeKind = 'info') { setMessageState(value); setMessageKind(kind); if (value) appendNotification(value, kind) }
+  useEffect(() => {
+    if (!message) return
+    const timeout = window.setTimeout(() => setMessageState(''), messageKind === 'info' ? 7000 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [message, messageKind])
   const query = useQuery({ queryKey: ['invoice-workspace'], queryFn: () => hubApi<InvoiceWorkspace[]>('/invoice-workspace') })
   const connections = useQuery({ queryKey: ['connections', 'billing-workspace'], queryFn: () => loadAllPages<Connection>('/connections') })
   const provider = connections.data?.items.find(x => x.platformCode === 'TRENDYOL_EFATURAM' && (x.status === 'ACTIVE' || x.status === 'VERIFIED'))
-  const create = useMutation({ mutationFn: async (item: InvoiceWorkspace) => { const invoiceId = await submitInvoice(item, provider); setMessage(`#${item.orderNumber} için fatura sağlayıcıda işleniyor…`); return waitForInvoiceCompletion(invoiceId) }, onMutate: item => setMessage(`#${item.orderNumber} için fatura oluşturuluyor…`), onSuccess: async () => { setMessage('Fatura başarıyla oluşturuldu.'); await client.invalidateQueries({ queryKey: ['invoice-workspace'] }) }, onError: error => setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.') })
+  const create = useMutation({ mutationFn: async (item: InvoiceWorkspace) => { const invoiceId = await submitInvoice(item, provider); setMessage(`#${item.orderNumber} için fatura sağlayıcıda işleniyor…`); return waitForInvoiceCompletion(invoiceId) }, onMutate: item => setMessage(`#${item.orderNumber} için fatura oluşturuluyor…`), onSuccess: async () => { setMessage('Fatura başarıyla oluşturuldu.', 'success'); await client.invalidateQueries({ queryKey: ['invoice-workspace'] }) }, onError: error => setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.', 'error') })
   const items = (query.data ?? []).filter(item => !isCancelledShipment(item)); const normalized = search.trim().toLocaleLowerCase('tr-TR')
   const cargoOptions = Array.from(new Set(items.map(item => item.cargoProviderName?.trim()).filter((value): value is string => Boolean(value)))).sort((left, right) => left.localeCompare(right, 'tr-TR'))
   const shipmentStatusOptions = Array.from(new Set(items.map(item => item.shipmentStatus.trim()).filter(Boolean))).sort((left, right) => statusLabel(left).localeCompare(statusLabel(right), 'tr-TR'))
@@ -140,7 +148,7 @@ export function InvoicesPage() {
       <div><p className="eyebrow">Mali belgeler</p><h1>Faturalar</h1><p className="lede">Faturaları paket, teslimat ve ödeme bilgileriyle tek çalışma alanında takip edin.</p></div>
       <div className="invoices-reference-heading-actions"><span className="invoice-safety-status"><i aria-hidden="true" /> Manuel işlem güvenli</span><Badge value="DUPLICATE SAFE" /></div>
     </div>
-    {message && <div role="status" className="notice invoice-provider-toast">{message}</div>}
+    {message && <div role={messageKind === 'error' ? 'alert' : 'status'} className={`notice invoice-provider-toast ${messageKind}`}>{message}</div>}
     <div className="invoice-reference-metrics">
       <article className="invoice-metric-pending"><small>Fatura bekleyen</small><strong>{counts.unInvoiced}</strong><span>paket bazlı işlem</span></article>
       <article className="invoice-metric-due"><small>Süresi yaklaşan</small><strong>{counts.dueSoon}</strong><span>teslimden 5 gün geçen</span></article>
@@ -184,7 +192,13 @@ export function InvoicesPage() {
 
 
 export function InvoiceDetailPage() {
-  const { id = '' } = useParams(); const [searchParams] = useSearchParams(); const client = useQueryClient(); const [notice, setNotice] = useState(''); const [password, setPassword] = useState(''); const [confirmed, setConfirmed] = useState(false); const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const { id = '' } = useParams(); const [searchParams] = useSearchParams(); const client = useQueryClient(); const [notice, setNoticeState] = useState(''); const [noticeKind, setNoticeKind] = useState<InvoiceNoticeKind>('info'); const [password, setPassword] = useState(''); const [confirmed, setConfirmed] = useState(false); const [uploadFile, setUploadFile] = useState<File | null>(null)
+  function setNotice(value: string, kind: InvoiceNoticeKind = 'info') { setNoticeState(value); setNoticeKind(kind); if (value) appendNotification(value, kind) }
+  useEffect(() => {
+    if (!notice) return
+    const timeout = window.setTimeout(() => setNoticeState(''), noticeKind === 'info' ? 7000 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [notice, noticeKind])
   const query = useQuery({ queryKey: ['invoice', id], queryFn: () => hubApi<InvoiceDetail>(`/invoices/${id}`) })
   const operation = useMutation({
     mutationFn: async ({ action, invoice }: { action: string; invoice: InvoiceDetail }) => {
@@ -193,18 +207,18 @@ export function InvoiceDetailPage() {
       const endpoint = action === 'SUBMIT' ? 'submit-jobs' : action === 'STAGE_CAPABILITY_PROBE' ? 'stage-capability-probe-jobs' : action === 'DELIVER' ? 'marketplace-delivery-jobs' : 'cancellation-jobs'
       return hubApi(`/invoices/${id}/${endpoint}`, { method: 'POST', headers: { 'Idempotency-Key': idempotency(), ...(action !== 'DELIVER' ? { 'If-Match': `"v${invoice.version}"` } : {}) }, ...(action === 'STAGE_CAPABILITY_PROBE' ? {} : { body: JSON.stringify({ password, confirmed }) }) })
     },
-    onSuccess: (_value, variables) => { setNotice(variables.action === 'VALIDATE' ? 'Yerel doğrulama tamamlandı.' : 'İş güvenli kuyruğa alındı.'); setPassword(''); setConfirmed(false); void client.invalidateQueries({ queryKey: ['invoice', id] }) },
-    onError: error => setNotice(error instanceof Error ? error.message : 'İşlem başarısız.')
+    onSuccess: (_value, variables) => { setNotice(variables.action === 'VALIDATE' ? 'Yerel doğrulama tamamlandı.' : 'İş güvenli kuyruğa alındı.', 'success'); setPassword(''); setConfirmed(false); void client.invalidateQueries({ queryKey: ['invoice', id] }) },
+    onError: error => setNotice(error instanceof Error ? error.message : 'İşlem başarısız.', 'error')
   })
   const upload = useMutation({
     mutationFn: (file: File) => { const form = new FormData(); form.append('file', file); return hubApi<{ duplicate: boolean }>(`/invoices/${id}/documents/manual`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-document:${id}:${file.name}:${file.size}:${file.lastModified}` }, body: form }) },
-    onSuccess: async result => { setNotice(result.duplicate ? 'Bu fatura belgesi zaten güvenli arşivde bulunuyor.' : 'Fatura belgesi güvenli özel arşive yüklendi. Belge henüz Trendyol’a veya E‑Faturam’a iletilmedi.'); setUploadFile(null); await client.invalidateQueries({ queryKey: ['invoice', id] }) },
-    onError: error => setNotice(error instanceof Error ? error.message : 'Fatura belgesi yüklenemedi.')
+    onSuccess: async result => { setNotice(result.duplicate ? 'Bu fatura belgesi zaten güvenli arşivde bulunuyor.' : 'Fatura belgesi güvenli özel arşive yüklendi. Belge henüz Trendyol’a veya E‑Faturam’a iletilmedi.', 'success'); setUploadFile(null); await client.invalidateQueries({ queryKey: ['invoice', id] }) },
+    onError: error => setNotice(error instanceof Error ? error.message : 'Fatura belgesi yüklenemedi.', 'error')
   })
   if (query.isLoading) return <section className="content"><Busy /></section>; if (query.isError || !query.data) return <section className="content"><ErrorBox error={query.error} /></section>; const invoice = query.data
   const protectedActions = invoice.requiresSensitiveConfirmation ? invoice.allowedActions.filter(action => action !== 'VALIDATE' && action !== 'RECONCILE') : []
   return <section className="content f3"><Link className="back" to="/invoices"><UiIcon name="arrowLeft" /> Faturalar</Link><div className="page-heading"><div><p className="eyebrow">Fatura detayı</p><h1>{invoice.orderNumber}</h1><p className="lede">{invoice.invoiceNumber ?? 'Henüz numara atanmadı'} · {statusLabel(invoice.invoiceType)}</p></div><Badge value={invoice.status} /></div>
-    {notice && <div role="status" className="notice invoice-provider-toast">{notice}</div>}
+    {notice && <div role={noticeKind === 'error' ? 'alert' : 'status'} className={`notice invoice-provider-toast ${noticeKind}`}>{notice}</div>}
     <div className="grid"><article><small>Ödenecek</small><strong>{invoice.payableTotal.toLocaleString('tr-TR', { style: 'currency', currency: invoice.currency })}</strong><p>Vergi: {invoice.taxTotal.toLocaleString('tr-TR')}</p></article><article><small>ETTN / UUID</small><strong>{invoice.ettnUuid ?? 'Henüz atanmadı'}</strong><p>{invoice.sequencePurpose} · {invoice.issuedAt ? new Date(invoice.issuedAt).toLocaleString('tr-TR') : 'Henüz düzenlenmedi'}</p></article><article><small>Son hata</small><strong>{invoice.lastErrorCode ?? 'Yok'}</strong><p>Bilinmeyen sonuç otomatik başarı sayılmaz.</p></article></div>
      <div className="panel"><h2>Satırlar</h2><div className="data-table compact" role="table">{invoice.lines.map(line => <div role="row" key={line.id}><span><strong>{line.description}</strong><small><code className="technical-text sku-value">{line.sku ?? 'SKU yok'}</code> · indirim {line.discountAmount.toLocaleString('tr-TR')}</small></span><span>{line.quantity} {line.unit}</span><span>%{line.vatRate}</span><span>{line.lineTotal.toLocaleString('tr-TR', { style: 'currency', currency: invoice.currency })}</span></div>)}</div></div>
     <div className="split"><div className="panel"><h2>Provider denemeleri</h2>{invoice.attempts.length ? <div className="card-list">{invoice.attempts.map(item => <div className="record-card" key={item.attemptNumber}><span><strong>Deneme #{item.attemptNumber}</strong><small>{item.errorCode ?? 'Hata yok'}</small></span><Badge value={item.outcome} /></div>)}</div> : <p>Henüz dış gönderim denemesi yok.</p>}</div><div className="panel"><h2>Trendyol teslimleri</h2><p className="invoice-detail-muted">Bu alan, faturanın Trendyol paketine gönderilip gönderilmediğini gösterir.</p>{invoice.deliveries.length ? <div className="card-list">{invoice.deliveries.map(item => <div className="record-card" key={item.id}><span><strong>{statusLabel(item.deliveryType)}</strong><small>{item.externalReference ?? item.errorCode ?? 'Referans bekleniyor'}</small></span><Badge value={item.status} /></div>)}</div> : <p>Platforma aktarım henüz başlatılmadı. Belge hazır olduğunda aşağıdaki işlemlerden fatura linkini iletebilirsiniz.</p>}</div></div>

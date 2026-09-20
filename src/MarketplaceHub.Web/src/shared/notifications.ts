@@ -30,7 +30,12 @@ export function readNotificationHistory(): AppNotification[] {
 export function appendNotification(message: string, kind: AppNotification['kind'] = 'info') {
   const notification: AppNotification = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, message, kind, createdAt: new Date().toISOString(), read: false }
   const history = [notification, ...readNotificationHistory()].slice(0, 20)
-  localStorage.setItem(notificationStorageKey, JSON.stringify(history))
+  try {
+    localStorage.setItem(notificationStorageKey, JSON.stringify(history))
+  } catch {
+    // A full or restricted browser store must not break the operation that
+    // produced the notification.
+  }
   window.dispatchEvent(new CustomEvent(notificationChangeEvent))
   return notification
 }
@@ -39,12 +44,20 @@ export function markNotificationRead(notificationId: string) {
   const history = readNotificationHistory()
   const next = history.map(notification => notification.id === notificationId ? { ...notification, read: true } : notification)
   if (next.every((notification, index) => notification.read === history[index]?.read)) return
-  localStorage.setItem(notificationStorageKey, JSON.stringify(next))
+  try {
+    localStorage.setItem(notificationStorageKey, JSON.stringify(next))
+  } catch {
+    return
+  }
   window.dispatchEvent(new CustomEvent(notificationChangeEvent))
 }
 
 export function clearNotificationHistory() {
-  localStorage.removeItem(notificationStorageKey)
+  try {
+    localStorage.removeItem(notificationStorageKey)
+  } catch {
+    return
+  }
   window.dispatchEvent(new CustomEvent(notificationChangeEvent))
 }
 

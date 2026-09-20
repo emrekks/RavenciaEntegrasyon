@@ -9902,3 +9902,75 @@ small,
 .app-shell.stitch-shell main .return-reference-row > .return-row-divider {
   border: 0;
 }
+
+/* One calm tone contract for transient feedback and the persistent history. */
+.rv-notification-history-item.is-success .rv-notification-history-icon,
+.rv-notification-history-item.is-success .rv-notification-mark-read {
+  color: color-mix(in srgb, var(--rv-color-accent) 78%, var(--rv-color-ink));
+  background: color-mix(in srgb, var(--rv-color-accent-soft) 82%, var(--rv-color-surface));
+}
+
+.rv-notification-history-item.is-info .rv-notification-history-icon,
+.rv-notification-history-item.is-info .rv-notification-mark-read {
+  color: color-mix(in srgb, var(--rv-color-info) 78%, var(--rv-color-ink));
+  background: color-mix(in srgb, var(--rv-color-info) 12%, var(--rv-color-surface));
+}
+
+.rv-notification-history-item.is-error .rv-notification-history-icon,
+.rv-notification-history-item.is-error .rv-notification-mark-read {
+  color: color-mix(in srgb, var(--rv-color-danger) 78%, var(--rv-color-ink));
+  background: color-mix(in srgb, var(--rv-color-danger-soft) 82%, var(--rv-color-surface));
+}
+
+.rv-notification-history-item.is-info .rv-notification-history-icon .ui-icon { display: none; }
+.rv-notification-history-item.is-info .rv-notification-history-icon::after { content: 'i'; font-size: 13px; font-weight: 900; line-height: 1; }
+
+.rv-toast-success,
+.operation-feedback-toast.success,
+.product-operation-toast.success,
+.invoice-provider-toast.success,
+.return-action-toast.success,
+.order-bulk-notice-success {
+  color: var(--rv-color-ink) !important;
+  background: color-mix(in srgb, var(--rv-color-accent-soft) 82%, var(--rv-color-surface)) !important;
+  border-color: color-mix(in srgb, var(--rv-color-accent) 28%, var(--rv-color-border)) !important;
+  border-left-color: color-mix(in srgb, var(--rv-color-accent) 72%, var(--rv-color-surface)) !important;
+}
+
+.rv-toast-danger,
+.operation-feedback-toast.error,
+.product-operation-toast.error,
+.invoice-provider-toast.error,
+.return-action-toast.error,
+.order-bulk-notice-error {
+  color: var(--rv-color-ink) !important;
+  background: color-mix(in srgb, var(--rv-color-danger-soft) 78%, var(--rv-color-surface)) !important;
+  border-color: color-mix(in srgb, var(--rv-color-danger) 28%, var(--rv-color-border)) !important;
+  border-left-color: color-mix(in srgb, var(--rv-color-danger) 72%, var(--rv-color-surface)) !important;
+}
+
+.rv-toast-info,
+.operation-feedback-toast.info,
+.product-operation-toast.info,
+.invoice-provider-toast.info,
+.return-action-toast.info,
+.order-bulk-notice-info {
+  color: var(--rv-color-ink) !important;
+  background: color-mix(in srgb, var(--rv-color-info) 10%, var(--rv-color-surface)) !important;
+  border-color: color-mix(in srgb, var(--rv-color-info) 25%, var(--rv-color-border)) !important;
+  border-left-color: color-mix(in srgb, var(--rv-color-info) 68%, var(--rv-color-surface)) !important;
+}
+
+.operation-feedback-toast.success .operation-feedback-icon,
+.product-operation-toast.success .operation-feedback-icon { color: var(--rv-color-accent); }
+.operation-feedback-toast.error .operation-feedback-icon,
+.product-operation-toast.error .operation-feedback-icon { color: var(--rv-color-danger); }
+.operation-feedback-toast.info .operation-feedback-icon,
+.product-operation-toast.info .operation-feedback-icon { color: var(--rv-color-info); }
+
+.app-shell.stitch-shell main .return-action-toast.success::before { background: color-mix(in srgb, var(--rv-color-accent) 72%, var(--rv-color-surface)); }
+.app-shell.stitch-shell main .return-action-toast.error::before { background: color-mix(in srgb, var(--rv-color-danger) 72%, var(--rv-color-surface)); content: '!'; }
+.app-shell.stitch-shell main .return-action-toast.info::before { background: color-mix(in srgb, var(--rv-color-info) 68%, var(--rv-color-surface)); content: 'i'; }
+.app-shell.stitch-shell main .return-action-toast.success::after { background: color-mix(in srgb, var(--rv-color-accent) 72%, var(--rv-color-surface)); }
+.app-shell.stitch-shell main .return-action-toast.error::after { background: color-mix(in srgb, var(--rv-color-danger) 72%, var(--rv-color-surface)); }
+.app-shell.stitch-shell main .return-action-toast.info::after { background: color-mix(in srgb, var(--rv-color-info) 68%, var(--rv-color-surface)); }

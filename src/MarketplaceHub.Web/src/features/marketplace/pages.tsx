@@ -180,6 +180,9 @@ function isSizeAttributeName(value: string) {
 function isSizeAttribute(attribute: Pick<LocalAttribute, 'name' | 'code'>) { return isSizeAttributeName(attribute.name) || isSizeAttributeName(attribute.code) }
 type IntegrationFeedback = { kind: 'success' | 'error'; message: string }
 function IntegrationFeedbackToast({ feedback, onClose }: { feedback: IntegrationFeedback | null; onClose: () => void }) {
+  useEffect(() => {
+    if (feedback) appendNotification(feedback.message, feedback.kind)
+  }, [feedback])
   if (!feedback) return null
   return <div className={`operation-feedback-toast ${feedback.kind}`} role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live="polite"><span className="operation-feedback-icon" aria-hidden="true">{feedback.kind === 'success' ? <UiIcon name="check" /> : <UiIcon name="alert" />}</span><div><strong>{feedback.kind === 'success' ? 'İşlem başarılı' : 'İşlem başarısız'}</strong><p>{feedback.message}</p></div><button type="button" onClick={onClose} aria-label="Bildirimi kapat"><UiIcon name="close" /></button></div>
 }
@@ -1256,6 +1259,11 @@ export function ReturnsPage() {
   const client = useQueryClient(); const [notice, setNoticeState] = useState(''); const [noticeKind, setNoticeKind] = useState<ReturnNoticeKind>('info')
   function setNotice(message: string, kind: ReturnNoticeKind = 'info') { setNoticeState(message); setNoticeKind(kind) }
   const handleNotice = setNotice
+  useEffect(() => {
+    if (!notice) return
+    const timeout = window.setTimeout(() => setNoticeState(''), noticeKind === 'info' ? 7000 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [notice, noticeKind])
   const returnFilters: ReturnFilters = { status, customer, orderNumber, claimCode, barcode, reason, from, to }
   const [appliedFilters, setAppliedFilters] = useState<ReturnFilters>(returnFilters)
   const query = useQuery({ queryKey: ['returns', appliedFilters], queryFn: () => loadAllReturns(appliedFilters) })
@@ -1290,6 +1298,11 @@ export function ReturnsPage() {
 export function ReturnDetailPage() {
   const { id = '' } = useParams(); const client = useQueryClient(); const [notice, setNoticeState] = useState(''); const [noticeKind, setNoticeKind] = useState<ReturnNoticeKind>('info')
   function setNotice(message: string, kind: ReturnNoticeKind = 'info') { setNoticeState(message); setNoticeKind(kind) }
+  useEffect(() => {
+    if (!notice) return
+    const timeout = window.setTimeout(() => setNoticeState(''), noticeKind === 'info' ? 7000 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [notice, noticeKind])
   const query = useQuery({ queryKey: ['return', id], queryFn: () => hubApi<ReturnDetail>(`/returns/${id}`) })
   async function disposition(event: FormEvent<HTMLFormElement>, line: ReturnLine) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await hubApi(`/returns/${id}/stock-dispositions`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ returnLineId: line.id, disposition: data.get('disposition'), quantity: Number(data.get('quantity')), reason: data.get('reason') }) }); notifyReturn(setNotice, 'İade stok kararı kaydedildi. Satılabilir seçimi stoğu artırır.', 'success'); await client.invalidateQueries({ queryKey: ['return', id] }) } catch (reason) { notifyReturn(setNotice, reason instanceof Error ? reason.message : 'Stok kararı kaydedilemedi.', 'error') } }
   if (query.isLoading) return <section className="content"><Busy /></section>; if (query.isError || !query.data) return <section className="content"><ErrorBox error={query.error} /></section>; const item = query.data; const lines = item.lines ?? []

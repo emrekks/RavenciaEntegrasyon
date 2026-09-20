@@ -7,6 +7,7 @@ import { Callout, Pagination, UiIcon, type UiIconName } from '../../shared/compo
 import { sanitizeRichText } from '../../shared/security/sanitizeHtml'
 import { productStatusLabel, productStatusTone, statusLabel } from '../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
+import { appendNotification } from '../../shared/notifications'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -200,6 +201,9 @@ async function fetchProductPage(limit: number, filters: ProductListFilters, afte
 const ErrorBox = ({ error }: { error: unknown }) => error ? <Callout tone="danger">{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</Callout> : null
 type OperationFeedback = { message: string; kind: 'success' | 'error' | 'info' }
 function OperationFeedbackToast({ feedback, onClose }: { feedback: OperationFeedback | null; onClose: () => void }) {
+  useEffect(() => {
+    if (feedback) appendNotification(feedback.message, feedback.kind)
+  }, [feedback])
   if (!feedback) return null
   const title = feedback.kind === 'success' ? 'İşlem başarılı' : feedback.kind === 'error' ? 'İşlem başarısız' : 'İşlem sürüyor'
   return <div className={`rv-toast rv-toast-${feedback.kind === 'error' ? 'danger' : feedback.kind} operation-feedback-toast ${feedback.kind}`} role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'}><span className="rv-toast-icon" aria-hidden="true" /><div className="rv-toast-content"><strong>{title}</strong><p>{feedback.message}</p></div><button type="button" onClick={onClose} aria-label="Durum raporunu kapat"><UiIcon name="close" /></button></div>
@@ -972,7 +976,13 @@ export function ProductsPage() {
   const allVisibleSelected = pageProductGroups.length > 0 && pageProductGroups.every(group => group.products.every(product => selectedProductIds.includes(product.id)))
   const hasMoreProductsToSelect = totalCount > pageProductGroups.length
   const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
-  function showProductToast(message: string, kind: 'success' | 'error') { setProductToast({ message, kind }); window.setTimeout(() => setProductToast(current => current?.message === message ? null : current), 4000) }
+  function showProductToast(message: string, kind: 'success' | 'error') { setProductToast({ message, kind }) }
+  useEffect(() => {
+    if (!productToast) return
+    appendNotification(productToast.message, productToast.kind)
+    const timeout = window.setTimeout(() => setProductToast(current => current === productToast ? null : current), 4000)
+    return () => window.clearTimeout(timeout)
+  }, [productToast])
   function openProductImport() {
     setProductImportMethod('BULK')
     setProductImportConnectionIds(connections.length === 1 ? [connections[0].id] : [])
