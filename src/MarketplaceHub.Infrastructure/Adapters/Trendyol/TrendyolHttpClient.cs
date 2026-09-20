@@ -562,7 +562,17 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
             }
             catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Contract(), response.RateLimit); }
         }
-        var uniqueClaims = claims.GroupBy(x => x.ExternalClaimId, StringComparer.OrdinalIgnoreCase).Select(x => x.First()).OrderByDescending(x => x.LastModifiedAt).ToArray();
+        var uniqueClaims = claims.GroupBy(x => x.ExternalClaimId, StringComparer.OrdinalIgnoreCase).Select(group =>
+        {
+            var primary = group.OrderByDescending(x => x.LastModifiedAt).First();
+            var cargo = group.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.CargoTrackingNumber) || !string.IsNullOrWhiteSpace(x.CargoProviderName));
+            return primary with
+            {
+                CargoProviderName = primary.CargoProviderName ?? cargo?.CargoProviderName,
+                CargoTrackingNumber = primary.CargoTrackingNumber ?? cargo?.CargoTrackingNumber,
+                CargoTrackingLink = primary.CargoTrackingLink ?? cargo?.CargoTrackingLink
+            };
+        }).OrderByDescending(x => x.LastModifiedAt).ToArray();
         logger.LogInformation("Trendyol claims status buckets merged to {Count} unique claims: {Statuses}.", uniqueClaims.Length, string.Join(",", uniqueClaims.GroupBy(x => x.RawStatus).Select(x => $"{x.Key}:{x.Count()}")));
         var nextCursor = hasMore ? (Page(page.Cursor) + 1).ToString(CultureInfo.InvariantCulture) : null;
         return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new(uniqueClaims, nextCursor, hasMore), rateLimit);

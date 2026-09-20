@@ -19,6 +19,7 @@
 /* Global notification history lives beside the theme switch so operational
    feedback remains available after the temporary toast disappears. */
 .rv-topbar-notifications { position: relative; display: inline-flex; }
+.rv-topbar.has-notification-history { z-index: var(--rv-z-dropdown); }
 .rv-topbar-notification-trigger { position: relative; display: inline-grid; width: 44px; min-width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
 .rv-topbar-notification-trigger:hover, .rv-topbar-notification-trigger[aria-expanded="true"] { background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
 .rv-topbar-notification-count { position: absolute; top: -5px; right: -5px; display: grid; min-width: 19px; height: 19px; place-items: center; padding: 0 4px; color: #fff; background: var(--rv-color-primary); border: 2px solid var(--rv-color-surface); border-radius: 999px; font-size: 10px; font-weight: 850; line-height: 1; }
@@ -9767,4 +9768,78 @@ small,
 
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .connection-settings-fields { grid-template-columns: 1fr; }
+}
+
+/* Keep the fixed topbar stacking context above catalog cards. The notification
+   history can grow over the metric row, so its child z-index is not enough if
+   the topbar itself remains in the sticky-content layer. */
+.app-shell.stitch-shell > main > .rv-topbar {
+  z-index: var(--rv-z-dropdown);
+}
+
+/* Keep quick-edit rows balanced and easy to scan when a color group is open. */
+.app-shell.stitch-shell main .quick-edit-variant {
+  align-items: center;
+}
+
+.app-shell.stitch-shell main .quick-edit-variant + .quick-edit-variant {
+  border-top: 1px solid var(--rv-color-border);
+}
+
+.app-shell.stitch-shell main .quick-edit-variant-controls {
+  align-self: center;
+  padding-left: var(--rv-space-3);
+  border-left: 1px solid var(--rv-color-border);
+}
+
+/* The compact pricing matrix uses text-only headers and a fixed narrow key
+   column; the inline grid definition controls the actual track widths. */
+.app-shell.stitch-shell main .variant-platform-pricing-matrix-head {
+  align-content: center;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.app-shell.stitch-shell main .variant-platform-pricing-matrix-head > strong {
+  overflow-wrap: anywhere;
+}
+
+/* Invoice actions remain legible without taking over the narrow invoice lane. */
+.app-shell.stitch-shell main :is(.invoice-state-badge, .invoice-status-readonly, .order-reference-invoice > span:last-of-type) {
+  min-height: 24px;
+  padding-inline: 6px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.app-shell.stitch-shell main :is(.invoice-document-link, .invoice-menu-view) {
+  color: var(--rv-color-accent);
+}
+
+.app-shell.stitch-shell main .invoice-document-link {
+  padding: 4px 6px;
+  background: var(--rv-color-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--rv-color-accent) 45%, var(--rv-color-border));
+  border-radius: var(--rv-radius-sm);
+}
+
+/* Return records are merged grid rows. Put the rule on the grid cells so it
+   spans the complete row, including rows containing multiple products. */
+.app-shell.stitch-shell main .return-reference-table > .return-reference-head > *:not(.return-row-divider),
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row > *:not(.return-row-divider) {
+  border-left: 0;
+  border-right: 1px solid var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .return-reference-table > .return-reference-head > *:last-child,
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row > .return-reference-status {
+  border-right: 0;
+}
+
+.app-shell.stitch-shell main .return-reference-table > .return-reference-row > .return-reference-reason {
+  border-right: 1px solid var(--rv-color-border-strong);
+}
+
+.app-shell.stitch-shell main .return-reference-row > .return-row-divider {
+  border: 0;
 }

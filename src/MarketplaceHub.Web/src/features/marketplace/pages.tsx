@@ -75,7 +75,7 @@ function invoiceStatusLabel(status: string) {
   return 'Fatura durumu bilinmiyor'
 }
 function invoiceBadgeLabel(status: string) {
-  if (status === 'FATURA_BEKLIYOR') return 'Bekliyor'
+  if (status === 'FATURA_BEKLIYOR') return 'Fatura Bekliyor'
   if (status === 'FATURA_ISLENIYOR') return 'İşleniyor'
   if (status === 'FATURA_KONTROLDE') return 'Kontrolde'
   if (status === 'FATURA_REDDEDILDI') return 'Reddedildi'

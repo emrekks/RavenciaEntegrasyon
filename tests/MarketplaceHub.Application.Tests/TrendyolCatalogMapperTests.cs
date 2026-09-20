@@ -66,6 +66,35 @@ public sealed class TrendyolCatalogMapperTests
     }
 
     [Fact]
+    public void ReturnClaim_ReadsNestedReturnPackageCargoProviderObject()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "claimId": "claim-return-package-1",
+              "orderNumber": "11593067976",
+              "claimItemStatus": { "name": "Accepted" },
+              "returnPackageInfo": {
+                "cargoProvider": { "name": "PTT Kargo" },
+                "cargoTrackingNumber": "7340037147068871"
+              },
+              "lastModifiedDate": 1789890000000,
+              "items": []
+            }
+          ],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal("PTT Kargo", claim.CargoProviderName);
+        Assert.Equal("7340037147068871", claim.CargoTrackingNumber);
+    }
+
+    [Fact]
     public void CatalogImportOrdering_CompletesEachModelBeforeMovingToTheNextOne()
     {
         static RemoteCatalogProduct Product(string externalId, string modelId, string sku) => new(

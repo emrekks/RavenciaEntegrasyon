@@ -738,14 +738,33 @@ public static class TrendyolJsonMapper
         // Trendyol places the shipped rejected-return package under this
         // object; it is distinct from replacementOutboundpackageinfo, which
         // must never be shown as the customer's return cargo.
-        return NestedText(claim, "rejectedPackageInfo", names)
-            ?? NestedText(claim, "returnPackageInfo", names);
+        return NestedCargoText(claim, "rejectedPackageInfo", names)
+            ?? NestedCargoText(claim, "returnPackageInfo", names);
+    }
+    private static string? NestedCargoText(JsonElement value, string objectName, params string[] names)
+    {
+        if (!value.TryGetProperty(objectName, out var nested)) return null;
+        if (nested.ValueKind == JsonValueKind.Object) return ScalarText(nested, names);
+        if (nested.ValueKind != JsonValueKind.Array) return null;
+        foreach (var item in nested.EnumerateArray())
+        {
+            var result = item.ValueKind == JsonValueKind.Object ? ScalarText(item, names) : null;
+            if (!string.IsNullOrWhiteSpace(result)) return result;
+        }
+        return null;
     }
     private static string? ScalarText(JsonElement value, params string[] names)
     {
         foreach (var name in names)
-            if (value.TryGetProperty(name, out var item) && item.ValueKind is JsonValueKind.String or JsonValueKind.Number)
-                return item.ToString();
+        {
+            if (!value.TryGetProperty(name, out var item)) continue;
+            if (item.ValueKind is JsonValueKind.String or JsonValueKind.Number) return item.ToString();
+            if (item.ValueKind == JsonValueKind.Object && string.Equals(name, "cargoProvider", StringComparison.OrdinalIgnoreCase))
+            {
+                var provider = NullText(item, "name", "code", "label");
+                if (!string.IsNullOrWhiteSpace(provider)) return provider;
+            }
+        }
         return null;
     }
     private static decimal Decimal(JsonElement value, params string[] names) => TryDecimal(value, out var result, names) ? result : 0;
