@@ -174,6 +174,15 @@ public static class ProductImportMergePolicy
         || !string.IsNullOrWhiteSpace(dirtyFieldsJson) && !string.Equals(dirtyFieldsJson.Trim(), "[]", StringComparison.Ordinal);
 }
 
+public static class ProductImportScanPolicy
+{
+    // An inactive-product mapping is a backfill. It must not inherit the
+    // incremental cursor because older archived/draft products may never
+    // appear in a modified-since page again.
+    public static bool RequiresFullCatalogForMapping(bool mappingOnly, bool includeArchived, bool includeDrafts) =>
+        mappingOnly && (includeArchived || includeDrafts);
+}
+
 public static class ProductUpdatePollingPolicy
 {
     public static TimeSpan Delay(DateTimeOffset submittedAt, DateTimeOffset now) =>

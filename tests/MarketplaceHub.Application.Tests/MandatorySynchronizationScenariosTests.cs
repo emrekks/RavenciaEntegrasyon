@@ -184,6 +184,15 @@ public sealed class MandatorySynchronizationScenariosTests
     }
 
     [Fact]
+    public void ProductImportScanPolicy_BackfillsInactiveProductsWhenMappingIsSelected()
+    {
+        Assert.True(ProductImportScanPolicy.RequiresFullCatalogForMapping(true, true, false));
+        Assert.True(ProductImportScanPolicy.RequiresFullCatalogForMapping(true, false, true));
+        Assert.False(ProductImportScanPolicy.RequiresFullCatalogForMapping(true, false, false));
+        Assert.False(ProductImportScanPolicy.RequiresFullCatalogForMapping(false, true, true));
+    }
+
+    [Fact]
     public void DistributedSyncLock_UsesSeparateResourceGroupsPerConnection()
     {
         Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_ORDER_SYNC"));

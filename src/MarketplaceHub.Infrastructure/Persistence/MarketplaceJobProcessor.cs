@@ -1682,6 +1682,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // Shopify's single inactive-product option intentionally covers both
         // archived variants and draft products; keep older payloads compatible.
         var includeDrafts = ReadBoolean(payloadJson, "includeDrafts") || isShopify && includeArchived;
+        // Mapping inactive products is a repair/backfill operation: an
+        // incremental cursor can otherwise skip archived or draft products
+        // that have not changed since the last catalog sync.
+        var fullCatalogForMapping = ProductImportScanPolicy.RequiresFullCatalogForMapping(mappingOnly, includeArchived, includeDrafts);
+        var effectiveFullScan = fullScan || fullCatalogForMapping;
         var productLookup = ReadText(payloadJson, "productLookup");
         var singleLookup = !string.IsNullOrWhiteSpace(productLookup);
         var scanLabel = singleLookup
@@ -1708,7 +1713,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, scanLabel + lifecycleLabel + contentLabel + " · Ürün sayfaları bekleniyor", cancellationToken);
         int? totalProducts = null;
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
-        if (fullScan && cursor.OpaqueCursor is not null)
+        if (effectiveFullScan && cursor.OpaqueCursor is not null)
         {
             cursor.OpaqueCursor = null;
             cursor.Version++;
@@ -1741,7 +1746,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
         }
-        DateTimeOffset? modifiedAfter = !fullScan && !singleLookup && hasSnapshots && cursor.LastModifiedWatermark is not null ? cursor.LastModifiedWatermark.Value.AddMinutes(-2) : null;
+        DateTimeOffset? modifiedAfter = !effectiveFullScan && !singleLookup && hasSnapshots && cursor.LastModifiedWatermark is not null ? cursor.LastModifiedWatermark.Value.AddMinutes(-2) : null;
         var productFilter = ProductImportFilter(modifiedAfter, productLookup);
         // Read the complete remote catalog before preparing the larger Trendyol
         // reference snapshots. This makes the first phase observable quickly and
@@ -1755,7 +1760,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // instead of creating a separate hidden definition for each category.
         var importedAttributeLibrary = new Dictionary<string, AttributeDefinition>(StringComparer.Ordinal);
         var categoryContexts = new Dictionary<string, CategoryAttributeContext>(StringComparer.Ordinal);
-        var nextCursor = singleLookup ? null : cursor.OpaqueCursor;
+        var nextCursor = singleLookup || effectiveFullScan ? null : cursor.OpaqueCursor;
         var pageNumber = 0;
         var pendingCatalogSnapshots = new List<RemoteCatalogProduct>();
         do
@@ -4716,7 +4721,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var openClaims = await db.ReturnClaims.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
                 && x.Status != ReturnClaimStatus.Completed && x.Status != ReturnClaimStatus.Cancelled)
-            .OrderBy(x => x.UpdatedAt)
+            // Repair incomplete return-cargo projections before re-reading
+            // claims that already have both return-cargo fields populated.
+            .OrderBy(x => x.CargoProviderName == null || x.CargoTrackingNumber == null ? 0 : 1)
+            .ThenBy(x => x.UpdatedAt)
             .ThenBy(x => x.Id)
             .Select(x => x.ExternalClaimId)
             .Take(batchSize)
@@ -4919,9 +4927,34 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // diagnostic. Resolve that stale diagnostic on the next successful read.
         await ResolveIssue(tenantId, $"return-order:{connectionId}:{remote.ExternalOrderId}", cancellationToken);
         var now = timeProvider.GetUtcNow(); var target = CanonicalReturn(remote.RawStatus, remote.CargoTrackingLink); var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalClaimId == remote.ExternalClaimId, cancellationToken);
-        if (claim is null) { claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalClaimId = remote.ExternalClaimId, Status = target, RawStatus = remote.RawStatus, CargoProviderName = remote.CargoProviderName, CargoTrackingNumber = remote.CargoTrackingNumber, LastRemoteModifiedAt = remote.LastModifiedAt, CreatedAt = now, UpdatedAt = now, Version = 1 }; db.ReturnClaims.Add(claim); telemetryInsertedCount++; }
-        else if (remote.LastModifiedAt >= claim.LastRemoteModifiedAt && ReturnClaimStateMachine.CanTransition(claim.Status, target)) { claim.Status = target; claim.RawStatus = remote.RawStatus; claim.LastRemoteModifiedAt = remote.LastModifiedAt; claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
-        if (claim.LastRemoteModifiedAt <= remote.LastModifiedAt) { claim.CargoProviderName = remote.CargoProviderName ?? claim.CargoProviderName; claim.CargoTrackingNumber = remote.CargoTrackingNumber ?? claim.CargoTrackingNumber; claim.ReasonCode = remote.ReasonCode; claim.ReasonText = remote.ReasonText; claim.ActionDueAt = remote.ActionDueAt; }
+        var remoteCargoProvider = string.IsNullOrWhiteSpace(remote.CargoProviderName) ? null : remote.CargoProviderName.Trim();
+        var remoteCargoTracking = string.IsNullOrWhiteSpace(remote.CargoTrackingNumber) ? null : remote.CargoTrackingNumber.Trim();
+        if (claim is null) { claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalClaimId = remote.ExternalClaimId, Status = target, RawStatus = remote.RawStatus, CargoProviderName = remoteCargoProvider, CargoTrackingNumber = remoteCargoTracking, LastRemoteModifiedAt = remote.LastModifiedAt, CreatedAt = now, UpdatedAt = now, Version = 1 }; db.ReturnClaims.Add(claim); telemetryInsertedCount++; }
+        else
+        {
+            var claimChanged = false;
+            var remoteIsFresh = remote.LastModifiedAt >= claim.LastRemoteModifiedAt;
+            if (remoteIsFresh && ReturnClaimStateMachine.CanTransition(claim.Status, target))
+            {
+                claim.Status = target;
+                claim.RawStatus = remote.RawStatus;
+                claim.LastRemoteModifiedAt = remote.LastModifiedAt;
+                claimChanged = true;
+            }
+            if (remoteIsFresh)
+            {
+                if (!string.Equals(claim.ReasonCode, remote.ReasonCode, StringComparison.Ordinal)) { claim.ReasonCode = remote.ReasonCode; claimChanged = true; }
+                if (!string.Equals(claim.ReasonText, remote.ReasonText, StringComparison.Ordinal)) { claim.ReasonText = remote.ReasonText; claimChanged = true; }
+                if (claim.ActionDueAt != remote.ActionDueAt) { claim.ActionDueAt = remote.ActionDueAt; claimChanged = true; }
+            }
+
+            // Cargo may be returned by a historical/status replay with an old
+            // or missing lastModifiedDate. Merge non-empty cargo independently
+            // of the claim timestamp, but never replace known values with null.
+            if (remoteCargoProvider is not null && !string.Equals(claim.CargoProviderName, remoteCargoProvider, StringComparison.Ordinal)) { claim.CargoProviderName = remoteCargoProvider; claimChanged = true; }
+            if (remoteCargoTracking is not null && !string.Equals(claim.CargoTrackingNumber, remoteCargoTracking, StringComparison.Ordinal)) { claim.CargoTrackingNumber = remoteCargoTracking; claimChanged = true; }
+            if (claimChanged) { claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
+        }
         var remoteLines = remote.Lines.Count > 0 ? remote.Lines : TrendyolJsonMapper.ReturnLines(remote.RawJson);
         foreach (var remoteLine in remoteLines)
         {
