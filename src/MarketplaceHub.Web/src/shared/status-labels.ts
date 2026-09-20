@@ -89,6 +89,28 @@ function normalizedStatus(value: string) {
   return value.trim().toLocaleUpperCase('tr-TR')
 }
 
+export type InvoiceStatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
+
+export function invoiceStatusLabel(value: string | null | undefined) {
+  const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
+  if (['FATURA_BEKLIYOR', 'PENDING', 'DRAFT'].includes(normalized)) return 'Fatura Bekliyor'
+  if (['FATURA_ISLENIYOR', 'FATURA_KONTROLDE', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY'].includes(normalized)) return 'Fatura İşleniyor'
+  if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'].includes(normalized)) return 'Fatura Reddedildi'
+  if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'Fatura İptal'
+  if (['FATURA_KESILDI', 'COMPLETED', 'ACCEPTED'].includes(normalized)) return 'Fatura Kesildi'
+  return 'Fatura durumu bilinmiyor'
+}
+
+export function invoiceStatusTone(value: string | null | undefined): InvoiceStatusTone {
+  const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
+  if (['FATURA_BEKLIYOR', 'PENDING', 'DRAFT'].includes(normalized)) return 'warning'
+  if (['FATURA_ISLENIYOR', 'FATURA_KONTROLDE', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY'].includes(normalized)) return 'info'
+  if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'].includes(normalized)) return 'danger'
+  if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'neutral'
+  if (['FATURA_KESILDI', 'COMPLETED', 'ACCEPTED'].includes(normalized)) return 'success'
+  return 'neutral'
+}
+
 function readableFallback(value: string) {
   return value
     .trim()

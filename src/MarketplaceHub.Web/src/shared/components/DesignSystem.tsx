@@ -122,8 +122,9 @@ export function Tabs({ items, value, onChange, ariaLabel = 'Sekmeler', className
   }}><span className="rv-tab-label">{item.label}</span>{item.count !== undefined ? <span className="rv-tab-count">{item.count}</span> : null}</button>)}</div>
 }
 
-export function Badge({ tone = 'neutral', children }: { tone?: StatusTone; children: ReactNode }) { return <span className={`rv-badge rv-badge-${tone}`}><i aria-hidden="true" />{children}</span> }
-export function StatusBadge({ tone, children }: { tone?: StatusTone; children: ReactNode }) { return <Badge tone={tone}>{children}</Badge> }
+type BadgeProps = { tone?: StatusTone; children: ReactNode; className?: string; title?: string; role?: 'status'; 'aria-label'?: string }
+export function Badge({ tone = 'neutral', children, className, ...props }: BadgeProps) { return <span {...props} className={['rv-badge', `rv-badge-${tone}`, className].filter(Boolean).join(' ')}><i aria-hidden="true" />{children}</span> }
+export function StatusBadge({ tone, children, className, title, role, 'aria-label': ariaLabel }: BadgeProps) { return <Badge tone={tone} className={className} title={title} role={role} aria-label={ariaLabel}>{children}</Badge> }
 
 export function Callout({ tone = 'info', children, role }: { tone?: StatusTone; children: ReactNode; role?: 'status' | 'alert' }) {
   return <div className={`rv-callout rv-callout-${tone}`} role={role ?? (tone === 'danger' ? 'alert' : 'status')} aria-live={tone === 'danger' ? 'assertive' : 'polite'}><span className="rv-callout-icon" aria-hidden="true" /><div>{children}</div></div>
