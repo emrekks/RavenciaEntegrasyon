@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
 import { UiIcon } from './UiIcon'
+import { appendNotification } from '../notifications'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 export type ControlSize = 'sm' | 'md' | 'lg'
@@ -181,6 +182,17 @@ export function Drawer({ open, title, onClose, children, footer, description, cl
 }
 
 export function Toast({ children, tone = 'info' }: { children: ReactNode; tone?: StatusTone }) {
+  const [visible, setVisible] = useState(true)
+  const message = typeof children === 'string' ? children : null
+  useEffect(() => {
+    if (!message) return
+    const kind = tone === 'danger' ? 'error' : tone === 'success' ? 'success' : 'info'
+    appendNotification(message, kind)
+    setVisible(true)
+    const timeout = window.setTimeout(() => setVisible(false), tone === 'info' || tone === 'warning' ? 7000 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [message, tone])
+  if (!visible) return null
   return <div className={`rv-toast rv-toast-${tone}`} role={tone === 'danger' ? 'alert' : 'status'} aria-live={tone === 'danger' ? 'assertive' : 'polite'}><span className="rv-toast-icon" aria-hidden="true" /><div className="rv-toast-content">{children}</div></div>
 }
 export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode }) { return <header className="rv-page-header"><div>{eyebrow ? <p className="rv-eyebrow">{eyebrow}</p> : null}<h1>{title}</h1>{description ? <p>{description}</p> : null}</div>{actions ? <div className="rv-page-actions">{actions}</div> : null}</header> }

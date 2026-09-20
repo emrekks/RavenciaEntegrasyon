@@ -8,7 +8,7 @@ import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, Impor
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultAppearanceSettings, defaultLightPalette, useAppearanceSettings, type AppearanceColorThemeProfile, type AppearanceSettings } from '../features/settings/appearance-settings'
-import { clearNotificationHistory, markNotificationRead, readNotificationHistory, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
+import { appendNotification, clearNotificationHistory, markNotificationRead, readNotificationHistory, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
 
 type VisualTheme = 'light' | 'dark'
 const visualThemeChangeEvent = 'ravencia:visual-theme-change'
@@ -779,6 +779,7 @@ function Security() {
   const requestedSettingsTab = searchParams.get('tab')
   const settingsTab: SettingsTabKey = requestedSettingsTab === 'database' || requestedSettingsTab === 'shipping' || requestedSettingsTab === 'appearance' ? requestedSettingsTab : 'security'
   function setSettingsTab(tab: SettingsTabKey) {
+    setMessage('')
     setSearchParams(tab === 'security' ? {} : { tab })
   }
   const shippingSettings = useShippingLabelSettings()
@@ -793,6 +794,22 @@ function Security() {
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState('')
   const [sessionConfirmation, setSessionConfirmation] = useState<SessionConfirmation | null>(null)
   const [sessionActionBusy, setSessionActionBusy] = useState(false)
+  useEffect(() => {
+    if (!message) {
+      delete document.documentElement.dataset.rvSecurityFeedback
+      return
+    }
+    if (settingsTab === 'shipping') {
+      delete document.documentElement.dataset.rvSecurityFeedback
+      return
+    }
+    const normalized = message.toLocaleLowerCase('tr-TR')
+    const kind = /(başarısız|kaydedilemedi|geçersiz|ulaşılamadı|sıfırlanamadı|sonlandırılamadı|silinemedi|doğrulanamadı|doldu)/u.test(normalized) ? 'error' : /(tamamlandı|kaydedildi|uygulandı|sonlandırıldı|silindi)/u.test(normalized) ? 'success' : 'info'
+    appendNotification(message, kind)
+    document.documentElement.dataset.rvSecurityFeedback = kind
+    const timeout = window.setTimeout(() => setMessage(''), kind === 'info' ? 7000 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [message, settingsTab])
   const activeOtherSessions = (sessions.data ?? []).filter(session => !session.current && session.state === 'ACTIVE')
   const closedSessions = (sessions.data ?? []).filter(session => !session.current && session.state !== 'ACTIVE')
 

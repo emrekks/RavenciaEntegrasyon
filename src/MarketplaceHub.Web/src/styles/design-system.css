@@ -9974,3 +9974,98 @@ small,
 .app-shell.stitch-shell main .return-action-toast.success::after { background: color-mix(in srgb, var(--rv-color-accent) 72%, var(--rv-color-surface)); }
 .app-shell.stitch-shell main .return-action-toast.error::after { background: color-mix(in srgb, var(--rv-color-danger) 72%, var(--rv-color-surface)); }
 .app-shell.stitch-shell main .return-action-toast.info::after { background: color-mix(in srgb, var(--rv-color-info) 68%, var(--rv-color-surface)); }
+
+/* Security/settings feedback uses the same bottom-right surface even though
+   its page markup predates the operation toast components. */
+.app-shell.stitch-shell main .security-page > .notice {
+  position: fixed;
+  right: var(--rv-space-5);
+  bottom: var(--rv-space-5);
+  z-index: var(--rv-z-toast);
+  width: min(420px, calc(100vw - 32px));
+  margin: 0;
+  box-shadow: var(--rv-shadow-lg);
+}
+
+html[data-rv-security-feedback="success"] .app-shell.stitch-shell main .security-page > .notice {
+  color: var(--rv-color-ink) !important;
+  background: color-mix(in srgb, var(--rv-color-accent-soft) 82%, var(--rv-color-surface)) !important;
+  border-color: color-mix(in srgb, var(--rv-color-accent) 28%, var(--rv-color-border)) !important;
+  border-left-color: color-mix(in srgb, var(--rv-color-accent) 72%, var(--rv-color-surface)) !important;
+}
+
+html[data-rv-security-feedback="error"] .app-shell.stitch-shell main .security-page > .notice {
+  color: var(--rv-color-ink) !important;
+  background: color-mix(in srgb, var(--rv-color-danger-soft) 78%, var(--rv-color-surface)) !important;
+  border-color: color-mix(in srgb, var(--rv-color-danger) 28%, var(--rv-color-border)) !important;
+  border-left-color: color-mix(in srgb, var(--rv-color-danger) 72%, var(--rv-color-surface)) !important;
+}
+
+html[data-rv-security-feedback="info"] .app-shell.stitch-shell main .security-page > .notice {
+  color: var(--rv-color-ink) !important;
+  background: color-mix(in srgb, var(--rv-color-info) 10%, var(--rv-color-surface)) !important;
+  border-color: color-mix(in srgb, var(--rv-color-info) 25%, var(--rv-color-border)) !important;
+  border-left-color: color-mix(in srgb, var(--rv-color-info) 68%, var(--rv-color-surface)) !important;
+}
+
+.app-shell.stitch-shell main .mapping-page .notice {
+  position: fixed;
+  right: var(--rv-space-5);
+  bottom: var(--rv-space-5);
+  z-index: var(--rv-z-toast);
+  width: min(420px, calc(100vw - 32px));
+  margin: 0;
+  box-shadow: var(--rv-shadow-lg);
+}
+
+html[data-rv-mapping-feedback="success"] .app-shell.stitch-shell main .mapping-page .notice {
+  color: var(--rv-color-ink) !important;
+  background: color-mix(in srgb, var(--rv-color-accent-soft) 82%, var(--rv-color-surface)) !important;
+  border-color: color-mix(in srgb, var(--rv-color-accent) 28%, var(--rv-color-border)) !important;
+  border-left-color: color-mix(in srgb, var(--rv-color-accent) 72%, var(--rv-color-surface)) !important;
+}
+
+html[data-rv-mapping-feedback="error"] .app-shell.stitch-shell main .mapping-page .notice {
+  color: var(--rv-color-ink) !important;
+  background: color-mix(in srgb, var(--rv-color-danger-soft) 78%, var(--rv-color-surface)) !important;
+  border-color: color-mix(in srgb, var(--rv-color-danger) 28%, var(--rv-color-border)) !important;
+  border-left-color: color-mix(in srgb, var(--rv-color-danger) 72%, var(--rv-color-surface)) !important;
+}
+
+html[data-rv-mapping-feedback="info"] .app-shell.stitch-shell main .mapping-page .notice {
+  color: var(--rv-color-ink) !important;
+  background: color-mix(in srgb, var(--rv-color-info) 10%, var(--rv-color-surface)) !important;
+  border-color: color-mix(in srgb, var(--rv-color-info) 25%, var(--rv-color-border)) !important;
+  border-left-color: color-mix(in srgb, var(--rv-color-info) 68%, var(--rv-color-surface)) !important;
+}
+
+.app-shell.stitch-shell main .content.f3 > .notice:not(.return-action-toast):not(.invoice-provider-toast) {
+  position: fixed;
+  right: var(--rv-space-5);
+  bottom: var(--rv-space-5);
+  z-index: var(--rv-z-toast);
+  width: min(420px, calc(100vw - 32px));
+  margin: 0;
+  box-shadow: var(--rv-shadow-lg);
+}
+
+html[data-rv-shipment-feedback="success"] .app-shell.stitch-shell main .content.f3 > .notice:not(.return-action-toast):not(.invoice-provider-toast) {
+  color: var(--rv-color-ink) !important;
+  background: color-mix(in srgb, var(--rv-color-accent-soft) 82%, var(--rv-color-surface)) !important;
+  border-color: color-mix(in srgb, var(--rv-color-accent) 28%, var(--rv-color-border)) !important;
+  border-left-color: color-mix(in srgb, var(--rv-color-accent) 72%, var(--rv-color-surface)) !important;
+}
+
+html[data-rv-shipment-feedback="error"] .app-shell.stitch-shell main .content.f3 > .notice:not(.return-action-toast):not(.invoice-provider-toast) {
+  color: var(--rv-color-ink) !important;
+  background: color-mix(in srgb, var(--rv-color-danger-soft) 78%, var(--rv-color-surface)) !important;
+  border-color: color-mix(in srgb, var(--rv-color-danger) 28%, var(--rv-color-border)) !important;
+  border-left-color: color-mix(in srgb, var(--rv-color-danger) 72%, var(--rv-color-surface)) !important;
+}
+
+html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 > .notice:not(.return-action-toast):not(.invoice-provider-toast) {
+  color: var(--rv-color-ink) !important;
+  background: color-mix(in srgb, var(--rv-color-info) 10%, var(--rv-color-surface)) !important;
+  border-color: color-mix(in srgb, var(--rv-color-info) 25%, var(--rv-color-border)) !important;
+  border-left-color: color-mix(in srgb, var(--rv-color-info) 68%, var(--rv-color-surface)) !important;
+}

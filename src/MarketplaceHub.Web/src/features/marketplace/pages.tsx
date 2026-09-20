@@ -242,8 +242,8 @@ function InvoiceDraftModal({ item, provider, onClose }: { item: Order; provider:
       if (!order?.connectionId) throw new Error('Siparişin Trendyol bağlantısı bulunamadı.')
       return hubApi(`/connections/${order.connectionId}/order-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ externalOrderId: order.orderNumber }) })
     },
-    onSuccess: async () => { setRefreshQueued(true); setMessage('Sipariş ve paket bilgisi yenileme kuyruğa alındı. Paket geldiğinde fatura oluşturma düğmesi açılacak.'); await client.invalidateQueries({ queryKey: ['invoice-draft-order', item.id] }); await client.invalidateQueries({ queryKey: ['orders'] }) },
-    onError: error => setMessage(error instanceof Error ? error.message : 'Sipariş bilgisi yenilenemedi.')
+    onSuccess: async () => { const message = 'Sipariş ve paket bilgisi yenileme kuyruğa alındı. Paket geldiğinde fatura oluşturma düğmesi açılacak.'; setRefreshQueued(true); setMessage(message); appendNotification(message, 'info'); await client.invalidateQueries({ queryKey: ['invoice-draft-order', item.id] }); await client.invalidateQueries({ queryKey: ['orders'] }) },
+    onError: error => { const message = error instanceof Error ? error.message : 'Sipariş bilgisi yenilenemedi.'; setMessage(message); appendNotification(message, 'error') }
   })
   const create = useMutation({
     mutationFn: async () => {
@@ -271,12 +271,14 @@ function InvoiceDraftModal({ item, provider, onClose }: { item: Order; provider:
     },
     onSuccess: async invoice => {
       setCreated(true)
-      setMessage(invoice.invoiceNumber ? `Fatura E-Faturam’da oluşturuldu: ${invoice.invoiceNumber}` : 'Fatura E-Faturam’da başarıyla oluşturuldu.')
+      const message = invoice.invoiceNumber ? `Fatura E-Faturam’da oluşturuldu: ${invoice.invoiceNumber}` : 'Fatura E-Faturam’da başarıyla oluşturuldu.'
+      setMessage(message)
+      appendNotification(message, 'success')
       await client.invalidateQueries({ queryKey: ['orders'] })
       await client.invalidateQueries({ queryKey: ['invoice-draft-order', item.id] })
       window.setTimeout(onClose, 1400)
     },
-    onError: error => setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.')
+    onError: error => { const message = error instanceof Error ? error.message : 'Fatura oluşturulamadı.'; setMessage(message); appendNotification(message, 'error') }
   })
   const money = (value: number) => value.toLocaleString('tr-TR', { style: 'currency', currency: order?.currency ?? item.currency })
   return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}><section className="workspace-modal invoice-draft-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-draft-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="invoice-draft-title">Fatura Oluştur</h2><p>#{item.orderNumber} siparişi için fatura bilgilerini kontrol edin.</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>{detail.isLoading ? <Busy text="Müşteri, adres ve ürün bilgileri API’den yükleniyor…" /> : detail.isError || !order ? <ErrorBox error={detail.error} /> : <><div className="invoice-draft-notice"><span aria-hidden="true">i</span><div><strong>Faturanız Trendyol E-Faturam sağlayıcısında oluşturulacaktır.</strong><p>Müşteri, fatura adresi, ürün, miktar ve vergi bilgileri Trendyol sipariş snapshot’ından alınır. Fatura oluşturulduğunda önce mali olarak doğrulanır, ardından E-Faturam’a gönderilir. Bağlantı, credential, tekrar koruması ve sağlayıcı yanıt kontrolü korunur.</p></div></div><div className="invoice-draft-customer"><span><small>Müşteri / unvan</small><strong>{customerText(order.customerName)}</strong></span><span><small>TC / vergi no</small><strong>{meaningfulText(order.customerTaxOrIdentityNumber) ? order.customerTaxOrIdentityNumber : 'Trendyol bu bilgiyi maskeledi'}</strong></span><span><small>Fatura adresi</small><strong>{addressText(order.invoiceAddressJson)}</strong></span></div><div className="invoice-draft-table" role="table"><div className="invoice-draft-head" role="row"><strong>Ürün Bilgisi</strong><strong>KDV Oranı</strong><strong>KDV Tutarı</strong><strong>Miktar</strong><strong>Birim Fiyatı</strong><strong>Toplam Tutar</strong></div>{order.lines.map(line => { const total = line.unitPrice * line.orderedQuantity; const vat = total * line.vatRate / (100 + line.vatRate); return <div role="row" key={line.id}><span><strong>{line.title}</strong><small>{line.sku}{line.modelCode ? ` · Model ${line.modelCode}` : ''}</small></span><span>%{line.vatRate}</span><span>{money(vat)}</span><span>{line.orderedQuantity} adet</span><span>{money(line.unitPrice)}</span><strong>{money(total)}</strong></div> })}</div><div className="invoice-draft-total"><span>İndirim <strong>{money(order.discountAmount)}</strong></span><span>Fatura toplamı <strong>{money(order.netAmount)}</strong></span></div>{!packageId && <div className="invoice-draft-recovery notice" role="status"><span>Bu siparişin paket bilgisi henüz gelmedi. Fatura paket oluşmadan oluşturulamaz.</span><button type="button" className="secondary" disabled={refreshOrder.isPending || refreshQueued || !order.connectionId} onClick={() => refreshOrder.mutate()}>{refreshOrder.isPending || refreshQueued ? 'Paket bilgisi yenileniyor…' : 'Paket bilgisini yenile'}</button></div>}{!provider?.hasCredential && <div role="alert" className="error invoice-draft-message">Aktif ve yetkili Trendyol E-Faturam bağlantısı gereklidir.</div>}{message && <div role="status" className={`notice invoice-draft-message ${created ? 'invoice-created-feedback' : ''}`}>{message}</div>}<footer><button type="button" className="secondary" onClick={onClose}>Vazgeç</button>{!created && <button type="button" className="invoice-continue" disabled={create.isPending || !packageId || !provider?.hasCredential} onClick={() => create.mutate()}>{create.isPending ? 'Fatura oluşturuluyor…' : 'Faturayı Oluştur'}</button>}</footer></>}</section></div>
@@ -312,8 +314,8 @@ function InvoiceUploadModal({ item, provider, onClose }: { item: Order; provider
       const form = new FormData(); form.append('file', file)
       await hubApi(`/invoices/${invoiceId}/documents/manual`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-document:${invoiceId}:${file.name}:${file.size}:${file.lastModified}` }, body: form })
     },
-    onSuccess: async () => { await client.invalidateQueries({ queryKey: ['orders'] }); onClose() },
-    onError: error => setMessage(error instanceof Error ? error.message : 'Fatura dosyası yüklenemedi.')
+    onSuccess: async () => { const message = 'Fatura dosyası güvenli arşive yüklendi.'; appendNotification(message, 'success'); await client.invalidateQueries({ queryKey: ['orders'] }); onClose() },
+    onError: error => { const message = error instanceof Error ? error.message : 'Fatura dosyası yüklenemedi.'; setMessage(message); appendNotification(message, 'error') }
   })
   function choose(selected: File | undefined) { if (selected) { setFile(selected); setMessage('') } }
   return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}><section className="workspace-modal invoice-upload-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-upload-title" onMouseDown={event => event.stopPropagation()}><header><h2 id="invoice-upload-title">Fatura Yükle</h2><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>{detail.isError ? <ErrorBox error={detail.error} /> : <><label className={`invoice-dropzone${dragging ? ' dragging' : ''}`} onDragEnter={event => { event.preventDefault(); setDragging(true) }} onDragOver={event => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files[0]) }}><input type="file" accept=".pdf,.jpeg,.jpg,.png,application/pdf,image/jpeg,image/png" onChange={event => choose(event.target.files?.[0])} /><span className="invoice-upload-icon" aria-hidden="true"><UiIcon name="upload" /></span><strong>{file ? file.name : 'Fatura Dosyası Yükle'}</strong><small>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'Dosyanızı seçin ya da bu alana sürükleyin.'}</small><b>Dosya Seç</b></label>{message && <p className="error" role="alert">{message}</p>}<footer><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" disabled={!file || detail.isLoading || upload.isPending} onClick={() => upload.mutate()}>{upload.isPending ? 'Yükleniyor…' : 'Faturayı Yükle'}</button></footer></>}</section></div>
@@ -1089,6 +1091,14 @@ export function ShipmentsPage() {
 
 export function ShipmentDetailPage() {
   const { id = '' } = useParams(); const client = useQueryClient(); const [notice, setNotice] = useState(''); const query = useQuery({ queryKey: ['shipment', id], queryFn: () => hubApi<ShipmentDetail>(`/shipments/${id}`) })
+  useEffect(() => {
+    if (!notice) return
+    const kind = notificationKindFromMessage(notice)
+    appendNotification(notice, kind)
+    document.documentElement.dataset.rvShipmentFeedback = kind
+    const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [notice])
   async function action(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!query.data) return; const data = new FormData(event.currentTarget); try { JSON.parse(String(data.get('payloadJson') || '{}')); await hubApi(`/shipments/${id}/actions`, { method: 'POST', headers: { 'Idempotency-Key': idempotency(), 'If-Match': `"v${query.data.package.version}"` }, body: JSON.stringify({ action: data.get('action'), payloadJson: data.get('payloadJson') }) }); setNotice('Paket aksiyonu kuyruğa alındı; sonuç read-back ile doğrulanacak.'); await client.invalidateQueries({ queryKey: ['shipment', id] }) } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Aksiyon başlatılamadı.') } }
   async function label(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!query.data) return; const data = new FormData(event.currentTarget); try { await hubApi(`/shipments/${id}/common-label-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency(), 'If-Match': `"v${query.data.package.version}"` }, body: JSON.stringify({ boxQuantity: Number(data.get('boxQuantity')), volumetricHeight: Number(data.get('volumetricHeight')) }) }); setNotice('Ortak etiket işi kuyruğa alındı.'); await client.invalidateQueries({ queryKey: ['shipment', id] }) } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Etiket işi başlatılamadı.') } }
   async function labelProbe(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!query.data) return; const data = new FormData(event.currentTarget); try { await hubApi(`/shipments/${id}/label-capability-probes`, { method: 'POST', headers: { 'Idempotency-Key': idempotency(), 'If-Match': `"v${query.data.package.version}"` }, body: JSON.stringify({ capabilityCode: data.get('capabilityCode'), boxQuantity: Number(data.get('boxQuantity')), volumetricHeight: Number(data.get('volumetricHeight')) }) }); setNotice('Stage etiket testi kuyruğa alındı; sonuç İşlem Takibi’nde görünür.'); await client.invalidateQueries({ queryKey: ['shipment', id] }) } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Stage etiket testi başlatılamadı.') } }
@@ -1151,6 +1161,13 @@ function returnPlatformStatusText(rawStatus: string | null | undefined) {
 
 type ReturnNoticeKind = 'success' | 'error' | 'info'
 type ReturnNoticeHandler = (message: string, kind?: ReturnNoticeKind) => void
+
+function notificationKindFromMessage(message: string): ReturnNoticeKind {
+  const normalized = message.toLocaleLowerCase('tr-TR')
+  if (/(hata|başarısız|kaydedilemedi|güncellenemedi|silinemedi|oluşturulamadı|alınamadı|bulunamadı|zorunlu|seçin|geçersiz|uygulanamadı|okunamadı|yenilenemedi|eşlenemedi)/u.test(normalized)) return 'error'
+  if (/(kuyruğa|işleniyor|bekleniyor|salt-okunur|değişiklik yok|henüz)/u.test(normalized)) return 'info'
+  return 'success'
+}
 
 function notifyReturn(onNotice: ReturnNoticeHandler | undefined, message: string, kind: ReturnNoticeKind = 'info') {
   appendNotification(message, kind)
@@ -1325,6 +1342,14 @@ function CategoryMappingWorkspace() {
   const client = useQueryClient()
   const [connectionId, setConnectionId] = useState(''); const [selectedPlatformCode, setSelectedPlatformCode] = useState<MappingPlatformCode>('TRENDYOL'); const [localId, setLocalId] = useState(''); const [externalId, setExternalId] = useState(''); const [notice, setNotice] = useState(''); const [categoryName, setCategoryName] = useState(''); const [categoryLibrarySearch, setCategoryLibrarySearch] = useState(''); const [categoryLibraryOpen, setCategoryLibraryOpen] = useState(false); const [categoryLibrarySort, setCategoryLibrarySort] = useState<'NAME_ASC' | 'NAME_DESC'>('NAME_ASC'); const [externalSearch, setExternalSearch] = useState(''); const [externalPickerOpen, setExternalPickerOpen] = useState(false); const [savedSearch, setSavedSearch] = useState(''); const [savedSort, setSavedSort] = useState<'NAME_ASC' | 'NAME_DESC'>('NAME_ASC'); const [savedPage, setSavedPage] = useState(1); const [advancedOpen, setAdvancedOpen] = useState(false); const [panelPickerOpen, setPanelPickerOpen] = useState(false); const [panelPickerSearch, setPanelPickerSearch] = useState(''); const [exportOpen, setExportOpen] = useState(false); const [exportSelection, setExportSelection] = useState<Record<MappingTransferScope, boolean>>({ categories: true, options: true, attributes: true, mappings: true }); const [transferOpen, setTransferOpen] = useState(false); const [transferBundle, setTransferBundle] = useState<MappingTransferBundle | null>(null); const [transferSelection, setTransferSelection] = useState<Record<MappingTransferScope, boolean>>({ categories: true, options: true, attributes: true, mappings: true }); const [transferBusy, setTransferBusy] = useState(false)
   useScrollLock(exportOpen || transferOpen || advancedOpen || panelPickerOpen, true)
+  useEffect(() => {
+    if (!notice) return
+    const kind = notificationKindFromMessage(notice)
+    appendNotification(notice, kind)
+    document.documentElement.dataset.rvMappingFeedback = kind
+    const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [notice])
   useEffect(() => {
     if (!advancedOpen) return
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
@@ -1964,6 +1989,14 @@ function CategoryAttributeCard({ connectionId, categoryScope, snapshotId, localA
 
 export function AttributeMappingPage() {
   const client = useQueryClient(); const [connectionId, setConnectionId] = useState(''); const [categoryId, setCategoryId] = useState(''); const [localId, setLocalId] = useState(''); const [externalId, setExternalId] = useState(''); const [notice, setNotice] = useState('')
+  useEffect(() => {
+    if (!notice) return
+    const kind = notificationKindFromMessage(notice)
+    appendNotification(notice, kind)
+    document.documentElement.dataset.rvMappingFeedback = kind
+    const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [notice])
   const connections = useQuery({ queryKey: ['connections', 'attribute-mapping'], queryFn: () => loadAllPages<Connection>('/connections') })
   const categories = useQuery({ queryKey: ['categories', 'attribute-mapping'], queryFn: () => loadAllPages<LocalCategory>('/catalog/categories') })
   const localAttributes = useQuery({ queryKey: ['attributes', 'mapping'], queryFn: () => loadAllPages<LocalAttribute>('/catalog/attributes') })
@@ -1991,6 +2024,14 @@ function WebColorValueMappingEditor({ connectionId, categoryScope, attribute, ex
   const references = useQuery({ queryKey: ['reference-attribute-values', connectionId, valueScope], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false })
   const sync = useMutation({ mutationFn: () => hubApi(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: () => setNotice('Web Color değerleri salt-okunur eşitleme kuyruğuna alındı.'), onError: reason => setNotice(reason instanceof Error ? reason.message : 'Web Color değerleri eşitlenemedi.') })
+  useEffect(() => {
+    if (!notice) return
+    const kind = notificationKindFromMessage(notice)
+    appendNotification(notice, kind)
+    document.documentElement.dataset.rvMappingFeedback = kind
+    const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [notice])
   const localValues = (attribute.values?.filter(item => item.isActive) ?? []).slice().sort((left, right) => left.value.localeCompare(right.value, 'tr-TR', { sensitivity: 'base', numeric: true })); const remoteValues = (references.data?.items.filter(item => item.isActive) ?? []).slice().sort((left, right) => left.name.localeCompare(right.name, 'tr-TR', { sensitivity: 'base', numeric: true })); const mappingByLocal = new Map((mappings.data ?? []).map(item => [item.localId, item]))
   useEffect(() => { if (mappings.data) setSelections(Object.fromEntries(mappings.data.map(item => [item.localId, item.externalId]))) }, [mappings.data])
   useEffect(() => {
@@ -2041,6 +2082,14 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   const references = useQuery({ queryKey: ['reference-attribute-values', connectionId, valueScope], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false })
   const sync = useMutation({ mutationFn: () => hubApi(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: () => setNotice('Özellik değerleri salt-okunur eşitleme kuyruğuna alındı.'), onError: reason => setNotice(reason instanceof Error ? reason.message : 'Değer eşitleme başlatılamadı.') })
+  useEffect(() => {
+    if (!notice) return
+    const kind = notificationKindFromMessage(notice)
+    appendNotification(notice, kind)
+    document.documentElement.dataset.rvMappingFeedback = kind
+    const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [notice])
   const localValues = attribute.values?.filter(item => item.isActive) ?? []; const remoteValues = references.data?.items.filter(item => item.isActive) ?? []; const mappingByLocal = new Map((mappings.data ?? []).map(item => [item.localId, item]))
   useEffect(() => { if (mappings.data) setSelections(Object.fromEntries(mappings.data.map(item => [item.localId, item.externalId]))) }, [mappings.data])
   async function saveAll() {
@@ -2073,6 +2122,14 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
 
 export function BrandMappingPage() {
   const client = useQueryClient(); const [connectionId, setConnectionId] = useState(''); const [localId, setLocalId] = useState(''); const [externalId, setExternalId] = useState(''); const [notice, setNotice] = useState(''); const [brandName, setBrandName] = useState(''); const [brandExternalSearch, setBrandExternalSearch] = useState(''); const [brandExternalPickerOpen, setBrandExternalPickerOpen] = useState(false); const [brandEditOpen, setBrandEditOpen] = useState(false); const [editingBrandMappingId, setEditingBrandMappingId] = useState(''); const [brandTransferBusy, setBrandTransferBusy] = useState(false); const [brandTransferBundle, setBrandTransferBundle] = useState<BrandMappingTransferBundle | null>(null); const [brandTransferOpen, setBrandTransferOpen] = useState(false); const [brandTransferSelection, setBrandTransferSelection] = useState({ brands: true, mappings: true })
+  useEffect(() => {
+    if (!notice) return
+    const kind = notificationKindFromMessage(notice)
+    appendNotification(notice, kind)
+    document.documentElement.dataset.rvMappingFeedback = kind
+    const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [notice])
   const connections = useQuery({ queryKey: ['connections', 'brand-mapping'], queryFn: () => loadAllPages<Connection>('/connections') })
   const localBrands = useQuery({ queryKey: ['brands', 'mapping'], queryFn: () => loadAllPages<LocalBrand>('/catalog/brands') })
   const references = useQuery({ queryKey: ['reference-brands', connectionId], queryFn: () => hubApi<ReferenceData>(`/reference-data/brands?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!connectionId, retry: false })

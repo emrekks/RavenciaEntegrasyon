@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, type Me } from '../../shared/api'
-import { Pagination, Tabs, UiIcon, type UiIconName } from '../../shared/components'
+import { Pagination, Tabs, Toast, UiIcon, type UiIconName } from '../../shared/components'
 import { statusLabel } from '../../shared/status-labels'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
@@ -331,6 +331,12 @@ export function JobsPage({ me }: { me: Me }) {
   const [pageSize, setPageSize] = useState(20)
   const [pageNumber, setPageNumber] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' } | null>(null)
+  useEffect(() => {
+    if (!feedback) return
+    const timeout = window.setTimeout(() => setFeedback(null), feedback.tone === 'danger' ? 5500 : 5500)
+    return () => window.clearTimeout(timeout)
+  }, [feedback])
   const elevated = ['OWNER', 'ADMINISTRATOR'].includes((me.role ?? '').toUpperCase())
   const list = useQuery({
     queryKey: ['jobs', status],
@@ -345,10 +351,12 @@ export function JobsPage({ me }: { me: Me }) {
   })
   const action = useMutation({
     mutationFn: ({ id, verb }: { id: string; verb: 'retry' | 'cancel' }) => hubApi<JobDetail>(`/jobs/${id}/${verb}`, { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey(verb, id) } }),
-    onSuccess: async data => {
+    onSuccess: async (data, variables) => {
       setSelectedId(data.job.id)
+      setFeedback({ message: variables.verb === 'retry' ? 'İşlem yeniden kuyruğa alındı.' : 'İşlem iptal edildi.', tone: 'success' })
       await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['job', data.job.id] })])
-    }
+    },
+    onError: error => setFeedback({ message: error instanceof Error ? error.message : 'İşlem güncellenemedi.', tone: 'danger' })
   })
   const rawJobs = list.data ?? []
   const rangeFiltered = useMemo(() => {
@@ -451,5 +459,6 @@ export function JobsPage({ me }: { me: Me }) {
       </>}
     </div>
      {selectedId && <JobDetailDrawer selectedId={selectedId} selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} onClose={() => setSelectedId(null)} />}
+     {feedback && <Toast tone={feedback.tone}>{feedback.message}</Toast>}
   </section>
 }
