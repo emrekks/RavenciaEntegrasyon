@@ -727,7 +727,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 return productMedia.Count > 0 ? productMedia : group.OrderBy(item => item.SortOrder).Take(1).ToList();
             })
             .OrderBy(item => item.SortOrder)
-            .Select(item => $"/api/v1/files/product-media/{item.Id:D}/content")
+            .Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -1144,10 +1144,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                            select new { item.ProductId, item.VariantId, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         var mediaUrlsByVariant = media.Where(x => x.VariantId is not null)
             .GroupBy(x => x.VariantId!.Value)
-            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(MediaUrl)));
+            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))));
         var globalMediaUrlsByProduct = media.Where(x => x.VariantId is null)
             .GroupBy(x => x.ProductId)
-            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(MediaUrl)));
+            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))));
         var categoryIds = products.Select(x => x.CategoryId).OfType<Guid>().Distinct().ToArray();
         var categoryPathById = categoryIds.Length == 0
             ? new Dictionary<Guid, string>()
@@ -1227,7 +1227,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             var activePlatforms = platformStatuses.Select(x => x.Platform).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            var image = media.Where(x => x.ProductId == product.Id && x.VariantId == null).Select(MediaUrl).FirstOrDefault() ?? media.Where(x => x.ProductId == product.Id).Select(MediaUrl).FirstOrDefault();
+            var image = media.Where(x => x.ProductId == product.Id && x.VariantId == null).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault() ?? media.Where(x => x.ProductId == product.Id).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault();
             var prices = variantViews.Where(x => x.SalePrice is not null).Select(x => x.SalePrice!.Value).ToList();
             var currency = variantViews.Select(x => x.Currency).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "TRY";
             var modelCode = variantViews.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
@@ -1240,7 +1240,6 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), prices.Count > 0 ? prices.Min() : null, currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id)), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null);
         }).ToList();
 
-        static string MediaUrl(dynamic item) => item.Classification == "PRODUCT_MEDIA_URL" ? item.Url : $"/api/v1/files/product-media/{item.Id:D}/content";
     }
 
     private static IReadOnlyList<string> ProductMediaForView(IReadOnlyList<ProductVariantView> variants, IReadOnlyList<string>? globalMedia)
