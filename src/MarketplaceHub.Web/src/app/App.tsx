@@ -64,7 +64,7 @@ function Shell({ me }: { me: Me }) {
     const positionHistory = () => {
       const anchor = notificationRef.current?.getBoundingClientRect()
       if (!anchor) return
-      const panelWidth = Math.min(380, window.innerWidth - 32)
+      const panelWidth = Math.min(440, window.innerWidth - 32)
       const left = Math.max(16, Math.min(anchor.right - panelWidth, window.innerWidth - panelWidth - 16))
       setNotificationHistoryPosition({ top: anchor.bottom + 10, left, width: panelWidth })
     }
