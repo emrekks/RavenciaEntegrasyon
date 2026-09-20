@@ -1124,16 +1124,34 @@ function ReturnReferenceRow({ item, order, onNotice }: { item: ReturnClaim; orde
   </div>{previewImage && <ProductImagePreviewModal preview={previewImage} onClose={() => setPreviewImage(null)} />}{detailOpen && <div className="workspace-modal-backdrop return-detail-backdrop" role="presentation" onMouseDown={() => setDetailOpen(false)}><section className="workspace-modal return-detail-modal" role="dialog" aria-modal="true" aria-label={`${item.orderNumber} iade detayı`} onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">İADE DETAYI</p><h2>Sipariş #{detailItem.orderNumber}</h2><p>{detailItem.customerName}</p></div><button type="button" className="modal-close" onClick={() => setDetailOpen(false)} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>{detailQuery.isLoading ? <div className="return-detail-loading"><Busy text="İade detayları yükleniyor…" /></div> : detailQuery.isError ? <div className="return-detail-loading"><ErrorBox error={detailQuery.error} /></div> : <><div className="return-detail-summary"><div><small>Durum</small><Badge value={detailItem.status} /></div>{detailItem.reasonText && <div><small>İade sebebi</small><strong>{detailItem.reasonText}</strong></div>}{detailTrackingNumber && <div><small>Kargo</small><strong>{detailTrackingNumber}</strong></div>}<div><small>Faturalandırılmış tutar</small><strong>{detailMoney(detailItem.orderAmount || invoicedTotal)}</strong></div>{detailItem.orderedAt && <div><small>Talep tarihi</small><strong><DateText value={detailItem.orderedAt} /></strong></div>}{detailItem.approvedAt && <div><small>Onaylanma tarihi</small><strong><DateText value={detailItem.approvedAt} /></strong></div>}</div><h3>Ürünler</h3><div className="return-detail-products">{detailLines.map(line => { const color = returnLineFieldValue(line, ['renk', 'color'], 'color'); const size = returnLineFieldValue(line, ['beden', 'size'], 'size'); const approvedAt = returnLineFieldValue(line, ['onaylanma', 'approved'], 'approvedAt') ?? detailItem.approvedAt; const systemNote = returnLineFieldValue(line, ['sistem notu', 'system'], 'systemNote') ?? returnOptionalValue(detailItem.systemNote); const reasonText = returnLineFieldValue(line, ['sebep', 'reason'], 'reasonText') ?? detailItem.reasonText; const sellerDescription = returnLineFieldValue(line, ['satıcı açıklaması', 'seller'], 'sellerDescription') ?? returnOptionalValue(detailItem.sellerDescription); const platformReason = returnLineFieldValue(line, ['trendyol onay nedeni', 'approval reason'], 'platformApprovalReason') ?? returnOptionalValue(detailItem.platformApprovalReason); const platformDescription = returnLineFieldValue(line, ['trendyol açıklaması', 'platform description'], 'platformDescription') ?? returnOptionalValue(detailItem.platformDescription); const selectable = decisionAvailable; const selected = selectedReturnLineIds.includes(line.id); return <article className={`return-detail-product${selectable ? ' is-selectable' : ''}${selected ? ' is-selected' : ''}`} key={line.id} onClick={selectable ? () => toggleReturnLine(line.id) : undefined} onKeyDown={selectable ? event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleReturnLine(line.id) } } : undefined} role={selectable ? 'button' : undefined} tabIndex={selectable ? 0 : undefined} aria-pressed={selectable ? selected : undefined}>{selectable && <label className="return-detail-product-choice" onClick={event => event.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => toggleReturnLine(line.id)} /><span>İşleme dahil</span></label>}<div className="return-detail-product-head">{line.imageUrl ? <img src={line.imageUrl} alt={`${line.title} ürün görseli`} /> : <span className="reference-product-placeholder">↩</span>}<div><strong>{line.title}</strong><small>{line.quantity} adet · {detailMoney(line.unitPrice)}</small></div></div><dl className="return-detail-product-facts">{line.sku && <div><dt>Stok Kodu</dt><dd>{line.sku}</dd></div>}{color && <div><dt>Renk</dt><dd>{color}</dd></div>}{line.barcode && <div><dt>Barkod</dt><dd>{line.barcode}</dd></div>}{size && <div><dt>Beden</dt><dd>{size}</dd></div>}{approvedAt && <div><dt>Onaylanma Tarihi</dt><dd><DateText value={approvedAt} /></dd></div>}{systemNote && <div><dt>Sistem Notu</dt><dd>{systemNote}</dd></div>}{reasonText && <div><dt>Sebep</dt><dd>{reasonText}</dd></div>}{sellerDescription && <div><dt>Satıcı Açıklaması</dt><dd>{sellerDescription}</dd></div>}{platformReason && <div><dt>Trendyol Onay Nedeni</dt><dd>{platformReason}</dd></div>}{platformDescription && <div><dt>Trendyol Açıklaması</dt><dd>{platformDescription}</dd></div>}</dl></article> })}</div><ReturnInlineActions item={detailQuery.data!} selectedLineIds={selectedReturnLineIds} onSelectedLineIdsChange={setSelectedReturnLineIds} onNotice={onNotice} /></>}<footer><button type="button" className="secondary" onClick={() => setDetailOpen(false)}>Kapat</button></footer></section></div>}</>
 }
 
+function returnPlatformStatusText(rawStatus: string | null | undefined) {
+  if (!rawStatus) return ''
+  const normalized = rawStatus.trim().toUpperCase().replace(/[\s-]+/g, '_').replace(/[^A-Z0-9_]/g, '')
+  const known: Record<string, string> = {
+    WAITINGFRAUDCHECK: 'Trendyol incelemesi bekleniyor',
+    WAITING_FRAUD_CHECK: 'Trendyol incelemesi bekleniyor',
+    WAITING_APPROVAL: 'Trendyol onayı bekleniyor',
+    APPROVED: 'Trendyol tarafından onaylandı',
+    REJECTED: 'Trendyol tarafından reddedildi',
+  }
+  return known[normalized] ?? statusLabel(rawStatus)
+}
+
+function notifyReturn(onNotice: ((message: string) => void) | undefined, message: string, kind: 'success' | 'error' | 'info' = 'info') {
+  appendNotification(message, kind)
+  onNotice?.(message)
+}
+
 function ReturnReceiptButton({ item, onNotice }: { item: ReturnDetail; onNotice?: (message: string) => void }) {
   const client = useQueryClient()
   const receive = useMutation({
     mutationFn: () => hubApi(`/returns/${item.id}/received`, { method: 'POST', headers: { 'Idempotency-Key': idempotency(), 'If-Match': `"v${item.version}"` } }),
     onSuccess: async () => {
-      onNotice?.('İade teslim alındı; onay veya ret işlemleri açıldı.')
+      notifyReturn(onNotice, 'İade paketi teslim alındı. Onay veya ret işlemleri açıldı.', 'success')
       await client.invalidateQueries({ queryKey: ['return', item.id] })
       await client.invalidateQueries({ queryKey: ['returns'] })
     },
-    onError: error => onNotice?.(error instanceof Error ? error.message : 'İade teslim alındı olarak işaretlenemedi.')
+    onError: error => notifyReturn(onNotice, error instanceof Error ? error.message : 'İade teslim alındı olarak işaretlenemedi.', 'error')
   })
   if (!item.allowedActions.includes('RECEIVE')) return null
   return <section className="return-inline-action return-receive-action"><div><h3>Kargo teslimi</h3><p>İade paketi fiziksel olarak elinize ulaştıysa teslim aldığınızı işaretleyin. Ardından aynı pencereden onay veya ret kararı verebilirsiniz.</p></div><button type="button" className="secondary" disabled={receive.isPending} onClick={() => receive.mutate()}>{receive.isPending ? 'Kaydediliyor…' : 'Teslim aldım'}</button></section>
@@ -1168,24 +1186,25 @@ function ReturnDecisionActions({ item, onNotice, selectedLineIds: controlledSele
     mutationFn: (payload: ReturnDecisionDraft) => hubApi<ReturnDetail>(`/returns/${item.id}/actions`, { method: 'POST', headers: { 'Idempotency-Key': idempotency(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ action: payload.action, reasonCode: payload.reasonCode, explanation: payload.explanation, evidenceAssetIds: payload.evidenceAssetIds, returnLineIds: payload.returnLineIds }) }),
     onSuccess: async (result) => {
       setConfirmation(null)
-      const response = result.rawStatus ? ` Trendyol yanıtı: ${statusLabel(result.rawStatus)}.` : ''
+      const response = result.rawStatus ? ` Trendyol durumu: ${returnPlatformStatusText(result.rawStatus)}.` : ''
       const message = result.status === 'APPROVED'
-        ? `İade kabulü onaylandı.${response}`
+        ? `İade kabulü Trendyol’a gönderildi.${response}`
         : result.status === 'REJECTED'
-          ? `İade reddi onaylandı.${response}`
+          ? `İade reddi Trendyol’a gönderildi.${response}`
           : result.rawStatus
-            ? `İade kararı Trendyol’a gönderildi, sonuç henüz kesinleşmedi. Trendyol yanıtı: ${statusLabel(result.rawStatus)}.`
+            ? `İade kararı Trendyol’a gönderildi; sonuç henüz kesinleşmedi.${response}`
             : 'İade kararı gönderildi ancak Trendyol’dan geri dönüş alınamadı.'
-      onNotice?.(message)
+      const kind = result.status === 'APPROVED' ? 'success' : result.status === 'REJECTED' ? 'error' : 'info'
+      notifyReturn(onNotice, message, kind)
       await client.invalidateQueries({ queryKey: ['return', item.id] })
       await client.invalidateQueries({ queryKey: ['returns'] })
     },
-    onError: error => onNotice?.(error instanceof Error ? error.message : 'İade kararı başlatılamadı.')
+    onError: error => notifyReturn(onNotice, error instanceof Error ? error.message : 'İade kararı başlatılamadı.', 'error')
   })
   async function uploadFile(file: File) {
     if (!file.size) return
     const body = new FormData(); body.set('file', file)
-    try { const asset = await hubApi<{ id: string }>('/files/return-evidence', { method: 'POST', body }); setEvidenceAssetIds(ids => ids.includes(asset.id) ? ids : [...ids, asset.id]); onNotice?.('Kanıt güvenli özel depoya yüklendi.') } catch (error) { onNotice?.(error instanceof Error ? error.message : 'Kanıt yüklenemedi.') }
+    try { const asset = await hubApi<{ id: string }>('/files/return-evidence', { method: 'POST', body }); setEvidenceAssetIds(ids => ids.includes(asset.id) ? ids : [...ids, asset.id]); notifyReturn(onNotice, 'İade kanıtı güvenli depoya yüklendi.', 'success') } catch (error) { notifyReturn(onNotice, error instanceof Error ? error.message : 'Kanıt yüklenemedi.', 'error') }
   }
   const decisionActions = item.allowedActions.filter(value => value === 'APPROVE' || value === 'REJECT')
   if (!decisionActions.length) return null
@@ -1230,7 +1249,7 @@ export function ReturnsPage() {
   const countsQuery = useQuery({ queryKey: ['returns', 'counts', countFilters], queryFn: () => loadAllReturns(countFilters), enabled: appliedFilters.status !== 'ALL' })
   const connections = useQuery({ queryKey: ['connections', 'returns'], queryFn: () => loadAllPages<Connection>('/connections') })
   const trendyolConnection = connections.data?.items.find(item => item.platformCode === 'TRENDYOL' && (item.status === 'ACTIVE' || item.status === 'VERIFIED'))
-  const sync = useMutation({ mutationFn: () => { if (!trendyolConnection) throw new Error('Aktif Trendyol bağlantısı bulunamadı.'); return hubApi(`/connections/${trendyolConnection.id}/return-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() } }) }, onSuccess: async () => { setNotice('İade eşitlemesi kuyruğa alındı. İş tamamlandığında kayıtlar otomatik yenilenir.'); await client.invalidateQueries({ queryKey: ['returns'] }) }, onError: value => setNotice(value instanceof Error ? value.message : 'İade eşitlemesi başlatılamadı.') })
+  const sync = useMutation({ mutationFn: () => { if (!trendyolConnection) throw new Error('Aktif Trendyol bağlantısı bulunamadı.'); return hubApi(`/connections/${trendyolConnection.id}/return-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() } }) }, onSuccess: async () => { notifyReturn(setNotice, 'İade eşitlemesi kuyruğa alındı. İş tamamlandığında kayıtlar otomatik yenilenir.', 'success'); await client.invalidateQueries({ queryKey: ['returns'] }) }, onError: value => notifyReturn(setNotice, value instanceof Error ? value.message : 'İade eşitlemesi başlatılamadı.', 'error') })
   const items = query.data?.items ?? []
   const countItems = appliedFilters.status === 'ALL' ? items : countsQuery.data?.items ?? []
   const tabs = [['ALL', 'Tüm İadeler'], ['REQUESTED', 'Talep Oluşturulan'], ['SHIPPING', 'Kargoya Verilen'], ['ACTION_REQUIRED', 'Aksiyon Bekleyen'], ['APPROVED', 'Onaylanan'], ['REJECTED', 'Reddedilen'], ['REVIEW', 'Analiz'], ['DISPUTED', 'İhtilaflı'], ['SUSPENDED', 'Askıda İadeler']] as const
@@ -1257,7 +1276,7 @@ export function ReturnsPage() {
 export function ReturnDetailPage() {
   const { id = '' } = useParams(); const client = useQueryClient(); const [notice, setNotice] = useState('')
   const query = useQuery({ queryKey: ['return', id], queryFn: () => hubApi<ReturnDetail>(`/returns/${id}`) })
-  async function disposition(event: FormEvent<HTMLFormElement>, line: ReturnLine) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await hubApi(`/returns/${id}/stock-dispositions`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ returnLineId: line.id, disposition: data.get('disposition'), quantity: Number(data.get('quantity')), reason: data.get('reason') }) }); setNotice('İade stok kararı kaydedildi. Yalnız Satılabilir seçimi eldeki stoğu artırır.'); await client.invalidateQueries({ queryKey: ['return', id] }) } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Stok kararı kaydedilemedi.') } }
+  async function disposition(event: FormEvent<HTMLFormElement>, line: ReturnLine) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await hubApi(`/returns/${id}/stock-dispositions`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ returnLineId: line.id, disposition: data.get('disposition'), quantity: Number(data.get('quantity')), reason: data.get('reason') }) }); notifyReturn(setNotice, 'İade stok kararı kaydedildi. Satılabilir seçimi stoğu artırır.', 'success'); await client.invalidateQueries({ queryKey: ['return', id] }) } catch (reason) { notifyReturn(setNotice, reason instanceof Error ? reason.message : 'Stok kararı kaydedilemedi.', 'error') } }
   if (query.isLoading) return <section className="content"><Busy /></section>; if (query.isError || !query.data) return <section className="content"><ErrorBox error={query.error} /></section>; const item = query.data; const lines = item.lines ?? []
   return <section className="content f3 return-detail-page"><Link to="/returns" className="back"><UiIcon name="arrowLeft" /> İadeler</Link><div className="page-heading"><div><p className="eyebrow">İade detayı · Claim {item.externalClaimId}</p><h1>{item.orderNumber}</h1><p className="lede">{item.customerName} · {item.orderAmount.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</p></div><Badge value={item.status} /></div>{notice && <div role="status" className="notice return-action-toast">{notice}</div>}
      <div className="detail-grid"><article className="panel"><h2>Talep ve süre</h2><dl className="details"><dt>Platform durumu</dt><dd>{statusLabel(item.rawStatus)}</dd><dt>Neden</dt><dd>{item.reasonText ?? 'Belirtilmedi'}</dd><dt>Sipariş tarihi</dt><dd><DateText value={item.orderedAt} /></dd><dt>Otomatik işlem</dt><dd className={item.actionDueAt && new Date(item.actionDueAt).getTime() - Date.now() < 86_400_000 ? 'deadline critical' : ''}>{remainingText(item.actionDueAt)}</dd><dt>Kargo</dt><dd>{item.cargoProviderName ?? '—'} · {item.cargoTrackingNumber ?? '—'}</dd></dl></article><article className="panel"><h2>Trendyol iade kararı</h2>{item.decisionPending ? <div className="unknown"><strong>Karar Trendyol’a gönderildi</strong><p>Bu iade kararı Trendyol’a anlık olarak iletildi. Trendyol’dan kesin durum yanıtı gelene kadar yeni bir karar gönderilemez.</p></div> : <>{item.allowedActions.includes('RECEIVE') && <ReturnReceiptButton item={item} onNotice={setNotice} />}{item.allowedActions.includes('APPROVE') || item.allowedActions.includes('REJECT') ? <ReturnDecisionActions item={item} onNotice={setNotice} /> : !item.allowedActions.includes('RECEIVE') && <div className="unknown"><strong>İade aksiyonu uygun değil</strong><p>Sağlayıcının mevcut iade durumu bu kayıtta henüz onay veya ret işlemini desteklemiyor.</p></div>}</>}</article></div>
