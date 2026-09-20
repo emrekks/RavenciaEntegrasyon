@@ -27,7 +27,30 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         // already saved category-scoped mappings before a category is selected.
         if (scope != "*") query = query.Where(x => x.ScopeExternalId == scope);
         var entities = await query.OrderBy(x => x.LocalId).ToListAsync(cancellationToken);
-        return ServiceResult<IReadOnlyList<CatalogMappingView>>.Ok(entities.Select(Map).ToList());
+        if (mappingType != "categories" || entities.Count == 0) return ServiceResult<IReadOnlyList<CatalogMappingView>>.Ok(entities.Select(item => Map(item)).ToList());
+
+        var categoryExternalIds = entities.Select(x => x.ExternalId).Distinct().ToArray();
+        var attributeSnapshots = await db.ReferenceSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.IsCurrent && categoryExternalIds.Contains(x.ScopeExternalId))
+            .Select(x => new { x.Id, x.ScopeExternalId })
+            .ToListAsync(cancellationToken);
+        var attributeSnapshotIds = attributeSnapshots.Select(x => x.Id).ToArray();
+        var requiredAttributes = await db.ReferenceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && attributeSnapshotIds.Contains(x.SnapshotId) && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.IsActive && x.IsRequired == true)
+            .Select(x => new { x.SnapshotId, x.ExternalId })
+            .ToListAsync(cancellationToken);
+        var mappedAttributes = await db.AttributeMappings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED" && categoryExternalIds.Contains(x.ScopeExternalId))
+            .Select(x => new { x.ScopeExternalId, x.ExternalId })
+            .ToListAsync(cancellationToken);
+        var mappedByScope = mappedAttributes
+            .GroupBy(x => x.ScopeExternalId)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.ExternalId).ToHashSet(StringComparer.Ordinal));
+        var missingByScope = requiredAttributes
+            .GroupBy(item => attributeSnapshots.Single(snapshot => snapshot.Id == item.SnapshotId).ScopeExternalId)
+            .ToDictionary(group => group.Key, group => group.Count(item => !mappedByScope.TryGetValue(group.Key, out var mapped) || !mapped.Contains(item.ExternalId)));
+        var checkedScopes = attributeSnapshots.Select(x => x.ScopeExternalId).ToHashSet(StringComparer.Ordinal);
+        return ServiceResult<IReadOnlyList<CatalogMappingView>>.Ok(entities.Select(item => Map(item, checkedScopes.Contains(item.ExternalId) ? missingByScope.GetValueOrDefault(item.ExternalId) : null)).ToList());
     }
 
     public async Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, CancellationToken cancellationToken)
@@ -172,7 +195,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
     private Task<bool> VisibleConnectionAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
         db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
 
-    private static CatalogMappingView Map(CatalogMapping value) => new(value.Id, value.ConnectionId, value.SnapshotId, value.LocalId, value.ScopeExternalId, value.ExternalId, value.Status, value.VerifiedAt, value.Version);
+    private static CatalogMappingView Map(CatalogMapping value, int? missingRequiredAttributeCount = null) => new(value.Id, value.ConnectionId, value.SnapshotId, value.LocalId, value.ScopeExternalId, value.ExternalId, value.Status, value.VerifiedAt, value.Version, missingRequiredAttributeCount);
     private static string NormalizeRequirementRole(string? value) => string.Equals(value?.Trim(), "OPTION", StringComparison.OrdinalIgnoreCase) ? "OPTION" : string.Equals(value?.Trim(), "ATTRIBUTE", StringComparison.OrdinalIgnoreCase) ? "ATTRIBUTE" : value?.Trim().ToUpperInvariant() ?? "";
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
 }

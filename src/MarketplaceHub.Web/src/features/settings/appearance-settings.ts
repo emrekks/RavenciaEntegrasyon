@@ -49,7 +49,7 @@ export const defaultAppearanceColorTheme: AppearanceColorThemeProfile = {
 
 export const defaultAppearanceSettings: AppearanceSettings = {
   fontFamily: 'inter',
-  fontSize: 'normal',
+  fontSize: 'small',
   themeMode: 'dark',
   colors: {
     dark: { ...defaultDarkPalette }
@@ -93,8 +93,8 @@ export const appearanceFontFamilyOptions: Array<{ value: AppearanceFontFamily; l
 
 export const appearanceFontSizeOptions: Array<{ value: AppearanceFontSize; label: string; description: string }> = [
   { value: 'compact', label: 'Çok küçük', description: 'En fazla içerik için en sıkı görünüm' },
-  { value: 'small', label: 'Küçük', description: 'Daha fazla içerik için daha sıkı görünüm' },
-  { value: 'normal', label: 'Normal', description: 'Önerilen, okunabilirliği artırılmış görünüm' },
+  { value: 'small', label: 'Küçük', description: 'Normal ve varsayılan çalışma görünümü' },
+  { value: 'normal', label: 'Normal', description: 'Daha rahat okuma için biraz daha geniş görünüm' },
   { value: 'large', label: 'Büyük', description: 'Yoğun tablolarda daha rahat okuma' },
   { value: 'extra-large', label: 'Çok büyük', description: 'Yüksek okunabilirlik için ferah görünüm' },
   { value: 'huge', label: 'Ekstra büyük', description: 'Maksimum okunabilirlik ve daha belirgin metinler' }
@@ -112,12 +112,12 @@ export const appearanceFontFamilyCss: Record<AppearanceFontFamily, string> = {
 }
 
 export const appearanceFontScale: Record<AppearanceFontSize, number> = {
-  compact: 0.88,
-  small: 0.93,
-  normal: 1,
-  large: 1.1,
-  'extra-large': 1.2,
-  huge: 1.3
+  compact: 0.92,
+  small: 1,
+  normal: 1.08,
+  large: 1.16,
+  'extra-large': 1.25,
+  huge: 1.34
 }
 
 const fontFamilies = new Set<AppearanceFontFamily>(appearanceFontFamilyOptions.map(option => option.value))
