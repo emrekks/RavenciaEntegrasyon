@@ -331,7 +331,7 @@ export function JobsPage({ me }: { me: Me }) {
   const [pageSize, setPageSize] = useState(20)
   const [pageNumber, setPageNumber] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' } | null>(null)
+  const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info' } | null>(null)
   useEffect(() => {
     if (!feedback) return
     const timeout = window.setTimeout(() => setFeedback(null), feedback.tone === 'danger' ? 5500 : 5500)
@@ -353,7 +353,7 @@ export function JobsPage({ me }: { me: Me }) {
     mutationFn: ({ id, verb }: { id: string; verb: 'retry' | 'cancel' }) => hubApi<JobDetail>(`/jobs/${id}/${verb}`, { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey(verb, id) } }),
     onSuccess: async (data, variables) => {
       setSelectedId(data.job.id)
-      setFeedback({ message: variables.verb === 'retry' ? 'İşlem yeniden kuyruğa alındı.' : 'İşlem iptal edildi.', tone: 'success' })
+      setFeedback({ message: variables.verb === 'retry' ? 'İşlem yeniden kuyruğa alındı.' : 'İşlem iptal edildi.', tone: variables.verb === 'retry' ? 'info' : 'success' })
       await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['job', data.job.id] })])
     },
     onError: error => setFeedback({ message: error instanceof Error ? error.message : 'İşlem güncellenemedi.', tone: 'danger' })

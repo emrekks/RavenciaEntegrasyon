@@ -9,6 +9,13 @@ export type AppNotification = {
 const notificationStorageKey = 'ravencia.notification-history'
 const notificationChangeEvent = 'ravencia:notification-change'
 
+export function normalizeNotificationKind(message: string, kind: AppNotification['kind']): AppNotification['kind'] {
+  const normalized = message.toLocaleLowerCase('tr-TR')
+  if (/(hata|başarısız|kaydedilemedi|güncellenemedi|silinemedi|oluşturulamadı|alınamadı|bulunamadı|geçersiz|uygulanamadı|okunamadı|yenilenemedi|eşlenemedi|reddi|reddedildi)/u.test(normalized)) return 'error'
+  if (/(kuyruğa\s+alındı|kuyrukta|işleniyor|sonucu\s+(?:henüz\s+)?bekleniyor|incelemesi\s+bekleniyor|onayı\s+bekleniyor|yeniden\s+kuyruğa|waiting(?:fraudcheck|[_\s-]*approval)|pending|processing|salt-okunur)/u.test(normalized)) return 'info'
+  return kind
+}
+
 export function readNotificationHistory(): AppNotification[] {
   try {
     const raw = localStorage.getItem(notificationStorageKey)
@@ -20,7 +27,7 @@ export function readNotificationHistory(): AppNotification[] {
       const value = item as Record<string, unknown>
       if (typeof value.id !== 'string' || typeof value.message !== 'string' || typeof value.createdAt !== 'string'
         || (value.kind !== 'success' && value.kind !== 'error' && value.kind !== 'info')) return []
-      return [{ id: value.id, message: value.message, kind: value.kind as AppNotification['kind'], createdAt: value.createdAt, read: value.read === true }]
+      return [{ id: value.id, message: value.message, kind: normalizeNotificationKind(value.message, value.kind as AppNotification['kind']), createdAt: value.createdAt, read: value.read === true }]
     }).slice(0, 20)
   } catch {
     return []
@@ -28,7 +35,7 @@ export function readNotificationHistory(): AppNotification[] {
 }
 
 export function appendNotification(message: string, kind: AppNotification['kind'] = 'info') {
-  const notification: AppNotification = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, message, kind, createdAt: new Date().toISOString(), read: false }
+  const notification: AppNotification = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, message, kind: normalizeNotificationKind(message, kind), createdAt: new Date().toISOString(), read: false }
   const history = [notification, ...readNotificationHistory()].slice(0, 20)
   try {
     localStorage.setItem(notificationStorageKey, JSON.stringify(history))
