@@ -1098,7 +1098,7 @@ function ReturnReferenceRow({ item, order, onNotice }: { item: ReturnClaim; orde
   const discountAmount = order?.discountAmount ?? item.discountAmount
   const hasDiscount = Number.isFinite(discountAmount) && discountAmount > 0
   const invoicedTotal = Math.max(0, total - discountAmount)
-  const trackingNumber = order?.packages?.[0]?.cargoTrackingNumber ?? order?.cargoTrackingNumber ?? item.cargoTrackingNumber
+  const trackingNumber = item.cargoTrackingNumber ?? order?.packages?.[0]?.cargoTrackingNumber ?? order?.cargoTrackingNumber
   const canTrack = Boolean(order?.packages?.[0]?.id && trackingNumber && (order.packages[0].status === 'SHIPPED' || order.packages[0].status === 'IN_TRANSIT' || order?.derivedStatus === 'SHIPPED'))
   const detailItem = detailQuery.data ?? item
   const detailLines = detailQuery.data?.lines ?? lines

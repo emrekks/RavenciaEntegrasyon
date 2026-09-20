@@ -141,7 +141,7 @@ internal static class MarketplaceModelConfiguration
     {
         builder.Entity<ReturnClaim>(entity =>
         {
-            entity.ToTable("return_claims", "sales"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.ExternalClaimId).HasMaxLength(256); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32); entity.Property(x => x.RawStatus).HasMaxLength(96); entity.Property(x => x.ReasonCode).HasMaxLength(96); entity.Property(x => x.ReasonText).HasMaxLength(1024); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.ToTable("return_claims", "sales"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.ExternalClaimId).HasMaxLength(256); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32); entity.Property(x => x.RawStatus).HasMaxLength(96); entity.Property(x => x.CargoProviderName).HasMaxLength(128); entity.Property(x => x.CargoTrackingNumber).HasMaxLength(256); entity.Property(x => x.ReasonCode).HasMaxLength(96); entity.Property(x => x.ReasonText).HasMaxLength(1024); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalClaimId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.Status, x.ActionDueAt });
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict); entity.HasOne<Order>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });

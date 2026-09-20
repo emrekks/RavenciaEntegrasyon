@@ -3886,6 +3886,14 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(96)
                         .HasColumnType("character varying(96)");
 
+                    b.Property<string>("CargoProviderName")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("CargoTrackingNumber")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
                     b.Property<string>("ReasonCode")
                         .HasMaxLength(96)
                         .HasColumnType("character varying(96)");
