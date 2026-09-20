@@ -59,6 +59,18 @@ export function markNotificationRead(notificationId: string) {
   window.dispatchEvent(new CustomEvent(notificationChangeEvent))
 }
 
+export function markAllNotificationsRead() {
+  const history = readNotificationHistory()
+  if (!history.some(notification => !notification.read)) return
+  const next = history.map(notification => notification.read ? notification : { ...notification, read: true })
+  try {
+    localStorage.setItem(notificationStorageKey, JSON.stringify(next))
+  } catch {
+    return
+  }
+  window.dispatchEvent(new CustomEvent(notificationChangeEvent))
+}
+
 export function clearNotificationHistory() {
   try {
     localStorage.removeItem(notificationStorageKey)

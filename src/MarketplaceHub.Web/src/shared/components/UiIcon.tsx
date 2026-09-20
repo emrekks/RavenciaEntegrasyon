@@ -30,6 +30,7 @@ export type UiIconName =
   | 'grid'
   | 'help'
   | 'image'
+  | 'info'
   | 'italic'
   | 'layout'
   | 'layers'
@@ -144,6 +145,7 @@ const paths: Record<UiIconName, ReactNode> = {
   grid: <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>,
   help: <><circle cx="12" cy="12" r="9" /><path d="M9.75 9a2.3 2.3 0 1 1 3.8 1.75c-.95.8-1.55 1.2-1.55 2.5M12 16.5h.01" /></>,
   image: <><rect x="4" y="5" width="16" height="14" rx="2" /><circle cx="9" cy="10" r="1.2" /><path d="m5 17 4.5-4 3 2.5 2.5-2 4 3.5" /></>,
+  info: <path d="M12 10.5v5.25M12 7.25h.01" />,
   italic: <path d="M10 5h8M6 19h8M14 5 10 19" />,
   layout: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 10h16M10 10v10" /></>,
   layers: <><path d="m12 4 8 4-8 4-8-4 8-4Z" /><path d="m4 12 8 4 8-4M4 16l8 4 8-4" /></>,
