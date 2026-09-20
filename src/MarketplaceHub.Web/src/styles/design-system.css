@@ -244,10 +244,10 @@
 }
 
 .app-shell.stitch-shell main .variant-media-button {
-  width: 40px;
-  min-width: 40px;
-  height: 40px;
-  min-height: 40px;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
   color: var(--rv-color-primary);
   background: transparent;
   border: 0;
@@ -262,8 +262,8 @@
 }
 
 .app-shell.stitch-shell main .variant-media-button .variant-media-icon {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   stroke-width: 2;
 }
 
@@ -1643,7 +1643,7 @@
   .variant-table-toolbar { margin-bottom: var(--rv-space-3); padding: var(--rv-space-3) 0; border-top: 1px solid var(--rv-color-border); border-bottom: 1px solid var(--rv-color-border); }
   .variant-table-toolbar-actions { display: flex; flex-wrap: wrap; gap: var(--rv-space-2); }
   .variant-table-editor { overflow-x: auto; padding: 0; }
-  .variant-table-head, .variant-table-row { display: grid; grid-template-columns: 54px minmax(180px, 1.35fr) minmax(145px, 1fr) minmax(145px, 1fr) 90px 110px 110px 110px minmax(86px, .7fr) 68px 68px; min-width: 1320px; align-items: center; }
+  .variant-table-head, .variant-table-row { display: grid; grid-template-columns: 54px minmax(180px, 1.35fr) minmax(145px, 1fr) minmax(145px, 1fr) 90px 110px 110px 110px minmax(64px, .55fr) 54px 60px; min-width: 1240px; align-items: center; }
   .variant-table-head > :nth-child(1), .variant-table-row > :nth-child(1) { grid-column: 1; }
   .variant-table-head > :nth-child(2), .variant-table-row > :nth-child(2) { grid-column: 2; }
   .variant-table-head > :nth-child(3), .variant-table-row > :nth-child(3) { grid-column: 3; }
@@ -1663,7 +1663,7 @@
   .variant-table-row { min-height: 62px; border-bottom: 1px solid var(--rv-color-border); }
   .variant-table-row:last-child { border-bottom: 0; }
   .variant-platform-statuses { display: flex; min-width: 0; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
-  .variant-platform-status { position: relative; display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; padding: 0; color: inherit; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 8px; cursor: pointer; }
+  .variant-platform-status { position: relative; display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; padding: 0; color: inherit; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 8px; cursor: pointer; }
   .variant-platform-status:hover, .variant-platform-status:focus-visible { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); outline: none; }
   .variant-platform-status::after { content: ''; position: absolute; top: -3px; right: -3px; width: 7px; height: 7px; background: var(--rv-color-danger); border: 2px solid var(--rv-color-surface); border-radius: 50%; }
   .variant-platform-status.is-linked { border-color: color-mix(in srgb, var(--rv-color-accent) 58%, var(--rv-color-border-strong)); }
@@ -1673,7 +1673,7 @@
   .variant-platform-status.is-unlinked { opacity: .62; }
   .variant-platform-status-summary { margin-inline: auto; }
   .variant-platform-status-summary .ui-icon { width: 17px; height: 17px; }
-  .variant-platform-status-summary > i { position: absolute; right: -6px; bottom: -6px; display: grid; min-width: 16px; height: 16px; place-items: center; padding: 0 3px; color: #fff; background: var(--rv-color-primary); border: 2px solid var(--rv-color-surface); border-radius: 999px; font-size: 9px; font-style: normal; font-weight: 800; line-height: 1; }
+  .variant-platform-status-summary > i { position: absolute; right: -5px; bottom: -5px; display: grid; min-width: 15px; height: 15px; place-items: center; padding: 0 2px; color: #fff; background: var(--rv-color-primary); border: 2px solid var(--rv-color-surface); border-radius: 999px; font-size: 8px; font-style: normal; font-weight: 800; line-height: 1; }
   .variant-platform-logo { display: block; width: 18px; height: 18px; object-fit: contain; object-position: center; }
   .variant-platform-logo.platform-logo-trendyol { object-fit: cover; }
   .variant-platform-empty { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
@@ -2677,7 +2677,7 @@
   .product-list-actions a, .product-list-actions button { width: 34px; height: 34px; min-height: 34px; }
   .product-list-actions > a, .product-list-actions > button { flex-basis: 34px; }
   .product-list-actions .product-action-icon { width: 16px; height: 16px; }
-  .variant-table-head, .variant-table-row { min-width: 0; grid-template-columns: 42px minmax(150px, 1.2fr) minmax(118px, .9fr) minmax(118px, .9fr) 68px 82px 82px 82px minmax(78px, .7fr) 64px 64px; }
+  .variant-table-head, .variant-table-row { min-width: 0; grid-template-columns: 42px minmax(150px, 1.2fr) minmax(118px, .9fr) minmax(118px, .9fr) 68px 82px 82px 82px minmax(58px, .55fr) 50px 58px; }
   .variant-table-head > *, .variant-table-row > * { padding-inline: 6px; }
   .order-reference-head, .order-reference-grid { min-width: 0; grid-template-columns: 32px minmax(145px, .9fr) minmax(90px, .55fr) minmax(220px, 1.4fr) minmax(92px, .55fr) minmax(115px, .65fr) minmax(130px, .76fr) minmax(138px, .78fr); }
   .order-reference-products > article { grid-template-columns: 68px minmax(0, 1fr); }
