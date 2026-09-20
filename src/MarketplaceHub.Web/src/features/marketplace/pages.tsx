@@ -1638,7 +1638,7 @@ function cleanTrendyolCategoryPath(value: string) {
 function categoryMappingStatus(item: CatalogMapping) {
   if (item.status !== 'VERIFIED' && item.status !== 'ACTIVE') return { className: 'error', label: mappingStatusLabel(item.status), title: 'Kategori eşleştirmesi doğrulanmadı.' }
   if (item.missingRequiredAttributeCount === null || item.missingRequiredAttributeCount === undefined) return { className: 'pending', label: 'Kontrol bekliyor', title: 'Zorunlu kategori alanları için güncel kontrol verisi henüz hazır değil.' }
-  if (item.missingRequiredAttributeCount > 0) return { className: 'warning', label: 'Zorunlu alan eksik', title: `${item.missingRequiredAttributeCount} zorunlu kategori alanı eşlenmedi.` }
+  if (item.missingRequiredAttributeCount > 0) return { className: 'warning', label: 'Zorunlu Alan Eksik', title: `${item.missingRequiredAttributeCount} zorunlu kategori alanı eşlenmedi.` }
   return { className: 'active', label: 'Aktif', title: 'Kategori ve zorunlu alan eşlemeleri hazır.' }
 }
 

@@ -9872,6 +9872,14 @@ small,
   font-size: 10px;
   line-height: 1.2;
 }
+.app-shell.stitch-shell main .invoice-status-label {
+  color: var(--rv-color-ink);
+  font-weight: 750;
+}
+.app-shell.stitch-shell main .invoice-status-label.rv-badge-warning > i { background: var(--rv-color-warning); }
+.app-shell.stitch-shell main .invoice-status-label.rv-badge-info > i { background: var(--rv-color-info); }
+.app-shell.stitch-shell main .invoice-status-label.rv-badge-success > i { background: var(--rv-color-accent); }
+.app-shell.stitch-shell main .invoice-status-label.rv-badge-danger > i { background: var(--rv-color-danger); }
 
 .app-shell.stitch-shell main :is(.invoice-document-link, .invoice-menu-view) {
   color: var(--rv-color-accent);
