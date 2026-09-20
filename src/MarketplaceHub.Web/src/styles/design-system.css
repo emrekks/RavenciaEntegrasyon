@@ -2389,6 +2389,7 @@
   .order-reference-head > .order-select, .order-reference-grid > .order-select { display: grid; min-width: 0; align-self: stretch; place-items: center; padding-inline: var(--rv-space-2); }
   .order-select input { margin: 0; }
   .order-reference-actions > .row-menu, .order-reference-actions .order-label-actions { width: 100%; min-width: 0; }
+  .order-reference-actions > .cargo-track-action { width: 100%; box-sizing: border-box; }
   .order-reference-actions .row-menu-trigger { width: 100%; min-width: 0; }
   .order-label-actions { display: grid; gap: var(--rv-space-2); }
   .order-label-action { display: inline-flex; width: 100%; min-height: 36px; align-items: center; justify-content: center; text-align: center; }

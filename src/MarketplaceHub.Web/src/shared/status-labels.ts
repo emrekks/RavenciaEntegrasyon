@@ -101,6 +101,11 @@ export function invoiceStatusLabel(value: string | null | undefined) {
   return 'Fatura durumu bilinmiyor'
 }
 
+export function invoiceStatusDisplayLabel(value: string | null | undefined, isMicroExport = false) {
+  const label = invoiceStatusLabel(value)
+  return isMicroExport ? label.replace(/^Fatura\s/u, 'Mikro İhracat Faturası ') : label
+}
+
 export function invoiceStatusTone(value: string | null | undefined): InvoiceStatusTone {
   const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
   if (['FATURA_BEKLIYOR', 'PENDING', 'DRAFT'].includes(normalized)) return 'warning'
