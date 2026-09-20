@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiRequestError, hubApi, type Me, type TenantOption } from '../shared/api'
@@ -34,6 +35,8 @@ function Shell({ me }: { me: Me }) {
   const [notifications, setNotifications] = useState<AppNotification[]>(readNotificationHistory)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const notificationRef = useRef<HTMLDivElement>(null)
+  const notificationHistoryRef = useRef<HTMLDivElement>(null)
+  const [notificationHistoryPosition, setNotificationHistoryPosition] = useState<CSSProperties>({})
   useEffect(() => { setMobileMenuOpen(false); setQuickSearchOpen(false) }, [location.pathname])
   useEffect(() => {
     const syncVisualTheme = (event: Event) => {
@@ -46,7 +49,9 @@ function Shell({ me }: { me: Me }) {
   useEffect(() => {
     const unsubscribe = subscribeNotificationHistory(() => setNotifications(readNotificationHistory()))
     const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (notificationRef.current && event.target instanceof Node && !notificationRef.current.contains(event.target)) setNotificationsOpen(false)
+      if (!(event.target instanceof Node)) return
+      if (notificationRef.current?.contains(event.target) || notificationHistoryRef.current?.contains(event.target)) return
+      setNotificationsOpen(false)
     }
     document.addEventListener('pointerdown', closeOnOutsidePointer)
     return () => {
@@ -54,6 +59,23 @@ function Shell({ me }: { me: Me }) {
       document.removeEventListener('pointerdown', closeOnOutsidePointer)
     }
   }, [])
+  useEffect(() => {
+    if (!notificationsOpen) return
+    const positionHistory = () => {
+      const anchor = notificationRef.current?.getBoundingClientRect()
+      if (!anchor) return
+      const panelWidth = Math.min(380, window.innerWidth - 32)
+      const left = Math.max(16, Math.min(anchor.right - panelWidth, window.innerWidth - panelWidth - 16))
+      setNotificationHistoryPosition({ top: anchor.bottom + 10, left, width: panelWidth })
+    }
+    positionHistory()
+    window.addEventListener('resize', positionHistory)
+    window.addEventListener('scroll', positionHistory, true)
+    return () => {
+      window.removeEventListener('resize', positionHistory)
+      window.removeEventListener('scroll', positionHistory, true)
+    }
+  }, [notificationsOpen])
   useEffect(() => {
     const openQuickSearch = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setQuickSearchOpen(true) }
@@ -119,7 +141,8 @@ function Shell({ me }: { me: Me }) {
       <div className="sidebar-side-bottom"><div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" aria-label="Oturumu kapat" title="Oturumu kapat" onClick={() => void logout()}>{icon('logout')}<span className="logout-label">Oturumu kapat</span></button></div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong></span></div></div>
     </aside>
     <main>
-      <header className={`rv-topbar${notificationsOpen ? ' has-notification-history' : ''}`}><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Operasyon Merkezi</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><div ref={notificationRef} className="rv-topbar-notifications"><button type="button" className="rv-topbar-notification-trigger" aria-label="Bildirim geçmişini aç" aria-expanded={notificationsOpen} aria-controls="rv-notification-history" onClick={() => setNotificationsOpen(value => !value)}><UiIcon name="bell" size={18} />{notifications.length > 0 && <span className="rv-topbar-notification-count" aria-label={`${notifications.length} bildirim`}>{notifications.length > 99 ? '99+' : notifications.length}</span>}</button>{notificationsOpen && <div id="rv-notification-history" className="rv-notification-history" role="dialog" aria-label="Bildirim geçmişi"><div className="rv-notification-history-heading"><strong>Bildirim geçmişi</strong><button type="button" className="rv-notification-clear" onClick={() => { clearNotificationHistory(); setNotifications([]) }} disabled={!notifications.length}>Temizle</button></div>{notifications.length ? <div className="rv-notification-history-list">{notifications.map(notification => <article className={`rv-notification-history-item is-${notification.kind}`} key={notification.id}><span className="rv-notification-history-icon"><UiIcon name={notification.kind === 'error' ? 'alert' : 'check'} size={14} /></span><div><p>{notification.message}</p><time dateTime={notification.createdAt}>{new Date(notification.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</time></div></article>)}</div> : <p className="rv-notification-history-empty">Henüz kaydedilmiş bildirim yok.</p>}</div>}</div><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => setVisualThemePreference(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu tema' : 'Açık tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
+      <header className="rv-topbar"><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Operasyon Merkezi</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><div ref={notificationRef} className="rv-topbar-notifications"><button type="button" className="rv-topbar-notification-trigger" aria-label="Bildirim geçmişini aç" aria-expanded={notificationsOpen} aria-controls="rv-notification-history" onClick={() => setNotificationsOpen(value => !value)}><UiIcon name="bell" size={18} />{notifications.length > 0 && <span className="rv-topbar-notification-count" aria-label={`${notifications.length} bildirim`}>{notifications.length > 99 ? '99+' : notifications.length}</span>}</button></div><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => setVisualThemePreference(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu tema' : 'Açık tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
+      {notificationsOpen && createPortal(<div ref={notificationHistoryRef} id="rv-notification-history" className="rv-notification-history" role="dialog" aria-label="Bildirim geçmişi" style={notificationHistoryPosition}><div className="rv-notification-history-heading"><strong>Bildirim geçmişi</strong><button type="button" className="rv-notification-clear" onClick={() => { clearNotificationHistory(); setNotifications([]) }} disabled={!notifications.length}>Temizle</button></div>{notifications.length ? <div className="rv-notification-history-list">{notifications.map(notification => <article className={`rv-notification-history-item is-${notification.kind}`} key={notification.id}><span className="rv-notification-history-icon"><UiIcon name={notification.kind === 'error' ? 'alert' : 'check'} size={14} /></span><div><p>{notification.message}</p><time dateTime={notification.createdAt}>{new Date(notification.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</time></div></article>)}</div> : <p className="rv-notification-history-empty">Henüz kaydedilmiş bildirim yok.</p>}</div>, document.body)}
       <Modal open={quickSearchOpen} title="Hızlı arama" description="Bir sayfa veya işlem seçin." onClose={() => setQuickSearchOpen(false)}><div className="rv-command-list" role="listbox" aria-label="Hızlı arama sonuçları">{quickSearchItems.map(itemOption => <Link key={itemOption.to} className="rv-command-item" to={itemOption.to} onClick={() => setQuickSearchOpen(false)}><UiIcon name={itemOption.icon} size={20} /><span><strong>{itemOption.label}</strong><small>{itemOption.description}</small></span><UiIcon name="chevronRight" size={16} /></Link>)}</div></Modal>
       <Drawer open={mobileMenuOpen} title="Ravencia" description="Operasyon merkezi" onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}{item('/settings', 'settings', 'Sistem Ayarları', true)}<button className="rv-button rv-button-secondary" type="button" onClick={() => void logout()}>Oturumu kapat</button></nav></Drawer>
       <Suspense fallback={<DelayedStatus title="Ekran hazırlanıyor" />}><Routes><Route path="/dashboard" element={<Dashboard />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<AttributeMappingPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/invoices/:id" element={<InvoiceDetailPage />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings/appearance" element={<AppearanceSettingsPage />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense>
