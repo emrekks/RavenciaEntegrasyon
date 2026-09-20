@@ -1737,8 +1737,8 @@
   .variant-platform-pricing-matrix-platform strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .variant-platform-pricing-matrix-head > span { color: var(--rv-color-muted); }
   .variant-platform-pricing-matrix-head > input { min-height: 30px; }
-  .variant-platform-pricing-matrix-corner, .variant-platform-pricing-matrix-row-label { position: sticky; left: 0; z-index: 3; background: var(--rv-color-surface); }
-  .variant-platform-pricing-matrix-corner { z-index: 4; color: var(--rv-color-muted); }
+  .variant-platform-pricing-matrix-corner, .variant-platform-pricing-matrix-row-label { position: sticky; left: 0; z-index: 3; background: var(--rv-color-surface); box-shadow: 2px 0 0 var(--rv-color-border); }
+  .variant-platform-pricing-matrix-corner { top: 0; z-index: 5; color: var(--rv-color-muted); }
   .variant-platform-pricing-matrix-row-label { align-content: center; }
   .variant-platform-pricing-matrix-row-label strong, .variant-platform-pricing-matrix-row-label small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .variant-platform-pricing-matrix-row-label small { color: var(--rv-color-muted); font-size: 10px; }
