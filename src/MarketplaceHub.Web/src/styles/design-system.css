@@ -1139,7 +1139,7 @@
   .appearance-color-theme-card.is-selected { border-color: var(--rv-color-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--rv-color-primary) 22%, transparent); }
   .appearance-color-theme-select { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: var(--rv-space-3); padding: 0; color: var(--rv-color-ink); background: transparent; border: 0; text-align: left; }
   .appearance-color-theme-select:hover { color: var(--rv-color-ink); background: transparent; border-color: transparent; }
-  .appearance-color-theme-select > span:last-child { display: grid; min-width: 0; gap: 2px; }
+  .appearance-color-theme-select > span:last-child { display: grid; min-width: 0; gap: 2px; justify-items: start; text-align: left; }
   .appearance-color-theme-select strong, .appearance-color-theme-select small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .appearance-color-theme-select small, .appearance-color-theme-protected { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
   .appearance-color-theme-swatches { display: inline-flex; flex: 0 0 auto; align-items: center; }
