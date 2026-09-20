@@ -1906,7 +1906,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 var percent = totalProducts is { } total && total > 0
                     ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
                     : (int?)null;
-                await UpdateProductSyncProgressAsync(tenantId, receivedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, result.Value.HasMore ? "sayfa alındı; aktarım havuzuna yazıldı" : "tarama tamamlandı; aktarım havuzu hazır", receivedProducts), cancellationToken);
+                await UpdateProductSyncProgressAsync(tenantId, receivedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, result.Value.HasMore ? "sayfa alındı; aktarım havuzuna yazıldı" : "tarama tamamlandı; aktarım havuzu hazır", receivedProducts, mappingOnly), cancellationToken);
             }
 
             if (!result.Value.HasMore || cancellationToken.IsCancellationRequested) break;
@@ -1926,7 +1926,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 receivedProducts,
                 totalProducts,
                 totalProducts is { } completeTotal && completeTotal > 0 ? 99 : null,
-                ProductImportProgressLabel(pageNumber, totalProducts, "sayfalar okundu; referanslar hazırlanıyor · markalar", receivedProducts),
+                ProductImportProgressLabel(pageNumber, totalProducts, "sayfalar okundu; referanslar hazırlanıyor · markalar", receivedProducts, mappingOnly),
                 cancellationToken);
 
         // Product imports carry Trendyol's brand id, so keep the current brand
@@ -1942,7 +1942,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 receivedProducts,
                 totalProducts,
                 totalProducts is { } completeTotal && completeTotal > 0 ? 99 : null,
-                ProductImportProgressLabel(pageNumber, totalProducts, "sayfalar okundu; referanslar hazırlanıyor · kategoriler", receivedProducts),
+                ProductImportProgressLabel(pageNumber, totalProducts, "sayfalar okundu; referanslar hazırlanıyor · kategoriler", receivedProducts, mappingOnly),
                 cancellationToken);
         categoryReferences = isShopify ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
         categoryItems = categoryReferences is null
@@ -1961,7 +1961,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         if (jobId is { } orderingJob)
-            await UpdateProductSyncProgressAsync(tenantId, orderingJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "aktarim havuzu hazır; model grupları başlıyor", receivedProducts), cancellationToken);
+            await UpdateProductSyncProgressAsync(tenantId, orderingJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "aktarim havuzu hazır; model grupları başlıyor", receivedProducts, mappingOnly), cancellationToken);
 
         await db.ProductImportSessions.Where(x => x.TenantId == tenantId && x.JobId == importJobId).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Phase, "FINALIZING").SetProperty(x => x.UpdatedAt, timeProvider.GetUtcNow()), cancellationToken);
         db.ChangeTracker.Clear();
@@ -2079,7 +2079,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 var percent = totalProducts is { } total && total > 0
                     ? Math.Clamp((int)Math.Floor(completedProducts * 100d / total), 0, 99)
                     : (int?)null;
-                await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, $"{importedModelCount:N0}/{totalModelGroups:N0} model grubu tamamlandı", receivedProducts), cancellationToken);
+                await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, $"{importedModelCount:N0}/{totalModelGroups:N0} model grubu tamamlandı", receivedProducts, mappingOnly), cancellationToken);
             }
         }
 
@@ -2101,7 +2101,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Where(x => x.TenantId == tenantId && x.JobId == importJobId)
             .ExecuteDeleteAsync(cancellationToken);
         if (jobId is { } completedJob)
-            await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(pageNumber, totalProducts, "aktarımı tamamlandı", receivedProducts), cancellationToken, keepExistingTotal: true);
+            await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(pageNumber, totalProducts, "aktarımı tamamlandı", receivedProducts, mappingOnly), cancellationToken, keepExistingTotal: true);
         return true;
     }
 
@@ -2113,10 +2113,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             : query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressTotal, total).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken);
     }
 
-    private string ProductImportProgressLabel(int pageNumber, int? total, string suffix, int received)
+    private string ProductImportProgressLabel(int pageNumber, int? total, string suffix, int received, bool mappingOnly)
     {
         var totalPart = total is > 0 ? $" / {total:N0}" : "";
-        return $"{received:N0}{totalPart} · Alınan {received:N0} · İşlenen {telemetryImportProcessedCount:N0} · Atlanan {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0} · {pageNumber}. sayfa {suffix}";
+        var processedLabel = mappingOnly ? "Eşlenen" : "İşlenen";
+        var skippedLabel = mappingOnly ? "Eşleşmeyen" : "Atlanan";
+        return $"{received:N0}{totalPart} · Alınan {received:N0} · {processedLabel} {telemetryImportProcessedCount:N0} · {skippedLabel} {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0} · {pageNumber}. sayfa {suffix}";
     }
 
     private async Task RecordProductImportFailure(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, Exception exception, CancellationToken cancellationToken)
@@ -2903,34 +2905,103 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     {
         var externalProductId = Short(snapshot.ExternalProductId, 256);
         if (string.IsNullOrWhiteSpace(externalProductId)) return false;
+        var remoteVariants = snapshot.Variants
+            .Where(variant => !string.IsNullOrWhiteSpace(variant.ExternalVariantId))
+            .ToList();
+        if (remoteVariants.Count == 0) return false;
+
         var now = timeProvider.GetUtcNow();
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
+        var modelCodes = !preferBarcode
+            ? remoteVariants.Select(variant => variant.ModelCode?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+            : Array.Empty<string>();
+        var barcodes = remoteVariants.Select(variant => NormalizeCatalogKey(variant.Barcode, 160)).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.Ordinal).ToArray();
+        var skus = remoteVariants.Select(variant => NormalizeCatalogKey(variant.Sku, 160)).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.Ordinal).ToArray();
+        var rawSkus = remoteVariants.Select(variant => variant.Sku?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (modelCodes.Length == 0 && barcodes.Length == 0 && skus.Length == 0) return false;
+
+        // A Shopify product can contain several colour variants while the
+        // panel stores each colour as its own Product. Load every candidate
+        // variant first; requiring one ProductId here incorrectly rejected
+        // valid multi-product matches.
+        var localVariants = await db.ProductVariants.AsNoTracking()
+            .Where(variant => variant.TenantId == tenantId
+                && ((variant.BarcodeNormalized != null && barcodes.Contains(variant.BarcodeNormalized))
+                    || (variant.SkuNormalized != null && skus.Contains(variant.SkuNormalized))
+                    || (preferBarcode && variant.ModelCode != null && rawSkus.Contains(variant.ModelCode))
+                    || (!preferBarcode && variant.ModelCode != null && modelCodes.Contains(variant.ModelCode))))
+            .ToListAsync(cancellationToken);
+        if (localVariants.Count == 0 && link is null) return false;
+
+        var candidateProductIds = localVariants.Select(variant => variant.ProductId).Distinct().ToArray();
         Guid? productId = link?.ProductId;
         if (productId is null)
         {
-            var modelCodes = preferBarcode
-                ? Array.Empty<string>()
-                : snapshot.Variants.Select(variant => variant.ModelCode?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            var barcodes = snapshot.Variants.Select(variant => NormalizeCatalogKey(variant.Barcode, 160)).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.Ordinal).ToArray();
-            var skus = snapshot.Variants.Select(variant => NormalizeCatalogKey(variant.Sku, 160)).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.Ordinal).ToArray();
-            if (modelCodes.Length == 0 && barcodes.Length == 0 && skus.Length == 0) return false;
-            var candidates = await db.ProductVariants.AsNoTracking()
-                .Where(variant => variant.TenantId == tenantId
-                    && ((!preferBarcode && variant.ModelCode != null && modelCodes.Contains(variant.ModelCode))
-                        || (variant.BarcodeNormalized != null && barcodes.Contains(variant.BarcodeNormalized))
-                        || (variant.SkuNormalized != null && skus.Contains(variant.SkuNormalized))))
-                .Select(variant => new { variant.ProductId })
-                .Distinct()
-                .ToListAsync(cancellationToken);
-            var candidateProductIds = candidates.Select(candidate => candidate.ProductId).Distinct().ToArray();
-            if (candidateProductIds.Length != 1) return false;
-            productId = candidateProductIds[0];
+            var conflictingProductIds = candidateProductIds.Length == 0
+                ? []
+                : await db.MarketplaceProductLinks.AsNoTracking()
+                    .Where(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && candidateProductIds.Contains(existing.ProductId) && existing.ExternalId != externalProductId)
+                    .Select(existing => existing.ProductId)
+                    .Distinct()
+                    .ToListAsync(cancellationToken);
+            productId = candidateProductIds.FirstOrDefault(candidate => !conflictingProductIds.Contains(candidate));
+            if (productId == Guid.Empty) return false;
         }
 
         if (!await db.Products.AsNoTracking().AnyAsync(product => product.TenantId == tenantId && product.Id == productId.Value, cancellationToken)) return false;
-        var conflictingProductLink = await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && existing.ProductId == productId.Value && existing.ExternalId != externalProductId, cancellationToken);
-        if (conflictingProductLink) return false;
+        if (link is null && await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && existing.ProductId == productId.Value && existing.ExternalId != externalProductId, cancellationToken)) return false;
 
+        var localVariantIds = localVariants.Select(variant => variant.Id).ToArray();
+        var externalVariantIds = remoteVariants.Select(variant => Short(variant.ExternalVariantId, 256)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var existingVariantLinks = await db.MarketplaceVariantLinks
+            .Where(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && (localVariantIds.Contains(existing.VariantId) || externalVariantIds.Contains(existing.ExternalId)))
+            .ToListAsync(cancellationToken);
+        var claimedVariantIds = existingVariantLinks
+            .Where(existing => !externalVariantIds.Contains(existing.ExternalId, StringComparer.OrdinalIgnoreCase))
+            .Select(existing => existing.VariantId)
+            .ToHashSet();
+        var matchedVariantCount = 0;
+
+        foreach (var remote in remoteVariants)
+        {
+            var externalVariantId = Short(remote.ExternalVariantId, 256);
+            var remoteBarcode = NormalizeCatalogKey(remote.Barcode, 160);
+            var remoteSku = NormalizeCatalogKey(remote.Sku, 160);
+            var remoteModelCode = NormalizeCatalogKey(remote.ModelCode, 160);
+            var barcodeMatches = string.IsNullOrWhiteSpace(remoteBarcode)
+                ? []
+                : localVariants.Where(variant => string.Equals(variant.BarcodeNormalized, remoteBarcode, StringComparison.Ordinal)).ToList();
+            var skuMatches = string.IsNullOrWhiteSpace(remoteSku)
+                ? []
+                : localVariants.Where(variant => string.Equals(variant.SkuNormalized, remoteSku, StringComparison.Ordinal)
+                    || preferBarcode && string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), remoteSku, StringComparison.Ordinal)).ToList();
+            var modelMatches = !preferBarcode && string.IsNullOrWhiteSpace(remoteModelCode)
+                ? []
+                : !preferBarcode
+                    ? localVariants.Where(variant => string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), remoteModelCode, StringComparison.Ordinal)).ToList()
+                    : [];
+            var matches = barcodeMatches.Count > 0 ? barcodeMatches : skuMatches.Count > 0 ? skuMatches : modelMatches;
+            var candidate = matches.Count == 1 ? matches[0] : null;
+            if (candidate is null || claimedVariantIds.Contains(candidate.Id)) continue;
+
+            var externalLink = existingVariantLinks.FirstOrDefault(existing => string.Equals(existing.ExternalId, externalVariantId, StringComparison.OrdinalIgnoreCase));
+            if (externalLink is not null)
+            {
+                if (externalLink.VariantId == candidate.Id) matchedVariantCount++;
+                claimedVariantIds.Add(externalLink.VariantId);
+                continue;
+            }
+            var localLink = existingVariantLinks.FirstOrDefault(existing => existing.VariantId == candidate.Id);
+            if (localLink is not null) continue;
+
+            db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
+            existingVariantLinks.Add(new MarketplaceVariantLink { TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
+            claimedVariantIds.Add(candidate.Id);
+            matchedVariantCount++;
+            telemetryInsertedCount++;
+        }
+
+        if (matchedVariantCount == 0) return false;
         if (link is null)
         {
             link = new MarketplaceProductLink
@@ -2954,42 +3025,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             link.Version++;
         }
 
-        var localVariants = await db.ProductVariants
-            .Where(variant => variant.TenantId == tenantId && variant.ProductId == productId.Value)
-            .ToListAsync(cancellationToken);
-        if (localVariants.Count == 0) return true;
-        var localVariantIds = localVariants.Select(variant => variant.Id).ToArray();
-        var externalVariantIds = snapshot.Variants.Select(variant => Short(variant.ExternalVariantId, 256)).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var existingVariantLinks = await db.MarketplaceVariantLinks
-            .Where(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && (localVariantIds.Contains(existing.VariantId) || externalVariantIds.Contains(existing.ExternalId)))
-            .ToListAsync(cancellationToken);
-        foreach (var remote in snapshot.Variants)
-        {
-            var externalVariantId = Short(remote.ExternalVariantId, 256);
-            if (string.IsNullOrWhiteSpace(externalVariantId)) continue;
-            var remoteBarcode = NormalizeCatalogKey(remote.Barcode, 160);
-            var remoteSku = NormalizeCatalogKey(remote.Sku, 160);
-            var remoteModelCode = NormalizeCatalogKey(remote.ModelCode, 160);
-            var candidate = !string.IsNullOrWhiteSpace(remoteBarcode)
-                ? localVariants.FirstOrDefault(variant => string.Equals(variant.BarcodeNormalized, remoteBarcode, StringComparison.Ordinal))
-                : null;
-            candidate ??= !string.IsNullOrWhiteSpace(remoteSku)
-                ? localVariants.FirstOrDefault(variant => string.Equals(variant.SkuNormalized, remoteSku, StringComparison.Ordinal))
-                : null;
-            if (candidate is null && !preferBarcode && !string.IsNullOrWhiteSpace(remoteModelCode))
-            {
-                var modelMatches = localVariants.Where(variant => string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), remoteModelCode, StringComparison.Ordinal)).ToList();
-                if (modelMatches.Count == 1) candidate = modelMatches[0];
-            }
-            if (candidate is null) continue;
-            var externalLink = existingVariantLinks.FirstOrDefault(existing => string.Equals(existing.ExternalId, externalVariantId, StringComparison.OrdinalIgnoreCase));
-            if (externalLink is not null) continue;
-            var localLink = existingVariantLinks.FirstOrDefault(existing => existing.VariantId == candidate.Id);
-            if (localLink is not null) continue;
-            db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
-            existingVariantLinks.Add(new MarketplaceVariantLink { TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
-            telemetryInsertedCount++;
-        }
         return true;
     }
 
