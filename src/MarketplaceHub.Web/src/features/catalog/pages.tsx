@@ -761,12 +761,13 @@ function LowStockDetailsModal({ products, loading, error, onClose, onImageClick 
           <div className="low-stock-family-list">
             {filteredGroups.map(group => {
               const modelCode = lowStockModelCode(group)
-              return <article className="low-stock-family-card" key={group.id}>
-                <div className="low-stock-family-header">
+              return <details className="low-stock-family-card" key={group.id}>
+                <summary className="low-stock-family-header">
                   <ProductCatalogImage url={lowStockProductImage(group.primary)} title={group.primary.title} onClick={() => { const url = lowStockProductImage(group.primary); if (url) onImageClick(url, group.primary.title) }} />
                   <div><small>Model kodu</small><strong>{modelCode}</strong><span>{group.primary.title}</span></div>
                   <span className="low-stock-family-count">{group.products.length} renk</span>
-                </div>
+                  <UiIcon name="chevronDown" />
+                </summary>
                 <div className="low-stock-color-list">
                   {[...group.products].sort((left, right) => lowStockProductColor(left).localeCompare(lowStockProductColor(right), 'tr', { sensitivity: 'base' })).map(product => {
                     const lowVariants = product.variants.filter(variant => variant.onHand <= 0).sort((left, right) => lowStockVariantLabel(left).localeCompare(lowStockVariantLabel(right), 'tr', { numeric: true, sensitivity: 'base' }))
@@ -782,7 +783,7 @@ function LowStockDetailsModal({ products, loading, error, onClose, onImageClick 
                     </details>
                   })}
                 </div>
-              </article>
+              </details>
             })}
           </div>
         </>}
