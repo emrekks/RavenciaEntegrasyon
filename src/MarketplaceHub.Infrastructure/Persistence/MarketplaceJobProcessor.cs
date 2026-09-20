@@ -2988,6 +2988,24 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             telemetryInsertedCount++;
         }
 
+        // A catalog scan can revisit hundreds of products whose last imported
+        // payload and local projection are already in sync. In that case the
+        // inventory/media reconciliation below only repeats database reads;
+        // the version marker is sufficient to prove that no local edit is
+        // waiting to be preserved and that this exact remote payload was
+        // already applied. Keep the legacy reconciliation path for older links
+        // that do not have a trustworthy imported-product version yet.
+        if (!onlyNewVariants
+            && !isNewProduct
+            && link is not null
+            && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase)
+            && link.LastImportedProductVersion == product!.Version
+            && string.Equals(link.SyncStatus, "SYNCED", StringComparison.OrdinalIgnoreCase))
+        {
+            telemetrySkippedCount++;
+            return observeOnly;
+        }
+
         if (!onlyNewVariants && !isNewProduct && link is not null && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase) && await CatalogSnapshotAlreadyApplied(tenantId, product.Id, snapshot, cancellationToken))
         {
             // A previous import may have stored the remote observation while
