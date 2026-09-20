@@ -935,6 +935,14 @@ export function ProductsPage() {
     : []
   const selectedProductCardCount = useMemo(() => productRowsAsCards(Object.values(selectedProductCache)).length, [selectedProductCache])
   const nextPageCursor = query.data?.nextCursor ?? null
+  useEffect(() => {
+    if (!productImportOpen || !activeProductSyncJobs.length) return
+    const timer = window.setInterval(() => {
+      void client.invalidateQueries({ queryKey: ['products', productFilters, pageSize, pageNumber, pageCursor] })
+      void client.invalidateQueries({ queryKey: ['products', 'summary'] })
+    }, 1500)
+    return () => window.clearInterval(timer)
+  }, [activeProductSyncJobs.length, client, pageCursor, pageNumber, pageSize, productFilters, productImportOpen])
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
   useEffect(() => { setPageNumber(1); setPageCursors({}); setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false); setBulkOpen(false) }, [productFilterKey, pageSize])
   useEffect(() => { if (platformFilterOpen) setExpandedPlatformGroup(selectedPlatformFilter?.group ?? null) }, [platformFilterOpen, selectedPlatformFilter?.group])

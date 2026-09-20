@@ -1708,12 +1708,45 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var contentLabel = !newOnly && !mappingOnly
             ? updateExistingProducts ? " · Mevcut ürün bilgileri güncellenecek" : " · Mevcut ürün bilgileri korunacak"
             : "";
-        var receivedProducts = 0;
-        if (jobId is { } currentJob)
-            await UpdateProductSyncProgressAsync(tenantId, currentJob, 0, null, null, scanLabel + lifecycleLabel + contentLabel + " · Ürün sayfaları bekleniyor", cancellationToken);
-        int? totalProducts = null;
+        var importJobId = jobId ?? Guid.CreateVersion7();
+        var importSession = await db.ProductImportSessions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        if (importSession is null)
+        {
+            importSession = new ProductImportSession
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ConnectionId = connectionId,
+                JobId = importJobId,
+                Phase = "SCANNING",
+                CreatedAt = now,
+                UpdatedAt = now,
+                Version = 1
+            };
+            db.ProductImportSessions.Add(importSession);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        if (importSession.Phase == "COMPLETED")
+        {
+            await db.ProductImportStagingRecords
+                .Where(x => x.TenantId == tenantId && x.JobId == importJobId)
+                .ExecuteDeleteAsync(cancellationToken);
+            if (jobId is { } finishedJob)
+                await UpdateProductSyncProgressAsync(tenantId, finishedJob, importSession.ReceivedProducts, importSession.TotalProducts, 100, $"{importSession.ReceivedProducts:N0} · Aktarımı tamamlandı", cancellationToken, keepExistingTotal: true);
+            return true;
+        }
+        var previousProgress = jobId is { } progressJob
+            ? await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == progressJob).Select(x => new { x.ProgressProcessed, x.ProgressSkipped, x.ProgressFailed }).SingleOrDefaultAsync(cancellationToken)
+            : null;
+        telemetryImportProcessedCount = previousProgress?.ProgressProcessed ?? 0;
+        telemetryImportSkippedCount = previousProgress?.ProgressSkipped ?? 0;
+        telemetryImportFailedCount = previousProgress?.ProgressFailed ?? 0;
+        var receivedProducts = importSession.ReceivedProducts;
+        int? totalProducts = importSession.TotalProducts;
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
-        if (effectiveFullScan && cursor.OpaqueCursor is not null)
+        var scanRequired = importSession.Phase == "SCANNING";
+        if (scanRequired && importSession.PageNumber == 0 && effectiveFullScan && cursor.OpaqueCursor is not null)
         {
             cursor.OpaqueCursor = null;
             cursor.Version++;
@@ -1748,10 +1781,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         DateTimeOffset? modifiedAfter = !effectiveFullScan && !singleLookup && hasSnapshots && cursor.LastModifiedWatermark is not null ? cursor.LastModifiedWatermark.Value.AddMinutes(-2) : null;
         var productFilter = ProductImportFilter(modifiedAfter, productLookup);
-        // Read the complete remote catalog before preparing the larger Trendyol
-        // reference snapshots. This makes the first phase observable quickly and
-        // prevents a slow brand/category refresh from looking like a stalled
-        // product page request.
+        // Read the remote catalog into the durable staging pool before preparing
+        // the larger Trendyol reference snapshots. The worker can therefore
+        // resume the scan and finalize complete model groups without retaining
+        // the full remote catalog in memory.
         ReferenceSnapshot? brandReferences = null;
         ReferenceSnapshot? categoryReferences = null;
         IReadOnlyList<ReferenceItem> categoryItems = [];
@@ -1760,10 +1793,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // instead of creating a separate hidden definition for each category.
         var importedAttributeLibrary = new Dictionary<string, AttributeDefinition>(StringComparer.Ordinal);
         var categoryContexts = new Dictionary<string, CategoryAttributeContext>(StringComparer.Ordinal);
-        var nextCursor = singleLookup || effectiveFullScan ? null : cursor.OpaqueCursor;
-        var pageNumber = 0;
-        var pendingCatalogSnapshots = new List<RemoteCatalogProduct>();
-        do
+        var nextCursor = scanRequired
+            ? importSession.PageNumber > 0 ? importSession.NextCursor : singleLookup || effectiveFullScan ? null : cursor.OpaqueCursor
+            : null;
+        var pageNumber = importSession.PageNumber;
+        if (jobId is { } currentJob && scanRequired)
+            await UpdateProductSyncProgressAsync(tenantId, currentJob, receivedProducts, totalProducts, null, scanLabel + lifecycleLabel + contentLabel + " · Ürün aktarım havuzu hazırlanıyor", cancellationToken);
+        while (scanRequired)
         {
             pageNumber++;
             if (jobId is { } readingJob)
@@ -1797,38 +1833,91 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .Where(snapshot => includeArchived || snapshot.Variants.Count > 0)
                 .ToList();
             telemetryImportSkippedCount += result.Value.Items.Count - pageSnapshots.Count;
-            pendingCatalogSnapshots.AddRange(pageSnapshots);
             // Trendyol can change the catalog while a long scan is running. If
             // its reported total falls behind the pages actually returned, do
             // not publish an impossible "received / total" progress state.
             if (totalProducts is > 0 && receivedProducts > totalProducts.Value) totalProducts = null;
+
+            var receivedOrderStart = receivedProducts - result.Value.Items.Count;
+            var pageHashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var stagedRows = new List<ProductImportStagingRecord>();
+            foreach (var (snapshot, index) in pageSnapshots.Select((snapshot, index) => (snapshot, index)))
+            {
+                if (string.IsNullOrWhiteSpace(snapshot.ExternalProductId)) continue;
+                var snapshotJson = JsonSerializer.Serialize(snapshot);
+                var snapshotHash = Hash(snapshotJson);
+                if (!pageHashes.Add(snapshotHash)) continue;
+                stagedRows.Add(new ProductImportStagingRecord
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    ConnectionId = connectionId,
+                    JobId = importJobId,
+                    ModelKey = Short(CatalogImportOrdering.ModelKey(snapshot), 256),
+                    ExternalProductId = Short(snapshot.ExternalProductId, 256),
+                    SnapshotHash = snapshotHash,
+                    SnapshotJson = snapshotJson,
+                    ReceivedOrder = receivedOrderStart + index,
+                    State = "STAGED",
+                    CreatedAt = timeProvider.GetUtcNow()
+                });
+            }
+            if (stagedRows.Count > 0)
+            {
+                var existingHashes = await db.ProductImportStagingRecords.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.JobId == importJobId && pageHashes.Contains(x.SnapshotHash))
+                    .Select(x => x.SnapshotHash)
+                    .ToListAsync(cancellationToken);
+                if (existingHashes.Count > 0)
+                    stagedRows.RemoveAll(row => existingHashes.Contains(row.SnapshotHash, StringComparer.OrdinalIgnoreCase));
+                db.ProductImportStagingRecords.AddRange(stagedRows);
+            }
+
+            var hasMore = result.Value.HasMore;
+            if (hasMore && string.IsNullOrWhiteSpace(result.Value.NextCursor))
+                throw new InvalidOperationException("Trendyol ürün sayfası hasMore=true ancak nextPageToken boş döndü.");
+            nextCursor = hasMore ? result.Value.NextCursor : null;
+            var pageSession = await db.ProductImportSessions.SingleAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
+            pageSession.NextCursor = nextCursor;
+            pageSession.ReceivedProducts = receivedProducts;
+            pageSession.TotalProducts = totalProducts;
+            pageSession.PageNumber = pageNumber;
+            pageSession.UpdatedAt = timeProvider.GetUtcNow();
+            if (!hasMore) pageSession.Phase = "READY";
+            await db.SaveChangesAsync(cancellationToken);
+            db.ChangeTracker.Clear();
+
+            foreach (var invalidSnapshot in pageSnapshots.Where(x => string.IsNullOrWhiteSpace(x.ExternalProductId)))
+            {
+                telemetryImportFailedCount++;
+                telemetryFailedCount++;
+                try
+                {
+                    await RecordProductImportFailure(tenantId, connectionId, invalidSnapshot, new InvalidOperationException("Trendyol ürün kimliği boş döndü."), cancellationToken);
+                }
+                catch (Exception issueException) when (issueException is not OperationCanceledException)
+                {
+                    db.ChangeTracker.Clear();
+                }
+            }
 
             if (jobId is { } receivedJob)
             {
                 var percent = totalProducts is { } total && total > 0
                     ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
                     : (int?)null;
-                await UpdateProductSyncProgressAsync(tenantId, receivedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "sayfa alındı", receivedProducts), cancellationToken);
+                await UpdateProductSyncProgressAsync(tenantId, receivedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, result.Value.HasMore ? "sayfa alındı; aktarım havuzuna yazıldı" : "tarama tamamlandı; aktarım havuzu hazır", receivedProducts), cancellationToken);
             }
 
-            if (jobId is { } processedJob)
-            {
-                var percent = totalProducts is { } total && total > 0
-                    ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / total), 0, 99)
-                    : (int?)null;
-                await UpdateProductSyncProgressAsync(tenantId, processedJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "sayfa alındı; model sırası hazırlanıyor", receivedProducts), cancellationToken);
-            }
+            if (!result.Value.HasMore || cancellationToken.IsCancellationRequested) break;
+        }
 
-            if (result.Value.HasMore)
-            {
-                if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol ürün sayfası hasMore=true ancak nextPageToken boş döndü.");
-                nextCursor = result.Value.NextCursor;
-            }
-            else
-            {
-                break;
-            }
-        } while (!cancellationToken.IsCancellationRequested);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var stagedSession = await db.ProductImportSessions.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
+        receivedProducts = stagedSession.ReceivedProducts;
+        totalProducts = stagedSession.TotalProducts;
+        pageNumber = stagedSession.PageNumber;
 
         if (jobId is { } referenceJob)
             await UpdateProductSyncProgressAsync(
@@ -1871,42 +1960,49 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
         }
 
-        foreach (var invalidSnapshot in pendingCatalogSnapshots.Where(x => string.IsNullOrWhiteSpace(x.ExternalProductId)))
+        if (jobId is { } orderingJob)
+            await UpdateProductSyncProgressAsync(tenantId, orderingJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "aktarim havuzu hazır; model grupları başlıyor", receivedProducts), cancellationToken);
+
+        await db.ProductImportSessions.Where(x => x.TenantId == tenantId && x.JobId == importJobId).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Phase, "FINALIZING").SetProperty(x => x.UpdatedAt, timeProvider.GetUtcNow()), cancellationToken);
+        db.ChangeTracker.Clear();
+        var modelKeys = await db.ProductImportStagingRecords.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.State == "STAGED")
+            .GroupBy(x => x.ModelKey)
+            .OrderBy(group => group.Min(x => x.ReceivedOrder))
+            .Select(group => group.Key)
+            .ToListAsync(cancellationToken);
+        var totalModelGroups = await db.ProductImportStagingRecords.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.JobId == importJobId)
+            .Select(x => x.ModelKey)
+            .Distinct()
+            .CountAsync(cancellationToken);
+        var importedModelCount = await db.ProductImportStagingRecords.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.State != "STAGED")
+            .Select(x => x.ModelKey)
+            .Distinct()
+            .CountAsync(cancellationToken);
+        foreach (var modelKey in modelKeys)
         {
-            telemetryImportFailedCount++;
-            telemetryFailedCount++;
-            db.ChangeTracker.Clear();
-            categoryContexts.Clear();
-            importedAttributeLibrary.Clear();
+            var stagingRows = await db.ProductImportStagingRecords.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.ModelKey == modelKey && x.State == "STAGED")
+                .OrderBy(x => x.ReceivedOrder)
+                .ToListAsync(cancellationToken);
+            if (stagingRows.Count == 0) continue;
+            var snapshotGroups = stagingRows
+                .Select(row => JsonSerializer.Deserialize<RemoteCatalogProduct>(row.SnapshotJson) ?? throw new JsonException("Ürün aktarım havuzu kaydı çözümlenemedi."))
+                .GroupBy(x => x.ExternalProductId, StringComparer.OrdinalIgnoreCase)
+                .Select(MergeCatalogSnapshots)
+                .ToList();
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             try
             {
-                await RecordProductImportFailure(tenantId, connectionId, invalidSnapshot, new InvalidOperationException("Trendyol ürün kimliği boş döndü."), cancellationToken);
-            }
-            catch (Exception issueException) when (issueException is not OperationCanceledException)
-            {
-                db.ChangeTracker.Clear();
-            }
-        }
-
-        if (jobId is { } orderingJob)
-            await UpdateProductSyncProgressAsync(tenantId, orderingJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(pageNumber, totalProducts, "ürün sırası hazır; aktarım başlıyor", receivedProducts), cancellationToken);
-
-        var productSaveBatchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:Products:ImportSaveBatchSize", 25), 1, 50);
-        var importedModelCount = 0;
-        foreach (var modelSnapshots in CatalogImportOrdering.GroupByModel(pendingCatalogSnapshots))
-        {
-            foreach (var snapshot in modelSnapshots
-                         .GroupBy(x => x.ExternalProductId, StringComparer.OrdinalIgnoreCase)
-                         .Select(MergeCatalogSnapshots))
-            {
-                try
+                foreach (var snapshot in snapshotGroups)
                 {
                     if (mappingOnly)
                     {
                         var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken);
                         if (!mapped) telemetryImportSkippedCount++;
                         else telemetryImportProcessedCount++;
-                        importedModelCount++;
                         continue;
                     }
                     var productAlreadyLinked = existingProductExternalIds?.Contains(snapshot.ExternalProductId) == true;
@@ -1917,13 +2013,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     if (newOnly && productAlreadyLinked && !hasNewVariant)
                     {
                         telemetryImportSkippedCount++;
-                        importedModelCount++;
                         continue;
                     }
                     if (existingOnly && !productAlreadyLinked && !matchesExistingIdentity)
                     {
                         telemetryImportSkippedCount++;
-                        importedModelCount++;
                         continue;
                     }
                     var categoryContext = categoryReferences is null
@@ -1937,49 +2031,55 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                await db.SaveChangesAsync(cancellationToken);
+                await db.ProductImportStagingRecords
+                    .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.ModelKey == modelKey && x.State == "STAGED")
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.State, "COMPLETED").SetProperty(x => x.FinalizedAt, timeProvider.GetUtcNow()), cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                throw;
+            }
+            catch (Exception exception)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                db.ChangeTracker.Clear();
+                categoryContexts.Clear();
+                importedAttributeLibrary.Clear();
+                telemetryImportFailedCount += snapshotGroups.Count;
+                telemetryFailedCount += snapshotGroups.Count;
+                foreach (var snapshot in snapshotGroups)
                 {
-                    throw;
-                }
-                catch (Exception exception)
-                {
-                    // Isolate a malformed product so it cannot poison the next model.
-                    telemetryImportFailedCount++;
-                    telemetryFailedCount++;
-                    db.ChangeTracker.Clear();
-                    categoryContexts.Clear();
-                    importedAttributeLibrary.Clear();
                     try
                     {
                         await RecordProductImportFailure(tenantId, connectionId, snapshot, exception, cancellationToken);
                     }
                     catch (Exception issueException) when (issueException is not OperationCanceledException)
                     {
-                        // Issue logging is best-effort; the import must continue.
                         db.ChangeTracker.Clear();
                     }
                 }
+                await db.ProductImportStagingRecords
+                    .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.ModelKey == modelKey && x.State == "STAGED")
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.State, "FAILED").SetProperty(x => x.ErrorSummary, Short(exception.Message, 2_000)), cancellationToken);
+            }
+            finally
+            {
+                db.ChangeTracker.Clear();
+                categoryContexts.Clear();
+                importedAttributeLibrary.Clear();
+            }
 
-                if (jobId is { } itemProgressJob)
-                {
-                    var completedProducts = telemetryImportProcessedCount + telemetryImportSkippedCount + telemetryImportFailedCount;
-                    var percent = totalProducts is { } total && total > 0
-                        ? Math.Clamp((int)Math.Floor(completedProducts * 100d / total), 0, 99)
-                        : (int?)null;
-                    await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, "model ürünü işleniyor", receivedProducts), cancellationToken);
-                }
-
-                importedModelCount++;
-                if (importedModelCount % productSaveBatchSize == 0)
-                {
-                    await db.SaveChangesAsync(cancellationToken);
-                    // Keep long catalog scans bounded. Attribute/category
-                    // contexts contain tracked entities, so rebuild them after
-                    // clearing the batch rather than using detached entities.
-                    db.ChangeTracker.Clear();
-                    categoryContexts.Clear();
-                    importedAttributeLibrary.Clear();
-                }
+            importedModelCount++;
+            if (jobId is { } itemProgressJob)
+            {
+                var completedProducts = telemetryImportProcessedCount + telemetryImportSkippedCount + telemetryImportFailedCount;
+                var percent = totalProducts is { } total && total > 0
+                    ? Math.Clamp((int)Math.Floor(completedProducts * 100d / total), 0, 99)
+                    : (int?)null;
+                await UpdateProductSyncProgressAsync(tenantId, itemProgressJob, receivedProducts, totalProducts, percent, ProductImportProgressLabel(pageNumber, totalProducts, $"{importedModelCount:N0}/{totalModelGroups:N0} model grubu tamamlandı", receivedProducts), cancellationToken);
             }
         }
 
@@ -1993,9 +2093,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             completedCursor.LastModifiedWatermark = timeProvider.GetUtcNow().AddSeconds(-60);
             completedCursor.Version++;
         }
+        await db.SaveChangesAsync(cancellationToken);
+        await db.ProductImportSessions
+            .Where(x => x.TenantId == tenantId && x.JobId == importJobId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Phase, "COMPLETED").SetProperty(x => x.NextCursor, (string?)null).SetProperty(x => x.CompletedAt, timeProvider.GetUtcNow()).SetProperty(x => x.UpdatedAt, timeProvider.GetUtcNow()), cancellationToken);
+        await db.ProductImportStagingRecords
+            .Where(x => x.TenantId == tenantId && x.JobId == importJobId)
+            .ExecuteDeleteAsync(cancellationToken);
         if (jobId is { } completedJob)
             await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(pageNumber, totalProducts, "aktarımı tamamlandı", receivedProducts), cancellationToken, keepExistingTotal: true);
-        await db.SaveChangesAsync(cancellationToken);
         return true;
     }
 

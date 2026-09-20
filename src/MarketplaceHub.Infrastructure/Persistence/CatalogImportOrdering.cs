@@ -15,7 +15,7 @@ internal static class CatalogImportOrdering
             .Select(group => (IReadOnlyList<RemoteCatalogProduct>)group.ToList());
     }
 
-    private static string ModelKey(RemoteCatalogProduct snapshot)
+    internal static string ModelKey(RemoteCatalogProduct snapshot)
     {
         if (!string.IsNullOrWhiteSpace(snapshot.ProductMainId)
             && !string.Equals(snapshot.ProductMainId.Trim(), snapshot.ExternalProductId.Trim(), StringComparison.OrdinalIgnoreCase))

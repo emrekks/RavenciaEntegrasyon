@@ -173,6 +173,23 @@ internal static class CatalogModelConfiguration
 
     private static void ConfigureImports(ModelBuilder builder)
     {
+        builder.Entity<ProductImportSession>(entity =>
+        {
+            entity.ToTable("product_import_sessions", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
+            entity.Property(x => x.Phase).HasMaxLength(24); entity.Property(x => x.NextCursor).HasMaxLength(2048); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.JobId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.Phase });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<ProductImportStagingRecord>(entity =>
+        {
+            entity.ToTable("product_import_staging_records", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
+            entity.Property(x => x.ModelKey).HasMaxLength(256); entity.Property(x => x.ExternalProductId).HasMaxLength(256); entity.Property(x => x.SnapshotHash).HasMaxLength(128); entity.Property(x => x.SnapshotJson).HasColumnType("jsonb"); entity.Property(x => x.State).HasMaxLength(16); entity.Property(x => x.ErrorSummary).HasMaxLength(2_000);
+            entity.HasIndex(x => new { x.TenantId, x.JobId, x.State, x.ReceivedOrder }); entity.HasIndex(x => new { x.TenantId, x.JobId, x.ModelKey, x.State });
+            entity.HasIndex(x => new { x.TenantId, x.JobId, x.ExternalProductId, x.SnapshotHash }).IsUnique();
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
         builder.Entity<ImportSession>(entity =>
         {
             entity.ToTable("import_sessions", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.SourceType).HasConversion(value => value.ToString().ToUpperInvariant(), value => Enum.Parse<ImportSourceType>(value, true)).HasMaxLength(24); entity.Property(x => x.Status).HasConversion(value => ImportStatusWire(value), value => ParseImportStatus(value)).HasMaxLength(32); entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.Status });

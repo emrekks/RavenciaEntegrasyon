@@ -105,6 +105,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<DashboardRevenueDaily> DashboardRevenueDaily => Set<DashboardRevenueDaily>();
     public DbSet<DashboardLowStockProjection> DashboardLowStockProjections => Set<DashboardLowStockProjection>();
     public DbSet<DashboardSyncStatusProjection> DashboardSyncStatusProjections => Set<DashboardSyncStatusProjection>();
+    public DbSet<ProductImportSession> ProductImportSessions => Set<ProductImportSession>();
+    public DbSet<ProductImportStagingRecord> ProductImportStagingRecords => Set<ProductImportStagingRecord>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
