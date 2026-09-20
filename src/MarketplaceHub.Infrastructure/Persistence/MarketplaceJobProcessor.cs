@@ -2194,6 +2194,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             foreach (var valueText in values)
             {
                 var normalized = NormalizeCatalogKey(valueText, 320);
+                if (!categoryContext.ObservedVariantValueKeys.Add($"{mapped.Definition.Id:D}:{normalized}"))
+                    continue;
                 var value = db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.NormalizedValue == normalized)
                     ?? await db.AttributeValues.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.NormalizedValue == normalized, cancellationToken);
                 if (value is not null)
@@ -2432,8 +2434,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         AttributeDefinition localAttribute,
         ReferenceItem remoteAttribute,
         IReadOnlyList<ReferenceItem> remoteValues,
+        CategoryAttributeContext categoryContext,
         CancellationToken cancellationToken)
     {
+        var hasNewTrackedValue = db.AttributeValues.Local.Any(x =>
+            x.TenantId == tenantId
+            && x.AttributeId == localAttribute.Id
+            && x.IsActive
+            && !categoryContext.ExactWebColorValueIds.Contains(x.Id));
+        if (categoryContext.ExactWebColorInitializedAttributeIds.Contains(localAttribute.Id) && !hasNewTrackedValue)
+            return;
+
         var valueScope = $"{categoryExternalId}/{remoteAttribute.ExternalId}";
         var valueSnapshot = await db.ReferenceSnapshots.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ATTRIBUTE_VALUES" && x.ScopeExternalId == valueScope && x.IsCurrent)
@@ -2454,7 +2465,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .GroupBy(x => NormalizeCatalogKey(x.Name, 320), StringComparer.Ordinal)
             .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
 
-        foreach (var localValue in localValues)
+        categoryContext.ExactWebColorInitializedAttributeIds.Add(localAttribute.Id);
+        foreach (var localValue in localValues.Where(x => categoryContext.ExactWebColorValueIds.Add(x.Id)))
         {
             if (!remoteByValue.TryGetValue(localValue.NormalizedValue, out var remoteValue)) continue;
 
@@ -2495,7 +2507,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             // make values such as “Çok Renkli” publishable immediately while
             // leaving non-identical, user-defined mappings (for example
             // Mürdüm -> Mor) untouched.
-            await EnsureExactWebColorValueMappings(tenantId, connectionId, categoryContext.ExternalCategoryId, mapped.Definition, mapped.Remote, mapped.Values, cancellationToken);
+            await EnsureExactWebColorValueMappings(tenantId, connectionId, categoryContext.ExternalCategoryId, mapped.Definition, mapped.Remote, mapped.Values, categoryContext, cancellationToken);
         }
     }
 
@@ -3924,7 +3936,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private const int DefaultOrderSyncOverlapSeconds = 120;
     private enum OrderSyncMode { Baseline, Incremental }
     private sealed record OrderSyncState(string Version, OrderSyncMode Mode, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, string? NextCursor, int StoreFrontIndex = 0);
-    private sealed record CategoryAttributeContext(Category LocalCategory, string ExternalCategoryId, IReadOnlyDictionary<string, LocalCategoryAttribute> Attributes);
+    private sealed class CategoryAttributeContext(Category LocalCategory, string ExternalCategoryId, IReadOnlyDictionary<string, LocalCategoryAttribute> Attributes)
+    {
+        public Category LocalCategory { get; } = LocalCategory;
+        public string ExternalCategoryId { get; } = ExternalCategoryId;
+        public IReadOnlyDictionary<string, LocalCategoryAttribute> Attributes { get; } = Attributes;
+        public HashSet<string> ObservedVariantValueKeys { get; } = new(StringComparer.Ordinal);
+        public HashSet<Guid> ExactWebColorInitializedAttributeIds { get; } = [];
+        public HashSet<Guid> ExactWebColorValueIds { get; } = [];
+    }
     private sealed record LocalCategoryAttribute(AttributeDefinition Definition, ReferenceItem Remote, IReadOnlyList<ReferenceItem> Values, string Role);
 
     private static OrderSyncState ReadOrderSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool allowBaseline, bool forceBaseline = false)
