@@ -234,7 +234,9 @@ function JobProgressSummary({ job }: { job: JobSummary }) {
   const hasCounters = productSync || received > 0 || job.progressProcessed > 0 || job.progressSkipped > 0 || job.progressFailed > 0 || job.progressTotal !== null
   if (!hasCounters) return null
   const percent = jobProgressPercent(job)
-  const totalLabel = job.progressTotal === null ? 'Toplam kapsam henüz kesinleşmedi' : `${formatJobCount(job.progressTotal)} kayıtlık kapsam`
+  const totalLabel = job.progressTotal === null
+    ? job.status === 'SUCCEEDED' && received > 0 ? `${formatJobCount(received)} kayıt değerlendirildi` : 'Toplam kapsam henüz kesinleşmedi'
+    : `${formatJobCount(job.progressTotal)} kayıtlık kapsam`
   return <section className="jobs-reference-progress-summary" aria-labelledby="job-progress-title">
     <div className="jobs-reference-progress-heading">
       <div>
