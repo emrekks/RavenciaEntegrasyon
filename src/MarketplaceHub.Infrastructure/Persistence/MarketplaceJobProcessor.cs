@@ -3030,10 +3030,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
             if (!onlyNewVariants)
             {
-                var productImageUrls = snapshot.ImageUrls
-                    .Concat(snapshot.Variants.SelectMany(variant => variant.ImageUrls ?? []))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+                var productImageUrls = CatalogImageIdentity.DistinctUrls(
+                    snapshot.ImageUrls.Concat(snapshot.Variants.SelectMany(variant => variant.ImageUrls ?? [])));
                 await UpsertCatalogMedia(tenantId, product, null, productImageUrls, product.Title, cancellationToken);
             }
         }
@@ -3047,9 +3045,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, syncMedia: !observeOnly && updateExistingProducts);
             if (!observeOnly && updateExistingProducts && snapshot.ImageUrls.Count > 0)
             {
-                var productImageUrls = snapshot.ImageUrls
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+                var productImageUrls = CatalogImageIdentity.DistinctUrls(snapshot.ImageUrls);
                 await UpsertCatalogMedia(tenantId, product, null, productImageUrls, product.Title, cancellationToken);
             }
         }
@@ -3177,12 +3173,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var variantCount = await db.ProductVariants.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.ProductId == productId, cancellationToken);
         if (variantCount < snapshot.Variants.Count) return false;
 
-        var expectedUrls = snapshot.ImageUrls
-            .Select(NormalizeCatalogImageUrl)
-            .Where(x => x is not null)
-            .Select(x => x!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var expectedUrls = CatalogImageIdentity.DistinctUrls(snapshot.ImageUrls);
         var mediaRows = await (from media in db.ProductMedia.AsNoTracking()
                                join asset in db.FileAssets.AsNoTracking()
                                    on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
@@ -3414,21 +3405,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 var entries = group.ToList();
                 var last = entries[^1];
                 var hasImagePayload = entries.Any(entry => entry.ImageUrls is not null);
-                var imageUrls = entries
+                var imageUrls = CatalogImageIdentity.DistinctUrls(entries
                     .Where(entry => entry.ImageUrls is not null)
-                    .SelectMany(entry => entry.ImageUrls!)
-                    .Where(url => !string.IsNullOrWhiteSpace(url))
-                    .Select(url => url.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+                    .SelectMany(entry => entry.ImageUrls!));
                 return last with { ImageUrls = hasImagePayload ? imageUrls : null };
             })
             .ToList();
-        var images = snapshots
-            .SelectMany(snapshot => snapshot.ImageUrls.Concat(snapshot.Variants.SelectMany(variant => variant.ImageUrls ?? [])))
-            .Where(url => !string.IsNullOrWhiteSpace(url))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var images = CatalogImageIdentity.DistinctUrls(
+            snapshots.SelectMany(snapshot => snapshot.ImageUrls.Concat(snapshot.Variants.SelectMany(variant => variant.ImageUrls ?? []))));
         return first with
         {
             ProductMainId = snapshots.Select(x => x.ProductMainId).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
@@ -3803,20 +3787,32 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task UpsertCatalogMedia(Guid tenantId, Product product, Guid? variantId, IReadOnlyList<string> sourceUrls, string altText, CancellationToken cancellationToken)
     {
-        var urls = sourceUrls.Select(NormalizeCatalogImageUrl).Where(x => x is not null).Select(x => x!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var urls = CatalogImageIdentity.DistinctUrls(sourceUrls);
         var existing = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId == variantId).ToListAsync(cancellationToken);
-        foreach (var row in existing.Where(x => x.SortOrder >= urls.Length)) row.Status = "ARCHIVED";
-        for (var index = 0; index < urls.Length; index++)
+        var existingAssetIds = existing.Select(x => x.FileAssetId).Distinct().ToArray();
+        var existingAssets = existingAssetIds.Length == 0
+            ? []
+            : await db.FileAssets
+                .Where(x => x.TenantId == tenantId && existingAssetIds.Contains(x.Id))
+                .ToListAsync(cancellationToken);
+        foreach (var row in existing.Where(x => x.SortOrder >= urls.Count)) row.Status = "ARCHIVED";
+        for (var index = 0; index < urls.Count; index++)
         {
             var url = urls[index];
-            var asset = db.FileAssets.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Classification == "PRODUCT_MEDIA_URL" && x.RelativePath == url)
-                ?? await db.FileAssets.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Classification == "PRODUCT_MEDIA_URL" && x.RelativePath == url, cancellationToken);
+            var asset = existingAssets.FirstOrDefault(x => x.Classification == "PRODUCT_MEDIA_URL" && string.Equals(CatalogImageIdentity.NormalizeUrl(x.RelativePath), url, StringComparison.OrdinalIgnoreCase))
+                ?? db.FileAssets.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Classification == "PRODUCT_MEDIA_URL" && string.Equals(CatalogImageIdentity.NormalizeUrl(x.RelativePath), url, StringComparison.OrdinalIgnoreCase))
+                ?? await db.FileAssets.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Classification == "PRODUCT_MEDIA_URL" && x.RelativePath == url, cancellationToken);
             if (asset is null)
             {
                 asset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenantId, Classification = "PRODUCT_MEDIA_URL", RelativePath = url, OriginalNameSafe = Path.GetFileName(new Uri(url).AbsolutePath), MimeType = ImageMime(url), SizeBytes = 0, Sha256 = Hash(url), Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
                 db.FileAssets.Add(asset);
             }
-            else if (asset.Status != "ACTIVE" || asset.ArchivedAt is not null) { asset.Status = "ACTIVE"; asset.ArchivedAt = null; }
+            else
+            {
+                if (!string.Equals(asset.RelativePath, url, StringComparison.Ordinal)) asset.RelativePath = url;
+                asset.Sha256 = Hash(url);
+                if (asset.Status != "ACTIVE" || asset.ArchivedAt is not null) { asset.Status = "ACTIVE"; asset.ArchivedAt = null; }
+            }
             var media = existing.SingleOrDefault(x => x.SortOrder == index);
             if (media is null) db.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, VariantId = variantId, FileAssetId = asset.Id, MediaRole = index == 0 ? "PRIMARY" : "GALLERY", SortOrder = index, AltText = Short(altText, 320), Status = "ACTIVE" });
             else
@@ -3867,14 +3863,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (char.IsLetterOrDigit(ch)) builder.Append(char.ToUpperInvariant(ch)); else if (builder.Length > 0 && builder[^1] != '-') builder.Append('-');
         }
         return builder.ToString().Trim('-')[..Math.Min(maximum, builder.ToString().Trim('-').Length)];
-    }
-    private static string? NormalizeCatalogImageUrl(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        var candidate = value.Trim();
-        if (candidate.StartsWith("//", StringComparison.Ordinal)) candidate = "https:" + candidate;
-        else if (candidate.StartsWith("/", StringComparison.Ordinal)) candidate = "https://cdn.dsmcdn.com" + candidate;
-        return Uri.TryCreate(candidate, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
     }
     private static string ImageMime(string url) => new Uri(url).AbsolutePath.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
 

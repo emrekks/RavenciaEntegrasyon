@@ -1144,10 +1144,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                            select new { item.ProductId, item.VariantId, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         var mediaUrlsByVariant = media.Where(x => x.VariantId is not null)
             .GroupBy(x => x.VariantId!.Value)
-            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(MediaUrl).Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(MediaUrl)));
         var globalMediaUrlsByProduct = media.Where(x => x.VariantId is null)
             .GroupBy(x => x.ProductId)
-            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(MediaUrl).Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(MediaUrl)));
         var categoryIds = products.Select(x => x.CategoryId).OfType<Guid>().Distinct().ToArray();
         var categoryPathById = categoryIds.Length == 0
             ? new Dictionary<Guid, string>()
@@ -1251,12 +1251,13 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
         var selected = new List<string>();
         var seenColors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenImages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var variant in variants)
         {
             var color = ColorOptionValue(variant.OptionSignature);
             if (color is null || !seenColors.Add(color)) continue;
             foreach (var image in variant.MediaUrls ?? [])
-                if (!string.IsNullOrWhiteSpace(image) && !selected.Contains(image, StringComparer.OrdinalIgnoreCase)) selected.Add(image);
+                if (!string.IsNullOrWhiteSpace(image) && seenImages.Add(CatalogImageIdentity.Key(image))) selected.Add(image);
         }
 
         return selected.Count > 0 ? selected : fallback.Take(1).ToList();
