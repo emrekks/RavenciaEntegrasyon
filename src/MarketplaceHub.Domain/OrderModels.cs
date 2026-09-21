@@ -298,3 +298,12 @@ public static class OrderQuantityInvariant
         ordered >= 0 && activeAllocated >= 0 && cancelled >= 0 && shipped >= 0 && delivered >= 0 && returned >= 0 &&
         ordered == activeAllocated + cancelled && shipped <= activeAllocated && delivered <= shipped && returned <= delivered;
 }
+
+public static class OrderLinePresentationPolicy
+{
+    public static decimal ActiveQuantity(decimal ordered, decimal cancelled) =>
+        Math.Max(0m, ordered - Math.Max(0m, cancelled));
+
+    public static bool HasActiveQuantity(decimal ordered, decimal cancelled) =>
+        ActiveQuantity(ordered, cancelled) > 0m;
+}

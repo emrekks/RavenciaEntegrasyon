@@ -140,7 +140,9 @@ public sealed partial class InvoicingBillingService(
         {
             if (!orders.TryGetValue(package.OrderId, out var order)) return null;
             var connection = connections.GetValueOrDefault(order.ConnectionId);
-            var orderLines = linesByOrder.GetValueOrDefault(order.Id) ?? [];
+            var orderLines = (linesByOrder.GetValueOrDefault(order.Id) ?? [])
+                .Where(line => OrderLinePresentationPolicy.HasActiveQuantity(line.OrderedQuantity, line.CancelledQuantity))
+                .ToList();
             var invoice = invoices.FirstOrDefault(x => x.PackageId == package.Id) ?? invoices.FirstOrDefault(x => x.PackageId == null && x.OrderId == order.Id);
             var invoiceStatus = MarketplaceSalesService.InvoiceLabel(invoice, package.MarketplaceInvoiceStatus, order.CustomerSnapshotJson, [package.RawStatus]);
             if (!DashboardMetricPolicy.IsInvoiceEligiblePackage(package.Status)
@@ -150,7 +152,7 @@ public sealed partial class InvoicingBillingService(
             var dueSoon = invoiceStatus == "FATURA_BEKLIYOR" && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);
             var image = orderLines.Select(line => ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
             var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
-            var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(line.Sku, line.Barcode, line.TitleSnapshot, line.OrderedQuantity, line.UnitPrice, line.VatRate, ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null)).ToList();
+            var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(line.Sku, line.Barcode, line.TitleSnapshot, OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity), line.UnitPrice, line.VatRate, ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null)).ToList();
             var deliveryState = invoice is null
                 ? null
                 : deliveryStates.Where(x => x.InvoiceId == invoice.Id).OrderByDescending(x => x.UpdatedAt).FirstOrDefault();
