@@ -467,14 +467,15 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .OrderBy(x => x)
             .ToListAsync(cancellationToken);
 
-        var trendyolCatalogCount = await (from session in db.ProductImportSessions.AsNoTracking()
+        var trendyolCatalogCount = await (from job in db.IntegrationJobs.AsNoTracking()
                                           join connection in db.PlatformConnections.AsNoTracking()
-                                              on new { session.TenantId, session.ConnectionId } equals new { connection.TenantId, ConnectionId = connection.Id }
-                                          where session.TenantId == tenantId
+                                              on new { job.TenantId, ConnectionId = job.ConnectionId!.Value } equals new { connection.TenantId, ConnectionId = connection.Id }
+                                          where job.TenantId == tenantId
                                               && connection.PlatformCode == "TRENDYOL"
-                                              && session.Phase == "COMPLETED"
-                                          orderby session.CompletedAt descending, session.UpdatedAt descending
-                                          select session.TotalProducts ?? session.ReceivedProducts)
+                                              && job.JobType == MarketplaceJobTypes.ProductSync
+                                              && job.Status == JobStatus.Succeeded
+                                          orderby job.CompletedAt descending, job.CreatedAt descending
+                                          select job.ProgressReceived > 0 ? (int?)job.ProgressReceived : job.ProgressTotal)
             .FirstOrDefaultAsync(cancellationToken);
         return new(
             products.Count,
