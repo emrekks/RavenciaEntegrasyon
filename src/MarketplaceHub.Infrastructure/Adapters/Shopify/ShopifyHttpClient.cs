@@ -19,6 +19,34 @@ public sealed class ShopifyHttpClient(
 {
     private readonly ShopifyOptions settings = options.Value;
 
+    // Shopify can reject protected customer fields for an otherwise valid
+    // order token. Keep the order/status sync useful in that case: try the
+    // rich customer projection first, then a name/address projection, and
+    // finally the order-only projection. A token with read_customers still
+    // gets the full customer snapshot without any special configuration.
+    private const string OrderIdentityFields = "id name createdAt updatedAt cancelledAt currencyCode displayFinancialStatus displayFulfillmentStatus";
+    private const string OrderRichCustomerFields = " email phone customer { id displayName firstName lastName email phone } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone }";
+    private const string OrderReducedCustomerFields = " customer { id displayName firstName lastName } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country }";
+    private const string OrderFinancialFields = " currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status deliveredAt createdAt trackingInfo { number company url } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
+
+    private static string OrderFields(string customerFields) => $"{OrderIdentityFields}{customerFields}{OrderFinancialFields}";
+    private static string OrderPageQuery(string fields) => "query($first:Int!, $after:String, $query:String) { orders(first:$first, after:$after, query:$query, sortKey:UPDATED_AT, reverse:false) { edges { cursor node { " + fields + " } } pageInfo { hasNextPage endCursor } } }";
+    private static string SingleOrderQuery(string fields) => "query($id:ID!) { order(id:$id) { " + fields + " } }";
+
+    private async Task<AdapterResult<JsonDocument>> QueryOrderAsync(ShopifyRequestContext context, object variables, bool single, CancellationToken cancellationToken)
+    {
+        var richQuery = single ? SingleOrderQuery(OrderFields(OrderRichCustomerFields)) : OrderPageQuery(OrderFields(OrderRichCustomerFields));
+        var result = await QueryAsync(context, richQuery, variables, cancellationToken);
+        if (result.IsSuccess || result.Error?.Code != "SHOPIFY_REQUIRED_READ_SCOPE") return result;
+
+        var reducedQuery = single ? SingleOrderQuery(OrderFields(OrderReducedCustomerFields)) : OrderPageQuery(OrderFields(OrderReducedCustomerFields));
+        result = await QueryAsync(context, reducedQuery, variables, cancellationToken);
+        if (result.IsSuccess || result.Error?.Code != "SHOPIFY_REQUIRED_READ_SCOPE") return result;
+
+        var minimalQuery = single ? SingleOrderQuery(OrderFields(string.Empty)) : OrderPageQuery(OrderFields(string.Empty));
+        return await QueryAsync(context, minimalQuery, variables, cancellationToken);
+    }
+
     public async Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken)
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
@@ -136,8 +164,7 @@ public sealed class ShopifyHttpClient(
         if (shop is null) return Fail<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
         var first = Math.Clamp(page.Limit, 1, Math.Clamp(settings.OrderPageSize, 1, 250));
         var query = BuildOrderQuery(window);
-        const string gql = "query($first:Int!, $after:String, $query:String) { orders(first:$first, after:$after, query:$query, sortKey:UPDATED_AT, reverse:false) { edges { cursor node { id name createdAt updatedAt cancelledAt currencyCode displayFinancialStatus displayFulfillmentStatus email phone customer { id displayName firstName lastName email phone } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status deliveredAt createdAt trackingInfo { number company url } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } } } } pageInfo { hasNextPage endCursor } } }";
-        var result = await QueryAsync(shop, gql, new { first, after = page.Cursor, query }, cancellationToken);
+        var result = await QueryOrderAsync(shop, new { first, after = page.Cursor, query }, single: false, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(result.Error!, result.RateLimit);
         try
         {
@@ -157,9 +184,8 @@ public sealed class ShopifyHttpClient(
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
         if (shop is null) return Fail<RemoteOrder>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
-        const string gql = "query($id:ID!) { order(id:$id) { id name createdAt updatedAt cancelledAt currencyCode displayFinancialStatus displayFulfillmentStatus email phone customer { id displayName firstName lastName email phone } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status deliveredAt createdAt trackingInfo { number company url } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } } } }";
         var id = externalOrderId.StartsWith("gid://", StringComparison.Ordinal) ? externalOrderId : $"gid://shopify/Order/{externalOrderId}";
-        var result = await QueryAsync(shop, gql, new { id }, cancellationToken);
+        var result = await QueryOrderAsync(shop, new { id }, single: true, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemoteOrder>.Failure(result.Error!, result.RateLimit);
         var order = result.Value!.RootElement.GetProperty("order");
         if (order.ValueKind == JsonValueKind.Null) return Fail<RemoteOrder>(AdapterErrorClass.NotFound, "SHOPIFY_ORDER_NOT_FOUND", "Shopify siparişi bulunamadı.", HttpStatusCode.NotFound);
