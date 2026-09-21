@@ -138,7 +138,7 @@ export function statusTone(value: string) {
 
 export function productStatusLabel(value: string) {
   const normalized = normalizedStatus(value)
-  if (normalized === 'ACTIVE') return 'Tamamlandı'
+  if (normalized === 'ACTIVE') return 'Satışa Açık'
   if (normalized === 'ARCHIVED') return 'Bekliyor'
   if (normalized === 'MIXED') return 'Hata'
   return normalized === 'DRAFT' ? 'Taslak' : statusLabel(value)
