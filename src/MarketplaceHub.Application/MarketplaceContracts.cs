@@ -500,7 +500,10 @@ public sealed record ReturnListView(
     string InvoiceStatus = "FATURA_BEKLIYOR",
     decimal GrossAmount = 0,
     decimal DiscountAmount = 0,
-    bool IsMicroExport = false);
+    bool IsMicroExport = false,
+    Guid? ConnectionId = null,
+    string PlatformCode = "TRENDYOL",
+    string PlatformDisplayName = "Trendyol");
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,

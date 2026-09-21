@@ -676,6 +676,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var orderIds = claims.Select(x => x.OrderId).Distinct().ToArray();
         var claimIds = claims.Select(x => x.Id).ToArray();
         var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var connectionIds = claims.Select(x => x.ConnectionId).Concat(orders.Values.Select(x => x.ConnectionId)).Distinct().ToArray();
+        var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var returnLines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && claimIds.Contains(x.ClaimId)).ToListAsync(cancellationToken);
         var orderLineIds = returnLines.Select(x => x.OrderLineId).Distinct().ToArray();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
@@ -686,6 +688,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var rows = claims.Select(claim =>
         {
             var order = orders.GetValueOrDefault(claim.OrderId);
+            var connection = order is null ? connections.GetValueOrDefault(claim.ConnectionId) : connections.GetValueOrDefault(order.ConnectionId);
             var claimLines = returnLines.Where(x => x.ClaimId == claim.Id).ToList();
             var package = packages.FirstOrDefault(x => x.OrderId == claim.OrderId);
             var invoice = invoices.FirstOrDefault(x => x.OrderId == claim.OrderId);
@@ -702,7 +705,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode,
                 lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : InvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus]), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
-                order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport);
+                order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
+                connection?.Id, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol");
         }).ToList();
         var hasMore = rows.Count > limit;
         var pageRows = rows.Take(limit).ToList();

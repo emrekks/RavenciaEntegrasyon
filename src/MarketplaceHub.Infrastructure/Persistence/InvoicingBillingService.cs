@@ -87,6 +87,8 @@ public sealed partial class InvoicingBillingService(
         var orderIds = packages.Select(x => x.OrderId).Distinct().ToArray();
         var packageIds = packages.Select(x => x.Id).ToArray();
         var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var connectionIds = orders.Values.Select(x => x.ConnectionId).Distinct().ToArray();
+        var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).ToListAsync(cancellationToken);
         var invoices = await db.Invoices.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null
@@ -137,6 +139,7 @@ public sealed partial class InvoicingBillingService(
         return packages.Select(package =>
         {
             if (!orders.TryGetValue(package.OrderId, out var order)) return null;
+            var connection = connections.GetValueOrDefault(order.ConnectionId);
             var orderLines = linesByOrder.GetValueOrDefault(order.Id) ?? [];
             var invoice = invoices.FirstOrDefault(x => x.PackageId == package.Id) ?? invoices.FirstOrDefault(x => x.PackageId == null && x.OrderId == order.Id);
             var invoiceStatus = MarketplaceSalesService.InvoiceLabel(invoice, package.MarketplaceInvoiceStatus, order.CustomerSnapshotJson, [package.RawStatus]);
@@ -154,7 +157,7 @@ public sealed partial class InvoicingBillingService(
             var deliveryAttempt = invoice is null
                 ? null
                 : deliveryAttempts.Where(x => x.InvoiceId == invoice.Id).OrderByDescending(x => x.AttemptNumber).FirstOrDefault();
-            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, invoice?.InvoiceNumber, invoiceStatus == "FATURA_BEKLIYOR", order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id));
+            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, invoice?.InvoiceNumber, invoiceStatus == "FATURA_BEKLIYOR", order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol");
         }).Where(x => x is not null).Select(x => x!).ToList();
     }
 
