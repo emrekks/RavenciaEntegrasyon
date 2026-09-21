@@ -466,13 +466,24 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .Distinct()
             .OrderBy(x => x)
             .ToListAsync(cancellationToken);
+
+        var trendyolCatalogCount = await (from session in db.ProductImportSessions.AsNoTracking()
+                                          join connection in db.PlatformConnections.AsNoTracking()
+                                              on new { session.TenantId, session.ConnectionId } equals new { connection.TenantId, ConnectionId = connection.Id }
+                                          where session.TenantId == tenantId
+                                              && connection.PlatformCode == "TRENDYOL"
+                                              && session.Phase == "COMPLETED"
+                                          orderby session.CompletedAt descending, session.UpdatedAt descending
+                                          select session.TotalProducts ?? session.ReceivedProducts)
+            .FirstOrDefaultAsync(cancellationToken);
         return new(
             products.Count,
             products.Count(x => x.Status == ProductStatus.Active),
             products.Count(x => stockByProduct.GetValueOrDefault(x.Id) <= 0),
             products.Count(x => stockByProduct.GetValueOrDefault(x.Id) > 0
                 && ProductStockPolicy.IsLowStock(variantsByProduct.GetValueOrDefault(x.Id) ?? [], inventoryByVariant)),
-            platforms);
+            platforms,
+            trendyolCatalogCount > 0 ? trendyolCatalogCount : null);
     }
 
     public async Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken)
