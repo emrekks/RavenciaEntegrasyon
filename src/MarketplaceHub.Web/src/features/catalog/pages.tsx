@@ -1176,8 +1176,10 @@ export function ProductsPage() {
     <div className="product-metrics metrics"><article className="product-metric-total"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="bag" /></span><small>Toplam Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.totalCount ?? 0}</strong></article><article className="product-metric-active"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="circleCheck" /></span><small>Aktif Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.activeCount ?? 0}</strong></article><article className="product-metric-empty"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="alert" /></span><small>Stoksuz Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.outOfStockCount ?? 0}</strong></article><button type="button" className="product-metric-button product-metric-low" onClick={() => setLowStockOpen(true)} aria-haspopup="dialog"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="warehouse" /></span><small>Düşük Stoklu</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.lowStockCount ?? 0}</strong></button></div>
     <div className="product-toolbar">
       <div className="bulk-menu-shell" ref={bulkMenuRef}>
-        <button type="button" className="bulk-action" aria-expanded={bulkOpen} aria-haspopup="menu" aria-controls={bulkOpen ? 'products-bulk-action-menu' : undefined} onClick={() => setBulkOpen(v => !v)}>
-          Toplu işlemler {selectedProductIds.length > 0 ? `(${selectedProductCardCount} kart)` : ''} <UiIcon name="chevronDown" />
+        <button type="button" className="bulk-action" aria-label={selectedProductIds.length > 0 ? `Toplu işlemler, ${selectedProductCardCount} kart seçili` : 'Toplu işlemler'} aria-expanded={bulkOpen} aria-haspopup="menu" aria-controls={bulkOpen ? 'products-bulk-action-menu' : undefined} onClick={() => setBulkOpen(v => !v)}>
+          <span className="bulk-action-label">Toplu işlemler</span>
+          {selectedProductIds.length > 0 && <span className="bulk-action-count">{selectedProductCardCount}</span>}
+          <UiIcon name="chevronDown" />
         </button>
         {bulkOpen && (
           <div id="products-bulk-action-menu" className="bulk-action-menu" role="menu">
