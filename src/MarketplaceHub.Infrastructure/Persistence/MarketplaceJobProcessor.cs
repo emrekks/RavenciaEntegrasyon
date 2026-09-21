@@ -4411,6 +4411,56 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var eventAlreadyRecorded = knownEventIds.Contains(eventId);
             if (eventAlreadyRecorded)
             {
+                // Shopify can enrich the same fulfillment event later with
+                // delivery information while keeping its original createdAt.
+                // Treat that as an idempotent status enrichment, not as a
+                // reason to discard the authoritative forward transition.
+                if (package is not null
+                    && PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt)
+                    && package.Status != target)
+                {
+                    package.Status = target;
+                    package.RawStatus = remotePackage.RawStatus;
+                    package.StatusOccurredAt = remotePackage.OccurredAt;
+                    package.OriginExternalPackageId = remotePackage.OriginExternalPackageId;
+                    package.CargoProviderExternalId = remotePackage.CargoProviderExternalId;
+                    package.CargoTrackingNumber = remotePackage.CargoTrackingNumber;
+                    package.GrossAmount = remotePackage.GrossAmount;
+                    package.DiscountAmount = remotePackage.DiscountAmount;
+                    package.NetAmount = remotePackage.NetAmount;
+                    package.UpdatedAt = now;
+                    package.Version++;
+                    telemetryUpdatedCount++;
+
+                    var history = db.OrderStatusHistory.Local.FirstOrDefault(x => x.TenantId == tenantId && x.OrderId == order.Id && x.SourceEventId == eventId)
+                        ?? await db.OrderStatusHistory.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.SourceEventId == eventId, cancellationToken);
+                    if (history is not null)
+                    {
+                        history.CanonicalStatus = Wire(target);
+                        history.RawStatus = remotePackage.RawStatus;
+                        history.OccurredAt = remotePackage.OccurredAt;
+                        history.RecordedAt = now;
+                    }
+
+                    foreach (var remoteAllocation in remotePackage.Allocations)
+                    {
+                        if (!lines.TryGetValue(remoteAllocation.ExternalLineId, out var line)
+                            || !safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) continue;
+                        var allocationKey = AllocationKey(package.Id, line.Id, eventId);
+                        var allocation = allocationsByKey.GetValueOrDefault(allocationKey);
+                        if (allocation is null)
+                        {
+                            allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId };
+                            db.PackageLineAllocations.Add(allocation);
+                            allocationsByKey[allocationKey] = allocation;
+                        }
+                        allocation.AllocatedQuantity = safe.ActiveAllocatedQuantity;
+                        allocation.CancelledQuantity = safe.CancelledQuantity;
+                        allocation.ShippedQuantity = safe.ShippedQuantity;
+                        allocation.DeliveredQuantity = safe.DeliveredQuantity;
+                        allocation.ReturnedQuantity = safe.ReturnedQuantity;
+                    }
+                }
                 // The initial projection used shipmentPackageStatus before the
                 // authoritative top-level status. When the same package event
                 // is replayed after that mapper correction, repair only this
