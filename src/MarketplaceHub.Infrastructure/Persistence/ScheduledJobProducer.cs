@@ -21,7 +21,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         var policies = (await (from policy in db.ConnectionSyncPolicies.AsNoTracking()
                                join connection in db.PlatformConnections.AsNoTracking()
                                    on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
-                               where policy.Enabled && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
+                               where policy.Enabled && policy.ResourceType != "PRODUCTS" && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
                                    && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY")
                                select new { Policy = policy, Connection = connection }).ToListAsync(cancellationToken))
             .Where(row => row.Connection.PlatformCode == "TRENDYOL" || IsShopifyReadPolicy(row.Policy.ResourceType))
@@ -133,7 +133,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         var productPolicies = await (from policy in db.ConnectionSyncPolicies
                                      join connection in db.PlatformConnections
                                          on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
-                                     where policy.ResourceType == "PRODUCTS" && policy.Enabled && connection.PlatformCode == "TRENDYOL"
+                                     where policy.ResourceType == "PRODUCTS" && policy.Enabled
+                                         && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY")
                                      select policy)
             .ToListAsync(cancellationToken);
         foreach (var policy in productPolicies)
@@ -143,10 +144,12 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         }
 
         var scheduledProductJobs = await db.IntegrationJobs
-            .Where(x => x.JobType == MarketplaceJobTypes.ProductSync
-                && x.JobDedupKey.StartsWith("scheduled:products:")
+            .Where(x => (x.JobType == MarketplaceJobTypes.ProductSync || x.JobType == MarketplaceJobTypes.ShopifyProductSync)
+                && (x.JobDedupKey.StartsWith("scheduled:products:")
+                    || x.JobDedupKey.StartsWith(MarketplaceJobTypes.ActivationBootstrapPrefix) && x.JobDedupKey.EndsWith(":products"))
                 && x.ConnectionId != null
-                && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "TRENDYOL")
+                && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId
+                    && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY"))
                 && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled))
             .ToListAsync(cancellationToken);
         foreach (var job in scheduledProductJobs)
@@ -218,12 +221,14 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
         var connectionIds = operationalConnections.Select(x => x.ConnectionId).ToArray();
         var existing = await db.ConnectionSyncPolicies
-            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "PRODUCTS" || x.ResourceType == "ORDERS" || x.ResourceType == "ORDER_RECOVERY" || x.ResourceType == "ORDER_LIFECYCLE" || x.ResourceType == "ORDER_RECONCILE_SHORT" || x.ResourceType == "ORDER_RECONCILE_MEDIUM" || x.ResourceType == "ORDER_RECONCILE_DAILY" || x.ResourceType == "ORDER_INVOICE_RECONCILIATION" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE" || x.ResourceType == "RETURN_RECONCILE_SHORT" || x.ResourceType == "RETURN_RECONCILE_MEDIUM" || x.ResourceType == "RETURN_RECONCILE_DAILY" || x.ResourceType == "STOCK_RECONCILE_SHORT" || x.ResourceType == "STOCK_RECONCILE_MEDIUM" || x.ResourceType == "STOCK_RECONCILE_DAILY" || x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock || x.ResourceType == MarketplaceExternalWritePolicies.Shipment || x.ResourceType == MarketplaceExternalWritePolicies.Return))
+            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "ORDER_RECOVERY" || x.ResourceType == "ORDER_LIFECYCLE" || x.ResourceType == "ORDER_RECONCILE_SHORT" || x.ResourceType == "ORDER_RECONCILE_MEDIUM" || x.ResourceType == "ORDER_RECONCILE_DAILY" || x.ResourceType == "ORDER_INVOICE_RECONCILIATION" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE" || x.ResourceType == "RETURN_RECONCILE_SHORT" || x.ResourceType == "RETURN_RECONCILE_MEDIUM" || x.ResourceType == "RETURN_RECONCILE_DAILY" || x.ResourceType == "STOCK_RECONCILE_SHORT" || x.ResourceType == "STOCK_RECONCILE_MEDIUM" || x.ResourceType == "STOCK_RECONCILE_DAILY" || x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock || x.ResourceType == MarketplaceExternalWritePolicies.Shipment || x.ResourceType == MarketplaceExternalWritePolicies.Return))
             .ToListAsync(cancellationToken);
         var obsoleteProductPolicies = await (from policy in db.ConnectionSyncPolicies
                                              join connection in db.PlatformConnections
                                                  on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
-                                             where connectionIds.Contains(policy.ConnectionId) && connection.PlatformCode == "TRENDYOL" && policy.ResourceType == "PRODUCTS" && policy.Enabled
+                                             where connectionIds.Contains(policy.ConnectionId)
+                                                 && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY")
+                                                 && policy.ResourceType == "PRODUCTS" && policy.Enabled
                                              select policy)
             .ToListAsync(cancellationToken);
         foreach (var policy in obsoleteProductPolicies)
@@ -234,7 +239,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         foreach (var connection in operationalConnections)
         {
             var defaultsForConnection = DefaultPolicies()
-                .Where(defaults => connection.PlatformCode == "SHOPIFY" ? IsShopifyReadPolicy(defaults.ResourceType) : defaults.ResourceType != "PRODUCTS")
+                .Where(defaults => connection.PlatformCode != "SHOPIFY" || IsShopifyReadPolicy(defaults.ResourceType))
                 .Select(defaults => connection.PlatformCode == "SHOPIFY" && defaults.ResourceType == "ORDERS"
                     ? defaults with { IntervalSeconds = 900, JitterSeconds = 30 }
                     : defaults);
@@ -274,7 +279,6 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     private IReadOnlyList<PolicyDefaults> DefaultPolicies() =>
     [
         new("ORDERS", configuration.GetValue("MarketplaceSync:Orders:IntervalSeconds", 60), configuration.GetValue("MarketplaceSync:Orders:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:Orders:JitterSeconds", 5)),
-        new("PRODUCTS", configuration.GetValue("MarketplaceSync:Products:IntervalSeconds", 86_400), configuration.GetValue("MarketplaceSync:Products:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:Products:JitterSeconds", 900)),
         new("ORDER_RECOVERY", configuration.GetValue("MarketplaceSync:OrderRecovery:IntervalSeconds", 900), configuration.GetValue("MarketplaceSync:OrderRecovery:SafetyWindowSeconds", 600), configuration.GetValue("MarketplaceSync:OrderRecovery:JitterSeconds", 30)),
         new("ORDER_LIFECYCLE", configuration.GetValue("MarketplaceSync:OrderLifecycle:IntervalSeconds", 180), 0, configuration.GetValue("MarketplaceSync:OrderLifecycle:JitterSeconds", 10)),
         new("ORDER_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:OrderReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:OrderReconciliation:ShortJitterSeconds", 30)),
@@ -303,7 +307,6 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             "ORDERS" => current.IntervalSeconds == 30 && current.OverlapSeconds == 600 && current.JitterSeconds == 2
                 || current.IntervalSeconds == 60 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 5)
                 || current.IntervalSeconds == 900 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
-            "PRODUCTS" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
             "ORDER_RECOVERY" => current.IntervalSeconds == 900 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
             "RETURNS" => current.IntervalSeconds == 60 && current.OverlapSeconds == 900 && current.JitterSeconds == 5
                 || current.IntervalSeconds == 180 && current.OverlapSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
@@ -326,7 +329,6 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     private static int ScheduledPolicyPriority(string resourceType) => resourceType switch
     {
         "ORDERS" => 0,
-        "PRODUCTS" => 5,
         "ORDER_RECOVERY" => 10,
         "ORDER_LIFECYCLE" => 20,
         "ORDER_RECONCILE_SHORT" => 30,
@@ -353,8 +355,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation;
 
     private static bool IsShopifyReadPolicy(string resourceType) => resourceType is
-        "PRODUCTS"
-        or "ORDERS"
+        "ORDERS"
         or "ORDER_RECOVERY"
         or "ORDER_LIFECYCLE"
         or "ORDER_RECONCILE_SHORT"
@@ -364,7 +365,6 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     private (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId, string platformCode) => resourceType switch
     {
         "ORDERS" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderSync), $"scheduled:orders:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null })),
-        "PRODUCTS" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.ProductSync), $"scheduled:products:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, full = false, includeArchived = true, includeDrafts = false })),
         "ORDER_RECOVERY" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderRecoverySync), $"scheduled:order-recovery:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null })),
         "ORDER_LIFECYCLE" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderStatusSync), $"scheduled:order-lifecycle:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "ORDER_RECONCILE_SHORT" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderReconciliation), $"scheduled:order-reconcile-short:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:OrderReconciliation:ShortLookbackDays", 1, 1, 14), batchSize = ConfigInt("MarketplaceSync:OrderReconciliation:ShortBatchSize", 25, 1, 100) })),
