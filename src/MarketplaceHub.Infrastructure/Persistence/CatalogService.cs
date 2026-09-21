@@ -478,13 +478,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                                           select job.ProgressReceived > 0 ? (int?)job.ProgressReceived : job.ProgressTotal)
             .FirstOrDefaultAsync(cancellationToken);
         return new(
-            products.Count,
+            trendyolCatalogCount > 0 ? trendyolCatalogCount.Value : products.Count,
             products.Count(x => x.Status == ProductStatus.Active),
             products.Count(x => stockByProduct.GetValueOrDefault(x.Id) <= 0),
             products.Count(x => stockByProduct.GetValueOrDefault(x.Id) > 0
                 && ProductStockPolicy.IsLowStock(variantsByProduct.GetValueOrDefault(x.Id) ?? [], inventoryByVariant)),
-            platforms,
-            trendyolCatalogCount > 0 ? trendyolCatalogCount : null);
+            platforms);
     }
 
     public async Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken)
