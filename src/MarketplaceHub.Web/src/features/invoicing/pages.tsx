@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
-import { Busy, ErrorBox, InvoiceStatusBadge, Pagination, Tabs, UiIcon } from '../../shared/components'
+import { Busy, CargoProviderIcon, ErrorBox, InvoiceStatusBadge, Pagination, Tabs, UiIcon } from '../../shared/components'
 import { invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
 import { appendNotification } from '../../shared/notifications'
 
@@ -170,7 +170,7 @@ export function InvoicesPage() {
         {pageItems.map(item => <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}`} key={item.packageId} role="row">
           <div className="invoice-reference-order"><div><strong>#{item.orderNumber}</strong><small>{new Date(item.orderedAt).toLocaleString('tr-TR')}</small><small>{item.invoiceNumber ?? 'Fatura numarası bekleniyor'}</small></div></div>
           <div className="invoice-reference-buyer"><strong>{item.customerName}</strong><small>{item.productCount} adet · {item.lines?.length ?? 1} çeşit</small></div>
-          <div className="invoice-reference-products"><strong>{item.cargoProviderName ?? 'Kargo bilgisi yok'}</strong><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
+          <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
           <div className="invoice-reference-shipment"><Badge value={item.shipmentStatus} /><small>{item.deliveredAt ? `Teslim: ${new Date(item.deliveredAt).toLocaleDateString('tr-TR')}` : 'Henüz teslim edilmedi'}</small></div>
           <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); return <InvoiceStatusBadge status={invoiceState.value} tone={invoiceState.tone} /> })()}{item.invoiceDueAt && <small className={item.isDueSoon ? 'deadline critical' : ''}>Son tarih: {new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}</small>}</div>
           <div className="invoice-reference-amount"><strong>{item.amount.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</strong><small>{item.isDueSoon ? 'Öncelikli takip' : 'Sipariş toplamı'}</small></div>
