@@ -540,7 +540,7 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
       <section className="workspace-modal single-order-sync-modal" role="dialog" aria-modal="true" aria-labelledby="order-sync-title" onMouseDown={e => e.stopPropagation()}>
         <header>
           <div>
-            <h2 id="order-sync-title"><UiIcon name="sync" /> Sipariş Senkronizasyonu</h2>
+            <h2 id="order-sync-title"><UiIcon name="refresh" /> Sipariş Senkronizasyonu</h2>
             <p>İşaretlediğiniz aktif bağlantılardan siparişleri panele alın.</p>
           </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Kapat"><UiIcon name="close" /></button>
