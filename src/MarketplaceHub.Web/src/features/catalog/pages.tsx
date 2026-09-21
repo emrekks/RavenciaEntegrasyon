@@ -7,6 +7,7 @@ import { Callout, Pagination, UiIcon, type UiIconName } from '../../shared/compo
 import { sanitizeRichText } from '../../shared/security/sanitizeHtml'
 import { productStatusLabel, productStatusTone, statusLabel } from '../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
+import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification } from '../../shared/notifications'
 
 type Versioned = { id: string; version: number }
@@ -892,7 +893,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
         <ProductVariantHover count={group.variants.length} catalogCount={group.products.length} groups={variantDisplayGroups} />
         <button type="button" className="product-list-price clickable-cell" aria-label={`${product.title}: fiyatı düzenle`} onClick={() => onQuickEdit('both')}><strong>{money(startingPrice, product.currency)}</strong></button>
         <button type="button" className="product-list-stock clickable-cell" aria-label={`${product.title}: stoğu düzenle`} onClick={() => onQuickEdit('both')}><strong>{totalStock}</strong></button>
-        <div className="product-list-platforms" aria-label="Platform durumları">{platformCards.length ? platformCards.map(card => <span className={`platform-state-icon ${card.state}`} key={card.key} title={card.label} aria-label={card.label}><img className={`platform-state-logo ${platformLogoClass(card.platformCode)}`} src={platformLogoSource(card.platformCode) ?? '/platforms/trendyol.png'} alt="" /><i /></span>) : <span className="platform-state-icon inactive" title="Platform eşleşmesi bulunamadı" aria-label="Platform eşleşmesi bulunamadı"><img className={`platform-state-logo ${platformLogoClass('TRENDYOL')}`} src={platformLogoSource('TRENDYOL')!} alt="" /><i /></span>}</div>
+        <div className="product-list-platforms" aria-label="Platform durumları">{platformCards.length ? platformCards.map(card => <span className={`platform-state-icon ${card.state}`} key={card.key} title={card.label} aria-label={card.label}><PlatformSquareMark code={card.platformCode} name={card.label} /><i /></span>) : <span className="platform-state-icon inactive" title="Platform eşleşmesi bulunamadı" aria-label="Platform eşleşmesi bulunamadı"><PlatformSquareMark code="TRENDYOL" /><i /></span>}</div>
         <div className={`product-list-status pill ${statusTone}`.trim()}><span className="dot product-status-dot" aria-hidden="true" /><span className="product-status-label">{statusLabel}</span></div>
         <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title={group.products.length > 1 ? 'Ürün grubundaki ilk kaydı düzenle' : 'Ürünü düzenle'}><UiIcon className="product-action-icon" name="edit" /></Link><button type="button" className="product-delete-button" onClick={event => { event.stopPropagation(); onDelete() }} aria-label={`${product.title} ürün grubunu sil`} title={group.products.length > 1 ? 'Ürün grubundaki tüm kayıtları sil' : 'Ürünü sil'}><UiIcon className="product-action-icon" name="trash" /></button></div>
       </div>

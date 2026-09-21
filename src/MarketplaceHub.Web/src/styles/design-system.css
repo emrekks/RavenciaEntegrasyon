@@ -7629,10 +7629,48 @@ small,
   border-radius: 7px;
 }
 
+/* Product status uses compact square platform marks. The full horizontal
+   artwork remains reserved for order, return, and invoice order details. */
+.app-shell.stitch-shell main .platform-square-mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  box-sizing: border-box;
+  color: #fff;
+  background: #5b35a9;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 8px;
+  font-family: var(--rv-font-mono);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: -.03em;
+  line-height: 1;
+  text-transform: lowercase;
+}
+
+.app-shell.stitch-shell main .platform-state-icon .platform-square-mark {
+  width: 32px;
+  height: 32px;
+}
+
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-trendyol { background: #f56600; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-shopify { background: #6da33a; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-hepsiburada { background: #ff6000; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-pazarama { background: #2454d7; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-pttavm { color: #1e1e1e; background: #f4c400; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-n11 { background: #252525; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-trendyol-efaturam { color: #1e1e1e; background: #ffc928; }
+
 /* Keep an active marketplace connection visually distinct from a real
    product match. Brand artwork is normally colourful, so an unmatched
    platform must be muted instead of looking linked at a glance. */
 .app-shell.stitch-shell main .platform-state-icon.inactive .platform-state-logo {
+  filter: grayscale(1);
+  opacity: .42;
+}
+
+.app-shell.stitch-shell main .platform-state-icon.inactive .platform-square-mark {
   filter: grayscale(1);
   opacity: .42;
 }
@@ -9949,6 +9987,7 @@ small,
 
 .app-shell.stitch-shell main .return-reference-row > .return-row-divider {
   border: 0;
+  border-top: 1px solid var(--rv-color-border-strong);
 }
 
 /* One calm tone contract for transient feedback and the persistent history. */
