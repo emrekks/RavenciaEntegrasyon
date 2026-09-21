@@ -190,6 +190,10 @@ public sealed class ShopifyHttpClient(
         if (!result.IsSuccess) return AdapterResult<RemoteOrder>.Failure(result.Error!, result.RateLimit);
         var order = result.Value!.RootElement.GetProperty("order");
         if (order.ValueKind == JsonValueKind.Null) return Fail<RemoteOrder>(AdapterErrorClass.NotFound, "SHOPIFY_ORDER_NOT_FOUND", "Shopify siparişi bulunamadı.", HttpStatusCode.NotFound);
+        var orderDisplayStatus = order.TryGetProperty("displayFulfillmentStatus", out var displayFulfillmentStatus)
+            ? displayFulfillmentStatus.GetString() ?? "NULL"
+            : "MISSING";
+        logger.LogInformation("Shopify order fulfillment status: displayFulfillmentStatus={DisplayStatus}; {StatusMix}", orderDisplayStatus, SummarizeOrderFulfillmentStatuses(order));
         return AdapterResult<RemoteOrder>.Success(MapOrder(order), result.RateLimit);
     }
 
@@ -497,8 +501,17 @@ public sealed class ShopifyHttpClient(
 
     private static string SummarizeFulfillmentStatuses(JsonElement orders)
     {
-        var mix = orders.GetProperty("edges").EnumerateArray()
-            .SelectMany(edge => edge.GetProperty("node").GetProperty("fulfillments").EnumerateArray())
+        var fulfillments = orders.GetProperty("edges").EnumerateArray()
+            .SelectMany(edge => edge.GetProperty("node").GetProperty("fulfillments").EnumerateArray());
+        return SummarizeFulfillments(fulfillments);
+    }
+
+    private static string SummarizeOrderFulfillmentStatuses(JsonElement order) =>
+        SummarizeFulfillments(order.GetProperty("fulfillments").EnumerateArray());
+
+    private static string SummarizeFulfillments(IEnumerable<JsonElement> fulfillments)
+    {
+        var mix = fulfillments
             .Select(fulfillment =>
             {
                 var raw = fulfillment.TryGetProperty("status", out var rawStatus) ? rawStatus.GetString() ?? "NULL" : "MISSING";
