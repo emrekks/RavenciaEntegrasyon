@@ -73,7 +73,7 @@ public sealed partial class InvoicingBillingService(
     {
         var hasOperationalMarketplace = await db.PlatformConnections.AsNoTracking()
             .AnyAsync(x => x.TenantId == tenantId
-                && ActiveIntegrationScope.IsMarketplace(x.PlatformCode)
+                && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY")
                 && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
         if (!hasOperationalMarketplace) return [];
 
