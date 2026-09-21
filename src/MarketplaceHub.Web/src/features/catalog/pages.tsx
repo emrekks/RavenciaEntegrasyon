@@ -1014,7 +1014,7 @@ export function ProductsPage() {
       const newOnly = productImportMode === 'NEW_ONLY'
       const existingOnly = productImportMode === 'EXISTING_ONLY'
       const mappingOnly = productImportMode === 'MAPPING_ONLY'
-      const updateExistingProducts = productImportMethod === 'BULK' && (full || existingOnly) ? productImportUpdateExistingProducts : true
+      const updateExistingProducts = productImportMethod === 'BULK' && !mappingOnly && (full || existingOnly) ? productImportUpdateExistingProducts : false
       const query = new URLSearchParams({ full: String(productImportMethod === 'BULK' && full), newOnly: String(productImportMethod === 'BULK' && newOnly), existingOnly: String(productImportMethod === 'BULK' && existingOnly), mappingOnly: String(productImportMethod === 'BULK' && mappingOnly), includeArchived: String(productImportIncludeArchived), includeDrafts: String(productImportMethod === 'BULK' && productImportIncludeArchived && selectedImportHasShopify), updateExistingProducts: String(updateExistingProducts) })
       if (productImportMethod === 'SINGLE') query.set('lookup', productImportLookup.trim())
       await Promise.all(productImportConnectionIds.map(connectionId => hubApi<AcceptedJob>(`/connections/${connectionId}/product-sync-jobs?${query.toString()}`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: '{}' })))

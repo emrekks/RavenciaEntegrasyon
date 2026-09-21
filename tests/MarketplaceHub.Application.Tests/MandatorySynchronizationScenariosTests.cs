@@ -193,6 +193,14 @@ public sealed class MandatorySynchronizationScenariosTests
     }
 
     [Fact]
+    public void ProductImportConcurrencyPolicy_RejectsModeCollisions()
+    {
+        Assert.True(ProductImportConcurrencyPolicy.RejectsModeCollision("TRENDYOL_PRODUCT_SYNC", "TRENDYOL_PRODUCT_SYNC"));
+        Assert.True(ProductImportConcurrencyPolicy.RejectsModeCollision("SHOPIFY_PRODUCT_SYNC", "SHOPIFY_PRODUCT_SYNC"));
+        Assert.False(ProductImportConcurrencyPolicy.RejectsModeCollision("TRENDYOL_ORDER_SYNC", "TRENDYOL_PRODUCT_SYNC"));
+    }
+
+    [Fact]
     public void DistributedSyncLock_UsesSeparateResourceGroupsPerConnection()
     {
         Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_ORDER_SYNC"));

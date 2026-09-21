@@ -382,6 +382,16 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     public async Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool mappingOnly, bool includeArchived, bool includeDrafts, bool updateExistingProducts, string? productLookup, string correlationId, CancellationToken cancellationToken)
     {
+        // Mapping is deliberately exclusive: it may create links only, never
+        // local products or imported product content, even if an older client
+        // sends overlapping mode flags.
+        if (mappingOnly)
+        {
+            full = false;
+            newOnly = false;
+            existingOnly = false;
+            updateExistingProducts = false;
+        }
         var platform = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
             .Select(x => x.PlatformCode)
@@ -1083,7 +1093,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // visible SYNC_LOCK_BUSY retry storm.
         var executionGroup = MarketplaceSyncExecutionLock.GroupFor(type);
         var conflicting = activeJobs.FirstOrDefault(x => MarketplaceSyncExecutionLock.GroupFor(x.JobType) == executionGroup);
-        if (conflicting is not null) return ServiceResult<Guid>.Ok(conflicting.Id);
+        if (conflicting is not null)
+        {
+            if (ProductImportConcurrencyPolicy.RejectsModeCollision(type, conflicting.JobType))
+                return ServiceResult<Guid>.Fail("PRODUCT_SYNC_ALREADY_RUNNING", "Bu bağlantıda başka bir ürün aktarımı çalışıyor. Önce mevcut işlemi durdurup eşlemeyi yeniden başlatın.", 409);
+            return ServiceResult<Guid>.Ok(conflicting.Id);
+        }
 
         var job = NewJob(tenantId, connectionId, type, recurringRead ? $"{dedup}:{timeProvider.GetUtcNow().ToUnixTimeMilliseconds()}" : dedup, payload, correlationId);
         db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
