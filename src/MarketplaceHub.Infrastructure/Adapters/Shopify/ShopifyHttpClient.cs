@@ -27,6 +27,7 @@ public sealed class ShopifyHttpClient(
     private const string OrderIdentityFields = "id name createdAt updatedAt cancelledAt currencyCode displayFinancialStatus displayFulfillmentStatus";
     private const string OrderRichCustomerFields = " email phone customer { id displayName firstName lastName email phone } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone }";
     private const string OrderReducedCustomerFields = " customer { id displayName firstName lastName } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country }";
+    private const string OrderAddressOnlyFields = " shippingAddress { firstName lastName name } billingAddress { firstName lastName name }";
     private const string OrderFinancialFields = " currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
 
     private static string OrderFields(string customerFields) => $"{OrderIdentityFields}{customerFields}{OrderFinancialFields}";
@@ -41,6 +42,10 @@ public sealed class ShopifyHttpClient(
 
         var reducedQuery = single ? SingleOrderQuery(OrderFields(OrderReducedCustomerFields)) : OrderPageQuery(OrderFields(OrderReducedCustomerFields));
         result = await QueryAsync(context, reducedQuery, variables, cancellationToken);
+        if (result.IsSuccess || result.Error?.Code != "SHOPIFY_REQUIRED_READ_SCOPE") return result;
+
+        var addressOnlyQuery = single ? SingleOrderQuery(OrderFields(OrderAddressOnlyFields)) : OrderPageQuery(OrderFields(OrderAddressOnlyFields));
+        result = await QueryAsync(context, addressOnlyQuery, variables, cancellationToken);
         if (result.IsSuccess || result.Error?.Code != "SHOPIFY_REQUIRED_READ_SCOPE") return result;
 
         var minimalQuery = single ? SingleOrderQuery(OrderFields(string.Empty)) : OrderPageQuery(OrderFields(string.Empty));
@@ -169,7 +174,6 @@ public sealed class ShopifyHttpClient(
         try
         {
             var orders = result.Value!.RootElement.GetProperty("orders");
-            logger.LogInformation("Shopify fulfillment status mix: {StatusMix}", SummarizeFulfillmentStatuses(orders));
             var items = orders.GetProperty("edges").EnumerateArray().Select(edge => MapOrder(edge.GetProperty("node"))).ToList();
             var info = orders.GetProperty("pageInfo");
             var hasMore = info.GetProperty("hasNextPage").GetBoolean();
@@ -190,10 +194,6 @@ public sealed class ShopifyHttpClient(
         if (!result.IsSuccess) return AdapterResult<RemoteOrder>.Failure(result.Error!, result.RateLimit);
         var order = result.Value!.RootElement.GetProperty("order");
         if (order.ValueKind == JsonValueKind.Null) return Fail<RemoteOrder>(AdapterErrorClass.NotFound, "SHOPIFY_ORDER_NOT_FOUND", "Shopify siparişi bulunamadı.", HttpStatusCode.NotFound);
-        var orderDisplayStatus = order.TryGetProperty("displayFulfillmentStatus", out var displayFulfillmentStatus)
-            ? displayFulfillmentStatus.GetString() ?? "NULL"
-            : "MISSING";
-        logger.LogInformation("Shopify order fulfillment status: displayFulfillmentStatus={DisplayStatus}; {StatusMix}", orderDisplayStatus, SummarizeOrderFulfillmentStatuses(order));
         return AdapterResult<RemoteOrder>.Success(MapOrder(order), result.RateLimit);
     }
 
@@ -422,21 +422,26 @@ public sealed class ShopifyHttpClient(
         var orderEmail = order.TryGetProperty("email", out var orderEmailElement) && orderEmailElement.ValueKind == JsonValueKind.String ? orderEmailElement.GetString() : null;
         var orderPhone = order.TryGetProperty("phone", out var orderPhoneElement) && orderPhoneElement.ValueKind == JsonValueKind.String ? orderPhoneElement.GetString() : null;
         var customer = order.TryGetProperty("customer", out var customerElement) ? customerElement : default;
+        var shippingAddress = order.TryGetProperty("shippingAddress", out var shippingAddressElement) && shippingAddressElement.ValueKind == JsonValueKind.Object ? shippingAddressElement : default;
+        var billingAddress = order.TryGetProperty("billingAddress", out var billingAddressElement) && billingAddressElement.ValueKind == JsonValueKind.Object ? billingAddressElement : default;
+        var addressFirstName = TextValue(shippingAddress, "firstName") ?? TextValue(billingAddress, "firstName");
+        var addressLastName = TextValue(shippingAddress, "lastName") ?? TextValue(billingAddress, "lastName");
+        var addressName = TextValue(shippingAddress, "name") ?? TextValue(billingAddress, "name") ?? JoinName(addressFirstName, addressLastName);
         var customerJson = customer.ValueKind == JsonValueKind.Object
             ? JsonSerializer.Serialize(new
             {
-                id = customer.TryGetProperty("id", out var customerId) ? customerId.GetString() : null,
-                customerName = customer.TryGetProperty("displayName", out var customerName) ? customerName.GetString() : null,
-                customerFirstName = customer.TryGetProperty("firstName", out var customerFirstName) ? customerFirstName.GetString() : null,
-                customerLastName = customer.TryGetProperty("lastName", out var customerLastName) ? customerLastName.GetString() : null,
-                email = customer.TryGetProperty("email", out var customerEmail) && customerEmail.ValueKind == JsonValueKind.String ? customerEmail.GetString() : orderEmail,
-                phone = customer.TryGetProperty("phone", out var customerPhone) && customerPhone.ValueKind == JsonValueKind.String ? customerPhone.GetString() : orderPhone
+                id = TextValue(customer, "id"),
+                customerName = TextValue(customer, "displayName") ?? JoinName(TextValue(customer, "firstName"), TextValue(customer, "lastName")),
+                customerFirstName = TextValue(customer, "firstName"),
+                customerLastName = TextValue(customer, "lastName"),
+                email = TextValue(customer, "email") ?? orderEmail,
+                phone = TextValue(customer, "phone") ?? orderPhone
             })
             : JsonSerializer.Serialize(new
             {
-                customerName = (string?)null,
-                customerFirstName = (string?)null,
-                customerLastName = (string?)null,
+                customerName = addressName,
+                customerFirstName = addressFirstName,
+                customerLastName = addressLastName,
                 email = orderEmail,
                 phone = orderPhone
             });
@@ -499,40 +504,9 @@ public sealed class ShopifyHttpClient(
         };
     }
 
-    private static string SummarizeFulfillmentStatuses(JsonElement orders)
-    {
-        var fulfillments = orders.GetProperty("edges").EnumerateArray()
-            .SelectMany(edge => edge.GetProperty("node").GetProperty("fulfillments").EnumerateArray());
-        return SummarizeFulfillments(fulfillments);
-    }
-
-    private static string SummarizeOrderFulfillmentStatuses(JsonElement order) =>
-        SummarizeFulfillments(order.GetProperty("fulfillments").EnumerateArray());
-
-    private static string SummarizeFulfillments(IEnumerable<JsonElement> fulfillments)
-    {
-        var mix = fulfillments
-            .Select(fulfillment =>
-            {
-                var raw = fulfillment.TryGetProperty("status", out var rawStatus) ? rawStatus.GetString() ?? "NULL" : "MISSING";
-                var display = fulfillment.TryGetProperty("displayStatus", out var displayStatus) ? displayStatus.GetString() ?? "NULL" : "MISSING";
-                var deliveredAt = fulfillment.TryGetProperty("deliveredAt", out var deliveredAtElement)
-                    && deliveredAtElement.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined;
-                var deliveredEvent = fulfillment.TryGetProperty("events", out var events)
-                    && events.ValueKind == JsonValueKind.Object
-                    && events.TryGetProperty("nodes", out var nodes)
-                    && nodes.ValueKind == JsonValueKind.Array
-                    && nodes.EnumerateArray().Any(item => item.TryGetProperty("status", out var eventStatus) && string.Equals(eventStatus.GetString(), "DELIVERED", StringComparison.OrdinalIgnoreCase));
-                return $"raw={raw},display={display},deliveredAt={(deliveredAt ? "yes" : "no")},deliveredEvent={(deliveredEvent ? "yes" : "no")}";
-            })
-            .GroupBy(value => value, StringComparer.Ordinal)
-            .OrderBy(group => group.Key, StringComparer.Ordinal)
-            .Select(group => $"{group.Key},count={group.Count()}")
-            .ToList();
-        return mix.Count == 0 ? "none" : string.Join("; ", mix);
-    }
-
     private static string AddressJson(JsonElement order, string property) => order.TryGetProperty(property, out var address) && address.ValueKind != JsonValueKind.Null ? address.GetRawText() : "{}";
+    private static string? TextValue(JsonElement element, string property) => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+    private static string? JoinName(string? firstName, string? lastName) => string.Join(" ", new[] { firstName, lastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim() is { Length: > 0 } name ? name : null;
     private static decimal? DecimalOrNull(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number) ? number : null;
     private static bool TryBuildProductQuery(ShopifyRequestContext context, ProductReadFilter filter, out string? query, out string? error)
     {
