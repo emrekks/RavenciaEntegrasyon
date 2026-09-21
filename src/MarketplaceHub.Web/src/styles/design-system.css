@@ -1012,8 +1012,8 @@
   .order-reference-row:hover, .return-reference-row:hover { border-color: var(--rv-color-border); box-shadow: none; }
   .order-reference-meta, .order-reference-buyer, .order-reference-cargo, .order-reference-invoice, .order-reference-prices, .order-reference-status, .order-reference-actions { display: grid; align-content: center; gap: var(--rv-space-2); }
   .order-reference-meta { gap: var(--rv-space-1); }
-  .order-reference-platform { display: flex; min-width: 0; min-height: 28px; align-items: center; }
-  .order-platform-logo { display: block; width: 96px; height: 32px; max-width: 100%; box-sizing: border-box; padding: 3px 5px; object-fit: contain; object-position: center; background: #fff; border-radius: var(--rv-radius-sm); }
+  .order-reference-platform { display: flex; min-width: 0; min-height: 28px; align-items: center; justify-content: center; }
+  .order-platform-logo { display: block; width: 96px; height: 32px; max-width: 100%; box-sizing: border-box; padding: 0; object-fit: contain; object-position: center; background: transparent; border-radius: 0; }
   .order-platform-logo.platform-logo-trendyol-efaturam { padding: 2px 5px; }
   .order-platform-fallback { min-width: 0; overflow: hidden; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
   .order-reference-meta { grid-column: 2; }
