@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -669,7 +669,7 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
   </>
 }
 
-function ProductCatalogImage({ url, title, onClick }: { url: string | null; title: string; onClick: () => void }) {
+function ProductCatalogImage({ url, title, onClick }: { url: string | null; title: string; onClick: (event: ReactMouseEvent<HTMLImageElement>) => void }) {
   const [failed, setFailed] = useState(false)
   if (failed || !url) return <span className="product-list-placeholder" aria-label={`${title} için ürün görseli bulunamadı`}><UiIcon name="image" /></span>
   return <img src={url} alt={title} className="product-list-thumb clickable-thumb" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} onClick={onClick} title="Görseli büyütmek için tıklayın" />
@@ -744,6 +744,25 @@ function LowStockDetailsModal({ products, loading, error, onClose, onImageClick 
   }, [categoryFilter, groups, search, sort])
   const lowVariantCount = filteredGroups.reduce((sum, group) => sum + lowStockMissingVariantCount(group), 0)
   const catalogRecordCount = filteredGroups.reduce((sum, group) => sum + group.products.length, 0)
+  const familyListRef = useRef<HTMLDivElement | null>(null)
+  const [openLowStockFamilyIds, setOpenLowStockFamilyIds] = useState<Set<string>>(new Set())
+  function toggleLowStockFamilyRow(event: ReactMouseEvent<HTMLElement>, groupId: string) {
+    event.preventDefault()
+    const target = event.currentTarget.closest<HTMLElement>('.low-stock-family-card')
+    const list = familyListRef.current
+    if (!target || !list) return
+    const rowTop = target.getBoundingClientRect().top
+    const rowIds = Array.from(list.querySelectorAll<HTMLElement>(':scope > .low-stock-family-card'))
+      .filter(card => Math.abs(card.getBoundingClientRect().top - rowTop) < 2)
+      .map(card => card.dataset.familyId)
+      .filter((id): id is string => Boolean(id))
+    setOpenLowStockFamilyIds(current => {
+      const next = new Set(current)
+      const shouldOpen = !current.has(groupId)
+      rowIds.forEach(id => shouldOpen ? next.add(id) : next.delete(id))
+      return next
+    })
+  }
 
   return <div className="workspace-modal-backdrop low-stock-details-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) onClose() }}>
     <section className="workspace-modal low-stock-details-modal" role="dialog" aria-modal="true" aria-labelledby="low-stock-details-title" onMouseDown={event => event.stopPropagation()}>
@@ -763,12 +782,12 @@ function LowStockDetailsModal({ products, loading, error, onClose, onImageClick 
           </div>
           <div className="low-stock-details-summary"><strong>{filteredGroups.length} model</strong><span>{catalogRecordCount} katalog kaydı · {lowVariantCount} eksik varyant</span></div>
           {!filteredGroups.length && <p className="low-stock-details-state">Arama veya filtreye uyan düşük stoklu ürün bulunamadı.</p>}
-          <div className="low-stock-family-list">
+          <div className="low-stock-family-list" ref={familyListRef}>
             {filteredGroups.map(group => {
               const modelCode = lowStockModelCode(group)
-              return <details className="low-stock-family-card" key={group.id}>
-                <summary className="low-stock-family-header">
-                  <ProductCatalogImage url={lowStockProductImage(group.primary)} title={group.primary.title} onClick={() => { const url = lowStockProductImage(group.primary); if (url) onImageClick(url, group.primary.title) }} />
+              return <details className="low-stock-family-card" data-family-id={group.id} open={openLowStockFamilyIds.has(group.id)} key={group.id}>
+                <summary className="low-stock-family-header" onClick={event => toggleLowStockFamilyRow(event, group.id)}>
+                  <ProductCatalogImage url={lowStockProductImage(group.primary)} title={group.primary.title} onClick={event => { event.stopPropagation(); const url = lowStockProductImage(group.primary); if (url) onImageClick(url, group.primary.title) }} />
                   <div><small>Model kodu</small><strong>{modelCode}</strong><span>{group.primary.title}</span></div>
                   <span className="low-stock-family-count">{group.products.length} renk</span>
                   <UiIcon name="chevronDown" />
