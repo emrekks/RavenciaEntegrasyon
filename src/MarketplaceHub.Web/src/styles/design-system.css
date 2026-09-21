@@ -1058,7 +1058,7 @@
   .cargo-provider-display { display: grid; justify-items: center; gap: 3px; }
   .cargo-provider-icon { display: block; width: min(92px, 100%); max-width: 92px; max-height: 34px; height: auto; color: var(--rv-color-muted); object-fit: contain; font-size: var(--rv-font-size-xs); font-weight: 800; text-align: center; }
   .cargo-provider-icon-fallback { width: auto; max-width: 100%; overflow-wrap: anywhere; color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); line-height: 1.35; text-align: left; }
-  .invoice-cargo-provider { justify-items: start; min-width: 0; }
+  .invoice-cargo-provider { justify-items: center; min-width: 0; }
   .invoice-cargo-provider .cargo-provider-icon { max-width: 132px; }
   .order-reference-cargo > b { color: var(--rv-color-ink); font-family: var(--rv-font-mono); font-size: var(--rv-font-size-xs); overflow-wrap: anywhere; }
   .row-menu { position: relative; min-width: 0; }
