@@ -1308,6 +1308,9 @@
   .invoice-reference-order > div { display: grid; min-width: 0; gap: 2px; align-content: center; }
   .invoice-reference-buyer, .invoice-reference-products, .invoice-reference-shipment, .invoice-reference-status, .invoice-reference-amount { min-width: 0; }
   .invoice-reference-order small, .invoice-reference-buyer small, .invoice-reference-products small, .invoice-reference-shipment small, .invoice-reference-status small, .invoice-reference-amount small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); overflow-wrap: anywhere; }
+  .invoice-reference-shipment, .invoice-reference-status { justify-items: center; text-align: center; }
+  .invoice-reference-shipment > .badge, .invoice-reference-status > .badge, .invoice-reference-status > .invoice-status, .invoice-reference-status > .invoice-status-label { justify-self: center; }
+  .invoice-reference-shipment > small, .invoice-reference-status > small { text-align: center; }
   .invoice-reference-status .invoice-status { font-size: var(--rv-font-size-sm); font-weight: 800; }
   .invoice-status.pending { color: var(--rv-color-warning); }
   .invoice-status.complete { color: var(--rv-color-accent); }
