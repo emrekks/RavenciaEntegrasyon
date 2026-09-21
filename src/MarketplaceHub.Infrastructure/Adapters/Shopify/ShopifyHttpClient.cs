@@ -169,6 +169,7 @@ public sealed class ShopifyHttpClient(
         try
         {
             var orders = result.Value!.RootElement.GetProperty("orders");
+            logger.LogInformation("Shopify fulfillment status mix: {StatusMix}", SummarizeFulfillmentStatuses(orders));
             var items = orders.GetProperty("edges").EnumerateArray().Select(edge => MapOrder(edge.GetProperty("node"))).ToList();
             var info = orders.GetProperty("pageInfo");
             var hasMore = info.GetProperty("hasNextPage").GetBoolean();
@@ -492,6 +493,30 @@ public sealed class ShopifyHttpClient(
             "SUCCESS" or "FULFILLED" => "SHIPPED",
             _ => "SHIPPED"
         };
+    }
+
+    private static string SummarizeFulfillmentStatuses(JsonElement orders)
+    {
+        var mix = orders.GetProperty("edges").EnumerateArray()
+            .SelectMany(edge => edge.GetProperty("node").GetProperty("fulfillments").EnumerateArray())
+            .Select(fulfillment =>
+            {
+                var raw = fulfillment.TryGetProperty("status", out var rawStatus) ? rawStatus.GetString() ?? "NULL" : "MISSING";
+                var display = fulfillment.TryGetProperty("displayStatus", out var displayStatus) ? displayStatus.GetString() ?? "NULL" : "MISSING";
+                var deliveredAt = fulfillment.TryGetProperty("deliveredAt", out var deliveredAtElement)
+                    && deliveredAtElement.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined;
+                var deliveredEvent = fulfillment.TryGetProperty("events", out var events)
+                    && events.ValueKind == JsonValueKind.Object
+                    && events.TryGetProperty("nodes", out var nodes)
+                    && nodes.ValueKind == JsonValueKind.Array
+                    && nodes.EnumerateArray().Any(item => item.TryGetProperty("status", out var eventStatus) && string.Equals(eventStatus.GetString(), "DELIVERED", StringComparison.OrdinalIgnoreCase));
+                return $"raw={raw},display={display},deliveredAt={(deliveredAt ? "yes" : "no")},deliveredEvent={(deliveredEvent ? "yes" : "no")}";
+            })
+            .GroupBy(value => value, StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .Select(group => $"{group.Key},count={group.Count()}")
+            .ToList();
+        return mix.Count == 0 ? "none" : string.Join("; ", mix);
     }
 
     private static string AddressJson(JsonElement order, string property) => order.TryGetProperty(property, out var address) && address.ValueKind != JsonValueKind.Null ? address.GetRawText() : "{}";
