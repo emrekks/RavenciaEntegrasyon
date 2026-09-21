@@ -27,7 +27,7 @@ public sealed class ShopifyHttpClient(
     private const string OrderIdentityFields = "id name createdAt updatedAt cancelledAt currencyCode displayFinancialStatus displayFulfillmentStatus";
     private const string OrderRichCustomerFields = " email phone customer { id displayName firstName lastName email phone } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone }";
     private const string OrderReducedCustomerFields = " customer { id displayName firstName lastName } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country }";
-    private const string OrderFinancialFields = " currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status deliveredAt createdAt trackingInfo { number company url } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
+    private const string OrderFinancialFields = " currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
 
     private static string OrderFields(string customerFields) => $"{OrderIdentityFields}{customerFields}{OrderFinancialFields}";
     private static string OrderPageQuery(string fields) => "query($first:Int!, $after:String, $query:String) { orders(first:$first, after:$after, query:$query, sortKey:UPDATED_AT, reverse:false) { edges { cursor node { " + fields + " } } pageInfo { hasNextPage endCursor } } }";
@@ -475,6 +475,14 @@ public sealed class ShopifyHttpClient(
     private static string FulfillmentStatus(JsonElement fulfillment)
     {
         if (fulfillment.TryGetProperty("deliveredAt", out var deliveredAt) && deliveredAt.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
+            return "DELIVERED";
+        if (fulfillment.TryGetProperty("displayStatus", out var displayStatus) && string.Equals(displayStatus.GetString(), "DELIVERED", StringComparison.OrdinalIgnoreCase))
+            return "DELIVERED";
+        if (fulfillment.TryGetProperty("events", out var events)
+            && events.ValueKind == JsonValueKind.Object
+            && events.TryGetProperty("nodes", out var eventNodes)
+            && eventNodes.ValueKind == JsonValueKind.Array
+            && eventNodes.EnumerateArray().Any(item => item.TryGetProperty("status", out var eventStatus) && string.Equals(eventStatus.GetString(), "DELIVERED", StringComparison.OrdinalIgnoreCase)))
             return "DELIVERED";
         var raw = fulfillment.TryGetProperty("status", out var status) ? status.GetString()?.Trim().ToUpperInvariant() : null;
         return raw switch
