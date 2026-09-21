@@ -17,6 +17,11 @@ export const cargoCarriers: CargoCarrier[] = [
 ]
 
 function normalizedCargo(value: string | null | undefined) { return (value ?? '').toLocaleUpperCase('tr-TR').replace(/[^\p{L}\p{N}]/gu, '') }
+function cargoFallbackLabel(value: string | null | undefined) {
+  const label = value?.trim()
+  if (!label) return 'Kargo bekleniyor'
+  return label.toLocaleLowerCase('tr-TR') === 'other' ? 'Diğer' : label
+}
 
 export function cargoCarrier(value: string | null | undefined) {
   const normalized = normalizedCargo(value)
@@ -24,7 +29,7 @@ export function cargoCarrier(value: string | null | undefined) {
 }
 
 export function cargoLabel(value: string | null | undefined) {
-  return cargoCarrier(value)?.label ?? value ?? 'Kargo bekleniyor'
+  return cargoCarrier(value)?.label ?? cargoFallbackLabel(value)
 }
 
 export function cargoMatches(value: string | null | undefined, carrier: CargoCarrier) {
@@ -33,7 +38,7 @@ export function cargoMatches(value: string | null | undefined, carrier: CargoCar
 
 export function CargoProviderIcon({ value, fallbackText = false }: { value: string | null | undefined; fallbackText?: boolean }): ReactNode {
   const carrier = cargoCarrier(value)
-  const label = carrier?.label ?? value ?? 'Kargo bekleniyor'
+  const label = carrier?.label ?? cargoFallbackLabel(value)
   if (!carrier?.iconUrl) return <span className="cargo-provider-icon cargo-provider-icon-fallback" aria-hidden={!fallbackText}>{fallbackText ? label : label.slice(0, 2).toUpperCase()}</span>
   return <img className="cargo-provider-icon" src={carrier.iconUrl} alt={fallbackText ? label : ''} loading="lazy" decoding="async" referrerPolicy="no-referrer" />
 }
