@@ -4432,16 +4432,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     package.Version++;
                     telemetryUpdatedCount++;
 
-                    var history = db.OrderStatusHistory.Local.FirstOrDefault(x => x.TenantId == tenantId && x.OrderId == order.Id && x.SourceEventId == eventId)
-                        ?? await db.OrderStatusHistory.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.SourceEventId == eventId, cancellationToken);
-                    if (history is not null)
-                    {
-                        history.CanonicalStatus = Wire(target);
-                        history.RawStatus = remotePackage.RawStatus;
-                        history.OccurredAt = remotePackage.OccurredAt;
-                        history.RecordedAt = now;
-                    }
-
                     foreach (var remoteAllocation in remotePackage.Allocations)
                     {
                         if (!lines.TryGetValue(remoteAllocation.ExternalLineId, out var line)
