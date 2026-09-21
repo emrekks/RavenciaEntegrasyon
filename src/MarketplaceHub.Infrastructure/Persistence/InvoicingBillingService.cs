@@ -71,11 +71,11 @@ public sealed partial class InvoicingBillingService(
 
     public async Task<IReadOnlyList<InvoiceWorkspaceItemView>> WorkspaceAsync(Guid tenantId, CancellationToken cancellationToken)
     {
-        var hasOperationalTrendyol = await db.PlatformConnections.AsNoTracking()
+        var hasOperationalMarketplace = await db.PlatformConnections.AsNoTracking()
             .AnyAsync(x => x.TenantId == tenantId
-                && x.PlatformCode == "TRENDYOL"
+                && ActiveIntegrationScope.IsMarketplace(x.PlatformCode)
                 && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
-        if (!hasOperationalTrendyol) return [];
+        if (!hasOperationalMarketplace) return [];
 
         var packages = await db.ShipmentPackages.AsNoTracking()
             .Where(x => x.TenantId == tenantId
