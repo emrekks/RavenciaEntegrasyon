@@ -2733,8 +2733,6 @@
 @media (max-width: 1400px) and (min-width: 1201px) {
   .preferred-product-catalog { width: 100%; min-width: 0; }
   .product-catalog-table { min-width: 0; }
-  .product-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .product-toolbar .order-search { grid-column: 1 / -1; }
   .product-catalog-head, .product-catalog-row { grid-template-columns: 34px 76px minmax(170px, 2fr) minmax(110px, .8fr) minmax(70px, .55fr) minmax(62px, .45fr) minmax(82px, .65fr) minmax(82px, .65fr) minmax(82px, .6fr); }
   .product-list-thumb, .product-list-placeholder { width: 68px; height: 102px; min-height: 102px; }
   .product-list-actions { gap: var(--rv-space-1); }
