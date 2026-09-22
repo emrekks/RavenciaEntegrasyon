@@ -7676,8 +7676,28 @@ small,
 }
 
 .app-shell.stitch-shell main .platform-state-icon .platform-square-mark {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.app-shell.stitch-shell main .platform-state-icon:has(.platform-square-mark) {
+  width: 34px;
+  height: 34px;
+}
+
+.app-shell.stitch-shell main .platform-square-mark > img {
+  border-radius: inherit;
+}
+
+.app-shell.stitch-shell main .platform-state-icon::after {
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-width: 1px;
 }
 
 .app-shell.stitch-shell main .platform-square-mark.platform-logo-trendyol { background: #f56600; }
