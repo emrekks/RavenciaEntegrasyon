@@ -43,8 +43,11 @@
 .rv-notification-mark-read .ui-icon, .rv-notification-read-state .ui-icon { width: 16px; height: 16px; stroke-width: 2.5; }
 .rv-notification-history-item.is-read { opacity: 1; }
 .rv-notification-history-copy { min-width: 0; }
-.rv-notification-history-item p { margin: 0; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
-.rv-notification-history-item time { display: block; margin-top: 6px; color: var(--rv-color-muted); font-size: 11px; font-weight: 500; letter-spacing: .025em; }
+.rv-notification-history-copy > strong { display: block; margin-bottom: 3px; color: var(--rv-color-ink); font-size: 12px; font-weight: 700; }
+.rv-notification-history-item p { margin: 0; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
+.rv-notification-history-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; margin-top: 7px; color: var(--rv-color-muted); font-size: 11px; line-height: 1.35; }
+.rv-notification-history-meta > span { color: color-mix(in srgb, var(--rv-notification-tone) 72%, var(--rv-color-ink)); }
+.rv-notification-history-item time { display: inline; color: var(--rv-color-muted); font-size: 11px; font-weight: 500; letter-spacing: .025em; }
 .rv-notification-mark-read, .rv-notification-read-state { display: inline-flex; min-height: 28px; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
 .rv-notification-mark-read { width: 34px; min-width: 34px; min-height: 34px; padding: 0; color: var(--rv-notification-tone); background: color-mix(in srgb, var(--rv-notification-tone) 10%, var(--rv-color-surface)); border: 1px solid color-mix(in srgb, var(--rv-notification-tone) 25%, var(--rv-color-border)); border-radius: 9px; }
 .rv-notification-mark-read:hover { color: var(--rv-notification-tone); background: color-mix(in srgb, var(--rv-notification-tone) 18%, var(--rv-color-surface)); border-color: color-mix(in srgb, var(--rv-notification-tone) 48%, var(--rv-color-border)); }
