@@ -440,6 +440,8 @@
 @layer components {
   .ui-icon { display: block; width: var(--rv-icon-size-sm); height: var(--rv-icon-size-sm); flex: 0 0 auto; overflow: visible; shape-rendering: geometricPrecision; }
   .app-shell.stitch-shell > aside .sidebar-brand-row { display: flex; min-height: 48px; align-items: center; gap: var(--rv-space-3); padding: 0 var(--rv-space-2) var(--rv-space-5); border-bottom: 1px solid var(--rv-color-border); }
+  .sidebar-brand-home { display: inline-flex; min-width: 0; align-items: center; gap: var(--rv-space-3); color: inherit; text-decoration: none; }
+  .sidebar-brand-home:hover { color: inherit; }
   .stitch-brand-mark { display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; color: var(--rv-color-ink); background: transparent; border-radius: 0; box-shadow: none; }
   .stitch-brand-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
   html[data-theme="light"] .stitch-brand-mark img { filter: invert(1); }
