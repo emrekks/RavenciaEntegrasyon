@@ -78,9 +78,15 @@ public sealed class ShopifyOrderCsvParserTests
         var source = ShopifyOrderCsvSnapshotPolicy.ImportLine("{}", importedLine, importedAt);
         var line = new OrderLine
         {
-            Id = Guid.CreateVersion7(), TenantId = Guid.CreateVersion7(), OrderId = Guid.CreateVersion7(),
-            ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Blue dress", RawStatus = "FULFILLED",
-            SourceSnapshotJson = source, Version = 1
+            Id = Guid.CreateVersion7(),
+            TenantId = Guid.CreateVersion7(),
+            OrderId = Guid.CreateVersion7(),
+            ExternalLineId = "line-1",
+            Sku = "SKU-1",
+            TitleSnapshot = "Blue dress",
+            RawStatus = "FULFILLED",
+            SourceSnapshotJson = source,
+            Version = 1
         };
         Assert.Equal("SKU-1", ShopifyOrderCsvSnapshotPolicy.PreserveRemoteSku("", line));
         Assert.Equal("SKU-1", ShopifyOrderCsvSnapshotPolicy.PreserveRemoteSku("SHOPIFY-LINE", line));

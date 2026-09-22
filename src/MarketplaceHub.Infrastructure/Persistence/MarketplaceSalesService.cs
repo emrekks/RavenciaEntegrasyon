@@ -209,12 +209,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     && package.OrderId == order.Id
                     && packageStatuses.Contains(package.Status)))
                 : status switch
-            {
-                // originPackageIds is also present for split/cancel packages;
-                // only Trendyol's explicit creator marker identifies a resend.
-                "RESENT" => query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy))),
-                _ => query.Where(x => x.DerivedStatus == status)
-            };
+                {
+                    // originPackageIds is also present for split/cancel packages;
+                    // only Trendyol's explicit creator marker identifies a resend.
+                    "RESENT" => query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy))),
+                    _ => query.Where(x => x.DerivedStatus == status)
+                };
         }
 
         var search = options.Search?.Trim();
