@@ -192,6 +192,29 @@ public sealed record RemotePackageInvoiceObservation(string? RawStatus, string? 
 public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null);
 public sealed record RemoteOrderRefund(string ExternalRefundId, DateTimeOffset OccurredAt, decimal Amount, string Currency, string RawJson);
 public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "NOT_CANCELLED", string RefundStatus = "NOT_REFUNDED", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null);
+
+public sealed record ShopifyOrderCsvImportResult(
+    int FileRows,
+    int FileOrders,
+    int MatchedOrders,
+    int UpdatedOrders,
+    int UpdatedLines,
+    int UnmatchedOrders,
+    int AmbiguousOrders,
+    int UnmatchedLines,
+    IReadOnlyList<string> UnmatchedOrderNumbers,
+    IReadOnlyList<string> Issues);
+
+public interface IShopifyOrderCsvImportService
+{
+    Task<ServiceResult<ShopifyOrderCsvImportResult>> ImportAsync(
+        Guid tenantId,
+        Guid actorUserId,
+        Guid? connectionId,
+        Stream csv,
+        string correlationId,
+        CancellationToken cancellationToken);
+}
 public sealed record PackageActionCommand(string ExternalPackageId, string Action, string PayloadJson);
 public sealed record ShipmentActionJobPayload(Guid JobId, Guid PackageId, string Action, string PayloadJson);
 public sealed record PackageActionResult(string ExternalPackageId, string Status, string? ExternalOperationId);

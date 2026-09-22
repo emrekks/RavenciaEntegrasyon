@@ -3479,7 +3479,7 @@ button,
 .brand-library-list > span.active .category-chip-remove { color: var(--rv-color-muted); border-left-color: color-mix(in srgb, var(--rv-color-primary) 36%, var(--rv-color-border)); }
 .brand-library-list > span.active .category-chip-remove:hover { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
 
-.product-image-modal { grid-template-rows: auto minmax(0, 1fr); width: min(420px, 100%); }
+.product-image-modal { grid-template-rows: auto minmax(0, 1fr); width: min(480px, calc(100vw - 32px)); }
 .product-image-modal-header { position: relative; padding: var(--rv-space-5) 56px var(--rv-space-4) var(--rv-space-5); }
 .product-image-modal-header > div { display: grid; min-width: 0; gap: 4px; }
 .product-image-modal-header h2, .product-image-modal-model { margin: 0; }
@@ -3489,7 +3489,7 @@ button,
 .product-image-modal-header .modal-close { position: absolute; top: var(--rv-space-4); right: var(--rv-space-4); }
 .product-image-modal-body { padding: 0; }
 .product-image-modal-frame { display: grid; width: 100%; height: auto; min-height: 0; max-width: 100%; margin: 0; place-items: center; overflow: hidden; aspect-ratio: 2 / 3; background: var(--rv-color-surface-raised); border: 0; border-radius: 0; box-shadow: none; }
-.product-image-modal-frame img { display: block; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; }
+.product-image-modal-frame img { display: block; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: contain; }
 
 .order-number { flex-wrap: nowrap; }
 .order-bulk-notice { position: fixed; right: var(--rv-space-5); bottom: var(--rv-space-5); z-index: var(--rv-z-toast); display: flex; width: min(480px, calc(100vw - 32px)); align-items: center; gap: var(--rv-space-3); margin: 0; box-shadow: var(--rv-shadow-lg); }
@@ -5925,6 +5925,88 @@ small,
   flex-basis: 20px;
 }
 
+.shopify-order-status-form-grid {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.shopify-order-status-form-grid > label {
+  display: grid;
+  width: 100%;
+  gap: var(--rv-space-2);
+}
+
+.shopify-order-status-form-grid > label > select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+}
+
+.shopify-order-status-form-grid > .notice {
+  grid-column: 1;
+  margin: 0;
+}
+
+.shopify-csv-import-body {
+  display: grid;
+  min-height: 0;
+  align-content: start;
+  gap: var(--rv-space-4);
+  overflow: auto;
+  padding: var(--rv-space-5) var(--rv-space-6);
+}
+
+.shopify-csv-import-body > label {
+  display: grid;
+  min-width: 0;
+  gap: var(--rv-space-2);
+  color: var(--rv-color-ink);
+  font-weight: 700;
+}
+
+.shopify-csv-import-body > label > select,
+.shopify-csv-import-body > label > input {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.shopify-csv-file-picker > input {
+  padding: var(--rv-space-3);
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-md);
+}
+
+.shopify-csv-file-picker > small {
+  color: var(--rv-color-muted);
+  font-weight: 400;
+}
+
+.shopify-csv-import-result {
+  display: grid;
+  gap: var(--rv-space-2);
+  padding: var(--rv-space-4);
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-md);
+}
+
+.shopify-csv-import-result h3,
+.shopify-csv-import-result p {
+  margin: 0;
+}
+
+.shopify-csv-import-result ul {
+  max-height: 130px;
+  margin: var(--rv-space-2) 0 0;
+  padding-left: var(--rv-space-5);
+  overflow: auto;
+}
+
+.shopify-csv-import-result li {
+  overflow-wrap: anywhere;
+}
+
 /* Invoice controls keep their text on one line and align table headings to
    the same left/center grid used by the row content. */
 .app-shell.stitch-shell main .invoices-reference-heading-actions {
@@ -6571,7 +6653,8 @@ small,
 
 /* Product image previews should follow the catalog's 2:3 portrait format. */
 .app-shell.stitch-shell main .product-image-modal {
-  width: min(440px, calc(100vw - 32px));
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
 }
 
 .app-shell.stitch-shell main .product-image-modal-body {
@@ -6585,6 +6668,18 @@ small,
   border: 1px solid var(--rv-color-border-strong);
   border-radius: 0;
   box-shadow: none;
+}
+
+.app-shell.stitch-shell main .product-image-modal-frame img {
+  object-fit: contain;
+}
+
+@media (max-height: 860px) {
+  .app-shell.stitch-shell main .product-image-modal { width: min(440px, calc(100vw - 32px)); }
+}
+
+@media (max-height: 740px) {
+  .app-shell.stitch-shell main .product-image-modal { width: min(380px, calc(100vw - 32px)); }
 }
 
 .app-shell.stitch-shell main .variant-table-editor > .empty.small {
