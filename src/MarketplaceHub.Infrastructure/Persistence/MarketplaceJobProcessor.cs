@@ -4291,6 +4291,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch = null, bool saveChanges = true, bool projectReservations = true, bool persistFinancialObservations = false)
     {
+        var platformCode = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode)
+            .SingleOrDefaultAsync(cancellationToken);
+        var isShopify = platformCode == "SHOPIFY";
         IReadOnlyDictionary<string, decimal> remoteLineQuantities;
         if (remote.Lines.Count == 0 || remote.Packages.Count == 0)
         {
@@ -4500,6 +4505,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var acceptedStatuses = persistedStatuses.ToList();
         acceptedStatuses.AddRange(db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status));
         order.DerivedStatus = Wire(ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses));
+        if (isShopify)
+        {
+            var manualStatus = await db.OrderStatusHistory.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.RawStatus.StartsWith("MANUAL_SHOPIFY_STATUS:"))
+                .OrderByDescending(x => x.OccurredAt)
+                .Select(x => new { x.CanonicalStatus, x.OccurredAt })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (manualStatus is not null && manualStatus.OccurredAt >= order.LastRemoteModifiedAt)
+                order.DerivedStatus = manualStatus.CanonicalStatus;
+        }
         if (projectReservations && batch is null)
             await ProjectOrderReservations(tenantId, connectionId, lines.Values.Select(line => (line, remote.LastModifiedAt)).ToList(), cancellationToken);
         else if (projectReservations && batch is not null)

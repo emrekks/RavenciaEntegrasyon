@@ -62,6 +62,7 @@ public static class MarketplaceEndpoints
         api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service, string? platform) => Tenant(http) is { } tenant ? Results.Ok(await service.OrderSummaryAsync(tenant.TenantId, platform, http.RequestAborted)) : Unauthorized(http));
         api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted), value => Results.Redirect(value)) : Unauthorized(http));
         api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+        api.MapPut("/orders/{id:guid}/shopify-status", UpdateShopifyOrderStatusAsync);
         api.MapPost("/orders/{id:guid}/instant-process", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -137,6 +138,57 @@ public static class MarketplaceEndpoints
         api.MapPost("/hooks/{connectionPublicId:guid}/{routeToken}", ReceiveWebhook).DisableAntiforgery().RequireRateLimiting("webhook");
         return endpoints;
     }
+
+    private static async Task<IResult> UpdateShopifyOrderStatusAsync(Guid id, ShopifyOrderStatusCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
+
+        var status = command.Status.Trim().ToUpperInvariant();
+        if (status is not ("NEW" or "PROCESSING" or "ON_HOLD" or "READY_TO_SHIP" or "SHIPPED" or "UNDELIVERED" or "DELIVERED" or "RETURN_IN_TRANSIT" or "RETURNED" or "CANCELLED"))
+            return Problem(http, new("SHOPIFY_ORDER_STATUS_INVALID", "Shopify sipariş durumu geçersiz.", 422));
+
+        var order = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == id, http.RequestAborted);
+        if (order is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Sipariş kaydı bulunamadı.", 404));
+
+        var platform = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenant.TenantId && x.Id == order.ConnectionId)
+            .Select(x => x.PlatformCode)
+            .SingleOrDefaultAsync(http.RequestAborted);
+        if (platform != "SHOPIFY") return Problem(http, new("SHOPIFY_ORDER_ONLY", "Bu manuel durum akışı yalnız Shopify siparişleri için kullanılabilir.", 422));
+
+        var now = timeProvider.GetUtcNow();
+        order.DerivedStatus = status;
+        order.UpdatedAt = now;
+        order.Version++;
+        db.OrderStatusHistory.Add(new OrderStatusHistory
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.TenantId,
+            OrderId = order.Id,
+            CanonicalStatus = status,
+            RawStatus = $"MANUAL_SHOPIFY_STATUS:{status}",
+            SourceEventId = $"manual:shopify-status:{now.UtcTicks}:{Guid.NewGuid():N}",
+            OccurredAt = now,
+            RecordedAt = now
+        });
+        db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = tenant.TenantId,
+            ActorUserId = tenant.UserId,
+            Action = "SHOPIFY_ORDER_STATUS_MANUAL",
+            TargetType = "Order",
+            TargetId = id.ToString("D"),
+            Reason = status,
+            CorrelationId = http.TraceIdentifier,
+            CreatedAt = now
+        });
+        await db.SaveChangesAsync(http.RequestAborted);
+        http.Response.Headers.ETag = $"\"v{order.Version}\"";
+        return Results.Ok(new { id = order.Id, status, version = order.Version });
+    }
+
+    private sealed record ShopifyOrderStatusCommand(string Status);
 
     private static async Task<IResult> UploadReturnEvidenceAsync(HttpContext http, AppDbContext db, IPrivateFileStorage storage, TimeProvider timeProvider)
     {

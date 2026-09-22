@@ -23,6 +23,7 @@ const statusLabels: Record<string, string> = {
   FATURA_BEKLIYOR: 'Fatura bekliyor',
   FATURA_ISLENIYOR: 'Fatura kontrol ediliyor',
   FATURA_KESILDI: 'Fatura kesildi',
+  FATURA_YUKLENDI: 'Faturası yüklendi',
   FATURA_KONTROLDE: 'Fatura kontrol ediliyor',
   FATURA_IPTAL: 'Fatura iptal edildi',
   FATURA_REDDEDILDI: 'Fatura reddedildi',
@@ -97,6 +98,7 @@ export function invoiceStatusLabel(value: string | null | undefined) {
   if (['FATURA_ISLENIYOR', 'FATURA_KONTROLDE', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY'].includes(normalized)) return 'Fatura İşleniyor'
   if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'].includes(normalized)) return 'Fatura Reddedildi'
   if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'Fatura İptal'
+  if (['FATURA_YUKLENDI'].includes(normalized)) return 'Faturası Yüklendi'
   if (['FATURA_KESILDI', 'COMPLETED', 'ACCEPTED'].includes(normalized)) return 'Fatura Kesildi'
   return 'Fatura durumu bilinmiyor'
 }
@@ -112,7 +114,7 @@ export function invoiceStatusTone(value: string | null | undefined): InvoiceStat
   if (['FATURA_ISLENIYOR', 'FATURA_KONTROLDE', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY'].includes(normalized)) return 'info'
   if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'].includes(normalized)) return 'danger'
   if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'neutral'
-  if (['FATURA_KESILDI', 'COMPLETED', 'ACCEPTED'].includes(normalized)) return 'success'
+  if (['FATURA_YUKLENDI', 'FATURA_KESILDI', 'COMPLETED', 'ACCEPTED'].includes(normalized)) return 'success'
   return 'neutral'
 }
 

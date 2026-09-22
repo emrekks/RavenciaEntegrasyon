@@ -28,6 +28,7 @@ public static class InvoicingEndpoints
         api.MapPost("/invoices/{id:guid}/marketplace-delivery-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, UserManager<ApplicationUser> users, AppDbContext db) => await EnqueueProtected(id, command, http, users, db, (tenant, _, key) => service.EnqueueDeliveryAsync(tenant, id, key, http.TraceIdentifier, http.RequestAborted), false));
         api.MapPost("/invoices/{id:guid}/cancellation-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, UserManager<ApplicationUser> users, AppDbContext db) => await EnqueueProtected(id, command, http, users, db, (tenant, version, key) => service.EnqueueCancellationAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted)));
         api.MapPost("/invoices/{id:guid}/documents/manual", UploadManualInvoiceDocumentAsync).DisableAntiforgery();
+        api.MapPut("/invoices/{id:guid}/shopify-status", UpdateShopifyInvoiceStatusAsync);
         api.MapGet("/invoices/{invoiceId:guid}/documents/latest/content", async (Guid invoiceId, HttpContext http, AppDbContext db, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -58,8 +59,12 @@ public static class InvoicingEndpoints
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
         if (!http.Request.HasFormContentType) return Problem(http, new("INVOICE_DOCUMENT_FORM_REQUIRED", "multipart/form-data body gereklidir.", 400));
-        var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == id, http.RequestAborted);
+        var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == id, http.RequestAborted);
         if (invoice is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Fatura kaydı bulunamadı.", 404));
+        var providerPlatform = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenant.TenantId && x.Id == invoice.ProviderConnectionId)
+            .Select(x => x.PlatformCode)
+            .SingleOrDefaultAsync(http.RequestAborted);
         var form = await http.Request.ReadFormAsync(http.RequestAborted);
         var file = form.Files.GetFile("file");
         if (file is null || file.Length <= 0) return Problem(http, new("INVOICE_DOCUMENT_FILE_REQUIRED", "file alanında fatura belgesi gereklidir.", 400));
@@ -74,7 +79,19 @@ public static class InvoicingEndpoints
         if (mimeType is null) return Problem(http, new("INVOICE_DOCUMENT_TYPE_UNSUPPORTED", "Yalnız PDF, JPEG veya PNG fatura belgesi kabul edilir.", 415));
         var hash = Convert.ToHexString(SHA256.HashData(bytes));
         var existing = await db.InvoiceDocuments.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.InvoiceId == id && x.DocumentType == "MANUAL_UPLOAD" && x.Sha256 == hash, http.RequestAborted);
-        if (existing is not null) return Results.Ok(new { existing.Id, existing.DocumentType, existing.Sha256, existing.CreatedAt, duplicate = true });
+        if (existing is not null)
+        {
+            if (providerPlatform == "SHOPIFY" && invoice.Status != InvoiceStatus.Completed)
+            {
+                var duplicateNow = timeProvider.GetUtcNow();
+                invoice.Status = InvoiceStatus.Completed;
+                invoice.IssuedAt ??= duplicateNow;
+                invoice.UpdatedAt = duplicateNow;
+                invoice.Version++;
+                await db.SaveChangesAsync(http.RequestAborted);
+            }
+            return Results.Ok(new { existing.Id, existing.DocumentType, existing.Sha256, existing.CreatedAt, duplicate = true });
+        }
 
         var assetId = Guid.CreateVersion7();
         var extension = mimeType switch { "application/pdf" => ".pdf", "image/jpeg" => ".jpg", _ => ".png" };
@@ -84,10 +101,39 @@ public static class InvoicingEndpoints
         var document = new InvoiceDocument { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, InvoiceId = id, DocumentType = "MANUAL_UPLOAD", FileAssetId = assetId, Sha256 = hash, CreatedAt = now };
         db.FileAssets.Add(new FileAsset { Id = assetId, TenantId = tenant.TenantId, Classification = "INVOICE_DOCUMENT_MANUAL", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = mimeType, SizeBytes = bytes.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = now });
         db.InvoiceDocuments.Add(document);
+        if (providerPlatform == "SHOPIFY")
+        {
+            invoice.Status = InvoiceStatus.Completed;
+            invoice.IssuedAt ??= now;
+            invoice.UpdatedAt = now;
+            invoice.Version++;
+        }
         db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = "INVOICE_DOCUMENT_MANUAL_UPLOAD", TargetType = "Invoice", TargetId = id.ToString("D"), Reason = $"{mimeType}:{bytes.LongLength}", CorrelationId = http.TraceIdentifier, CreatedAt = now });
         await db.SaveChangesAsync(http.RequestAborted);
         return Results.Created($"/api/v1/invoices/{id:D}/documents/{document.Id:D}/content", new { document.Id, document.DocumentType, document.Sha256, document.CreatedAt, duplicate = false });
     }
+
+    private static async Task<IResult> UpdateShopifyInvoiceStatusAsync(Guid id, ShopifyInvoiceStatusCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
+        var status = command.Status.Trim().ToUpperInvariant();
+        if (status is not ("PENDING" or "UPLOADED")) return Problem(http, new("SHOPIFY_INVOICE_STATUS_INVALID", "Shopify fatura durumu PENDING veya UPLOADED olmalıdır.", 422));
+        var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == id, http.RequestAborted);
+        if (invoice is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Fatura kaydı bulunamadı.", 404));
+        var providerPlatform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == invoice.ProviderConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(http.RequestAborted);
+        if (providerPlatform != "SHOPIFY") return Problem(http, new("SHOPIFY_INVOICE_ONLY", "Bu manuel durum akışı yalnız Shopify faturaları için kullanılabilir.", 422));
+        var now = timeProvider.GetUtcNow();
+        invoice.Status = status == "UPLOADED" ? InvoiceStatus.Completed : InvoiceStatus.Draft;
+        if (status == "UPLOADED") invoice.IssuedAt ??= now;
+        invoice.UpdatedAt = now;
+        invoice.Version++;
+        db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = "SHOPIFY_INVOICE_STATUS_MANUAL", TargetType = "Invoice", TargetId = id.ToString("D"), Reason = status, CorrelationId = http.TraceIdentifier, CreatedAt = now });
+        await db.SaveChangesAsync(http.RequestAborted);
+        return Results.Ok(new { id = invoice.Id, status = status == "UPLOADED" ? "FATURA_YUKLENDI" : "FATURA_BEKLIYOR", version = invoice.Version });
+    }
+
+    private sealed record ShopifyInvoiceStatusCommand(string Status);
 
     private static string? DetectInvoiceMimeType(byte[] bytes) => bytes.Length >= 5 && bytes[..5].SequenceEqual("%PDF-"u8.ToArray()) ? "application/pdf"
         : bytes.Length >= 3 && bytes[..3].SequenceEqual(new byte[] { 0xFF, 0xD8, 0xFF }) ? "image/jpeg"

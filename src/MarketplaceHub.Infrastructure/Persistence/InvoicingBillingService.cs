@@ -140,11 +140,12 @@ public sealed partial class InvoicingBillingService(
         {
             if (!orders.TryGetValue(package.OrderId, out var order)) return null;
             var connection = connections.GetValueOrDefault(order.ConnectionId);
+            if (connection?.PlatformCode == "SHOPIFY" && package.ExternalPackageId.StartsWith("order:", StringComparison.OrdinalIgnoreCase) && package.ExternalPackageId.EndsWith(":remainder", StringComparison.OrdinalIgnoreCase)) return null;
             var orderLines = (linesByOrder.GetValueOrDefault(order.Id) ?? [])
                 .Where(line => OrderLinePresentationPolicy.HasActiveQuantity(line.OrderedQuantity, line.CancelledQuantity))
                 .ToList();
             var invoice = invoices.FirstOrDefault(x => x.PackageId == package.Id) ?? invoices.FirstOrDefault(x => x.PackageId == null && x.OrderId == order.Id);
-            var invoiceStatus = MarketplaceSalesService.InvoiceLabel(invoice, package.MarketplaceInvoiceStatus, order.CustomerSnapshotJson, [package.RawStatus]);
+            var invoiceStatus = MarketplaceSalesService.InvoiceLabelForPlatform(invoice, package.MarketplaceInvoiceStatus, order.CustomerSnapshotJson, [package.RawStatus], connection?.PlatformCode);
             if (!DashboardMetricPolicy.IsInvoiceEligiblePackage(package.Status)
                 || !DashboardMetricPolicy.IsInvoiceEligibleOrder(order.DerivedStatus)) return null;
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
@@ -226,8 +227,8 @@ public sealed partial class InvoicingBillingService(
         {
             return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "Satış faturası için siparişte uygun paket bulunamadı.", 422);
         }
-        var provider = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.ProviderConnectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
-        if (provider is null) return Invalid<InvoiceDetailView>("billing", "Trendyol E-Faturam bağlantısı zorunludur.");
+        var provider = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.ProviderConnectionId && (x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY"), cancellationToken);
+        if (provider is null) return Invalid<InvoiceDetailView>("billing", "Aktif fatura bağlantısı bulunamadı.");
         var profile = await ProviderManagedProfile(tenantId, provider.Id, cancellationToken);
         var policy = await ManualPackagePolicy(tenantId, provider.Id, cancellationToken);
         if (command.OriginalInvoiceId is { } originalId && !await db.Invoices.AnyAsync(x => x.TenantId == tenantId && x.Id == originalId, cancellationToken)) return Invalid<InvoiceDetailView>("originalInvoiceId", "Orijinal fatura bulunamadı.");
@@ -310,12 +311,12 @@ public sealed partial class InvoicingBillingService(
         {
             var billedPackage = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == billedPackageId).Select(x => new { x.NetAmount, x.OrderId }).SingleAsync(cancellationToken);
             if (billedPackage.NetAmount > 0) remotePayable = billedPackage.NetAmount;
-            else if (await db.ShipmentPackages.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.OrderId == billedPackage.OrderId, cancellationToken) != 1)
+            else if (provider.PlatformCode != "SHOPIFY" && await db.ShipmentPackages.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.OrderId == billedPackage.OrderId, cancellationToken) != 1)
                 return Invalid<InvoiceDetailView>("packageId", "Paket toplamı henüz Trendyol'dan doğrulanmadı; siparişi yeniden eşitleyin.");
         }
         var targetPayable = decimal.Round(remotePayable, 2, MidpointRounding.AwayFromZero);
         if (Math.Abs(calculatedPayable - targetPayable) > 0.01m)
-            return Invalid<InvoiceDetailView>("orderId", $"Sipariş kalem toplamı ({calculatedPayable:0.00}) ile Trendyol sipariş toplamı ({targetPayable:0.00}) eşleşmiyor.");
+            return Invalid<InvoiceDetailView>("orderId", $"Sipariş kalem toplamı ({calculatedPayable:0.00}) ile {(provider.PlatformCode == "SHOPIFY" ? "Shopify sipariş toplamı" : "Trendyol sipariş toplamı")} ({targetPayable:0.00}) eşleşmiyor.");
         if (lines.Count > 0 && calculatedPayable != targetPayable)
         {
             var last = lines[^1]; var difference = targetPayable - calculatedPayable;
