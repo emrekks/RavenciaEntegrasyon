@@ -7668,6 +7668,13 @@ small,
   text-transform: lowercase;
 }
 
+.app-shell.stitch-shell main .platform-square-mark > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .app-shell.stitch-shell main .platform-state-icon .platform-square-mark {
   width: 32px;
   height: 32px;
