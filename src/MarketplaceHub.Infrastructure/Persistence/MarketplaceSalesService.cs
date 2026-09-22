@@ -195,10 +195,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var status = options.Status?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(status) && status != "ALL")
         {
-            query = status switch
+            var packageStatuses = PackageStatusesForOrderTab(status);
+            query = packageStatuses is not null
+                ? query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                    && package.OrderId == order.Id
+                    && packageStatuses.Contains(package.Status)))
+                : status switch
             {
-                "PROCESSING" => query.Where(x => x.DerivedStatus == "PROCESSING" || x.DerivedStatus == "READY_TO_SHIP"),
-                "SHIPPED" => query.Where(x => x.DerivedStatus == "SHIPPED" || x.DerivedStatus == "UNDELIVERED"),
                 // originPackageIds is also present for split/cancel packages;
                 // only Trendyol's explicit creator marker identifies a resend.
                 "RESENT" => query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy))),
@@ -229,6 +232,24 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (options.DateFrom is { } dateFrom) query = query.Where(x => x.OrderedAt >= dateFrom);
         if (options.DateTo is { } dateTo) query = query.Where(x => x.OrderedAt <= dateTo);
     }
+
+    // Status counters are package-based because a marketplace order may be
+    // split. Use the same rule for each tab so a cancelled split package can
+    // never increase the "İptal" counter while hiding its parent order.
+    internal static ShipmentPackageStatus[]? PackageStatusesForOrderTab(string status) => status switch
+    {
+        "NEW" => [ShipmentPackageStatus.New],
+        "PROCESSING" => [ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip],
+        "SHIPPED" => [ShipmentPackageStatus.Shipped, ShipmentPackageStatus.Undelivered],
+        "DELIVERED" => [ShipmentPackageStatus.Delivered],
+        "ON_HOLD" => [ShipmentPackageStatus.OnHold],
+        "CANCELLED" => [ShipmentPackageStatus.Cancelled],
+        "RETURNED" => [ShipmentPackageStatus.Returned],
+        "RETURN_IN_TRANSIT" => [ShipmentPackageStatus.ReturnInTransit],
+        "PARTIALLY_CANCELLED" => [ShipmentPackageStatus.PartiallyCancelled],
+        "MANUAL_REVIEW" => [ShipmentPackageStatus.ManualReview],
+        _ => null
+    };
 
     private static string NormalizeOrderSort(string? value) => value?.Trim().ToUpperInvariant() switch
     {
