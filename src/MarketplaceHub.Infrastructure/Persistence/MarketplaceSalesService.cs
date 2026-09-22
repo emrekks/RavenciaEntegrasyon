@@ -393,6 +393,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             full = false;
             newOnly = false;
             existingOnly = false;
+            // Mapping is a repair pass over the whole existing remote catalog.
+            // Do not let a presentation-only archive toggle leave old records
+            // out of the matching scope.
+            includeArchived = true;
+            includeDrafts = true;
             updateExistingProducts = false;
         }
         var platform = await db.PlatformConnections.AsNoTracking()
