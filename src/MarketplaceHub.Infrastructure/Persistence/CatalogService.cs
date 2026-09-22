@@ -355,9 +355,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         ApplyProductFilters(ref query, tenantId, status, search, platform);
         var countKey = $"catalog:product-family-count:v3:{tenantId:N}:{status?.Trim()}:{search?.Trim()}:{platform?.Trim()}:{stock?.Trim()}";
         var cachedCount = hasPlatformStatusFilter ? null : countCache.Get(countKey);
-        if (!cursors.TryDecodeProduct(after, out var afterUpdatedAt, out var afterId))
+        if (!cursors.TryDecodeProduct(after, out var afterCreatedAt, out var afterId))
             throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(after));
-        var allProducts = await query.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
+        // A platform refresh updates the card content, but must not reshuffle the
+        // catalog. Keep the list in its original insertion order instead of the
+        // mutable UpdatedAt order.
+        var allProducts = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
         var allProductIds = allProducts.Select(x => x.Id).ToArray();
         var allVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && allProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var variantIds = allVariants.Select(variant => variant.Id).ToArray();
@@ -412,14 +415,14 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var variantsByProduct = allVariants.GroupBy(x => x.ProductId).ToDictionary(x => x.Key, x => x.ToList());
         var families = allProducts
             .GroupBy(product => ProductFamilyKey(product, variantsByProduct.GetValueOrDefault(product.Id) ?? []), StringComparer.Ordinal)
-            .Select(group => new ProductFamily(group.Key, group.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id).First(), group.ToList()))
-            .OrderByDescending(x => x.Primary.UpdatedAt).ThenByDescending(x => x.Primary.Id)
+            .Select(group => new ProductFamily(group.Key, group.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).First(), group.ToList()))
+            .OrderByDescending(x => x.Primary.CreatedAt).ThenByDescending(x => x.Primary.Id)
             .ToList();
         var totalCount = cachedCount is int count ? count : families.Count;
         if (cachedCount is not int)
             countCache.Set(countKey, totalCount, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(15), Size = 1 });
         var pageFamilies = families
-            .Where(x => afterId == Guid.Empty || x.Primary.UpdatedAt < afterUpdatedAt || x.Primary.UpdatedAt == afterUpdatedAt && x.Primary.Id.CompareTo(afterId) < 0)
+            .Where(x => afterId == Guid.Empty || x.Primary.CreatedAt < afterCreatedAt || x.Primary.CreatedAt == afterCreatedAt && x.Primary.Id.CompareTo(afterId) < 0)
             .Take(limit)
             .ToList();
         var products = pageFamilies.SelectMany(x => x.Products).ToList();
@@ -427,8 +430,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var variants = allVariants.Where(x => ids.Contains(x.ProductId)).ToList();
         var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken);
         var lastFamily = pageFamilies.LastOrDefault();
-        var hasMore = lastFamily is not null && families.Any(x => x.Primary.UpdatedAt < lastFamily.Primary.UpdatedAt || x.Primary.UpdatedAt == lastFamily.Primary.UpdatedAt && x.Primary.Id.CompareTo(lastFamily.Primary.Id) < 0);
-        return new(views, hasMore ? cursors.EncodeProduct(lastFamily!.Primary.UpdatedAt, lastFamily.Primary.Id) : null, hasMore, totalCount);
+        var hasMore = lastFamily is not null && families.Any(x => x.Primary.CreatedAt < lastFamily.Primary.CreatedAt || x.Primary.CreatedAt == lastFamily.Primary.CreatedAt && x.Primary.Id.CompareTo(lastFamily.Primary.Id) < 0);
+        return new(views, hasMore ? cursors.EncodeProduct(lastFamily!.Primary.CreatedAt, lastFamily.Primary.Id) : null, hasMore, totalCount);
     }
 
     private sealed record ProductFamily(string Key, Product Primary, IReadOnlyList<Product> Products);

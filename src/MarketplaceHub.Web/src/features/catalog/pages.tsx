@@ -616,6 +616,7 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect }:
 function ProductVariantHover({ count, catalogCount, groups }: { count: number; catalogCount: number; groups: VariantDisplayGroup[] }) {
   const triggerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
+  const hoverTimerRef = useRef<number | null>(null)
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ left: 16, top: 16 })
   const maxValueCount = Math.max(0, ...groups.map(group => group.values.length))
@@ -638,9 +639,28 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
   }
 
   function showTooltip() {
+    if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = window.setTimeout(() => {
+      hoverTimerRef.current = null
+      setOpen(true)
+      window.requestAnimationFrame(updatePosition)
+    }, 2000)
+  }
+
+  function hideTooltip() {
+    if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = null
+    setOpen(false)
+  }
+
+  function showTooltipImmediately() {
     setOpen(true)
     window.requestAnimationFrame(updatePosition)
   }
+
+  useEffect(() => () => {
+    if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current)
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -654,11 +674,12 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
       window.removeEventListener('resize', handleViewportChange)
       window.removeEventListener('scroll', handleViewportChange, true)
       document.removeEventListener('keydown', closeOnEscape)
+      if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current)
     }
   }, [groups, open])
 
   return <>
-    <div ref={triggerRef} className="product-list-variants product-variant-hover" tabIndex={0} aria-label={`${catalogCount} seçenek, ${count} varyant. Tüm varyantları görmek için üzerine gelin`} title="Tüm varyantları görmek için üzerine gelin" onMouseEnter={showTooltip} onMouseLeave={() => setOpen(false)} onFocus={showTooltip} onBlur={() => setOpen(false)}>
+    <div ref={triggerRef} className="product-list-variants product-variant-hover" tabIndex={0} aria-label={`${catalogCount} seçenek, ${count} varyant. Tüm varyantları görmek için üzerine gelin`} title="Tüm varyantları görmek için 2 saniye bekleyin" onMouseEnter={showTooltip} onMouseLeave={hideTooltip} onFocus={showTooltipImmediately} onBlur={hideTooltip}>
       <strong>{catalogCount} seçenek</strong><span>{count} varyant</span>
     </div>
     {open && createPortal(
@@ -1322,9 +1343,9 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, productName, mo
   const updateMatrixDraft = (item: VariantDraft, platform: VariantPlatformStatus, field: keyof ChannelPricingDraft, value: string) => setMatrixDrafts(current => ({ ...current, [`${item.key}:${platformKey(platform)}`]: { ...matrixDraft(item, platform), [field]: value } }))
   const renderMatrixHeader = (platform: VariantPlatformStatus, label: string) => {
     const key = platformKey(platform)
-    return <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-head" key={`${key}:${label}`}><strong>{`${marketplacePlatformName(platform)} ${label}`.toLocaleUpperCase('tr-TR')}</strong></div>
+    return <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-head" key={`${key}:${label}`}><strong>{marketplacePlatformName(platform).toLocaleUpperCase('tr-TR')}</strong><span>{label.toLocaleUpperCase('tr-TR')}</span></div>
   }
-  return <div className="workspace-modal-backdrop variant-platform-pricing-backdrop" role="presentation" onMouseDown={() => !saving && onClose()}><section className="workspace-modal variant-platform-pricing-modal" role="dialog" aria-modal="true" aria-labelledby="variant-platform-pricing-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">PLATFORM FİYATLARI</p><h2 id="variant-platform-pricing-title">Varyant kanal fiyatları</h2><p className="variant-platform-pricing-product-context"><strong>{productName || 'Ürün adı belirtilmemiş'}</strong><span>Model kodu: {modelCode || '—'}</span></p></div><button type="button" className="modal-close" onClick={onClose} disabled={saving} aria-label="Fiyat penceresini kapat"><UiIcon name="close" /></button></header><div className="variant-platform-pricing-body"><section className="variant-platform-pricing-matrix" aria-label="Platformlara göre varyant fiyat matrisi"><div className="variant-platform-pricing-bulk-heading"><strong>Platform fiyatlarını toplu düzenle</strong><span>{rows.length} varyanta uygulanır · Panel ana fiyatı değişmez</span></div><div className="variant-platform-pricing-matrix-scroll"><div className="variant-platform-pricing-matrix-grid" style={{ gridTemplateColumns: `150px repeat(${platforms.length * 2}, 128px)` }}><div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-corner"><strong>Varyant</strong><small>Model / barkod</small></div>{platforms.flatMap(platform => [renderMatrixHeader(platform, 'Liste fiyatı'), renderMatrixHeader(platform, 'Satış fiyatı')])}{sortedRows.flatMap(item => { return [<div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-row-label" key={`${item.key}:label`}><strong>{item.optionSignature || item.sku}</strong><small>{item.barcode || item.sku}</small></div>, ...platforms.flatMap(platform => { const draft = matrixDraft(item, platform); return [<div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:list`}><input aria-label={`${item.optionSignature || item.sku} ${marketplacePlatformName(platform)} liste fiyatı`} type="number" min="0" step="0.01" value={draft.listPrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'listPrice', event.target.value)} /></div>, <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:sale`}><input aria-label={`${item.optionSignature || item.sku} ${marketplacePlatformName(platform)} satış fiyatı`} type="number" min="0" step="0.01" value={draft.salePrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'salePrice', event.target.value)} /></div>] })] })}</div></div></section></div><footer><button type="button" onClick={() => onSave(matrixDrafts)} disabled={saving || !platforms.some(platform => platform.connectionId)}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</button><button type="button" className="secondary" onClick={onClose} disabled={saving}>Vazgeç</button></footer></section></div>
+  return <div className="workspace-modal-backdrop variant-platform-pricing-backdrop" role="presentation" onMouseDown={() => !saving && onClose()}><section className="workspace-modal variant-platform-pricing-modal" role="dialog" aria-modal="true" aria-labelledby="variant-platform-pricing-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">PLATFORM FİYATLARI</p><h2 id="variant-platform-pricing-title">Varyant kanal fiyatları</h2><p className="variant-platform-pricing-product-context"><strong>{productName || 'Ürün adı belirtilmemiş'}</strong><span>Model kodu: {modelCode || '—'}</span></p></div><button type="button" className="modal-close" onClick={onClose} disabled={saving} aria-label="Fiyat penceresini kapat"><UiIcon name="close" /></button></header><div className="variant-platform-pricing-body"><section className="variant-platform-pricing-matrix" aria-label="Platformlara göre varyant fiyat matrisi"><div className="variant-platform-pricing-bulk-heading"><strong>Platform fiyatlarını toplu düzenle</strong><span>{rows.length} varyanta uygulanır · Panel ana fiyatı değişmez</span></div><div className="variant-platform-pricing-matrix-scroll"><div className="variant-platform-pricing-matrix-grid" style={{ gridTemplateColumns: `140px repeat(${platforms.length * 2}, 112px)` }}><div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-corner"><strong>Varyant</strong><small>Model / barkod</small></div>{platforms.flatMap(platform => [renderMatrixHeader(platform, 'Liste fiyatı'), renderMatrixHeader(platform, 'Satış fiyatı')])}{sortedRows.flatMap(item => { return [<div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-row-label" key={`${item.key}:label`}><strong>{item.optionSignature || item.sku}</strong><small>{item.barcode || item.sku}</small></div>, ...platforms.flatMap(platform => { const draft = matrixDraft(item, platform); return [<div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:list`}><input aria-label={`${item.optionSignature || item.sku} ${marketplacePlatformName(platform)} liste fiyatı`} type="number" min="0" step="0.01" value={draft.listPrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'listPrice', event.target.value)} /></div>, <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:sale`}><input aria-label={`${item.optionSignature || item.sku} ${marketplacePlatformName(platform)} satış fiyatı`} type="number" min="0" step="0.01" value={draft.salePrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'salePrice', event.target.value)} /></div>] })] })}</div></div></section></div><footer><button type="button" onClick={() => onSave(matrixDrafts)} disabled={saving || !platforms.some(platform => platform.connectionId)}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</button><button type="button" className="secondary" onClick={onClose} disabled={saving}>Vazgeç</button></footer></section></div>
 }
 void LegacyVariantPlatformPricingModal
 void LegacyVariantPlatformPricingModalWithVariantsFirst

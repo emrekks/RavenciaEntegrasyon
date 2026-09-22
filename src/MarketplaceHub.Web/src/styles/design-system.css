@@ -1782,7 +1782,9 @@
   .variant-platform-pricing-matrix-grid { display: grid; min-width: max-content; }
   .variant-platform-pricing-matrix-cell { display: grid; min-width: 0; align-content: center; gap: 5px; padding: var(--rv-space-2); border-right: 1px solid var(--rv-color-border); border-bottom: 1px solid var(--rv-color-border); }
   .variant-platform-pricing-matrix-cell > input { width: 100%; min-width: 0; }
-  .variant-platform-pricing-matrix-head { position: sticky; top: 0; z-index: 2; align-content: start; background: var(--rv-color-surface-soft); color: var(--rv-color-ink); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+  .variant-platform-pricing-matrix-head { position: sticky; top: 0; z-index: 2; align-content: start; background: var(--rv-color-surface-soft); color: var(--rv-color-ink); font-size: 12px; font-weight: 800; text-transform: uppercase; line-height: 1.25; }
+  .variant-platform-pricing-matrix-head > strong { font-size: 13px; }
+  .variant-platform-pricing-matrix-head > span { font-size: 11px; font-weight: 700; }
   .variant-platform-pricing-matrix-platform { display: flex; min-width: 0; align-items: center; gap: 6px; }
   .variant-platform-pricing-matrix-platform strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .variant-platform-pricing-matrix-head > span { color: var(--rv-color-muted); }
