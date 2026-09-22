@@ -1993,7 +1993,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .GroupBy(x => x.ExternalProductId, StringComparer.OrdinalIgnoreCase)
                 .Select(MergeCatalogSnapshots)
                 .ToList();
-            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             try
             {
                 foreach (var snapshot in snapshotGroups)
@@ -2035,16 +2034,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 await db.ProductImportStagingRecords
                     .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.ModelKey == modelKey && x.State == "STAGED")
                     .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.State, "COMPLETED").SetProperty(x => x.FinalizedAt, timeProvider.GetUtcNow()), cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                await transaction.RollbackAsync(CancellationToken.None);
                 throw;
             }
             catch (Exception exception)
             {
-                await transaction.RollbackAsync(CancellationToken.None);
                 db.ChangeTracker.Clear();
                 categoryContexts.Clear();
                 importedAttributeLibrary.Clear();
@@ -2084,6 +2080,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        if (receivedProducts > 0 && telemetryImportFailedCount >= receivedProducts)
+        {
+            if (jobId is { } failedJob)
+                await UpdateProductSyncProgressAsync(tenantId, failedJob, receivedProducts, totalProducts, 100, ProductImportProgressLabel(pageNumber, totalProducts, "aktarımı tamamlanamadı", receivedProducts, mappingOnly), cancellationToken);
+            throw new JobProcessingException(JobExecutionResult.ManualReview("PRODUCT_IMPORT_ALL_FAILED", "Ürün aktarımındaki kayıtların tamamı işlenemedi; aktarım başarılı sayılmadı."));
+        }
         if (!singleLookup)
         {
             var completedCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
