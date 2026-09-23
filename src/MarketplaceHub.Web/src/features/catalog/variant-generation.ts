@@ -31,3 +31,8 @@ export function buildVariantGenerationDefaults({ baseSku, modelCode, sequence, a
 
   return { sku: '', barcode: `${prefix}${suffix}`, salePrice: 0, listPrice: 0 }
 }
+
+export function resolveVariantSyncAttributeIds(currentIds: string[], selectedIds: string[], allIds: string[]) {
+  const requestedIds = selectedIds.length ? selectedIds : allIds
+  return [...new Set([...currentIds, ...requestedIds])]
+}

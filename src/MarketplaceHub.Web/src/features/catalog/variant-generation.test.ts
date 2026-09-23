@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildVariantGenerationDefaults } from './variant-generation'
+import { buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 
 describe('variant generation defaults', () => {
   it('uses the model code for sequential automatic barcodes and leaves SKU and prices empty', () => {
@@ -24,5 +24,19 @@ describe('variant generation defaults', () => {
 
     expect(result.barcode).toHaveLength(40)
     expect(result.barcode.endsWith('-01')).toBe(true)
+  })
+})
+
+describe('bulk variant option sync', () => {
+  it('syncs every available option group when none is explicitly selected', () => {
+    expect(resolveVariantSyncAttributeIds([], [], ['color', 'size'])).toEqual(['color', 'size'])
+  })
+
+  it('syncs selected groups while retaining the active unselected axis', () => {
+    expect(resolveVariantSyncAttributeIds(['color', 'size'], ['color'], ['color', 'size'])).toEqual(['color', 'size'])
+  })
+
+  it('does not duplicate axes when a selected group is already active', () => {
+    expect(resolveVariantSyncAttributeIds(['size', 'color'], ['color'], ['color', 'size'])).toEqual(['size', 'color'])
   })
 })
