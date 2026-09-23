@@ -9,6 +9,7 @@ import { productStatusLabel, productStatusTone, statusLabel } from '../../shared
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification } from '../../shared/notifications'
+import { toggleProductAttributeValue } from './attribute-selection'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -1353,7 +1354,6 @@ void VariantPlatformPricingModal
 // API, inventory and publication safeguards retain the actual 1000-line limit.
 // The product workspace intentionally does not display an arbitrary UI quota.
 const MAX_VARIANTS = 1000
-const MAX_PRODUCT_ATTRIBUTES = 3
 const MAX_PRODUCT_MEDIA_BYTES = 6 * 1024 * 1024
 
 function RichTextTool({ icon, label, onClick, disabled = false }: { icon: UiIconName; label: string; onClick: () => void; disabled?: boolean }) {
@@ -1839,15 +1839,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const message = 'Bir ürün en fazla 2 seçenek grubuyla varyantlanabilir.'; setNotice(message); showFeedback(message, 'error'); return
     }
     setAttributeSelections(current => {
-      const values = current[attributeId] ?? []
-      const nextValues = values.includes(valueId) ? values.filter(item => item !== valueId) : requirement && !isOptionRequirement(requirement) && requirement.attribute.dataType === 'SINGLE_SELECT' ? [valueId] : [...values, valueId]
+      const next = toggleProductAttributeValue(current, attributeId, valueId, Boolean(requirement && !isOptionRequirement(requirement) && requirement.attribute.dataType === 'SINGLE_SELECT'))
+      const nextValues = next[attributeId] ?? []
       if (requirement && isOptionRequirement(requirement)) {
         setVariantAttributeIds(currentAxes => nextValues.length ? currentAxes.includes(attributeId) ? currentAxes : [...currentAxes, attributeId] : currentAxes.filter(id => id !== attributeId))
       }
-      if (values.includes(valueId)) return { ...current, [attributeId]: nextValues }
-      const selectedOptionalAttributeCount = mappedRequirements.filter(item => !isOptionRequirement(item) && !item.isRequired && (current[item.attributeId]?.length ?? 0) > 0).length
-      if (requirement && !isOptionRequirement(requirement) && !requirement.isRequired && values.length === 0 && selectedOptionalAttributeCount >= MAX_PRODUCT_ATTRIBUTES) { const message = `Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`; setNotice(message); showFeedback(message, 'error'); return current }
-      return { ...current, [attributeId]: nextValues }
+      return next
     })
   }
 
@@ -2334,8 +2331,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   function validate(rows: VariantDraft[], requireCompleteCatalog = true) {
     const issues: string[] = []; const requirementList = mappedRequirements
     if (requireCompleteCatalog && (variantAttributeIds.length > 2 || variantAttributeIds.some(id => { const requirement = requirementList.find(item => item.attributeId === id); return !requirement || !isOptionRequirement(requirement) }))) issues.push('Varyant için en fazla 2 Seçenek Eşitleme başlığı kullanılabilir.')
-    const selectedOptionalProductAttributes = requirementList.filter(item => !isOptionRequirement(item) && !item.isRequired && ((attributeSelections[item.attributeId]?.length ?? 0) > 0 || Boolean((attributeTextValues[item.attributeId] ?? '').trim()))).length
-    if (requireCompleteCatalog && selectedOptionalProductAttributes > MAX_PRODUCT_ATTRIBUTES) issues.push(`Bir üründe en fazla ${MAX_PRODUCT_ATTRIBUTES} isteğe bağlı ürün özelliği kullanılabilir.`)
     if (requireCompleteCatalog && !webColorAutoEnabled && (!webColorRequirement || !manualWebColorValueId)) issues.push('Manuel Web Color aktarımı için gönderilecek panel renk değerini seçin.')
     if (!webColorAutoEnabled && webColorRequirement && manualWebColorValueId && !webColorRequirement.attribute.values.some(value => value.id === manualWebColorValueId)) issues.push('Manuel Web Color için seçilen değer geçerli değil.')
     if (requireCompleteCatalog && webColorAutoEnabled && webColorRequirement && (!colorOptionRequirement || !variantAttributeIds.includes(colorOptionRequirement.attributeId)) && !(attributeSelections[colorOptionRequirement?.attributeId ?? '']?.length)) issues.push('Web Color otomatik aktarımı için Renk seçeneğini seçin veya otomatik aktarımı kapatıp bir değer seçin.')
