@@ -248,6 +248,7 @@ function ImageLightboxModal({ image, onClose }: { image: { url: string; title: s
 }
 
 type ProductMediaOption = { value: string; label: string; url?: string; file?: File }
+type ProductFamilyMediaReorderMove = { sourceIndex: number; targetIndex: number; idempotencyKey: string }
 type VariantMediaGroup = { id: string; name: string; values: Array<{ id: string; value: string }>; attributeId?: string }
 type VariantFilterSelections = Record<string, string[]>
 type ParsedVariantOption = { name: string; value: string }
@@ -1703,6 +1704,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkCostPrice, setBulkCostPrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const [deletingFamilyMediaKey, setDeletingFamilyMediaKey] = useState<string | null>(null)
+  const [familyMediaReorderMoves, setFamilyMediaReorderMoves] = useState<ProductFamilyMediaReorderMove[]>([])
   const [draggedMediaIndex, setDraggedMediaIndex] = useState<number | null>(null); const [dragOverMediaIndex, setDragOverMediaIndex] = useState<number | null>(null)
   const [pointerDraggedVariantKey, setPointerDraggedVariantKey] = useState<string | null>(null)
   const pointerDraggedVariantRef = useRef<string | null>(null)
@@ -1793,6 +1795,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const savedMediaUrls = orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder)
     setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: primary?.sku ?? '', barcode: primary?.barcode ?? '', modelCode: primary?.modelCode ?? product.modelCode ?? '', weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(primary?.listPrice ?? primary?.salePrice ?? 0), salePrice: String(primary?.salePrice ?? 0), costPrice: String(primary?.costPrice ?? 0), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
+    setFamilyMediaReorderMoves([])
     setMediaFiles([])
     const seededMediaRefs = seedVariantMediaRefs(product.variants)
     const mediaRefsByVariantId = new Map(product.variants.map((variant, index) => [variant.id, seededMediaRefs[index] ?? []]))
@@ -1985,7 +1988,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setDraggedMediaIndex(null); setDragOverMediaIndex(null)
     if (next === mediaUrls) return
     updateField('mediaUrls', next.join('\n'))
-    showFeedback('Görsel sırası güncellendi. Kalıcı olması için kaydedin.', 'info')
+    if (editProductId) setFamilyMediaReorderMoves(current => [...current, { sourceIndex, targetIndex, idempotencyKey: key() }])
+    showFeedback(editProductId ? 'Görsel sırası diğer renklerle birlikte Kaydet’te uygulanacak.' : 'Görsel sırası güncellendi. Kalıcı olması için kaydedin.', 'info')
   }
   function clearAllMedia() {
     setMediaFiles([])
@@ -2453,7 +2457,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       setWizardStep(2)
       return
     }
-    setError(undefined); setNotice(''); showFeedback(editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info'); setSubmitting(true); let productCreated: Product | undefined
+    setError(undefined); setNotice(''); showFeedback(editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info'); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
     try {
       if (requireCompleteCatalog && form.categoryId && requirements.isLoading) throw new Error('Kategori özellikleri yükleniyor. Kaydetmeden önce kısa süre bekleyin.')
       if (requireCompleteCatalog && form.categoryId && requirements.isError) throw new Error('Kategori özellikleri alınamadı. Önce kategori eşleştirmesini kontrol edin.')
@@ -2481,6 +2485,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const initialProductMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(url => url.trim()).filter(Boolean)
       const productMediaChanged = editProductId ? !mediaRefsEqual(mediaUrls, initialProductMediaUrls) : mediaUrls.length > 0
       if (productMediaChanged) await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: null, items: mediaUrls.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
+      for (const move of familyMediaReorderMoves) {
+        const result = await hubApi<{ changedProductCount: number }>('/files/product-media-family-reorder', { method: 'PUT', headers: { 'Idempotency-Key': move.idempotencyKey }, body: JSON.stringify({ productId: product.id, sourceIndex: move.sourceIndex, targetIndex: move.targetIndex }) })
+        familyMediaChanged ||= result.changedProductCount > 0
+      }
+      setFamilyMediaReorderMoves([])
       for (const [fileIndex, file] of mediaFiles.entries()) { const data = new FormData(); data.set('file', file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: data }) }
       const rowsBySku = new Map(rows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
       for (const variant of product.variants) {
@@ -2497,6 +2506,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         }
       }
       if (mediaUrls.length || mediaFiles.length) completed.push('görseller')
+      if (familyMediaChanged) completed.push('diğer renklerin görsel sırası')
       for (const variant of product.variants) {
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
         if (!row) continue
@@ -2738,7 +2748,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       <section className="panel product-step-card product-media-card">
         <div className="editor-section-title">
           <span>4</span>
-          <div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilir veya internetten erişilebilen HTTPS adresleri ekleyebilirsiniz. Aynı modelin diğer renk görselleri de burada görünür.</p></div>
+          <div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilir veya internetten erişilebilen HTTPS adresleri ekleyebilirsiniz. Aynı modelin diğer renk görselleri de burada görünür; sıralama değişiklikleri kaydedilirken renk ürünlerine de uygulanır.</p></div>
           <div className="product-media-header-actions">
             {(mediaUrls.length > 0 || mediaFiles.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" onClick={clearAllMedia}>Tümünü temizle</button>}
             <button type="button" className="product-media-link-button" onClick={() => setMediaUrlSettingsOpen(true)} aria-label="Link ile görsel ekle" title="Link ile görsel ekle"><UiIcon name="externalLink" />{mediaUrls.length > 0 && <b>{mediaUrls.length}</b>}</button>
@@ -2751,7 +2761,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         </label>
         {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0) && <div className="media-preview-strip">
           {mediaFiles.map((file, index) => <LocalImagePreview key={`${file.name}-${file.lastModified}-${index}`} file={file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={index === 0 && !mediaUrls.length ? 'Ana görsel' : file.name} onRemove={() => setMediaFiles(files => files.filter((_, i) => i !== index))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
-          {mediaUrls.map((url, index) => <figure key={`${url}-${index}`} className={`image-preview-card media-sortable ${dragOverMediaIndex === index ? 'is-media-drag-over' : ''}`} draggable onDragStart={event => { setDraggedMediaIndex(index); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(index)) }} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMediaIndex(index) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue === '' ? draggedMediaIndex ?? -1 : Number(transferValue); reorderMedia(Number.isInteger(transferIndex) ? transferIndex : -1, index) }} onDragEnd={() => { setDraggedMediaIndex(null); setDragOverMediaIndex(null) }}>
+          {mediaUrls.map((url, index) => <figure key={`${url}-${index}`} className={`image-preview-card media-sortable ${dragOverMediaIndex === index ? 'is-media-drag-over' : ''}`} draggable={!submitting} onDragStart={event => { setDraggedMediaIndex(index); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(index)) }} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMediaIndex(index) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue === '' ? draggedMediaIndex ?? -1 : Number(transferValue); reorderMedia(Number.isInteger(transferIndex) ? transferIndex : -1, index) }} onDragEnd={() => { setDraggedMediaIndex(null); setDragOverMediaIndex(null) }}>
             <img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} title="Büyütmek için tıklayın" />
             <button type="button" className="image-remove-btn" title="Görseli kaldır" onClick={event => { event.stopPropagation(); updateField('mediaUrls', mediaUrls.filter((_, i) => i !== index).join('\n')); const removedRef = `url|${url}`; setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(reference => reference !== removedRef) }))) }}><UiIcon name="close" /></button>
             <figcaption>{index === 0 && !mediaFiles.length ? 'Ana görsel' : `${index + 1}. görsel`} · sürükle</figcaption>

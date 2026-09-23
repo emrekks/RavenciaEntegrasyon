@@ -148,6 +148,7 @@ public static class CatalogEndpoints
         api.MapPost("/files/product-media", UploadProductMediaAsync).DisableAntiforgery();
         api.MapPost("/files/product-media-url", RegisterProductMediaUrlAsync);
         api.MapPut("/files/product-media-reconcile", ReconcileProductMediaAsync);
+        api.MapPut("/files/product-media-family-reorder", ReorderProductFamilyMediaAsync);
         api.MapDelete("/files/product-media-items", DeleteProductMediaItemsAsync);
         api.MapDelete("/files/product-media", ClearProductMediaAsync);
         api.MapDelete("/files/product-media-variant", ClearProductVariantMediaAsync);
@@ -419,6 +420,118 @@ public static class CatalogEndpoints
         return Results.Ok(new { productId = product.Id, variantId = command.VariantId, mediaCount = desiredMedia.Count });
     }
 
+    private static async Task<IResult> ReorderProductFamilyMediaAsync([FromBody] ReorderProductFamilyMediaCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+        if (command.SourceIndex is < 0 or > 999 || command.TargetIndex is < 0 or > 999)
+            return Problem(http, new("PRODUCT_MEDIA_REORDER_INVALID", "Görsel sıralama konumları 0-999 arasında olmalıdır.", 422));
+
+        var sourceProduct = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == command.ProductId, http.RequestAborted);
+        if (sourceProduct is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
+        var modelCode = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == sourceProduct.Id && x.ModelCode != null && x.ModelCode != "")
+            .Select(x => x.ModelCode)
+            .FirstOrDefaultAsync(http.RequestAborted);
+        if (string.IsNullOrWhiteSpace(modelCode)) return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
+
+        var familyProductIds = await db.ProductVariants.AsNoTracking()
+            .Where(variant => variant.TenantId == tenant.TenantId
+                && variant.ModelCode != null
+                && variant.ModelCode.ToUpper() == modelCode.ToUpper()
+                && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId)
+                    || db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId
+                        && db.PlatformConnections.Any(connection => connection.TenantId == tenant.TenantId && connection.Id == link.ConnectionId
+                            && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))))
+            .Select(variant => variant.ProductId)
+            .Distinct()
+            .ToListAsync(http.RequestAborted);
+        familyProductIds.Remove(sourceProduct.Id);
+        if (familyProductIds.Count == 0) return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
+
+        await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
+        var siblingProducts = await db.Products
+            .Where(product => product.TenantId == tenant.TenantId && familyProductIds.Contains(product.Id))
+            .ToListAsync(http.RequestAborted);
+        var siblingMedia = await db.ProductMedia
+            .Where(media => media.TenantId == tenant.TenantId && familyProductIds.Contains(media.ProductId))
+            .ToListAsync(http.RequestAborted);
+
+        var galleryScopes = new List<(Guid ProductId, Guid? VariantId, List<ProductMedia> All, List<ProductMedia> Active)>();
+        foreach (var productGroup in siblingMedia.GroupBy(media => media.ProductId))
+        {
+            var productGallery = productGroup.Where(media => media.VariantId is null).ToList();
+            var activeProductGallery = productGallery.Where(media => media.Status == "ACTIVE")
+                .OrderBy(media => media.SortOrder).ThenBy(media => media.Id).ToList();
+            if (activeProductGallery.Count > 0)
+            {
+                galleryScopes.Add((productGroup.Key, null, productGallery, activeProductGallery));
+                continue;
+            }
+
+            foreach (var variantGroup in productGroup.Where(media => media.VariantId is not null).GroupBy(media => media.VariantId))
+            {
+                var all = variantGroup.ToList();
+                var active = all.Where(media => media.Status == "ACTIVE")
+                    .OrderBy(media => media.SortOrder).ThenBy(media => media.Id).ToList();
+                if (active.Count > 0) galleryScopes.Add((productGroup.Key, variantGroup.Key, all, active));
+            }
+        }
+
+        var changedScopes = new List<(Guid ProductId, Guid? VariantId, List<ProductMedia> All, List<ProductMedia> Active, List<ProductMedia> Archived)>();
+        foreach (var scope in galleryScopes)
+        {
+            var originalOrder = scope.Active.ToArray();
+            if (!ProductFamilyMediaOrdering.Move(scope.Active, command.SourceIndex, command.TargetIndex)
+                || originalOrder.SequenceEqual(scope.Active)) continue;
+            var archived = scope.All.Where(media => media.Status != "ACTIVE")
+                .OrderBy(media => media.SortOrder).ThenBy(media => media.Id).ToList();
+            changedScopes.Add((scope.ProductId, scope.VariantId, scope.All, scope.Active, archived));
+        }
+
+        if (changedScopes.Count == 0)
+        {
+            await transaction.CommitAsync(http.RequestAborted);
+            return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
+        }
+
+        foreach (var scope in changedScopes)
+        {
+            var occupied = scope.All.Select(media => media.SortOrder).ToHashSet();
+            var temporary = int.MinValue;
+            foreach (var media in scope.All.OrderBy(media => media.SortOrder).ThenBy(media => media.Id))
+            {
+                while (occupied.Contains(temporary)) temporary++;
+                media.SortOrder = temporary;
+                occupied.Add(temporary++);
+            }
+        }
+        await db.SaveChangesAsync(http.RequestAborted);
+
+        foreach (var scope in changedScopes)
+        {
+            for (var index = 0; index < scope.Active.Count; index++)
+            {
+                scope.Active[index].SortOrder = index;
+                scope.Active[index].MediaRole = scope.VariantId is null
+                    ? index == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY"
+                    : index == 0 ? "PRIMARY" : "GALLERY";
+            }
+            for (var index = 0; index < scope.Archived.Count; index++)
+                scope.Archived[index].SortOrder = scope.Active.Count + index;
+        }
+        var changedProductIds = changedScopes.Select(scope => scope.ProductId).Distinct().ToHashSet();
+        var now = timeProvider.GetUtcNow();
+        foreach (var product in siblingProducts.Where(product => changedProductIds.Contains(product.Id)))
+        {
+            product.UpdatedAt = now;
+            product.Version++;
+        }
+        await db.SaveChangesAsync(http.RequestAborted);
+        await transaction.CommitAsync(http.RequestAborted);
+        return Results.Ok(new { changedProductCount = changedProductIds.Count, changedGalleryCount = changedScopes.Count });
+    }
+
     private static async Task<IResult> RegisterProductMediaUrlAsync(RegisterProductMediaUrl command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -600,5 +713,6 @@ public static class CatalogEndpoints
     public sealed record RegisterProductMediaUrl(Guid ProductId, Guid? VariantId, string Url, string? MediaRole, int SortOrder, string? AltText);
     public sealed record ReconcileProductMediaCommand(Guid ProductId, Guid? VariantId, IReadOnlyList<ReconcileProductMediaItem>? Items, string? AltText);
     public sealed record ReconcileProductMediaItem(string Url, int SortOrder);
+    public sealed record ReorderProductFamilyMediaCommand(Guid ProductId, int SourceIndex, int TargetIndex);
     public sealed record DeleteProductMediaItemsCommand(IReadOnlyList<Guid>? MediaIds);
 }
