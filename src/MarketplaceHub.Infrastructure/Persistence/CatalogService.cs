@@ -721,7 +721,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var familyMediaRows = await (from item in db.ProductMedia.AsNoTracking()
                                      join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
                                      where item.TenantId == tenantId && familyProductIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
-                                     orderby item.SortOrder
+                                     orderby item.SortOrder, item.ProductId, item.Id
                                      select new { MediaId = item.Id, item.ProductId, item.VariantId, item.SortOrder, AssetId = asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         var familyMediaSelection = familyMediaRows
             .GroupBy(item => item.ProductId)

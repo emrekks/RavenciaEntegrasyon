@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isStoredProductMediaUrl, mediaRefsEqual, publicProductMediaUrls, reorderMediaUrls } from './product-media-editor'
+import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaUrlsInPreferredOrder, publicProductMediaUrls, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
 
 describe('product media editing', () => {
   it('does not import a family image when it is outside the editable product media list', () => {
@@ -18,6 +18,23 @@ describe('product media editing', () => {
 
     expect(first).toEqual(['third.jpg', 'same.jpg', 'same.jpg'])
     expect(reorderMediaUrls(first, 2, 0)).toEqual(['same.jpg', 'third.jpg', 'same.jpg'])
+  })
+
+  it('reorders a mixed product and family gallery as one visible sequence', () => {
+    const visible = ['gray-front.jpg', 'gray-side.jpg', 'green-front.jpg', 'navy-front.jpg']
+    const reordered = reorderMediaUrls(visible, 3, 1)
+
+    expect(reordered).toEqual(['gray-front.jpg', 'navy-front.jpg', 'gray-side.jpg', 'green-front.jpg'])
+    expect(mediaUrlsInPreferredOrder(['gray-front.jpg', 'gray-side.jpg'], reordered))
+      .toEqual(['gray-front.jpg', 'gray-side.jpg'])
+  })
+
+  it('uses stable image paths to match family URLs across cache query changes', () => {
+    expect(mediaImageKey('https://cdn.example.test/image.jpg?width=80')).toBe(mediaImageKey('https://cdn.example.test/image.jpg?width=800'))
+    expect(uniqueMediaUrls(['https://cdn.example.test/image.jpg?width=80', 'https://cdn.example.test/image.jpg?width=800']))
+      .toEqual(['https://cdn.example.test/image.jpg?width=80'])
+    expect(mediaUrlsInPreferredOrder(['first.jpg', 'second.jpg'], ['second.jpg', 'missing.jpg']))
+      .toEqual(['second.jpg', 'first.jpg'])
   })
 
   it('recognizes saved private media proxy paths without treating external URLs as saved assets', () => {

@@ -17,6 +17,37 @@ export function reorderMediaUrls(urls: string[], sourceIndex: number, targetInde
   return next
 }
 
+export function mediaImageKey(value: string): string {
+  const candidate = value.trim()
+  try {
+    const url = new URL(candidate)
+    if (url.protocol === 'https:') return `${url.origin}${url.pathname.replace(/\/+$/u, '')}`.toLocaleLowerCase('en-US')
+  } catch { /* Stored media uses a same-origin relative path. */ }
+  return candidate.replace(/\/+$/u, '').toLocaleLowerCase('en-US')
+}
+
+export function uniqueMediaUrls(urls: string[]): string[] {
+  const seen = new Set<string>()
+  return urls.filter(url => {
+    const key = mediaImageKey(url)
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+export function mediaUrlsInPreferredOrder(currentUrls: string[], preferredUrls: string[]): string[] {
+  const remaining = [...currentUrls]
+  const ordered: string[] = []
+  for (const preferred of preferredUrls) {
+    const index = remaining.findIndex(url => mediaImageKey(url) === mediaImageKey(preferred))
+    if (index < 0) continue
+    ordered.push(remaining[index])
+    remaining.splice(index, 1)
+  }
+  return [...ordered, ...remaining]
+}
+
 export function mediaRefsEqual(current: string[], original: string[]): boolean {
   return current.length === original.length && current.every((reference, index) => reference === original[index])
 }

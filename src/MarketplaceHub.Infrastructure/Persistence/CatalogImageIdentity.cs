@@ -1,6 +1,6 @@
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-internal static class CatalogImageIdentity
+public static class CatalogImageIdentity
 {
     public static IReadOnlyList<string> DistinctUrls(IEnumerable<string?> values)
     {

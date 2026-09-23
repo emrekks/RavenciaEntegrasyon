@@ -33,4 +33,24 @@ public sealed class ProductFamilyMediaOrderingTests
         Assert.False(ProductFamilyMediaOrdering.Move(gallery, 0, 2));
         Assert.Equal(new[] { "front", "side" }, gallery);
     }
+
+    [Fact]
+    public void Applies_a_full_family_order_and_keeps_unmentioned_new_images_at_the_end()
+    {
+        var images = new[] { (Key: "gray-front", Rank: 0), (Key: "green-front", Rank: 1), (Key: "navy-front", Rank: 2), (Key: "new-upload", Rank: 3) };
+
+        var ordered = ProductFamilyMediaOrdering.OrderByRequestedKeys(images, ["navy-front", "gray-front", "green-front"], image => image.Key);
+
+        Assert.Equal(new[] { "navy-front", "gray-front", "green-front", "new-upload" }, ordered.Select(image => image.Key));
+    }
+
+    [Fact]
+    public void Family_order_keys_are_case_insensitive_and_repeated_keys_are_applied_once()
+    {
+        var images = new[] { (Key: "Gray", Rank: 0), (Key: "Green", Rank: 1), (Key: "Navy", Rank: 2) };
+
+        var ordered = ProductFamilyMediaOrdering.OrderByRequestedKeys(images, ["NAVY", "gray", "navy"], image => image.Key);
+
+        Assert.Equal(new[] { "Navy", "Gray", "Green" }, ordered.Select(image => image.Key));
+    }
 }
