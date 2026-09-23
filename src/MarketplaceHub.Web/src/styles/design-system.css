@@ -1684,11 +1684,11 @@
   .category-attribute-select-trigger small, .category-attribute-select-trigger strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .category-attribute-select-trigger small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 700; }
   .category-attribute-select-trigger strong { font-size: var(--rv-font-size-sm); }
-  .category-attribute-dropdown-menu { position: absolute; top: calc(100% + var(--rv-space-2)); left: 0; right: 0; z-index: var(--rv-z-dropdown); display: grid; gap: var(--rv-space-2); max-height: min(360px, calc(100dvh - 128px)); padding: var(--rv-space-3); overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
-  .category-attribute-dropdown-tools { display: grid; gap: var(--rv-space-2); }
+  .category-attribute-dropdown-menu { position: absolute; top: calc(100% + var(--rv-space-2)); left: 0; right: 0; z-index: var(--rv-z-dropdown); display: flex; min-height: 0; flex-direction: column; gap: var(--rv-space-2); max-height: min(360px, calc(100dvh - 128px)); padding: var(--rv-space-3); overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
+  .category-attribute-dropdown-tools { display: grid; flex: 0 0 auto; gap: var(--rv-space-2); }
   .category-attribute-dropdown-tools > span { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
   .app-shell.stitch-shell main .category-attribute-clear-selection { min-height: 34px; justify-content: flex-start; padding: 0 var(--rv-space-2); color: var(--rv-color-primary); background: transparent; border: 0; font-size: var(--rv-font-size-xs); }
-  .category-attribute-dropdown-options { display: grid; min-height: 0; gap: 3px; overflow-y: auto; }
+  .category-attribute-dropdown-options { display: grid; min-height: 0; flex: 1 1 auto; gap: 3px; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; }
   .app-shell.stitch-shell main .category-attribute-dropdown-options > button { display: flex; width: 100%; min-height: 40px; align-items: center; justify-content: space-between; gap: var(--rv-space-2); padding: 0 var(--rv-space-2); color: var(--rv-color-ink); background: transparent; border: 1px solid transparent; border-radius: var(--rv-radius-sm); text-align: left; }
   .app-shell.stitch-shell main .category-attribute-dropdown-options > button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border-strong); }
   .app-shell.stitch-shell main .category-attribute-dropdown-options > button.active { color: #fff; background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
