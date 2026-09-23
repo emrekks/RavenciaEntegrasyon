@@ -11,6 +11,7 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification } from '../../shared/notifications'
 import { toggleProductAttributeValue } from './attribute-selection'
 import { filterAttributeOptionValues } from './attribute-value-search'
+import { buildVariantGenerationDefaults } from './variant-generation'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -1420,7 +1421,7 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
   </div>
 }
 
-function buildVariantMatrix(requirements: CategoryRequirement[], variantAttributeIds: string[], selectedValueIds: Record<string, string[]>, baseSku: string, fallbackListPrice: number, fallbackSalePrice: number, fallbackCostPrice: number, initialStock: number) {
+function buildVariantMatrix(requirements: CategoryRequirement[], variantAttributeIds: string[], selectedValueIds: Record<string, string[]>, baseSku: string, fallbackListPrice: number, fallbackSalePrice: number, fallbackCostPrice: number, initialStock: number, automaticBarcodes = false, modelCode = '') {
   const axes = variantAttributeIds.map(attributeId => {
     const requirement = requirements.find(item => item.attributeId === attributeId)
     const selected = new Set(selectedValueIds[attributeId] ?? [])
@@ -1433,17 +1434,13 @@ function buildVariantMatrix(requirements: CategoryRequirement[], variantAttribut
     if (!carry.length) return axis.values.map(value => ({ options: { [axis.requirement!.attribute.name]: value.value }, attributeValueIds: { [axis.requirement!.attributeId]: value.id } }))
     return carry.flatMap(entry => axis.values.map(value => ({ options: { ...entry.options, [axis.requirement!.attribute.name]: value.value }, attributeValueIds: { ...entry.attributeValueIds, [axis.requirement!.attributeId]: value.id } })))
   }, [])
-  const prefix = (baseSku || 'URUN').trim().replace(/\s+/g, '-').toLocaleUpperCase('tr-TR')
   return combinations.map((entry, index) => ({
     key: crypto.randomUUID(),
     optionSignature: Object.entries(entry.options).map(([name, value]) => `${name}:${cleanOptionValue(value)}`).join('_'),
     options: entry.options,
     attributeValueIds: entry.attributeValueIds,
-    sku: `${prefix}-${index + 1}`,
-    barcode: '',
+    ...buildVariantGenerationDefaults({ baseSku, modelCode, sequence: index + 1, automaticBarcodes, fallbackSalePrice, fallbackListPrice }),
     stock: initialStock,
-    salePrice: fallbackSalePrice,
-    listPrice: fallbackListPrice || fallbackSalePrice,
     costPrice: fallbackCostPrice,
     mediaRefs: []
   }))
@@ -1682,6 +1679,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [error, setError] = useState<unknown>(); const [created, setCreated] = useState<Product>(); const [, setNotice] = useState(''); const [feedback, setFeedback] = useState<OperationFeedback | null>(null); const [submitting, setSubmitting] = useState(false); const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [variantFilterOpen, setVariantFilterOpen] = useState(false); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
+  const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
   const [attributeValueQueries, setAttributeValueQueries] = useState<Record<string, string>>({})
   const initializedEditProductKey = useRef<string | null>(null)
   const initializedEditOptionsKey = useRef<string | null>(null)
@@ -1861,7 +1859,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
   function generateVariants() {
     try {
-      const generated = buildVariantMatrix(mappedRequirements, variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock)
+      if (automaticBarcodeGeneration && !form.modelCode.trim()) {
+        const message = 'Otomatik barkod oluşturmak için önce model kodunu girin.'; setNotice(message); showFeedback(message, 'error')
+        return
+      }
+      const generated = buildVariantMatrix(mappedRequirements, variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, automaticBarcodeGeneration, form.modelCode)
       if (!generated.length) {
         const message = 'Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.'; setNotice(message); showFeedback(message, 'error')
         return
@@ -1870,18 +1872,22 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         if (current.length === 1 && current[0].optionSignature.trim().toLocaleLowerCase('tr-TR') === 'tek ürün' && generated.length === 1) {
           const existing = current[0]
           const [next] = generated
-          return [{ ...next, key: existing.key, barcode: existing.barcode || next.barcode, sku: existing.sku || next.sku, stock: existing.stock, salePrice: existing.salePrice, listPrice: existing.listPrice, costPrice: existing.costPrice, mediaRefs: existing.mediaRefs }]
+          return [{ ...next, key: existing.key, ...(automaticBarcodeGeneration ? {} : { barcode: existing.barcode || next.barcode, sku: existing.sku || next.sku, salePrice: existing.salePrice, listPrice: existing.listPrice }), stock: existing.stock, costPrice: existing.costPrice, mediaRefs: existing.mediaRefs }]
         }
         const existingMap = new Map(current.map(row => [variantSignatureKey(row.optionSignature), row]))
         const merged = generated.map(gen => {
-          const match = existingMap.get(variantSignatureKey(gen.optionSignature))
+          const signatureKey = variantSignatureKey(gen.optionSignature)
+          const match = existingMap.get(signatureKey)
           if (match) {
-            existingMap.delete(gen.optionSignature)
-            return match
+            existingMap.delete(signatureKey)
+            return automaticBarcodeGeneration ? { ...match, sku: gen.sku, barcode: gen.barcode, salePrice: gen.salePrice, listPrice: gen.listPrice } : match
           }
           return gen
         })
-        return sortVariantsAlphabetically([...merged, ...Array.from(existingMap.values())])
+        const sortedRows = sortVariantsAlphabetically([...merged, ...Array.from(existingMap.values())])
+        return automaticBarcodeGeneration
+          ? sortedRows.map((row, index) => ({ ...row, ...buildVariantGenerationDefaults({ baseSku: form.baseSku || form.modelCode || form.title, modelCode: form.modelCode, sequence: index + 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice }) }))
+          : sortedRows
       })
       const message = `${generated.length} varyant satırı hazırlandı.`; setNotice(message); showFeedback(message, 'success')
     } catch (reason) { const message = reason instanceof Error ? reason.message : 'Varyantlar oluşturulamadı.'; setNotice(message); showFeedback(message, 'error') }
@@ -2328,7 +2334,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   function rowsForSubmit(requireCompleteCatalog = true) {
     if (requireCompleteCatalog && variantAttributeIds.length && !variantRows.length) throw new Error('Varyant özellikleri seçili. Önce “Ürünleri ekle” ile varyantları oluşturun.')
     if (editProductId && !variantRows.length) return []
-    return variantRows.length ? variantRows : [{ key: crypto.randomUUID(), optionSignature: 'Tek Ürün', options: {}, attributeValueIds: {}, sku: (form.baseSku || form.modelCode || form.title || 'URUN').trim().replace(/\s+/g, '-').toLocaleUpperCase('tr-TR'), barcode: form.barcode, stock: initialStock, salePrice: fallbackSalePrice, listPrice: fallbackListPrice, costPrice: fallbackCostPrice, mediaRefs: [] }]
+    if (variantRows.length) return variantRows
+    const generatedDefaults = automaticBarcodeGeneration ? buildVariantGenerationDefaults({ baseSku: form.baseSku || form.modelCode || form.title, modelCode: form.modelCode, sequence: 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice }) : null
+    return [{ key: crypto.randomUUID(), optionSignature: 'Tek Ürün', options: {}, attributeValueIds: {}, sku: generatedDefaults?.sku ?? (form.baseSku || form.modelCode || form.title || 'URUN').trim().replace(/\s+/g, '-').toLocaleUpperCase('tr-TR'), barcode: generatedDefaults?.barcode ?? form.barcode, stock: initialStock, salePrice: generatedDefaults?.salePrice ?? fallbackSalePrice, listPrice: generatedDefaults?.listPrice ?? fallbackListPrice, costPrice: fallbackCostPrice, mediaRefs: [] }]
   }
   function validate(rows: VariantDraft[], requireCompleteCatalog = true) {
     const issues: string[] = []; const requirementList = mappedRequirements
@@ -2337,6 +2345,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (!webColorAutoEnabled && webColorRequirement && manualWebColorValueId && !webColorRequirement.attribute.values.some(value => value.id === manualWebColorValueId)) issues.push('Manuel Web Color için seçilen değer geçerli değil.')
     if (requireCompleteCatalog && webColorAutoEnabled && webColorRequirement && (!colorOptionRequirement || !variantAttributeIds.includes(colorOptionRequirement.attributeId)) && !(attributeSelections[colorOptionRequirement?.attributeId ?? '']?.length)) issues.push('Web Color otomatik aktarımı için Renk seçeneğini seçin veya otomatik aktarımı kapatıp bir değer seçin.')
     if (!form.title.trim()) issues.push('Ürün adı zorunludur.')
+    if (automaticBarcodeGeneration && !form.modelCode.trim()) issues.push('Otomatik barkod oluşturmak için model kodu zorunludur.')
     if (requireCompleteCatalog && !form.description.trim()) issues.push('Açıklama zorunludur.')
     if (requireCompleteCatalog) {
       for (const requirement of requirementList) {
@@ -2537,7 +2546,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const selectedBulkMediaGroup = variantMediaModal?.mode === 'bulk' ? bulkMediaGroups.find(group => group.id === variantMediaModal.groupId) : undefined
   const selectedBulkMediaValue = selectedBulkMediaGroup?.values.find(value => value.id === variantMediaModal?.valueId)
   const selectedBulkMediaMatchCount = selectedBulkMediaGroup && selectedBulkMediaValue ? variantRows.filter(row => rowMatchesVariantMediaValue(row, selectedBulkMediaGroup, selectedBulkMediaValue)).length : 0
-  const hasBasicProductData = Boolean(form.title.trim() && form.description.trim() && form.brandId && form.modelCode.trim() && form.barcode.trim())
+  const hasBarcodeData = variantRows.length ? variantRows.every(row => row.barcode.trim()) : automaticBarcodeGeneration ? Boolean(form.modelCode.trim()) : Boolean(form.barcode.trim())
+  const hasBasicProductData = Boolean(form.title.trim() && form.description.trim() && form.brandId && form.modelCode.trim() && hasBarcodeData)
   const mediaCount = mediaUrls.length + mediaFiles.length
   const hasProductMedia = mediaCount > 0
   const hasVariantData = variantAttributeIds.length === 0 || variantRows.length > 0
@@ -2573,13 +2583,18 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     { title: 'Kategori ve Web Color', detail: catalogValidationDetail, ok: catalogValidationIssues.length === 0 }
   ]
   const canAddVariantCombinations = useMemo(() => {
-    if (!variantAttributeIds.length) return false
+    if (!variantAttributeIds.length || (automaticBarcodeGeneration && !form.modelCode.trim())) return false
     try {
-      const generated = buildVariantMatrix(mappedRequirements, variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock)
-      const existing = new Set(variantRows.map(row => variantSignatureKey(row.optionSignature)))
-      return generated.some(row => !existing.has(variantSignatureKey(row.optionSignature)))
+      const generated = buildVariantMatrix(mappedRequirements, variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, automaticBarcodeGeneration, form.modelCode)
+      const existing = new Map(variantRows.map(row => [variantSignatureKey(row.optionSignature), row]))
+      const missingCombinations = generated.some(row => !existing.has(variantSignatureKey(row.optionSignature)))
+      const automaticDefaultsOutOfDate = automaticBarcodeGeneration && sortVariantsAlphabetically(variantRows).some((row, index) => {
+        const expected = buildVariantGenerationDefaults({ baseSku: form.baseSku || form.modelCode || form.title, modelCode: form.modelCode, sequence: index + 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
+        return row.sku !== expected.sku || row.barcode !== expected.barcode || row.salePrice !== expected.salePrice || row.listPrice !== expected.listPrice
+      })
+      return missingCombinations || automaticDefaultsOutOfDate
     } catch { return false }
-  }, [attributeSelections, fallbackCostPrice, fallbackListPrice, fallbackSalePrice, form.baseSku, form.modelCode, form.title, initialStock, mappedRequirements, variantAttributeIds, variantRows])
+  }, [attributeSelections, automaticBarcodeGeneration, fallbackCostPrice, fallbackListPrice, fallbackSalePrice, form.baseSku, form.modelCode, form.title, initialStock, mappedRequirements, variantAttributeIds, variantRows])
   const selectedVariantPlatformRow = variantPlatformPricing ? variantRows.find(row => row.key === variantPlatformPricing.rowKey) : undefined
 
   return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog">
@@ -2597,8 +2612,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <label className="product-category-field">Panel kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setWebColorAutoEnabled(true); setManualWebColorValueId(''); if (!editProductId) setVariantRows([]) }}><option value="">Kategori seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select></label>
           <label>Model kodu<input className="technical-field model-code-value" value={form.modelCode} onChange={event => updateField('modelCode', event.target.value)} /></label>
           <div className="product-identifiers-grid">
-            <label>Stok Kodu<input className="technical-field sku-value" value={form.baseSku} onChange={event => updateField('baseSku', event.target.value)} placeholder="RAV-BLUZ" /></label>
-            <label>Barkod<input className="technical-field barcode-value" value={form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder="Varyantsız üründe kullanılır" /></label>
+            <label>{automaticBarcodeGeneration ? 'Stok kodu (varyantlarda manuel)' : 'Stok Kodu'}<input className="technical-field sku-value" value={form.baseSku} onChange={event => updateField('baseSku', event.target.value)} placeholder={automaticBarcodeGeneration ? 'Varyant satırlarından girin' : 'RAV-BLUZ'} disabled={automaticBarcodeGeneration} /></label>
+            <label>{automaticBarcodeGeneration ? 'Tek ürün barkodu (otomatik oluşturuluyor)' : 'Barkod'}<input className="technical-field barcode-value" value={form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder={automaticBarcodeGeneration ? 'Model kodu ve sıra numarasından oluşturulur' : 'Varyantsız üründe kullanılır'} disabled={automaticBarcodeGeneration} /></label>
             <label className="desi-input-field">Desi<span className="desi-inline-control"><input value={form.desi} onChange={event => { setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" step="0.01" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span></label>
           </div>
           <label className="wide product-description-field">Açıklama<RichTextEditor value={form.description} onChange={value => updateField('description', value)} /></label>
@@ -2667,8 +2682,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         </div>
         <div className="attribute-variant-action">
           <div>
-            <strong>Varyantları oluştur</strong>
+             <strong>Varyantları oluştur</strong>
              <small>{variantAttributeIds.length ? `${variantAttributeIds.map(id => allRequirements.find(item => item.attributeId === id)?.attribute.name).filter(Boolean).join(' × ')} · ${variantAttributeIds.reduce((total, id) => total * Math.max(1, attributeSelections[id]?.length ?? 0), 1)} kombinasyon` : 'Önce seçenek grubunu ve değerlerini işaretleyin.'}</small>
+             <label className="variant-auto-barcode-toggle"><input type="checkbox" checked={automaticBarcodeGeneration} onChange={event => setAutomaticBarcodeGeneration(event.target.checked)} /><span><strong>Barkodları otomatik oluştur</strong><small>Açıksa model kodundan “-01”, “-02”… üretir; stok kodu boş, satış ve liste fiyatı 0 başlar. Kaydetmek için stok kodlarını doldurun.</small></span></label>
           </div>
           <div className="attribute-variant-actions">
             <button type="button" onClick={generateVariants} disabled={!canAddVariantCombinations}>{canAddVariantCombinations ? 'Ürünleri ekle' : 'Seçenekler güncel'}</button>

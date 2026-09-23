@@ -1661,6 +1661,11 @@
   .media-preview-strip figcaption { display: none; }
   .image-remove-btn { position: absolute; top: 4px; right: 4px; display: grid; width: 20px; height: 20px; place-items: center; padding: 0; color: #fff; background: rgb(9 20 39 / 86%); border: 0; border-radius: var(--rv-radius-sm); }
   .attribute-variant-action { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; margin-bottom: var(--rv-space-4); padding: var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .app-shell.stitch-shell main .variant-auto-barcode-toggle { display: flex; align-items: flex-start; gap: var(--rv-space-2); margin-top: var(--rv-space-2); }
+  .app-shell.stitch-shell main .variant-auto-barcode-toggle > input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 16px; margin: 2px 0 0; }
+  .variant-auto-barcode-toggle > span { display: grid; gap: 3px; }
+  .variant-auto-barcode-toggle > span > strong { color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); }
+  .variant-auto-barcode-toggle > span > small { max-width: 720px; line-height: 1.45; }
   .attribute-variant-actions { display: flex; flex: 0 0 auto; justify-content: flex-end; }
   .attribute-variant-actions button { min-width: 150px; }
   .attribute-builder-list { display: grid; gap: var(--rv-space-3); }
