@@ -904,6 +904,7 @@
   .platform-multi-select-trigger.is-open > .ui-icon { transform: rotate(180deg); }
   .platform-multi-select-trigger:disabled { cursor: not-allowed; opacity: .65; }
   .platform-multi-select-menu { position: absolute; top: calc(100% + var(--rv-space-2)); right: 0; z-index: var(--rv-z-dropdown); display: grid; width: min(300px, calc(100vw - 32px)); max-height: min(360px, calc(100dvh - 112px)); gap: var(--rv-space-1); overflow: auto; padding: var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
+  .platform-multi-select-menu.is-compact { position: fixed; top: 0; right: auto; }
   .platform-multi-select-menu-header { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-2); padding: 0 var(--rv-space-1) var(--rv-space-2); border-bottom: 1px solid var(--rv-color-border); }
   .platform-multi-select-menu-header strong { font-size: var(--rv-font-size-sm); }
   .platform-multi-select-menu-header button { padding: 2px 0; color: var(--rv-color-primary); background: transparent; border: 0; font-size: var(--rv-font-size-xs); font-weight: 750; white-space: nowrap; }
@@ -912,6 +913,15 @@
   .platform-multi-select-option:hover { background: var(--rv-color-surface-soft); }
   .platform-multi-select-option input { flex: 0 0 auto; accent-color: var(--rv-color-primary); }
   .platform-multi-select-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .platform-multi-select-field.is-compact { display: block; width: auto; gap: 0; }
+  .platform-multi-select-field.is-compact > .platform-multi-select-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+  .platform-multi-select-field.is-compact .platform-multi-select { width: auto; }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger { position: relative; display: inline-flex; width: 30px; min-width: 30px; min-height: 30px; align-items: center; justify-content: center; padding: 4px; border-color: transparent; background: transparent; }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger:hover, .platform-multi-select-field.is-compact .platform-multi-select-trigger.is-open { border-color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger > .order-filter-funnel { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+  .platform-multi-select-selection-count { position: absolute; top: -4px; right: -4px; display: grid; min-width: 15px; height: 15px; place-items: center; padding: 0 3px; color: white; background: var(--rv-color-primary); border: 1px solid var(--rv-color-surface-raised); border-radius: 999px; font-size: 9px; font-weight: 800; line-height: 1; }
+  .order-reference-platform-heading, .return-reference-platform-heading, .invoice-reference-platform-heading { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: 4px; }
+  .order-reference-platform-heading > strong, .return-reference-platform-heading > strong, .invoice-reference-platform-heading > strong { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
   .product-toolbar .order-search { position: relative; }
   .product-toolbar .order-search input { padding-left: var(--rv-space-5); }
   .products-page > .empty { margin-top: var(--rv-space-4); }
