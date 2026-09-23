@@ -73,7 +73,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             ExternalStoreId = externalStoreId!,
             ApiVersion = platform == "TRENDYOL" ? "V2" : platform == "SHOPIFY" ? "2026-07" : "1.0.0",
             Status = "DRAFT",
-            SettingsJson = platform == "TRENDYOL" ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false)) : platform == "SHOPIFY" ? JsonSerializer.Serialize(new ShopifyConnectionSettings(false)) : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(false)),
+            SettingsJson = platform == "TRENDYOL" ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false, true)) : platform == "SHOPIFY" ? JsonSerializer.Serialize(new ShopifyConnectionSettings(false, true)) : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(false)),
             Version = 1
         };
         db.PlatformConnections.Add(connection);
@@ -122,6 +122,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>();
         if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
         if (string.IsNullOrWhiteSpace(command.DisplayName)) return Invalid<ConnectionView>("connection", "Bağlantı adı zorunludur.");
+        if (command.InvoiceCreationEnabled.HasValue && !ActiveIntegrationScope.IsMarketplace(connection.PlatformCode))
+            return Invalid<ConnectionView>("invoiceCreationEnabled", "Fatura oluşturma ayarı yalnız pazaryeri bağlantılarında kullanılabilir.");
 
         var requestedEnvironment = command.Environment?.Trim().ToUpperInvariant();
         if (requestedEnvironment is not null && requestedEnvironment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Ortam STAGE veya PRODUCTION olmalıdır.");
@@ -133,6 +135,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             ? NormalizeShopifyStore(command.ExternalStoreId)
             : command.ExternalStoreId?.Trim();
         if (connection.PlatformCode == "SHOPIFY" && command.ExternalStoreId is not null && requestedStoreId is null) return Invalid<ConnectionView>("externalStoreId", "Shopify mağaza adı kısa ad veya myshopify.com adresi olarak girilmelidir.");
+        var invoiceCreationEnabled = MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson);
         var currentSettings = connection.PlatformCode == "TRENDYOL" ? ReadSettings(connection) : null;
         var requestedUserAgent = string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? null : command.UserAgentIdentity.Trim();
         var requestedExternalWrites = currentSettings is not null
@@ -156,13 +159,13 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (requestedStoreId is not null) connection.ExternalStoreId = requestedStoreId;
         if (connection.PlatformCode == "TRENDYOL")
         {
-            var current = currentSettings ?? new ConnectionSettings("", false);
-            connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(requestedUserAgent ?? current.UserAgentIdentity, requestedExternalWrites));
+            var current = currentSettings ?? new ConnectionSettings("", false, invoiceCreationEnabled);
+            connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(requestedUserAgent ?? current.UserAgentIdentity, requestedExternalWrites, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
         }
         else if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else
-            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false));
+            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
 
         if (environmentChanged || storeScopeChanged || userAgentChanged)
         {
@@ -223,7 +226,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else if (connection.PlatformCode == "SHOPIFY")
-            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false));
+            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
         connection.LastTestedAt = null; connection.LastSuccessAt = null; connection.LastErrorCode = null; connection.Status = "DRAFT"; connection.Version++;
         foreach (var capability in await db.PlatformCapabilities.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken)) { capability.SupportLevel = CapabilitySupportLevel.Unknown; capability.VerifiedAt = null; capability.EvidenceNote = "Credential rotasyonu sonrası yeniden doğrulama gerekiyor."; capability.Version++; }
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, true));
@@ -260,7 +263,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else if (connection.PlatformCode == "SHOPIFY")
-            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false));
+            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
         connection.Version++;
         if (queueActivationBootstrap)
         {
@@ -466,7 +469,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private ConnectionView Map(PlatformConnection x, bool hasCredential)
     {
         var externalWritesEnabled = x.PlatformCode != "SHOPIFY" && configuration.GetValue<bool>("FeatureFlags:ExternalWrites") && (x.PlatformCode == "TRENDYOL" ? ReadSettings(x).ExternalWritesEnabled : ReadEfaturamSettings(x).ExternalWritesEnabled);
-        return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version);
+        var invoiceCreationEnabled = MarketplaceInvoiceCreationPolicy.IsEnabled(x.PlatformCode, x.SettingsJson);
+        return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version, invoiceCreationEnabled);
     }
     private static SyncPolicyView Map(ConnectionSyncPolicy x) => new(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, x.Enabled, x.Version, RequiresExternalWrites: MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType));
     private static WebhookSubscriptionView Map(WebhookSubscription x) => new(x.Id, x.AuthenticationType, x.Status, x.ExternalSubscriptionId, x.VerifiedAt, x.LastReceivedAt, x.Version);
@@ -505,7 +509,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
     private sealed record CredentialPayload(string ApiKey, string ApiSecret);
     private sealed record ShopifyCredentialPayload(string AccessToken);
-    private sealed record ConnectionSettings(string UserAgentIdentity, bool ExternalWritesEnabled);
-    private sealed record ShopifyConnectionSettings(bool ExternalWritesEnabled);
+    private sealed record ConnectionSettings(string UserAgentIdentity, bool ExternalWritesEnabled, bool InvoiceCreationEnabled = true);
+    private sealed record ShopifyConnectionSettings(bool ExternalWritesEnabled, bool InvoiceCreationEnabled = true);
     private sealed record WebhookVerifierPayload(string? Username, string? Password, string? ApiKey, string? ClientSecret);
 }
