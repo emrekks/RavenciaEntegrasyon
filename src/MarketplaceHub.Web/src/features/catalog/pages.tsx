@@ -11,7 +11,7 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification } from '../../shared/notifications'
 import { toggleProductAttributeValue } from './attribute-selection'
 import { filterAttributeOptionValues } from './attribute-value-search'
-import { mediaRefsEqual, reorderMediaUrls } from './product-media-editor'
+import { mediaRefsEqual, publicProductMediaUrls, reorderMediaUrls } from './product-media-editor'
 import { buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './variant-option-matching'
 import { productMediaUrlIssue } from './product-media-url'
@@ -38,14 +38,15 @@ type VariantPlatformStatus = {
 type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
   categoryPath?: string | null; variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null; familyMediaUrls?: string[]
-  familyMediaItems?: Array<{ url: string; mediaIds: string[]; sourceProductTitles: string[] }>
+  familyMediaItems?: Array<{ url: string; mediaIds: string[]; sourceProductTitles: string[] }>; hasCustomMediaOrder?: boolean
   platformStatuses?: ProductPlatformStatus[]
   attributes?: Array<{ attributeId: string; valueId: string | null; textValue: string | null; numberValue: number | null; booleanValue: boolean | null; sortOrder: number }>
   options?: Array<{ id: string; label: string; values: Array<{ id: string; label: string }> }>
   mediaUrls?: string[]
 }
 
-function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[], primaryImageUrl: string | null) {
+function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[], primaryImageUrl: string | null, hasCustomMediaOrder = false) {
+  if (hasCustomMediaOrder) return [...productMediaUrls]
   const ordered: string[] = []
   const seen = new Set<string>()
   const seenColors = new Set<string>()
@@ -1702,7 +1703,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkCostPrice, setBulkCostPrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const [deletingFamilyMediaKey, setDeletingFamilyMediaKey] = useState<string | null>(null)
-  const [draggedMediaUrl, setDraggedMediaUrl] = useState<string | null>(null); const [dragOverMediaUrl, setDragOverMediaUrl] = useState<string | null>(null)
+  const [draggedMediaIndex, setDraggedMediaIndex] = useState<number | null>(null); const [dragOverMediaIndex, setDragOverMediaIndex] = useState<number | null>(null)
   const [pointerDraggedVariantKey, setPointerDraggedVariantKey] = useState<string | null>(null)
   const pointerDraggedVariantRef = useRef<string | null>(null)
   const pointerDragSourceRef = useRef<HTMLDivElement | null>(null)
@@ -1789,7 +1790,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     initializedEditProductKey.current = productKey
     const primary = product.variants[0]
     const sortedVariants = sortVariantsAlphabetically(product.variants)
-    const savedMediaUrls = orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl)
+    const savedMediaUrls = orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder)
     setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: primary?.sku ?? '', barcode: primary?.barcode ?? '', modelCode: primary?.modelCode ?? product.modelCode ?? '', weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(primary?.listPrice ?? primary?.salePrice ?? 0), salePrice: String(primary?.salePrice ?? 0), costPrice: String(primary?.costPrice ?? 0), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
     setMediaFiles([])
@@ -1979,19 +1980,19 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setDraggedVariantKey(keyValue)
     setDragOverVariantKey(null)
   }
-  function reorderMedia(sourceUrl: string, targetUrl: string) {
-    const next = reorderMediaUrls(mediaUrls, sourceUrl, targetUrl)
+  function reorderMedia(sourceIndex: number, targetIndex: number) {
+    const next = reorderMediaUrls(mediaUrls, sourceIndex, targetIndex)
+    setDraggedMediaIndex(null); setDragOverMediaIndex(null)
     if (next === mediaUrls) return
     updateField('mediaUrls', next.join('\n'))
-    setDraggedMediaUrl(null); setDragOverMediaUrl(null)
     showFeedback('Görsel sırası güncellendi. Kalıcı olması için kaydedin.', 'info')
   }
   function clearAllMedia() {
     setMediaFiles([])
     updateField('mediaUrls', '')
     setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: [] })))
-    setDraggedMediaUrl(null)
-    setDragOverMediaUrl(null)
+    setDraggedMediaIndex(null)
+    setDragOverMediaIndex(null)
     showFeedback('Ürün ve varyant görselleri temizlendi. Kalıcı olması için kaydedin.', 'info')
   }
   async function removeFamilyMedia(item: { url: string; mediaIds: string[]; sourceProductTitles: string[] }) {
@@ -2406,7 +2407,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     }
     if (rows.length > MAX_VARIANTS) issues.push(`En fazla ${MAX_VARIANTS} varyant oluşturulabilir.`)
     const productMediaUrls = editProductId && form.mediaUrls.trim() === initialEditMediaUrl.current.trim() ? [] : mediaUrls
-    const allMediaUrls = [...productMediaUrls, ...rows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4)))]
+    const allMediaUrls = publicProductMediaUrls([...productMediaUrls, ...rows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4)))])
     const invalidMediaUrl = allMediaUrls.map(productMediaUrlIssue).find((issue): issue is string => issue !== null)
     if (invalidMediaUrl) issues.push(`Görsel bağlantısı geçersiz: ${invalidMediaUrl} Ürün kaydedilmeden önce düzeltin veya kaldırın.`)
     const skus = rows.map(row => row.sku.trim().toLocaleUpperCase('tr-TR')); if (skus.some(value => !value)) issues.push('Tüm varyantlarda stok kodu zorunludur.'); if (new Set(skus).size !== skus.length) issues.push('Stok kodları benzersiz olmalıdır.')
@@ -2416,7 +2417,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
      if (!form.desi.trim() || !Number.isFinite(Number(form.desi)) || Number(form.desi) <= 0) issues.push('Desi sıfırdan büyük olmalıdır.')
      if (requireCompleteCatalog && requirePublicationReadiness && selectedChannelIds.length) {
       if (!form.brandId) issues.push('Trendyol yayını için marka zorunludur.'); if (!form.modelCode.trim() || form.modelCode.trim().length > 40) issues.push('Trendyol yayını için en fazla 40 karakterlik model kodu zorunludur.'); if (form.title.trim().length > 100) issues.push('Trendyol ürün başlığı en fazla 100 karakter olabilir.')
-      if (!mediaUrls.length && !mediaFiles.length) issues.push('Trendyol yayını için en az bir HTTPS görsel adresi zorunludur.'); if (!mediaUrls.length && mediaFiles.length) issues.push('Yerel dosya katalogda önizleme içindir; Trendyol yayını için en az bir herkese açık HTTPS görsel adresi ekleyin.'); if (mediaUrls.length + mediaFiles.length > 8) issues.push('Trendyol yayını için en fazla 8 görsel kullanılabilir.'); if (mediaUrls.some(url => !url.startsWith('https://'))) issues.push('Tüm görsel adresleri HTTPS olmalıdır.')
+      const publicMediaUrls = publicProductMediaUrls(mediaUrls)
+      if (!publicMediaUrls.length && !mediaFiles.length) issues.push('Trendyol yayını için en az bir HTTPS görsel adresi zorunludur.'); if (!publicMediaUrls.length && mediaFiles.length) issues.push('Yerel dosyalar katalogda önizleme içindir; Trendyol yayını için herkese açık HTTPS görsel adresi ekleyin.'); if (mediaUrls.length + mediaFiles.length > 8) issues.push('Trendyol yayını için en fazla 8 görsel kullanılabilir.'); if (publicMediaUrls.some(url => !url.startsWith('https://'))) issues.push('Tüm görsel adresleri HTTPS olmalıdır.')
       if (rows.some(row => !row.barcode.trim() || !/^[a-zA-Z0-9._-]+$/.test(row.barcode.trim()))) issues.push('Trendyol yayını için her varyantta geçerli ve benzersiz barkod zorunludur.'); if (rows.some(row => row.salePrice <= 0)) issues.push('Trendyol yayını için satış fiyatı sıfırdan büyük olmalıdır.')
       for (const connectionId of selectedChannelIds) {
         const draft = channelPriceDraft(connectionId); const listPrice = Number(draft.listPrice); const salePrice = Number(draft.salePrice)
@@ -2476,9 +2478,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         ? await hubApi<Product>(`/products/${productToEdit.data.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${productToEdit.data.version}"` }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}), variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload), variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({ id: row.key, sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null, costPrice: row.costPrice, sortOrder: rows.findIndex(candidate => candidate.key === row.key), options: row.options, attributes: Object.entries(row.attributeValueIds).map(([attributeId, valueId], attributeIndex) => ({ attributeId, valueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: rows.findIndex(candidate => candidate.key === row.key) * 100 + attributeIndex })) })) }) })
         : await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, attributes: globalAttributes, variants: rows.map(variantPayload) }) })
       productCreated = product; setCreated(product); const completed = ['ürün']; const warnings: string[] = []
-      const mediaUrlsToPersist = editProductId && form.mediaUrls.trim() === initialEditMediaUrl.current.trim() ? [] : mediaUrls
-      if (editProductId && form.mediaUrls.trim() !== initialEditMediaUrl.current.trim()) await hubApi(`/files/product-media?productId=${encodeURIComponent(product.id)}`, { method: 'DELETE', headers: { 'Idempotency-Key': key() } })
-      for (const [index, url] of mediaUrlsToPersist.entries()) await hubApi('/files/product-media-url', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: null, url, mediaRole: index === 0 ? 'PRIMARY' : 'GALLERY', sortOrder: index, altText: form.title }) })
+      const initialProductMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(url => url.trim()).filter(Boolean)
+      const productMediaChanged = editProductId ? !mediaRefsEqual(mediaUrls, initialProductMediaUrls) : mediaUrls.length > 0
+      if (productMediaChanged) await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: null, items: mediaUrls.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
       for (const [fileIndex, file] of mediaFiles.entries()) { const data = new FormData(); data.set('file', file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: data }) }
       const rowsBySku = new Map(rows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
       for (const variant of product.variants) {
@@ -2486,11 +2488,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         if (!row) continue
         const originalMediaRefs = initialEditVariantMediaRefs.current[variant.id]
         if (editProductId && originalMediaRefs && mediaRefsEqual(row.mediaRefs, originalMediaRefs)) continue
-        await hubApi(`/files/product-media-variant?productId=${encodeURIComponent(product.id)}&variantId=${encodeURIComponent(variant.id)}`, { method: 'DELETE', headers: { 'Idempotency-Key': key() } })
+        await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: variant.id, items: row.mediaRefs.flatMap((mediaRef, sortOrder) => mediaRef.startsWith('url|') ? [{ url: mediaRef.slice(4), sortOrder }] : []), altText: `${form.title} · ${row.optionSignature}` }) })
         for (const [mediaIndex, mediaRef] of row.mediaRefs.entries()) {
-          if (mediaRef.startsWith('url|')) {
-            await hubApi('/files/product-media-url', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: variant.id, url: mediaRef.slice(4), mediaRole: mediaIndex === 0 ? 'PRIMARY' : 'GALLERY', sortOrder: mediaIndex, altText: `${form.title} · ${row.optionSignature}` }) })
-          } else if (mediaRef.startsWith('file|')) {
+          if (mediaRef.startsWith('file|')) {
             const file = mediaFiles[Number(mediaRef.slice(5))]
             if (file) { const data = new FormData(); data.set('file', file); data.set('productId', product.id); data.set('variantId', variant.id); data.set('mediaRole', mediaIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaIndex)); data.set('altText', `${form.title} · ${row.optionSignature}`); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: data }) }
           }
@@ -2751,9 +2751,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         </label>
         {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0) && <div className="media-preview-strip">
           {mediaFiles.map((file, index) => <LocalImagePreview key={`${file.name}-${file.lastModified}-${index}`} file={file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={index === 0 && !mediaUrls.length ? 'Ana görsel' : file.name} onRemove={() => setMediaFiles(files => files.filter((_, i) => i !== index))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
-          {mediaUrls.map((url, index) => <figure key={`${url}-${index}`} className={`image-preview-card media-sortable ${dragOverMediaUrl === url ? 'is-media-drag-over' : ''}`} draggable onDragStart={() => setDraggedMediaUrl(url)} onDragOver={event => { event.preventDefault(); setDragOverMediaUrl(url) }} onDrop={event => { event.preventDefault(); reorderMedia(draggedMediaUrl ?? '', url) }} onDragEnd={() => { setDraggedMediaUrl(null); setDragOverMediaUrl(null) }}>
+          {mediaUrls.map((url, index) => <figure key={`${url}-${index}`} className={`image-preview-card media-sortable ${dragOverMediaIndex === index ? 'is-media-drag-over' : ''}`} draggable onDragStart={event => { setDraggedMediaIndex(index); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(index)) }} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMediaIndex(index) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue === '' ? draggedMediaIndex ?? -1 : Number(transferValue); reorderMedia(Number.isInteger(transferIndex) ? transferIndex : -1, index) }} onDragEnd={() => { setDraggedMediaIndex(null); setDragOverMediaIndex(null) }}>
             <img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} title="Büyütmek için tıklayın" />
-            <button type="button" className="image-remove-btn" title="Görseli kaldır" onClick={event => { event.stopPropagation(); updateField('mediaUrls', mediaUrls.filter((_, i) => i !== index).join('\n')) }}><UiIcon name="close" /></button>
+            <button type="button" className="image-remove-btn" title="Görseli kaldır" onClick={event => { event.stopPropagation(); updateField('mediaUrls', mediaUrls.filter((_, i) => i !== index).join('\n')); const removedRef = `url|${url}`; setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(reference => reference !== removedRef) }))) }}><UiIcon name="close" /></button>
             <figcaption>{index === 0 && !mediaFiles.length ? 'Ana görsel' : `${index + 1}. görsel`} · sürükle</figcaption>
           </figure>)}
           {familyOnlyMediaItems.map((item, index) => {
