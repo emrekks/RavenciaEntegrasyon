@@ -41,6 +41,14 @@ async function submitInvoice(item: InvoiceWorkspace, provider: Connection | unde
   await hubApi(`/invoices/${invoice.id}/submit-jobs`, { method: 'POST', headers: { 'Idempotency-Key': item.invoiceId ? `invoice-submit-retry:${invoice.id}:${idempotency()}` : `invoice-submit:${invoice.id}`, 'If-Match': `"v${invoice.version}"` }, body: JSON.stringify({ password: '', confirmed: false }) })
   return invoice.id
 }
+async function ensureShopifyInvoiceRecord(item: InvoiceWorkspace) {
+  if (item.platformCode !== 'SHOPIFY') throw new Error('Manuel fatura kaydı yalnızca Shopify siparişlerinde kullanılabilir.')
+  if (item.invoiceId) return item.invoiceId
+  const order = await hubApi<{ id: string; connectionId: string | null; platformCode: string }>(`/orders/${item.orderId}`)
+  if (order.platformCode !== 'SHOPIFY' || !order.connectionId) throw new Error('Siparişin Shopify bağlantısı doğrulanamadı.')
+  const invoice = await hubApi<{ id: string }>('/invoices', { method: 'POST', headers: { 'Idempotency-Key': `invoice:${item.orderId}:${item.packageId}` }, body: JSON.stringify({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: order.connectionId, originalInvoiceId: null }) })
+  return invoice.id
+}
 function requiresInvoiceAction(item: InvoiceWorkspace) { return item.canCreateInvoice || item.invoiceStatus === 'FATURA_REDDEDILDI' }
 function invoiceFailureReason(code: string | null) {
   const labels: Record<string, string> = {
@@ -113,17 +121,35 @@ function addressLines(value: string | null | undefined) {
 }
 
 export function InvoicesPage() {
-  const client = useQueryClient(); const [search, setSearch] = useState(''); const [tab, setTab] = useState('UNINVOICED'); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(null); const [shipmentStatusFilter, setShipmentStatusFilter] = useState('ALL'); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [dateFrom, setDateFrom] = useState(''); const [dateTo, setDateTo] = useState(''); const [columnFilterOpen, setColumnFilterOpen] = useState<'cargo' | 'shipment' | 'invoice' | null>(null); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [selectedItem, setSelectedItem] = useState<InvoiceWorkspace | null>(null); const [shopifyStatusItem, setShopifyStatusItem] = useState<InvoiceWorkspace | null>(null)
+  const client = useQueryClient(); const [search, setSearch] = useState(''); const [tab, setTab] = useState('UNINVOICED'); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(null); const [shipmentStatusFilter, setShipmentStatusFilter] = useState('ALL'); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [dateFrom, setDateFrom] = useState(''); const [dateTo, setDateTo] = useState(''); const [columnFilterOpen, setColumnFilterOpen] = useState<'cargo' | 'shipment' | 'invoice' | null>(null); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [selectedItem, setSelectedItem] = useState<InvoiceWorkspace | null>(null); const [shopifyStatusItem, setShopifyStatusItem] = useState<InvoiceWorkspace | null>(null); const [shopifyUploadItem, setShopifyUploadItem] = useState<InvoiceWorkspace | null>(null); const [openShopifyMenu, setOpenShopifyMenu] = useState<string | null>(null)
   function setMessage(value: string, kind: InvoiceNoticeKind = 'info') { setMessageState(value); setMessageKind(kind); if (value) appendNotification(value, kind) }
   useEffect(() => {
     if (!message) return
     const timeout = window.setTimeout(() => setMessageState(''), messageKind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
   }, [message, messageKind])
+  useEffect(() => {
+    if (!openShopifyMenu) return
+    const closeOutside = (event: PointerEvent) => { if (!(event.target instanceof Element) || !event.target.closest('[data-shopify-invoice-menu]')) setOpenShopifyMenu(null) }
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpenShopifyMenu(null) }
+    document.addEventListener('pointerdown', closeOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => { document.removeEventListener('pointerdown', closeOutside); document.removeEventListener('keydown', closeOnEscape) }
+  }, [openShopifyMenu])
   const query = useQuery({ queryKey: ['invoice-workspace'], queryFn: () => hubApi<InvoiceWorkspace[]>('/invoice-workspace') })
   const connections = useQuery({ queryKey: ['connections', 'billing-workspace'], queryFn: () => loadAllPages<Connection>('/connections') })
   const provider = connections.data?.items.find(x => x.platformCode === 'TRENDYOL_EFATURAM' && (x.status === 'ACTIVE' || x.status === 'VERIFIED'))
-  const create = useMutation({ mutationFn: async (item: InvoiceWorkspace) => { const invoiceId = await submitInvoice(item, provider); setMessage(`#${item.orderNumber} için fatura sağlayıcıda işleniyor…`); return waitForInvoiceCompletion(invoiceId) }, onMutate: item => setMessage(`#${item.orderNumber} için fatura oluşturuluyor…`), onSuccess: async () => { setMessage('Fatura başarıyla oluşturuldu.', 'success'); await client.invalidateQueries({ queryKey: ['invoice-workspace'] }) }, onError: error => setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.', 'error') })
+  const create = useMutation({ mutationFn: async (item: InvoiceWorkspace) => {
+    if (item.platformCode === 'SHOPIFY') return { platformCode: 'SHOPIFY', invoiceId: await ensureShopifyInvoiceRecord(item) }
+    const invoiceId = await submitInvoice(item, provider)
+    setMessage(`#${item.orderNumber} için fatura sağlayıcıda işleniyor…`)
+    await waitForInvoiceCompletion(invoiceId)
+    return { platformCode: item.platformCode, invoiceId }
+  }, onMutate: item => setMessage(`#${item.orderNumber} için ${item.platformCode === 'SHOPIFY' ? 'fatura takip kaydı hazırlanıyor…' : 'fatura oluşturuluyor…'}`), onSuccess: async (_result, item) => {
+    if (item.platformCode === 'SHOPIFY') setMessage(`Shopify #${item.orderNumber} için fatura takip kaydı hazır. Gerçek faturayı “Manuel fatura yükle” seçeneğinden panele ekleyin.`, 'success')
+    else setMessage('Fatura başarıyla oluşturuldu.', 'success')
+    await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['orders'] })])
+  }, onError: error => setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.', 'error') })
   const items = (query.data ?? []).filter(item => !isCancelledShipment(item)); const normalized = search.trim().toLocaleLowerCase('tr-TR')
   const platformOptions = Array.from(new Map((query.data ?? []).map(item => [item.platformCode, { value: item.platformCode, label: item.platformDisplayName || item.platformCode }])).values()).sort((left, right) => left.label.localeCompare(right.label, 'tr-TR'))
   const cargoOptions = Array.from(new Set(items.map(item => item.cargoProviderName?.trim()).filter((value): value is string => Boolean(value)))).sort((left, right) => left.localeCompare(right, 'tr-TR'))
@@ -179,7 +205,20 @@ export function InvoicesPage() {
           <div className="invoice-reference-shipment"><Badge value={item.shipmentStatus} /><small>{item.deliveredAt ? `Teslim: ${new Date(item.deliveredAt).toLocaleDateString('tr-TR')}` : 'Henüz teslim edilmedi'}</small></div>
           <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); return <InvoiceStatusBadge status={invoiceState.value} tone={invoiceState.tone} /> })()}{item.invoiceDueAt && <small className={item.isDueSoon ? 'deadline critical' : ''}>Son tarih: {new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}</small>}</div>
           <div className="invoice-reference-amount"><strong>{item.amount.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</strong><small>{item.isDueSoon ? 'Öncelikli takip' : 'Sipariş toplamı'}</small></div>
-          <div className="invoice-reference-actions">{item.platformCode === 'SHOPIFY' ? <button type="button" className="shopify-invoice-status-trigger" onClick={() => setShopifyStatusItem(item)}>Fatura durumunu değiştir</button> : item.invoiceId ? isInvoiceFailureStatus(item.invoiceStatus) ? <button type="button" aria-busy={create.isPending && create.variables?.packageId === item.packageId} disabled={!provider?.hasCredential || create.isPending} onClick={() => create.mutate(item)}>{create.isPending && create.variables?.packageId === item.packageId && <span className="invoice-action-spinner" aria-hidden="true" />}<span className="invoice-action-label">{create.isPending && create.variables?.packageId === item.packageId ? 'Deneniyor…' : 'Tekrar dene'}</span></button> : <InvoiceStatusBadge status={item.invoiceStatus} /> : <button type="button" aria-busy={create.isPending && create.variables?.packageId === item.packageId} disabled={!provider?.hasCredential || create.isPending || !item.canCreateInvoice} onClick={() => create.mutate(item)}>{create.isPending && create.variables?.packageId === item.packageId && <span className="invoice-action-spinner" aria-hidden="true" />}<span className="invoice-action-label">{create.isPending && create.variables?.packageId === item.packageId ? 'İşleniyor…' : 'Fatura oluştur'}</span></button>}{item.invoiceId && item.invoiceDocumentAvailable && <a className="invoice-reference-document-link" href={`/api/v1/invoices/${item.invoiceId}/documents/latest/content`} target="_blank" rel="noreferrer">Fatura linki <UiIcon name="externalLink" /></a>}<button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları aç <UiIcon name="externalLink" /></button></div>
+          <div className="invoice-reference-actions">
+            {item.platformCode === 'SHOPIFY' ? <>
+              {item.invoiceId && !item.canCreateInvoice ? <InvoiceStatusBadge status={invoiceWorkspaceStatus(item).value} tone={invoiceWorkspaceStatus(item).tone} /> : <button type="button" className="shopify-invoice-create-trigger" aria-busy={create.isPending && create.variables?.packageId === item.packageId} disabled={create.isPending || !item.canCreateInvoice} onClick={() => create.mutate(item)}>{create.isPending && create.variables?.packageId === item.packageId && <span className="invoice-action-spinner" aria-hidden="true" />}<span className="invoice-action-label">{create.isPending && create.variables?.packageId === item.packageId ? 'Hazırlanıyor…' : 'Fatura Oluştur'}</span></button>}
+              <div className="invoice-shopify-menu" data-shopify-invoice-menu>
+                <button type="button" className="secondary invoice-shopify-menu-trigger" aria-expanded={openShopifyMenu === item.packageId} aria-haspopup="menu" onClick={() => setOpenShopifyMenu(current => current === item.packageId ? null : item.packageId)}>Diğer fatura işlemleri <UiIcon name="chevronDown" /></button>
+                {openShopifyMenu === item.packageId && <div className="invoice-shopify-menu-options" role="menu" aria-label={`Shopify #${item.orderNumber} fatura işlemleri`}>
+                  <button type="button" role="menuitem" onClick={() => { setOpenShopifyMenu(null); setShopifyStatusItem(item) }}>Fatura Durumunu Değiştir</button>
+                  <button type="button" role="menuitem" onClick={() => { setOpenShopifyMenu(null); setShopifyUploadItem(item) }}>Manuel fatura yükle</button>
+                </div>}
+              </div>
+            </> : item.invoiceId ? isInvoiceFailureStatus(item.invoiceStatus) ? <button type="button" aria-busy={create.isPending && create.variables?.packageId === item.packageId} disabled={!provider?.hasCredential || create.isPending} onClick={() => create.mutate(item)}>{create.isPending && create.variables?.packageId === item.packageId && <span className="invoice-action-spinner" aria-hidden="true" />}<span className="invoice-action-label">{create.isPending && create.variables?.packageId === item.packageId ? 'Deneniyor…' : 'Tekrar dene'}</span></button> : <InvoiceStatusBadge status={item.invoiceStatus} /> : <button type="button" aria-busy={create.isPending && create.variables?.packageId === item.packageId} disabled={!provider?.hasCredential || create.isPending || !item.canCreateInvoice} onClick={() => create.mutate(item)}>{create.isPending && create.variables?.packageId === item.packageId && <span className="invoice-action-spinner" aria-hidden="true" />}<span className="invoice-action-label">{create.isPending && create.variables?.packageId === item.packageId ? 'İşleniyor…' : 'Fatura oluştur'}</span></button>}
+            {item.invoiceId && item.invoiceDocumentAvailable && <a className="invoice-reference-document-link" href={`/api/v1/invoices/${item.invoiceId}/documents/latest/content`} target="_blank" rel="noreferrer">Fatura linki <UiIcon name="externalLink" /></a>}
+            <button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları aç <UiIcon name="externalLink" /></button>
+          </div>
         </article>)}
       </div><nav className="order-pagination" aria-label="Fatura sayfaları"><span>Toplam {visible.length.toLocaleString('tr-TR')} adet</span><Pagination className="pagination-controls" page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={() => setPageNumber(value => Math.min(totalPages, value + 1))} /></nav></>}
     </section>
@@ -193,6 +232,7 @@ export function InvoicesPage() {
     </aside></div>}
     {!provider?.hasCredential && items.some(item => item.platformCode !== 'SHOPIFY' && requiresInvoiceAction(item)) && <div className="unknown invoice-provider-notice"><strong>E-Faturam provider hazır değil</strong><p>Trendyol’da fatura oluşturmak için aktif bağlantı ve şifreli credential gerekir. Shopify faturaları belge yükleme ve manuel durum akışıyla izlenir.</p><Link className="button-link" to="/integrations">Bağlantıyı yönet</Link></div>}
     {shopifyStatusItem && <ShopifyInvoiceStatusModal item={shopifyStatusItem} onClose={() => setShopifyStatusItem(null)} onFeedback={setMessage} />}
+    {shopifyUploadItem && <ShopifyInvoiceUploadModal item={shopifyUploadItem} onClose={() => setShopifyUploadItem(null)} onFeedback={setMessage} />}
   </section>
 }
 
@@ -205,13 +245,7 @@ function ShopifyInvoiceStatusModal({ item, onClose, onFeedback }: { item: Invoic
   const update = useMutation({
     mutationFn: async () => {
       if (item.platformCode !== 'SHOPIFY') throw new Error('Manuel fatura durumu yalnızca Shopify siparişlerinde kullanılabilir.')
-      let invoiceId = item.invoiceId
-      if (!invoiceId) {
-        const order = await hubApi<{ id: string; connectionId: string | null; platformCode: string }>(`/orders/${item.orderId}`)
-        if (order.platformCode !== 'SHOPIFY' || !order.connectionId) throw new Error('Siparişin Shopify bağlantısı doğrulanamadı.')
-        const created = await hubApi<InvoiceDetail>('/invoices', { method: 'POST', headers: { 'Idempotency-Key': `invoice:${item.orderId}:${item.packageId}` }, body: JSON.stringify({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: order.connectionId, originalInvoiceId: null }) })
-        invoiceId = created.id
-      }
+      const invoiceId = await ensureShopifyInvoiceRecord(item)
       if (status === 'UPLOADED') {
         const latestInvoice = await hubApi<InvoiceDetail>(`/invoices/${invoiceId}`)
         if (!latestInvoice.documents.length) throw new Error('Fatura durumunu “yüklendi” yapmak için belgeyi önce panele yükleyin. Belge yüklenene kadar durum “Fatura bekliyor” kalır.')
@@ -227,6 +261,33 @@ function ShopifyInvoiceStatusModal({ item, onClose, onFeedback }: { item: Invoic
     onError: error => onFeedback(error instanceof Error ? error.message : 'Shopify fatura durumu güncellenemedi.', 'error')
   })
   return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => { if (!update.isPending) onClose() }}><section className="workspace-modal shopify-invoice-status-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-workspace-shopify-status-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">SHOPIFY</p><h2 id="invoice-workspace-shopify-status-title">Fatura durumunu değiştir</h2><p>#{item.orderNumber} · Bu değişiklik yalnızca panel kaydını günceller.</p></div><button type="button" className="modal-close" onClick={onClose} disabled={update.isPending} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><div className="shopify-invoice-status-form"><label><span>Yeni fatura durumu</span><select value={status} onChange={event => setStatus(event.target.value as 'PENDING' | 'UPLOADED')} disabled={update.isPending}><option value="PENDING">Fatura bekliyor</option><option value="UPLOADED" disabled={!hasUploadedDocument}>Faturası yüklendi</option></select></label><p className="notice">Shopify faturası mali fatura olarak oluşturulmaz veya Shopify’a gönderilmez. “Faturası yüklendi” durumu yalnızca belge panele yüklendikten sonra seçilebilir.</p>{status === 'UPLOADED' && !hasUploadedDocument && <p className="notice" role="status">Bu siparişte panele yüklenmiş fatura belgesi bulunmuyor.</p>}<footer><button type="button" className="secondary" onClick={onClose} disabled={update.isPending}>Vazgeç</button><button type="button" onClick={() => update.mutate()} disabled={update.isPending || (status === 'UPLOADED' && !hasUploadedDocument)}>{update.isPending ? 'Kaydediliyor…' : 'Durumu kaydet'}</button></footer></div></section></div>
+}
+
+function ShopifyInvoiceUploadModal({ item, onClose, onFeedback }: { item: InvoiceWorkspace; onClose: () => void; onFeedback: (message: string, kind: InvoiceNoticeKind) => void }) {
+  const client = useQueryClient()
+  const [file, setFile] = useState<File | null>(null)
+  const [message, setMessage] = useState('')
+  const [dragging, setDragging] = useState(false)
+  const upload = useMutation({
+    mutationFn: async () => {
+      if (item.platformCode !== 'SHOPIFY') throw new Error('Bu yükleme akışı yalnızca Shopify siparişlerinde kullanılabilir.')
+      if (!file) throw new Error('Yüklenecek fatura dosyasını seçin.')
+      if (file.size > 10 * 1024 * 1024) throw new Error('Fatura dosyası en fazla 10 MB olabilir.')
+      if (!/\.(pdf|jpe?g|png)$/i.test(file.name)) throw new Error('Yalnız PDF, JPEG, JPG veya PNG dosyası yükleyebilirsiniz.')
+      const invoiceId = await ensureShopifyInvoiceRecord(item)
+      const form = new FormData()
+      form.append('file', file)
+      await hubApi(`/invoices/${invoiceId}/documents/manual`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-document:${invoiceId}:${file.name}:${file.size}:${file.lastModified}` }, body: form })
+    },
+    onSuccess: async () => {
+      onFeedback('Shopify faturası panele yüklendi; fatura durumu “Faturası yüklendi” olarak güncellendi.', 'success')
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
+      onClose()
+    },
+    onError: error => { const errorMessage = error instanceof Error ? error.message : 'Fatura dosyası yüklenemedi.'; setMessage(errorMessage); onFeedback(errorMessage, 'error') }
+  })
+  function choose(selected: File | undefined) { if (selected) { setFile(selected); setMessage('') } }
+  return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => { if (!upload.isPending) onClose() }}><section className="workspace-modal invoice-upload-modal shopify-invoice-upload-modal" role="dialog" aria-modal="true" aria-labelledby="shopify-invoice-upload-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">SHOPIFY · #{item.orderNumber}</p><h2 id="shopify-invoice-upload-title">Manuel fatura yükle</h2><p>Dosya güvenli panele eklenir; Shopify’a veya mali fatura sağlayıcısına gönderilmez.</p></div><button type="button" className="modal-close" onClick={onClose} disabled={upload.isPending} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><label className={`invoice-dropzone${dragging ? ' dragging' : ''}`} onDragEnter={event => { event.preventDefault(); setDragging(true) }} onDragOver={event => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files[0]) }}><input type="file" accept=".pdf,.jpeg,.jpg,.png,application/pdf,image/jpeg,image/png" onChange={event => choose(event.target.files?.[0])} /><span className="invoice-upload-icon" aria-hidden="true"><UiIcon name="upload" /></span><strong>{file ? file.name : 'Fatura dosyasını seçin'}</strong><small>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'PDF, JPEG veya PNG · En fazla 10 MB'}</small><b>Dosya Seç</b></label>{message && <p className="error" role="alert">{message}</p>}<footer><button type="button" className="secondary" onClick={onClose} disabled={upload.isPending}>Vazgeç</button><button type="button" disabled={!file || upload.isPending} onClick={() => upload.mutate()}>{upload.isPending ? 'Yükleniyor…' : 'Faturayı Yükle'}</button></footer></section></div>
 }
 
 export function InvoiceDetailPage() {
