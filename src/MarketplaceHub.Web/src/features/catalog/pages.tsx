@@ -11,6 +11,7 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification } from '../../shared/notifications'
 import { toggleProductAttributeValue } from './attribute-selection'
 import { filterAttributeOptionValues } from './attribute-value-search'
+import { mediaRefsEqual, reorderMediaUrls } from './product-media-editor'
 import { buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './variant-option-matching'
 import { productMediaUrlIssue } from './product-media-url'
@@ -1712,6 +1713,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [variantPlatformPricingSaving, setVariantPlatformPricingSaving] = useState(false)
   const feedbackTimer = useRef<number | null>(null)
   const initialEditMediaUrl = useRef('')
+  const initialEditVariantMediaRefs = useRef<Record<string, string[]>>({})
   useEffect(() => {
     if (!barcodeSkuMenuOpen) return
     function closeBarcodeSkuMenu(event: PointerEvent) {
@@ -1793,6 +1795,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setMediaFiles([])
     const seededMediaRefs = seedVariantMediaRefs(product.variants)
     const mediaRefsByVariantId = new Map(product.variants.map((variant, index) => [variant.id, seededMediaRefs[index] ?? []]))
+    initialEditVariantMediaRefs.current = Object.fromEntries(mediaRefsByVariantId)
     setVariantRows(sortedVariants.map(variant => {
       const options = Object.fromEntries(variantOptionEntries(variant).map(option => [option.name, option.value]))
       return { key: variant.id, optionSignature: variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : optionSignatureFromOptions(options) || 'Tek Ürün', options, attributeValueIds: {}, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.salePrice ?? 0, listPrice: variant.listPrice ?? variant.salePrice ?? 0, costPrice: variant.costPrice ?? 0, mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], platformStatuses: variant.platformStatuses ?? [] }
@@ -1977,11 +1980,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setDragOverVariantKey(null)
   }
   function reorderMedia(sourceUrl: string, targetUrl: string) {
-    if (!sourceUrl || !targetUrl || sourceUrl === targetUrl) return
-    const current = [...mediaUrls, ...familyOnlyMediaUrls]
-    const sourceIndex = current.indexOf(sourceUrl); const targetIndex = current.indexOf(targetUrl)
-    if (sourceIndex < 0 || targetIndex < 0) return
-    const next = [...current]; const [moved] = next.splice(sourceIndex, 1); next.splice(targetIndex, 0, moved)
+    const next = reorderMediaUrls(mediaUrls, sourceUrl, targetUrl)
+    if (next === mediaUrls) return
     updateField('mediaUrls', next.join('\n'))
     setDraggedMediaUrl(null); setDragOverMediaUrl(null)
     showFeedback('Görsel sırası güncellendi. Kalıcı olması için kaydedin.', 'info')
@@ -2484,6 +2484,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       for (const variant of product.variants) {
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
         if (!row) continue
+        const originalMediaRefs = initialEditVariantMediaRefs.current[variant.id]
+        if (editProductId && originalMediaRefs && mediaRefsEqual(row.mediaRefs, originalMediaRefs)) continue
         await hubApi(`/files/product-media-variant?productId=${encodeURIComponent(product.id)}&variantId=${encodeURIComponent(variant.id)}`, { method: 'DELETE', headers: { 'Idempotency-Key': key() } })
         for (const [mediaIndex, mediaRef] of row.mediaRefs.entries()) {
           if (mediaRef.startsWith('url|')) {
@@ -2557,7 +2559,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const familyMediaUrls = productToEdit.data?.familyMediaUrls ?? []
   const familyMediaItems = productToEdit.data?.familyMediaItems ?? familyMediaUrls.map(url => ({ url, mediaIds: [], sourceProductTitles: [] }))
   const familyOnlyMediaItems = familyMediaItems.filter(item => !mediaUrls.some(current => current.localeCompare(item.url, undefined, { sensitivity: 'accent' }) === 0))
-  const familyOnlyMediaUrls = familyOnlyMediaItems.map(item => item.url)
   const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls, ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `${index + 1}. ${url}`, url })) as ProductMediaOption[]).concat(mediaFiles.map((file, index) => ({ value: `file|${index}`, label: `Dosya · ${file.name}`, file })))
   const bulkMediaGroups = useMemo<VariantMediaGroup[]>(() => {
     const groups: VariantMediaGroup[] = []
@@ -2758,10 +2759,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           {familyOnlyMediaItems.map((item, index) => {
             const pendingKey = item.mediaIds.join(',')
             const deleting = pendingKey !== '' && deletingFamilyMediaKey === pendingKey
-            return <figure key={`family-${item.url}`} className={`image-preview-card family-media-preview media-sortable ${dragOverMediaUrl === item.url ? 'is-media-drag-over' : ''}`} draggable onDragStart={() => setDraggedMediaUrl(item.url)} onDragOver={event => { event.preventDefault(); setDragOverMediaUrl(item.url) }} onDrop={event => { event.preventDefault(); reorderMedia(draggedMediaUrl ?? '', item.url) }} onDragEnd={() => { setDraggedMediaUrl(null); setDragOverMediaUrl(null) }}>
+            return <figure key={`family-${item.url}`} className="image-preview-card family-media-preview">
               <img src={item.url} alt={`${form.title || 'Ürün'} renk ailesi görseli ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url: item.url, title: `${form.title || 'Ürün'} · Renk ailesi` })} title="Renk ailesi görselini büyüt" />
               <button type="button" className="image-remove-btn" disabled={deleting} title="Renk ailesi görselini kaynak kayıtlardan kaldır" aria-label="Renk ailesi görselini kaldır" onClick={event => { event.stopPropagation(); void removeFamilyMedia(item) }}><UiIcon name={deleting ? 'loader' : 'close'} /></button>
-              <figcaption>Renk varyantı görseli · sürükle</figcaption>
+              <figcaption>Renk varyantı görseli · kaynağından yönetilir</figcaption>
             </figure>
           })}
         </div>}
