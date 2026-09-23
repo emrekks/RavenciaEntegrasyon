@@ -37,6 +37,7 @@ type VariantPlatformStatus = {
 type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
   categoryPath?: string | null; variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null; familyMediaUrls?: string[]
+  familyMediaItems?: Array<{ url: string; mediaIds: string[]; sourceProductTitles: string[] }>
   platformStatuses?: ProductPlatformStatus[]
   attributes?: Array<{ attributeId: string; valueId: string | null; textValue: string | null; numberValue: number | null; booleanValue: boolean | null; sortOrder: number }>
   options?: Array<{ id: string; label: string; values: Array<{ id: string; label: string }> }>
@@ -1699,6 +1700,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [expandedOptionGroupIds, setExpandedOptionGroupIds] = useState<Record<string, boolean>>({})
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkCostPrice, setBulkCostPrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
+  const [deletingFamilyMediaKey, setDeletingFamilyMediaKey] = useState<string | null>(null)
   const [draggedMediaUrl, setDraggedMediaUrl] = useState<string | null>(null); const [dragOverMediaUrl, setDragOverMediaUrl] = useState<string | null>(null)
   const [pointerDraggedVariantKey, setPointerDraggedVariantKey] = useState<string | null>(null)
   const pointerDraggedVariantRef = useRef<string | null>(null)
@@ -1991,6 +1993,30 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setDraggedMediaUrl(null)
     setDragOverMediaUrl(null)
     showFeedback('Ürün ve varyant görselleri temizlendi. Kalıcı olması için kaydedin.', 'info')
+  }
+  async function removeFamilyMedia(item: { url: string; mediaIds: string[]; sourceProductTitles: string[] }) {
+    if (item.mediaIds.length === 0) {
+      showFeedback('Görselin kaynak bağlantıları yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error')
+      return
+    }
+    const sourceNames = item.sourceProductTitles.length ? item.sourceProductTitles.join(', ') : 'ürün ailesindeki kaynak ürünler'
+    if (!window.confirm(`Bu renk ailesi görselini ${sourceNames} kayıtlarından kaldırmak istiyor musunuz? Bu işlem yalnızca paneldeki görsel bağlantılarını kaldırır; pazaryerindeki ürün/görseli silmez.`)) return
+    const pendingKey = item.mediaIds.join(',')
+    setDeletingFamilyMediaKey(pendingKey)
+    try {
+      await hubApi<{ deletedCount: number }>('/files/product-media-items', {
+        method: 'DELETE',
+        headers: { 'Idempotency-Key': key() },
+        body: JSON.stringify({ mediaIds: item.mediaIds })
+      })
+      await productToEdit.refetch()
+      await client.invalidateQueries({ queryKey: ['products'] })
+      showFeedback('Renk ailesi görseli kaldırıldı.', 'success')
+    } catch (reason) {
+      showFeedback(reason instanceof Error ? reason.message : 'Renk ailesi görseli kaldırılamadı.', 'error')
+    } finally {
+      setDeletingFamilyMediaKey(null)
+    }
   }
   function updateChannel(id: string) {
     const selected = selectedChannelIds.includes(id)
@@ -2529,7 +2555,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const selectedPublishConnections = publishConnections.filter(item => selectedChannelIds.includes(item.id))
   const assignedMediaUrls = [...new Set(variantRows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4))))]
   const familyMediaUrls = productToEdit.data?.familyMediaUrls ?? []
-  const familyOnlyMediaUrls = familyMediaUrls.filter(url => !mediaUrls.some(current => current.localeCompare(url, undefined, { sensitivity: 'accent' }) === 0))
+  const familyMediaItems = productToEdit.data?.familyMediaItems ?? familyMediaUrls.map(url => ({ url, mediaIds: [], sourceProductTitles: [] }))
+  const familyOnlyMediaItems = familyMediaItems.filter(item => !mediaUrls.some(current => current.localeCompare(item.url, undefined, { sensitivity: 'accent' }) === 0))
+  const familyOnlyMediaUrls = familyOnlyMediaItems.map(item => item.url)
   const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls, ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `${index + 1}. ${url}`, url })) as ProductMediaOption[]).concat(mediaFiles.map((file, index) => ({ value: `file|${index}`, label: `Dosya · ${file.name}`, file })))
   const bulkMediaGroups = useMemo<VariantMediaGroup[]>(() => {
     const groups: VariantMediaGroup[] = []
@@ -2706,7 +2734,37 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
 
     {mediaUrlSettingsOpen && <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => setMediaUrlSettingsOpen(false)}><section className="workspace-modal product-media-url-modal" role="dialog" aria-modal="true" aria-labelledby="product-media-url-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="product-media-url-title">Link ile görsel ekle</h2><p>Her satıra bir kalıcı HTTPS adresi yazın. Eklenen görseller varyant seçimlerinde de kullanılabilir.</p></div><button type="button" className="modal-close" onClick={() => setMediaUrlSettingsOpen(false)} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><label className="product-media-url-field">Görsel URL listesi<textarea id="product-media-urls" aria-describedby="media-url-help" value={form.mediaUrls} onChange={event => updateField('mediaUrls', event.target.value)} placeholder="Örn. https://site.com/gorsel-1.jpg&#10;https://site.com/gorsel-2.png" autoFocus /><small id="media-url-help" className="field-help">Herkese açık, kullanıcı adı/parola içermeyen HTTPS adresleri kullanın (en fazla 512 karakter). Adresleri ayrı satırda veya ; / | ayraçlarıyla yazabilirsiniz. İlk adres ürünün genel ana görselidir; varyant görseli seçimi aşağıdaki tabloda yapılır.</small></label><footer><span>{mediaUrls.length} adres kayıtlı</span><button type="button" onClick={() => setMediaUrlSettingsOpen(false)}>Tamam</button></footer></section></div>}
     <div className="product-layout-grid"><div className="product-main-stack">
-      <section className="panel product-step-card product-media-card"><div className="editor-section-title"><span>4</span><div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilir veya internetten erişilebilen HTTPS adresleri ekleyebilirsiniz. Aynı modelin diğer renk görselleri de burada görünür.</p></div><div className="product-media-header-actions">{(mediaUrls.length > 0 || mediaFiles.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" onClick={clearAllMedia}>Tümünü temizle</button>}<button type="button" className="product-media-link-button" onClick={() => setMediaUrlSettingsOpen(true)} aria-label="Link ile görsel ekle" title="Link ile görsel ekle"><UiIcon name="externalLink" />{mediaUrls.length > 0 && <b>{mediaUrls.length}</b>}</button></div></div><label className="upload-ghost-box product-media-upload"><input type="file" accept="image/jpeg,image/png" multiple onChange={event => { handleMediaFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} /><strong>{mediaFiles.length ? `${mediaFiles.length} dosya seçildi` : 'Ürün görsellerini dosya olarak seç'}</strong><small>Adet sınırı yok · JPEG veya PNG · dosya başına en fazla 6 MB</small></label>{(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaUrls.length > 0) && <div className="media-preview-strip">{mediaFiles.map((file, index) => <LocalImagePreview key={`${file.name}-${file.lastModified}-${index}`} file={file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={index === 0 && !mediaUrls.length ? 'Ana görsel' : file.name} onRemove={() => setMediaFiles(files => files.filter((_, i) => i !== index))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}{mediaUrls.map((url, index) => <figure key={`${url}-${index}`} className={`image-preview-card media-sortable ${dragOverMediaUrl === url ? 'is-media-drag-over' : ''}`} draggable onDragStart={() => setDraggedMediaUrl(url)} onDragOver={event => { event.preventDefault(); setDragOverMediaUrl(url) }} onDrop={event => { event.preventDefault(); reorderMedia(draggedMediaUrl ?? '', url) }} onDragEnd={() => { setDraggedMediaUrl(null); setDragOverMediaUrl(null) }}><img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} title="Büyütmek için tıklayın" /><button type="button" className="image-remove-btn" title="Görseli kaldır" onClick={e => { e.stopPropagation(); const next = mediaUrls.filter((_, i) => i !== index).join('\n'); updateField('mediaUrls', next) }}><UiIcon name="close" /></button><figcaption>{index === 0 && !mediaFiles.length ? 'Ana görsel' : `${index + 1}. görsel`} · sürükle</figcaption></figure>)}{familyOnlyMediaUrls.map((url, index) => <figure key={`family-${url}`} className={`image-preview-card family-media-preview media-sortable ${dragOverMediaUrl === url ? 'is-media-drag-over' : ''}`} draggable onDragStart={() => setDraggedMediaUrl(url)} onDragOver={event => { event.preventDefault(); setDragOverMediaUrl(url) }} onDrop={event => { event.preventDefault(); reorderMedia(draggedMediaUrl ?? '', url) }} onDragEnd={() => { setDraggedMediaUrl(null); setDragOverMediaUrl(null) }}><img src={url} alt={`${form.title || 'Ürün'} renk ailesi görseli ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url, title: `${form.title || 'Ürün'} · Renk ailesi` })} title="Renk ailesi görselini büyüt" /><figcaption>Renk varyantı görseli · sürükle</figcaption></figure>)}</div>}
+      <section className="panel product-step-card product-media-card">
+        <div className="editor-section-title">
+          <span>4</span>
+          <div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilir veya internetten erişilebilen HTTPS adresleri ekleyebilirsiniz. Aynı modelin diğer renk görselleri de burada görünür.</p></div>
+          <div className="product-media-header-actions">
+            {(mediaUrls.length > 0 || mediaFiles.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" onClick={clearAllMedia}>Tümünü temizle</button>}
+            <button type="button" className="product-media-link-button" onClick={() => setMediaUrlSettingsOpen(true)} aria-label="Link ile görsel ekle" title="Link ile görsel ekle"><UiIcon name="externalLink" />{mediaUrls.length > 0 && <b>{mediaUrls.length}</b>}</button>
+          </div>
+        </div>
+        <label className="upload-ghost-box product-media-upload">
+          <input type="file" accept="image/jpeg,image/png" multiple onChange={event => { handleMediaFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} />
+          <strong>{mediaFiles.length ? `${mediaFiles.length} dosya seçildi` : 'Ürün görsellerini dosya olarak seç'}</strong>
+          <small>Adet sınırı yok · JPEG veya PNG · dosya başına en fazla 6 MB</small>
+        </label>
+        {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0) && <div className="media-preview-strip">
+          {mediaFiles.map((file, index) => <LocalImagePreview key={`${file.name}-${file.lastModified}-${index}`} file={file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={index === 0 && !mediaUrls.length ? 'Ana görsel' : file.name} onRemove={() => setMediaFiles(files => files.filter((_, i) => i !== index))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
+          {mediaUrls.map((url, index) => <figure key={`${url}-${index}`} className={`image-preview-card media-sortable ${dragOverMediaUrl === url ? 'is-media-drag-over' : ''}`} draggable onDragStart={() => setDraggedMediaUrl(url)} onDragOver={event => { event.preventDefault(); setDragOverMediaUrl(url) }} onDrop={event => { event.preventDefault(); reorderMedia(draggedMediaUrl ?? '', url) }} onDragEnd={() => { setDraggedMediaUrl(null); setDragOverMediaUrl(null) }}>
+            <img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} title="Büyütmek için tıklayın" />
+            <button type="button" className="image-remove-btn" title="Görseli kaldır" onClick={event => { event.stopPropagation(); updateField('mediaUrls', mediaUrls.filter((_, i) => i !== index).join('\n')) }}><UiIcon name="close" /></button>
+            <figcaption>{index === 0 && !mediaFiles.length ? 'Ana görsel' : `${index + 1}. görsel`} · sürükle</figcaption>
+          </figure>)}
+          {familyOnlyMediaItems.map((item, index) => {
+            const pendingKey = item.mediaIds.join(',')
+            const deleting = pendingKey !== '' && deletingFamilyMediaKey === pendingKey
+            return <figure key={`family-${item.url}`} className={`image-preview-card family-media-preview media-sortable ${dragOverMediaUrl === item.url ? 'is-media-drag-over' : ''}`} draggable onDragStart={() => setDraggedMediaUrl(item.url)} onDragOver={event => { event.preventDefault(); setDragOverMediaUrl(item.url) }} onDrop={event => { event.preventDefault(); reorderMedia(draggedMediaUrl ?? '', item.url) }} onDragEnd={() => { setDraggedMediaUrl(null); setDragOverMediaUrl(null) }}>
+              <img src={item.url} alt={`${form.title || 'Ürün'} renk ailesi görseli ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url: item.url, title: `${form.title || 'Ürün'} · Renk ailesi` })} title="Renk ailesi görselini büyüt" />
+              <button type="button" className="image-remove-btn" disabled={deleting} title="Renk ailesi görselini kaynak kayıtlardan kaldır" aria-label="Renk ailesi görselini kaldır" onClick={event => { event.stopPropagation(); void removeFamilyMedia(item) }}><UiIcon name={deleting ? 'loader' : 'close'} /></button>
+              <figcaption>Renk varyantı görseli · sürükle</figcaption>
+            </figure>
+          })}
+        </div>}
       </section>
 
       <section className="panel product-step-card product-options-card">

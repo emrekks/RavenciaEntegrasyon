@@ -146,6 +146,7 @@ public static class CatalogEndpoints
         });
         api.MapPost("/files/product-media", UploadProductMediaAsync).DisableAntiforgery();
         api.MapPost("/files/product-media-url", RegisterProductMediaUrlAsync);
+        api.MapDelete("/files/product-media-items", DeleteProductMediaItemsAsync);
         api.MapDelete("/files/product-media", ClearProductMediaAsync);
         api.MapDelete("/files/product-media-variant", ClearProductVariantMediaAsync);
 
@@ -331,6 +332,26 @@ public static class CatalogEndpoints
         return Results.NoContent();
     }
 
+    private static async Task<IResult> DeleteProductMediaItemsAsync(DeleteProductMediaItemsCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+        var mediaIds = command.MediaIds?.Distinct().ToArray() ?? [];
+        if (mediaIds.Length is 0 or > 100) return Problem(http, new("PRODUCT_MEDIA_DELETE_LIMIT", "Bir işlemde 1-100 görsel bağlantısı kaldırılabilir.", 422));
+
+        var media = await db.ProductMedia.Where(item => item.TenantId == tenant.TenantId && mediaIds.Contains(item.Id) && item.Status == "ACTIVE").ToListAsync(http.RequestAborted);
+        if (media.Count != mediaIds.Length) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel bağlantılarından biri bulunamadı veya daha önce kaldırıldı.", 404));
+        var productIds = media.Select(item => item.ProductId).Distinct().ToArray();
+        var products = await db.Products.Where(product => product.TenantId == tenant.TenantId && productIds.Contains(product.Id)).ToListAsync(http.RequestAborted);
+        if (products.Count != productIds.Length) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görselin kaynak ürünü bulunamadı.", 404));
+
+        foreach (var item in media) item.Status = "ARCHIVED";
+        var now = timeProvider.GetUtcNow();
+        foreach (var product in products) { product.UpdatedAt = now; product.Version++; }
+        await db.SaveChangesAsync(http.RequestAborted);
+        return Results.Ok(new { deletedCount = media.Count });
+    }
+
     private static bool IsPublicAddress(IPAddress address)
     {
         if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any) || address.Equals(IPAddress.None) || address.Equals(IPAddress.IPv6None)) return false;
@@ -381,4 +402,5 @@ public static class CatalogEndpoints
     public sealed record PublicationRequest(Guid ConnectionId);
     public sealed record ProductArchiveRequest(Guid ConnectionId, bool Archived);
     public sealed record RegisterProductMediaUrl(Guid ProductId, Guid? VariantId, string Url, string? MediaRole, int SortOrder, string? AltText);
+    public sealed record DeleteProductMediaItemsCommand(IReadOnlyList<Guid>? MediaIds);
 }

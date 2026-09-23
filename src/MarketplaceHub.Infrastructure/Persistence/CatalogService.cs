@@ -722,8 +722,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                                      join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
                                      where item.TenantId == tenantId && familyProductIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                                      orderby item.SortOrder
-                                     select new { item.ProductId, item.VariantId, item.SortOrder, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
-        var familyMediaUrls = familyMediaRows
+                                     select new { MediaId = item.Id, item.ProductId, item.VariantId, item.SortOrder, AssetId = asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+        var familyMediaSelection = familyMediaRows
             .GroupBy(item => item.ProductId)
             .SelectMany(group =>
             {
@@ -731,17 +731,26 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 return productMedia.Count > 0 ? productMedia : group.OrderBy(item => item.SortOrder).Take(1).ToList();
             })
             .OrderBy(item => item.SortOrder)
-            .Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))
-            .Where(url => !string.IsNullOrWhiteSpace(url))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(item => new { Media = item, Url = CatalogMediaDisplay.Url(item.AssetId, item.Classification, item.Url) })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Url))
             .ToList();
+        var familyProductTitles = familyProducts.ToDictionary(item => item.Id, item => item.Title);
+        var familyMediaItems = familyMediaSelection
+            .GroupBy(item => CatalogImageIdentity.Key(item.Url), StringComparer.OrdinalIgnoreCase)
+            .Select(group => new ProductFamilyMediaView(
+                group.First().Url,
+                group.Select(item => item.Media.MediaId).Distinct().ToList(),
+                group.Select(item => familyProductTitles.GetValueOrDefault(item.Media.ProductId, "Ürün")).Distinct(StringComparer.OrdinalIgnoreCase).ToList()))
+            .ToList();
+        var familyMediaUrls = familyMediaItems.Select(item => item.Url).ToList();
         return ServiceResult<ProductView>.Ok(primaryView with
         {
             Variants = allVariants,
             TotalStock = allVariants.Sum(x => x.OnHand),
             StartingPrice = allVariants.Where(x => x.SalePrice is not null).Select(x => x.SalePrice!.Value).DefaultIfEmpty().Min() is var minPrice && minPrice > 0 ? minPrice : null,
             Options = allOptions,
-            FamilyMediaUrls = familyMediaUrls
+            FamilyMediaUrls = familyMediaUrls,
+            FamilyMediaItems = familyMediaItems
         });
     }
 

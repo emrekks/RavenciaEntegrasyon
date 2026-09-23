@@ -90,7 +90,9 @@ public sealed record ProductView(
     IReadOnlyList<string>? MediaUrls = null,
     IReadOnlyList<string>? FamilyMediaUrls = null,
     IReadOnlyList<ProductPlatformStatusView>? PlatformStatuses = null,
-    string? CategoryPath = null);
+    string? CategoryPath = null,
+    IReadOnlyList<ProductFamilyMediaView>? FamilyMediaItems = null);
+public sealed record ProductFamilyMediaView(string Url, IReadOnlyList<Guid> MediaIds, IReadOnlyList<string> SourceProductTitles);
 public sealed record ProductSummaryView(
     int TotalCount,
     int ActiveCount,
