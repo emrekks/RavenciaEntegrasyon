@@ -155,7 +155,10 @@ export function InvoicesPage() {
     await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['orders'] })])
   }, onError: error => setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.', 'error') })
   const items = (query.data ?? []).filter(item => !isCancelledShipment(item)); const normalized = search.trim().toLocaleLowerCase('tr-TR')
-  const platformOptions = Array.from(new Map((query.data ?? []).map(item => [item.platformCode, { value: item.platformCode, label: item.platformDisplayName || item.platformCode }])).values()).sort((left, right) => left.label.localeCompare(right.label, 'tr-TR'))
+  const platformOptions = Array.from(new Map([
+    ...(connections.data?.items ?? []).filter(connection => ['TRENDYOL', 'SHOPIFY'].includes(connection.platformCode)).map(connection => [connection.platformCode, { value: connection.platformCode, label: connection.displayName || connection.platformCode }] as const),
+    ...(query.data ?? []).map(item => [item.platformCode, { value: item.platformCode, label: item.platformDisplayName || item.platformCode }] as const)
+  ]).values()).sort((left, right) => left.label.localeCompare(right.label, 'tr-TR'))
   const cargoOptions = Array.from(new Set(items.map(item => item.cargoProviderName?.trim()).filter((value): value is string => Boolean(value)))).sort((left, right) => left.localeCompare(right, 'tr-TR'))
   const shipmentStatusOptions = Array.from(new Set(items.map(item => item.shipmentStatus.trim()).filter(Boolean))).sort((left, right) => statusLabel(left).localeCompare(statusLabel(right), 'tr-TR'))
   const invoiceStatusOptions = Array.from(new Map(items.map(item => { const value = invoiceWorkspaceStatus(item); return [value.value, invoiceStatusLabel(value.value)] })).entries())
