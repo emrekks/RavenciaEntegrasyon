@@ -19,6 +19,7 @@ public sealed record ShopifyOrderCsvLine(string? Sku, string Title, decimal? Uni
 
 public sealed record ShopifyOrderCsvOrder(
     string OrderNumber,
+    DateTimeOffset? CreatedAt,
     string? Currency,
     decimal? Subtotal,
     decimal? Shipping,
@@ -91,6 +92,7 @@ public static class ShopifyOrderCsvParser
             order.SetText("Financial Status", Get("Financial Status"));
             order.SetText("Fulfillment Status", Get("Fulfillment Status"));
             order.SetText("Payment Method", Get("Payment Method"));
+            order.SetCreatedAt(Get("Created at"));
             order.SetAmount("Subtotal", Get("Subtotal"));
             order.SetAmount("Shipping", Get("Shipping"));
             order.SetAmount("Taxes", Get("Taxes"));
@@ -211,6 +213,7 @@ public static class ShopifyOrderCsvParser
         private readonly Dictionary<string, decimal?> amounts = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, ShopifyOrderCsvAddress> addresses = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<string> issues = [];
+        public DateTimeOffset? CreatedAt { get; private set; }
         public List<ShopifyOrderCsvLine> Lines { get; } = [];
 
         public void SetText(string field, string value)
@@ -222,6 +225,12 @@ public static class ShopifyOrderCsvParser
                 return;
             }
             text.TryAdd(field, value);
+        }
+
+        public void SetCreatedAt(string value)
+        {
+            if (CreatedAt is null && DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var createdAt))
+                CreatedAt = createdAt;
         }
 
         public void SetAmount(string field, string value)
@@ -250,6 +259,7 @@ public static class ShopifyOrderCsvParser
 
         public ShopifyOrderCsvOrder ToOrder() => new(
             orderNumber,
+            CreatedAt,
             text.GetValueOrDefault("Currency"),
             amounts.GetValueOrDefault("Subtotal"), amounts.GetValueOrDefault("Shipping"), amounts.GetValueOrDefault("Taxes"),
             amounts.GetValueOrDefault("Total"), amounts.GetValueOrDefault("Discount Amount"),

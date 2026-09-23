@@ -1489,10 +1489,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         var cursor = await Cursor(tenantId, connectionId, cursorResourceType, cancellationToken);
         var now = timeProvider.GetUtcNow();
-        var initialWindowStart = now.AddDays(-60);
-        var modifiedAfter = full || allowBaseline
-            ? initialWindowStart
-            : cursor.LastModifiedWatermark?.AddMinutes(-10) ?? (cursor.LastSuccessAt is null ? initialWindowStart : null);
+        var modifiedAfter = ShopifyOrderHistoryPolicy.ModifiedAfter(
+            full,
+            allowBaseline,
+            cursor.LastModifiedWatermark,
+            cursor.LastSuccessAt,
+            now);
         do
         {
             TrackRequest();

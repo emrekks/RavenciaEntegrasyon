@@ -413,7 +413,8 @@ public sealed record OrderListQuery(
     string? InvoiceRegion = null,
     DateTimeOffset? DateFrom = null,
     DateTimeOffset? DateTo = null,
-    string? Sort = null);
+    string? Sort = null,
+    IReadOnlyList<string>? Platforms = null);
 public sealed record OrderSummaryView(
     int All,
     int New,

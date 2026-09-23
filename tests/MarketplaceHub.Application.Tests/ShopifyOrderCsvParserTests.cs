@@ -13,15 +13,15 @@ public sealed class ShopifyOrderCsvParserTests
     {
         var headers = new[]
         {
-            "Name", "Email", "Currency", "Subtotal", "Shipping", "Taxes", "Total", "Discount Amount",
+            "Name", "Created at", "Email", "Currency", "Subtotal", "Shipping", "Taxes", "Total", "Discount Amount",
             "Lineitem name", "Lineitem quantity", "Lineitem price", "Lineitem sku", "Billing Name",
             "Billing Address1", "Billing City", "Shipping Name", "Shipping Address1", "Shipping City"
         };
-        var first = Row(headers.Length, (0, "#R1013"), (1, "buyer@example.test"), (2, "TRY"), (3, "120.00"), (4, "0.00"),
-            (5, "20.00"), (6, "140.00"), (7, "10.00"), (8, "Blue dress, small"), (9, "2"), (10, "60.00"),
-            (11, "SKU-1"), (12, "Ada Example"), (13, "Street, building 2"), (14, "Istanbul"), (15, "Ada Example"),
-            (16, "Street, building 2"), (17, "Istanbul"));
-        var second = Row(headers.Length, (0, "#R1013"), (8, "Hat \"Classic\"\nvariant"), (9, "1"), (10, "15.00"), (11, "SKU-2"));
+        var first = Row(headers.Length, (0, "#R1013"), (1, "2026-07-07 21:42:00 +0300"), (2, "buyer@example.test"), (3, "TRY"), (4, "120.00"), (5, "0.00"),
+            (6, "20.00"), (7, "140.00"), (8, "10.00"), (9, "Blue dress, small"), (10, "2"), (11, "60.00"),
+            (12, "SKU-1"), (13, "Ada Example"), (14, "Street, building 2"), (15, "Istanbul"), (16, "Ada Example"),
+            (17, "Street, building 2"), (18, "Istanbul"));
+        var second = Row(headers.Length, (0, "#R1013"), (9, "Hat \"Classic\"\nvariant"), (10, "1"), (11, "15.00"), (12, "SKU-2"));
         var csv = string.Join(',', headers) + "\r\n" + CsvRow(first) + "\r\n" + CsvRow(second) + "\r\n";
 
         var parsed = ShopifyOrderCsvParser.Parse(new StringReader(csv));
@@ -30,6 +30,7 @@ public sealed class ShopifyOrderCsvParserTests
         Assert.Equal(2, parsed.FileRows);
         Assert.Equal(0, parsed.SkippedRows);
         Assert.Equal("#R1013", order.OrderNumber);
+        Assert.Equal(DateTimeOffset.Parse("2026-07-07T21:42:00+03:00", CultureInfo.InvariantCulture), order.CreatedAt);
         Assert.Equal("TRY", order.Currency);
         Assert.Equal(140m, order.Total);
         Assert.Equal(10m, order.DiscountAmount);

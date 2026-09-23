@@ -229,9 +229,53 @@ public sealed partial class InvoicingBillingService(
         }
         var provider = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.ProviderConnectionId && (x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY"), cancellationToken);
         if (provider is null) return Invalid<InvoiceDetailView>("billing", "Aktif fatura bağlantısı bulunamadı.");
+        var orderPlatform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == order.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var isShopifyOrder = string.Equals(orderPlatform, "SHOPIFY", StringComparison.OrdinalIgnoreCase);
+        if (isShopifyOrder && (provider.Id != order.ConnectionId || !string.Equals(provider.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)))
+            return Invalid<InvoiceDetailView>("billing", "Shopify siparişleri yalnız Shopify bağlantısına bağlı manuel belge takibinde kullanılabilir; E-Faturam taslağı oluşturulamaz.");
+        if (!isShopifyOrder && string.Equals(provider.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))
+            return Invalid<InvoiceDetailView>("billing", "Shopify belge takibi yalnızca Shopify bağlantısına ait siparişlerde kullanılabilir.");
         var profile = await ProviderManagedProfile(tenantId, provider.Id, cancellationToken);
         var policy = await ManualPackagePolicy(tenantId, provider.Id, cancellationToken);
         if (command.OriginalInvoiceId is { } originalId && !await db.Invoices.AnyAsync(x => x.TenantId == tenantId && x.Id == originalId, cancellationToken)) return Invalid<InvoiceDetailView>("originalInvoiceId", "Orijinal fatura bulunamadı.");
+
+        if (isShopifyOrder)
+        {
+            if (command.OriginalInvoiceId is not null)
+                return Invalid<InvoiceDetailView>("originalInvoiceId", "Shopify manuel belge kaydı düzeltme faturası oluşturamaz.");
+
+            // Shopify invoices are uploaded by the user, not fiscally composed or submitted here.
+            // Keep a status/document tracker instead of making an invalid draft from partial fulfillment lines.
+            var manualCreatedAt = timeProvider.GetUtcNow();
+            var manualRecord = new Invoice
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                OrderId = order.Id,
+                PackageId = command.PackageId,
+                ProviderConnectionId = provider.Id,
+                LegalEntityProfileId = profile.Id,
+                InvoicePolicyId = policy.Id,
+                InvoiceType = ShopifyManualInvoicePolicy.TrackingSequencePurpose,
+                SequencePurpose = ShopifyManualInvoicePolicy.TrackingSequencePurpose,
+                Currency = order.Currency,
+                TaxExclusiveTotal = 0,
+                DiscountTotal = 0,
+                TaxTotal = 0,
+                PayableTotal = ShopifyManualInvoicePolicy.TrackingAmount(order.NetAmount, selectedPackage?.NetAmount),
+                Note = "Shopify manuel belge kaydı. Bu kayıt mali fatura oluşturmaz veya dış sağlayıcıya gönderilmez.",
+                IdempotencyKey = idempotencyKey,
+                Status = InvoiceStatus.Draft,
+                CreatedAt = manualCreatedAt,
+                UpdatedAt = manualCreatedAt,
+                Version = 1
+            };
+            db.Invoices.Add(manualRecord);
+            var manualReceiverJson = JsonSerializer.Serialize(new { order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson });
+            db.InvoicePartySnapshots.Add(Snapshot(manualRecord, "RECEIVER", manualReceiverJson, manualCreatedAt));
+            await db.SaveChangesAsync(cancellationToken);
+            return await GetAsync(tenantId, manualRecord.Id, cancellationToken);
+        }
 
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (orderLines.Count == 0) return Invalid<InvoiceDetailView>("orderId", "Fatura taslağı için sipariş satırı gerekir.");
@@ -352,6 +396,8 @@ public sealed partial class InvoicingBillingService(
     {
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (invoice is null) return NotFound<InvoiceDetailView>(); if (invoice.Version != expectedVersion) return Precondition<InvoiceDetailView>(invoice.Version);
+        if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken))
+            return ServiceResult<InvoiceDetailView>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify belge kayıtları mali taslak olarak doğrulanamaz; panelde yalnızca yüklenen belge ve manuel durum izlenir.", 422);
         if (!InvoiceStateMachine.CanTransition(invoice.Status, InvoiceStatus.Validating)) return ServiceResult<InvoiceDetailView>.Fail("INVOICE_STATE_INVALID", "Fatura mevcut durumdan doğrulanamaz.", 409);
         invoice.Status = InvoiceStatus.Validating; invoice.Version++; invoice.UpdatedAt = timeProvider.GetUtcNow();
         var policy = await db.InvoicePolicies.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == invoice.InvoicePolicyId, cancellationToken);
@@ -384,6 +430,8 @@ public sealed partial class InvoicingBillingService(
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (invoice is null) return NotFound<Guid>();
         if (invoice.Version != expectedVersion) return Precondition<Guid>(invoice.Version);
+        if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken))
+            return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları E-Faturam’a gönderilemez.", 422);
         var safePreProviderRetry = CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference);
         if (invoice.Status != InvoiceStatus.Ready && !safePreProviderRetry)
             return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura mevcut durumdan E-Faturam gönderimine geçemez.", 409);
@@ -404,6 +452,7 @@ public sealed partial class InvoicingBillingService(
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (invoice is null) return NotFound<Guid>();
         if (invoice.Version != expectedVersion) return Precondition<Guid>(invoice.Version);
+        if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtlarında provider testi yapılamaz.", 422);
         var safeReplay = IsSafeStageReplay(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference);
         if (invoice.Status != InvoiceStatus.Ready && !safeReplay || invoice.InvoiceType != "EARSIVFATURA" || !string.IsNullOrWhiteSpace(invoice.ExternalReference)) return ServiceResult<Guid>.Fail("STAGE_INVOICE_FIXTURE_INVALID", "Canary yalnız gönderilmemiş Ready taslakta veya kesin dış referanssız Stage kimlik doğrulama sonucuyla duran aynı taslakta çalışır.", 409);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
@@ -416,6 +465,7 @@ public sealed partial class InvoicingBillingService(
     {
         var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (invoice is null) return NotFound<Guid>();
+        if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtlarında dış iptal işlemi yapılamaz.", 422);
         if (invoice.InvoiceType != "EARSIVFATURA") return ServiceResult<Guid>.Fail("EINVOICE_CANCELLATION_WORKFLOW_REQUIRED", "Bu otomatik iptal servisi yalnız E-Arşiv faturalar içindir; E-Fatura için mevzuata uygun itiraz/iptal süreci manuel yürütülmelidir.", 422);
         return await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, [InvoiceStatus.Accepted, InvoiceStatus.Completed], InvoiceStatus.CancellationPending, cancellationToken);
     }
@@ -423,6 +473,7 @@ public sealed partial class InvoicingBillingService(
     public async Task<ServiceResult<Guid>> EnqueueReconcileAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
         var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
+        if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları için dış provider eşitlemesi kullanılamaz.", 422);
         if (invoice.Status is not (InvoiceStatus.UnknownResult or InvoiceStatus.Submitted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed or InvoiceStatus.CancellationPending)) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Bu durumda provider reconciliation çalıştırılamaz.", 409);
         if (!await ReadGate(tenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) return CapabilityUnknown<Guid>(InvoicingCapabilities.InvoiceStatusRead);
         return await AddJob(invoice, InvoicingJobTypes.InvoiceReconcile, idempotencyKey, correlationId, cancellationToken);
@@ -431,6 +482,7 @@ public sealed partial class InvoicingBillingService(
     public async Task<ServiceResult<Guid>> EnqueueDeliveryAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
+        if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları pazaryeri fatura aktarımına gönderilemez.", 422);
         if (invoice.Status is not (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed)) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura pazaryerine iletime hazır değil.", 409);
         if (invoice.PackageId is null) return Invalid<Guid>("packageId", "Pazaryeri fatura iletimi için paket zorunludur.");
         if (!await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null, cancellationToken)) return ServiceResult<Guid>.Fail("INVOICE_PERMANENT_LINK_REQUIRED", "Trendyol iletimi için kalıcı HTTPS fatura bağlantısı henüz hazır değil.", 409);
@@ -457,6 +509,7 @@ public sealed partial class InvoicingBillingService(
     private async Task<ServiceResult<Guid>> EnqueueWrite(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, string jobType, string capability, InvoiceStatus[] states, InvoiceStatus next, CancellationToken cancellationToken)
     {
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>(); if (invoice.Version != expectedVersion) return Precondition<Guid>(invoice.Version);
+        if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtlarında dış fatura işlemi yapılamaz.", 422);
         if (!states.Contains(invoice.Status) || !InvoiceStateMachine.CanTransition(invoice.Status, next)) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura mevcut durumdan bu işleme geçemez.", 409);
         if (!await WriteGates(tenantId, invoice.ProviderConnectionId, capability, cancellationToken)) return CapabilityUnknown<Guid>(capability);
         invoice.Status = next; invoice.UpdatedAt = timeProvider.GetUtcNow(); if (jobType == InvoicingJobTypes.InvoiceSubmit) invoice.IssuedAt ??= invoice.UpdatedAt; invoice.Version++; return await AddJob(invoice, jobType, idempotencyKey, correlationId, cancellationToken);
@@ -471,6 +524,8 @@ public sealed partial class InvoicingBillingService(
 
     private async Task<IReadOnlyList<string>> AllowedActions(Invoice invoice, PlatformConnection? connection, CancellationToken cancellationToken)
     {
+        if (ShopifyManualInvoicePolicy.IsManualOnly(connection?.PlatformCode, invoice.SequencePurpose)
+            || await IsShopifyManualInvoiceAsync(invoice.TenantId, invoice, cancellationToken)) return [];
         var actions = new List<string>(); if (invoice.Status is InvoiceStatus.Draft or InvoiceStatus.ValidationFailed) actions.Add("VALIDATE");
         if ((invoice.Status == InvoiceStatus.Ready || CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference)) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceSubmit, cancellationToken)) actions.Add("SUBMIT");
         if (AllowsStageCapabilityProbe(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference, invoice.InvoiceType, connection)) actions.Add("STAGE_CAPABILITY_PROBE");
@@ -484,6 +539,15 @@ public sealed partial class InvoicingBillingService(
         if (invoice.InvoiceType == "EARSIVFATURA" && invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.Completed) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
         if (invoice.Status == InvoiceStatus.CancellationPending && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
         return actions;
+    }
+
+    private async Task<bool> IsShopifyManualInvoiceAsync(Guid tenantId, Invoice invoice, CancellationToken cancellationToken)
+    {
+        if (string.Equals(invoice.SequencePurpose, ShopifyManualInvoicePolicy.TrackingSequencePurpose, StringComparison.OrdinalIgnoreCase)) return true;
+        var isShopifyOrder = await db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.Id == invoice.OrderId
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == order.ConnectionId && connection.PlatformCode == "SHOPIFY"), cancellationToken);
+        if (isShopifyOrder) return true;
+        return await db.PlatformConnections.AsNoTracking().AnyAsync(connection => connection.TenantId == tenantId && connection.Id == invoice.ProviderConnectionId && connection.PlatformCode == "SHOPIFY", cancellationToken);
     }
 
     internal static bool AllowsStageCapabilityProbe(InvoiceStatus status, string? lastErrorCode, string? externalReference, string invoiceType, PlatformConnection? connection)

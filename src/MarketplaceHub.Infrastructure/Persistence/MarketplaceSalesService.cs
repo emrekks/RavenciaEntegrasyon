@@ -225,8 +225,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     && (line.TitleSnapshot.Contains(search) || line.Sku.Contains(search) || (line.Barcode != null && line.Barcode.Contains(search)))));
         }
 
+        var platforms = options.Platforms?.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim().ToUpperInvariant()).Distinct().ToArray() ?? [];
         var platform = options.Platform?.Trim().ToUpperInvariant();
-        if (!string.IsNullOrWhiteSpace(platform) && platform != "ALL")
+        if (platforms.Length > 0)
+            query = query.Where(x => db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && platforms.Contains(connection.PlatformCode)));
+        else if (!string.IsNullOrWhiteSpace(platform) && platform != "ALL")
             query = query.Where(x => db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.PlatformCode == platform));
 
         var listing = options.Listing?.Trim().ToUpperInvariant();

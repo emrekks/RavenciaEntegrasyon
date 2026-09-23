@@ -55,11 +55,13 @@ public sealed class ShopifyOrderCsvImportService(AppDbContext db, TimeProvider t
             return ServiceResult<ShopifyOrderCsvImportResult>.Fail("SHOPIFY_CSV_NO_ORDERS", "CSV dosyasında sipariş numarası olan bir sipariş satırı bulunamadı.", 422);
         var issues = invalidOrders.Select(order => $"{order.OrderNumber}: {order.ValidationIssue}").Take(MaximumReportedItems).ToList();
         var unmatchedOrderNumbers = new List<string>();
+        var unmatchedOrders = new List<ShopifyOrderCsvOrder>();
         var matchedCount = 0;
         var updatedCount = 0;
         var updatedLineCount = 0;
         var unmatchedLineCount = 0;
         var ambiguousCount = 0;
+        var now = timeProvider.GetUtcNow();
 
         var connectionQuery = db.PlatformConnections.AsNoTracking()
             .Where(connection => connection.TenantId == tenantId && connection.PlatformCode == "SHOPIFY");
@@ -86,6 +88,7 @@ public sealed class ShopifyOrderCsvImportService(AppDbContext db, TimeProvider t
             if (!ordersByNumber.TryGetValue(key, out var matches))
             {
                 unmatchedOrderNumbers.Add(imported.OrderNumber);
+                unmatchedOrders.Add(imported);
                 continue;
             }
             if (matches.Length != 1)
@@ -106,7 +109,6 @@ public sealed class ShopifyOrderCsvImportService(AppDbContext db, TimeProvider t
                     .ToListAsync(cancellationToken))
                 .GroupBy(line => line.OrderId)
                 .ToDictionary(group => group.Key, group => group.ToList());
-            var now = timeProvider.GetUtcNow();
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
             foreach (var (imported, order) in orderMatches)
@@ -159,6 +161,11 @@ public sealed class ShopifyOrderCsvImportService(AppDbContext db, TimeProvider t
         }
 
         unmatchedOrderNumbers.AddRange(invalidOrders.Select(order => order.OrderNumber));
+        var historicalUnmatchedCount = ShopifyOrderHistoryPolicy.CountOrdersRequiringAllOrdersScope(
+            unmatchedOrders.Select(order => order.CreatedAt),
+            now);
+        if (historicalUnmatchedCount > 0 && issues.Count < MaximumReportedItems)
+            issues.Add(ShopifyOrderHistoryPolicy.HistoricalOrdersScopeNotice(historicalUnmatchedCount));
         if (parsed.SkippedRows > 0 && issues.Count < MaximumReportedItems)
             issues.Add($"{parsed.SkippedRows} boş veya sipariş numarası olmayan satır atlandı.");
         if (unmatchedLineCount > 0 && issues.Count < MaximumReportedItems)
