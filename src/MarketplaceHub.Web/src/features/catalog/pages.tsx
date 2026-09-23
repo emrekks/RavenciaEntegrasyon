@@ -12,6 +12,7 @@ import { appendNotification } from '../../shared/notifications'
 import { toggleProductAttributeValue } from './attribute-selection'
 import { filterAttributeOptionValues } from './attribute-value-search'
 import { buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
+import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './variant-option-matching'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -279,11 +280,8 @@ function parseVariantOptionSignature(signature: string): ParsedVariantOption[] {
 }
 
 function variantOptionEntries(variant: Pick<Variant, 'optionSignature' | 'options'>) {
-  const parsed = parseVariantOptionSignature(variant.optionSignature ?? '')
-  if (parsed.length) return parsed
-  return Object.entries(variant.options ?? {})
-    .filter(([, value]) => value.trim())
-    .map(([name, value]) => ({ name, value: cleanOptionValue(value) }))
+  const options = Object.entries(variant.options ?? {}).map(([name, value]) => ({ name, value: cleanOptionValue(value) }))
+  return mergeVariantOptionEntries(options, parseVariantOptionSignature(variant.optionSignature ?? ''))
 }
 
 function optionSignatureFromOptions(options: Record<string, string>) {
@@ -2319,7 +2317,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       .find(option => optionRank(option.name) >= 0)?.value ?? ''
   }
   function rowMatchesVariantMediaValue(row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) {
-    return Boolean((group.attributeId && row.attributeValueIds[group.attributeId] === value.id) || rowOptionValue(row, group).trim().toLocaleLowerCase('tr-TR') === value.value.trim().toLocaleLowerCase('tr-TR'))
+    return Boolean((group.attributeId && row.attributeValueIds[group.attributeId] === value.id) || normalizeVariantOptionValue(rowOptionValue(row, group)) === normalizeVariantOptionValue(value.value))
   }
   function rowMatchesVariantFilters(row: VariantDraft) {
     return variantFilterGroups.every(group => {
