@@ -7,6 +7,7 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc;
 
 namespace MarketplaceHub.Api.Catalog;
 
@@ -332,7 +333,7 @@ public static class CatalogEndpoints
         return Results.NoContent();
     }
 
-    private static async Task<IResult> DeleteProductMediaItemsAsync(DeleteProductMediaItemsCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    private static async Task<IResult> DeleteProductMediaItemsAsync([FromBody] DeleteProductMediaItemsCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
