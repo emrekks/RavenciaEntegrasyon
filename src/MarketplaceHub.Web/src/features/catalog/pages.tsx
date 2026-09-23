@@ -10,6 +10,7 @@ import { platformLogoClass, platformLogoSource } from '../../shared/platform-log
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification } from '../../shared/notifications'
 import { toggleProductAttributeValue } from './attribute-selection'
+import { filterAttributeOptionValues } from './attribute-value-search'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -1681,6 +1682,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [error, setError] = useState<unknown>(); const [created, setCreated] = useState<Product>(); const [, setNotice] = useState(''); const [feedback, setFeedback] = useState<OperationFeedback | null>(null); const [submitting, setSubmitting] = useState(false); const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [variantFilterOpen, setVariantFilterOpen] = useState(false); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
+  const [attributeValueQueries, setAttributeValueQueries] = useState<Record<string, string>>({})
   const initializedEditProductKey = useRef<string | null>(null)
   const initializedEditOptionsKey = useRef<string | null>(null)
   const initializedEditWebColorKey = useRef<string | null>(null)
@@ -2683,6 +2685,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             {visibleOptionRequirements.map(item => {
               const expandable = item.attribute.values.length > 0
               const expanded = !expandable || (expandedOptionGroupIds[item.attributeId] ?? false)
+              const valueQuery = attributeValueQueries[item.attributeId] ?? ''
+              const filteredValues = filterAttributeOptionValues(sortOptionValues(item.attribute.name, item.attribute.values), valueQuery)
               return (
               <article className={`attribute-builder-card ${expanded ? 'is-open' : ''}`} key={item.attributeId}>
                 <button type="button" className="attribute-builder-disclosure" aria-expanded={expanded} aria-controls={expanded ? `option-values-${item.attributeId}` : undefined} disabled={!expandable} onClick={() => setExpandedOptionGroupIds(current => ({ ...current, [item.attributeId]: !expanded }))}>
@@ -2691,8 +2695,17 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                 </button>
                 {expanded && <div id={`option-values-${item.attributeId}`} className="attribute-builder-values">
                 {item.attribute.values.length ? (
+                  <>
+                  <input
+                    className="attribute-builder-value-search"
+                    type="search"
+                    aria-label={`${item.attribute.name} değerlerinde ara`}
+                    placeholder={`${item.attribute.name} değerlerinde ara…`}
+                    value={valueQuery}
+                    onChange={event => setAttributeValueQueries(current => ({ ...current, [item.attributeId]: event.target.value }))}
+                  />
                   <div className="option-chip-list">
-                    {sortOptionValues(item.attribute.name, item.attribute.values).map(value => {
+                    {filteredValues.map(value => {
                       const isSelected = (attributeSelections[item.attributeId] ?? []).includes(value.id)
                       return (
                         <button
@@ -2708,6 +2721,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                       )
                     })}
                   </div>
+                  {filteredValues.length === 0 && <p className="attribute-builder-no-values">Eşleşen değer bulunamadı.</p>}
+                  </>
                 ) : item.attribute.dataType === 'BOOLEAN' ? (
                   <label>Değer<select value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))}><option value="">Seçin</option><option value="evet">Evet</option><option value="hayır">Hayır</option></select></label>
                 ) : (

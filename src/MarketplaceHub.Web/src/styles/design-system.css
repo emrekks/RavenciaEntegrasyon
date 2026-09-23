@@ -1670,7 +1670,9 @@
   .attribute-builder-disclosure-copy { display: grid; gap: 2px; }
   .attribute-builder-disclosure small { color: var(--rv-color-muted); }
   .attribute-builder-disclosure-meta .attribute-builder-selected { color: var(--rv-color-primary); }
-  .attribute-builder-values { padding: var(--rv-space-4); border-top: 1px solid var(--rv-color-border); }
+  .attribute-builder-values { display: grid; gap: var(--rv-space-3); padding: var(--rv-space-4); border-top: 1px solid var(--rv-color-border); }
+  .attribute-builder-value-search { width: 100%; min-width: 0; }
+  .attribute-builder-no-values { margin: 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
   .option-chip-list { display: flex; flex-wrap: wrap; gap: var(--rv-space-2); }
   .option-chip { min-height: 36px; padding: 6px 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 999px; }
   .option-chip.active { color: #fff; background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
