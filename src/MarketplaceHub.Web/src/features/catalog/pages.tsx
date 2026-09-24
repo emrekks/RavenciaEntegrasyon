@@ -3284,7 +3284,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       <p className="variant-header-action-menu-title">Barkodları panodan yapıştır</p>
       <button type="button" role="menuitem" disabled={!emptyBarcodeRowCount} onClick={() => void pasteBarcodesFromClipboard('missing')}><span><strong>Boş barkodları doldur</strong><small>{emptyBarcodeRowCount.toLocaleString('tr-TR')} boş varyant</small></span><UiIcon name="arrowRight" /></button>
       <button type="button" role="menuitem" disabled={!variantRows.length} onClick={() => void pasteBarcodesFromClipboard('all')}><span><strong>Tüm barkodları değiştir</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant sırası</small></span><UiIcon name="alert" /></button>
-      <p>Her satır bir varyanta karşılık gelir. Sekmeli tablolarda ilk sütun alınır; boş veya yinelenen barkod varsa yapıştırma durdurulur.</p>
     </VariantHeaderActionMenu>}
     {barcodeSkuMenuOpen && <VariantHeaderActionMenu anchorRef={barcodeSkuActionRef}>
       <p className="variant-header-action-menu-title">Stok kodlarını barkodlardan düzenle</p>

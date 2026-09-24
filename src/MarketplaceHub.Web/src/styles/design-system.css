@@ -10580,21 +10580,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   padding: 10px;
 }
 
-.app-shell.stitch-shell main .category-attribute-field:not(.required) {
-  background: color-mix(in srgb, #facc15 4%, var(--rv-color-surface-raised));
-  border-color: color-mix(in srgb, #facc15 18%, var(--rv-color-border));
-}
-
-.app-shell.stitch-shell main .category-attribute-field.required {
-  background: color-mix(in srgb, var(--rv-color-danger) 3%, var(--rv-color-surface-raised));
-  border-color: color-mix(in srgb, var(--rv-color-danger) 24%, var(--rv-color-border));
-}
-
-.app-shell.stitch-shell main .category-attribute-field.is-missing {
-  background: color-mix(in srgb, var(--rv-color-danger) 5%, var(--rv-color-surface-raised));
-  border-color: color-mix(in srgb, var(--rv-color-danger) 34%, var(--rv-color-border));
-}
-
 .app-shell.stitch-shell main .category-attribute-field-head { align-items: flex-start; }
 .app-shell.stitch-shell main .category-attribute-field-head strong { white-space: normal; }
 .app-shell.stitch-shell main .category-attribute-select-trigger {
@@ -10614,7 +10599,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 .app-shell.stitch-shell main .category-attribute-select-trigger.is-empty.is-optional {
   color: var(--rv-color-muted);
-  background: color-mix(in srgb, #facc15 3%, var(--rv-color-surface-raised));
   border-color: color-mix(in srgb, #facc15 26%, var(--rv-color-border-strong));
 }
 .app-shell.stitch-shell main .category-attribute-select-trigger.is-empty.is-optional:hover {
@@ -10622,7 +10606,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 .app-shell.stitch-shell main .category-attribute-select-trigger.is-empty.is-required {
   color: var(--rv-color-ink);
-  background: color-mix(in srgb, var(--rv-color-danger) 4%, var(--rv-color-surface-raised));
   border-color: color-mix(in srgb, var(--rv-color-danger) 32%, var(--rv-color-border-strong));
 }
 
@@ -10674,6 +10657,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   border-radius: var(--rv-radius-sm);
   text-align: left;
 }
+.variant-header-action-menu-portal button + button { margin-top: 4px; border-top: 1px solid var(--rv-color-border); }
 .variant-header-action-menu-portal button:hover:not(:disabled),
 .variant-header-action-menu-portal button:focus-visible { background: var(--rv-color-surface-raised); outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
 .variant-header-action-menu-portal button:disabled { cursor: not-allowed; opacity: .48; }
