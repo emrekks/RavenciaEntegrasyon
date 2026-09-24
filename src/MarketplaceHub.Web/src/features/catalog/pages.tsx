@@ -18,6 +18,7 @@ import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './varian
 import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
 import { isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusTone } from './publication-status'
+import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 import { quickPlatformUpdateTargets } from './platform-update-targets'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from './variant-media-assignments'
 
@@ -926,15 +927,8 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
       unmatchedVariantDetails.set(key, current)
     }
   }
-  const platformCheckingStatuses = ['QUEUED', 'UPDATE_QUEUED', 'BATCH_SUBMITTED', 'BATCH_IN_PROGRESS', 'UPDATE_SUBMITTED', 'UPDATE_IN_PROGRESS', 'APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING', 'ARCHIVE_QUEUED', 'ARCHIVE_BATCH_SUBMITTED', 'ARCHIVE_RECONCILING', 'UNARCHIVE_QUEUED']
   const platformCards = [...platformStatusAggregates.entries()].map(([key, item]) => {
-    const normalizedStatuses = item.statuses.map(status => status.trim().toLocaleUpperCase('tr-TR'))
-    const platformChecking = item.isChecking || normalizedStatuses.some(status => platformCheckingStatuses.includes(status))
-    const platformHasError = normalizedStatuses.some(status => ['REJECTED', 'PARTIAL_REJECTED', 'MANUAL_REVIEW', 'LOCKED', 'BLACKLISTED'].includes(status))
-    const platformFullyMatched = item.variantCount > 0 && item.matchedVariantCount >= item.variantCount
-    const platformPartiallyMatched = item.matchedVariantCount > 0 && item.matchedVariantCount < item.variantCount
-    const state = platformChecking ? 'processing' : platformHasError ? 'error' : platformFullyMatched ? 'active' : platformPartiallyMatched ? 'partial' : 'inactive'
-    const coverage = item.variantCount ? ` (${item.matchedVariantCount}/${item.variantCount})` : ''
+    const state = productPlatformDisplayState(item.statuses, item.isChecking)
     const unmatched = unmatchedVariantDetails.get(key)
     // Keep the hover summary compact. The complete list made the native
     // browser tooltip span the whole product row and cover the controls.
@@ -943,15 +937,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
     const unmatchedBarcodeLabel = unmatched && (visibleBarcodes.length || unmatched.missingBarcodeCount)
       ? ` · Eşleşmeyen barkodlar: ${visibleBarcodes.join(', ')}${remainingBarcodeCount ? `, +${remainingBarcodeCount} barkod` : ''}${unmatched.missingBarcodeCount ? ` · ${unmatched.missingBarcodeCount} varyantta barkod yok` : ''}`
       : ''
-    const label = state === 'active'
-      ? `Tüm varyantlar ${item.platform} ile eşleşti${coverage}`
-      : state === 'partial'
-        ? `Bazı varyantlar ${item.platform} ile eşleşti${coverage}`
-        : state === 'processing'
-          ? `${item.platform} ürün bağlantısı güncelleniyor`
-          : state === 'error'
-            ? `${item.platform} ürün bağlantısı başarısız veya incelemede`
-            : `${item.platform} ürün eşleşmesi bulunamadı`
+    const label = productPlatformDisplayLabel(item.platform, item.statuses, item.matchedVariantCount, item.variantCount, state)
     return { key, platform: item.platform, platformCode: item.platformCode, state, label: `${label}${unmatchedBarcodeLabel}` }
   })
   const totalStock = group.products.reduce((sum, item) => sum + item.totalStock, 0)
