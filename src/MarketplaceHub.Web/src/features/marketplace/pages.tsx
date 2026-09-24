@@ -12,7 +12,7 @@ import { useScrollLock } from '../../shared/hooks/useScrollLock'
 import { appendNotification, normalizeNotificationKind } from '../../shared/notifications'
 import { code128Bars, loadPrintedShippingLabels, markShippingLabelPrinted, printedShippingLabelKey, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from '../shipping'
 import { formatPanelColorValue, usesCustomPanelColorValue } from './color-value-format'
-import { attributeValueMappingNeedsSave, hasDirectReferenceValue, normalizeReferenceValueLabel, planDirectReferenceValues } from './attribute-value-mapping'
+import { attributeValueMappingNeedsSave, normalizeReferenceValueLabel, planDirectReferenceValues } from './attribute-value-mapping'
 type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }
 type Connection = { id: string; publicId: string; platformCode: string; environment: string; displayName: string; externalStoreId: string; status: string; apiVersion: string; lastTestedAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null; hasCredential: boolean; externalWritesEnabled: boolean; invoiceCreationEnabled: boolean; version: number }
 type SyncPolicy = { id: string; resourceType: string; intervalSeconds: number; overlapSeconds: number; jitterSeconds: number; enabled: boolean; version: number; lastSuccessAt: string | null; lastModifiedWatermark: string | null; healthStatus?: string; recoveryGapStatus?: string; recoveryGapDays?: number | null; lastAttemptAt?: string | null; consecutiveFailureCount?: number; lastRequestCount?: number; lastReceivedCount?: number; lastChangedCount?: number; lastInsertedCount?: number; lastUpdatedCount?: number; lastSkippedCount?: number; lastFailedCount?: number; lastRetryCount?: number; lastRateLimitCount?: number; requiresExternalWrites?: boolean }
@@ -2283,7 +2283,6 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
     return () => window.clearTimeout(timeout)
   }, [notice])
   const localValues = attribute.values?.filter(item => item.isActive) ?? []; const remoteValues = references.data?.items.filter(item => item.isActive) ?? []; const mappingByLocal = new Map((mappings.data ?? []).map(item => [item.localId, item]))
-  const directReferenceMissingValues = localValues.filter(localValue => !hasDirectReferenceValue(localValue.value, remoteValues.map(remote => remote.name)))
   const directPlan = planDirectReferenceValues(localValues, remoteValues)
   const directMappingWorkCount = directPlan.mappings.filter(item => attributeValueMappingNeedsSave(mappingByLocal.get(item.localId), item.externalId, references.data?.snapshotId ?? '')).length
   function updateAttributeCache(updated: LocalAttribute) {
@@ -2399,7 +2398,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   if (!localValues.length) return <div className="unknown"><strong>Bu özellikte henüz değer yok</strong><p>Değer ekleyerek Trendyol seçenekleriyle eşleştirmeye başlayın.</p><div className="value-mapping-heading-actions"><button type="button" className="secondary" onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button><button type="button" disabled={quickCreating || quickValueSaving || !directPlan.missingValues.length && !directMappingWorkCount} onClick={() => void createAndMapDirectValues()}>{quickCreating ? 'Oluşturulup eşleniyor…' : 'Trendyol adlarını oluştur + eşle'}</button></div>{notice && <p role="status" className="notice">{notice}</p>}{quickValueModal}</div>
   return <div className="mapping-step nested value-mapping-editor">
     <div className="value-mapping-heading">
-      <div><h3>Değer eşleştirmeleri</h3><p>{localValues.length} panel değeri · {remoteValues.length} Trendyol değeri · aynı Trendyol değeri birden fazla panel değerine bağlanabilir</p></div>
+      <div><h3>Değer eşleştirmeleri</h3><p>{localValues.length} panel değeri · {remoteValues.length} Trendyol değeri</p></div>
       <div className="value-mapping-heading-actions">
         <button type="button" className="secondary" disabled={quickValueSaving || quickCreating || saving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button>
         <button type="button" className="secondary" title={`${directPlan.missingValues.length} eksik ad oluşturulur; birebir eşleşen ${directMappingWorkCount} değer eşlenir.${directPlan.ambiguousCount ? ` Aynı adlı ${directPlan.ambiguousCount} Trendyol seçeneği atlanır.` : ''}`} disabled={quickCreating || saving || quickValueSaving || !directPlan.missingValues.length && !directMappingWorkCount} onClick={() => void createAndMapDirectValues()}>{quickCreating ? 'Oluşturulup eşleniyor…' : 'Trendyol adlarını oluştur + eşle'}</button>
@@ -2408,7 +2407,6 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       </div>
     </div>
     {notice && <p role="status" className="notice">{notice}</p>}
-    {directReferenceMissingValues.length > 0 && <p className="value-mapping-reference-note" role="note">{directReferenceMissingValues.map(item => `“${item.value}”`).join(', ')} için birebir adlı Trendyol değeri listede yok. Listeyi yenileyin; seçenek yine gelmezse Trendyol’un sunduğu uygun karşılığı seçin.</p>}
     <div className="value-mapping-rows">
       {localValues.map(localValue => {
         const existing = mappingByLocal.get(localValue.id)
