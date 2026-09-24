@@ -28,9 +28,4 @@ public sealed class ShopifyManualInvoicePolicyTests
             Assert.Equal(expected, ShopifyManualInvoicePolicy.TrackingAmount(orderAmount, packageAmount));
     }
 
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, true)]
-    public void Uploaded_status_requires_a_document(bool hasDocument, bool expected) =>
-        Assert.Equal(expected, ShopifyManualInvoicePolicy.CanSetUploaded(hasDocument));
 }

@@ -11,5 +11,4 @@ public static class ShopifyManualInvoicePolicy
     public static decimal TrackingAmount(decimal orderNetAmount, decimal? packageNetAmount) =>
         decimal.Round(packageNetAmount is > 0 ? packageNetAmount.Value : orderNetAmount, 2, MidpointRounding.AwayFromZero);
 
-    public static bool CanSetUploaded(bool hasUploadedDocument) => hasUploadedDocument;
 }

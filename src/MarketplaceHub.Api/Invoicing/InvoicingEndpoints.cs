@@ -125,12 +125,6 @@ public static class InvoicingEndpoints
         if (providerPlatform != "SHOPIFY") return Problem(http, new("SHOPIFY_INVOICE_ONLY", "Bu manuel durum akışı yalnız Shopify faturaları için kullanılabilir.", 422));
         var orderUsesShopifyConnection = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenant.TenantId && x.Id == invoice.OrderId && x.ConnectionId == invoice.ProviderConnectionId, http.RequestAborted);
         if (!orderUsesShopifyConnection) return Problem(http, new("SHOPIFY_INVOICE_ONLY", "Fatura kaydı aynı Shopify bağlantısına ait bir siparişle eşleşmiyor.", 422));
-        if (status == "UPLOADED")
-        {
-            var hasUploadedDocument = await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == tenant.TenantId && x.InvoiceId == invoice.Id, http.RequestAborted);
-            if (!ShopifyManualInvoicePolicy.CanSetUploaded(hasUploadedDocument))
-                return Problem(http, new("SHOPIFY_INVOICE_DOCUMENT_REQUIRED", "Fatura durumunu ‘yüklendi’ yapmak için belgeyi önce panele yükleyin. Belge yüklenene kadar durum ‘Fatura bekliyor’ kalır.", 422));
-        }
         var now = timeProvider.GetUtcNow();
         invoice.Status = status == "UPLOADED" ? InvoiceStatus.Completed : InvoiceStatus.Draft;
         if (status == "UPLOADED") invoice.IssuedAt ??= now;
