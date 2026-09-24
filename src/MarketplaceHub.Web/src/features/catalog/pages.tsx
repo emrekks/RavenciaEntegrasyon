@@ -1556,6 +1556,7 @@ function CategoryAttributeValueDropdown({
 }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [alignMenuRight, setAlignMenuRight] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const isSingle = dataType === 'SINGLE_SELECT'
   const selected = values.filter(value => selectedValues.includes(value.id))
@@ -1576,15 +1577,23 @@ function CategoryAttributeValueDropdown({
     selected.forEach(value => onToggleValue(value.id))
   }
 
+  function toggleDropdown() {
+    if (!open) {
+      const bounds = rootRef.current?.getBoundingClientRect()
+      const menuWidth = Math.min(320, window.innerWidth - 32)
+      setAlignMenuRight(Boolean(bounds && bounds.left + menuWidth > window.innerWidth - 16))
+    }
+    setOpen(current => !current)
+  }
+
   return <div className="category-attribute-dropdown" ref={rootRef}>
-    <button type="button" className={`category-attribute-select-trigger ${selected.length ? 'active' : 'is-empty'}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)}>
+    <button type="button" className={`category-attribute-select-trigger ${selected.length ? 'active' : 'is-empty'}`} aria-haspopup="listbox" aria-expanded={open} onClick={toggleDropdown}>
       <span><small>{selected.length ? (isSingle ? 'Seçili değer' : `${selected.length} değer seçildi`) : 'Seçim yapın'}</small><strong>{summary}</strong></span>
       <UiIcon name="chevronDown" />
     </button>
-    {open && <div className="category-attribute-dropdown-menu" role="listbox" aria-label={`${attributeName} değerleri`}>
+    {open && <div className={`category-attribute-dropdown-menu ${alignMenuRight ? 'is-edge-aligned' : ''}`} role="listbox" aria-label={`${attributeName} değerleri`}>
       <div className="category-attribute-dropdown-tools">
         <input autoFocus value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara..." aria-label={`${attributeName} değerlerinde ara`} />
-        <span>{filteredValues.length}/{values.length}</span>
       </div>
       {selected.length > 0 && <button type="button" className="category-attribute-clear-selection" onClick={clearSelection}>Seçimi temizle</button>}
       <div className="category-attribute-dropdown-options">
@@ -1783,7 +1792,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const pointerDraggedVariantRef = useRef<string | null>(null)
   const pointerDragSourceRef = useRef<HTMLDivElement | null>(null)
   const pointerDragIdRef = useRef<number | null>(null)
-  const [mediaUrlSettingsOpen, setMediaUrlSettingsOpen] = useState(false)
   const [variantPlatformPricing, setVariantPlatformPricing] = useState<{ rowKey: string; platform: VariantPlatformStatus } | null>(null)
   const [variantPlatformPricingDraft, setVariantPlatformPricingDraft] = useState<ChannelPricingDraft>({ listPrice: '', salePrice: '' })
   const [variantPlatformPricingSaving, setVariantPlatformPricingSaving] = useState(false)
@@ -2872,16 +2880,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     {bulkOptionSyncOpen && <div className="workspace-modal-backdrop bulk-option-sync-backdrop" role="presentation" onMouseDown={() => setBulkOptionSyncOpen(false)}><section className="workspace-modal bulk-option-sync-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-option-sync-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">ÜRÜN SEÇENEKLERİ</p><h2 id="bulk-option-sync-title">Toplu eşitleme</h2><p>Seçenek gruplarındaki işaretli değerleri varyant satırlarına ekleyin.</p></div><button type="button" className="modal-close" onClick={() => setBulkOptionSyncOpen(false)} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><div className="bulk-option-sync-body"><fieldset><legend>Eşitlenecek gruplar</legend><div className="bulk-option-sync-options">{bulkSyncOptionRequirements.map(item => { const selectedCount = attributeSelections[item.attributeId]?.length ?? 0; const checked = bulkOptionSyncSelection.includes(item.attributeId); const label = isColorOptionName(item.attribute.name) ? 'Renkler' : 'Bedenler'; return <label className={`bulk-option-sync-option${checked ? ' is-selected' : ''}`} key={item.attributeId}><input type="checkbox" checked={checked} disabled={!selectedCount} onChange={() => setBulkOptionSyncSelection(current => checked ? current.filter(id => id !== item.attributeId) : [...current, item.attributeId])} /><span><strong>{label}</strong><small>{selectedCount} seçili değer · {item.attribute.name}</small></span></label> })}</div></fieldset><p className="bulk-option-sync-note">Hiçbir grup seçmezseniz listelenen tüm gruplar birlikte eşitlenir. Tek grup seçildiğinde diğer etkin seçenek ekseni korunur; mevcut varyant satırlarındaki stok, fiyat, barkod ve görseller değiştirilmez.</p></div><footer><button type="button" className="secondary" onClick={() => setBulkOptionSyncOpen(false)}>Vazgeç</button><button type="button" onClick={syncOptionGroups} disabled={!bulkSyncOptionRequirements.length}>{bulkOptionSyncSelection.length ? 'Seçilenleri eşitle' : 'Tümünü eşitle'}</button></footer></section></div>}
     {desiCalculatorOpen && <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => setDesiCalculatorOpen(false)}><section className="workspace-modal desi-calculator-modal" role="dialog" aria-modal="true" aria-labelledby="desi-calculator-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="desi-calculator-title">Desi hesapla</h2><p>En × Boy × Yükseklik / 3000 formülü kullanılır.</p></div><button type="button" className="modal-close" onClick={() => setDesiCalculatorOpen(false)} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><div className="desi-calculator-body"><div className="product-step-grid"><label>Ağırlık (kg)<input value={form.weight} onChange={event => updateField('weight', event.target.value)} type="number" min="0" step="0.01" /></label><label>En (cm)<input value={form.width} onChange={event => updateField('width', event.target.value)} type="number" min="0" step="0.1" /></label><label>Boy (cm)<input value={form.length} onChange={event => updateField('length', event.target.value)} type="number" min="0" step="0.1" /></label><label>Yükseklik (cm)<input value={form.height} onChange={event => updateField('height', event.target.value)} type="number" min="0" step="0.1" /></label></div><div className="calculated-field"><small>Hesaplanan desi</small><strong>{desi ? desi.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : 'Ölçüleri girin'}</strong></div></div><footer><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(false)}>İptal</button><button type="button" disabled={!desi} onClick={() => { updateField('desi', String(Number(desi.toFixed(2)))); setCalculateDesi(true); setDesiCalculatorOpen(false) }}>Uygula</button></footer></section></div>}
 
-    {mediaUrlSettingsOpen && <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => setMediaUrlSettingsOpen(false)}><section className="workspace-modal product-media-url-modal" role="dialog" aria-modal="true" aria-labelledby="product-media-url-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="product-media-url-title">Link ile görsel ekle</h2><p>Her satıra bir kalıcı HTTPS adresi yazın. Eklenen görseller varyant seçimlerinde de kullanılabilir.</p></div><button type="button" className="modal-close" onClick={() => setMediaUrlSettingsOpen(false)} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><label className="product-media-url-field">Görsel URL listesi<textarea id="product-media-urls" aria-describedby="media-url-help" value={form.mediaUrls} onChange={event => updateField('mediaUrls', event.target.value)} placeholder="Örn. https://site.com/gorsel-1.jpg&#10;https://site.com/gorsel-2.png" autoFocus /><small id="media-url-help" className="field-help">Herkese açık, kullanıcı adı/parola içermeyen HTTPS adresleri kullanın (en fazla 512 karakter). Adresleri ayrı satırda veya ; / | ayraçlarıyla yazabilirsiniz. İlk adres ürünün genel ana görselidir; varyant görseli seçimi aşağıdaki tabloda yapılır.</small></label><footer><span>{mediaUrls.length} adres kayıtlı</span><button type="button" onClick={() => setMediaUrlSettingsOpen(false)}>Tamam</button></footer></section></div>}
     <div className="product-layout-grid"><div className="product-main-stack">
       <section className="panel product-step-card product-media-card">
         <div className="editor-section-title">
           <span>4</span>
-          <div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilir veya internetten erişilebilen HTTPS adresleri ekleyebilirsiniz. Aynı modelin diğer renk görselleri de burada görünür; sıralama değişiklikleri kaydedilirken renk ürünlerine de uygulanır.</p></div>
-          <div className="product-media-header-actions">
-            {(mediaUrls.length > 0 || mediaFiles.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" onClick={clearAllMedia}>Tümünü temizle</button>}
-            <button type="button" className="product-media-link-button" onClick={() => setMediaUrlSettingsOpen(true)} aria-label="Link ile görsel ekle" title="Link ile görsel ekle"><UiIcon name="externalLink" />{mediaUrls.length > 0 && <b>{mediaUrls.length}</b>}</button>
-          </div>
+            <div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilirsiniz. Aynı modelin diğer renk görselleri de burada görünür; sıralama değişiklikleri kaydedilirken renk ürünlerine de uygulanır.</p></div>
+            <div className="product-media-header-actions">
+              {(mediaUrls.length > 0 || mediaFiles.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" onClick={clearAllMedia}>Tümünü temizle</button>}
+            </div>
         </div>
         <label className="upload-ghost-box product-media-upload">
           <input type="file" accept="image/jpeg,image/png" multiple onChange={event => { handleMediaFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} />
@@ -2921,7 +2927,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <div>
              <strong>Varyantları oluştur</strong>
              <small>{variantAttributeIds.length ? `${variantAttributeIds.map(id => allRequirements.find(item => item.attributeId === id)?.attribute.name).filter(Boolean).join(' × ')} · ${variantAttributeIds.reduce((total, id) => total * Math.max(1, attributeSelections[id]?.length ?? 0), 1)} kombinasyon` : 'Önce seçenek grubunu ve değerlerini işaretleyin.'}</small>
-             <label className="variant-auto-barcode-toggle"><input type="checkbox" checked={automaticBarcodeGeneration} onChange={event => setAutomaticBarcodeGeneration(event.target.checked)} /><span><strong>Barkodları otomatik oluştur</strong><small>Açıksa model kodundan “-01”, “-02”… üretir; stok kodu boş, satış ve liste fiyatı 0 başlar. Kaydetmek için stok kodlarını doldurun.</small></span></label>
+             <label className="variant-auto-barcode-toggle"><input type="checkbox" checked={automaticBarcodeGeneration} onChange={event => setAutomaticBarcodeGeneration(event.target.checked)} /><span><strong>Barkodları otomatik oluştur</strong></span></label>
           </div>
           <div className="attribute-variant-actions">
             <button type="button" onClick={() => generateVariants()} disabled={!canAddVariantCombinations}>{canAddVariantCombinations ? 'Ürünleri ekle' : 'Seçenekler güncel'}</button>
