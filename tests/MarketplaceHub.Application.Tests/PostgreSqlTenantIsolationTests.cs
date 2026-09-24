@@ -10,6 +10,7 @@ using MarketplaceHub.Infrastructure.Persistence;
 using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -18,6 +19,54 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
+    [PostgreSqlFact]
+    public async Task ProductDefaultPrices_RoundTripThroughProductUpdateAndReload()
+    {
+        var tenant = NewTenant("product-price-defaults");
+        var product = new Product
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            Title = $"Price defaults {Guid.NewGuid():N}",
+            Description = "Persistence round-trip test",
+            DefaultListPrice = 0m,
+            DefaultSalePrice = 0m,
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.Products.Add(product);
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(
+            db,
+            null!,
+            new ConfigurationBuilder().Build(),
+            fixture.TimeProvider,
+            new MemoryCache(new MemoryCacheOptions()));
+        var updated = await service.UpdateProductAsync(
+            tenant.Id,
+            product.Id,
+            product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null, DefaultListPrice: 699m, DefaultSalePrice: 0m),
+            CancellationToken.None);
+
+        Assert.True(updated.Succeeded, updated.Error?.Message);
+        Assert.Equal(699m, updated.Value?.DefaultListPrice);
+        Assert.Equal(0m, updated.Value?.DefaultSalePrice);
+
+        db.ChangeTracker.Clear();
+        var reloaded = await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == product.Id);
+        Assert.Equal(699m, reloaded.DefaultListPrice);
+        Assert.Equal(0m, reloaded.DefaultSalePrice);
+
+        await transaction.RollbackAsync();
+    }
+
     [PostgreSqlFact]
     public async Task ReceiveAsync_WhenSameWebhookArrivesConcurrently_CreatesOneInboxMessageAndOneJob()
     {

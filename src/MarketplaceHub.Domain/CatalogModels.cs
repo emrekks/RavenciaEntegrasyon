@@ -11,6 +11,8 @@ public sealed class Product
     public required string Description { get; set; }
     public Guid? BrandId { get; set; }
     public Guid? CategoryId { get; set; }
+    public decimal? DefaultListPrice { get; set; }
+    public decimal? DefaultSalePrice { get; set; }
     public ProductStatus Status { get; set; } = ProductStatus.Active;
     public long SourcePolicyVersion { get; set; } = 1;
     public DateTimeOffset? ArchivedAt { get; set; }
