@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -13,8 +14,9 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 internal sealed record PublicationVariantDraft(Guid VariantId, string Sku, string Barcode);
 internal sealed record ProductPublicationDraft(Guid ProfileId, string ExternalCategoryId, string ExternalBrandId, string PayloadHash, string PayloadJson, IReadOnlyList<PublicationVariantDraft> Variants);
 
-internal sealed class ProductPublicationComposer(AppDbContext db)
+internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration configuration)
 {
+    internal const int MaximumPublicationImageCount = 8;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -106,7 +108,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
                            join asset in db.FileAssets.AsNoTracking() on productMedia.FileAssetId equals asset.Id
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                            orderby productMedia.SortOrder, productMedia.Id
-                           select new { productMedia.VariantId, productMedia.SortOrder, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
+                           select new { productMedia.VariantId, productMedia.SortOrder, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
 
         var title = (profile.TitleOverride ?? product.Title).Trim();
         var description = (profile.DescriptionOverride ?? product.Description).Trim();
@@ -129,13 +131,16 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
             var relevantMedia = assignedMedia.Count > 0
                 ? assignedMedia
                 : media.Where(x => x.VariantId is null).ToList();
-            var localMedia = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA").ToList();
             var relevantUrls = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Select(x => x.RelativePath.Trim()).ToList();
             if (relevantUrls.Any(url => !IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için kayıtlı tüm PRODUCT_MEDIA_URL değerleri geçerli HTTPS adresi olmalıdır.");
-            var imageUrls = relevantUrls.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (imageUrls.Count == 0 && localMedia.Count > 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için yerel katalog görseli bulundu; Trendyol yayını için en az bir herkese açık HTTPS görsel adresi ekleyin.");
+            var imageUrls = SelectPublicationImageUrls(relevantMedia
+                .Select(item => item.Classification == "PRODUCT_MEDIA_URL"
+                    ? item.RelativePath.Trim()
+                    : BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
+                .Where(url => !string.IsNullOrWhiteSpace(url))
+                .Select(url => url!));
+            if (imageUrls.Count == 0 && relevantMedia.Count > 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için yerel görseller HTTPS üzerinden sunulamıyor. Marketplace:PublicBaseUrl ayarını yapılandırın.");
             if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir geçerli HTTPS görsel adresi gerekir.");
-            if (imageUrls.Count > 8) return Fail("PRODUCT_MEDIA_LIMIT_EXCEEDED", $"'{variant.Sku}' için en fazla 8 farklı görsel URL'si yayınlanabilir.");
 
             var effectiveAssignments = assignments.Where(x => x.VariantId is null || x.VariantId == variant.Id).GroupBy(x => x.AttributeId).ToList();
             var payloadAttributes = new List<Dictionary<string, object?>>();
@@ -276,6 +281,20 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo) || uri.IsLoopback || !IsPublicHost(uri.Host)) return false;
         return !IPAddress.TryParse(uri.Host, out var address) || IsPublicAddress(address);
     }
+
+    internal static string? BuildPublicProductMediaUrl(string? publicBaseUrl, Guid assetId)
+    {
+        if (!IsPublicHttpsUrl(publicBaseUrl ?? "") || !Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out var baseUri)
+            || baseUri.AbsolutePath != "/" || !string.IsNullOrEmpty(baseUri.Query) || !string.IsNullOrEmpty(baseUri.Fragment)) return null;
+        var url = new Uri(baseUri, $"/api/v1/public/product-media/{assetId:D}/content").AbsoluteUri;
+        return url.Length <= 512 ? url : null;
+    }
+
+    internal static IReadOnlyList<string> SelectPublicationImageUrls(IEnumerable<string> imageUrls) => imageUrls
+        .Where(url => !string.IsNullOrWhiteSpace(url))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Take(MaximumPublicationImageCount)
+        .ToArray();
 
     private static bool IsPublicHost(string host)
     {

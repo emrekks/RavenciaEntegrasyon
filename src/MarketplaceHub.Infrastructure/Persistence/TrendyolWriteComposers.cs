@@ -4,6 +4,7 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -11,7 +12,7 @@ internal sealed record ProductUpdateDraft(Guid ProfileId, ProductUpdatePublicati
 internal sealed record ProductArchiveDraft(Guid ProfileId, string PayloadHash, string PayloadJson, IReadOnlyList<PublicationVariantDraft> Variants);
 internal sealed record PriceInventoryDraft(string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines);
 
-internal sealed class ProductUpdateComposer(AppDbContext db)
+internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration configuration)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -21,7 +22,7 @@ internal sealed class ProductUpdateComposer(AppDbContext db)
 
     public async Task<ServiceResult<ProductUpdateDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {
-        var create = await new ProductPublicationComposer(db).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+        var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (!create.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(create.Error!.Code, create.Error.Message, create.Error.Status, create.Error.FieldErrors);
         var draft = create.Value!;
         var productLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken);

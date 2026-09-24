@@ -11,11 +11,12 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification } from '../../shared/notifications'
 import { toggleProductAttributeValue } from './attribute-selection'
 import { filterAttributeOptionValues } from './attribute-value-search'
-import { mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
+import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
 import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditField } from './variant-bulk-edit'
 import { buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './variant-option-matching'
 import { productMediaUrlIssue } from './product-media-url'
+import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -403,6 +404,10 @@ function VariantDragHandleIcon() {
 
 function BarcodeFillIcon() {
   return <svg className="variant-header-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" focusable="false" aria-hidden="true"><path d="M11 14h10" /><path d="M16 4h2a2 2 0 0 1 2 2v1.344" /><path d="m17 18 4-4-4-4" /><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 1.793-1.113" /><rect x="8" y="2" width="8" height="4" rx="1" /></svg>
+}
+
+function BarcodePasteIcon() {
+  return <svg className="variant-header-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" focusable="false" aria-hidden="true"><rect x="8" y="4" width="12" height="17" rx="2" /><path d="M16 4h-2.2a2 2 0 0 0-3.6 0H8" /><path d="M14 11v6" /><path d="m11.5 14.5 2.5 2.5 2.5-2.5" /><path d="M6 8H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-1" /></svg>
 }
 
 function MediaOptionThumb({ option, selected, onClick }: { option: ProductMediaOption; selected: boolean; onClick: () => void }) {
@@ -1780,6 +1785,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [variantMediaModal, setVariantMediaModal] = useState<{ mode: 'variant' | 'bulk'; rowKey?: string; draftRefs: string[]; groupId: string; valueId: string } | null>(null)
   const [barcodeSkuMenuOpen, setBarcodeSkuMenuOpen] = useState(false)
   const barcodeSkuActionRef = useRef<HTMLDivElement>(null)
+  const [barcodePasteMenuOpen, setBarcodePasteMenuOpen] = useState(false)
+  const barcodePasteActionRef = useRef<HTMLDivElement>(null)
+  const variantRowsRef = useRef(variantRows)
+  variantRowsRef.current = variantRows
   const [expandedOptionGroupIds, setExpandedOptionGroupIds] = useState<Record<string, boolean>>({})
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkCostPrice, setBulkCostPrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [variantBulkEdit, setVariantBulkEdit] = useState<{ field: VariantBulkEditField; value: string; error: string } | null>(null)
@@ -1800,17 +1809,21 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const initialEditModelCode = useRef('')
   const initialEditVariantMediaRefs = useRef<Record<string, string[]>>({})
   useEffect(() => {
-    if (!barcodeSkuMenuOpen) return
-    function closeBarcodeSkuMenu(event: PointerEvent) {
-      if (!barcodeSkuActionRef.current?.contains(event.target as Node)) setBarcodeSkuMenuOpen(false)
+    if (!barcodeSkuMenuOpen && !barcodePasteMenuOpen) return
+    function closeBarcodeMenus(event: PointerEvent) {
+      const target = event.target as Node
+      if (!barcodeSkuActionRef.current?.contains(target) && !barcodePasteActionRef.current?.contains(target)) {
+        setBarcodeSkuMenuOpen(false)
+        setBarcodePasteMenuOpen(false)
+      }
     }
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') setBarcodeSkuMenuOpen(false)
+      if (event.key === 'Escape') { setBarcodeSkuMenuOpen(false); setBarcodePasteMenuOpen(false) }
     }
-    document.addEventListener('pointerdown', closeBarcodeSkuMenu)
+    document.addEventListener('pointerdown', closeBarcodeMenus)
     document.addEventListener('keydown', closeOnEscape)
-    return () => { document.removeEventListener('pointerdown', closeBarcodeSkuMenu); document.removeEventListener('keydown', closeOnEscape) }
-  }, [barcodeSkuMenuOpen])
+    return () => { document.removeEventListener('pointerdown', closeBarcodeMenus); document.removeEventListener('keydown', closeOnEscape) }
+  }, [barcodeSkuMenuOpen, barcodePasteMenuOpen])
   function showFeedback(message: string, kind: OperationFeedback['kind']) {
     if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current)
     setFeedback({ message, kind })
@@ -2428,6 +2441,47 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setNotice(message); showFeedback(message, skippedCount ? 'info' : 'success'); setBarcodeSkuMenuOpen(false)
   }
 
+  async function pasteBarcodesFromClipboard(mode: 'missing' | 'all') {
+    if (typeof navigator.clipboard?.readText !== 'function') {
+      const message = 'Pano okuma bu tarayıcıda kullanılamıyor; barkodları satırlara elle yapıştırın.'
+      setNotice(message); showFeedback(message, 'error'); setBarcodePasteMenuOpen(false)
+      return
+    }
+
+    let clipboardText: string
+    try {
+      clipboardText = await navigator.clipboard.readText()
+    } catch {
+      const message = 'Panoya erişilemedi. Tarayıcı pano iznini verip tekrar deneyin.'
+      setNotice(message); showFeedback(message, 'error'); setBarcodePasteMenuOpen(false)
+      return
+    }
+
+    const rows = variantRowsRef.current
+    const rowsToUpdate = mode === 'missing' ? rows.filter(row => !row.barcode.trim()) : rows
+    if (!rowsToUpdate.length) {
+      const message = mode === 'missing' ? 'Boş barkod satırı bulunamadı.' : 'Önce varyant satırlarını oluşturun.'
+      setNotice(message); showFeedback(message, 'info'); setBarcodePasteMenuOpen(false)
+      return
+    }
+    const values = parseBarcodeClipboardValues(clipboardText)
+    const targetKeys = new Set(rowsToUpdate.map(row => row.key))
+    const reservedValues = rows.filter(row => !targetKeys.has(row.key)).map(row => row.barcode.trim())
+    const issue = barcodeClipboardIssue(values, rowsToUpdate.length, reservedValues)
+    if (issue) {
+      setNotice(issue); showFeedback(issue, 'error'); setBarcodePasteMenuOpen(false)
+      return
+    }
+
+    const valuesByKey = new Map(rowsToUpdate.map((row, index) => [row.key, values[index].trim()]))
+    setVariantRows(currentRows => currentRows.map(row => {
+      const barcode = valuesByKey.get(row.key)
+      return barcode === undefined ? row : { ...row, barcode }
+    }))
+    const message = `${rowsToUpdate.length} varyantın barkodu panodan yapıştırıldı.`
+    setNotice(message); showFeedback(message, 'success'); setBarcodePasteMenuOpen(false)
+  }
+
   function toggleVariantFilter(groupId: string, valueId: string) {
     setVariantFilterSelections(current => {
       const values = current[groupId] ?? []
@@ -2532,8 +2586,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       }
     }
     if (rows.length > MAX_VARIANTS) issues.push(`En fazla ${MAX_VARIANTS} varyant oluşturulabilir.`)
-    const productMediaUrls = editProductId && form.mediaUrls.trim() === initialEditMediaUrl.current.trim() ? [] : mediaUrls
-    const allMediaUrls = publicProductMediaUrls([...productMediaUrls, ...rows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4)))])
+    const publicationMediaRefs = [...mediaUrls, ...rows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4)))]
+    const allMediaUrls = publicProductMediaUrls(publicationMediaRefs)
     const invalidMediaUrl = allMediaUrls.map(productMediaUrlIssue).find((issue): issue is string => issue !== null)
     if (invalidMediaUrl) issues.push(`Görsel bağlantısı geçersiz: ${invalidMediaUrl} Ürün kaydedilmeden önce düzeltin veya kaldırın.`)
     const skus = rows.map(row => row.sku.trim().toLocaleUpperCase('tr-TR')); if (skus.some(value => !value)) issues.push('Tüm varyantlarda stok kodu zorunludur.'); if (new Set(skus).size !== skus.length) issues.push('Stok kodları benzersiz olmalıdır.')
@@ -2543,8 +2597,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
      if (!form.desi.trim() || !Number.isFinite(Number(form.desi)) || Number(form.desi) <= 0) issues.push('Desi sıfırdan büyük olmalıdır.')
      if (requireCompleteCatalog && requirePublicationReadiness && selectedChannelIds.length) {
       if (!form.brandId) issues.push('Trendyol yayını için marka zorunludur.'); if (!form.modelCode.trim() || form.modelCode.trim().length > 40) issues.push('Trendyol yayını için en fazla 40 karakterlik model kodu zorunludur.'); if (form.title.trim().length > 100) issues.push('Trendyol ürün başlığı en fazla 100 karakter olabilir.')
-      const publicMediaUrls = publicProductMediaUrls(mediaUrls)
-      if (!publicMediaUrls.length && !mediaFiles.length) issues.push('Trendyol yayını için en az bir HTTPS görsel adresi zorunludur.'); if (!publicMediaUrls.length && mediaFiles.length) issues.push('Yerel dosyalar katalogda önizleme içindir; Trendyol yayını için herkese açık HTTPS görsel adresi ekleyin.'); if (mediaUrls.length + mediaFiles.length > 8) issues.push('Trendyol yayını için en fazla 8 görsel kullanılabilir.'); if (publicMediaUrls.some(url => !url.startsWith('https://'))) issues.push('Tüm görsel adresleri HTTPS olmalıdır.')
+      const publicMediaUrls = publicProductMediaUrls(publicationMediaRefs)
+      const hasLocalPublicationMedia = mediaFiles.length > 0 || publicationMediaRefs.some(isStoredProductMediaUrl)
+      if (!publicMediaUrls.length && !hasLocalPublicationMedia) issues.push('Trendyol yayını için en az bir ürün görseli ekleyin.')
+      if (publicMediaUrls.some(url => !url.startsWith('https://'))) issues.push('Tüm görsel adresleri HTTPS olmalıdır.')
       if (rows.some(row => !row.barcode.trim() || !/^[a-zA-Z0-9._-]+$/.test(row.barcode.trim()))) issues.push('Trendyol yayını için her varyantta geçerli ve benzersiz barkod zorunludur.'); if (rows.some(row => row.salePrice <= 0)) issues.push('Trendyol yayını için satış fiyatı sıfırdan büyük olmalıdır.')
       for (const connectionId of selectedChannelIds) {
         const draft = channelPriceDraft(connectionId); const listPrice = Number(draft.listPrice); const salePrice = Number(draft.salePrice)
@@ -2755,6 +2811,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const matchingVariantCount = variantRows.filter(row => rowMatchesVariantFilters(row)).length
   const barcodeRowCount = variantRows.filter(row => row.barcode.trim()).length
   const emptySkuBarcodeRowCount = variantRows.filter(row => row.barcode.trim() && !row.sku.trim()).length
+  const emptyBarcodeRowCount = variantRows.length - barcodeRowCount
   const selectedBulkMediaGroup = variantMediaModal?.mode === 'bulk' ? bulkMediaGroups.find(group => group.id === variantMediaModal.groupId) : undefined
   const selectedBulkMediaValue = selectedBulkMediaGroup?.values.find(value => value.id === variantMediaModal?.valueId)
   const selectedBulkMediaMatchCount = selectedBulkMediaGroup && selectedBulkMediaValue ? variantRows.filter(row => rowMatchesVariantMediaValue(row, selectedBulkMediaGroup, selectedBulkMediaValue)).length : 0
@@ -2790,7 +2847,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const catalogValidationDetail = catalogValidationIssues.length ? `${catalogValidationIssues.slice(0, 2).join(' ')}${catalogValidationIssues.length > 2 ? ` +${catalogValidationIssues.length - 2} eksik` : ''}` : 'Kategori özellikleri, seçenekler ve Web Color yayınlamaya hazır.'
   const productChecks = [
     { title: 'Temel Ürün Verileri', detail: hasBasicProductData ? 'İsim, açıklama, marka ve barkod bilgileri eksiksiz.' : 'İsim, açıklama, marka, model veya barkod bilgisi eksik.', ok: hasBasicProductData },
-    { title: 'Görsel Kalitesi', detail: hasProductMedia ? `${mediaCount} adet ürün görseli eklendi.` : 'En az bir yüksek çözünürlüklü görsel ekleyin.', ok: hasProductMedia },
+    { title: 'Görsel Kalitesi', detail: hasProductMedia ? `${mediaCount} adet ürün görseli eklendi.${mediaCount > 8 ? ' Trendyol için sıralamadaki ilk 8 görsel kullanılır.' : ''}` : 'En az bir yüksek çözünürlüklü görsel ekleyin.', ok: hasProductMedia },
     { title: 'Varyant Bilgileri', detail: hasVariantData ? 'Varyant yapısı yayınlanmaya hazır.' : 'Seçilen seçenekler için varyant satırlarını oluşturun.', ok: hasVariantData },
     { title: 'Kategori ve Web Color', detail: catalogValidationDetail, ok: catalogValidationIssues.length === 0 }
   ]
@@ -3022,7 +3079,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           </div>
             <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary variant-clear-button" onClick={clearVariants}>Oluşan varyantları temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere görsel ata</button></div></div>
         </>}
-            <div className="variant-table-editor"><div className="variant-table-head"><span>#</span><span>Seçenek</span><span>Barkod</span><span className="variant-table-header-with-action"><span>Stok kodu</span><div className="variant-header-action-shell" ref={barcodeSkuActionRef}><button type="button" className="variant-header-action" onClick={() => setBarcodeSkuMenuOpen(current => !current)} aria-label="Barkoddan doldurma seçenekleri" aria-haspopup="menu" aria-expanded={barcodeSkuMenuOpen} title="Barkoddan stok kodu doldurma seçenekleri"><BarcodeFillIcon /></button>{barcodeSkuMenuOpen && <div className="variant-header-action-menu" role="menu"><button type="button" role="menuitem" disabled={!emptySkuBarcodeRowCount} onClick={() => applyBarcodeToSku('missing')}><span><strong>Eksik stok kodlarını doldur</strong><small>Sadece boş satırlar · {emptySkuBarcodeRowCount} aday</small></span><UiIcon name="externalLink" /></button><button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları stok koduna uygula</strong><small>Barkodu olan {barcodeRowCount} satırı güncelle</small></span><i aria-hidden="true">!</i></button><p>Çakışan barkodlar otomatik olarak atlanır; mevcut kodlar ilk seçenekte korunur.</p></div>}</div></span>{(['stock', 'salePrice', 'costPrice', 'listPrice'] as VariantBulkEditField[]).map(field => <span className="variant-table-header-with-action variant-bulk-header" key={field}><span>{variantBulkEditLabels[field]}</span><button type="button" className="variant-bulk-edit-trigger" aria-label={`${variantBulkEditLabels[field]} için toplu değişiklik aç`} aria-haspopup="dialog" aria-controls={variantBulkEdit?.field === field ? 'variant-bulk-edit-dialog' : undefined} aria-expanded={variantBulkEdit?.field === field} title={`${variantBulkEditLabels[field]} toplu değiştir`} onClick={() => openVariantBulkEdit(field)} disabled={!variantRows.length}><UiIcon name="edit" size={14} /></button></span>)}<span>Platform</span><span>Görsel</span><span>İşlem</span></div>{variantRows.length ? variantRows.map((row, index) => { const matchesFilter = rowMatchesVariantFilters(row); return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}><div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div><input aria-label={`${index + 1}. varyant seçenekleri`} value={row.optionSignature} readOnly /><input aria-label={`${row.optionSignature} barkod`} className="technical-field barcode-value" value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" /><input aria-label={`${row.optionSignature} stok kodu`} className="technical-field sku-value" value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" /><input aria-label={`${row.optionSignature} stok`} value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" /><input aria-label={`${row.optionSignature} satış fiyatı`} value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /><input aria-label={`${row.optionSignature} maliyeti`} value={row.costPrice} onChange={event => updateVariantRow(row.key, 'costPrice', event.target.value)} type="number" min="0" step="0.01" /><input aria-label={`${row.optionSignature} liste fiyatı`} value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /><div className="variant-platform-statuses" aria-label={`${row.optionSignature} platform bağlantıları`}>{row.platformStatuses?.length ? (() => { const linkedCount = row.platformStatuses.filter(item => item.isLinked).length; const isPartial = linkedCount > 0 && linkedCount < row.platformStatuses.length; const summaryClass = linkedCount === row.platformStatuses.length ? 'is-linked' : isPartial ? 'is-partial' : 'is-unlinked'; return <button type="button" className={`variant-platform-status variant-platform-status-summary ${summaryClass}`} onClick={() => openVariantPlatformPricing(row, row.platformStatuses![0])} title={`${row.platformStatuses.length} platform fiyatını görüntüle`} aria-label={`${row.optionSignature} platform fiyatlarını görüntüle`}><UiIcon name="platforms" /><i aria-hidden="true">{row.platformStatuses.length}</i></button> })() : <span className="variant-platform-empty">—</span>}</div><div className="variant-media-cell"><button type="button" className={`variant-media-button ${row.mediaRefs.length ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç`} title="Varyant görsellerini seç"><VariantImageIcon />{row.mediaRefs.length > 0 && <i aria-hidden="true">{row.mediaRefs.length}</i>}</button></div><button type="button" className="secondary" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))}>Sil</button></div> }) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}</div>
+            <div className="variant-table-editor"><div className="variant-table-head"><span>#</span><span>Seçenek</span><span className="variant-table-header-with-action"><span>Barkod</span><div className="variant-header-action-shell" ref={barcodePasteActionRef}><button type="button" className="variant-header-action" onClick={() => { setBarcodeSkuMenuOpen(false); setBarcodePasteMenuOpen(current => !current) }} aria-label="Panodan barkod yapıştırma seçenekleri" aria-haspopup="menu" aria-expanded={barcodePasteMenuOpen} title="Panodan barkod yapıştırma seçenekleri"><BarcodePasteIcon /></button>{barcodePasteMenuOpen && <div className="variant-header-action-menu" role="menu"><button type="button" role="menuitem" disabled={!emptyBarcodeRowCount} onClick={() => void pasteBarcodesFromClipboard('missing')}><span><strong>Boş barkodlara yapıştır</strong><small>Sadece boş satırlar · {emptyBarcodeRowCount} hedef</small></span><UiIcon name="externalLink" /></button><button type="button" role="menuitem" disabled={!variantRows.length} onClick={() => void pasteBarcodesFromClipboard('all')}><span><strong>Tüm barkodları panodan değiştir</strong><small>Varyant sırası · {variantRows.length} hedef</small></span><i aria-hidden="true">!</i></button><p>Satır sayısı hedefle aynı olmalı; sekmeli tabloda ilk sütun kullanılır. Boş veya yinelenen barkodda işlem yapılmaz.</p></div>}</div></span><span className="variant-table-header-with-action"><span>Stok kodu</span><div className="variant-header-action-shell" ref={barcodeSkuActionRef}><button type="button" className="variant-header-action" onClick={() => { setBarcodePasteMenuOpen(false); setBarcodeSkuMenuOpen(current => !current) }} aria-label="Barkoddan doldurma seçenekleri" aria-haspopup="menu" aria-expanded={barcodeSkuMenuOpen} title="Barkoddan stok kodu doldurma seçenekleri"><BarcodeFillIcon /></button>{barcodeSkuMenuOpen && <div className="variant-header-action-menu" role="menu"><button type="button" role="menuitem" disabled={!emptySkuBarcodeRowCount} onClick={() => applyBarcodeToSku('missing')}><span><strong>Eksik stok kodlarını doldur</strong><small>Sadece boş satırlar · {emptySkuBarcodeRowCount} aday</small></span><UiIcon name="externalLink" /></button><button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları stok koduna uygula</strong><small>Barkodu olan {barcodeRowCount} satırı güncelle</small></span><i aria-hidden="true">!</i></button><p>Çakışan barkodlar otomatik olarak atlanır; mevcut kodlar ilk seçenekte korunur.</p></div>}</div></span>{(['stock', 'salePrice', 'costPrice', 'listPrice'] as VariantBulkEditField[]).map(field => <span className="variant-table-header-with-action variant-bulk-header" key={field}><span>{variantBulkEditLabels[field]}</span><button type="button" className="variant-bulk-edit-trigger" aria-label={`${variantBulkEditLabels[field]} için toplu değişiklik aç`} aria-haspopup="dialog" aria-controls={variantBulkEdit?.field === field ? 'variant-bulk-edit-dialog' : undefined} aria-expanded={variantBulkEdit?.field === field} title={`${variantBulkEditLabels[field]} toplu değiştir`} onClick={() => openVariantBulkEdit(field)} disabled={!variantRows.length}><UiIcon name="edit" size={14} /></button></span>)}<span>Platform</span><span>Görsel</span><span>İşlem</span></div>{variantRows.length ? variantRows.map((row, index) => { const matchesFilter = rowMatchesVariantFilters(row); return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}><div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div><input aria-label={`${index + 1}. varyant seçenekleri`} value={row.optionSignature} readOnly /><input aria-label={`${row.optionSignature} barkod`} className="technical-field barcode-value" value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" /><input aria-label={`${row.optionSignature} stok kodu`} className="technical-field sku-value" value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" /><input aria-label={`${row.optionSignature} stok`} value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" /><input aria-label={`${row.optionSignature} satış fiyatı`} value={row.salePrice} onChange={event => updateVariantRow(row.key, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /><input aria-label={`${row.optionSignature} maliyeti`} value={row.costPrice} onChange={event => updateVariantRow(row.key, 'costPrice', event.target.value)} type="number" min="0" step="0.01" /><input aria-label={`${row.optionSignature} liste fiyatı`} value={row.listPrice} onChange={event => updateVariantRow(row.key, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /><div className="variant-platform-statuses" aria-label={`${row.optionSignature} platform bağlantıları`}>{row.platformStatuses?.length ? (() => { const linkedCount = row.platformStatuses.filter(item => item.isLinked).length; const isPartial = linkedCount > 0 && linkedCount < row.platformStatuses.length; const summaryClass = linkedCount === row.platformStatuses.length ? 'is-linked' : isPartial ? 'is-partial' : 'is-unlinked'; return <button type="button" className={`variant-platform-status variant-platform-status-summary ${summaryClass}`} onClick={() => openVariantPlatformPricing(row, row.platformStatuses![0])} title={`${row.platformStatuses.length} platform fiyatını görüntüle`} aria-label={`${row.optionSignature} platform fiyatlarını görüntüle`}><UiIcon name="platforms" /><i aria-hidden="true">{row.platformStatuses.length}</i></button> })() : <span className="variant-platform-empty">—</span>}</div><div className="variant-media-cell"><button type="button" className={`variant-media-button ${row.mediaRefs.length ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç`} title="Varyant görsellerini seç"><VariantImageIcon />{row.mediaRefs.length > 0 && <i aria-hidden="true">{row.mediaRefs.length}</i>}</button></div><button type="button" className="secondary" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))}>Sil</button></div> }) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}</div>
       </div>
       </section>
     </div></div>

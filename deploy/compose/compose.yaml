@@ -12,6 +12,7 @@ x-app: &app
     ASPNETCORE_ENVIRONMENT: Production
     MARKETPLACEHUB_ENVIRONMENT: PILOT_LOCAL
     AllowedHosts: "${MARKETPLACEHUB_ALLOWED_HOSTS:-localhost;127.0.0.1}"
+    Marketplace__PublicBaseUrl: "${MARKETPLACEHUB_SITE_ADDRESS:-}"
     ConnectionStrings__AppDb_FILE: /run/secrets/app_db_connection
     Security__CredentialKey_FILE: /run/secrets/credential_key
     Bootstrap__Enabled: "false"

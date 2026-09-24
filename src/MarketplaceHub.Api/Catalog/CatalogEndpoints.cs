@@ -112,6 +112,23 @@ public static class CatalogEndpoints
         });
         api.MapGet("/products/{id:guid}/publication-status/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.GetPublicationStatusAsync(tenant.TenantId, id, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapGet("/public/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage) =>
+        {
+            var asset = await (from media in db.ProductMedia.AsNoTracking()
+                               join product in db.Products.AsNoTracking() on new { media.TenantId, media.ProductId } equals new { product.TenantId, ProductId = product.Id }
+                               join file in db.FileAssets.AsNoTracking() on new { media.TenantId, FileAssetId = media.FileAssetId } equals new { file.TenantId, FileAssetId = file.Id }
+                               where media.FileAssetId == assetId && media.Status == "ACTIVE" && product.Status != ProductStatus.Archived
+                                   && file.Classification == "PRODUCT_MEDIA" && file.Status == "ACTIVE" && file.ArchivedAt == null
+                               select new { file.TenantId, file.RelativePath, file.MimeType }).FirstOrDefaultAsync(http.RequestAborted);
+            if (asset is null || asset.MimeType is not ("image/jpeg" or "image/png")) return Results.NotFound();
+            try
+            {
+                var content = await storage.OpenReadAsync(asset.TenantId, asset.RelativePath, http.RequestAborted);
+                http.Response.Headers.CacheControl = "public, max-age=300";
+                return Results.File(content, asset.MimeType, enableRangeProcessing: false);
+            }
+            catch (FileNotFoundException) { return Results.NotFound(); }
+        });
         api.MapGet("/files/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage, IHttpClientFactory clients) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);

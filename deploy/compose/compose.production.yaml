@@ -5,6 +5,7 @@ services:
     environment: &production_environment
       MARKETPLACEHUB_ENVIRONMENT: PRODUCTION
       AllowedHosts: ${MARKETPLACEHUB_ALLOWED_HOSTS:?set production allowed hosts}
+      Marketplace__PublicBaseUrl: ${MARKETPLACEHUB_SITE_ADDRESS:?set production https address}
       FeatureFlags__ExternalWrites: "true"
       Marketplace__PersistOrderSnapshots: "true"
       DataProtection__CertificatePath: /run/secrets/dp_certificate
