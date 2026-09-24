@@ -6,8 +6,8 @@ using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Api.Catalog;
 
@@ -440,6 +440,7 @@ public static class CatalogEndpoints
         if (sourceProduct is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
         var modelCode = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenant.TenantId && x.ProductId == sourceProduct.Id && x.ModelCode != null && x.ModelCode != "")
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
             .Select(x => x.ModelCode)
             .FirstOrDefaultAsync(http.RequestAborted);
         var familyProductIds = string.IsNullOrWhiteSpace(modelCode)
@@ -478,17 +479,10 @@ public static class CatalogEndpoints
                 return new ProductFamilyMediaRow(item, url, CatalogImageIdentity.Key(url));
             })
             .ToArray();
+        // The editor combines a product gallery with variant-level color images.
+        // Order every active scope by the same visible URL list; selecting only
+        // product-gallery rows here makes valid variant URLs look stale.
         var selectedRows = visibleMedia
-            .GroupBy(item => item.Media.ProductId)
-            .SelectMany(group =>
-            {
-                var productGallery = group.Where(item => item.Media.VariantId is null)
-                    .OrderBy(item => item.Media.SortOrder).ThenBy(item => item.Media.Id).ToArray();
-                return productGallery.Length > 0
-                    ? productGallery
-                    : group.Where(item => item.Media.VariantId is not null)
-                        .OrderBy(item => item.Media.SortOrder).ThenBy(item => item.Media.Id).Take(1);
-            })
             .OrderBy(item => item.Media.SortOrder).ThenBy(item => item.Media.ProductId).ThenBy(item => item.Media.Id)
             .ToArray();
         var familyGroups = selectedRows
@@ -508,21 +502,28 @@ public static class CatalogEndpoints
         var orderByImageKey = orderedGroups.Select((group, index) => (group.Key, Index: index))
             .ToDictionary(item => item.Key, item => item.Index, StringComparer.OrdinalIgnoreCase);
         var selectedByProduct = selectedRows.GroupBy(item => item.Media.ProductId).ToDictionary(group => group.Key, group => group.ToArray());
+        var visibleByMediaId = selectedRows.ToDictionary(item => item.Media.Id);
         var planned = new Dictionary<Guid, (int SortOrder, string MediaRole)>();
         void Plan(ProductMedia item, long sortOrder, string? mediaRole = null) => planned[item.Id] = ((int)sortOrder, mediaRole ?? item.MediaRole);
 
-        foreach (var (productId, productSelection) in selectedByProduct)
+        foreach (var productId in selectedByProduct.Keys)
         {
             var productMedia = media.Where(item => item.ProductId == productId).ToArray();
-            var productGallery = productMedia.Where(item => item.VariantId is null).ToArray();
-            var activeProductGallery = productGallery.Where(item => item.Status == "ACTIVE").ToArray();
-            if (productSelection.Any(item => item.Media.VariantId is null))
+            foreach (var scope in productMedia.GroupBy(item => item.VariantId))
             {
-                var selectedIds = productSelection.Select(item => item.Media.Id).ToHashSet();
-                var orderedVisibleRows = productSelection
+                var scopeRows = scope.ToArray();
+                var activeRows = scopeRows.Where(item => item.Status == "ACTIVE")
+                    .OrderBy(item => item.SortOrder).ThenBy(item => item.Id).ToArray();
+                var orderedVisibleRows = activeRows
+                    .Select(item => visibleByMediaId.GetValueOrDefault(item.Id))
+                    .Where(item => item is not null)
+                    .Select(item => item!)
                     .OrderBy(item => orderByImageKey[item.ImageKey])
                     .ThenBy(item => item.Media.SortOrder).ThenBy(item => item.Media.Id)
                     .ToArray();
+                if (orderedVisibleRows.Length == 0) continue;
+
+                var selectedIds = orderedVisibleRows.Select(item => item.Media.Id).ToHashSet();
                 var occurrenceByImage = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 for (var index = 0; index < orderedVisibleRows.Length; index++)
                 {
@@ -530,45 +531,18 @@ public static class CatalogEndpoints
                     occurrenceByImage.TryGetValue(row.ImageKey, out var occurrence);
                     occurrenceByImage[row.ImageKey] = occurrence + 1;
                     var rank = (long)orderByImageKey[row.ImageKey] * stride + occurrence;
-                    Plan(row.Media, rank, index == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY");
+                    var role = index == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY";
+                    Plan(row.Media, rank, role);
                 }
-                var hiddenActive = activeProductGallery.Where(item => !selectedIds.Contains(item.Id))
+                var hiddenActive = activeRows.Where(item => !selectedIds.Contains(item.Id))
                     .OrderBy(item => item.SortOrder).ThenBy(item => item.Id).ToArray();
-                var archivedGallery = productGallery.Where(item => item.Status != "ACTIVE")
+                var archivedGallery = scopeRows.Where(item => item.Status != "ACTIVE")
                     .OrderBy(item => item.SortOrder).ThenBy(item => item.Id).ToArray();
                 var hiddenStart = (long)orderedGroups.Count * stride;
                 for (var index = 0; index < hiddenActive.Length; index++)
-                    Plan(hiddenActive[index], hiddenStart + index, orderedVisibleRows.Length == 0 ? null : "ORDERED_GALLERY");
+                    Plan(hiddenActive[index], hiddenStart + index, scope.Key is null ? "ORDERED_GALLERY" : null);
                 for (var index = 0; index < archivedGallery.Length; index++)
                     Plan(archivedGallery[index], hiddenStart + hiddenActive.Length + index);
-                continue;
-            }
-
-            var representative = productSelection
-                .OrderBy(item => item.Media.SortOrder).ThenBy(item => item.Media.Id)
-                .First();
-            var otherActiveStart = (long)orderedGroups.Count * stride + 1;
-            foreach (var variantScope in productMedia.Where(item => item.VariantId is not null).GroupBy(item => item.VariantId))
-            {
-                var scopeRows = variantScope.ToArray();
-                var active = scopeRows.Where(item => item.Status == "ACTIVE").OrderBy(item => item.SortOrder).ThenBy(item => item.Id).ToList();
-                var archived = scopeRows.Where(item => item.Status != "ACTIVE").OrderBy(item => item.SortOrder).ThenBy(item => item.Id).ToArray();
-                if (active.Count == 0) continue;
-                if (active.Any(item => item.Id == representative.Media.Id))
-                {
-                    active.RemoveAll(item => item.Id == representative.Media.Id);
-                    active.Insert(0, representative.Media);
-                }
-                var nextOtherRank = otherActiveStart;
-                for (var index = 0; index < active.Count; index++)
-                {
-                    var item = active[index];
-                    var isRepresentative = item.Id == representative.Media.Id;
-                    var rank = isRepresentative ? (long)orderByImageKey[representative.ImageKey] * stride : nextOtherRank++;
-                    Plan(item, rank, index == 0 ? "PRIMARY" : "GALLERY");
-                }
-                for (var index = 0; index < archived.Length; index++)
-                    Plan(archived[index], nextOtherRank + index);
             }
         }
 

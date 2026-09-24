@@ -688,7 +688,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     public async Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
         var product = await VisibleProducts(tenantId).SingleOrDefaultAsync(x => x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>();
-        var ownVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken);
+        var ownVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id)
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);
         var modelCode = ownVariants.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
         var familyProductIds = string.IsNullOrWhiteSpace(modelCode)
             ? [id]
@@ -743,6 +744,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 group.Select(item => familyProductTitles.GetValueOrDefault(item.Media.ProductId, "Ürün")).Distinct(StringComparer.OrdinalIgnoreCase).ToList()))
             .ToList();
         var familyMediaUrls = familyMediaItems.Select(item => item.Url).ToList();
+        var familyOrderedMediaUrls = CatalogImageIdentity.DistinctDisplayUrls(familyMediaRows
+            .Select(item => CatalogMediaDisplay.Url(item.AssetId, item.Classification, item.Url)));
         return ServiceResult<ProductView>.Ok(primaryView with
         {
             Variants = allVariants,
@@ -750,7 +753,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             StartingPrice = allVariants.Where(x => x.SalePrice is not null).Select(x => x.SalePrice!.Value).DefaultIfEmpty().Min() is var minPrice && minPrice > 0 ? minPrice : null,
             Options = allOptions,
             FamilyMediaUrls = familyMediaUrls,
-            FamilyMediaItems = familyMediaItems
+            FamilyMediaItems = familyMediaItems,
+            FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? familyOrderedMediaUrls : null
         });
     }
 
@@ -1094,6 +1098,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         var modelCode = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.ModelCode != null)
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
             .Select(x => x.ModelCode)
             .FirstOrDefaultAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(modelCode)) return [product.Id];
@@ -1153,8 +1158,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var media = await (from item in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
                            where item.TenantId == tenantId && productIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
-                           orderby item.SortOrder
-                           select new { item.ProductId, item.VariantId, item.MediaRole, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+                           orderby item.SortOrder, item.VariantId, item.Id
+                           select new { item.ProductId, item.VariantId, item.MediaRole, item.SortOrder, MediaId = item.Id, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         var mediaUrlsByVariant = media.Where(x => x.VariantId is not null)
             .GroupBy(x => x.VariantId!.Value)
             .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))));
@@ -1162,9 +1167,15 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .GroupBy(x => x.ProductId)
             .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))));
         var customMediaOrderProductIds = media
-            .Where(item => item.VariantId is null && item.MediaRole.StartsWith("ORDERED_", StringComparison.Ordinal))
+            .Where(item => item.MediaRole.StartsWith("ORDERED_", StringComparison.Ordinal))
             .Select(item => item.ProductId)
             .ToHashSet();
+        var customMediaUrlsByProduct = media
+            .Where(item => customMediaOrderProductIds.Contains(item.ProductId))
+            .GroupBy(item => item.ProductId)
+            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(
+                group.OrderBy(item => item.SortOrder).ThenBy(item => item.VariantId).ThenBy(item => item.MediaId)
+                    .Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))));
         var categoryIds = products.Select(x => x.CategoryId).OfType<Guid>().Distinct().ToArray();
         var categoryPathById = categoryIds.Length == 0
             ? new Dictionary<Guid, string>()
@@ -1255,15 +1266,15 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 .Select(option => new ProductOptionView(option.Id, option.Label, optionValues.Where(value => value.OptionId == option.Id).Select(value => new ProductOptionValueView(value.Id, value.Label)).ToList()))
                 .ToList();
             var hasCustomMediaOrder = customMediaOrderProductIds.Contains(product.Id);
-            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), prices.Count > 0 ? prices.Min() : null, currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id), hasCustomMediaOrder), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder);
+            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), prices.Count > 0 ? prices.Min() : null, currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id), hasCustomMediaOrder, customMediaUrlsByProduct.GetValueOrDefault(product.Id)), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder);
         }).ToList();
 
     }
 
-    private static IReadOnlyList<string> ProductMediaForView(IReadOnlyList<ProductVariantView> variants, IReadOnlyList<string>? globalMedia, bool hasCustomMediaOrder)
+    private static IReadOnlyList<string> ProductMediaForView(IReadOnlyList<ProductVariantView> variants, IReadOnlyList<string>? globalMedia, bool hasCustomMediaOrder, IReadOnlyList<string>? customOrderedMedia)
     {
         var fallback = globalMedia ?? [];
-        if (hasCustomMediaOrder) return fallback;
+        if (hasCustomMediaOrder) return customOrderedMedia ?? fallback;
         var hasColor = variants.Any(variant => ColorOptionValue(variant.OptionSignature) is not null);
         if (!hasColor) return fallback;
 

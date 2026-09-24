@@ -51,3 +51,22 @@ export function mediaUrlsInPreferredOrder(currentUrls: string[], preferredUrls: 
 export function mediaRefsEqual(current: string[], original: string[]): boolean {
   return current.length === original.length && current.every((reference, index) => reference === original[index])
 }
+
+export function mediaRefsSameSet(current: string[], original: string[]): boolean {
+  if (current.length !== original.length) return false
+  const remaining = new Map<string, number>()
+  for (const reference of original) remaining.set(reference, (remaining.get(reference) ?? 0) + 1)
+  for (const reference of current) {
+    const count = remaining.get(reference) ?? 0
+    if (!count) return false
+    if (count === 1) remaining.delete(reference)
+    else remaining.set(reference, count - 1)
+  }
+  return remaining.size === 0
+}
+
+export function modelCodeForExistingVariant(inputValue: string, initialValue: string, existingValue: string | null | undefined): string | null {
+  const requested = inputValue.trim()
+  if (requested === initialValue.trim()) return existingValue?.trim() || null
+  return requested || null
+}

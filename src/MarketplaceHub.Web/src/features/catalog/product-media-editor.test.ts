@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaUrlsInPreferredOrder, publicProductMediaUrls, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
+import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
 
 describe('product media editing', () => {
   it('does not import a family image when it is outside the editable product media list', () => {
@@ -49,5 +49,18 @@ describe('product media editing', () => {
     expect(mediaRefsEqual(['/api/v1/files/product-media/asset/content'], ['/api/v1/files/product-media/asset/content'])).toBe(true)
     expect(mediaRefsEqual([], ['/api/v1/files/product-media/asset/content'])).toBe(false)
     expect(mediaRefsEqual(['second.jpg', 'first.jpg'], ['first.jpg', 'second.jpg'])).toBe(false)
+  })
+
+  it('recognizes a pure reorder without treating it as a product media replacement', () => {
+    expect(mediaRefsSameSet(['second.jpg', 'first.jpg'], ['first.jpg', 'second.jpg'])).toBe(true)
+    expect(mediaRefsSameSet(['first.jpg', 'new.jpg'], ['first.jpg', 'second.jpg'])).toBe(false)
+    expect(mediaRefsSameSet(['same.jpg', 'same.jpg'], ['same.jpg', 'other.jpg'])).toBe(false)
+  })
+
+  it('preserves each existing model code unless the model-code field was actually edited', () => {
+    expect(modelCodeForExistingVariant(' MZ049BOC ', 'MZ049BOC', 'MZ049BOC-GRAY')).toBe('MZ049BOC-GRAY')
+    expect(modelCodeForExistingVariant('', '', null)).toBeNull()
+    expect(modelCodeForExistingVariant('NEW-CODE', 'MZ049BOC', 'MZ049BOC-GRAY')).toBe('NEW-CODE')
+    expect(modelCodeForExistingVariant('', 'MZ049BOC', 'MZ049BOC-GRAY')).toBeNull()
   })
 })

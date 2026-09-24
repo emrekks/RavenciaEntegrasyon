@@ -92,7 +92,10 @@ public sealed record ProductView(
     IReadOnlyList<ProductPlatformStatusView>? PlatformStatuses = null,
     string? CategoryPath = null,
     IReadOnlyList<ProductFamilyMediaView>? FamilyMediaItems = null,
-    bool HasCustomMediaOrder = false);
+    bool HasCustomMediaOrder = false)
+{
+    public IReadOnlyList<string>? FamilyOrderedMediaUrls { get; init; }
+}
 public sealed record ProductFamilyMediaView(string Url, IReadOnlyList<Guid> MediaIds, IReadOnlyList<string> SourceProductTitles);
 public sealed record ProductSummaryView(
     int TotalCount,

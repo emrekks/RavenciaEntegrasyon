@@ -30,4 +30,21 @@ public sealed class CatalogImageIdentityTests
 
         Assert.Equal(2, urls.Count);
     }
+
+    [Fact]
+    public void DistinctDisplayUrls_PreservesTheSharedOrderAcrossMediaScopes()
+    {
+        var urls = CatalogImageIdentity.DistinctDisplayUrls([
+            "/api/v1/files/product-media/root-primary/content",
+            "/api/v1/files/product-media/variant-gray/content",
+            "/api/v1/files/product-media/root-primary/content",
+            "/api/v1/files/product-media/variant-green/content"
+        ]);
+
+        Assert.Equal([
+            "/api/v1/files/product-media/root-primary/content",
+            "/api/v1/files/product-media/variant-gray/content",
+            "/api/v1/files/product-media/variant-green/content"
+        ], urls);
+    }
 }

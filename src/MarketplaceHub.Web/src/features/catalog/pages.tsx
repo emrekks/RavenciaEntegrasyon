@@ -11,7 +11,7 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification } from '../../shared/notifications'
 import { toggleProductAttributeValue } from './attribute-selection'
 import { filterAttributeOptionValues } from './attribute-value-search'
-import { mediaImageKey, mediaRefsEqual, mediaUrlsInPreferredOrder, publicProductMediaUrls, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
+import { mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
 import { buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './variant-option-matching'
 import { productMediaUrlIssue } from './product-media-url'
@@ -38,7 +38,7 @@ type VariantPlatformStatus = {
 type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
   categoryPath?: string | null; variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null; familyMediaUrls?: string[]
-  familyMediaItems?: Array<{ url: string; mediaIds: string[]; sourceProductTitles: string[] }>; hasCustomMediaOrder?: boolean
+  familyMediaItems?: Array<{ url: string; mediaIds: string[]; sourceProductTitles: string[] }>; familyOrderedMediaUrls?: string[]; hasCustomMediaOrder?: boolean
   platformStatuses?: ProductPlatformStatus[]
   attributes?: Array<{ attributeId: string; valueId: string | null; textValue: string | null; numberValue: number | null; booleanValue: boolean | null; sortOrder: number }>
   options?: Array<{ id: string; label: string; values: Array<{ id: string; label: string }> }>
@@ -1716,6 +1716,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [variantPlatformPricingSaving, setVariantPlatformPricingSaving] = useState(false)
   const feedbackTimer = useRef<number | null>(null)
   const initialEditMediaUrl = useRef('')
+  const initialEditModelCode = useRef('')
   const initialEditVariantMediaRefs = useRef<Record<string, string[]>>({})
   useEffect(() => {
     if (!barcodeSkuMenuOpen) return
@@ -1791,13 +1792,15 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (initializedEditProductKey.current === productKey) return
     initializedEditProductKey.current = productKey
     const primary = product.variants[0]
+    const initialModelCode = primary?.modelCode ?? product.modelCode ?? ''
     const sortedVariants = sortVariantsAlphabetically(product.variants)
     const savedMediaUrls = orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder)
     const savedFamilyMediaUrls = product.familyMediaItems?.map(item => item.url) ?? product.familyMediaUrls ?? []
-    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: primary?.sku ?? '', barcode: primary?.barcode ?? '', modelCode: primary?.modelCode ?? product.modelCode ?? '', weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(primary?.listPrice ?? primary?.salePrice ?? 0), salePrice: String(primary?.salePrice ?? 0), costPrice: String(primary?.costPrice ?? 0), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
+    initialEditModelCode.current = initialModelCode.trim()
+    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: primary?.sku ?? '', barcode: primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(primary?.listPrice ?? primary?.salePrice ?? 0), salePrice: String(primary?.salePrice ?? 0), costPrice: String(primary?.costPrice ?? 0), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
-    setFamilyMediaOrder(uniqueMediaUrls(product.hasCustomMediaOrder
-      ? [...savedFamilyMediaUrls, ...savedMediaUrls]
+    setFamilyMediaOrder(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
+      ? product.familyOrderedMediaUrls
       : [...savedMediaUrls, ...savedFamilyMediaUrls]))
     setFamilyMediaOrderDirty(false)
     setMediaFiles([])
@@ -2484,14 +2487,21 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       // without optional mapping data.
       const shouldPersistAttributes = !editProductId || Boolean(form.categoryId && requirements.isSuccess)
       const safeDescription = sanitizeRichText(form.description)
-      const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : Number(form.desi) || 1, costPrice: row.costPrice, options: row.options, attributes: Object.entries(row.attributeValueIds).map(([attributeId, valueId], attributeIndex) => ({ attributeId, valueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: index * 100 + attributeIndex })) })
+      const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode.trim() || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : Number(form.desi) || 1, costPrice: row.costPrice, options: row.options, attributes: Object.entries(row.attributeValueIds).map(([attributeId, valueId], attributeIndex) => ({ attributeId, valueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: index * 100 + attributeIndex })) })
       const existingVariantIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
+      const modelCodeForRow = (variantId: string) => modelCodeForExistingVariant(
+        form.modelCode,
+        initialEditModelCode.current,
+        productToEdit.data?.variants.find(variant => variant.id === variantId)?.modelCode
+      )
       const product = productToEdit.data
-        ? await hubApi<Product>(`/products/${productToEdit.data.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${productToEdit.data.version}"` }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}), variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload), variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({ id: row.key, sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode || null, costPrice: row.costPrice, sortOrder: rows.findIndex(candidate => candidate.key === row.key), options: row.options, attributes: Object.entries(row.attributeValueIds).map(([attributeId, valueId], attributeIndex) => ({ attributeId, valueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: rows.findIndex(candidate => candidate.key === row.key) * 100 + attributeIndex })) })) }) })
+        ? await hubApi<Product>(`/products/${productToEdit.data.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${productToEdit.data.version}"` }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}), variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload), variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({ id: row.key, sku: row.sku, barcode: row.barcode || null, modelCode: modelCodeForRow(row.key), costPrice: row.costPrice, sortOrder: rows.findIndex(candidate => candidate.key === row.key), options: row.options, attributes: Object.entries(row.attributeValueIds).map(([attributeId, valueId], attributeIndex) => ({ attributeId, valueId, textValue: null, numberValue: null, booleanValue: null, sortOrder: rows.findIndex(candidate => candidate.key === row.key) * 100 + attributeIndex })) })) }) })
         : await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, attributes: globalAttributes, variants: rows.map(variantPayload) }) })
       productCreated = product; setCreated(product); const completed = ['ürün']; const warnings: string[] = []
       const initialProductMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(url => url.trim()).filter(Boolean)
-      const productMediaChanged = editProductId ? (!mediaRefsEqual(mediaUrls, initialProductMediaUrls) || (familyMediaOrderDirty && mediaUrls.length > 0)) : mediaUrls.length > 0
+      const productMediaChanged = editProductId
+        ? !mediaRefsEqual(mediaUrls, initialProductMediaUrls) && !(familyMediaOrderDirty && mediaRefsSameSet(mediaUrls, initialProductMediaUrls))
+        : mediaUrls.length > 0
       if (productMediaChanged) await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: null, items: mediaUrls.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
       for (const [fileIndex, file] of mediaFiles.entries()) { const data = new FormData(); data.set('file', file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: data }) }
       const rowsBySku = new Map(rows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
@@ -2581,8 +2591,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const familyMediaUrls = productToEdit.data?.familyMediaUrls ?? []
   const familyMediaItems = productToEdit.data?.familyMediaItems ?? familyMediaUrls.map(url => ({ url, mediaIds: [], sourceProductTitles: [] }))
   const familyOnlyMediaItems = familyMediaItems.filter(item => !mediaUrls.some(current => mediaImageKey(current) === mediaImageKey(item.url)))
-  const defaultFamilyOrder = productToEdit.data?.hasCustomMediaOrder
-    ? [...familyMediaItems.map(item => item.url), ...mediaUrls]
+  const defaultFamilyOrder = productToEdit.data?.familyOrderedMediaUrls?.length
+    ? productToEdit.data.familyOrderedMediaUrls
     : [...mediaUrls, ...familyMediaItems.map(item => item.url)]
   const visibleMediaUrls = mediaUrlsInPreferredOrder(uniqueMediaUrls(defaultFamilyOrder), familyMediaOrder.length ? familyMediaOrder : defaultFamilyOrder)
   const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls, ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `${index + 1}. ${url}`, url })) as ProductMediaOption[]).concat(mediaFiles.map((file, index) => ({ value: `file|${index}`, label: `Dosya · ${file.name}`, file })))
