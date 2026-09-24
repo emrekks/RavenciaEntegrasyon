@@ -5,6 +5,7 @@ import { hubApi, loadAllPages } from '../../shared/api'
 import { Busy, CargoProviderIcon, ErrorBox, InvoiceStatusBadge, Pagination, Tabs, UiIcon } from '../../shared/components'
 import { invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
 import { appendNotification } from '../../shared/notifications'
+import { resolveInvoiceTab } from '../../shared/dashboard-operational-links'
 import { PlatformMark } from '../../shared/platform-mark'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { isInvoiceCreationAvailable, matchesInvoiceActionFilter } from './invoice-creation-availability'
@@ -125,7 +126,12 @@ function addressLines(value: string | null | undefined) {
 }
 
 export function InvoicesPage() {
-  const client = useQueryClient(); const [search, setSearch] = useState(''); const [tab, setTab] = useState('UNINVOICED'); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(null); const [shipmentStatusFilter, setShipmentStatusFilter] = useState('ALL'); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [invoiceActionFilter, setInvoiceActionFilter] = useState<'ALL' | 'CREATABLE' | 'NOT_CREATABLE'>('ALL'); const [dateFrom, setDateFrom] = useState(''); const [dateTo, setDateTo] = useState(''); const [columnFilterOpen, setColumnFilterOpen] = useState<'cargo' | 'shipment' | 'invoice' | 'action' | null>(null); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [selectedItem, setSelectedItem] = useState<InvoiceWorkspace | null>(null); const [shopifyStatusItem, setShopifyStatusItem] = useState<InvoiceWorkspace | null>(null); const [shopifyUploadItem, setShopifyUploadItem] = useState<InvoiceWorkspace | null>(null)
+  const tabs = [['UNINVOICED', 'Faturalandırılmamışlar'], ['INVOICED', 'Faturalandırılmışlar'], ['DUE_SOON', 'Süresi Yaklaşanlar']] as const
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+  const initialTab = resolveInvoiceTab(requestedTab)
+  const client = useQueryClient(); const [search, setSearch] = useState(''); const [tab, setTab] = useState(initialTab); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(null); const [shipmentStatusFilter, setShipmentStatusFilter] = useState('ALL'); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [invoiceActionFilter, setInvoiceActionFilter] = useState<'ALL' | 'CREATABLE' | 'NOT_CREATABLE'>('ALL'); const [dateFrom, setDateFrom] = useState(''); const [dateTo, setDateTo] = useState(''); const [columnFilterOpen, setColumnFilterOpen] = useState<'cargo' | 'shipment' | 'invoice' | 'action' | null>(null); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [selectedItem, setSelectedItem] = useState<InvoiceWorkspace | null>(null); const [shopifyStatusItem, setShopifyStatusItem] = useState<InvoiceWorkspace | null>(null); const [shopifyUploadItem, setShopifyUploadItem] = useState<InvoiceWorkspace | null>(null)
+  useEffect(() => { setTab(initialTab) }, [initialTab])
   function setMessage(value: string, kind: InvoiceNoticeKind = 'info') { setMessageState(value); setMessageKind(kind); if (value) appendNotification(value, kind) }
   useEffect(() => {
     if (!message) return
@@ -170,9 +176,13 @@ export function InvoicesPage() {
   })
   const totalPages = Math.max(1, Math.ceil(visible.length / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageItems = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize)
   useEffect(() => { setPageNumber(1) }, [search, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageSize])
-  const tabs = [['UNINVOICED', 'Faturalandırılmamışlar'], ['INVOICED', 'Faturalandırılmışlar'], ['DUE_SOON', 'Süresi Yaklaşanlar']] as const
   const counts = { unInvoiced: platformItems.filter(requiresInvoiceAction).length, invoiced: platformItems.filter(x => !requiresInvoiceAction(x)).length, dueSoon: platformItems.filter(x => x.isDueSoon).length }
   const activeTabLabel = tabs.find(([value]) => value === tab)?.[1] ?? 'Faturalar'
+  function selectTab(value: string) {
+    const nextTab = tabs.find(([tabValue]) => tabValue === value)?.[0] ?? 'UNINVOICED'
+    setTab(nextTab)
+    setSearchParams(current => { const params = new URLSearchParams(current); params.set('tab', nextTab); return params }, { replace: true })
+  }
   return <section className="content f3 invoices-page reference-invoices-page">
     <div className="page-heading invoices-reference-heading">
       <div><p className="eyebrow">Mali belgeler</p><h1>Faturalar</h1><p className="lede">Faturaları paket, teslimat ve ödeme bilgileriyle tek çalışma alanında takip edin.</p></div>
@@ -186,7 +196,7 @@ export function InvoicesPage() {
       <article className="invoice-metric-total"><small>Toplam paket</small><strong>{platformItems.length}</strong><span>fatura çalışma alanı</span></article>
     </div>
     <div className="invoice-reference-filter-shell">
-      <Tabs className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={value => setTab(value as typeof tab)} items={tabs.map(([value, label]) => ({ value, label, count: value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : counts.dueSoon }))} />
+      <Tabs className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={selectTab} items={tabs.map(([value, label]) => ({ value, label, count: value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : counts.dueSoon }))} />
       <section className="invoice-reference-filters" aria-label="Fatura filtreleri">
         <label className="invoice-reference-search"><span>Fatura ara</span><span className="invoice-reference-search-control"><UiIcon name="search" size={18} /><input aria-label="Fatura ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></span></label>
         <PlatformMultiSelect label="Platform" options={platformOptions} selectedCodes={selectedPlatforms} onChange={setSelectedPlatforms} />

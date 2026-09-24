@@ -25,4 +25,12 @@ public sealed class MarketplaceSalesStatusTabTests
 
         Assert.Equal([ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip], statuses);
     }
+
+    [Fact]
+    public void Pending_order_tab_matches_the_dashboard_pending_statuses()
+    {
+        var statuses = MarketplaceSalesService.DerivedStatusesForOrderTab("PENDING");
+
+        Assert.Equal(DashboardMetricPolicy.PendingOrderStatuses, statuses);
+    }
 }

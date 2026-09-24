@@ -10,9 +10,11 @@ import { PlatformMark } from '../../shared/platform-mark'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { useScrollLock } from '../../shared/hooks/useScrollLock'
 import { appendNotification, normalizeNotificationKind } from '../../shared/notifications'
+import { resolveReturnStatus } from '../../shared/dashboard-operational-links'
+import { sortByTurkishName } from './attribute-sorting'
 import { code128Bars, loadPrintedShippingLabels, markShippingLabelPrinted, printedShippingLabelKey, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from '../shipping'
 import { formatPanelColorValue, usesCustomPanelColorValue } from './color-value-format'
-import { attributeValueMappingNeedsSave, normalizeReferenceValueLabel, planDirectReferenceValues } from './attribute-value-mapping'
+import { attributeValueMappingNeedsSave, hasDirectReferenceValue, normalizeReferenceValueLabel, planDirectReferenceValues } from './attribute-value-mapping'
 type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }
 type Connection = { id: string; publicId: string; platformCode: string; environment: string; displayName: string; externalStoreId: string; status: string; apiVersion: string; lastTestedAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null; hasCredential: boolean; externalWritesEnabled: boolean; invoiceCreationEnabled: boolean; version: number }
 type SyncPolicy = { id: string; resourceType: string; intervalSeconds: number; overlapSeconds: number; jitterSeconds: number; enabled: boolean; version: number; lastSuccessAt: string | null; lastModifiedWatermark: string | null; healthStatus?: string; recoveryGapStatus?: string; recoveryGapDays?: number | null; lastAttemptAt?: string | null; consecutiveFailureCount?: number; lastRequestCount?: number; lastReceivedCount?: number; lastChangedCount?: number; lastInsertedCount?: number; lastUpdatedCount?: number; lastSkippedCount?: number; lastFailedCount?: number; lastRetryCount?: number; lastRateLimitCount?: number; requiresExternalWrites?: boolean }
@@ -20,7 +22,7 @@ type OrderLine = { id: string; sku: string; barcode: string | null; title: strin
 type Order = { id: string; orderNumber: string; derivedStatus: string; currency: string; grossAmount: number; discountAmount: number; netAmount: number; orderedAt: string; lineCount: number; packageCount: number; version: number; connectionId: string | null; platformCode: string; platformDisplayName: string; customerName: string; customerEmail: string | null; customerTaxOrIdentityNumber: string | null; orderType: string; isMicroExport: boolean; shipmentAddressJson: string; invoiceAddressJson: string; shipmentDueAt: string | null; isDeadlineCritical: boolean; invoiceStatus: string; invoiceId: string | null; invoiceDocumentUrl: string | null; cargoProviderName: string | null; cargoTrackingNumber: string | null; primaryImageUrl: string | null; productQuantity: number; lines: OrderLine[] | null; packages: Shipment[] | null; invoiceCreationEnabled?: boolean }
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
 type ProductImagePreview = { url: string; fallbackUrl?: string | null; title: string; modelCode?: string | null; variant?: string | null }
-type OrderSummary = { all: number; new: number; processing: number; shipped: number; delivered: number; resent: number; onHold: number; cancelled: number; returned: number; returnInTransit: number; partiallyCancelled: number; manualReview: number }
+type OrderSummary = { all: number; new: number; processing: number; shipped: number; delivered: number; resent: number; onHold: number; cancelled: number; returned: number; returnInTransit: number; partiallyCancelled: number; manualReview: number; pending: number }
 type OrderSort = 'DATE_DESC' | 'DATE_ASC' | 'DUE_DESC' | 'DUE_ASC'
 type OrderFilters = { search: string; status: string; platform: string; platforms: string[]; listing: string; cargo: string; invoice: string; invoiceType: string; invoiceRegion: string; label: string; sort: OrderSort; dateFrom: string; dateTo: string }
 type InvoiceViewer = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; taxTotal: number; invoiceNumber: string | null; lines: Array<{ id: string; description: string; sku: string | null; unit: string; quantity: number; vatRate: number; lineTotal: number }>; documents: Array<{ id: string; documentType: string; sha256: string }> }
@@ -1107,11 +1109,11 @@ export function OrdersPage() {
   const orderQueryFilters: OrderFilters = { ...filters, platform: 'ALL', platforms: selectedPlatforms ?? [] }
   const ordersQuery = useQuery({ queryKey: hasLocalFilters ? ['orders', 'filtered-all', orderQueryFilters] : ['orders', 'page', orderQueryFilters, pageSize, page, orderCursor], queryFn: () => selectedPlatforms?.length === 0 ? Promise.resolve({ items: [], nextCursor: null, hasMore: false, totalCount: 0 }) : hasLocalFilters ? loadAllOrderPages(orderQueryFilters) : loadOrderPage(orderQueryFilters, pageSize, orderCursor, page), placeholderData: keepPreviousData, staleTime: 30_000, refetchOnWindowFocus: true })
   const summary = useQuery({ queryKey: ['orders', 'summary', selectedPlatforms], queryFn: async () => {
-    if (selectedPlatforms?.length === 0) return { all: 0, new: 0, processing: 0, shipped: 0, delivered: 0, resent: 0, onHold: 0, cancelled: 0, returned: 0, returnInTransit: 0, partiallyCancelled: 0, manualReview: 0 } satisfies OrderSummary
+    if (selectedPlatforms?.length === 0) return { all: 0, new: 0, processing: 0, shipped: 0, delivered: 0, resent: 0, onHold: 0, cancelled: 0, returned: 0, returnInTransit: 0, partiallyCancelled: 0, manualReview: 0, pending: 0 } satisfies OrderSummary
     const platforms = selectedPlatforms?.length ? selectedPlatforms : [null]
     const summaries = await Promise.all(platforms.map(platform => hubApi<OrderSummary>(platform ? `/orders/summary?platform=${encodeURIComponent(platform)}` : '/orders/summary')))
-    const keys: (keyof OrderSummary)[] = ['all', 'new', 'processing', 'shipped', 'delivered', 'resent', 'onHold', 'cancelled', 'returned', 'returnInTransit', 'partiallyCancelled', 'manualReview']
-    return keys.reduce((total, key) => { total[key] = summaries.reduce((sum, value) => sum + value[key], 0); return total }, { all: 0, new: 0, processing: 0, shipped: 0, delivered: 0, resent: 0, onHold: 0, cancelled: 0, returned: 0, returnInTransit: 0, partiallyCancelled: 0, manualReview: 0 } satisfies OrderSummary)
+    const keys: (keyof OrderSummary)[] = ['all', 'new', 'processing', 'shipped', 'delivered', 'resent', 'onHold', 'cancelled', 'returned', 'returnInTransit', 'partiallyCancelled', 'manualReview', 'pending']
+    return keys.reduce((total, key) => { total[key] = summaries.reduce((sum, value) => sum + value[key], 0); return total }, { all: 0, new: 0, processing: 0, shipped: 0, delivered: 0, resent: 0, onHold: 0, cancelled: 0, returned: 0, returnInTransit: 0, partiallyCancelled: 0, manualReview: 0, pending: 0 } satisfies OrderSummary)
   } })
   const connections = useQuery({ queryKey: ['connections', 'orders-invoice'], queryFn: () => loadAllPages<Connection>('/connections') })
   const providers = connections.data?.items.filter(x => x.platformCode === 'TRENDYOL_EFATURAM' && !x.lastErrorCode && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? []
@@ -1120,6 +1122,7 @@ export function OrdersPage() {
   const shopifyConnections = connections.data?.items.filter(x => x.platformCode === 'SHOPIFY') ?? []
   const statuses = [
     ['ALL', 'Tümü'],
+    ['PENDING', 'Bekleyen'],
     ['NEW', 'Yeni'],
     ['PROCESSING', 'İşleme alınanlar'],
     ['SHIPPED', 'Kargoda'],
@@ -1145,7 +1148,7 @@ export function OrdersPage() {
   const clearInvoiceFilters = () => { const next = { ...filterForm, invoice: 'ALL', invoiceType: 'ALL', invoiceRegion: 'ALL' }; setFilterForm(next); setFilters(next); setPage(1) }
   const selectStatus = (status: string) => { const next = { ...filterForm, status }; setFilterForm(next); setFilters(current => ({ ...current, status })); setSearchParams(current => { const params = new URLSearchParams(current); if (status === 'ALL') params.delete('status'); else params.set('status', status); return params }, { replace: true }); setPage(1) }
   const tabCount = (tab: string) => {
-    const summaryKey = ({ ALL: 'all', NEW: 'new', PROCESSING: 'processing', SHIPPED: 'shipped', DELIVERED: 'delivered', RESENT: 'resent', ON_HOLD: 'onHold', CANCELLED: 'cancelled', RETURNED: 'returned', RETURN_IN_TRANSIT: 'returnInTransit', PARTIALLY_CANCELLED: 'partiallyCancelled', MANUAL_REVIEW: 'manualReview' } as Record<string, keyof OrderSummary | undefined>)[tab]
+    const summaryKey = ({ ALL: 'all', PENDING: 'pending', NEW: 'new', PROCESSING: 'processing', SHIPPED: 'shipped', DELIVERED: 'delivered', RESENT: 'resent', ON_HOLD: 'onHold', CANCELLED: 'cancelled', RETURNED: 'returned', RETURN_IN_TRANSIT: 'returnInTransit', PARTIALLY_CANCELLED: 'partiallyCancelled', MANUAL_REVIEW: 'manualReview' } as Record<string, keyof OrderSummary | undefined>)[tab]
     if (summary.data && summaryKey && typeof summary.data[summaryKey] === 'number') return summary.data[summaryKey]
     return 0
   }
@@ -1455,7 +1458,11 @@ function ReturnInlineActions({ item, onNotice, selectedLineIds, onSelectedLineId
 }
 
 export function ReturnsPage() {
-  const [status, setStatus] = useState('ALL'); const [customer, setCustomer] = useState(''); const [orderNumber, setOrderNumber] = useState(''); const [claimCode, setClaimCode] = useState(''); const [barcode, setBarcode] = useState(''); const [reason, setReason] = useState(''); const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(null); const [pageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [returnColumnFilterOpen, setReturnColumnFilterOpen] = useState<'invoice' | 'status' | null>(null)
+  const tabs = [['ALL', 'Tüm İadeler'], ['REQUESTED', 'Talep Oluşturulan'], ['SHIPPING', 'Kargoya Verilen'], ['ACTION_REQUIRED', 'Aksiyon Bekleyen'], ['APPROVED', 'Onaylanan'], ['REJECTED', 'Reddedilen'], ['REVIEW', 'Analiz'], ['DISPUTED', 'İhtilaflı'], ['SUSPENDED', 'Askıda İadeler']] as const
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedStatus = searchParams.get('status') ?? 'ALL'
+  const initialStatus = resolveReturnStatus(requestedStatus)
+  const [status, setStatus] = useState<string>(initialStatus); const [customer, setCustomer] = useState(''); const [orderNumber, setOrderNumber] = useState(''); const [claimCode, setClaimCode] = useState(''); const [barcode, setBarcode] = useState(''); const [reason, setReason] = useState(''); const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(null); const [pageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [returnColumnFilterOpen, setReturnColumnFilterOpen] = useState<'invoice' | 'status' | null>(null)
   const client = useQueryClient(); const [notice, setNoticeState] = useState(''); const [noticeKind, setNoticeKind] = useState<ReturnNoticeKind>('info')
   function setNotice(message: string, kind: ReturnNoticeKind = 'info') { setNoticeState(message); setNoticeKind(kind) }
   const handleNotice = setNotice
@@ -1466,6 +1473,10 @@ export function ReturnsPage() {
   }, [notice, noticeKind])
   const returnFilters: ReturnFilters = { status, customer, orderNumber, claimCode, barcode, reason, from, to }
   const [appliedFilters, setAppliedFilters] = useState<ReturnFilters>(returnFilters)
+  useEffect(() => {
+    setStatus(initialStatus)
+    setAppliedFilters(current => current.status === initialStatus ? current : { ...current, status: initialStatus })
+  }, [initialStatus])
   const query = useQuery({ queryKey: ['returns', appliedFilters], queryFn: () => loadAllReturns(appliedFilters) })
   const countFilters: ReturnFilters = { ...appliedFilters, status: 'ALL' }
   const countsQuery = useQuery({ queryKey: ['returns', 'counts', countFilters], queryFn: () => loadAllReturns(countFilters), enabled: appliedFilters.status !== 'ALL' })
@@ -1478,7 +1489,6 @@ export function ReturnsPage() {
     ...(connections.data?.items ?? []).filter(item => ['TRENDYOL', 'SHOPIFY'].includes(item.platformCode)).map(item => [item.platformCode, { value: item.platformCode, label: item.displayName || item.platformCode }] as const),
     ...countItems.map(item => [item.platformCode, { value: item.platformCode, label: item.platformDisplayName || item.platformCode }] as const)
   ]).values()).sort((left, right) => left.label.localeCompare(right.label, 'tr-TR'))
-  const tabs = [['ALL', 'Tüm İadeler'], ['REQUESTED', 'Talep Oluşturulan'], ['SHIPPING', 'Kargoya Verilen'], ['ACTION_REQUIRED', 'Aksiyon Bekleyen'], ['APPROVED', 'Onaylanan'], ['REJECTED', 'Reddedilen'], ['REVIEW', 'Analiz'], ['DISPUTED', 'İhtilaflı'], ['SUSPENDED', 'Askıda İadeler']] as const
   const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura bekliyor'], ['FATURA_ISLENIYOR', 'Fatura işleniyor'], ['FATURA_KONTROLDE', 'Kontrolde'], ['FATURA_KESILDI', 'Fatura kesildi'], ['FATURA_REDDEDILDI', 'Reddedildi'], ['FATURA_IPTAL', 'İptal edildi']] as const
   const reasons = Array.from(new Set(items.map(item => item.reasonText).filter((value): value is string => Boolean(value))))
   const matchesInvoiceStatus = (item: ReturnClaim) => invoiceStatusFilter === 'ALL' || item.invoiceStatus === invoiceStatusFilter
@@ -1488,9 +1498,9 @@ export function ReturnsPage() {
   useEffect(() => { setPageNumber(1) }, [appliedFilters, selectedPlatforms, pageSize])
   const totalPages = Math.max(1, Math.ceil(visible.length / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const visibleItems = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize)
   function applyFilters() { setAppliedFilters(returnFilters); setPageNumber(1) }
-  function selectStatus(value: string) { const next = { ...returnFilters, status: value }; setStatus(value); setAppliedFilters(next); setPageNumber(1) }
+  function selectStatus(value: string) { const next = { ...returnFilters, status: value }; setStatus(value); setAppliedFilters(next); setSearchParams(current => { const params = new URLSearchParams(current); if (value === 'ALL') params.delete('status'); else params.set('status', value); return params }, { replace: true }); setPageNumber(1) }
   function selectInvoiceStatus(value: string) { setInvoiceStatusFilter(value); setPageNumber(1) }
-  function clearFilters() { const next: ReturnFilters = { status: 'ALL', customer: '', orderNumber: '', claimCode: '', barcode: '', reason: '', from: '', to: '' }; setStatus(next.status); setCustomer(next.customer); setOrderNumber(next.orderNumber); setClaimCode(next.claimCode); setBarcode(next.barcode); setReason(next.reason); setFrom(next.from); setTo(next.to); setSelectedPlatforms(null); setInvoiceStatusFilter('ALL'); setReturnColumnFilterOpen(null); setAppliedFilters(next); setPageNumber(1) }
+  function clearFilters() { const next: ReturnFilters = { status: 'ALL', customer: '', orderNumber: '', claimCode: '', barcode: '', reason: '', from: '', to: '' }; setStatus(next.status); setCustomer(next.customer); setOrderNumber(next.orderNumber); setClaimCode(next.claimCode); setBarcode(next.barcode); setReason(next.reason); setFrom(next.from); setTo(next.to); setSelectedPlatforms(null); setInvoiceStatusFilter('ALL'); setReturnColumnFilterOpen(null); setAppliedFilters(next); setSearchParams(current => { const params = new URLSearchParams(current); params.delete('status'); return params }, { replace: true }); setPageNumber(1) }
   return <section className="content f3 returns-page reference-returns-page">
     <div className="page-heading returns-reference-heading"><div><p className="eyebrow">İade yönetimi</p><h1>İade Yönetimi</h1><p className="lede">Tüm pazar yeri iade taleplerinizi tek merkezden yönetin ve takip edin.</p></div><div className="returns-reference-heading-actions"><button type="button" className="returns-sync-action" disabled={!trendyolConnection || sync.isPending} onClick={() => sync.mutate()}><UiIcon name="refresh" className="returns-sync-icon" size={18} />{sync.isPending ? 'Eşitleniyor…' : 'İade Senkronizasyonu'}</button></div></div>
     <div className="returns-reference-filter-shell"><Tabs className="return-reference-tabs" ariaLabel="İade durumları" value={status} onChange={selectStatus} items={tabs.map(([value, label]) => ({ value, label, count: countsQuery.isLoading ? '…' : countsQuery.isError ? '—' : value === 'ALL' ? filteredCountItems.length : filteredCountItems.filter(item => returnGroup(item.status) === value).length }))} />
@@ -1914,7 +1924,8 @@ function PanelAttributeLibraryBuilder({ role, attributes, onNotice }: { role: 'A
   const client = useQueryClient()
   const [title, setTitle] = useState(''); const [values, setValues] = useState<string[]>([]); const [valueDraft, setValueDraft] = useState(''); const [editingId, setEditingId] = useState(''); const [newValues, setNewValues] = useState(''); const [editingValue, setEditingValue] = useState<{ id: string; value: string } | null>(null); const [categoryAssignmentId, setCategoryAssignmentId] = useState(''); const [feedback, setFeedback] = useState(''); const [feedbackTone, setFeedbackTone] = useState<'success' | 'error'>('success'); const [sortDirection, setSortDirection] = useState<1 | -1>(1)
   const isOption = role === 'OPTION'
-  const records = attributes.filter(attribute => !isWebColorAttributeName(attribute.name) && (isOption ? isOptionAttribute(attribute) : !isOptionAttribute(attribute)))
+  const matchingRecords = attributes.filter(attribute => !isWebColorAttributeName(attribute.name) && (isOption ? isOptionAttribute(attribute) : !isOptionAttribute(attribute)))
+  const records = isOption ? matchingRecords : sortByTurkishName(matchingRecords)
   const editingAttribute = records.find(attribute => attribute.id === editingId) ?? null
   const categoryAssignmentAttribute = records.find(attribute => attribute.id === categoryAssignmentId) ?? null
   const categories = useQuery({ queryKey: ['categories', 'mapping-builder-assignment'], queryFn: () => loadAllPages<LocalCategory>('/catalog/categories'), enabled: !!categoryAssignmentAttribute })
@@ -2398,7 +2409,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   if (!localValues.length) return <div className="unknown"><strong>Bu özellikte henüz değer yok</strong><p>Değer ekleyerek Trendyol seçenekleriyle eşleştirmeye başlayın.</p><div className="value-mapping-heading-actions"><button type="button" className="secondary" onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button><button type="button" disabled={quickCreating || quickValueSaving || !directPlan.missingValues.length && !directMappingWorkCount} onClick={() => void createAndMapDirectValues()}>{quickCreating ? 'Oluşturulup eşleniyor…' : 'Trendyol adlarını oluştur + eşle'}</button></div>{notice && <p role="status" className="notice">{notice}</p>}{quickValueModal}</div>
   return <div className="mapping-step nested value-mapping-editor">
     <div className="value-mapping-heading">
-      <div><h3>Değer eşleştirmeleri</h3><p>{localValues.length} panel değeri · {remoteValues.length} Trendyol değeri</p></div>
+      <div><h3>Değer eşleştirmeleri</h3></div>
       <div className="value-mapping-heading-actions">
         <button type="button" className="secondary" disabled={quickValueSaving || quickCreating || saving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button>
         <button type="button" className="secondary" title={`${directPlan.missingValues.length} eksik ad oluşturulur; birebir eşleşen ${directMappingWorkCount} değer eşlenir.${directPlan.ambiguousCount ? ` Aynı adlı ${directPlan.ambiguousCount} Trendyol seçeneği atlanır.` : ''}`} disabled={quickCreating || saving || quickValueSaving || !directPlan.missingValues.length && !directMappingWorkCount} onClick={() => void createAndMapDirectValues()}>{quickCreating ? 'Oluşturulup eşleniyor…' : 'Trendyol adlarını oluştur + eşle'}</button>
@@ -2411,14 +2422,22 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       {localValues.map(localValue => {
         const existing = mappingByLocal.get(localValue.id)
         const mappedToCurrentSnapshot = existing?.snapshotId === references.data?.snapshotId
+        const selectedRemoteId = selections[localValue.id] ?? ''
+        const selectionChanged = selectedRemoteId !== (existing?.externalId ?? '')
+        const hasDirectRemoteOption = hasDirectReferenceValue(localValue.value, remoteValues.map(remote => remote.name))
+        let rowStatus: string
+        if (selectionChanged) rowStatus = selectedRemoteId ? 'Kaydedilmemiş seçim' : existing ? 'Kaldırılacak' : hasDirectRemoteOption ? 'Bekliyor' : 'Trendyol listesinde birebir seçenek yok'
+        else if (existing && !mappedToCurrentSnapshot) rowStatus = 'Güncel snapshot’a kaydedilecek'
+        else if (existing) rowStatus = 'Eşlendi'
+        else rowStatus = hasDirectRemoteOption ? 'Bekliyor' : 'Trendyol listesinde birebir seçenek yok'
         return <label key={localValue.id} className="value-mapping-row">
           <span>{localValue.value}</span>
           <b className="value-mapping-row-link" aria-hidden="true" title="Eşleştir"><UiIcon name="link" /></b>
-          <select aria-label={`${localValue.value} Trendyol değeri`} value={selections[localValue.id] ?? ''} onChange={event => setSelections(current => ({ ...current, [localValue.id]: event.target.value }))}>
+          <select aria-label={`${localValue.value} Trendyol değeri`} value={selectedRemoteId} onChange={event => setSelections(current => ({ ...current, [localValue.id]: event.target.value }))}>
             <option value="">Trendyol değeri seçin</option>
             {remoteValues.map(remote => <option key={remote.externalId} value={remote.externalId}>{remote.name}</option>)}
           </select>
-          <small>{existing && !mappedToCurrentSnapshot ? 'Güncel snapshot’a kaydedilecek' : existing ? 'Eşlendi' : 'Bekliyor'}</small>
+          <small>{rowStatus}</small>
         </label>
       })}
     </div>

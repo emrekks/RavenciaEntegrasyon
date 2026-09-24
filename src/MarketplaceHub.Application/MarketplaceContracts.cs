@@ -427,7 +427,8 @@ public sealed record OrderSummaryView(
     int Returned = 0,
     int ReturnInTransit = 0,
     int PartiallyCancelled = 0,
-    int ManualReview = 0);
+    int ManualReview = 0,
+    int Pending = 0);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,

@@ -15,6 +15,7 @@ import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSe
 import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditField } from './variant-bulk-edit'
 import { buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './variant-option-matching'
+import { classifyPublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from './publication-attribute-readiness'
 import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
 import { isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusTone } from './publication-status'
@@ -167,6 +168,7 @@ type ChannelPricingDraft = { listPrice: string; salePrice: string }
 type ProductUpdateRequest = { connectionIds: string[]; includeProductInformation: boolean }
 type AcceptedJob = { jobId: string }
 type PublicationStatus = { productId: string; connectionId: string; profileId: string | null; desiredStatus: string | null; actualStatus: string | null; lastRejectionCode: string | null; lastJobId: string | null; lastJobStatus: string | null; lines: Array<{ variantId: string; sku: string; barcode: string | null; desiredStatus: string; actualStatus: string; rejectionCode: string | null }> }
+type PublicationJobDetail = { job: { id: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; lastErrorCode: string | null; lastErrorSummary: string | null } }
 type ProductSyncJob = { id: string; connectionId: string | null; jobType: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; progressReceived: number; progressProcessed: number; progressSkipped: number; progressFailed: number; createdAt: string; completedAt: string | null }
 type ProductImportMode = 'FULL' | 'NEW_ONLY' | 'EXISTING_ONLY' | 'MAPPING_ONLY'
 type ProductImportMethod = 'BULK' | 'SINGLE'
@@ -1786,11 +1788,13 @@ function CategoryAttributeMappingPanel({
   </section>
 }
 
-function PublishPlatformCard({ card, selected, productId, productChecks, onSelect }: {
+function PublishPlatformCard({ card, selected, productId, categoryId, productChecks, selectedAttributes, onSelect }: {
   card: { code: string; name: string; initial: string; tone: string; connection: MarketplaceConnection }
   selected: boolean
   productId?: string
+  categoryId: string
   productChecks: Array<{ title: string; detail: string; ok: boolean }>
+  selectedAttributes: PublicationAttributeSelection[]
   onSelect: () => void
 }) {
   const client = useQueryClient()
@@ -1828,10 +1832,75 @@ function PublishPlatformCard({ card, selected, productId, productChecks, onSelec
       : publicationStatusLabel(publication.data?.actualStatus, publication.data?.lastJobStatus)
   const publicationTone = publicationStatusTone(publication.data?.actualStatus, publication.data?.lastJobStatus)
   const missingChecks = missingPublicationChecks(productChecks)
+  const mappingReadiness = useQuery({
+    queryKey: ['publication-attribute-readiness', card.connection.id, categoryId, selectedAttributes],
+    queryFn: async () => {
+      const connectionId = encodeURIComponent(card.connection.id)
+      const categoryMapping = await hubApi<{ externalId: string; snapshotId: string; status: string } | null>(`/mappings/categories/${categoryId}?connectionId=${connectionId}`)
+      if (!categoryMapping || categoryMapping.status !== 'VERIFIED') {
+        return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: 'Yayın öncesi güncel Trendyol kategori eşlemesi gerekir.' }], optionalWarnings: [] }
+      }
+
+      const categoryReferences = await hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isLeaf: boolean }> }>(`/reference-data/categories?connectionId=${connectionId}`)
+      const mappedCategory = categoryReferences.items.find(item => item.externalId === categoryMapping.externalId && item.isActive && item.isLeaf)
+      if (categoryMapping.snapshotId !== categoryReferences.snapshotId || !mappedCategory) {
+        return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: 'Trendyol kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.' }], optionalWarnings: [] }
+      }
+
+      const categoryScope = categoryMapping.externalId
+      const [attributeReferences, attributeMappings] = await Promise.all([
+        hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`),
+        hubApi<PublicationMappingReference[]>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`)
+      ])
+      const selectedIds = new Set(selectedAttributes.map(item => item.attributeId))
+      const currentMappings = attributeMappings.filter(mapping => mapping.status === 'VERIFIED' && mapping.snapshotId === attributeReferences.snapshotId)
+      const selectedExternalIds = [...new Set(currentMappings.filter(mapping => selectedIds.has(mapping.localId)).map(mapping => mapping.externalId))]
+      const valueEntries = await Promise.all(selectedExternalIds.map(async externalAttributeId => {
+        const valueScope = `${categoryScope}/${externalAttributeId}`
+        const mappings = await hubApi<PublicationMappingReference[]>(`/mappings/attribute-values?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(valueScope)}`)
+        let references: { snapshotId: string; items: Array<{ externalId: string; isActive: boolean }> }
+        try {
+          references = await hubApi(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${connectionId}`)
+        } catch (reason) {
+          if (!(reason instanceof ApiRequestError) || reason.code !== 'REFERENCE_SNAPSHOT_UNAVAILABLE') throw reason
+          references = { snapshotId: '', items: [] }
+        }
+        return [externalAttributeId, { snapshotId: references.snapshotId, items: references.items, mappings }] as const
+      }))
+      const valueReferencesByAttribute: Record<string, PublicationValueReferenceSet> = Object.fromEntries(valueEntries)
+      const result = classifyPublicationAttributeIssues({
+        selectedAttributes,
+        remoteAttributes: attributeReferences.items,
+        attributeSnapshotId: attributeReferences.snapshotId,
+        attributeMappings,
+        valueReferencesByAttribute
+      })
+      return result
+    },
+    enabled: Boolean(categoryId),
+    retry: false,
+    staleTime: 15_000
+  })
+  const requiredMappingIssues = mappingReadiness.data?.requiredIssues ?? []
+  const optionalMappingWarnings = mappingReadiness.data?.optionalWarnings ?? []
+  const mappingCheckFailed = mappingReadiness.isError
+  const mappingCheckPending = Boolean(categoryId) && mappingReadiness.isPending
+  const blockedIssues = [
+    ...missingChecks.map(check => ({ attribute: check.title, detail: check.detail })),
+    ...requiredMappingIssues,
+    ...(mappingCheckFailed ? [{ attribute: 'Trendyol özellik kontrolü', detail: 'Güncel eşlemeler doğrulanamadı. Bağlantı ve kategori eşlemelerini kontrol edin.' }] : [])
+  ]
+  const selectionBlocked = blockedIssues.length > 0 || mappingCheckPending
+  const issueListId = `publish-issues-${card.connection.id}`
+  const issueDescriptionIds = [
+    blockedIssues.length ? `${issueListId}-required` : '',
+    mappingCheckPending ? `${issueListId}-pending` : '',
+    optionalMappingWarnings.length ? `${issueListId}-optional` : ''
+  ].filter(Boolean).join(' ') || undefined
   return <article className={`publish-platform-card ${selected ? 'selected' : ''}`}>
-    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected}>
+    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} disabled={!selected && selectionBlocked}>
       <span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.png'} alt="" aria-hidden="true" /></span>
-      <span><strong>{card.name}</strong><small>{selected ? 'Yayın için seçildi' : 'Yayın için seçilmedi'}</small></span>
+      <span><strong>{card.name}</strong><small>{selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : 'Yayın için seçilmedi'}</small></span>
       <i className={`publish-platform-toggle ${selected ? 'on' : ''}`} aria-hidden="true"><b /></i>
     </button>
     <dl className="publish-platform-facts">
@@ -1840,13 +1909,64 @@ function PublishPlatformCard({ card, selected, productId, productChecks, onSelec
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif bağlantı</span></dd></div>
       {productId && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın durumu</dt><dd><span className={`publish-platform-status status-${publicationTone}`}><i aria-hidden="true" />{publicationLabel}</span>{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}</dd>{publication.data?.lastRejectionCode && <small>Red kodu: {publication.data.lastRejectionCode}</small>}</div>}
     </dl>
-    {missingChecks.length > 0 && <div className="publish-platform-missing" role="status" aria-label={`${card.name} yayın eksikleri`}>
+    {productId && publication.data?.lastJobId && <PublicationJobProgress jobId={publication.data.lastJobId} productId={productId} connectionId={card.connection.id} />}
+    {blockedIssues.length > 0 && <div id={`${issueListId}-required`} className="publish-platform-missing" role="alert" aria-label={`${card.name} zorunlu yayın eksikleri`}>
       <UiIcon name="alert" />
-      <div><strong>{missingChecks.length === 1 ? 'Yayın için eksik' : `Yayın için ${missingChecks.length} eksik`}</strong>
-        <ul>{missingChecks.map(check => <li key={check.title}><b>{check.title}:</b> {check.detail}</li>)}</ul>
+      <div><strong>{blockedIssues.length === 1 ? 'Yayın için zorunlu eksik' : `Yayın için ${blockedIssues.length} zorunlu eksik`}</strong>
+        <ul>{blockedIssues.map((issue, index) => <li key={`${issue.attribute}-${index}`}><b>{issue.attribute}:</b> {issue.detail}</li>)}</ul>
       </div>
     </div>}
+    {mappingCheckPending && <div id={`${issueListId}-pending`} className="publish-platform-warning" role="status" aria-label={`${card.name} yayın gereksinimleri kontrol ediliyor`}><UiIcon name="alert" /><div><strong>Yayın gereksinimleri kontrol ediliyor</strong><p>Güncel zorunlu özellik eşlemeleri doğrulanıyor.</p></div></div>}
+    {optionalMappingWarnings.length > 0 && <div id={`${issueListId}-optional`} className="publish-platform-warning" role="status" aria-label={`${card.name} isteğe bağlı özellik uyarıları`}><UiIcon name="alert" /><div><strong>{optionalMappingWarnings.length === 1 ? 'İsteğe bağlı özellik uyarısı' : `${optionalMappingWarnings.length} isteğe bağlı özellik uyarısı`}</strong><ul>{optionalMappingWarnings.map((issue, index) => <li key={`${issue.attribute}-${index}`}><b>{issue.attribute}:</b> {issue.detail}</li>)}</ul></div></div>}
   </article>
+}
+
+function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: string; productId: string; connectionId: string }) {
+  const client = useQueryClient()
+  const queryKey = ['publication-job', jobId] as const
+  const job = useQuery({
+    queryKey,
+    queryFn: () => hubApi<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store' }),
+    refetchInterval: query => {
+      const status = query.state.data?.job.status.trim().toUpperCase()
+      return status && ['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(status) ? false : 2500
+    },
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+    retry: false
+  })
+  const cancel = useMutation({
+    mutationFn: () => hubApi<PublicationJobDetail>(`/jobs/${jobId}/cancel`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': key() },
+      body: '{}'
+    }),
+    onSuccess: async result => {
+      client.setQueryData(queryKey, result)
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['publication-status', productId, connectionId] }),
+        client.invalidateQueries({ queryKey })
+      ])
+    },
+    onError: reason => appendNotification(reason instanceof Error ? reason.message : 'Yayın işlemi durdurulamadı.', 'error')
+  })
+  if (job.isPending) return <div className="publish-platform-job" role="status">Yayın işlemi bilgisi yükleniyor…</div>
+  if (job.isError || !job.data?.job) return <div className="publish-platform-job" role="status">Yayın işlemi ilerlemesi alınamadı.</div>
+
+  const detail = job.data.job
+  const status = detail.status.trim().toUpperCase()
+  const terminal = ['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(status)
+  const percent = detail.progressPercent == null ? null : Math.max(0, Math.min(100, detail.progressPercent))
+  const progressText = percent !== null
+    ? `${percent}%${detail.progressTotal == null ? '' : ` · ${detail.progressCurrent.toLocaleString('tr-TR')} / ${detail.progressTotal.toLocaleString('tr-TR')}`}`
+    : detail.progressTotal == null ? null : `${detail.progressCurrent.toLocaleString('tr-TR')} / ${detail.progressTotal.toLocaleString('tr-TR')}`
+  return <div className={`publish-platform-job ${terminal ? `is-${status.toLowerCase()}` : 'is-active'}`} role="status" aria-live="polite">
+    <div className="publish-platform-job-heading"><strong>{detail.progressLabel || 'Yayın işlemi'}</strong><span>{statusLabel(status)}</span></div>
+    {!terminal && <progress aria-label="Yayın işlemi ilerlemesi" max={100} {...(percent === null ? {} : { value: percent })} />}
+    {(progressText || detail.lastErrorSummary) && <small>{detail.lastErrorSummary || progressText}</small>}
+    {!terminal && <div className="publish-platform-job-actions"><small>Durdurma, platforma gönderilmiş bir isteği geri alamayabilir.</small><button type="button" className="secondary" disabled={cancel.isPending} onClick={() => cancel.mutate()}>{cancel.isPending ? 'Durduruluyor…' : 'İşlemi durdur'}</button></div>}
+  </div>
 }
 
 export function NewProductPage({ editProductId }: { editProductId?: string } = {}) {
@@ -3027,6 +3147,26 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     { title: 'Varyant Bilgileri', detail: hasVariantData ? 'Varyant yapısı yayınlanmaya hazır.' : 'Seçilen seçenekler için varyant satırlarını oluşturun.', ok: hasVariantData },
     { title: 'Kategori ve Web Color', detail: catalogValidationDetail, ok: catalogValidationIssues.length === 0 }
   ]
+  const publicationAttributeSelections = useMemo<PublicationAttributeSelection[]>(() => allRequirements.map(requirement => {
+    const valueIds = new Set(attributeSelections[requirement.attributeId] ?? [])
+    let hasCustomValue = Boolean((attributeTextValues[requirement.attributeId] ?? '').trim())
+    for (const row of variantRows) {
+      const optionValue = rowOptionValue(row, { name: requirement.attribute.name }).trim()
+      const matchedValue = optionValue
+        ? requirement.attribute.values.find(value => normalizeVariantOptionValue(value.value) === normalizeVariantOptionValue(optionValue))
+        : undefined
+      const rowValueId = row.attributeValueIds[requirement.attributeId] ?? matchedValue?.id
+      if (rowValueId) valueIds.add(rowValueId)
+      else if (optionValue && isOptionRequirement(requirement)) hasCustomValue = true
+    }
+    return {
+      attributeId: requirement.attributeId,
+      name: requirement.attribute.name,
+      isRequired: requirement.isRequired,
+      values: [...valueIds].map(id => ({ id, label: requirement.attribute.values.find(value => value.id === id)?.value ?? '' })),
+      hasCustomValue
+    }
+  }), [allRequirements, attributeSelections, attributeTextValues, variantRows])
   const canAddVariantCombinations = useMemo(() => {
     if (!variantAttributeIds.length || (automaticBarcodeGeneration && !form.modelCode.trim())) return false
     try {
@@ -3268,8 +3408,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               card={card}
               key={card.connection.id}
               productId={editProductId}
+              categoryId={form.categoryId}
               selected={selectedChannelIds.includes(card.connection.id)}
               productChecks={productChecks}
+              selectedAttributes={publicationAttributeSelections}
               onSelect={() => updateChannel(card.connection.id)}
             />) : <div className="publish-connections-empty"><strong>Aktif bağlantı bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p><Link to="/integrations">Platformları yönet <UiIcon name="arrowRight" /></Link></div>}
           </div>
@@ -3282,7 +3424,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       </div>
     </section>
 
-    <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting}>{submitting ? 'Oluşturuluyor…' : 'Ürünü oluştur'}</button>}{editProductId && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={startQuickPlatformUpdate} disabled={submitting || connections.isLoading} title="Seçili aktif platformlarda yalnız fiyat ve stoku güncelle"><span>Hızlı güncelle</span><UiIcon name="sync" /></button><button type="button" className="platform-update-settings" onClick={openPlatformUpdateDialog} disabled={submitting || connections.isLoading} aria-label="Platform güncelleme ayarları" title="Platform güncelleme ayarları" aria-haspopup="dialog"><UiIcon name="settings" /></button></div>}<button type="button" onClick={() => setWizardStep(2)}>Yayınlamaya devam et <UiIcon name="arrowRight" /></button></div></section>
+    <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting}>{submitting ? 'Oluşturuluyor…' : 'Ürünü oluştur'}</button>}{editProductId && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={startQuickPlatformUpdate} disabled={submitting || connections.isLoading} title="Seçili aktif platformlarda yalnız fiyat ve stoku güncelle"><span>Hızlı güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={openPlatformUpdateDialog} disabled={submitting || connections.isLoading} aria-label="Platform güncelleme ayarları" title="Platform güncelleme ayarları" aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => setWizardStep(2)}>Yayınlamaya devam et <UiIcon name="arrowRight" /></button></div></section>
     <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />
     <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
@@ -3307,8 +3449,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                 const writable = capabilities.writable && connection.status.trim().toUpperCase() === 'ACTIVE'
                 return <label className={`platform-update-target${selected ? ' is-selected' : ''}${!writable ? ' is-disabled' : ''}`} key={connection.id}>
                   <input type="checkbox" checked={selected} disabled={!writable} onChange={() => setPlatformUpdateConnectionIds(ids => selected ? ids.filter(id => id !== connection.id) : [...ids, connection.id])} />
-                  <span className="platform-update-target-copy"><strong>{connection.displayName}</strong><small>{connection.platformCode} · Mağaza {connection.externalStoreId || '—'}</small><small>{writable ? capabilities.detail : connection.platformCode.trim().toUpperCase() === 'TRENDYOL' && connection.status.trim().toUpperCase() !== 'ACTIVE' ? 'Fiyat-stok kuyruğu için bağlantı ACTIVE olmalıdır.' : capabilities.detail}</small></span>
-                  {writable && <span className="platform-update-target-capability">İçerik + fiyat/stok</span>}
+                  <span className="platform-update-target-copy"><strong>{connection.displayName}</strong><small>{connection.platformCode} · Mağaza {connection.externalStoreId || '—'}</small></span>
                 </label>
               }) : <p className="platform-update-empty">Aktif ürün yazma bağlantısı bulunamadı.</p>}
             </fieldset>
@@ -3316,7 +3457,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             <p className="platform-update-scope"><strong>{platformUpdateConnectionIds.filter(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE')).length}</strong> platform seçili · Değişiklikler önce kaydedilir, sonra kuyruğa alınır.</p>
             {platformUpdateProductInformation && <p className="platform-update-capability-note">Kategori özellikleri yalnız ilgili platform destekliyorsa gönderilir. Shopify şu anda salt okunur olduğundan seçilemez.</p>}
           </div>
-          <footer><button type="button" className="secondary" onClick={() => setPlatformUpdateDialogOpen(false)}>Vazgeç</button><button type="button" onClick={confirmPlatformUpdate} disabled={submitting || !platformUpdateConnectionIds.some(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE'))}>{submitting ? 'Güncelleniyor…' : 'Güncelleme kuyruğunu başlat'} <UiIcon name="arrowUp" /></button></footer>
+          <footer><button type="button" className="secondary" onClick={() => setPlatformUpdateDialogOpen(false)}>Vazgeç</button><button type="button" onClick={confirmPlatformUpdate} disabled={submitting || !platformUpdateConnectionIds.some(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE'))}>{submitting ? 'Güncelleniyor…' : 'Güncelle'}</button></footer>
         </section>
       </div>,
       document.body

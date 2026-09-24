@@ -199,11 +199,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var status = options.Status?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(status) && status != "ALL")
         {
+            var derivedStatuses = DerivedStatusesForOrderTab(status);
             var packageStatuses = PackageStatusesForOrderTab(status);
             query = status == "CANCELLED"
                 ? query.Where(order => order.DerivedStatus == "CANCELLED"
                     || (!db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId && connection.Id == order.ConnectionId && connection.PlatformCode == "SHOPIFY")
                         && db.ShipmentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Cancelled)))
+                : derivedStatuses is not null
+                ? query.Where(order => derivedStatuses.Contains(order.DerivedStatus))
                 : packageStatuses is not null
                 ? query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
                     && package.OrderId == order.Id
@@ -262,6 +265,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         _ => null
     };
 
+    internal static string[]? DerivedStatusesForOrderTab(string status) => status switch
+    {
+        "PENDING" => DashboardMetricPolicy.PendingOrderStatuses,
+        _ => null
+    };
+
     private static string NormalizeOrderSort(string? value) => value?.Trim().ToUpperInvariant() switch
     {
         "DATE_ASC" => "DATE_ASC",
@@ -298,7 +307,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (!string.IsNullOrWhiteSpace(platformCode) && platformCode != "ALL")
             packages = packages.Where(x => db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.PlatformCode == platformCode));
 
-        return await packages
+        var summary = await packages
             .GroupBy(_ => 1)
             .Select(group => new OrderSummaryView(
                 group.Count(),
@@ -316,6 +325,17 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 group.Count(x => x.Status == ShipmentPackageStatus.PartiallyCancelled),
                 group.Count(x => x.Status == ShipmentPackageStatus.ManualReview)))
             .SingleOrDefaultAsync(cancellationToken) ?? new OrderSummaryView(0, 0, 0, 0, 0, 0, 0);
+
+        var pendingOrders = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
+            && DashboardMetricPolicy.PendingOrderStatuses.Contains(order.DerivedStatus)
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == order.ConnectionId
+                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
+        if (!string.IsNullOrWhiteSpace(platformCode) && platformCode != "ALL")
+            pendingOrders = pendingOrders.Where(order => db.PlatformConnections.Any(connection => connection.TenantId == tenantId
+                && connection.Id == order.ConnectionId && connection.PlatformCode == platformCode
+                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
+
+        return summary with { Pending = await pendingOrders.CountAsync(cancellationToken) };
     }
 
     public async Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
