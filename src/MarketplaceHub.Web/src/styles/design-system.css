@@ -502,8 +502,8 @@
   .app-shell.stitch-shell main input[type="checkbox"], .app-shell.stitch-shell main input[type="radio"] { accent-color: var(--rv-color-primary); }
   .app-shell.stitch-shell main input[type="file"] { height: auto; padding: var(--rv-space-2); }
   .app-shell.stitch-shell main :where(input, select, textarea):hover:not(:disabled) { border-color: var(--rv-color-primary); }
-  :where(.app-shell.stitch-shell main button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-button):not(.rv-icon-button), .app-shell.stitch-shell main .button-link) { display: inline-flex; min-height: var(--rv-control-height-md); align-items: center; justify-content: center; gap: var(--rv-space-2); padding: 0 var(--rv-space-4); color: #fff; background: var(--rv-color-primary); border: 1px solid var(--rv-color-primary); border-radius: var(--rv-radius-md); text-decoration: none; font-weight: 600; }
-  :where(.app-shell.stitch-shell main button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-button):not(.rv-icon-button):hover:not(:disabled), .app-shell.stitch-shell main .button-link:hover) { color: #fff; background: var(--rv-color-primary-hover); border-color: var(--rv-color-primary-hover); }
+  :where(.app-shell.stitch-shell main button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.platform-multi-select-trigger.is-compact):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-button):not(.rv-icon-button), .app-shell.stitch-shell main .button-link) { display: inline-flex; min-height: var(--rv-control-height-md); align-items: center; justify-content: center; gap: var(--rv-space-2); padding: 0 var(--rv-space-4); color: #fff; background: var(--rv-color-primary); border: 1px solid var(--rv-color-primary); border-radius: var(--rv-radius-md); text-decoration: none; font-weight: 600; }
+  :where(.app-shell.stitch-shell main button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.platform-multi-select-trigger.is-compact):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-button):not(.rv-icon-button):hover:not(:disabled), .app-shell.stitch-shell main .button-link:hover) { color: #fff; background: var(--rv-color-primary-hover); border-color: var(--rv-color-primary-hover); }
   .app-shell.stitch-shell main button.secondary, .app-shell.stitch-shell main .button-link.secondary, .app-shell.stitch-shell main .danger-outline { color: var(--rv-color-ink); background: var(--rv-color-surface); border-color: var(--rv-color-border-strong); }
   .app-shell.stitch-shell main button.secondary:hover:not(:disabled), .app-shell.stitch-shell main .button-link.secondary:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border-strong); }
   .app-shell.stitch-shell main button:disabled, .app-shell.stitch-shell main .button-link[aria-disabled="true"] { cursor: not-allowed; opacity: .55; }
@@ -916,10 +916,10 @@
   .platform-multi-select-field.is-compact { display: block; width: auto; gap: 0; }
   .platform-multi-select-field.is-compact > .platform-multi-select-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
   .platform-multi-select-field.is-compact .platform-multi-select { width: auto; }
-  .platform-multi-select-field.is-compact .platform-multi-select-trigger { position: relative; display: inline-grid; width: 30px; min-width: 30px; height: 30px; min-height: 30px; place-items: center; padding: 0; color: var(--rv-color-muted); border: 0; border-radius: var(--rv-radius-sm); background: transparent; }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger { position: relative; display: inline-grid; width: 30px; min-width: 30px; height: 30px; min-height: 30px; flex: 0 0 30px; place-items: center; padding: 0; color: var(--rv-color-muted); border: 0; border-radius: var(--rv-radius-sm); background: transparent; }
   .platform-multi-select-field.is-compact .platform-multi-select-trigger:hover, .platform-multi-select-field.is-compact .platform-multi-select-trigger.is-open { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); box-shadow: none; }
   .platform-multi-select-field.is-compact .platform-multi-select-trigger.has-selection { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
-  .platform-multi-select-field.is-compact .platform-multi-select-trigger > .order-filter-funnel { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger > .order-filter-funnel { width: 14px; height: 14px; flex: 0 0 14px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
   .platform-multi-select-selection-count { position: absolute; top: -4px; right: -4px; display: grid; min-width: 15px; height: 15px; place-items: center; padding: 0 3px; color: white; background: var(--rv-color-primary); border: 1px solid var(--rv-color-surface-raised); border-radius: 999px; font-size: 9px; font-weight: 800; line-height: 1; }
   .order-reference-platform-heading, .return-reference-platform-heading, .invoice-reference-platform-heading { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: 4px; }
   .order-reference-platform-heading > strong, .return-reference-platform-heading > strong, .invoice-reference-platform-heading > strong { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
@@ -5415,7 +5415,7 @@ small,
   margin: 0;
 }
 
-.app-shell.stitch-shell main :where(button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-icon-button)) {
+.app-shell.stitch-shell main :where(button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.platform-multi-select-trigger.is-compact):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-icon-button)) {
   min-height: 44px;
   padding: 10px 16px;
   border-radius: 8px;
