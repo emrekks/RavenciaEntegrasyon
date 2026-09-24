@@ -8530,6 +8530,53 @@ small,
   margin: 0;
 }
 
+.app-shell.stitch-shell main .variant-table-head .variant-bulk-header {
+  gap: var(--rv-space-2);
+  white-space: normal;
+}
+
+.app-shell.stitch-shell main .variant-table-head .variant-bulk-header > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: visible;
+  overflow-wrap: normal;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.app-shell.stitch-shell main .variant-table-header-with-action .variant-bulk-edit-trigger {
+  display: inline-grid;
+  flex: 0 0 28px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  color: var(--rv-color-primary);
+  background: var(--rv-color-primary-soft);
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: var(--rv-radius-sm);
+  line-height: 0;
+  vertical-align: middle;
+}
+
+.app-shell.stitch-shell main .variant-table-header-with-action .variant-bulk-edit-trigger:hover:not(:disabled),
+.app-shell.stitch-shell main .variant-table-header-with-action .variant-bulk-edit-trigger:focus-visible {
+  color: var(--rv-color-ink);
+  background: var(--rv-color-primary);
+  border-color: var(--rv-color-primary);
+  outline: none;
+}
+
+.app-shell.stitch-shell main .variant-bulk-edit-trigger > .ui-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
 .app-shell.stitch-shell main .invoice-reference-order > div,
 .app-shell.stitch-shell main .invoice-reference-order > div > *,
 .app-shell.stitch-shell main .invoice-reference-status > *,
