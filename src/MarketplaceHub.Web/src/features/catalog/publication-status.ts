@@ -50,10 +50,15 @@ const publicationLabels: Record<string, string> = {
 }
 
 const runningJobStatuses = new Set(['PENDING', 'RUNNING', 'LEASED', 'RETRY_SCHEDULED'])
+const activelyRunningJobStatuses = new Set(['PENDING', 'RUNNING', 'LEASED'])
 
 export function isPublicationStatusPending(actualStatus?: string | null, lastJobStatus?: string | null) {
   return inProgressStatuses.has(actualStatus?.trim().toUpperCase() ?? '')
     || runningJobStatuses.has(lastJobStatus?.trim().toUpperCase() ?? '')
+}
+
+export function isPublicationStatusJobRunning(lastJobStatus?: string | null) {
+  return activelyRunningJobStatuses.has(lastJobStatus?.trim().toUpperCase() ?? '')
 }
 
 export function publicationStatusLabel(actualStatus?: string | null, lastJobStatus?: string | null) {
@@ -63,8 +68,11 @@ export function publicationStatusLabel(actualStatus?: string | null, lastJobStat
   const jobStatus = lastJobStatus?.trim().toUpperCase() ?? ''
   if (runningJobStatuses.has(jobStatus)) return 'Yayın işi işleniyor'
   if (jobStatus === 'FAILED' || jobStatus === 'BLOCKED' || jobStatus === 'MANUAL_REVIEW') return 'Yayın işi başarısız'
-  if (jobStatus === 'COMPLETED' || jobStatus === 'SUCCEEDED') return 'Yayın sonucu bekleniyor'
   return publicationLabels.UNKNOWN
+}
+
+export function missingPublicationChecks<T extends { ok: boolean }>(checks: readonly T[]) {
+  return checks.filter(check => !check.ok)
 }
 
 export function publicationStatusTone(actualStatus?: string | null, lastJobStatus?: string | null) {

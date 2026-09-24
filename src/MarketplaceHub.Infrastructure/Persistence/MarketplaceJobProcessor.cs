@@ -402,6 +402,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         var localVariantIds = candidates.Select(x => x.VariantId).ToArray();
+        if (candidates.Count == listings.Count
+            && ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(listings.Count, remoteByBarcode.Values.ToArray()))
+            return await ResetMissingPublication(tenantId, connectionId, profile, listings, states, payload.PayloadHash, payload.JobId, cancellationToken);
+
         var approvedStatuses = remoteByBarcode.Values.Where(x => x.Status == "APPROVED").ToList();
         if (approvedStatuses.Any(x => string.IsNullOrWhiteSpace(x.ExternalProductId) || string.IsNullOrWhiteSpace(x.ExternalVariantId)))
             return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTIFIERS_MISSING", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTIFIERS_MISSING", "Onaylanan ürün yanıtında contentId veya variantId bulunamadı."), cancellationToken);
@@ -546,6 +550,97 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         await db.SaveChangesAsync(cancellationToken);
         return result;
+    }
+
+    private async Task<JobExecutionResult> ResetMissingPublication(
+        Guid tenantId,
+        Guid connectionId,
+        ChannelListingProfile profile,
+        IReadOnlyCollection<ChannelListingVariant> listings,
+        IReadOnlyDictionary<Guid, MarketplaceListingState> states,
+        string payloadHash,
+        Guid currentJobId,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var productCreatePrefix = $"product-create:{connectionId:N}:{profile.ProductId:N}:";
+        var productUpdatePrefix = $"product-update:{connectionId:N}:{profile.ProductId:N}:";
+        var productArchivePrefix = $"product-archive:{connectionId:N}:{profile.ProductId:N}:";
+        var approvalDedup = $"product-approval:{connectionId:N}:{profile.Id:N}:{payloadHash}";
+        var approvalManualPrefix = $"{approvalDedup}:manual-v";
+        var productCreateDedup = $"{productCreatePrefix}{payloadHash}";
+        var relatedJobs = await db.IntegrationJobs.FromSqlInterpolated($"""
+            SELECT * FROM integration.jobs
+            WHERE "TenantId" = {tenantId} AND "ConnectionId" = {connectionId}
+              AND (("JobType" = {MarketplaceJobTypes.ProductCreate} AND "JobDedupKey" LIKE {productCreatePrefix + "%"})
+                OR ("JobType" = {MarketplaceJobTypes.ProductUpdate} AND "JobDedupKey" LIKE {productUpdatePrefix + "%"})
+                OR ("JobType" = {MarketplaceJobTypes.ProductArchive} AND "JobDedupKey" LIKE {productArchivePrefix + "%"})
+                OR ("JobType" = {MarketplaceJobTypes.ProductApprovalReconcile}
+                    AND ("JobDedupKey" = {approvalDedup} OR "JobDedupKey" LIKE {approvalManualPrefix + "%"})))
+            FOR UPDATE
+            """).ToListAsync(cancellationToken);
+        if (relatedJobs.Any(job => job.JobType != MarketplaceJobTypes.ProductApprovalReconcile
+            && job.Status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled))
+            return JobExecutionResult.Retry("PRODUCT_WRITE_IN_PROGRESS", "Ürün için başka bir yayın işlemi sürüyor; durum kontrolü yeniden denenecek.", TimeSpan.FromMinutes(1));
+        if (relatedJobs.Any(job => job.JobType == MarketplaceJobTypes.ProductApprovalReconcile
+            && job.Id != currentJobId && job.Status == JobStatus.Leased))
+            return JobExecutionResult.Retry("PRODUCT_APPROVAL_CHECK_IN_PROGRESS", "Başka bir durum kontrolü sürüyor; ürünün bulunmadığı doğrulaması yeniden denenecek.", TimeSpan.FromMinutes(1));
+
+        var now = timeProvider.GetUtcNow();
+        foreach (var oldCheck in relatedJobs.Where(job => job.JobType == MarketplaceJobTypes.ProductApprovalReconcile && job.Id != currentJobId
+            && job.Status is JobStatus.Pending or JobStatus.RetryScheduled))
+        {
+            oldCheck.Status = JobStatus.Cancelled;
+            oldCheck.CompletedAt = now;
+            oldCheck.LastErrorCode = "PRODUCT_MISSING_RESET";
+            oldCheck.LastErrorSummary = "Trendyol ilanının bulunmadığı doğrulandığı için eski durum kontrolü kapatıldı.";
+            oldCheck.Version++;
+        }
+        var previousCreate = relatedJobs.SingleOrDefault(job => job.JobType == MarketplaceJobTypes.ProductCreate && job.JobDedupKey == productCreateDedup);
+        if (previousCreate is not null)
+        {
+            previousCreate.JobDedupKey = $"{previousCreate.JobDedupKey}:not-found:{previousCreate.Id:N}";
+            previousCreate.Version++;
+        }
+        var previousApproval = relatedJobs.SingleOrDefault(job => job.JobType == MarketplaceJobTypes.ProductApprovalReconcile && job.JobDedupKey == approvalDedup);
+        if (previousApproval is not null)
+        {
+            previousApproval.JobDedupKey = $"{previousApproval.JobDedupKey}:not-found:{previousApproval.Id:N}";
+            previousApproval.Version++;
+        }
+
+        profile.DesiredStatus = "DRAFT";
+        profile.ActualStatus = "UNKNOWN";
+        profile.LastRejectionCode = null;
+        profile.Version++;
+        foreach (var listing in listings)
+        {
+            listing.DesiredStatus = "DRAFT";
+            listing.ActualStatus = "UNKNOWN";
+            listing.RejectionCode = null;
+            if (states.TryGetValue(listing.VariantId, out var state))
+            {
+                state.DesiredStatus = "DRAFT";
+                state.ActualStatus = "UNKNOWN";
+                state.LastRejectionCode = null;
+                state.PayloadHash = null;
+                state.Version++;
+            }
+        }
+
+        var productLink = await db.MarketplaceProductLinks.SingleOrDefaultAsync(
+            x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == profile.ProductId,
+            cancellationToken);
+        if (productLink is not null) db.MarketplaceProductLinks.Remove(productLink);
+        var variantIds = listings.Select(x => x.VariantId).ToArray();
+        var variantLinks = await db.MarketplaceVariantLinks.Where(
+            x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId))
+            .ToListAsync(cancellationToken);
+        db.MarketplaceVariantLinks.RemoveRange(variantLinks);
+
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return JobExecutionResult.Success();
     }
 
     private async Task EnsureApprovalReconciliationJob(Guid tenantId, Guid connectionId, Guid productId, Guid profileId, string payloadHash, string correlationId, CancellationToken cancellationToken)

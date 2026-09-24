@@ -10,6 +10,14 @@ public sealed class OrderLinePresentationPolicyTests
     {
         Assert.Equal(0m, OrderLinePresentationPolicy.ActiveQuantity(3m, 3m));
         Assert.False(OrderLinePresentationPolicy.HasActiveQuantity(3m, 3m));
+        Assert.False(OrderLinePresentationPolicy.ShouldShowInOrderList("PROCESSING", 3m, 3m));
+    }
+
+    [Fact]
+    public void FullyCancelledOrderKeepsProductLinesVisibleForReference()
+    {
+        Assert.True(OrderLinePresentationPolicy.ShouldShowInOrderList("CANCELLED", 3m, 3m));
+        Assert.True(OrderLinePresentationPolicy.ShouldShowInOrderList("cancelled", 3m, 3m));
     }
 
     [Fact]

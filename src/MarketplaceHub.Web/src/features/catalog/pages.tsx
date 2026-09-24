@@ -17,7 +17,8 @@ import { buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from '
 import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './variant-option-matching'
 import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
-import { isPublicationStatusPending, publicationStatusLabel, publicationStatusTone } from './publication-status'
+import { isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusTone } from './publication-status'
+import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from './variant-media-assignments'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -162,7 +163,6 @@ type Candidate = Versioned & { matchRule: string; safeSummary: string; productId
 type MarketplaceConnection = { id: string; platformCode: string; displayName: string; externalStoreId: string; status: string }
 type ChannelPricingDraft = { listPrice: string; salePrice: string }
 type AcceptedJob = { jobId: string }
-type ListingProfile = { id: string; productId: string; connectionId: string; titleOverride: string | null; descriptionOverride: string | null; externalCategoryId: string | null; externalBrandId: string | null; deliveryTimeDays: number | null; enabled: boolean; desiredStatus: string; actualStatus: string; version: number }
 type PublicationStatus = { productId: string; connectionId: string; profileId: string | null; desiredStatus: string | null; actualStatus: string | null; lastRejectionCode: string | null; lastJobId: string | null; lastJobStatus: string | null; lines: Array<{ variantId: string; sku: string; barcode: string | null; desiredStatus: string; actualStatus: string; rejectionCode: string | null }> }
 type ProductSyncJob = { id: string; connectionId: string | null; jobType: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; progressReceived: number; progressProcessed: number; progressSkipped: number; progressFailed: number; createdAt: string; completedAt: string | null }
 type ProductImportMode = 'FULL' | 'NEW_ONLY' | 'EXISTING_ONLY' | 'MAPPING_ONLY'
@@ -256,6 +256,7 @@ function ImageLightboxModal({ image, onClose }: { image: { url: string; title: s
 
 type ProductMediaOption = { value: string; label: string; url?: string; file?: File }
 type VariantMediaGroup = { id: string; name: string; values: Array<{ id: string; value: string }>; attributeId?: string }
+type VariantMediaModalState = { mode: 'variant'; rowKey: string; draftRefs: string[] } | { mode: 'bulk'; draftsBySelection: VariantMediaAssignmentDrafts; groupId: string; valueId: string }
 type VariantFilterSelections = Record<string, string[]>
 type ParsedVariantOption = { name: string; value: string }
 
@@ -410,7 +411,7 @@ function BarcodeFillIcon() {
 }
 
 function BarcodePasteIcon() {
-  return <svg className="variant-header-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" focusable="false" aria-hidden="true"><rect x="8" y="4" width="12" height="17" rx="2" /><path d="M16 4h-2.2a2 2 0 0 0-3.6 0H8" /><path d="M14 11v6" /><path d="m11.5 14.5 2.5 2.5 2.5-2.5" /><path d="M6 8H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-1" /></svg>
+  return <BarcodeFillIcon />
 }
 
 function MediaOptionThumb({ option, selected, onClick }: { option: ProductMediaOption; selected: boolean; onClick: () => void }) {
@@ -438,6 +439,7 @@ function VariantMediaPickerModal({
   selectedGroupId,
   selectedValueId,
   matchedVariantCount,
+  matchedGroupVariantCount,
   onRefsChange,
   onGroupChange,
   onValueChange,
@@ -451,6 +453,7 @@ function VariantMediaPickerModal({
   selectedGroupId?: string
   selectedValueId?: string
   matchedVariantCount?: number
+  matchedGroupVariantCount?: number
   onRefsChange: (values: string[]) => void
   onGroupChange?: (value: string) => void
   onValueChange?: (value: string) => void
@@ -462,10 +465,10 @@ function VariantMediaPickerModal({
   return <div className="workspace-modal-backdrop variant-media-picker-backdrop" role="presentation" onMouseDown={onClose}>
     <section className={`workspace-modal variant-media-picker-modal${mode === 'bulk' ? ' is-bulk' : ''}`} role="dialog" aria-modal="true" aria-labelledby="variant-media-picker-title" onMouseDown={event => event.stopPropagation()}>
       <header>
-        <div><p className="eyebrow">VARYANT GÖRSELLERİ</p><h2 id="variant-media-picker-title">{mode === 'bulk' ? 'Seçeneklere görsel ata' : 'Varyant görsellerini seç'}</h2><p>{mode === 'bulk' ? 'Seçenek grubu ve değerini seçin; aynı değere sahip tüm varyantlara seçilen görselleri uygulayın.' : 'Ürün görsellerinden bu varyanta ait birden fazla görsel seçin. Sıra, ürün panelindeki görsel sırasına göre kaydedilir.'}</p></div>
+        <div><p className="eyebrow">VARYANT GÖRSELLERİ</p><h2 id="variant-media-picker-title">{mode === 'bulk' ? 'Seçeneklere görsel ata' : 'Varyant görsellerini seç'}</h2><p>{mode === 'bulk' ? 'Bir seçenek değerine görselleri atayın. Diğer değerlere geçince seçimleriniz korunur; eşlemeler tek seferde kaydedilir.' : 'Ürün görsellerinden bu varyanta ait birden fazla görsel seçin. Sıra, ürün panelindeki görsel sırasına göre kaydedilir.'}</p></div>
         <button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button>
       </header>
-      {mode === 'bulk' && groups?.length ? <><div className="variant-media-bulk-fields"><label>Seçenek grubu<select value={selectedGroupId} onChange={event => onGroupChange?.(event.target.value)}><option value="">Seçenek grubu seçin</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label><label>Seçenek değeri<select value={selectedValueId} onChange={event => onValueChange?.(event.target.value)} disabled={!selectedGroup}><option value="">Değer seçin</option>{selectedGroup?.values.map(value => <option key={value.id} value={value.id}>{value.value}</option>)}</select></label></div>{selectedValue && <p className={`variant-media-bulk-match-summary ${matchedVariantCount ? '' : 'is-empty'}`}>{matchedVariantCount ? <><strong>{selectedGroup?.name}: {selectedValue.value}</strong> seçili — {matchedVariantCount} varyant satırına uygulanacak.</> : <>Bu değerle eşleşen varyant satırı bulunamadı.</>}</p>}</> : null}
+      {mode === 'bulk' && groups?.length ? <><div className="variant-media-bulk-fields"><label>Seçenek grubu<select value={selectedGroupId} onChange={event => onGroupChange?.(event.target.value)}><option value="">Seçenek grubu seçin</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label><label>Seçenek değeri<select value={selectedValueId} onChange={event => onValueChange?.(event.target.value)} disabled={!selectedGroup}><option value="">Değer seçin</option>{selectedGroup?.values.map(value => <option key={value.id} value={value.id}>{value.value}</option>)}</select></label></div>{selectedValue && <div className={`variant-media-bulk-match-summary ${matchedVariantCount ? '' : 'is-empty'}`} role="status"><strong>{selectedGroup?.name}: {selectedValue.value}</strong><span>{matchedVariantCount ? `${matchedVariantCount} varyant eşleşti` : 'Bu değerle eşleşen varyant bulunamadı'}</span></div>}</> : null}
       <div className="variant-media-picker-grid">
         {options.length ? options.map(option => <MediaOptionThumb key={option.value} option={option} selected={selectedRefs.includes(option.value)} onClick={() => {
            const next = selectedRefs.includes(option.value)
@@ -474,7 +477,7 @@ function VariantMediaPickerModal({
            onRefsChange(options.filter(item => next.includes(item.value)).map(item => item.value))
          }} />) : <div className="empty small"><strong>Seçilebilir görsel yok</strong><p>Önce ürün görsellerine HTTPS linki veya dosya ekleyin.</p></div>}
       </div>
-      <footer><button type="button" className="secondary" onClick={() => onRefsChange([])}>Görselleri kaldır</button><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" onClick={onApply} disabled={!options.length || (mode === 'bulk' && (!selectedGroupId || !selectedValueId || !matchedVariantCount))}>{mode === 'bulk' ? selectedRefs.length ? 'Seçeneklere uygula' : 'Görselleri kaldır' : 'Görselleri kaydet'}</button></footer>
+      <footer><button type="button" className="secondary" onClick={() => onRefsChange([])}>{mode === 'bulk' ? 'Bu değerin görsellerini kaldır' : 'Görselleri kaldır'}</button><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" onClick={onApply} disabled={!options.length || (mode === 'bulk' && (!selectedGroupId || !selectedValueId || !matchedGroupVariantCount))}>{mode === 'bulk' ? 'Tüm eşlemeleri kaydet' : 'Görselleri kaydet'}</button></footer>
     </section>
   </div>
 }
@@ -1777,62 +1780,31 @@ function PublishPlatformCard({ card, selected, productId, productChecks, onSelec
   onSelect: () => void
 }) {
   const client = useQueryClient()
-  const profileKey = ['listing-profile', productId, card.connection.id]
   const statusKey = ['publication-status', productId, card.connection.id]
-  const profile = useQuery({
-    queryKey: profileKey,
-    queryFn: async () => {
-      try {
-        return await hubApi<ListingProfile>(`/products/${productId}/listing-profiles/${card.connection.id}`)
-      } catch (reason) {
-        if (reason instanceof ApiRequestError && reason.status === 404) return null
-        throw reason
-      }
-    },
-    enabled: !!productId,
-    retry: false
-  })
   const publication = useQuery({
     queryKey: statusKey,
     queryFn: () => hubApi<PublicationStatus>(`/products/${productId}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
     enabled: !!productId,
-    refetchInterval: query => profile.data?.enabled && isPublicationStatusPending(query.state.data?.actualStatus, query.state.data?.lastJobStatus) ? 3000 : false,
+    refetchInterval: query => isPublicationStatusJobRunning(query.state.data?.lastJobStatus) ? 3000 : false,
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
     staleTime: 0,
     retry: false
   })
-  const tracking = useMutation({
+  const refreshPublication = useMutation({
     mutationFn: async () => {
-      if (!productId || !profile.data) throw new Error('Takip ayarı yüklenemedi. Sayfayı yenileyip yeniden deneyin.')
-      let current = await hubApi<ListingProfile>(`/products/${productId}/listing-profiles/${card.connection.id}`)
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          return await hubApi<ListingProfile>(`/products/${productId}/listing-profiles/${card.connection.id}`, {
-            method: 'PUT',
-            headers: { 'If-Match': `"v${current.version}"` },
-            body: JSON.stringify({
-              titleOverride: current.titleOverride,
-              descriptionOverride: current.descriptionOverride,
-              externalCategoryId: current.externalCategoryId,
-              externalBrandId: current.externalBrandId,
-              deliveryTimeDays: current.deliveryTimeDays,
-              enabled: !current.enabled
-            })
-          })
-        } catch (reason) {
-          if (!(reason instanceof ApiRequestError) || reason.status !== 412 || attempt === 1) throw reason
-          current = await hubApi<ListingProfile>(`/products/${productId}/listing-profiles/${card.connection.id}`)
-        }
-      }
-      throw new Error('Takip ayarı güncellenemedi. Yeniden deneyin.')
+      if (!productId) throw new Error('Ürün kaydı bulunamadı.')
+      return hubApi<AcceptedJob>(`/products/${productId}/publication-status/${card.connection.id}/refresh`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key() },
+        body: '{}'
+      })
     },
-    onSuccess: async updated => {
-      client.setQueryData(profileKey, updated)
+    onSuccess: async () => {
       await client.invalidateQueries({ queryKey: statusKey })
-      appendNotification(updated.enabled ? 'Panel yayın takibi başlatıldı.' : 'Panel yayın takibi durduruldu. Trendyol’daki ilan değiştirilmedi.', 'success')
+      appendNotification('Trendyol ilan durumu güncelleniyor. İlan bulunamazsa panel kaydı sıfırlanır.', 'success')
     },
-    onError: reason => appendNotification(reason instanceof Error ? reason.message : 'Yayın takibi güncellenemedi.', 'error')
+    onError: reason => appendNotification(reason instanceof Error ? reason.message : 'Yayın durumu güncellenemedi.', 'error')
   })
 
   const publicationLabel = publication.isPending
@@ -1845,7 +1817,7 @@ function PublishPlatformCard({ card, selected, productId, productChecks, onSelec
     ...productChecks,
     { title: 'Yayın hedefi', detail: selected ? `${card.name} mağazası bu kayıt işleminde seçili.` : 'Bu mağazada yayın veya güncelleme için kartın üstünden seçin.', ok: selected }
   ]
-  const completedChecks = platformChecks.filter(check => check.ok).length
+  const missingChecks = missingPublicationChecks(platformChecks)
   const queueLabel = publication.data?.lastJobId
     ? statusLabel(publication.data.lastJobStatus)
     : selected ? 'Seçilince kuyruğa alınır' : 'Henüz iş yok'
@@ -1880,22 +1852,19 @@ function PublishPlatformCard({ card, selected, productId, productChecks, onSelec
         <span className={`publish-platform-status status-${publicationTone}`}><i aria-hidden="true" />{publicationLabel}</span>
         {publication.data?.lastRejectionCode && <small>Red nedeni kodu: {publication.data.lastRejectionCode}</small>}
       </div>
-      <div className="publish-platform-tracking-control">
-        {profile.isPending ? <span className="publish-platform-tracking-label">Takip ayarı yükleniyor…</span>
-          : profile.isError ? <span className="publish-platform-tracking-label is-error">Takip ayarı alınamadı</span>
-            : profile.data ? <>
-              <span className={`publish-platform-tracking-label ${profile.data.enabled ? 'is-enabled' : 'is-disabled'}`}>{profile.data.enabled ? 'Panel takibi açık' : 'Panel takibi durduruldu'}</span>
-              <button type="button" className="publish-tracking-action" disabled={tracking.isPending} onClick={() => tracking.mutate()}>
-                {tracking.isPending ? 'Kaydediliyor…' : profile.data.enabled ? 'Takibi durdur' : 'Takibi başlat'}
-              </button>
-            </> : <span className="publish-platform-tracking-label">Yayın işi başlatılınca takip ayarı oluşur</span>}
-      </div>
-      <small className="publish-platform-tracking-note">Takibi durdurmak Trendyol’daki ilanı kaldırmaz; devam eden kuyruk işlemini de iptal etmez.</small>
+      {publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <>
+        <button type="button" className="publish-tracking-action" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}>
+          {refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus) ? 'Güncelleniyor…' : 'Durumu güncelle'}
+        </button>
+        <small className="publish-platform-tracking-note">Trendyol’dan yeniden sorgulanır; ilan yoksa panel durumu sıfırlanır.</small>
+      </>}
     </div>}
-    <section className="publish-checklist-panel publish-platform-checklist" aria-label={`${card.name} yayın kontrol listesi`}>
-      <div className="publish-checklist-heading"><UiIcon name="grid" /><div><h2>Kontrol listesi</h2><p>{completedChecks}/{platformChecks.length} kontrol tamam</p></div></div>
-      <div className="publish-checklist-items">{platformChecks.map(check => <article className={check.ok ? 'complete' : 'incomplete'} key={check.title}><span aria-hidden="true">{check.ok ? <UiIcon name="check" /> : <UiIcon name="alert" />}</span><div><strong>{check.title}</strong><p>{check.detail}</p></div></article>)}</div>
-    </section>
+    {missingChecks.length > 0 && <div className="publish-platform-missing" role="status" aria-label={`${card.name} yayın eksikleri`}>
+      <UiIcon name="alert" />
+      <div><strong>{missingChecks.length === 1 ? 'Yayın için eksik' : `Yayın için ${missingChecks.length} eksik`}</strong>
+        <ul>{missingChecks.map(check => <li key={check.title}><b>{check.title}:</b> {check.detail}</li>)}</ul>
+      </div>
+    </div>}
   </article>
 }
 
@@ -1914,7 +1883,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const initializedEditWebColorKey = useRef<string | null>(null)
   const [wizardStep, setWizardStep] = useState<1 | 2>(1)
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
-  const [variantMediaModal, setVariantMediaModal] = useState<{ mode: 'variant' | 'bulk'; rowKey?: string; draftRefs: string[]; groupId: string; valueId: string } | null>(null)
+  const [variantMediaModal, setVariantMediaModal] = useState<VariantMediaModalState | null>(null)
   const [barcodeSkuMenuOpen, setBarcodeSkuMenuOpen] = useState(false)
   const barcodeSkuActionRef = useRef<HTMLDivElement>(null)
   const [barcodePasteMenuOpen, setBarcodePasteMenuOpen] = useState(false)
@@ -2626,7 +2595,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
 
   function openVariantMediaPicker(rowKey: string) {
     const row = variantRows.find(item => item.key === rowKey)
-    setVariantMediaModal({ mode: 'variant', rowKey, draftRefs: row?.mediaRefs ?? [], groupId: '', valueId: '' })
+    setVariantMediaModal({ mode: 'variant', rowKey, draftRefs: row?.mediaRefs ?? [] })
   }
   function openBulkVariantMediaPicker() {
     const groups = bulkMediaGroups
@@ -2636,7 +2605,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       return
     }
     const group = groups.find(item => normalizeVariantOptionName(item.name) === 'RENK') ?? groups[0]
-    setVariantMediaModal({ mode: 'bulk', draftRefs: [], groupId: group.id, valueId: group.values[0]?.id ?? '' })
+    const draftsBySelection = Object.fromEntries(groups.flatMap(mediaGroup => mediaGroup.values.map(value => {
+      const assignedRefs = new Set(variantRows
+        .filter(row => rowMatchesVariantMediaValue(row, mediaGroup, value))
+        .flatMap(row => row.mediaRefs))
+      return [variantMediaAssignmentKey(mediaGroup.id, value.id), mediaChoices.filter(option => assignedRefs.has(option.value)).map(option => option.value)]
+    })))
+    setVariantMediaModal({ mode: 'bulk', draftsBySelection, groupId: group.id, valueId: group.values[0]?.id ?? '' })
   }
   function rowOptionValue(row: VariantDraft, group: Pick<VariantMediaGroup, 'name'>) {
     const groupName = normalizeVariantOptionName(group.name)
@@ -2667,25 +2642,31 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
   function applyVariantMediaSelection() {
     if (!variantMediaModal) return
-    if (variantMediaModal.mode === 'variant' && variantMediaModal.rowKey) {
+    if (variantMediaModal.mode === 'variant') {
       updateVariantMedia(variantMediaModal.rowKey, variantMediaModal.draftRefs)
       setVariantMediaModal(null)
       showFeedback(variantMediaModal.draftRefs.length ? `${variantMediaModal.draftRefs.length} varyant görseli seçildi.` : 'Varyant görselleri kaldırıldı.', 'success')
       return
     }
     const group = bulkMediaGroups.find(item => item.id === variantMediaModal.groupId)
-    const value = group?.values.find(item => item.id === variantMediaModal.valueId)
-    if (!group || !value) return
-    const matchingRows = variantRows.filter(row => rowMatchesVariantMediaValue(row, group, value))
-    if (!matchingRows.length) {
-      const message = `${group.name}: ${value.value} seçeneğine bağlı varyant satırı bulunamadı.`
+    if (!group) return
+    const assignments = group.values.map(value => ({
+      value,
+      refs: readVariantMediaAssignmentDraft(variantMediaModal.draftsBySelection, variantMediaAssignmentKey(group.id, value.id)),
+      matchingRows: variantRows.filter(row => rowMatchesVariantMediaValue(row, group, value))
+    })).filter(assignment => assignment.matchingRows.length > 0)
+    const matchingRowCount = new Set(assignments.flatMap(assignment => assignment.matchingRows.map(row => row.key))).size
+    if (!matchingRowCount) {
+      const message = `${group.name} değerleriyle eşleşen varyant satırı bulunamadı.`
       setNotice(message); showFeedback(message, 'error')
       return
     }
-    setVariantRows(rows => rows.map(row => rowMatchesVariantMediaValue(row, group, value) ? { ...row, mediaRefs: variantMediaModal.draftRefs } : row))
+    setVariantRows(rows => rows.map(row => {
+      const assignment = assignments.find(item => item.matchingRows.some(matchingRow => matchingRow.key === row.key))
+      return assignment ? { ...row, mediaRefs: assignment.refs } : row
+    }))
     setVariantMediaModal(null)
-    const action = variantMediaModal.draftRefs.length ? `${variantMediaModal.draftRefs.length} görsel uygulandı` : 'görseller kaldırıldı'
-    const message = `${group.name}: ${value.value} seçeneğindeki ${matchingRows.length} varyant satırında ${action}.`
+    const message = `${group.name} görsel eşlemesi kaydedildi: ${assignments.length} değer, ${matchingRowCount} varyant satırı.`
     setNotice(message); showFeedback(message, 'success')
   }
 
@@ -2895,7 +2876,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     ? productToEdit.data.familyOrderedMediaUrls
     : [...mediaUrls, ...familyMediaItems.map(item => item.url)]
   const visibleMediaUrls = mediaUrlsInPreferredOrder(uniqueMediaUrls(defaultFamilyOrder), familyMediaOrder.length ? familyMediaOrder : defaultFamilyOrder)
-  const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls, ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `${index + 1}. ${url}`, url })) as ProductMediaOption[]).concat(mediaFiles.map((file, index) => ({ value: `file|${index}`, label: `Dosya · ${file.name}`, file })))
+  const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls, ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `Görsel ${String(index + 1).padStart(2, '0')}`, url })) as ProductMediaOption[]).concat(mediaFiles.map((file, index) => ({ value: `file|${index}`, label: `Yüklenen görsel · ${file.name}`, file })))
   const bulkMediaGroups = useMemo<VariantMediaGroup[]>(() => {
     const groups: VariantMediaGroup[] = []
     const names = new Set<string>()
@@ -2946,8 +2927,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const emptySkuBarcodeRowCount = variantRows.filter(row => row.barcode.trim() && !row.sku.trim()).length
   const emptyBarcodeRowCount = variantRows.length - barcodeRowCount
   const selectedBulkMediaGroup = variantMediaModal?.mode === 'bulk' ? bulkMediaGroups.find(group => group.id === variantMediaModal.groupId) : undefined
-  const selectedBulkMediaValue = selectedBulkMediaGroup?.values.find(value => value.id === variantMediaModal?.valueId)
+  const selectedBulkMediaValueId = variantMediaModal?.mode === 'bulk' ? variantMediaModal.valueId : undefined
+  const selectedBulkMediaValue = selectedBulkMediaGroup?.values.find(value => value.id === selectedBulkMediaValueId)
   const selectedBulkMediaMatchCount = selectedBulkMediaGroup && selectedBulkMediaValue ? variantRows.filter(row => rowMatchesVariantMediaValue(row, selectedBulkMediaGroup, selectedBulkMediaValue)).length : 0
+  const selectedBulkMediaGroupMatchCount = selectedBulkMediaGroup ? new Set(variantRows.filter(row => selectedBulkMediaGroup.values.some(value => rowMatchesVariantMediaValue(row, selectedBulkMediaGroup, value))).map(row => row.key)).size : 0
+  const selectedBulkMediaAssignmentKey = variantMediaModal?.mode === 'bulk' ? variantMediaAssignmentKey(variantMediaModal.groupId, variantMediaModal.valueId) : ''
+  const selectedVariantMediaRefs = variantMediaModal?.mode === 'bulk'
+    ? readVariantMediaAssignmentDraft(variantMediaModal.draftsBySelection, selectedBulkMediaAssignmentKey)
+    : variantMediaModal?.draftRefs ?? []
   const hasBarcodeData = variantRows.length ? variantRows.every(row => row.barcode.trim()) : automaticBarcodeGeneration ? Boolean(form.modelCode.trim()) : Boolean(form.barcode.trim())
   const hasBasicProductData = Boolean(form.title.trim() && form.description.trim() && form.brandId && form.modelCode.trim() && hasBarcodeData)
   const mediaCount = mediaUrls.length + mediaFiles.length
@@ -3243,7 +3230,30 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />
     <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
-    {variantMediaModal && <VariantMediaPickerModal mode={variantMediaModal.mode} options={mediaChoices} selectedRefs={variantMediaModal.draftRefs} groups={variantMediaModal.mode === 'bulk' ? bulkMediaGroups : undefined} selectedGroupId={variantMediaModal.groupId} selectedValueId={variantMediaModal.valueId} matchedVariantCount={variantMediaModal.mode === 'bulk' ? selectedBulkMediaMatchCount : undefined} onRefsChange={values => setVariantMediaModal(current => current ? { ...current, draftRefs: values } : current)} onGroupChange={groupId => setVariantMediaModal(current => { const group = bulkMediaGroups.find(item => item.id === groupId); return current ? { ...current, groupId, valueId: group?.values[0]?.id ?? '' } : current })} onValueChange={valueId => setVariantMediaModal(current => current ? { ...current, valueId } : current)} onApply={applyVariantMediaSelection} onClose={() => setVariantMediaModal(null)} />}
+    {variantMediaModal && <VariantMediaPickerModal
+      mode={variantMediaModal.mode}
+      options={mediaChoices}
+      selectedRefs={selectedVariantMediaRefs}
+      groups={variantMediaModal.mode === 'bulk' ? bulkMediaGroups : undefined}
+      selectedGroupId={variantMediaModal.mode === 'bulk' ? variantMediaModal.groupId : undefined}
+      selectedValueId={variantMediaModal.mode === 'bulk' ? variantMediaModal.valueId : undefined}
+      matchedVariantCount={variantMediaModal.mode === 'bulk' ? selectedBulkMediaMatchCount : undefined}
+      matchedGroupVariantCount={variantMediaModal.mode === 'bulk' ? selectedBulkMediaGroupMatchCount : undefined}
+      onRefsChange={values => setVariantMediaModal(current => {
+        if (!current) return current
+        if (current.mode === 'variant') return { ...current, draftRefs: values }
+        const key = variantMediaAssignmentKey(current.groupId, current.valueId)
+        return { ...current, draftsBySelection: updateVariantMediaAssignmentDraft(current.draftsBySelection, key, values) }
+      })}
+      onGroupChange={groupId => setVariantMediaModal(current => {
+        if (!current || current.mode !== 'bulk') return current
+        const group = bulkMediaGroups.find(item => item.id === groupId)
+        return { ...current, groupId, valueId: group?.values[0]?.id ?? '' }
+      })}
+      onValueChange={valueId => setVariantMediaModal(current => current?.mode === 'bulk' ? { ...current, valueId } : current)}
+      onApply={applyVariantMediaSelection}
+      onClose={() => setVariantMediaModal(null)}
+    />}
     {variantBulkEdit && <div className="workspace-modal-backdrop variant-bulk-edit-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setVariantBulkEdit(null) }}><section id="variant-bulk-edit-dialog" className="workspace-modal variant-bulk-edit-modal" role="dialog" aria-modal="true" aria-labelledby="variant-bulk-edit-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">VARYANTLAR</p><h2 id="variant-bulk-edit-title">Toplu {variantBulkEditLabels[variantBulkEdit.field]} değiştir</h2><p>Değer seçilen varyant satırlarına uygulanır.</p></div><button type="button" className="modal-close" onClick={() => setVariantBulkEdit(null)} aria-label="Toplu değişiklik penceresini kapat"><UiIcon name="close" /></button></header><div className="variant-bulk-edit-body"><p className="variant-bulk-edit-scope">{hasVariantFilters ? `${matchingVariantCount} filtre eşleşen varyanta uygulanacak.` : `${variantRows.length} varyantın tamamına uygulanacak.`} {hasVariantFilters ? 'Filtreyle eşleşmeyen satırlar korunur.' : 'Varyant filtresi açıp değer seçerseniz yalnızca eşleşen satırlar değişir.'}</p><label htmlFor="variant-bulk-edit-value">Yeni {variantBulkEditLabels[variantBulkEdit.field].toLocaleLowerCase('tr-TR')} değeri<input id="variant-bulk-edit-value" autoFocus type="number" min="0" step={variantBulkEdit.field === 'stock' ? '1' : '0.01'} value={variantBulkEdit.value} aria-describedby={`variant-bulk-edit-help${variantBulkEdit.error ? ' variant-bulk-edit-error' : ''}`} onChange={event => setVariantBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label><small id="variant-bulk-edit-help">{variantBulkEdit.field === 'stock' ? 'Stok tam sayı ve sıfırdan büyük veya eşit olmalıdır.' : 'Tutar sıfır veya daha büyük olmalıdır.'}</small>{variantBulkEdit.error && <p id="variant-bulk-edit-error" className="variant-bulk-edit-error" role="alert">{variantBulkEdit.error}</p>}</div><footer><button type="button" className="secondary" onClick={() => setVariantBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyVariantBulkEdit}>Uygula</button></footer></section></div>}
   </form></Page>
 }

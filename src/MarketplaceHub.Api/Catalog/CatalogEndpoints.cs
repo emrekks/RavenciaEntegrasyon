@@ -110,6 +110,12 @@ public static class CatalogEndpoints
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return Accepted(await service.EnqueueProductArchiveAsync(tenant.TenantId, id, command.ConnectionId, command.Archived, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
         });
+        api.MapPost("/products/{id:guid}/publication-status/{connectionId:guid}/refresh", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+            return Accepted(await service.RequestPublicationStatusRefreshAsync(tenant.TenantId, id, connectionId, http.RequestAborted));
+        });
         api.MapGet("/products/{id:guid}/publication-status/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.GetPublicationStatusAsync(tenant.TenantId, id, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/public/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage) =>

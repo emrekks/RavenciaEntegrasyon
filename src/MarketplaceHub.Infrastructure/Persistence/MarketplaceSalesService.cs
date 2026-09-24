@@ -79,7 +79,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var rows = orders.Select(order =>
         {
             var orderLines = (linesByOrder.GetValueOrDefault(order.Id) ?? [])
-                .Where(line => OrderLinePresentationPolicy.HasActiveQuantity(line.OrderedQuantity, line.CancelledQuantity))
+                .Where(line => OrderLinePresentationPolicy.ShouldShowInOrderList(order.DerivedStatus, line.OrderedQuantity, line.CancelledQuantity))
                 .ToList();
             var connection = connections.GetValueOrDefault(order.ConnectionId);
             var orderPackages = (packagesByOrder.GetValueOrDefault(order.Id) ?? [])

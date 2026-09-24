@@ -1082,6 +1082,121 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
     }
 
+    public async Task<ServiceResult<Guid>> RequestPublicationStatusRefreshAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
+        if (connection is null || connection.PlatformCode != "TRENDYOL" || !IntegrationRuntimePolicy.AllowsManualRead(connection))
+            return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın durumunu sorgulamak için etkin Trendyol bağlantısı gerekir.", 422);
+
+        var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
+        if (profile is null || !await db.Products.AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken))
+            return ServiceResult<Guid>.Fail("PUBLICATION_PROFILE_REQUIRED", "Bu ürün ve mağaza için önce bir yayın işi başlatılmalıdır.", 404);
+
+        var listingVariants = await db.ChannelListingVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id)
+            .Select(x => x.VariantId)
+            .ToListAsync(cancellationToken);
+        if (listingVariants.Count == 0)
+            return ServiceResult<Guid>.Fail("PUBLICATION_STATE_REQUIRED", "Güncellenecek Trendyol yayın kaydı bulunamadı.", 409);
+
+        var states = await db.MarketplaceListingStates
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && listingVariants.Contains(x.VariantId))
+            .ToListAsync(cancellationToken);
+        var payloadHashes = states.Select(x => x.PayloadHash).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.Ordinal).ToArray();
+        if (states.Count != listingVariants.Count || payloadHashes.Length != 1)
+            return ServiceResult<Guid>.Fail("PUBLICATION_STATE_REQUIRED", "Yayın durumu eşitlenemedi; önce ürünü Trendyol’a gönderin.", 409);
+
+        var productJobs = await db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+            && (x.JobType == MarketplaceJobTypes.ProductCreate || x.JobType == MarketplaceJobTypes.ProductUpdate || x.JobType == MarketplaceJobTypes.ProductArchive)
+            && (x.JobDedupKey.StartsWith($"product-create:{connectionId:N}:{productId:N}:")
+                || x.JobDedupKey.StartsWith($"product-update:{connectionId:N}:{productId:N}:")
+                || x.JobDedupKey.StartsWith($"product-archive:{connectionId:N}:{productId:N}:")))
+            .ToListAsync(cancellationToken);
+        if (productJobs.Any(x => x.Status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled))
+            return ServiceResult<Guid>.Fail("PUBLICATION_WRITE_IN_PROGRESS", "Ürün için devam eden bir yayın veya güncelleme var. İşlem tamamlandıktan sonra durumu yenileyin.", 409);
+
+        var payloadHash = payloadHashes[0]!;
+        var approvalDedup = $"product-approval:{connectionId:N}:{profile.Id:N}:{payloadHash}";
+        var manualPrefix = $"{approvalDedup}:manual-v";
+        var approvalJobs = await db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+            && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile
+            && (x.JobDedupKey == approvalDedup || x.JobDedupKey.StartsWith(manualPrefix)))
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+        var leased = approvalJobs.FirstOrDefault(x => x.Status == JobStatus.Leased);
+        if (leased is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return ServiceResult<Guid>.Ok(leased.Id);
+        }
+        var existing = approvalJobs.FirstOrDefault();
+        if (existing?.Status is JobStatus.Pending or JobStatus.RetryScheduled)
+        {
+            existing.Status = JobStatus.Pending;
+            existing.AvailableAt = timeProvider.GetUtcNow();
+            existing.LastErrorCode = null;
+            existing.LastErrorSummary = null;
+            existing.CompletedAt = null;
+            existing.Version++;
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return ServiceResult<Guid>.Ok(existing.Id);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                db.ChangeTracker.Clear();
+                return ServiceResult<Guid>.Fail("PUBLICATION_REFRESH_CONFLICT", "Yayın durumu aynı anda güncellendi. Biraz sonra yeniden deneyin.", 409);
+            }
+        }
+
+        var now = timeProvider.GetUtcNow();
+        profile.Version++;
+        var jobId = Guid.CreateVersion7();
+        var dedup = existing is null ? approvalDedup : $"{manualPrefix}{profile.Version}";
+        var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profile.Id, payloadHash, now, now.AddDays(7)));
+        db.IntegrationJobs.Add(new IntegrationJob
+        {
+            Id = jobId,
+            TenantId = tenantId,
+            ConnectionId = connectionId,
+            JobType = MarketplaceJobTypes.ProductApprovalReconcile,
+            PayloadJson = payload,
+            PayloadVersion = 1,
+            PayloadHash = Hash(payload),
+            JobDedupKey = dedup,
+            EffectIdempotencyKey = dedup,
+            Priority = 4,
+            Status = JobStatus.Pending,
+            AvailableAt = now,
+            MaxAttempts = (7 * 24 * 12) + 1,
+            CorrelationId = $"publication-status:{productId:N}",
+            CreatedAt = now,
+            Version = 1
+        });
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ServiceResult<Guid>.Ok(jobId);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            db.ChangeTracker.Clear();
+            return ServiceResult<Guid>.Fail("PUBLICATION_REFRESH_CONFLICT", "Yayın durumu aynı anda güncellendi. Biraz sonra yeniden deneyin.", 409);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            db.ChangeTracker.Clear();
+            return ServiceResult<Guid>.Fail("PUBLICATION_REFRESH_CONFLICT", "Yayın durumu aynı anda yenilendi. Sayfayı yenileyip tekrar deneyin.", 409);
+        }
+    }
+
     public async Task<ServiceResult<PublicationStatusView>> GetPublicationStatusAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {
         if (!await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken) || !await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)) return NotFound<PublicationStatusView>();

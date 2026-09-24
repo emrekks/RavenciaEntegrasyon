@@ -306,4 +306,8 @@ public static class OrderLinePresentationPolicy
 
     public static bool HasActiveQuantity(decimal ordered, decimal cancelled) =>
         ActiveQuantity(ordered, cancelled) > 0m;
+
+    public static bool ShouldShowInOrderList(string orderStatus, decimal ordered, decimal cancelled) =>
+        string.Equals(orderStatus, "CANCELLED", StringComparison.OrdinalIgnoreCase)
+        || HasActiveQuantity(ordered, cancelled);
 }
