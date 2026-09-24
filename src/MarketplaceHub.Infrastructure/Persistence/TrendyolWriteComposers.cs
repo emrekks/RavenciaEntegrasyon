@@ -108,7 +108,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
 {
     private const int MaximumBatchSize = 1000;
 
-    public async Task<ServiceResult<PriceInventoryDraft>> BuildAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId = null)
+    public async Task<ServiceResult<PriceInventoryDraft>> BuildAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId = null, Guid? productId = null)
     {
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
@@ -117,7 +117,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                           join listingVariant in db.ChannelListingVariants.AsNoTracking() on new { profile.TenantId, ProfileId = profile.Id, VariantId = variant.Id } equals new { listingVariant.TenantId, listingVariant.ProfileId, listingVariant.VariantId }
                           join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId }
                           where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE" && listingState.ActualStatus == "LIVE" && listingVariant.ExternalBarcode != null
-                              && (variantId == null || offer.VariantId == variantId)
+                               && (variantId == null || offer.VariantId == variantId)
+                               && (productId == null || variant.ProductId == productId)
                           orderby variant.Id
                           select new { Offer = offer, Variant = variant, Inventory = inventory, Barcode = listingVariant.ExternalBarcode! }).ToListAsync(cancellationToken);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Fiyat-stok gönderimi için LIVE eşleşmiş varyant ve ACTIVE teklif gerekir.", 422);

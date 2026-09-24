@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -162,6 +162,7 @@ type ImportSession = Versioned & { sourceType: string; status: string; totalRows
 type Candidate = Versioned & { matchRule: string; safeSummary: string; productId: string | null; variantId: string | null }
 type MarketplaceConnection = { id: string; platformCode: string; displayName: string; externalStoreId: string; status: string }
 type ChannelPricingDraft = { listPrice: string; salePrice: string }
+type ProductUpdateRequest = { connectionIds: string[]; includeProductInformation: boolean }
 type AcceptedJob = { jobId: string }
 type PublicationStatus = { productId: string; connectionId: string; profileId: string | null; desiredStatus: string | null; actualStatus: string | null; lastRejectionCode: string | null; lastJobId: string | null; lastJobStatus: string | null; lines: Array<{ variantId: string; sku: string; barcode: string | null; desiredStatus: string; actualStatus: string; rejectionCode: string | null }> }
 type ProductSyncJob = { id: string; connectionId: string | null; jobType: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; progressReceived: number; progressProcessed: number; progressSkipped: number; progressFailed: number; createdAt: string; completedAt: string | null }
@@ -171,6 +172,12 @@ type ProductImportMethod = 'BULK' | 'SINGLE'
 const key = () => crypto.randomUUID()
 const isProductImportConnection = (item: MarketplaceConnection) => ['TRENDYOL', 'SHOPIFY'].includes(item.platformCode.trim().toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
 const isProductPublicationConnection = (item: MarketplaceConnection) => item.platformCode.trim().toUpperCase() === 'TRENDYOL' && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
+const productUpdateCapabilities = (platformCode: string) => {
+  const code = platformCode.trim().toUpperCase()
+  if (code === 'TRENDYOL') return { writable: true, content: true, categoryAttributes: true, detail: 'Ürün bilgileri, fiyat ve stok güncellenebilir.' }
+  if (code === 'SHOPIFY') return { writable: false, content: false, categoryAttributes: false, detail: 'Shopify dış yazmaları şu anda desteklenmiyor; bağlantı salt okunur.' }
+  return { writable: false, content: false, categoryAttributes: false, detail: 'Bu platform için ürün güncelleme desteği bulunmuyor.' }
+}
 
 type ProductGroup = {
   id: string
@@ -222,7 +229,33 @@ function OperationFeedbackToast({ feedback, onClose }: { feedback: OperationFeed
   }, [feedback])
   if (!feedback) return null
   const title = feedback.kind === 'success' ? 'İşlem başarılı' : feedback.kind === 'error' ? 'İşlem başarısız' : 'İşlem sürüyor'
-  return <div className={`rv-toast rv-toast-${feedback.kind === 'error' ? 'danger' : feedback.kind} operation-feedback-toast ${feedback.kind}`} role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'}><span className="rv-toast-icon" aria-hidden="true" /><div className="rv-toast-content"><strong>{title}</strong><p>{feedback.message}</p></div><button type="button" onClick={onClose} aria-label="Durum raporunu kapat"><UiIcon name="close" /></button></div>
+  return <div key={`${feedback.kind}:${feedback.message}`} className={`rv-toast rv-toast-${feedback.kind === 'error' ? 'danger' : feedback.kind} operation-feedback-toast ${feedback.kind}`} role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'}><span className="rv-toast-icon" aria-hidden="true" /><div className="rv-toast-content"><strong>{title}</strong><p>{feedback.message}</p></div><button type="button" onClick={onClose} aria-label="Durum raporunu kapat"><UiIcon name="close" /></button><span className="operation-feedback-toast-progress" aria-hidden="true" /></div>
+}
+
+function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current: HTMLDivElement | null }; children: ReactNode }) {
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState<{ top: number; left: number; visibility: 'hidden' | 'visible' }>({ top: 0, left: 0, visibility: 'hidden' })
+  useLayoutEffect(() => {
+    const place = () => {
+      const anchor = anchorRef.current?.querySelector('button')
+      const menu = menuRef.current
+      if (!anchor || !menu) return
+      const bounds = anchor.getBoundingClientRect()
+      const menuBounds = menu.getBoundingClientRect()
+      const left = Math.max(12, Math.min(window.innerWidth - menuBounds.width - 12, bounds.right - menuBounds.width))
+      const below = bounds.bottom + 8
+      const top = below + menuBounds.height <= window.innerHeight - 12 ? below : Math.max(12, bounds.top - menuBounds.height - 8)
+      setPosition({ top, left, visibility: 'visible' })
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => {
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+    }
+  }, [anchorRef])
+  return createPortal(<div ref={menuRef} className="variant-header-action-menu variant-header-action-menu-portal" role="menu" data-variant-header-popover="true" style={position}>{children}</div>, document.body)
 }
 
 function LocalImagePreview({ file, alt, caption: _caption, onRemove, onZoom }: { file: File, alt: string, caption: string, onRemove?: () => void, onZoom?: (url: string) => void }) {
@@ -1555,12 +1588,14 @@ function productAttributePayload(requirement: CategoryRequirement, selectedIds: 
 function CategoryAttributeValueDropdown({
   attributeName,
   dataType,
+  required,
   values,
   selectedValues,
   onToggleValue
 }: {
   attributeName: string
   dataType: string
+  required: boolean
   values: Array<{ id: string; value: string }>
   selectedValues: string[]
   onToggleValue: (valueId: string) => void
@@ -1598,8 +1633,8 @@ function CategoryAttributeValueDropdown({
   }
 
   return <div className="category-attribute-dropdown" ref={rootRef}>
-    <button type="button" className={`category-attribute-select-trigger ${selected.length ? 'active' : 'is-empty'}`} aria-haspopup="listbox" aria-expanded={open} onClick={toggleDropdown}>
-      <span><small>{selected.length ? (isSingle ? 'Seçili değer' : `${selected.length} değer seçildi`) : 'Seçim yapın'}</small><strong>{summary}</strong></span>
+    <button type="button" className={`category-attribute-select-trigger ${selected.length ? 'active' : 'is-empty'} ${required ? 'is-required' : 'is-optional'}`} aria-haspopup="listbox" aria-expanded={open} onClick={toggleDropdown}>
+      <span>{summary}</span>
       <UiIcon name="chevronDown" />
     </button>
     {open && <div className={`category-attribute-dropdown-menu ${alignMenuRight ? 'is-edge-aligned' : ''}`} role="listbox" aria-label={`${attributeName} değerleri`}>
@@ -1699,13 +1734,6 @@ function CategoryAttributeMappingPanel({
   const attributes = requirements
     .filter(item => !isOptionRequirement(item) && item.attributeId !== webColorRequirement?.attributeId)
     .sort((left, right) => Number(right.isRequired) - Number(left.isRequired) || left.attribute.name.localeCompare(right.attribute.name, 'tr-TR', { sensitivity: 'base' }))
-  const dataTypeLabels: Record<string, string> = {
-    SINGLE_SELECT: 'Tek seçim',
-    MULTI_SELECT: 'Çoklu seçim',
-    BOOLEAN: 'Evet / hayır',
-    NUMBER: 'Sayısal değer',
-    TEXT: 'Metin'
-  }
 
   return <section className="panel product-step-card product-category-mapping-card">
     <div className="editor-section-title">
@@ -1749,11 +1777,10 @@ function CategoryAttributeMappingPanel({
             <div className="category-attribute-field-head">
               <div>
                 <strong>{displayName}{item.isRequired && <b className="required-marker" aria-hidden="true"> *</b>}</strong>
-                <small>{dataTypeLabels[item.attribute.dataType] ?? item.attribute.dataType}{item.isRequired ? ' · Zorunlu' : ' · İsteğe bağlı'}</small>
               </div>
             </div>
             {item.attribute.values.length ? (
-              <CategoryAttributeValueDropdown attributeName={displayName} dataType={item.attribute.dataType} values={item.attribute.values} selectedValues={selectedValues} onToggleValue={valueId => onToggleValue(item.attributeId, valueId)} />
+              <CategoryAttributeValueDropdown attributeName={displayName} dataType={item.attribute.dataType} required={item.isRequired} values={item.attribute.values} selectedValues={selectedValues} onToggleValue={valueId => onToggleValue(item.attributeId, valueId)} />
             ) : item.attribute.dataType === 'BOOLEAN' ? (
               <select aria-label={`${displayName} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)}>
                 <option value="">Değer seçin</option>
@@ -1818,10 +1845,6 @@ function PublishPlatformCard({ card, selected, productId, productChecks, onSelec
     { title: 'Yayın hedefi', detail: selected ? `${card.name} mağazası bu kayıt işleminde seçili.` : 'Bu mağazada yayın veya güncelleme için kartın üstünden seçin.', ok: selected }
   ]
   const missingChecks = missingPublicationChecks(platformChecks)
-  const queueLabel = publication.data?.lastJobId
-    ? statusLabel(publication.data.lastJobStatus)
-    : selected ? 'Seçilince kuyruğa alınır' : 'Henüz iş yok'
-
   return <article className={`publish-platform-card ${selected ? 'selected' : ''}`}>
     <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected}>
       <span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.png'} alt="" aria-hidden="true" /></span>
@@ -1832,33 +1855,8 @@ function PublishPlatformCard({ card, selected, productId, productChecks, onSelec
       <div><dt>Mağaza</dt><dd>{card.connection.externalStoreId || '—'}</dd></div>
       <div><dt>Platform</dt><dd>{card.connection.platformCode}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif bağlantı</span></dd></div>
+      {productId && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın durumu</dt><dd><span className={`publish-platform-status status-${publicationTone}`}><i aria-hidden="true" />{publicationLabel}</span>{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}</dd>{publication.data?.lastRejectionCode && <small>Red kodu: {publication.data.lastRejectionCode}</small>}</div>}
     </dl>
-    <details className="scheduled-publish-panel publish-platform-queue">
-      <summary><span><UiIcon name="calendar" /> Yayın kuyruğu</span><strong>{queueLabel}</strong><UiIcon name="chevronDown" /></summary>
-      <div className="scheduled-publish-info">
-        {publication.data?.lastJobId ? <>
-          <strong>Son işlem: {statusLabel(publication.data.lastJobStatus)}</strong>
-          <p>İş numarası: {publication.data.lastJobId.slice(0, 8)}</p>
-          <small>Ürün durumu: {publicationLabel}</small>
-        </> : <>
-          <strong>{selected ? `${card.name} için yayın işi hazır` : 'Bu mağazada henüz yayın işi yok'}</strong>
-          <p>{selected ? 'Değişiklikleri kaydettiğinizde bu mağaza için ayrı bir yayın veya güncelleme işi oluşturulur.' : 'Bu mağazayı seçtiğinizde yayın kuyruğu işlemi bu kartta görünür.'}</p>
-        </>}
-      </div>
-    </details>
-    {productId && <div className="publish-platform-tracking" aria-live="polite">
-      <div className="publish-platform-tracking-result">
-        <span>Ürün yayın durumu</span>
-        <span className={`publish-platform-status status-${publicationTone}`}><i aria-hidden="true" />{publicationLabel}</span>
-        {publication.data?.lastRejectionCode && <small>Red nedeni kodu: {publication.data.lastRejectionCode}</small>}
-      </div>
-      {publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <>
-        <button type="button" className="publish-tracking-action" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}>
-          {refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus) ? 'Güncelleniyor…' : 'Durumu güncelle'}
-        </button>
-        <small className="publish-platform-tracking-note">Trendyol’dan yeniden sorgulanır; ilan yoksa panel durumu sıfırlanır.</small>
-      </>}
-    </div>}
     {missingChecks.length > 0 && <div className="publish-platform-missing" role="status" aria-label={`${card.name} yayın eksikleri`}>
       <UiIcon name="alert" />
       <div><strong>{missingChecks.length === 1 ? 'Yayın için eksik' : `Yayın için ${missingChecks.length} eksik`}</strong>
@@ -1882,6 +1880,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const initializedEditOptionsKey = useRef<string | null>(null)
   const initializedEditWebColorKey = useRef<string | null>(null)
   const [wizardStep, setWizardStep] = useState<1 | 2>(1)
+  const [platformUpdateDialogOpen, setPlatformUpdateDialogOpen] = useState(false)
+  const [platformUpdateConnectionIds, setPlatformUpdateConnectionIds] = useState<string[]>([])
+  const [platformUpdateProductInformation, setPlatformUpdateProductInformation] = useState(true)
+  const pendingPlatformUpdate = useRef<ProductUpdateRequest | null>(null)
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
   const [variantMediaModal, setVariantMediaModal] = useState<VariantMediaModalState | null>(null)
   const [barcodeSkuMenuOpen, setBarcodeSkuMenuOpen] = useState(false)
@@ -1913,6 +1915,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (!barcodeSkuMenuOpen && !barcodePasteMenuOpen) return
     function closeBarcodeMenus(event: PointerEvent) {
       const target = event.target as Node
+      if (target instanceof Element && target.closest('[data-variant-header-popover="true"]')) return
       if (!barcodeSkuActionRef.current?.contains(target) && !barcodePasteActionRef.current?.contains(target)) {
         setBarcodeSkuMenuOpen(false)
         setBarcodePasteMenuOpen(false)
@@ -1928,7 +1931,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   function showFeedback(message: string, kind: OperationFeedback['kind']) {
     if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current)
     setFeedback({ message, kind })
-    feedbackTimer.current = window.setTimeout(() => setFeedback(null), kind === 'info' ? 7000 : 5500)
+    feedbackTimer.current = window.setTimeout(() => setFeedback(null), 3500)
   }
   function handleMediaFiles(files: File[]) {
     const accepted: File[] = []
@@ -2234,6 +2237,29 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const selected = selectedChannelIds.includes(id)
     setSelectedChannelIds(current => selected ? current.filter(item => item !== id) : [...current, id])
     showFeedback(selected ? 'Yayın kanalı seçimden çıkarıldı.' : 'Yayın kanalı seçildi.', 'info')
+  }
+  function openPlatformUpdateDialog() {
+    const updateableIds = (connections.data?.items ?? []).filter(item => isProductPublicationConnection(item) && productUpdateCapabilities(item.platformCode).writable && item.status.trim().toUpperCase() === 'ACTIVE').map(item => item.id)
+    const currentSelection = selectedChannelIds.filter(id => updateableIds.includes(id))
+    setPlatformUpdateConnectionIds(currentSelection.length ? currentSelection : updateableIds)
+    setPlatformUpdateProductInformation(true)
+    setPlatformUpdateDialogOpen(true)
+  }
+  function confirmPlatformUpdate() {
+    const updateableIds = new Set((connections.data?.items ?? []).filter(item => isProductPublicationConnection(item) && productUpdateCapabilities(item.platformCode).writable && item.status.trim().toUpperCase() === 'ACTIVE').map(item => item.id))
+    const connectionIds = platformUpdateConnectionIds.filter(id => updateableIds.has(id))
+    if (!connectionIds.length) {
+      showFeedback('Güncelleme için desteklenen ve aktif bir platform seçin.', 'error')
+      return
+    }
+    const formElement = document.getElementById('product-creation-form')
+    if (!(formElement instanceof HTMLFormElement)) {
+      showFeedback('Ürün formu bulunamadı; güncelleme başlatılamadı.', 'error')
+      return
+    }
+    pendingPlatformUpdate.current = { connectionIds, includeProductInformation: platformUpdateProductInformation }
+    setPlatformUpdateDialogOpen(false)
+    formElement.requestSubmit()
   }
   function channelPriceDraft(connectionId: string): ChannelPricingDraft {
     return channelPricing[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice }
@@ -2736,6 +2762,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const platformUpdate = pendingPlatformUpdate.current
+    pendingPlatformUpdate.current = null
     const submitter = (event.nativeEvent as SubmitEvent).submitter
     const submitData = new FormData(event.currentTarget)
     const saveAndStay = submitter?.getAttribute('data-submit-intent') === 'save'
@@ -2744,7 +2772,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const createOnly = !editProductId && (submitter?.getAttribute('data-submit-intent') === 'create'
       || (submitter?.getAttribute('name') === 'intent' && submitter?.getAttribute('value') === 'create'))
     const requireCompleteCatalog = !editProductId || !saveAndStay
-    if (wizardStep !== 2 && !saveAndStay && !createOnly) {
+    if (wizardStep !== 2 && !saveAndStay && !createOnly && !platformUpdate) {
       setWizardStep(2)
       return
     }
@@ -2809,20 +2837,38 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       }
       if (mediaUrls.length || mediaFiles.length) completed.push('görseller')
       if (familyMediaChanged) completed.push('diğer renklerin görsel sırası')
+      const targetConnectionIds = createOnly ? [] : platformUpdate?.connectionIds ?? selectedChannelIds
       for (const variant of product.variants) {
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
         if (!row) continue
         const currentStock = productToEdit.data?.variants.find(item => item.id === variant.id)?.onHand ?? 0
         const stockDelta = row.stock - currentStock
         if (stockDelta !== 0) await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ quantityDelta: stockDelta, reason: productToEdit.data ? 'Ürün düzenleme stoğu' : 'İlk ürün stoğu', sourceEventId: key() }) })
-        for (const connectionId of createOnly ? [] : selectedChannelIds) {
+        for (const connectionId of targetConnectionIds) {
           const pricing = channelPriceDraft(connectionId)
-          await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId, variantId: variant.id, listPrice: Number(pricing.listPrice), salePrice: Number(pricing.salePrice), currency: form.currency || 'TRY', vatRate: Number(form.vatRate || 0), vatInclusion: form.vatIncluded, roundingMode: 'HALF_EVEN', safetyStock: Number(form.safetyStock || 0), status: 'ACTIVE', reason: 'İlk ürün fiyatı' }) })
+          const platform = row.platformStatuses?.find(item => item.connectionId === connectionId)
+          const offerCommand = { connectionId, variantId: variant.id, listPrice: platformUpdate ? row.listPrice : Number(pricing.listPrice), salePrice: platformUpdate ? row.salePrice : Number(pricing.salePrice), currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: Number(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: Number(form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: platformUpdate ? 'Ürün platform güncellemesi' : 'İlk ürün fiyatı' }
+          if (platformUpdate && platform?.offerId) {
+            if (platform.offerVersion == null) throw new Error(`${row.sku}: platform fiyat sürümü eksik; fiyat güncellenmedi.`)
+            await hubApi(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(offerCommand) })
+          } else {
+            await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify(offerCommand) })
+          }
         }
       }
-      if (rows.some(row => row.stock > 0)) completed.push('stok'); if (!createOnly && selectedChannelIds.length) completed.push('kanal fiyatları')
-      for (const connectionId of createOnly ? [] : selectedChannelIds) {
+      if (rows.some(row => row.stock > 0)) completed.push('stok'); if (targetConnectionIds.length) completed.push('kanal fiyatları')
+      for (const connectionId of targetConnectionIds) {
         try {
+          if (platformUpdate) {
+            if (platformUpdate.includeProductInformation) {
+              const acceptedUpdate = await hubApi<AcceptedJob>(`/products/${product.id}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ connectionId }) })
+              completed.push(`ürün bilgisi güncelleme işi ${acceptedUpdate.jobId}`)
+            }
+            const acceptedPrices = await hubApi<AcceptedJob>(`/products/${product.id}/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: '{}' })
+            completed.push(`fiyat-stok güncelleme işi ${acceptedPrices.jobId}`)
+            await client.invalidateQueries({ queryKey: ['publication-status', product.id, connectionId] })
+            continue
+          }
           let listingProfileVersion: number | undefined
           try {
             const listingProfile = await hubApi<{ version: number }>(`/products/${product.id}/listing-profiles/${connectionId}`)
@@ -2837,7 +2883,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           completed.push(`yayın işi ${accepted.jobId}`)
         } catch (reason) { warnings.push(reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.') }
       }
-      const message = `${editProductId ? 'Ürün güncellendi.' : `${completed.join(', ')} kaydedildi.`}${warnings.length ? ` Yayın uyarısı: ${warnings.join(' ')}` : ''}`
+      const updateSummary = platformUpdate ? ` Seçilen ${platformUpdate.connectionIds.length} platform için ${platformUpdate.includeProductInformation ? 'ürün bilgisi ve fiyat-stok' : 'fiyat-stok'} güncelleme işi kuyruğa alındı.` : ''
+      const message = `${editProductId ? 'Ürün güncellendi.' : `${completed.join(', ')} kaydedildi.`}${updateSummary}${warnings.length ? ` Yayın uyarısı: ${warnings.join(' ')}` : ''}`
       setNotice(createOnly ? 'Ürün oluşturuldu. Ürün sayfası açılıyor.' : message)
       if (!createOnly) showFeedback(message, warnings.length ? 'info' : 'success')
       await client.invalidateQueries({ queryKey: ['products'] })
@@ -2867,6 +2914,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     initial: connection.displayName.trim().charAt(0).toLocaleUpperCase('tr-TR') || 'R',
     tone: connection.platformCode.trim().toLocaleLowerCase('tr-TR'),
     connection
+  }))
+  const productUpdateTargets = (connections.data?.items ?? []).filter(isProductImportConnection).map(connection => ({
+    connection,
+    capabilities: productUpdateCapabilities(connection.platformCode)
   }))
   const assignedMediaUrls = [...new Set(variantRows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4))))]
   const familyMediaUrls = productToEdit.data?.familyMediaUrls ?? []
@@ -3226,9 +3277,46 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       </div>
     </section>
 
-    <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting}>{submitting ? 'Oluşturuluyor…' : 'Ürünü oluştur'}</button>}<button type="button" onClick={() => setWizardStep(2)}>Yayınlamaya devam et <UiIcon name="arrowRight" /></button></div></section>
+    <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting}>{submitting ? 'Oluşturuluyor…' : 'Ürünü oluştur'}</button>}{editProductId && <button type="button" className="platform-update-trigger" onClick={openPlatformUpdateDialog} disabled={submitting || connections.isLoading}><span>Platformlarda Güncelle</span><UiIcon name="arrowUp" /></button>}<button type="button" onClick={() => setWizardStep(2)}>Yayınlamaya devam et <UiIcon name="arrowRight" /></button></div></section>
     <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />
     <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
+    {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
+      <p className="variant-header-action-menu-title">Barkodları panodan yapıştır</p>
+      <button type="button" role="menuitem" disabled={!emptyBarcodeRowCount} onClick={() => void pasteBarcodesFromClipboard('missing')}><span><strong>Boş barkodları doldur</strong><small>{emptyBarcodeRowCount.toLocaleString('tr-TR')} boş varyant</small></span><UiIcon name="arrowRight" /></button>
+      <button type="button" role="menuitem" disabled={!variantRows.length} onClick={() => void pasteBarcodesFromClipboard('all')}><span><strong>Tüm barkodları değiştir</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant sırası</small></span><UiIcon name="alert" /></button>
+      <p>Her satır bir varyanta karşılık gelir. Sekmeli tablolarda ilk sütun alınır; boş veya yinelenen barkod varsa yapıştırma durdurulur.</p>
+    </VariantHeaderActionMenu>}
+    {barcodeSkuMenuOpen && <VariantHeaderActionMenu anchorRef={barcodeSkuActionRef}>
+      <p className="variant-header-action-menu-title">Stok kodlarını barkodlardan düzenle</p>
+      <button type="button" role="menuitem" disabled={!emptySkuBarcodeRowCount} onClick={() => applyBarcodeToSku('missing')}><span><strong>Eksik stok kodlarını doldur</strong><small>{emptySkuBarcodeRowCount.toLocaleString('tr-TR')} boş satır · mevcut kodlar korunur</small></span><UiIcon name="arrowRight" /></button>
+      <button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları stok koduna kopyala</strong><small>{barcodeRowCount.toLocaleString('tr-TR')} barkodlu satır</small></span><UiIcon name="alert" /></button>
+      <p>İlk seçenek yalnız eksik kodları doldurur. İkinci seçenek mevcut kodları değiştirir; çakışan değerler uygulanmaz.</p>
+    </VariantHeaderActionMenu>}
+    {platformUpdateDialogOpen && createPortal(
+      <div className="workspace-modal-backdrop platform-update-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPlatformUpdateDialogOpen(false) }}>
+        <section className="workspace-modal platform-update-modal" role="dialog" aria-modal="true" aria-labelledby="platform-update-title" onMouseDown={event => event.stopPropagation()}>
+          <header><div><p className="eyebrow">ÜRÜN GÜNCELLEME</p><h2 id="platform-update-title">Platformlarda Güncelle</h2><p>Önce paneldeki ürün değişiklikleri kaydedilir, ardından seçtiğiniz mağazalara ayrı işler gönderilir.</p></div><button type="button" className="modal-close" onClick={() => setPlatformUpdateDialogOpen(false)} aria-label="Platform güncelleme penceresini kapat"><UiIcon name="close" /></button></header>
+          <div className="platform-update-modal-body">
+            <fieldset className="platform-update-targets"><legend>Güncellenecek platformlar</legend>
+              {productUpdateTargets.length ? productUpdateTargets.map(({ connection, capabilities }) => {
+                const selected = platformUpdateConnectionIds.includes(connection.id)
+                const writable = capabilities.writable && connection.status.trim().toUpperCase() === 'ACTIVE'
+                return <label className={`platform-update-target${selected ? ' is-selected' : ''}${!writable ? ' is-disabled' : ''}`} key={connection.id}>
+                  <input type="checkbox" checked={selected} disabled={!writable} onChange={() => setPlatformUpdateConnectionIds(ids => selected ? ids.filter(id => id !== connection.id) : [...ids, connection.id])} />
+                  <span className="platform-update-target-copy"><strong>{connection.displayName}</strong><small>{connection.platformCode} · Mağaza {connection.externalStoreId || '—'}</small><small>{writable ? capabilities.detail : connection.platformCode.trim().toUpperCase() === 'TRENDYOL' && connection.status.trim().toUpperCase() !== 'ACTIVE' ? 'Fiyat-stok kuyruğu için bağlantı ACTIVE olmalıdır.' : capabilities.detail}</small></span>
+                  {writable && <span className="platform-update-target-capability">İçerik + fiyat/stok</span>}
+                </label>
+              }) : <p className="platform-update-empty">Aktif ürün yazma bağlantısı bulunamadı.</p>}
+            </fieldset>
+            <label className="platform-update-content-toggle"><input type="checkbox" checked={platformUpdateProductInformation} disabled={!platformUpdateConnectionIds.some(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.content))} onChange={event => setPlatformUpdateProductInformation(event.target.checked)} /><span><strong>Ürün bilgilerini de güncelle</strong><small>Açıkken ad, açıklama, kategori özellikleri, desi/teslimat bilgileri ve görseller seçilen platformun desteklediği alanlarla gönderilir. Kapalıyken yalnız fiyat ve stok gönderilir.</small></span></label>
+            <p className="platform-update-scope"><strong>{platformUpdateConnectionIds.filter(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE')).length}</strong> platform seçili · Değişiklikler önce kaydedilir, sonra kuyruğa alınır.</p>
+            {platformUpdateProductInformation && <p className="platform-update-capability-note">Kategori özellikleri yalnız ilgili platform destekliyorsa gönderilir. Shopify şu anda salt okunur olduğundan seçilemez.</p>}
+          </div>
+          <footer><button type="button" className="secondary" onClick={() => setPlatformUpdateDialogOpen(false)}>Vazgeç</button><button type="button" onClick={confirmPlatformUpdate} disabled={submitting || !platformUpdateConnectionIds.some(id => productUpdateTargets.some(target => target.connection.id === id && target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE'))}>{submitting ? 'Güncelleniyor…' : 'Güncelleme kuyruğunu başlat'} <UiIcon name="arrowUp" /></button></footer>
+        </section>
+      </div>,
+      document.body
+    )}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
     {variantMediaModal && <VariantMediaPickerModal
       mode={variantMediaModal.mode}
@@ -3254,7 +3342,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       onApply={applyVariantMediaSelection}
       onClose={() => setVariantMediaModal(null)}
     />}
-    {variantBulkEdit && <div className="workspace-modal-backdrop variant-bulk-edit-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setVariantBulkEdit(null) }}><section id="variant-bulk-edit-dialog" className="workspace-modal variant-bulk-edit-modal" role="dialog" aria-modal="true" aria-labelledby="variant-bulk-edit-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">VARYANTLAR</p><h2 id="variant-bulk-edit-title">Toplu {variantBulkEditLabels[variantBulkEdit.field]} değiştir</h2><p>Değer seçilen varyant satırlarına uygulanır.</p></div><button type="button" className="modal-close" onClick={() => setVariantBulkEdit(null)} aria-label="Toplu değişiklik penceresini kapat"><UiIcon name="close" /></button></header><div className="variant-bulk-edit-body"><p className="variant-bulk-edit-scope">{hasVariantFilters ? `${matchingVariantCount} filtre eşleşen varyanta uygulanacak.` : `${variantRows.length} varyantın tamamına uygulanacak.`} {hasVariantFilters ? 'Filtreyle eşleşmeyen satırlar korunur.' : 'Varyant filtresi açıp değer seçerseniz yalnızca eşleşen satırlar değişir.'}</p><label htmlFor="variant-bulk-edit-value">Yeni {variantBulkEditLabels[variantBulkEdit.field].toLocaleLowerCase('tr-TR')} değeri<input id="variant-bulk-edit-value" autoFocus type="number" min="0" step={variantBulkEdit.field === 'stock' ? '1' : '0.01'} value={variantBulkEdit.value} aria-describedby={`variant-bulk-edit-help${variantBulkEdit.error ? ' variant-bulk-edit-error' : ''}`} onChange={event => setVariantBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label><small id="variant-bulk-edit-help">{variantBulkEdit.field === 'stock' ? 'Stok tam sayı ve sıfırdan büyük veya eşit olmalıdır.' : 'Tutar sıfır veya daha büyük olmalıdır.'}</small>{variantBulkEdit.error && <p id="variant-bulk-edit-error" className="variant-bulk-edit-error" role="alert">{variantBulkEdit.error}</p>}</div><footer><button type="button" className="secondary" onClick={() => setVariantBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyVariantBulkEdit}>Uygula</button></footer></section></div>}
+    {variantBulkEdit && <div className="workspace-modal-backdrop variant-bulk-edit-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setVariantBulkEdit(null) }}><section id="variant-bulk-edit-dialog" className="workspace-modal variant-bulk-edit-modal" role="dialog" aria-modal="true" aria-labelledby="variant-bulk-edit-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">VARYANTLAR</p><h2 id="variant-bulk-edit-title">Toplu {variantBulkEditLabels[variantBulkEdit.field]} değiştir</h2><p>Değer seçilen varyant satırlarına uygulanır.</p></div><button type="button" className="modal-close" onClick={() => setVariantBulkEdit(null)} aria-label="Toplu değişiklik penceresini kapat"><UiIcon name="close" /></button></header><div className="variant-bulk-edit-body"><div className="variant-bulk-edit-target"><span>Uygulanacak varyant</span><strong>{matchingVariantCount.toLocaleString('tr-TR')} satır</strong></div><label htmlFor="variant-bulk-edit-value">Yeni {variantBulkEditLabels[variantBulkEdit.field].toLocaleLowerCase('tr-TR')} değeri<input id="variant-bulk-edit-value" autoFocus type="number" min="0" step={variantBulkEdit.field === 'stock' ? '1' : '0.01'} value={variantBulkEdit.value} aria-describedby={`variant-bulk-edit-help${variantBulkEdit.error ? ' variant-bulk-edit-error' : ''}`} onChange={event => setVariantBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label><small id="variant-bulk-edit-help">{variantBulkEdit.field === 'stock' ? 'Stok tam sayı ve sıfırdan büyük veya eşit olmalıdır.' : 'Tutar sıfır veya daha büyük olmalıdır.'}</small>{variantBulkEdit.error && <p id="variant-bulk-edit-error" className="variant-bulk-edit-error" role="alert">{variantBulkEdit.error}</p>}</div><footer><button type="button" className="secondary" onClick={() => setVariantBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyVariantBulkEdit}>Uygula</button></footer></section></div>}
   </form></Page>
 }
 

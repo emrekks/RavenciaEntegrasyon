@@ -957,7 +957,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var writePolicy = payload.VariantId.HasValue ? MarketplaceExternalWritePolicies.Stock : MarketplaceExternalWritePolicies.Price;
             if (!await ExternalWritePolicyEnabledAsync(tenantId, connectionId, writePolicy, cancellationToken))
                 return JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", writePolicy == MarketplaceExternalWritePolicies.Stock ? "Stok dış yazma akışı kapalı; Trendyol’a gönderim yapılmadı." : "Fiyat dış yazma akışı kapalı; Trendyol’a gönderim yapılmadı.");
-            var current = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId);
+            var current = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId, payload.ProductId);
             if (!current.Succeeded)
             {
                 if (current.Error!.Code == "NO_EXTERNAL_CHANGES") return JobExecutionResult.Success();
