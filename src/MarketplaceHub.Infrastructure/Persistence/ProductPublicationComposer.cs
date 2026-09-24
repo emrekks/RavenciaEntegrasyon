@@ -6,8 +6,8 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
-using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -73,6 +73,14 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             var attributeMapping = SelectMappingForLocal(localMappings, remoteAttributes);
             var remote = remoteAttributes.SingleOrDefault(x => x.ExternalId == attributeMapping.ExternalId);
             if (remote is null) return Fail("ATTRIBUTE_MAPPING_REQUIRED", "Özellik eşlemesi güncel kategori snapshot'ında bulunamadı.");
+            if (TrendyolColorValuePolicy.UsesCustomPanelColorValue(remote.Name))
+            {
+                if (assignment.ValueId is Guid colorValueId && !mappedLocalValues.Any(value => value.AttributeId == assignment.AttributeId && value.Id == colorValueId))
+                    return Fail("ATTRIBUTE_VALUE_INVALID", $"'{remote.Name}' için seçilen panel renk değeri bulunamadı.");
+                if (assignment.ValueId is null && string.IsNullOrWhiteSpace(CustomValue(assignment)))
+                    return Fail("ATTRIBUTE_CUSTOM_VALUE_REQUIRED", $"'{remote.Name}' için boş olmayan renk değeri gerekir.");
+                continue;
+            }
             if (assignment.ValueId is not Guid valueId)
             {
                 if (remote.AllowsCustomValue != true) return Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' serbest değer kabul etmiyor; doğrulanmış değer eşlemesi gereklidir.");
@@ -152,6 +160,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 var remote = remoteAttributes.Single(x => x.ExternalId == mapping.ExternalId);
                 if (!long.TryParse(mapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var remoteAttributeId)) return Fail("MAPPING_IDENTIFIER_INVALID", "Trendyol özellik kimlikleri sayısal olmalıdır.");
                 var values = group.ToList();
+                var customColorValue = TrendyolColorValuePolicy.UsesCustomPanelColorValue(remote.Name);
+                if (customColorValue && values.Count > 1) return Fail("ATTRIBUTE_ASSIGNMENT_AMBIGUOUS", $"'{remote.Name}' için aynı varyantta tek renk değeri gönderilebilir.");
                 if (values.Count > 1 && remote.AllowsMultipleValues != true) return Fail("ATTRIBUTE_ASSIGNMENT_AMBIGUOUS", $"'{remote.Name}' birden fazla değer kabul etmiyor.");
                 if (values.Count > 1 && values.Any(x => x.ValueId is null)) return Fail("ATTRIBUTE_ASSIGNMENT_AMBIGUOUS", $"'{remote.Name}' çoklu kullanımında yalnız eşlenmiş seçim değerleri kullanılabilir.");
 
@@ -169,15 +179,26 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 }
                 else if (values[0].ValueId is Guid valueId)
                 {
-                    var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, mapping.ExternalId, valueId, cancellationToken);
-                    if (externalValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(externalValue.Error.Code, externalValue.Error.Message, externalValue.Error.Status, externalValue.Error.FieldErrors);
-                    attribute["attributeValueId"] = externalValue.Value;
+                    if (customColorValue)
+                    {
+                        var colorValue = mappedLocalValues.SingleOrDefault(value => value.AttributeId == group.Key && value.Id == valueId);
+                        if (colorValue is null) return Fail("ATTRIBUTE_VALUE_INVALID", $"'{remote.Name}' için seçilen panel renk değeri bulunamadı.");
+                        if (!TrendyolColorValuePolicy.TrySetCustomPanelColorValue(attribute, remote.Name, colorValue.Value))
+                            return Fail("ATTRIBUTE_VALUE_INVALID", $"'{remote.Name}' için renk değeri özel alana dönüştürülemedi.");
+                    }
+                    else
+                    {
+                        var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, mapping.ExternalId, valueId, cancellationToken);
+                        if (externalValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(externalValue.Error.Code, externalValue.Error.Message, externalValue.Error.Status, externalValue.Error.FieldErrors);
+                        attribute["attributeValueId"] = externalValue.Value;
+                    }
                 }
                 else
                 {
                     var customValue = CustomValue(values[0]);
                     if (string.IsNullOrWhiteSpace(customValue)) return Fail("ATTRIBUTE_CUSTOM_VALUE_REQUIRED", $"'{remote.Name}' için boş olmayan serbest değer gerekir.");
-                    attribute["customAttributeValue"] = customValue;
+                    if (!TrendyolColorValuePolicy.TrySetCustomPanelColorValue(attribute, remote.Name, customValue))
+                        attribute["customAttributeValue"] = customValue;
                 }
                 payloadAttributes.Add(attribute);
                 emittedRemoteAttributeIds.Add(remoteAttributeId);
@@ -194,17 +215,18 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 if (optionRemote is null) return Fail("OPTION_MAPPING_REQUIRED", $"'{option.Label}' seçeneği güncel kategori snapshot'ında bulunamadı.");
                 var localValue = mappedLocalValues.FirstOrDefault(x => x.AttributeId == localAttribute.Id && NormalizeLabel(x.Value) == NormalizeLabel(option.ValueLabel));
                 var optionPayload = new Dictionary<string, object?> { ["attributeId"] = optionRemoteId };
-                if (localValue is not null)
+                var hasCustomColorValue = TrendyolColorValuePolicy.TrySetCustomPanelColorValue(optionPayload, optionRemote.Name, option.ValueLabel);
+                if (!hasCustomColorValue && localValue is not null)
                 {
                     var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, optionMapping.ExternalId, localValue.Id, cancellationToken);
                     if (externalValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(externalValue.Error.Code, externalValue.Error.Message, externalValue.Error.Status, externalValue.Error.FieldErrors);
                     optionPayload["attributeValueId"] = externalValue.Value;
                 }
-                else if (optionRemote.AllowsCustomValue == true)
+                else if (!hasCustomColorValue && optionRemote.AllowsCustomValue == true)
                 {
                     optionPayload["customAttributeValue"] = option.ValueLabel.Trim();
                 }
-                else
+                else if (!hasCustomColorValue)
                 {
                     return Fail("OPTION_VALUE_MAPPING_REQUIRED", $"'{option.Label}: {option.ValueLabel}' seçeneği için doğrulanmış Trendyol değer eşlemesi bulunamadı.");
                 }
