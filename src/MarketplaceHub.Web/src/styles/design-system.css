@@ -2721,6 +2721,9 @@
   .value-mapping-heading > div { min-width: 0; }
   .value-mapping-heading h3, .value-mapping-heading p { margin: 0; }
   .value-mapping-heading p { margin-top: var(--rv-space-1); font-size: var(--rv-font-size-sm); }
+  .value-mapping-heading-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: var(--rv-space-2); }
+  .value-mapping-heading-actions .value-mapping-refresh-button { min-height: 36px; padding-inline: var(--rv-space-3); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+  .value-mapping-reference-note { margin: 0; padding: var(--rv-space-3) var(--rv-space-4); color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-inline-start: 3px solid var(--rv-color-warning); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-sm); line-height: 1.5; }
   .value-mapping-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); min-width: 0; gap: var(--rv-space-2); }
   .custom-panel-color-values { display: grid; min-width: 0; gap: var(--rv-space-3); padding: var(--rv-space-5) var(--rv-space-6); }
   .custom-panel-color-values-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--rv-space-2); }
@@ -2944,6 +2947,9 @@
   .mapping-saved-card > header { align-items: flex-start; flex-direction: column; }
   .mapping-saved-header-tools { width: 100%; min-width: 0; grid-template-columns: minmax(0, 1fr); }
   .mapping-advanced-modal, .mapping-values-modal { width: min(100%, calc(100vw - 24px)); }
+  .mapping-values-modal .value-mapping-heading { align-items: stretch; flex-direction: column; }
+  .mapping-values-modal .value-mapping-heading-actions { width: 100%; justify-content: flex-start; }
+  .mapping-values-modal .value-mapping-heading-actions > button { flex: 1 1 180px; }
   .value-mapping-row { grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1.2fr); }
   .value-mapping-row > small { grid-column: 3; text-align: left; }
   .web-color-assignment-picker { grid-template-columns: 1fr; }
@@ -3833,6 +3839,32 @@ button,
   grid-template-rows: auto auto minmax(0, auto);
   width: min(640px, 100%);
   max-height: min(560px, calc(100dvh - 32px));
+}
+
+.value-mapping-quick-value-backdrop {
+  z-index: calc(var(--rv-z-modal) + 1);
+}
+
+.panel-attribute-quick-modal-card {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  max-height: min(680px, calc(100dvh - 32px));
+}
+
+.panel-attribute-quick-add-value {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.panel-attribute-quick-modal-card > .panel-attribute-value-editor {
+  min-height: 100px;
+  max-height: min(360px, 42dvh);
+  overflow-y: auto;
+}
+
+.panel-attribute-quick-modal-card > footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--rv-space-3) var(--rv-space-6);
+  border-top: 1px solid var(--rv-color-border);
 }
 
 .app-shell.stitch-shell main .panel-attribute-category-modal-card {
@@ -10718,7 +10750,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   border-color: var(--rv-color-primary);
 }
 
-.operation-feedback-toast { position: relative; overflow: hidden; }
+.operation-feedback-toast { overflow: hidden; }
 .operation-feedback-toast > button:hover,
 .operation-feedback-toast > button:focus-visible {
   color: var(--rv-color-muted);
@@ -10747,21 +10779,33 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   .publish-platform-facts { grid-template-columns: minmax(0, 1fr); }
 }
 
-.app-shell.stitch-shell main .product-submit-actions .platform-update-trigger {
+.platform-update-split {
   display: inline-flex;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--rv-color-primary);
+  background: var(--rv-color-primary-soft);
+  border: 1px solid color-mix(in srgb, var(--rv-color-primary) 42%, var(--rv-color-border));
+  border-radius: var(--rv-radius-md);
+}
+.app-shell.stitch-shell main .product-submit-actions .platform-update-split > button {
+  display: inline-flex;
+  min-height: 42px;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: var(--rv-color-primary);
-  background: var(--rv-color-primary-soft);
-  border: 1px solid color-mix(in srgb, var(--rv-color-primary) 38%, var(--rv-color-border));
+  padding: 0 12px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   font-weight: 750;
 }
-.app-shell.stitch-shell main .product-submit-actions .platform-update-trigger:hover:not(:disabled) {
-  color: #fff;
-  background: var(--rv-color-primary);
-  border-color: var(--rv-color-primary);
-}
+.app-shell.stitch-shell main .product-submit-actions .platform-update-split > .platform-update-quick { flex: 1 1 auto; white-space: nowrap; }
+.app-shell.stitch-shell main .product-submit-actions .platform-update-split > .platform-update-settings { flex: 0 0 42px; width: 42px; padding: 0; border-left: 1px solid color-mix(in srgb, var(--rv-color-primary) 34%, var(--rv-color-border)); }
+.app-shell.stitch-shell main .product-submit-actions .platform-update-split > button:hover:not(:disabled) { color: #fff; background: var(--rv-color-primary); }
+.app-shell.stitch-shell main .product-submit-actions .platform-update-split > button:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--rv-color-primary); outline-offset: -3px; }
+.app-shell.stitch-shell main .product-submit-actions .platform-update-split > button:disabled { cursor: not-allowed; opacity: .65; }
 .platform-update-modal { width: min(720px, 100%); }
 .platform-update-modal > header { align-items: flex-start; }
 .platform-update-modal-body { display: grid; gap: 14px; padding: 20px 24px; overflow: auto; }

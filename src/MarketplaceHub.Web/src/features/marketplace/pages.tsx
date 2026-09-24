@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
@@ -11,6 +12,7 @@ import { useScrollLock } from '../../shared/hooks/useScrollLock'
 import { appendNotification, normalizeNotificationKind } from '../../shared/notifications'
 import { code128Bars, loadPrintedShippingLabels, markShippingLabelPrinted, printedShippingLabelKey, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from '../shipping'
 import { formatPanelColorValue, usesCustomPanelColorValue } from './color-value-format'
+import { attributeValueMappingNeedsSave, hasDirectReferenceValue, normalizeReferenceValueLabel, planDirectReferenceValues } from './attribute-value-mapping'
 type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }
 type Connection = { id: string; publicId: string; platformCode: string; environment: string; displayName: string; externalStoreId: string; status: string; apiVersion: string; lastTestedAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null; hasCredential: boolean; externalWritesEnabled: boolean; invoiceCreationEnabled: boolean; version: number }
 type SyncPolicy = { id: string; resourceType: string; intervalSeconds: number; overlapSeconds: number; jitterSeconds: number; enabled: boolean; version: number; lastSuccessAt: string | null; lastModifiedWatermark: string | null; healthStatus?: string; recoveryGapStatus?: string; recoveryGapDays?: number | null; lastAttemptAt?: string | null; consecutiveFailureCount?: number; lastRequestCount?: number; lastReceivedCount?: number; lastChangedCount?: number; lastInsertedCount?: number; lastUpdatedCount?: number; lastSkippedCount?: number; lastFailedCount?: number; lastRetryCount?: number; lastRateLimitCount?: number; requiresExternalWrites?: boolean }
@@ -2257,10 +2259,21 @@ function WebColorValueMappingEditor({ connectionId, categoryScope, attribute, ex
 }
 
 function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, externalAttributeId, customPanelColorValues = false }: { connectionId: string; categoryScope: string; attribute: LocalAttribute; externalAttributeId: string; customPanelColorValues?: boolean }) {
-  const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selections, setSelections] = useState<Record<string, string>>({}); const [saving, setSaving] = useState(false); const valueScope = `${categoryScope}/${externalAttributeId}`
-  const references = useQuery({ queryKey: ['reference-attribute-values', connectionId, valueScope], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, enabled: !customPanelColorValues })
+  const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selections, setSelections] = useState<Record<string, string>>({}); const [saving, setSaving] = useState(false); const [quickCreating, setQuickCreating] = useState(false); const [quickValueOpen, setQuickValueOpen] = useState(false); const [quickValueDraft, setQuickValueDraft] = useState(''); const [quickValueSaving, setQuickValueSaving] = useState(false); const valueScope = `${categoryScope}/${externalAttributeId}`
+  const referenceKey = ['reference-attribute-values', connectionId, valueScope] as const
+  const references = useQuery({ queryKey: referenceKey, queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, enabled: !customPanelColorValues })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false, enabled: !customPanelColorValues })
-  const sync = useMutation({ mutationFn: () => hubApi(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: () => setNotice('Özellik değerleri salt-okunur eşitleme kuyruğuna alındı.'), onError: reason => setNotice(reason instanceof Error ? reason.message : 'Değer eşitleme başlatılamadı.') })
+  const sync = useMutation({ mutationFn: () => hubApi(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: async () => {
+    setNotice('Trendyol değer listesi yenileniyor…')
+    for (const delay of [500, 1000, 2000, 4000]) {
+      await wait(delay)
+      await client.invalidateQueries({ queryKey: referenceKey })
+    }
+    const latest = client.getQueryData<ReferenceData>(referenceKey)
+    setNotice(latest && latest.fetchedAt !== references.data?.fetchedAt
+      ? 'Trendyol değer listesi yenilendi. Yeni seçenek geldiyse eşleyip tüm eşlemeleri kaydedin.'
+      : 'Salt-okunur eşitleme kuyruğa alındı. Seçenek hâlâ görünmüyorsa Trendyol bu referansta sunmuyor olabilir.')
+  }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Değer eşitleme başlatılamadı.') })
   useEffect(() => {
     if (!notice) return
     const kind = notificationKindFromMessage(notice)
@@ -2270,6 +2283,14 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
     return () => window.clearTimeout(timeout)
   }, [notice])
   const localValues = attribute.values?.filter(item => item.isActive) ?? []; const remoteValues = references.data?.items.filter(item => item.isActive) ?? []; const mappingByLocal = new Map((mappings.data ?? []).map(item => [item.localId, item]))
+  const directReferenceMissingValues = localValues.filter(localValue => !hasDirectReferenceValue(localValue.value, remoteValues.map(remote => remote.name)))
+  const directPlan = planDirectReferenceValues(localValues, remoteValues)
+  const directMappingWorkCount = directPlan.mappings.filter(item => attributeValueMappingNeedsSave(mappingByLocal.get(item.localId), item.externalId, references.data?.snapshotId ?? '')).length
+  function updateAttributeCache(updated: LocalAttribute) {
+    for (const queryKey of [['attributes', 'mapping-builder'], ['attributes', 'mapping']] as const) {
+      client.setQueryData<Page<LocalAttribute>>(queryKey, current => current ? { ...current, items: current.items.map(item => item.id === updated.id ? updated : item) } : current)
+    }
+  }
   useEffect(() => { if (mappings.data) setSelections(Object.fromEntries(mappings.data.map(item => [item.localId, item.externalId]))) }, [mappings.data])
   if (customPanelColorValues) {
     if (!localValues.length) return <div className="unknown"><strong>Panel renk değeri bulunamadı</strong><p>Normal Trendyol Renk alanı için panelde etkin renk seçeneği ekleyin.</p></div>
@@ -2288,7 +2309,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
           changed++
           continue
         }
-        if (!externalId || existing?.externalId === externalId) continue
+        if (!attributeValueMappingNeedsSave(existing, externalId, references.data.snapshotId)) continue
         await hubApi<CatalogMapping>(`/mappings/attribute-values/${localValue.id}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, scopeExternalId: valueScope, externalId, status: 'VERIFIED' }) })
         changed++
       }
@@ -2296,11 +2317,115 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       setNotice(changed ? `${changed} değer eşlemesi kaydedildi.` : 'Değer eşlemelerinde değişiklik yok.')
     } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Değer eşlemeleri kaydedilemedi.') } finally { setSaving(false) }
   }
-  if (!localValues.length) return <div className="unknown"><strong>Serbest değer özelliği</strong><p>Bu yerel özellik seçim listesi taşımıyor; Trendyol özelliği serbest değer kabul etmiyorsa yayınlama kapısı işlemi reddeder.</p></div>
-  if (references.isError) return <div className="unknown"><strong>Güncel özellik değerleri snapshot’ı yok</strong><p>Seçili kategori ve özellik için salt-okunur değer listesini eşitleyin.</p>{notice && <p role="status">{notice}</p>}<button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Kuyruğa alınıyor…' : 'Özellik değerlerini eşitle'}</button></div>
+  async function addQuickValues() {
+    const requested = quickValueDraft.split(',').map(value => value.trim()).filter(Boolean)
+    const seen = new Set<string>()
+    const values = requested.filter(value => {
+      const normalized = normalizeReferenceValueLabel(value)
+      if (seen.has(normalized)) return false
+      seen.add(normalized)
+      return !localValues.some(existing => normalizeReferenceValueLabel(existing.value) === normalized)
+    })
+    if (!values.length) {
+      setNotice(requested.length ? 'Girilen değerler zaten bu özellikte bulunuyor.' : 'Eklemek için en az bir değer yazın.')
+      return
+    }
+    setQuickValueSaving(true)
+    try {
+      const updated = await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}/values`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotency() },
+        body: JSON.stringify(values.map((value, index) => ({ value, sortOrder: localValues.length + index })))
+      })
+      updateAttributeCache(updated)
+      await client.invalidateQueries({ queryKey: ['attributes'] })
+      setQuickValueDraft('')
+      setQuickValueOpen(false)
+      setNotice(`${values.length} değer “${attribute.name}” özelliğine eklendi.`)
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : 'Değer eklenemedi.')
+    } finally { setQuickValueSaving(false) }
+  }
+  async function createAndMapDirectValues() {
+    if (!references.data || !remoteValues.length || quickCreating) return
+    setQuickCreating(true)
+    setNotice('')
+    let createdCount = 0
+    let mappedCount = 0
+    try {
+      let latestAttribute = attribute
+      const initialPlan = planDirectReferenceValues(localValues, remoteValues)
+      if (initialPlan.missingValues.length) {
+        latestAttribute = await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}/values`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': idempotency() },
+          body: JSON.stringify(initialPlan.missingValues.map((value, index) => ({ value, sortOrder: localValues.length + index })))
+        })
+        createdCount = initialPlan.missingValues.length
+        updateAttributeCache(latestAttribute)
+      }
+      const currentLocalValues = latestAttribute.values?.filter(item => item.isActive) ?? localValues
+      const finalPlan = planDirectReferenceValues(currentLocalValues, remoteValues)
+      for (const planned of finalPlan.mappings) {
+        const existing = mappingByLocal.get(planned.localId)
+        if (!attributeValueMappingNeedsSave(existing, planned.externalId, references.data.snapshotId)) continue
+        await hubApi<CatalogMapping>(`/mappings/attribute-values/${planned.localId}`, {
+          method: 'PUT',
+          headers: existing ? { 'If-Match': `"v${existing.version}"` } : {},
+          body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, scopeExternalId: valueScope, externalId: planned.externalId, status: 'VERIFIED' })
+        })
+        mappedCount++
+        setSelections(current => ({ ...current, [planned.localId]: planned.externalId }))
+      }
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] }),
+        client.invalidateQueries({ queryKey: ['attributes'] })
+      ])
+      const skipped = finalPlan.ambiguousCount
+      const summary = `${createdCount} Trendyol değeri panele eklendi, ${mappedCount} eşleme kaydedildi.`
+      setNotice(skipped ? `${summary} Aynı adlı ${skipped} Trendyol seçeneği birden fazla bulunduğu için otomatik eşlenmedi.` : summary)
+    } catch (reason) {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] }),
+        client.invalidateQueries({ queryKey: ['attributes'] })
+      ])
+      setNotice(reason instanceof Error ? `İşlem tamamlanamadı: ${reason.message} Eklenen değerler korunur; yeniden deneyebilirsiniz.` : 'İşlem tamamlanamadı. Eklenen değerler korunur; yeniden deneyebilirsiniz.')
+    } finally { setQuickCreating(false) }
+  }
+  const quickValueModal = quickValueOpen && createPortal(<div className="panel-attribute-modal value-mapping-quick-value-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !quickValueSaving) setQuickValueOpen(false) }}><section className="panel-attribute-modal-card panel-attribute-quick-modal-card" role="dialog" aria-modal="true" aria-labelledby="mapping-quick-value-title" onMouseDown={event => event.stopPropagation()}><header><div><strong id="mapping-quick-value-title">{attribute.name}</strong><small>Panel özelliği · bu başlığa yeni değer ekleyin</small></div><button type="button" aria-label="Değer ekleme penceresini kapat" onClick={() => setQuickValueOpen(false)} disabled={quickValueSaving}><UiIcon name="close" /></button></header><form className="panel-attribute-add-value panel-attribute-quick-add-value" onSubmit={event => { event.preventDefault(); void addQuickValues() }}><input autoFocus value={quickValueDraft} onChange={event => setQuickValueDraft(event.target.value)} placeholder="Yeni değerleri virgülle yazın" aria-label={`${attribute.name} için yeni değerler`} /><button type="submit" disabled={quickValueSaving || !quickValueDraft.trim()}>{quickValueSaving ? 'Ekleniyor…' : '+ Değer ekle'}</button></form><div className="panel-attribute-value-editor">{localValues.length ? localValues.map(value => <div key={value.id}><span>{value.value}</span></div>) : <span className="panel-value-empty">Henüz değer eklenmedi.</span>}</div><footer><button type="button" className="secondary" onClick={() => setQuickValueOpen(false)} disabled={quickValueSaving}>Kapat</button></footer></section></div>, document.body)
+  if (references.isError) return <div className="unknown"><strong>Güncel özellik değerleri snapshot’ı yok</strong><p>Seçili kategori ve özellik için Trendyol’un salt-okunur değer listesini eşitleyin.</p>{notice && <p role="status">{notice}</p>}<div className="value-mapping-heading-actions"><button type="button" className="secondary" disabled={quickValueSaving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button><button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Eşitleniyor…' : 'Trendyol değerlerini eşitle'}</button></div>{quickValueModal}</div>
   if (references.isLoading || mappings.isLoading) return <Busy text="Özellik değerleri ve mevcut eşlemeler yükleniyor…" />
   if (mappings.isError) return <ErrorBox error={mappings.error} />
-  return <div className="mapping-step nested value-mapping-editor"><div className="value-mapping-heading"><div><h3>Değer eşleştirmeleri</h3><p>{localValues.length} panel değeri · {remoteValues.length} Trendyol değeri · aynı Trendyol değeri birden fazla panel değerine bağlanabilir</p></div><button type="button" disabled={saving} onClick={() => void saveAll()}>{saving ? 'Kaydediliyor…' : 'Tüm eşlemeleri kaydet'}</button></div>{notice && <p role="status" className="notice">{notice}</p>}<div className="value-mapping-rows">{localValues.map(localValue => <label key={localValue.id} className="value-mapping-row"><span>{localValue.value}</span><b className="value-mapping-row-link" aria-hidden="true" title="Eşleştir"><UiIcon name="link" /></b><select aria-label={`${localValue.value} Trendyol değeri`} value={selections[localValue.id] ?? ''} onChange={event => setSelections(current => ({ ...current, [localValue.id]: event.target.value }))}><option value="">Trendyol değeri seçin</option>{remoteValues.map(remote => <option key={remote.externalId} value={remote.externalId}>{remote.name}</option>)}</select><small>{mappingByLocal.has(localValue.id) ? 'Eşlendi' : 'Bekliyor'}</small></label>)}</div></div>
+  if (!localValues.length) return <div className="unknown"><strong>Bu özellikte henüz değer yok</strong><p>Değer ekleyerek Trendyol seçenekleriyle eşleştirmeye başlayın.</p><div className="value-mapping-heading-actions"><button type="button" className="secondary" onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button><button type="button" disabled={quickCreating || quickValueSaving || !directPlan.missingValues.length && !directMappingWorkCount} onClick={() => void createAndMapDirectValues()}>{quickCreating ? 'Oluşturulup eşleniyor…' : 'Trendyol adlarını oluştur + eşle'}</button></div>{notice && <p role="status" className="notice">{notice}</p>}{quickValueModal}</div>
+  return <div className="mapping-step nested value-mapping-editor">
+    <div className="value-mapping-heading">
+      <div><h3>Değer eşleştirmeleri</h3><p>{localValues.length} panel değeri · {remoteValues.length} Trendyol değeri · aynı Trendyol değeri birden fazla panel değerine bağlanabilir</p></div>
+      <div className="value-mapping-heading-actions">
+        <button type="button" className="secondary" disabled={quickValueSaving || quickCreating || saving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button>
+        <button type="button" className="secondary" title={`${directPlan.missingValues.length} eksik ad oluşturulur; birebir eşleşen ${directMappingWorkCount} değer eşlenir.${directPlan.ambiguousCount ? ` Aynı adlı ${directPlan.ambiguousCount} Trendyol seçeneği atlanır.` : ''}`} disabled={quickCreating || saving || quickValueSaving || !directPlan.missingValues.length && !directMappingWorkCount} onClick={() => void createAndMapDirectValues()}>{quickCreating ? 'Oluşturulup eşleniyor…' : 'Trendyol adlarını oluştur + eşle'}</button>
+        <button type="button" className="secondary value-mapping-refresh-button" title="Trendyol’un güncel referans değer listesini yenile" disabled={sync.isPending || quickCreating || saving} onClick={() => sync.mutate()}>{sync.isPending ? 'Yenileniyor…' : 'Trendyol listesini yenile'}</button>
+        <button type="button" disabled={saving || sync.isPending || quickCreating || quickValueSaving} onClick={() => void saveAll()}>{saving ? 'Kaydediliyor…' : 'Tüm eşlemeleri kaydet'}</button>
+      </div>
+    </div>
+    {notice && <p role="status" className="notice">{notice}</p>}
+    {directReferenceMissingValues.length > 0 && <p className="value-mapping-reference-note" role="note">{directReferenceMissingValues.map(item => `“${item.value}”`).join(', ')} için birebir adlı Trendyol değeri listede yok. Listeyi yenileyin; seçenek yine gelmezse Trendyol’un sunduğu uygun karşılığı seçin.</p>}
+    <div className="value-mapping-rows">
+      {localValues.map(localValue => {
+        const existing = mappingByLocal.get(localValue.id)
+        const mappedToCurrentSnapshot = existing?.snapshotId === references.data?.snapshotId
+        return <label key={localValue.id} className="value-mapping-row">
+          <span>{localValue.value}</span>
+          <b className="value-mapping-row-link" aria-hidden="true" title="Eşleştir"><UiIcon name="link" /></b>
+          <select aria-label={`${localValue.value} Trendyol değeri`} value={selections[localValue.id] ?? ''} onChange={event => setSelections(current => ({ ...current, [localValue.id]: event.target.value }))}>
+            <option value="">Trendyol değeri seçin</option>
+            {remoteValues.map(remote => <option key={remote.externalId} value={remote.externalId}>{remote.name}</option>)}
+          </select>
+          <small>{existing && !mappedToCurrentSnapshot ? 'Güncel snapshot’a kaydedilecek' : existing ? 'Eşlendi' : 'Bekliyor'}</small>
+        </label>
+      })}
+    </div>
+    {quickValueModal}
+  </div>
 }
 
 export function BrandMappingPage() {

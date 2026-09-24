@@ -18,6 +18,7 @@ import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './varian
 import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
 import { isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusTone } from './publication-status'
+import { quickPlatformUpdateTargets } from './platform-update-targets'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from './variant-media-assignments'
 
 type Versioned = { id: string; version: number }
@@ -1840,11 +1841,7 @@ function PublishPlatformCard({ card, selected, productId, productChecks, onSelec
       ? 'Yayın durumu alınamadı'
       : publicationStatusLabel(publication.data?.actualStatus, publication.data?.lastJobStatus)
   const publicationTone = publicationStatusTone(publication.data?.actualStatus, publication.data?.lastJobStatus)
-  const platformChecks = [
-    ...productChecks,
-    { title: 'Yayın hedefi', detail: selected ? `${card.name} mağazası bu kayıt işleminde seçili.` : 'Bu mağazada yayın veya güncelleme için kartın üstünden seçin.', ok: selected }
-  ]
-  const missingChecks = missingPublicationChecks(platformChecks)
+  const missingChecks = missingPublicationChecks(productChecks)
   return <article className={`publish-platform-card ${selected ? 'selected' : ''}`}>
     <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected}>
       <span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.png'} alt="" aria-hidden="true" /></span>
@@ -2238,17 +2235,20 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setSelectedChannelIds(current => selected ? current.filter(item => item !== id) : [...current, id])
     showFeedback(selected ? 'Yayın kanalı seçimden çıkarıldı.' : 'Yayın kanalı seçildi.', 'info')
   }
+  function updateableProductConnectionIds() {
+    return (connections.data?.items ?? []).filter(item => isProductPublicationConnection(item) && productUpdateCapabilities(item.platformCode).writable && item.status.trim().toUpperCase() === 'ACTIVE').map(item => item.id)
+  }
   function openPlatformUpdateDialog() {
-    const updateableIds = (connections.data?.items ?? []).filter(item => isProductPublicationConnection(item) && productUpdateCapabilities(item.platformCode).writable && item.status.trim().toUpperCase() === 'ACTIVE').map(item => item.id)
+    const updateableIds = updateableProductConnectionIds()
     const currentSelection = selectedChannelIds.filter(id => updateableIds.includes(id))
     setPlatformUpdateConnectionIds(currentSelection.length ? currentSelection : updateableIds)
     setPlatformUpdateProductInformation(true)
     setPlatformUpdateDialogOpen(true)
   }
-  function confirmPlatformUpdate() {
-    const updateableIds = new Set((connections.data?.items ?? []).filter(item => isProductPublicationConnection(item) && productUpdateCapabilities(item.platformCode).writable && item.status.trim().toUpperCase() === 'ACTIVE').map(item => item.id))
-    const connectionIds = platformUpdateConnectionIds.filter(id => updateableIds.has(id))
-    if (!connectionIds.length) {
+  function queuePlatformUpdate(connectionIds: string[], includeProductInformation: boolean) {
+    const updateableIds = new Set(updateableProductConnectionIds())
+    const safeConnectionIds = [...new Set(connectionIds)].filter(id => updateableIds.has(id))
+    if (!safeConnectionIds.length) {
       showFeedback('Güncelleme için desteklenen ve aktif bir platform seçin.', 'error')
       return
     }
@@ -2257,9 +2257,21 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       showFeedback('Ürün formu bulunamadı; güncelleme başlatılamadı.', 'error')
       return
     }
-    pendingPlatformUpdate.current = { connectionIds, includeProductInformation: platformUpdateProductInformation }
+    pendingPlatformUpdate.current = { connectionIds: safeConnectionIds, includeProductInformation }
     setPlatformUpdateDialogOpen(false)
     formElement.requestSubmit()
+  }
+  function confirmPlatformUpdate() {
+    queuePlatformUpdate(platformUpdateConnectionIds, platformUpdateProductInformation)
+  }
+  function startQuickPlatformUpdate() {
+    const connectionIds = quickPlatformUpdateTargets(selectedChannelIds, updateableProductConnectionIds())
+    if (!connectionIds.length) {
+      openPlatformUpdateDialog()
+      showFeedback('Hızlı güncelleme için önce güncellenecek platformu seçin.', 'info')
+      return
+    }
+    queuePlatformUpdate(connectionIds, false)
   }
   function channelPriceDraft(connectionId: string): ChannelPricingDraft {
     return channelPricing[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice }
@@ -3015,9 +3027,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       ? (!colorOptionRequirement || (!variantAttributeIds.includes(colorOptionRequirement.attributeId) && !(attributeSelections[colorOptionRequirement.attributeId]?.length))) ? ['Web Color otomatik aktarımı için Renk seçeneğini eşitleyip değer seçin.'] : []
       : !manualWebColorValueId ? ['Manuel Web Color için katalog rengi seçin.'] : webColorRequirement.attribute.values.some(value => value.id === manualWebColorValueId) ? [] : ['Manuel Web Color değeri geçerli değil.']
   const catalogValidationIssues = [...categoryValidationIssues, ...optionValidationIssues, ...webColorValidationIssues]
-  const catalogValidationDetail = catalogValidationIssues.length ? `${catalogValidationIssues.slice(0, 2).join(' ')}${catalogValidationIssues.length > 2 ? ` +${catalogValidationIssues.length - 2} eksik` : ''}` : 'Kategori özellikleri, seçenekler ve Web Color yayınlamaya hazır.'
+  const catalogValidationDetail = catalogValidationIssues.length ? catalogValidationIssues.join(' ') : 'Kategori özellikleri, seçenekler ve Web Color yayınlamaya hazır.'
+  const basicProductMissingParts = [
+    !form.title.trim() && 'ürün adı',
+    !form.description.trim() && 'açıklama',
+    !form.brandId && 'marka',
+    !form.modelCode.trim() && 'model kodu',
+    !hasBarcodeData && 'barkod'
+  ].filter((part): part is string => Boolean(part))
   const productChecks = [
-    { title: 'Temel Ürün Verileri', detail: hasBasicProductData ? 'İsim, açıklama, marka ve barkod bilgileri eksiksiz.' : 'İsim, açıklama, marka, model veya barkod bilgisi eksik.', ok: hasBasicProductData },
+    { title: 'Temel Ürün Verileri', detail: hasBasicProductData ? 'İsim, açıklama, marka, model ve barkod bilgileri eksiksiz.' : `Eksik alanlar: ${basicProductMissingParts.join(', ')}.`, ok: hasBasicProductData },
     { title: 'Görsel Kalitesi', detail: hasProductMedia ? `${mediaCount} adet ürün görseli eklendi.${mediaCount > 8 ? ' Trendyol için sıralamadaki ilk 8 görsel kullanılır.' : ''}` : 'En az bir yüksek çözünürlüklü görsel ekleyin.', ok: hasProductMedia },
     { title: 'Varyant Bilgileri', detail: hasVariantData ? 'Varyant yapısı yayınlanmaya hazır.' : 'Seçilen seçenekler için varyant satırlarını oluşturun.', ok: hasVariantData },
     { title: 'Kategori ve Web Color', detail: catalogValidationDetail, ok: catalogValidationIssues.length === 0 }
@@ -3271,13 +3290,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <div className="publish-selection-footer">
             <div><strong>{selectedChannelIds.length ? `${selectedChannelIds.length} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{selectedChannelIds.length ? 'Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur.' : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>
             {!selectedChannelIds.length && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}
-            <button type="submit" disabled={submitting}>{submitting ? (editProductId ? 'Kaydediliyor…' : 'Ürün oluşturuluyor…') : (editProductId ? 'Değişiklikleri kaydet' : <><UiIcon name="sparkle" /> Ürünü Oluştur</>)}</button>
+            <button type="submit" disabled={submitting}>{submitting ? (editProductId ? 'Yayınlanıyor…' : 'Ürün oluşturuluyor…') : (editProductId ? 'Yayınla' : <><UiIcon name="sparkle" /> Ürünü Oluştur</>)}</button>
           </div>
         </div>
       </div>
     </section>
 
-    <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting}>{submitting ? 'Oluşturuluyor…' : 'Ürünü oluştur'}</button>}{editProductId && <button type="button" className="platform-update-trigger" onClick={openPlatformUpdateDialog} disabled={submitting || connections.isLoading}><span>Platformlarda Güncelle</span><UiIcon name="arrowUp" /></button>}<button type="button" onClick={() => setWizardStep(2)}>Yayınlamaya devam et <UiIcon name="arrowRight" /></button></div></section>
+    <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting}>{submitting ? 'Oluşturuluyor…' : 'Ürünü oluştur'}</button>}{editProductId && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={startQuickPlatformUpdate} disabled={submitting || connections.isLoading} title="Seçili aktif platformlarda yalnız fiyat ve stoku güncelle"><span>Hızlı güncelle</span><UiIcon name="sync" /></button><button type="button" className="platform-update-settings" onClick={openPlatformUpdateDialog} disabled={submitting || connections.isLoading} aria-label="Platform güncelleme ayarları" title="Platform güncelleme ayarları" aria-haspopup="dialog"><UiIcon name="settings" /></button></div>}<button type="button" onClick={() => setWizardStep(2)}>Yayınlamaya devam et <UiIcon name="arrowRight" /></button></div></section>
     <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />
     <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
